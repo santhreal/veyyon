@@ -38,9 +38,6 @@ const USER_MESSAGE_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "esc close", clickable: true, id: "close" },
 ];
 
-/**
- * Custom user message list component with selection
- */
 class UserMessageList implements Component {
 	#filteredMessages: UserMessageItem[];
 	#searchQuery = "";
@@ -48,23 +45,16 @@ class UserMessageList implements Component {
 	onSelect?: (entryId: string) => void;
 	onCancel?: () => void;
 	#maxVisible: number = 10; // Max messages visible
-	/** Pointer-highlighted message (never the selected one; selection owns its rows). */
 	#hoveredIndex: number | null = null;
-	/** The cross-fade, once the card has lent this list a repaint ({@link setHoverMotion}). Absent, the band is switched. */
 	#hoverFade?: HoverFade;
-	/** Per-render map of 0-based rendered line → filtered-message index. */
 	#hitRows: (number | undefined)[] = [];
 
 	constructor(private readonly messages: UserMessageItem[]) {
-		// Store messages in chronological order (oldest to newest)
 		this.#filteredMessages = messages;
-		// Start with the last (most recent) message selected
 		this.#selectedIndex = Math.max(0, this.#filteredMessages.length - 1);
 	}
 
-	invalidate(): void {
-		// No cached state to invalidate currently
-	}
+	invalidate(): void {}
 
 	#isSearchEnabled(): boolean {
 		return this.messages.length > this.#maxVisible;
@@ -88,12 +78,10 @@ class UserMessageList implements Component {
 		this.#selectedIndex = query.trim() ? 0 : Math.max(0, this.#filteredMessages.length - 1);
 	}
 
-	/** Resolve a rendered line (0-based within this list) to a message index. */
 	hitTest(line: number): number | undefined {
 		return this.#hitRows[line];
 	}
 
-	/** Band the message under the pointer (null clears). Returns true on change. The band paints on every row, the cursor row included: the pointer does not move the cursor, so */
 	setHoverIndex(index: number | null): boolean {
 		if (this.#hoveredIndex === index) return false;
 		this.#hoveredIndex = index;
@@ -101,27 +89,23 @@ class UserMessageList implements Component {
 		return true;
 	}
 
-	/** Fade the pointer band instead of switching it. The frames between two mouse reports have no input to hang off, so the card lends its repaint. */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade(options);
 		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
 	}
 
-	/** Drop the fade and forget the pointer, so no timer outlives the card. */
 	disposeHoverMotion(): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = undefined;
 		this.#hoveredIndex = null;
 	}
 
-	/** Band strength for a message. Every row can carry a band, the cursor row included: suppressing it there left the row the keyboard already sat on unable to answer the pointer at all. */
 	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
-	/** Move the selection one step for a wheel notch (wraps like the arrow keys). */
 	handleWheel(delta: -1 | 1): void {
 		if (this.#filteredMessages.length === 0) return;
 		const total = this.#filteredMessages.length;
@@ -135,7 +119,6 @@ class UserMessageList implements Component {
 					: this.#selectedIndex + 1;
 	}
 
-	/** Select the message under the pointer and confirm it, like Enter. */
 	clickItem(index: number): void {
 		const message = this.#filteredMessages[index];
 		if (!message) return;
@@ -173,14 +156,12 @@ class UserMessageList implements Component {
 
 		const total = this.#filteredMessages.length;
 
-		// Calculate visible range with scrolling
 		const startIndex = Math.max(
 			0,
 			Math.min(this.#selectedIndex - Math.floor(this.#maxVisible / 2), total - this.#maxVisible),
 		);
 		const endIndex = Math.min(startIndex + this.#maxVisible, total);
 
-		// Render visible messages (2 lines per message + blank line)
 		const overflow = total > this.#maxVisible;
 		const rowWidth = Math.max(0, width - (overflow ? 1 : 0));
 		const messageLines: string[] = [];
@@ -190,10 +171,8 @@ class UserMessageList implements Component {
 			const isSelected = i === this.#selectedIndex;
 			const hoverStrength = this.#hoverStrength(i);
 
-			// Normalize message to single line
 			const normalizedMessage = message.text.replace(/\n/g, " ").trim();
 
-			// First line: cursor + message
 			const cursor = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
 			const maxMsgWidth = rowWidth - 2; // Account for cursor (2 chars)
 			const truncatedMsg = truncateToWidth(normalizedMessage, maxMsgWidth);
@@ -202,7 +181,6 @@ class UserMessageList implements Component {
 			this.#hitRows[messageLines.length] = i;
 			messageLines.push(hoverStrength > 0 ? hoverBandAt(messageLine, rowWidth, hoverStrength) : messageLine);
 
-			// Second line: metadata (position in history)
 			const position = this.messages.indexOf(message) + 1;
 			const metadata = `  Message ${position} of ${this.messages.length}`;
 			const metadataLine = theme.fg("muted", metadata);
@@ -227,7 +205,6 @@ class UserMessageList implements Component {
 			for (let li = 0; li < svLines.length; li++) lines.push(svLines[li]!);
 		}
 
-		// Add search indicator if needed
 		if (this.#shouldRenderSearchStatus()) {
 			lines.push(this.#renderStatusLine(total));
 		}
@@ -236,7 +213,6 @@ class UserMessageList implements Component {
 	}
 
 	handleInput(keyData: string): void {
-		// Escape / cancel
 		if (matchesSelectCancel(keyData)) {
 			if (this.onCancel) {
 				this.onCancel();
@@ -248,22 +224,17 @@ class UserMessageList implements Component {
 			return;
 		}
 
-		// Up arrow - go to previous (older) message, wrap to bottom when at top
 		if (matchesSelectUp(keyData)) {
 			if (this.#filteredMessages.length > 0) {
 				this.#selectedIndex =
 					this.#selectedIndex === 0 ? this.#filteredMessages.length - 1 : this.#selectedIndex - 1;
 			}
-		}
-		// Down arrow - go to next (newer) message, wrap to top when at bottom
-		else if (matchesSelectDown(keyData)) {
+		} else if (matchesSelectDown(keyData)) {
 			if (this.#filteredMessages.length > 0) {
 				this.#selectedIndex =
 					this.#selectedIndex === this.#filteredMessages.length - 1 ? 0 : this.#selectedIndex + 1;
 			}
-		}
-		// Enter - select message and branch
-		else if (matchesKey(keyData, "enter") || matchesKey(keyData, "return") || keyData === "\n") {
+		} else if (matchesKey(keyData, "enter") || matchesKey(keyData, "return") || keyData === "\n") {
 			const selected = this.#filteredMessages[this.#selectedIndex];
 			if (selected && this.onSelect) {
 				this.onSelect(selected.id);
@@ -272,13 +243,11 @@ class UserMessageList implements Component {
 	}
 }
 
-/** `/branch` picker: pick a prior user message to branch from, inside a floating ModalShell medium card. */
 export class UserMessageSelectorComponent implements Component {
 	#messageList: UserMessageList;
 	#onCancelCallback: () => void;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
-	/** Frame row where the message list begins (shell body start + hint + blank). */
 	#listRowStart = 0;
 	#onRequestRender?: () => void;
 
@@ -288,7 +257,6 @@ export class UserMessageSelectorComponent implements Component {
 		this.#messageList.onSelect = onSelect;
 		this.#messageList.onCancel = onCancel;
 
-		// Auto-cancel if no messages
 		if (messages.length === 0) {
 			setTimeout(() => onCancel(), 100);
 		}
@@ -296,13 +264,9 @@ export class UserMessageSelectorComponent implements Component {
 
 	setOnRequestRender(cb: () => void): void {
 		this.#onRequestRender = cb;
-		// The pointer band fades only once the card has a repaint to lend it: the
-		// frames between two mouse reports have no input to hang off. Same ambient
-		// gate as the open unfold; without it the band is switched.
 		this.#messageList.setHoverMotion({ requestRender: cb, enabled: pointerMotionEnabled() });
 	}
 
-	/** Settle the pointer band so no timer outlives a dismissed card. */
 	dispose(): void {
 		this.#messageList.disposeHoverMotion();
 	}
@@ -353,7 +317,6 @@ export class UserMessageSelectorComponent implements Component {
 			this.#onRequestRender?.();
 			return true;
 		}
-		// The body leads with a hint line and a blank before the list's own rows.
 		const line = event.row - this.#listRowStart;
 		if (event.motion) {
 			if (this.#messageList.setHoverIndex(this.#messageList.hitTest(line) ?? null)) {
@@ -395,7 +358,6 @@ export class UserMessageSelectorComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		// The body leads with a hint line and a blank before the list's own rows.
 		this.#listRowStart = (shell.geometry?.bodyRowStart ?? 0) + 2;
 		return shell.lines;
 	}

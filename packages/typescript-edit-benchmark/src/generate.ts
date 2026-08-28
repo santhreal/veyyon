@@ -1,23 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Generate edit benchmark cases from TypeScript sources in a pi-mono-style repo.
- *
- * The goal is testing edit precision, not bug-finding ability. The mutation can
- * be trivial - what matters is whether the model can surgically apply the patch
- * in difficult contexts:
- *
- * - Repeated lines: The exact target line appears multiple times
- * - Long files: 300+ lines with edit in the middle
- * - Similar blocks: Multiple structurally similar functions
- * - Dense code: Minimal whitespace makes context harder to read
- * - Deep nesting: Whitespace-sensitive edits at high indent levels
- *
- * Difficulty modes control both FILE SELECTION and PROMPT DETAIL:
- * - easy: Short files, unique lines, line number given
- * - medium: Medium files, function context given
- * - hard: Long files with similar blocks, no location hint
- * - nightmare: Long files where target line repeats, minimal info
- */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
@@ -30,7 +11,6 @@ import { ALL_MUTATIONS, CATEGORY_MAP, type Mutation, type MutationInfo } from ".
 const SUPPORTED_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx"]);
 using DEFAULT_SOURCE_REPO_DIR = TempDir.createSync("@pi-mono-source");
 const DEFAULT_OUTPUT = path.join(import.meta.dir, "../fixtures.tar.gz");
-/** Default when no `--typescript-dir` is passed: shallow-clone this repo and scan `packages/`. */
 const DEFAULT_SOURCE_REPO_URL = "https://github.com/badlogic/pi-mono.git";
 
 const EXCLUDE_DIRS = new Set([
@@ -282,35 +262,28 @@ function scoreDifficulty(entry: FileEntry, lineNumber: number): number {
 
 	const lineContent = lines[lineNumber - 1].trim();
 
-	// File length bonus
 	if (entry.lineCount > 300) score += 3;
 	else if (entry.lineCount > 150) score += 1;
 
-	// Middle of file bonus
 	const middleStart = entry.lineCount * 0.33;
 	const middleEnd = entry.lineCount * 0.66;
 	if (lineNumber >= middleStart && lineNumber <= middleEnd) score += 2;
 
-	// Repeated line bonus
 	if (entry.repeatedLines.has(lineContent)) {
 		const repeatCount = entry.repeatedLines.get(lineContent)!.length;
 		score += Math.min(repeatCount, 5);
 	}
 
-	// Similar function blocks bonus
 	if (entry.similarBlockCount >= 5) score += 3;
 	else if (entry.similarBlockCount >= 3) score += 1;
 
-	// Dense code bonus
 	if (entry.density > 0.75) score += 2;
 	else if (entry.density > 0.65) score += 1;
 
-	// Deep nesting bonus
 	const lineIndent = lines[lineNumber - 1].length - lines[lineNumber - 1].trimStart().length;
 	if (lineIndent >= 16) score += 2;
 	else if (lineIndent >= 8) score += 1;
 
-	// Generic context penalty
 	const trivialLines = new Set(["{", "}", "};", ");", "});", "return;", "break;", "continue;", ""]);
 	const contextStart = Math.max(0, lineNumber - 3);
 	const contextEnd = Math.min(lines.length, lineNumber + 2);
@@ -320,7 +293,6 @@ function scoreDifficulty(entry: FileEntry, lineNumber: number): number {
 	}
 	if (trivialContext >= 3) score += 2;
 
-	// Similar variable names nearby
 	const funcName = findContainingFunction(entry, lineNumber);
 	if (funcName) {
 		for (const [name, start, end] of entry.functionRanges) {
@@ -427,7 +399,6 @@ function buildPrompt(
 		return [header, detail, "Find and fix this issue."].join("\n\n");
 	}
 
-	// nightmare
 	if (isStructural) {
 		return [header, "There is a structural bug in this file.", "Track it down and fix it with a minimal edit."].join(
 			"\n\n",
@@ -649,9 +620,6 @@ async function generateCase(
 		try {
 			return mutation.canApply(entry.content);
 		} catch {
-			// This asks whether a mutation fits a file. A predicate that throws on this file has not shown that
-			// it fits, so the file is skipped and the next candidate is tried; generation reports when no
-			// candidate at all can be mutated.
 			return false;
 		}
 	}

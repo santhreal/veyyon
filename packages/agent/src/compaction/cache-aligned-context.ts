@@ -1,23 +1,18 @@
-/** The cache-aligned compaction request. */
-
 import type { Api, Context, Message, Model, Tool } from "@veyyon/ai";
 import type { ResolvedAnthropicCompat } from "@veyyon/catalog/types";
 import { countTokens } from "../tokenizer";
 import { estimateTokens } from "./token-estimate";
 
-/** Wire APIs whose request shaping places prompt-cache breakpoints on the trailing */
 const PREFIX_CACHE_WIRE_APIS: Record<string, true> = {
 	"anthropic-messages": true,
 };
 
-/** Whether this model's host serves prompt-prefix cache hits for a replayed */
 export function modelServesPrefixCacheHits(model: Model<Api>): boolean {
 	if (!PREFIX_CACHE_WIRE_APIS[model.api]) return false;
 	const compat = model.compat as ResolvedAnthropicCompat;
 	return compat.supportsLongCacheRetention === true;
 }
 
-/** Whether the message array ends with a tool call that has not been answered. */
 export function hasUnansweredToolCall(messages: readonly Message[]): boolean {
 	const pending = new Set<string>();
 	for (const message of messages) {
@@ -32,17 +27,12 @@ export function hasUnansweredToolCall(messages: readonly Message[]): boolean {
 	return pending.size > 0;
 }
 
-/** Everything the eligibility decision reads. */
 export interface CacheAlignedEligibility {
-	/** The model the summarization request will be sent to. */
 	model: Model<Api>;
-	/** The live session's system prompt, as the agent holds it. */
 	sessionSystemPrompt: string[] | undefined;
-	/** The live provider-visible message array, already converted for the wire. */
 	sessionMessages: readonly Message[] | undefined;
 }
 
-/** Whether a cache-aligned summarization request is safe for this compaction. */
 export function canUseCacheAlignedCompaction(input: CacheAlignedEligibility): boolean {
 	const { model, sessionSystemPrompt, sessionMessages } = input;
 	if (!modelServesPrefixCacheHits(model)) return false;
@@ -53,23 +43,15 @@ export function canUseCacheAlignedCompaction(input: CacheAlignedEligibility): bo
 	return true;
 }
 
-/** Everything the cache-aligned request is built from. */
 export interface CacheAlignedContextInput {
-	/** The live session's system prompt. Replayed verbatim: it is cached prefix. */
 	sessionSystemPrompt: string[];
-	/** The live provider-visible message array. Replayed verbatim, by reference: see */
 	sessionMessages: readonly Message[];
-	/** The live session's provider-visible tools. First block of the cached prefix. */
 	tools?: Tool[];
-	/** The summarization instruction, appended as the one new user turn. */
 	instruction: string;
-	/** The live final-seam transform for provider-bound compaction text */
 	sanitize?: (text: string) => string;
-	/** Timestamp for the appended turn. Defaults to now. */
 	timestamp?: number;
 }
 
-/** Build the cache-aligned summarization request: the live session's tools and system */
 export function buildCacheAlignedCompactionContext(input: CacheAlignedContextInput): Context {
 	const { sessionSystemPrompt, sessionMessages, tools, instruction, sanitize, timestamp } = input;
 	const text = sanitize ? sanitize(instruction) : instruction;
@@ -87,7 +69,6 @@ export function buildCacheAlignedCompactionContext(input: CacheAlignedContextInp
 	};
 }
 
-/** Token cost of a cache-aligned summarization request. */
 export function estimateCacheAlignedRequestTokens(input: {
 	sessionSystemPrompt: readonly string[];
 	sessionMessages: readonly Message[];

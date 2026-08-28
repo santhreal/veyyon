@@ -1,4 +1,3 @@
-/** Subprocess-backed Python runner. Speaks NDJSON with `runner.py` over stdin/stdout. One subprocess per kernel */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -40,8 +39,6 @@ export { renderKernelDisplay } from "./display";
 
 const TRACE_IPC = $flag(kernelIpcTraceEnvVar("PYTHON"));
 
-// Cache the runner script on disk so the subprocess loads it normally. Cached
-// per script hash so installs don't race across versions.
 const RUNNER_CACHE_DIR = kernelRunnerCacheDir(os.tmpdir(), "python");
 let RUNNER_SCRIPT_PATH: string | null = null;
 
@@ -58,18 +55,14 @@ async function ensureRunnerScript(): Promise<string> {
 }
 
 const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS;
-// How long to wait after SIGINT for the runner to emit `done`. If the cell is stuck in code that ignores Python signals (e.g. a C extension holding the
 
 export interface PythonKernelAvailability {
 	ok: boolean;
-	/** The interpreter that answered the probe. Present only when `ok` is true. */
 	pythonPath?: string;
 	reason?: string;
-	/** The probed-working runtime, when one was found. */
 	runtime?: PythonRuntime;
 }
 
-// Cache successful probes per resolved cwd + explicit interpreter: every cell otherwise pays one (or two — backend.isAvailable + ensureKernelAvailable)
 const availabilityCache = new Map<string, Promise<PythonKernelAvailability>>();
 
 export async function checkPythonKernelAvailability(
@@ -103,7 +96,6 @@ async function probePythonKernelAvailability(cwd: string, interpreter?: string):
 		if (runtimes.length === 0) {
 			return { ok: false, reason: "Python executable not found on PATH" };
 		}
-		// Probe each candidate in priority order and use the first that actually runs. A managed env left behind by a removed `uv` install can exist on
 		const failures: string[] = [];
 		for (const runtime of runtimes) {
 			try {
@@ -120,7 +112,6 @@ async function probePythonKernelAvailability(cwd: string, interpreter?: string):
 				failures.push(`${runtime.pythonPath} (${errorMessage(err)})`);
 			}
 		}
-		// No `pythonPath` on failure. Every candidate here has already been probed and none of them ran, so handing one back invites a caller that reads the path
 		return {
 			ok: false,
 			reason: `No working Python interpreter found. Tried: ${failures.join("; ")}`,

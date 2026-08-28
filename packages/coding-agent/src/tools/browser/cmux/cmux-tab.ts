@@ -43,7 +43,6 @@ import {
 } from "./rpc";
 import type { CmuxSocketClient } from "./socket-client";
 
-// Default per-operation deadline (ms) for a CDP action when no active browser run context supplies one, and the per-op cap where a Math.min is applied.
 const DEFAULT_OP_TIMEOUT_MS = 30_000;
 
 interface ScreenshotOptions {
@@ -106,11 +105,9 @@ interface CmuxResponseRecord {
 	statusText: string;
 	headers: Record<string, string>;
 	body: string;
-	/** True when the body could not be read, so `body` is "" for that reason and not because it was empty. */
 	bodyUnreadable: boolean;
 }
 
-/** What the in-page response observer failed to keep since the page loaded. */
 interface CmuxResponseLoss {
 	failed: number;
 	evicted: number;
@@ -210,12 +207,10 @@ const setValue = (target, value, append = false) => {
 };
 `;
 
-/** Installed once per page. Exported so its loss accounting can be tested directly: the three losses it now records (a record that could not be */
 export const RESPONSE_OBSERVER_SCRIPT = String.raw`
 (() => {
 	const key = "__veyyonCmuxResponses";
 	if (globalThis[key]) return true;
-	// state.lost counts what this observer failed to keep, so a caller that finds no match can tell "the response never arrived" apart from "the response
 	const state = { nextId: 1, records: [], lost: { failed: 0, evicted: 0, bodyUnreadable: 0 } };
 	Object.defineProperty(globalThis, key, { value: state, configurable: true });
 	const headersObject = headers => {
@@ -223,8 +218,6 @@ export const RESPONSE_OBSERVER_SCRIPT = String.raw`
 		if (headers && typeof headers.forEach === "function") headers.forEach((value, name) => (out[name] = value));
 		return out;
 	};
-	// The one place a record enters the buffer, so both the fetch and the XHR path
-	// evict on the same rule and count what they drop the same way.
 	const push = record => {
 		state.records.push(record);
 		if (state.records.length > 200) {
@@ -236,8 +229,6 @@ export const RESPONSE_OBSERVER_SCRIPT = String.raw`
 	const remember = async response => {
 		try {
 			const clone = response.clone();
-			// An unreadable body is recorded as such rather than as "", which is
-			// indistinguishable from a response that genuinely had no body.
 			let bodyUnreadable = false;
 			const body = await clone.text().catch(() => {
 				bodyUnreadable = true;
@@ -254,8 +245,6 @@ export const RESPONSE_OBSERVER_SCRIPT = String.raw`
 				bodyUnreadable,
 			});
 		} catch {
-			// The page context has no logger, so the loss is recorded in the state
-			// the tool reads back instead of being swallowed here (Law 10).
 			state.lost.failed++;
 		}
 	};
@@ -279,7 +268,6 @@ export const RESPONSE_OBSERVER_SCRIPT = String.raw`
 						const index = line.indexOf(":");
 						if (index > 0) headers[line.slice(0, index).trim().toLowerCase()] = line.slice(index + 1).trim();
 					}
-					// Reading responseText throws when responseType is arraybuffer or blob. That body is genuinely unreadable as text, which is not the
 					let body = "";
 					let bodyUnreadable = false;
 					try {
@@ -302,8 +290,6 @@ export const RESPONSE_OBSERVER_SCRIPT = String.raw`
 						bodyUnreadable,
 					});
 				} catch {
-					// Same as the fetch path: an event handler that throws here would
-					// drop the record with nothing anywhere to say so.
 					state.lost.failed++;
 				}
 			});
@@ -314,7 +300,6 @@ export const RESPONSE_OBSERVER_SCRIPT = String.raw`
 })()
 `;
 
-/** The only thing a tab needs from the socket client: one request method. Depending on the whole class made `CmuxTab` untestable without an */
 export type CmuxTabClient = Pick<CmuxSocketClient, "request">;
 
 export interface RunCmuxCodeOptions {
@@ -384,14 +369,10 @@ export class CmuxTab {
 		if (typeof urlResult.url === "string" && urlResult.url.length > 0) {
 			this.#lastUrl = urlResult.url;
 		}
-		// Geometry is read by evaluating in the page, which fails while it is navigating; the caller's requested
-		// viewport is the documented default and is what `#lastViewport` keeps in that case.
 		const geometry = await this.#readGeometry().catch(() => undefined);
 		this.#lastViewport = geometry
 			? { width: geometry.innerWidth, height: geometry.innerHeight, deviceScaleFactor: geometry.dpr }
 			: viewport;
-		// Called for its side effect of refreshing `#lastTitle`; a page with no title yet leaves the previous
-		// one in place, and the returned string is deliberately unused.
 		await this.title().catch(() => "");
 		return {
 			url: this.#lastUrl,
@@ -520,7 +501,6 @@ export class CmuxTab {
 		fn: string | ((...args: TArgs) => TResult | Promise<TResult>),
 		...args: TArgs
 	): Promise<TResult> {
-		// A script that throws inside the daemon comes back as a bare `js_error: A JavaScript exception occurred` with no message or stack.
 		const script = serializeEvalWithEnvelope(fn as string | ((...args: unknown[]) => unknown), args);
 		const result = (await this.#request("browser.eval", { script })) as CmuxEvalResult;
 		return unwrapEvalEnvelope<TResult>(result.value, "tab.evaluate()");
@@ -554,7 +534,6 @@ export class CmuxTab {
 
 	async screenshot(opts: ScreenshotOptions = {}): Promise<ScreenshotResult> {
 		const context = this.#requireRunContext("tab.screenshot()");
-		// The cmux daemon's `browser.screenshot` captures the surface viewport only — it has no element-clip or full-page mode, and Bun.Image cannot
 		const captureNotes: string[] = [];
 		if (opts.selector) {
 			await this.scrollIntoView(opts.selector);
@@ -650,7 +629,6 @@ export class CmuxTab {
 	async waitForNavigation(opts?: { waitUntil?: WaitUntil; timeout?: number }): Promise<null> {
 		const timeoutMs = opts?.timeout ?? this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS;
 		const signal = this.#runContext?.signal;
-		// Cmux has no native "next navigation" wait — snapshot the current URL via a fresh `browser.url.get` (never the possibly-stale `#lastUrl`), then poll for a change
 		const baseline = (await this.#request(
 			"browser.url.get",
 			{},
@@ -742,7 +720,6 @@ export class CmuxTab {
 			}
 			await untilAborted(signal, () => Bun.sleep(100));
 		}
-		// Report what the observer lost. A timeout with a non-zero loss count means the match may well have happened and been discarded, which is a different
 		const loss = await this.#responseLoss();
 		const lostParts: string[] = [];
 		if (loss.failed > 0) lostParts.push(`${loss.failed} could not be recorded`);
@@ -814,8 +791,6 @@ export class CmuxTab {
 			const callable = (0, eval)("(" + source + ")");
 			return callable(element, ...args);
 		})()`;
-		// Envelope so a stale selector or a throwing callback reports its actual
-		// error instead of the daemon's generic js_error (see tab.evaluate()).
 		const result = (await this.#request("browser.eval", {
 			script: serializeEvalWithEnvelope(script, []),
 		})) as CmuxEvalResult;
@@ -1044,7 +1019,6 @@ export class CmuxTab {
 		throw new ToolError("Drag target must be a selector string or { x: number, y: number } point");
 	}
 
-	/** Install the observer and read the cursor in ONE round trip. These were two evals, and a response that arrived between them was excluded */
 	async #installResponseObserver(): Promise<number> {
 		const value = await this.#evalScript<unknown>(
 			`(() => { ${RESPONSE_OBSERVER_SCRIPT.trim()}; return Math.max(0, ((globalThis.__veyyonCmuxResponses && globalThis.__veyyonCmuxResponses.nextId) || 1) - 1); })()`,
@@ -1052,7 +1026,6 @@ export class CmuxTab {
 		return numberFrom(value, 0);
 	}
 
-	/** Read the observer's loss counters. Zeroes when the observer never installed. */
 	async #responseLoss(): Promise<CmuxResponseLoss> {
 		const value = await this.#evalScript<unknown>(
 			"(() => ((globalThis.__veyyonCmuxResponses && globalThis.__veyyonCmuxResponses.lost) || {}))()",
@@ -1174,9 +1147,6 @@ class CmuxResponse {
 	}
 
 	async text(): Promise<string> {
-		// An unreadable body used to arrive here as "", which reads as "the server
-		// sent nothing". Saying so is the difference between a caller that knows to
-		// read the body another way and one that concludes the response was empty.
 		if (this.#record.bodyUnreadable) {
 			throw new ToolError(
 				`The body of ${this.#record.url} could not be read as text (it was consumed, or it is not text). ` +
@@ -1409,7 +1379,6 @@ export async function runCmuxCode(tab: CmuxTab, opts: RunCmuxCodeOptions): Promi
 	tab.setRunContext({ session: opts.snapshot, output, screenshots, signal, timeoutMs: opts.timeoutMs });
 
 	const { promise: cancelRejection, reject } = Promise.withResolvers<never>();
-	// If the synchronous setup below throws (same-realm ownership conflict) while `signal` is already aborted, `Promise.race` never attaches a
 	cancelRejection.catch(() => {});
 	const onAbort = (): void => {
 		if (runTimeout.signal.aborted) {
@@ -1427,9 +1396,6 @@ export async function runCmuxCode(tab: CmuxTab, opts: RunCmuxCodeOptions): Promi
 
 	try {
 		const runtime = tab.ensureRuntime(opts.snapshot);
-		// setCwd is non-exclusive; setRunScope/run still assert same-realm ownership.
-		// Keep both inside try so a concurrent in-process eval/browser run surfaces as
-		// a rejected promise the supervisor can report, never an unhandled rejection.
 		runtime.setCwd(opts.snapshot.cwd);
 		const runTab = guardTabApi(bindBrowserRunFacade(tab, signal));
 		runtime.setRunScope({
@@ -1467,17 +1433,12 @@ export async function runCmuxCode(tab: CmuxTab, opts: RunCmuxCodeOptions): Promi
 				return callSessionTool(name, args, { session: opts.session, signal });
 			},
 		};
-		// Like the inline worker fallback, cmux runs user JS in-process: awaited cmux/tool calls
-		// observe this abort signal, but a synchronous infinite loop cannot be interrupted here.
 		const returnValue = await Promise.race([
 			runtime.run(opts.code, `cmux-run-${runId}.js`, hooks, { runId, cwd: opts.snapshot.cwd }),
 			cancelRejection,
 		]);
 		return { displays: output.finish(), returnValue: cloneSafe(returnValue), screenshots };
 	} catch (error) {
-		// Parity with the worker backend: a run that threw still reports what it displayed first.
-		// This backend runs in-process and rethrows straight to the caller, so without this the
-		// cmux surface silently lost output the worker surface now keeps.
 		if (error instanceof Error) {
 			(error as BrowserRunError).partialRunOutput = { displays: output.finish(), screenshots };
 		}

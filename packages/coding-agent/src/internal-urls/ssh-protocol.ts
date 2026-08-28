@@ -1,4 +1,3 @@
-/** Protocol handler for `ssh://host/path` URLs. Resolves a remote text file or directory listing on a pre-configured SSH host — or any */
 import { formatCount } from "@veyyon/utils/format";
 import * as capability from "../capability";
 import { type SSHHost, sshCapability } from "../capability/ssh";
@@ -20,10 +19,8 @@ import type {
 	WriteContext,
 } from "./types";
 
-/** Largest remote text file `ssh://` will materialize (mirrors the local:// cap). */
 const SSH_TEXT_MAX_BYTES = 1024 * 1024;
 
-/** POSIX-aware content type from the last path segment's extension. */
 function contentTypeFor(remotePath: string): InternalResource["contentType"] {
 	const slash = remotePath.lastIndexOf("/");
 	const base = slash === -1 ? remotePath : remotePath.slice(slash + 1);
@@ -34,7 +31,6 @@ function contentTypeFor(remotePath: string): InternalResource["contentType"] {
 	return "text/plain";
 }
 
-/** Decode the whole buffer as UTF-8 text, or null if it holds a NUL or invalid byte. */
 function decodeUtf8Text(bytes: Uint8Array): string | null {
 	if (bytes.indexOf(0) !== -1) return null;
 	try {
@@ -44,9 +40,7 @@ function decodeUtf8Text(bytes: Uint8Array): string | null {
 	}
 }
 
-/** Remote absolute path from the URL. Uses `rawPathname` (pre-normalization) so `..`/`//` and percent-escapes survive verbatim to the remote shell; the */
 function remotePathFromUrl(url: InternalUrl): string {
-	// `?`/`#` are URL delimiters, so parseInternalUrl strips them from the path (`ssh://h/tmp/a?draft` → `/tmp/a`). Reject the unsupported suffix instead of
 	if (url.search) {
 		throw new Error(
 			`ssh:// does not support URL query strings; percent-encode a literal '?' as %3F in the path: ${url.href}`,
@@ -72,18 +66,15 @@ function remotePathFromUrl(url: InternalUrl): string {
 	return decoded;
 }
 
-/** Load the configured SSH hosts from the `ssh` capability (managed/project `ssh.json`). */
 async function loadConfiguredHosts(cwd?: string): Promise<SSHHost[]> {
 	const { items } = await capability.loadCapability<SSHHost>(sshCapability.id, cwd ? { cwd } : {});
 	return items;
 }
 
-/** One-line address for a host, e.g. `deploy@10.0.0.1:2222`. */
 function hostAddress(host: SSHHost): string {
 	return `${host.username ? `${host.username}@` : ""}${host.host}${host.port ? `:${host.port}` : ""}`;
 }
 
-/** Render the configured-host index for a bare `ssh://` read (markdown with per-host links). */
 function formatHostIndex(hosts: readonly SSHHost[]): string {
 	if (hosts.length === 0) {
 		return "# SSH hosts\n\nNo SSH hosts are configured. Add hosts to an `ssh.json` capability file, or read `ssh://<host>/<path>` with any destination OpenSSH can resolve (e.g. a `~/.ssh/config` alias).\n";
@@ -97,21 +88,15 @@ function formatHostIndex(hosts: readonly SSHHost[]): string {
 	return `# SSH hosts\n\n${formatCount("configured host", hosts.length)}:\n\n${lines.join("\n")}\n`;
 }
 
-/** Resolve the URL authority to an SSH connection target. With no explicit user/port, the full DECODED authority (`url.rawHost`) is matched against a */
 async function resolveTarget(url: InternalUrl, cwd?: string): Promise<SSHConnectionTarget> {
-	// `parseInternalUrl` falls back to a lenient regex parse when WHATWG `new URL` rejects the input. For ssh:// that only happens on a malformed authority — an
 	if (!URL.canParse(url.href)) {
 		throw new Error(`ssh://: invalid host or port in "${url.href}"; use ssh://host[:1-65535]/<absolute-path>`);
 	}
-	// host is unambiguously IPv6 — hand OpenSSH the bare address. Percent-encoded bracketed aliases (e.g. `%5Bprod%3A2222%5D`) keep their literal brackets in the
 	const bareHost = url.hostname;
 	const rawAuthority = url.rawHost || bareHost;
 	if (!bareHost && !rawAuthority) {
 		throw new Error("ssh:// requires a host: ssh://<host>/<absolute-path>");
 	}
-	// `decodeOr` fails open, so a malformed percent-escape (`%ZZ`) in the authority
-	// would otherwise pass the canonical check below and reach OpenSSH literally.
-	// Reject it up front — the path decoder fails closed for the same bad escapes.
 	for (const part of [url.username, bareHost]) {
 		if (part.includes("%")) {
 			try {
@@ -133,7 +118,6 @@ async function resolveTarget(url: InternalUrl, cwd?: string): Promise<SSHConnect
 	if (port === 0) {
 		throw new Error("ssh://: port 0 is not a valid SSH port; use ssh://host:<1-65535>/<path> or omit the port");
 	}
-	// An empty port (`ssh://prod:/path`, `ssh://user@host:/path`, including percent-encoded authority parts) parses cleanly with `url.port === ""`, so it
 	const decodeOr = (s: string): string => {
 		try {
 			return decodeURIComponent(s);
@@ -144,11 +128,9 @@ async function resolveTarget(url: InternalUrl, cwd?: string): Promise<SSHConnect
 	if (port === undefined && url.rawHost === `${username ? `${decodeOr(username)}@` : ""}${decodeOr(bareHost)}:`) {
 		throw new Error(`ssh://: empty port in "${url.href}"; use ssh://host:<1-65535>/<path> or drop the colon`);
 	}
-	// A literal but empty userinfo (`ssh://@host`) sets username to "" — WHATWG drops the `@` from hostname, but rawHost keeps the leading `@`. A percent-encoded
 	if (username === undefined && url.rawHost === `@${decodeOr(bareHost)}${port !== undefined ? `:${port}` : ""}`) {
 		throw new Error(`ssh://: empty username in "${url.href}"; drop the leading '@' or provide a username before it`);
 	}
-	// Backstop for any remaining stray/empty authority marker the explicit checks above do not name — notably an empty password (`ssh://user:@host`, `ssh://:@host`,
 	const canonicalAuthority = `${url.username ? `${decodeOr(url.username)}@` : ""}${decodeOr(bareHost)}${port !== undefined ? `:${port}` : ""}`;
 	if (url.rawHost !== canonicalAuthority) {
 		throw new Error(
@@ -157,9 +139,6 @@ async function resolveTarget(url: InternalUrl, cwd?: string): Promise<SSHConnect
 	}
 	const items = await loadConfiguredHosts(cwd);
 
-	// A literal user/port in the URL is an authority override. A configured alias
-	// is addressed only by its (percent-encoded) name, never with a separate
-	// user/port — so reject an override on a configured bare name, else opaque.
 	if (username || port !== undefined) {
 		const decodedBareHost = decodeOr(bareHost);
 		if (items.some(entry => entry.name === bareHost || entry.name === decodedBareHost)) {
@@ -173,8 +152,6 @@ async function resolveTarget(url: InternalUrl, cwd?: string): Promise<SSHConnect
 		return { name, host: sshTargetHost, username: sshUser, port };
 	}
 
-	// No explicit user/port: match the full decoded authority against a
-	// configured name (so an encoded reserved-char alias resolves correctly).
 	const match = items.find(entry => entry.name === rawAuthority) ?? items.find(entry => entry.name === bareHost);
 	if (match) {
 		return {
@@ -186,11 +163,9 @@ async function resolveTarget(url: InternalUrl, cwd?: string): Promise<SSHConnect
 			compat: match.compat,
 		};
 	}
-	// Opaque OpenSSH destination (plain ~/.ssh/config alias, or any resolvable host).
 	return { name: rawAuthority, host: isIpv6Literal ? sshHost : rawAuthority };
 }
 
-/** Format a one-level remote directory listing — mirrors buildDirectoryResource's plain `name/` lines. */
 function formatDirListing(entries: readonly RemoteDirEntry[]): string {
 	if (entries.length === 0) return "(empty directory)";
 	return entries.map(entry => `${entry.name}${entry.isDirectory ? "/" : ""}`).join("\n");
@@ -201,9 +176,6 @@ export class SshProtocolHandler implements ProtocolHandler {
 	readonly immutable = false;
 
 	async resolve(url: InternalUrl, context?: ResolveContext): Promise<InternalResource> {
-		// Bare `ssh://` (or `ssh:///`) with no host lists the configured hosts. A
-		// host-less URL that still carries a path (`ssh:///etc/hosts`) is malformed —
-		// reject it instead of silently dropping the path and listing hosts.
 		if (!(url.rawHost || url.hostname)) {
 			const rawPath = url.rawPathname ?? url.pathname;
 			if (rawPath && rawPath !== "/") {
@@ -215,13 +187,10 @@ export class SshProtocolHandler implements ProtocolHandler {
 		}
 		const target = await resolveTarget(url, context?.cwd);
 		const remotePath = remotePathFromUrl(url);
-		// Classify before reading. A FIFO with no writer would block `head` until the timeout, and a device (e.g. /dev/zero) would stream the whole probe, so a
 		let kind: RemotePathKind | undefined;
 		try {
 			kind = await statRemotePath(target, remotePath, { signal: context?.signal });
-		} catch {
-			// stat failed (host/connection issue) — fall through; the read gives a clearer error.
-		}
+		} catch {}
 		if (kind === "directory") {
 			return this.#resolveDirectory(target, remotePath, url, context?.signal, context?.skipDirectoryListing);
 		}
@@ -245,8 +214,6 @@ export class SshProtocolHandler implements ProtocolHandler {
 				`ssh://: ${remotePath} is a binary or non-UTF-8 file; ssh:// supports UTF-8 text only — use the ssh tool or an sshfs mount`,
 			);
 		}
-		// No `sourcePath`: keeps search on the virtual-resource path so the
-		// displayed/searched resource stays `ssh://…` instead of a temp path.
 		return {
 			url: url.href,
 			content,
@@ -255,7 +222,6 @@ export class SshProtocolHandler implements ProtocolHandler {
 		};
 	}
 
-	/** Resolve a remote directory to a one-level listing (no `sourcePath`; `isDirectory` so search refuses it; immutable). */
 	async #resolveDirectory(
 		target: SSHConnectionTarget,
 		remotePath: string,
@@ -263,8 +229,6 @@ export class SshProtocolHandler implements ProtocolHandler {
 		signal?: AbortSignal,
 		skipListing?: boolean,
 	): Promise<InternalResource> {
-		// `search`/`find` reject an ssh:// directory outright, so they pass `skipListing`
-		// to avoid draining a full remote `ls` we would only discard.
 		const content = skipListing ? "" : formatDirListing(await listRemoteDir(target, remotePath, { signal }));
 		return {
 			url: url.href,
@@ -276,7 +240,6 @@ export class SshProtocolHandler implements ProtocolHandler {
 		};
 	}
 
-	/** Resolve a bare `ssh://` to a listing of configured hosts (immutable; plain virtual text, so `search` can still grep host names). */
 	async #resolveHostIndex(url: InternalUrl, cwd?: string): Promise<InternalResource> {
 		const content = formatHostIndex(await loadConfiguredHosts(cwd));
 		return {
@@ -288,7 +251,6 @@ export class SshProtocolHandler implements ProtocolHandler {
 		};
 	}
 
-	/** Autocomplete the host segment of `ssh://` with the configured SSH hosts. */
 	async complete(_query?: string, context?: ResolveContext): Promise<UrlCompletion[]> {
 		const hosts = await loadConfiguredHosts(context?.cwd);
 		return hosts.map(host => ({

@@ -1,21 +1,13 @@
-/** Markdown structure awareness for the magic-keyword affordances ("ultrathink"/"orchestratez"/"workflowz"). */
-
-// Tag/element name: HTML5/XML start char + name chars. Sticky so we can probe at
-// a precise offset without slicing.
 const TAG_NAME = /[A-Za-z][A-Za-z0-9-]*/y;
 
-// A line that opens or closes a fenced code block: up to 3 leading spaces then a
-// run of >=3 backticks or tildes.
 const FENCE = /^( {0,3})([`~]{3,})/;
 
-/** Index just past the run of backticks beginning at `i`. */
 function backtickRunEnd(text: string, i: number, n: number): number {
 	let j = i;
 	while (j < n && text[j] === "`") j++;
 	return j;
 }
 
-/** Find the closing backtick run that matches an opening run of `runLen` backticks, scanning from `from`. Returns the index just past the closing run, */
 function findBacktickClose(text: string, from: number, n: number, runLen: number, masked: Uint8Array): number {
 	let k = from;
 	while (k < n) {
@@ -34,7 +26,6 @@ function findBacktickClose(text: string, from: number, n: number, runLen: number
 	return -1;
 }
 
-/** Index of the `>` that closes a tag whose attributes begin at `j`, honoring quoted attribute values. Returns -1 when the tag is malformed (a new `<` */
 function findTagEnd(text: string, j: number, n: number): number {
 	let quote = "";
 	for (let k = j; k < n; k++) {
@@ -53,7 +44,6 @@ function findTagEnd(text: string, j: number, n: number): number {
 	return -1;
 }
 
-/** Locate the `</name>` that balances an opening `<name>` at `start`, counting nested same-name tags. Returns the index just past the matching close tag's */
 function findMatchingClose(text: string, start: number, n: number, name: string, masked: Uint8Array): number {
 	const lname = name.toLowerCase();
 	let depth = 1;
@@ -93,7 +83,6 @@ function findMatchingClose(text: string, start: number, n: number, name: string,
 	return -1;
 }
 
-/** Mask the HTML/XML construct beginning at `<` (index `i`): an HTML comment, a self-closing/closing tag (the tag alone), or an opening tag together with the */
 function maskTagAt(text: string, i: number, n: number, masked: Uint8Array): number {
 	if (text.startsWith("<!--", i)) {
 		const end = text.indexOf("-->", i + 4);
@@ -122,7 +111,6 @@ function maskTagAt(text: string, i: number, n: number, masked: Uint8Array): numb
 	return close;
 }
 
-/** Return a copy of `text` with identical length (indices map 1:1) where every character inside a non-prose region is replaced by a space. Non-prose regions */
 export function maskNonProse(text: string): string {
 	if (!text.includes("`") && !text.includes("<") && !text.includes("~~~")) {
 		return text;
@@ -130,7 +118,6 @@ export function maskNonProse(text: string): string {
 	const n = text.length;
 	const masked = new Uint8Array(n);
 
-	// Phase 1: fenced code blocks, line by line.
 	let fenceChar = "";
 	let fenceLen = 0;
 	let lineStart = 0;
@@ -141,7 +128,6 @@ export function maskNonProse(text: string): string {
 		const open = FENCE.exec(line);
 		if (fenceChar) {
 			for (let p = lineStart; p < nl; p++) masked[p] = 1;
-			// A closing fence is the same char, at least as long, with nothing else on the line.
 			if (
 				open &&
 				open[2]![0] === fenceChar &&
@@ -154,7 +140,6 @@ export function maskNonProse(text: string): string {
 		} else if (open) {
 			const marker = open[2]!;
 			const ch = marker[0]!;
-			// A backtick fence's info string may not contain a backtick.
 			if (!(ch === "`" && line.slice(open[1]!.length + marker.length).includes("`"))) {
 				fenceChar = ch;
 				fenceLen = marker.length;
@@ -165,7 +150,6 @@ export function maskNonProse(text: string): string {
 		lineStart = nl + 1;
 	}
 
-	// Phase 2: inline code spans and HTML/XML, over not-yet-masked regions.
 	let i = 0;
 	while (i < n) {
 		if (masked[i]) {
@@ -199,7 +183,6 @@ export function maskNonProse(text: string): string {
 	return result;
 }
 
-/** Whether `text` contains a standalone keyword match (per the non-global, word-bounded `word` regex) that lives in prose rather than inside a code */
 export function keywordInProse(text: string, word: RegExp): boolean {
 	if (!word.test(text)) return false;
 	return word.test(maskNonProse(text));

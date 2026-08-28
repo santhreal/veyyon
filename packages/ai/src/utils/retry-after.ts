@@ -44,16 +44,9 @@ export function getRetryAfterMsFromHeaders(headers: HeadersLike): number | undef
 			(value): value is number => value !== undefined,
 		);
 		if (candidates.length > 0) return Math.max(...candidates);
-		// Anthropic omits `retry-after` on a meaningful share of its 429s while
-		// still stating, per bucket, when the limit refills. Consulted only after
-		// the generic headers because those are the provider's direct answer to
-		// "how long should you wait"; the reset clocks are the fallback for when
-		// it did not give one.
 		if (!(headers instanceof Headers)) return undefined;
 		return anthropicResetDelayMs(headers);
 	} catch {
-		// Header bags are provider-controlled and occasionally Proxy-backed. A
-		// malformed bag must not replace the request error we are formatting.
 		return undefined;
 	}
 }
@@ -70,8 +63,6 @@ export function getHeadersFromError(error: unknown): HeadersLike {
 			if (direct) return direct;
 			current = "cause" in current ? current.cause : undefined;
 		} catch {
-			// Exotic errors can expose throwing getters or Proxy traps. Header
-			// discovery is advisory and must never mask the original failure.
 			return undefined;
 		}
 	}
@@ -112,7 +103,6 @@ function getHeaderValue(headers: Headers | Record<string, string | undefined>, n
 	return undefined;
 }
 
-/** `retry-after-ms` (Anthropic-style): a plain millisecond delta. */
 function parseRetryAfterMsHeader(value: string | undefined): number | undefined {
 	if (!value) return undefined;
 	const ms = Number(value.trim());
@@ -146,7 +136,6 @@ function parseResetHeader(value: string | undefined, unit: "ms" | "s"): number |
 
 	const target = resetHeaderTargetMs(numeric);
 	if ("delta" in target) {
-		// Not a timestamp: the raw value is a wait in the header's own unit.
 		return Math.ceil(unit === "ms" ? numeric : numeric * 1000);
 	}
 	return Math.max(0, Math.ceil(target.atMs - Date.now()));

@@ -1,20 +1,11 @@
-/** Instructions Capability GitHub Copilot-style instructions with optional file pattern matching. */
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 
-/**
- * An instruction with optional file pattern matching.
- */
 export interface Instruction {
-	/** Instruction name (derived from filename) */
 	name: string;
-	/** Absolute path to instruction file */
 	path: string;
-	/** Instruction content (markdown) */
 	content: string;
-	/** Glob pattern for files this applies to */
 	applyTo?: string;
-	/** Source metadata */
 	_source: SourceMeta;
 }
 

@@ -39,24 +39,16 @@ import {
 
 const ASR_TASK = "automatic-speech-recognition";
 const SHERPA_PACKAGE = "sherpa-onnx-node";
-// Whisper long-form decoding: split into 30s windows with 5s overlap so audio of
-// any length transcribes without exceeding the 30s receptive field.
 const CHUNK_LENGTH_S = 30;
 const STRIDE_LENGTH_S = 5;
-// The client always resamples to 16 kHz mono float32 before sending; sherpa-onnx
-// is told the true input rate (it resamples internally to its feature config).
 const ASR_SAMPLE_RATE = 16_000;
-// Hub origin for raw sherpa-onnx model files (encoder/decoder/joiner/tokens).
 const HF_RESOLVE_BASE = "https://huggingface.co";
-// Coalesce download progress so streaming a multi-hundred-MB model file doesn't
-// flood the IPC channel with one event per chunk.
 const PROGRESS_EMIT_BYTES = 4_000_000;
 const sourceRequire = createRequire(import.meta.url);
 
 const sttModelDevicePreference = resolveTinyModelDevicePreference();
 const sttModelDtypeOverride = resolveTinyModelDtypeOverride();
 
-/** Subset of the transformers.js ASR call options we set. The index signature mirrors `GenerationFunctionParameters` so this is assignable to the pipeline's */
 interface AsrCallOptions {
 	chunk_length_s: number;
 	stride_length_s: number;
@@ -86,12 +78,10 @@ interface TransformersRuntime {
 	) => Promise<AutomaticSpeechRecognitionPipeline>;
 }
 
-/** Recognition result returned by `sherpa-onnx-node`'s offline recognizer. */
 interface SherpaOfflineResult {
 	text?: string;
 }
 
-/** A sherpa-onnx offline stream that accepts a single waveform before decoding. */
 interface SherpaOfflineStream {
 	acceptWaveform(audio: { samples: Float32Array; sampleRate: number }): void;
 }
@@ -101,7 +91,6 @@ interface SherpaOfflineRecognizer {
 	decodeAsync(stream: SherpaOfflineStream): Promise<SherpaOfflineResult>;
 }
 
-/** Offline recognizer config passed to `sherpa-onnx-node` (transducer family). */
 interface SherpaOfflineConfig {
 	modelConfig: {
 		transducer: { encoder: string; decoder: string; joiner: string };
@@ -114,22 +103,17 @@ interface SherpaOfflineConfig {
 	decodingMethod: string;
 }
 
-/** Subset of the native `sherpa-onnx-node` module surface we use. */
 interface SherpaRuntime {
 	OfflineRecognizer: {
 		createAsync(config: SherpaOfflineConfig): Promise<SherpaOfflineRecognizer>;
 	};
 }
 
-/** A warm model plus the engine that loaded it; cached per tier key. */
 type LoadedModel =
 	| { engine: "transformers"; pipeline: AutomaticSpeechRecognitionPipeline }
 	| { engine: "sherpa"; recognizer: SherpaOfflineRecognizer };
 
 const models = new Map<SttModelKey, Promise<LoadedModel>>();
-// Serialize all model inference on a single chain: the recognizers are not
-// guaranteed reentrant and there is one CPU-bound model per tier. Batch
-// transcribes and live-stream segment/partial decodes share this lock.
 let modelLock = Promise.resolve();
 function runOnModel<T>(work: () => Promise<T>): Promise<T> {
 	const run = modelLock.then(work, work);
@@ -168,7 +152,6 @@ function getSherpaRuntimeDir(): string {
 	return path.join(path.dirname(getTinyModelsCacheDir()), "stt-runtime", `sherpa-${key}`);
 }
 
-/** Resolve the native `sherpa-onnx-node` module. In a compiled binary the addon (plus its per-platform prebuilt `sherpa-onnx.node` + bundled onnxruntime */
 function loadSherpaRuntime(transport: SttTransport, requestId: string, modelKey: SttModelKey): Promise<SherpaRuntime> {
 	return sherpaRuntime.load(async () => {
 		if (!isCompiledBinary()) return sourceRequire(SHERPA_PACKAGE) as SherpaRuntime;
@@ -276,7 +259,6 @@ async function loadTransformersModel(
 	return { engine: "transformers", pipeline };
 }
 
-/** Stream a single sherpa-onnx model file from the Hub into the cache, writing to a `.part` sidecar and renaming on completion so an interrupted fetch never */
 async function downloadSherpaFile(
 	repo: string,
 	filename: string,
@@ -330,7 +312,6 @@ async function downloadSherpaFile(
 	await fs.rename(part, dest);
 }
 
-/** Ensure all sherpa-onnx model files for a tier are present in the cache, downloading any that are missing, and return their absolute paths. */
 async function ensureSherpaModelFiles(
 	spec: SherpaSttModelSpec,
 	modelKey: SttModelKey,
@@ -344,8 +325,6 @@ async function ensureSherpaModelFiles(
 		const key = role as keyof typeof spec.files;
 		const filename = spec.files[key];
 		const dest = path.join(dir, filename);
-		// A probe for "is this model file already downloaded". Anything that is not a readable non-empty file is
-		// re-downloaded, so a stat failure costs a download and never a missing or truncated model.
 		const present = await fs
 			.stat(dest)
 			.then(stats => stats.size > 0)
@@ -433,8 +412,6 @@ async function decodeSegment(
 		stride_length_s: STRIDE_LENGTH_S,
 		return_timestamps: false,
 	};
-	// English-only Whisper checkpoints reject `language`/`task`; multilingual ones
-	// take the configured source language (auto-detected when omitted).
 	if (!spec.englishOnly) {
 		options.task = "transcribe";
 		if (language) options.language = language;
@@ -473,20 +450,14 @@ async function handleBatchRequest(
 	}
 }
 
-// ── Live streaming sessions ─────────────────────────────────────────
-
-/** State for one in-flight {@link StreamEndpointer}-driven streaming session. */
 interface StreamingSession {
 	id: string;
 	spec: SttModel;
 	language: string | undefined;
 	model: Promise<LoadedModel>;
 	endpointer: StreamEndpointer;
-	/** Finalized segments awaiting decode, in order. */
 	segmentQueue: Float32Array[];
-	/** Latest in-progress segment audio awaiting a volatile partial decode (coalesced). */
 	pendingPartial: Float32Array | null;
-	/** Committed segment transcripts, joined for the final result. */
 	committed: string[];
 	segmentIndex: number;
 	pumping: boolean;
@@ -528,7 +499,6 @@ function ingestStreamEvents(session: StreamingSession, events: EndpointerEvent[]
 	}
 }
 
-/** Drain a session's pending work: finalized segments first (committed in order), then a single coalesced partial preview. Re-entrant-safe via `pumping`; new */
 async function pumpSession(session: StreamingSession, transport: SttTransport): Promise<void> {
 	if (session.pumping) return;
 	session.pumping = true;
@@ -537,7 +507,6 @@ async function pumpSession(session: StreamingSession, transport: SttTransport): 
 		while (!session.cancelled) {
 			if (session.segmentQueue.length > 0) {
 				const audio = session.segmentQueue.shift()!;
-				// A fresh segment supersedes any queued preview for the prior one.
 				session.pendingPartial = null;
 				const text = await runOnModel(() => decodeSegment(model, session.spec, audio, session.language));
 				if (session.cancelled) return;
@@ -552,7 +521,6 @@ async function pumpSession(session: StreamingSession, transport: SttTransport): 
 				session.pendingPartial = null;
 				const text = await runOnModel(() => decodeSegment(model, session.spec, audio, session.language));
 				if (session.cancelled) return;
-				// Skip a now-stale preview if a segment finalized mid-decode.
 				if (text.length > 0 && session.segmentQueue.length === 0) {
 					transport.send({ type: "partial", id: session.id, text });
 				}

@@ -21,9 +21,6 @@ interface GitLabUrl {
 	id?: number;
 }
 
-/**
- * Parse GitLab URL into structured data
- */
 function parseGitLabUrl(url: string): GitLabUrl | null {
 	const parsed = tryParseUrl(url);
 	if (!parsed) return null;
@@ -34,17 +31,14 @@ function parseGitLabUrl(url: string): GitLabUrl | null {
 
 	const [namespace, project, ...rest] = segments;
 
-	// Repo root
 	if (rest.length === 0) {
 		return { namespace, project, type: "repo" };
 	}
 
-	// Skip - prefix
 	if (rest[0] !== "-") return null;
 
 	const [, type, ...remaining] = rest;
 
-	// File: gitlab.com/{ns}/{proj}/-/blob/{ref}/{path}
 	if (type === "blob" && remaining.length >= 2) {
 		const [ref, ...pathParts] = remaining;
 		return {
@@ -56,7 +50,6 @@ function parseGitLabUrl(url: string): GitLabUrl | null {
 		};
 	}
 
-	// Directory: gitlab.com/{ns}/{proj}/-/tree/{ref}/{path}
 	if (type === "tree" && remaining.length >= 1) {
 		const [ref, ...pathParts] = remaining;
 		return {
@@ -68,14 +61,12 @@ function parseGitLabUrl(url: string): GitLabUrl | null {
 		};
 	}
 
-	// Issue: gitlab.com/{ns}/{proj}/-/issues/{id}
 	if (type === "issues" && remaining.length === 1) {
 		const id = parseInt(remaining[0], 10);
 		if (Number.isNaN(id)) return null;
 		return { namespace, project, type: "issue", id };
 	}
 
-	// MR: gitlab.com/{ns}/{proj}/-/merge_requests/{id}
 	if (type === "merge_requests" && remaining.length === 1) {
 		const id = parseInt(remaining[0], 10);
 		if (Number.isNaN(id)) return null;
@@ -85,9 +76,6 @@ function parseGitLabUrl(url: string): GitLabUrl | null {
 	return null;
 }
 
-/**
- * Get project ID from namespace/project path
- */
 async function getProjectId(gl: GitLabUrl, timeout: number, signal?: AbortSignal): Promise<number | null> {
 	const encodedPath = encodeURIComponent(`${gl.namespace}/${gl.project}`);
 	const apiUrl = `https://gitlab.com/api/v4/projects/${encodedPath}`;
@@ -100,9 +88,6 @@ async function getProjectId(gl: GitLabUrl, timeout: number, signal?: AbortSignal
 	return data.id;
 }
 
-/**
- * Render GitLab repository
- */
 async function renderGitLabRepo(
 	gl: GitLabUrl,
 	timeout: number,
@@ -138,7 +123,6 @@ async function renderGitLabRepo(
 	}
 	md += `**Created:** ${formatIsoDate(repo.created_at)} · **Last Activity:** ${formatIsoDate(repo.last_activity_at)}\n\n`;
 
-	// Try to fetch README
 	if (repo.readme_url) {
 		const readmeResult = await loadPage(repo.readme_url, { timeout, signal });
 		if (readmeResult.ok && readmeResult.content.trim().length > 0) {
@@ -149,9 +133,6 @@ async function renderGitLabRepo(
 	return { content: md, ok: true };
 }
 
-/**
- * Render GitLab file
- */
 async function renderGitLabFile(
 	gl: GitLabUrl,
 	projectId: number,
@@ -167,9 +148,6 @@ async function renderGitLabFile(
 	return { content: result.content, ok: true };
 }
 
-/**
- * Render GitLab directory tree
- */
 async function renderGitLabTree(
 	gl: GitLabUrl,
 	projectId: number,
@@ -194,7 +172,6 @@ async function renderGitLabTree(
 	let md = `# Directory: ${gl.path || "/"}\n\n`;
 	md += `**Ref:** ${gl.ref}\n\n`;
 
-	// Separate directories and files
 	const dirs = tree.filter(item => item.type === "tree");
 	const files = tree.filter(item => item.type === "blob");
 
@@ -216,9 +193,6 @@ async function renderGitLabTree(
 	return { content: md, ok: true };
 }
 
-/**
- * Render GitLab issue
- */
 async function renderGitLabIssue(
 	gl: GitLabUrl,
 	projectId: number,
@@ -264,9 +238,6 @@ async function renderGitLabIssue(
 	return { content: md, ok: true };
 }
 
-/**
- * Render GitLab merge request
- */
 async function renderGitLabMR(
 	gl: GitLabUrl,
 	projectId: number,
@@ -318,9 +289,6 @@ async function renderGitLabMR(
 	return { content: md, ok: true };
 }
 
-/**
- * Handle GitLab URLs specially
- */
 export const handleGitLab: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -397,7 +365,5 @@ export const handleGitLab: SpecialHandler = async (
 		}
 	}
 
-	// Matched a GitLab URL but every API path failed: degrade loudly so the
-	// generic fetch result records why the rich rendering is missing.
 	return scraperDegrade("gitlab", "GitLab API requests failed");
 };

@@ -1,14 +1,8 @@
-/** Backward-compatible reader for the removed image-archive ("snapcompact") */
-
-/** Preserve-data slot the removed snapcompact engine wrote its archive under. */
 export const LEGACY_ARCHIVE_KEY = "snapcompact";
 
-/** Per-image token estimate for legacy persisted archive frames. Frames rendered */
 export const LEGACY_FRAME_TOKEN_ESTIMATE = 5024;
 
-/** Stray ink toggles the archive text could contain; stripped on read. */
 const DIM_MARKERS = /[\u000e\u000f]/g;
-/** Glyph the archive used in place of a newline in its stored source text. */
 const NEWLINE_GLYPH = "█";
 
 interface LegacyArchiveSlot {
@@ -25,13 +19,11 @@ function toPlainText(text: string): string {
 	return text.replace(DIM_MARKERS, "").replaceAll(NEWLINE_GLYPH, "\n");
 }
 
-/** Whether `preserveData` carries a legacy snapcompact archive slot at all. */
 export function hasLegacyArchive(preserveData: Record<string, unknown> | undefined): boolean {
 	const candidate = preserveData?.[LEGACY_ARCHIVE_KEY];
 	return !!candidate && typeof candidate === "object";
 }
 
-/** Reconstruct the archive's plaintext source for LLM summarization, mirroring */
 export function legacyArchiveSourceText(preserveData: Record<string, unknown> | undefined): string | undefined {
 	const candidate = preserveData?.[LEGACY_ARCHIVE_KEY];
 	if (!candidate || typeof candidate !== "object") return undefined;
@@ -44,7 +36,6 @@ export function legacyArchiveSourceText(preserveData: Record<string, unknown> | 
 	return text.length > 0 ? toPlainText(text) : undefined;
 }
 
-/** Drop the legacy archive slot from `preserveData`, returning the remaining */
 export function stripLegacyArchive(
 	preserveData: Record<string, unknown> | undefined,
 ): Record<string, unknown> | undefined {
@@ -53,7 +44,6 @@ export function stripLegacyArchive(
 	return Object.keys(rest).length > 0 ? rest : undefined;
 }
 
-/** Redact the archive slot's plaintext regions (`text`/`textHead`/`textTail`) in */
 export function redactLegacyArchiveText(
 	preserveData: Record<string, unknown> | undefined,
 	redact: (value: string) => string,

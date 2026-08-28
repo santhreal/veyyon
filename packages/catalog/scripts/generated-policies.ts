@@ -1,8 +1,3 @@
-/**
- * Generation-time catalog policies: upstream metadata corrections, derived
- * field baking, and promotion-target linking. Runs only from
- * `generate-models.ts` — none of this ships in the runtime bundle.
- */
 import { buildCompat } from "../src/build";
 import {
 	type AnthropicModel,
@@ -26,11 +21,6 @@ import { buildCanonicalModelIndex, buildCanonicalReferenceData } from "./equival
 
 const CLOUDFLARE_AI_GATEWAY_BASE_URL = "https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/anthropic";
 
-/**
- * Static fallback model injected when Cloudflare AI Gateway discovery
- * returns no results. Ensures the provider always has at least one usable
- * model entry in the catalog.
- */
 export const CLOUDFLARE_FALLBACK_MODEL: ModelSpec<"anthropic-messages"> = {
 	id: "claude-sonnet-4-5",
 	name: "Claude Sonnet 4.5",
@@ -63,11 +53,6 @@ const COPILOT_GENERATED_LIMITS: Record<string, { contextWindow: number; maxToken
 	"grok-code-fast-1": { contextWindow: 192000, maxTokens: 64000 },
 };
 
-/**
- * Apply upstream metadata corrections to a mutable array of models, then
- * re-bake canonical thinking metadata so generated catalogs always carry the
- * deriver's output for the post-policy spec.
- */
 export function applyGeneratedModelPolicies(models: ModelSpec<Api>[]): void {
 	for (const model of models) {
 		applyGeneratedModelPolicy(model);
@@ -75,13 +60,6 @@ export function applyGeneratedModelPolicies(models: ModelSpec<Api>[]): void {
 	}
 }
 
-/**
- * Recompute `thinking` from the canonical deriver, replacing any baked value.
- * Mirrors `buildModel`'s trust-or-derive resolution with trust disabled: the
- * generator is the authority that produces the trusted values. Collapsed
- * effort-tier variants are exempt — their collapse table authored the
- * routing/off-suppression metadata and the deriver cannot reproduce it.
- */
 export function rebakeModelThinking(model: ModelSpec<Api>): void {
 	if (isVariantCollapsedSpec(model)) return;
 	const requiresProviderAuthoredEffort =
@@ -94,22 +72,6 @@ export function rebakeModelThinking(model: ModelSpec<Api>): void {
 	}
 }
 
-/**
- * Link OpenAI model variants to their context promotion targets.
- *
- * When a model's context is exhausted, the agent can promote to a sibling model
- * on the same provider:
- * - `codex-spark` variants promote to the full `gpt-5.5`.
- * - every `gpt-5.5` flavor (base, `-pro`, `-instant`, dated snapshots, and
- *   namespaced ids like `openai/gpt-5.5`) promotes to its `gpt-5.4` sibling.
- *
- * The sibling is resolved by parsed version + matching provider/api, not a
- * hardcoded bare id, so namespaced (`openrouter/openai/gpt-5.4`), dotted
- * (`amazon-bedrock` `openai.gpt-5.4`), and dated (`gpt-5.4-2026-03-05`) ids all
- * link. The runtime still gates on the target actually being larger
- * (`#resolveContextPromotionTarget`), so an equal/smaller sibling is a harmless
- * no-op rather than a counterproductive switch.
- */
 export function linkOpenAIPromotionTargets(models: ModelSpec<Api>[]): void {
 	for (const candidate of models) {
 		const parsedCandidate = parseKnownModel(candidate.id);
@@ -122,8 +84,6 @@ export function linkOpenAIPromotionTargets(models: ModelSpec<Api>[]): void {
 		} else {
 			continue;
 		}
-		// Prefer the plainest sibling id (shortest bare segment) so the base model
-		// wins over `-pro`/`-mini`/`-nano` siblings that parse to the same version.
 		let fallback: ModelSpec<Api> | undefined;
 		let fallbackBareLength = Number.POSITIVE_INFINITY;
 		for (const model of models) {
@@ -142,36 +102,10 @@ export function linkOpenAIPromotionTargets(models: ModelSpec<Api>[]): void {
 	}
 }
 
-/**
- * Fill `null` `contextWindow` / `maxTokens` from a model's family reference.
- * Proxies and resellers serve first-party models under mangled ids and report
- * no limits, so discovery emits `null` rather than a magic number. Two lookups
- * cover the two ways an id drifts from its family head:
- *
- * 1. Compact / re-spelled versions (`venice/openai-gpt-54-mini`,
- *    `aimlapi/moonshot/kimi-k2-5`) — the canonical-equivalence index maps these
- *    to their head (`gpt-5.4-mini`, `kimi-k2.5`).
- * 2. Org-namespace variance (`aimlapi/alibaba/qwen3-32b` vs `groq/qwen/qwen3-32b`)
- *    — these never share an exact id, so the bare model-segment (`qwen3-32b`)
- *    is resolved through the proxy-reference suffix-alias map instead.
- *
- * Both lookups draw metadata from the proxy-reference index, which prefers the
- * largest limits with complete cache pricing and first-party providers, and
- * excludes zero-cost xai-oauth subscription entries (inflated `maxTokens`) as
- * sources. The canonical head is tried first (more precise); the segment alias
- * backfills any field it leaves null.
- *
- * Only `null` fields are filled; provider-specific limits that discovery
- * returned explicitly are never overwritten. Routers that explicitly leave
- * completion ceilings unknown may opt out of this fallback.
- */
 export function applyCanonicalLimitFallback(models: ModelSpec<Api>[]): void {
 	if (!models.some(model => model.contextWindow === null || model.maxTokens === null)) {
 		return;
 	}
-	// The identity indices read only id/provider/name/limit/cost fields, all of
-	// which ModelSpec carries — no built-only field (compat/thinking) is read —
-	// so reusing the runtime Model<Api> builders over raw specs is sound.
 	const catalog = models as unknown as readonly Model<Api>[];
 	const referenceData = buildCanonicalReferenceData(catalog);
 	const canonicalIndex = buildCanonicalModelIndex(catalog, referenceData);
@@ -179,8 +113,6 @@ export function applyCanonicalLimitFallback(models: ModelSpec<Api>[]): void {
 
 	for (const model of models) {
 		if (PROVIDERS_PUBLISHING_OWN_MODEL_LIMITS.has(model.provider)) {
-			// The endpoint owns its limits; a cross-provider same-family
-			// reference must not invent one it never published.
 			continue;
 		}
 		if (model.contextWindow !== null && model.maxTokens !== null) {
@@ -216,8 +148,6 @@ function applyGeneratedModelPolicy(model: ModelSpec<Api>): void {
 		model.maxTokens = copilotLimits.maxTokens;
 	}
 	if (model.provider === "command-code") {
-		// Cross-provider metadata may have filled a same-family output cap before
-		// this pass. The Provider API does not publish or promise one.
 		model.maxTokens = null;
 	}
 
@@ -225,17 +155,10 @@ function applyGeneratedModelPolicy(model: ModelSpec<Api>): void {
 		model.omitMaxOutputTokens = true;
 	}
 
-	// GLM Coding Plan: GLM-5.2 is the selectable 1M served id; pin it so
-	// endpoint discovery or older bundled fallbacks cannot regress to 200k.
 	if ((model.provider === "zai" || model.provider === "zhipu-coding-plan") && model.id === "glm-5.2") {
 		model.contextWindow = 1_000_000;
 		model.maxTokens = 131_072;
 	}
-	// MiniMax-M3: 512K is the standard pricing tier boundary, not the
-	// model ceiling. Pin every long-context provider that serves the model
-	// (anthropic-messages `minimax`/`minimax-cn` and the openai-completions
-	// MiniMax Coding/Token Plan endpoints `minimax-code`/`minimax-code-cn`)
-	// to the documented 1M tier.
 	if (
 		model.id === "MiniMax-M3" &&
 		(model.provider === "minimax" ||
@@ -311,13 +234,11 @@ function applyGeneratedModelPolicy(model: ModelSpec<Api>): void {
 }
 
 function applyAnthropicCatalogPolicy(model: ModelSpec<Api>, parsedModel: AnthropicModel): void {
-	// Claude Opus 4.5: models.dev reports 3x the correct cache pricing.
 	if (model.provider === "anthropic" && parsedModel.kind === "opus" && semverEqual(parsedModel.version, "4.5")) {
 		model.cost.cacheRead = 0.5;
 		model.cost.cacheWrite = 6.25;
 	}
 
-	// Bedrock Opus 4.6: upstream metadata is stale for cache pricing and context.
 	if (model.provider === "amazon-bedrock" && parsedModel.kind === "opus" && semverEqual(parsedModel.version, "4.6")) {
 		model.cost.cacheRead = 0.5;
 		model.cost.cacheWrite = 6.25;
@@ -325,10 +246,6 @@ function applyAnthropicCatalogPolicy(model: ModelSpec<Api>, parsedModel: Anthrop
 		model.maxTokens = 128000;
 	}
 
-	// Claude Fable/Mythos 5: Anthropic's /v1/models omits token limits and
-	// pricing, and models.dev lags new releases. Pin authoritative values from
-	// the model card (1M context / 128k output) and pricing docs ($10 in / $50
-	// out per MTok).
 	if (model.provider === "anthropic" && isFableOrMythos(parsedModel.kind)) {
 		model.contextWindow = 1_000_000;
 		model.maxTokens = 128_000;
@@ -356,15 +273,10 @@ function inferGeneratedApplyPatchToolType(
 }
 
 function applyOpenAICatalogPolicy(model: ModelSpec<Api>, parsedModel: OpenAIModel): void {
-	// Codex models: 400K figure includes output budget; input window is 272K.
 	if (parsedModel.variant.startsWith("codex") && parsedModel.variant !== "codex-spark") {
 		model.contextWindow = 272000;
 		return;
 	}
-	// GPT-5.4 mini/nano use plain OpenAI IDs on the Codex transport, but Codex still
-	// enforces the lower prompt budget for these variants. Codex discovery can also
-	// report inconsistent priorities for the GPT-5.4 family, so normalize by parsed
-	// variant instead of special-casing raw model ids.
 	if (model.api === "openai-codex-responses" && semverEqual(parsedModel.version, "5.4")) {
 		const normalizedPriority = CODEX_GPT_5_4_PRIORITY_BY_VARIANT[parsedModel.variant];
 		if (normalizedPriority !== undefined) {
@@ -374,11 +286,6 @@ function applyOpenAICatalogPolicy(model: ModelSpec<Api>, parsedModel: OpenAIMode
 			model.contextWindow = 272000;
 		}
 	}
-	// GPT-5.6 luna/sol/terra on the Codex transport: OpenAI's Codex model
-	// registry declares context_window = max_context_window = 372000, but Codex
-	// discovery under-reports it — omitting the field for some accounts and
-	// actively returning 272000 for others (#5705, #6259). Pin the true 372K
-	// input window on the bundled catalog; discovery enforces the same floor.
 	if (model.api === "openai-codex-responses" && semverEqual(parsedModel.version, "5.6")) {
 		model.contextWindow = 372000;
 	}

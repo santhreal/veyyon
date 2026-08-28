@@ -1,6 +1,3 @@
-//
-// Some shapes have unique internal structure (subroutine, cylinder) and keep
-// custom rendering. Others use the corner decorator pattern for simplicity.
 
 import type { Canvas, DrawingCoord, Direction } from '../types'
 import { Up, Down, Left, Right } from '../types'
@@ -13,13 +10,6 @@ import { getCorners } from './corners'
 import { displayWidth, toCells } from '../../text-metrics'
 
 
-/**
- * Subroutine shape renderer — double-bordered rectangle.
- * Renders as:
- *   ┌┬─────────┬┐
- *   ││  Label  ││
- *   └┴─────────┴┘
- */
 export const subroutineRenderer: ShapeRenderer = {
   getDimensions(label: string, options: ShapeRenderOptions): ShapeDimensions {
     const lines = splitLines(label)
@@ -52,14 +42,12 @@ export const subroutineRenderer: ShapeRenderer = {
     const hChar = options.useAscii ? '-' : '─'
     const vChar = options.useAscii ? '|' : '│'
 
-    // Top border
     canvas[0]![0] = options.useAscii ? '+' : '┌'
     canvas[1]![0] = options.useAscii ? '+' : '┬'
     for (let x = 2; x < width - 2; x++) canvas[x]![0] = hChar
     canvas[width - 2]![0] = options.useAscii ? '+' : '┬'
     canvas[width - 1]![0] = options.useAscii ? '+' : '┐'
 
-    // Sides with double border
     for (let y = 1; y < height - 1; y++) {
       canvas[0]![y] = vChar
       canvas[1]![y] = vChar
@@ -67,14 +55,12 @@ export const subroutineRenderer: ShapeRenderer = {
       canvas[width - 1]![y] = vChar
     }
 
-    // Bottom border
     canvas[0]![height - 1] = options.useAscii ? '+' : '└'
     canvas[1]![height - 1] = options.useAscii ? '+' : '┴'
     for (let x = 2; x < width - 2; x++) canvas[x]![height - 1] = hChar
     canvas[width - 2]![height - 1] = options.useAscii ? '+' : '┴'
     canvas[width - 1]![height - 1] = options.useAscii ? '+' : '┘'
 
-    // Center the label
     const lines = splitLines(label)
     const centerY = Math.floor(height / 2)
     const startY = centerY - Math.floor((lines.length - 1) / 2)
@@ -99,15 +85,6 @@ export const subroutineRenderer: ShapeRenderer = {
 }
 
 
-/**
- * Double circle shape renderer.
- * Uses double circle markers (◎) at corners.
- *
- * Renders as:
- *   ◎─────────◎
- *   │  Label  │
- *   ◎─────────◎
- */
 export const doublecircleRenderer: ShapeRenderer = {
   getDimensions: getBoxDimensions,
 
@@ -120,15 +97,6 @@ export const doublecircleRenderer: ShapeRenderer = {
 }
 
 
-/**
- * Cylinder shape renderer — database symbol.
- * Renders as:
- *   ╭─────╮
- *   │─────│
- *   │ DB  │
- *   │─────│
- *   ╰─────╯
- */
 export const cylinderRenderer: ShapeRenderer = {
   getDimensions(label: string, options: ShapeRenderOptions): ShapeDimensions {
     const lines = splitLines(label)
@@ -161,33 +129,27 @@ export const cylinderRenderer: ShapeRenderer = {
     const hChar = options.useAscii ? '-' : '─'
     const vChar = options.useAscii ? '|' : '│'
 
-    // Top ellipse
     canvas[0]![0] = options.useAscii ? '.' : '╭'
     for (let x = 1; x < width - 1; x++) canvas[x]![0] = hChar
     canvas[width - 1]![0] = options.useAscii ? '.' : '╮'
 
-    // Second row - bottom of top ellipse
     canvas[0]![1] = vChar
     for (let x = 1; x < width - 1; x++) canvas[x]![1] = hChar
     canvas[width - 1]![1] = vChar
 
-    // Middle section
     for (let y = 2; y < height - 2; y++) {
       canvas[0]![y] = vChar
       canvas[width - 1]![y] = vChar
     }
 
-    // Second to last row - top of bottom ellipse
     canvas[0]![height - 2] = vChar
     for (let x = 1; x < width - 1; x++) canvas[x]![height - 2] = hChar
     canvas[width - 1]![height - 2] = vChar
 
-    // Bottom ellipse
     canvas[0]![height - 1] = options.useAscii ? '\'' : '╰'
     for (let x = 1; x < width - 1; x++) canvas[x]![height - 1] = hChar
     canvas[width - 1]![height - 1] = options.useAscii ? '\'' : '╯'
 
-    // Center the label
     const lines = splitLines(label)
     const centerY = Math.floor(height / 2)
     const startY = centerY - Math.floor((lines.length - 1) / 2)
@@ -212,15 +174,6 @@ export const cylinderRenderer: ShapeRenderer = {
 }
 
 
-/**
- * Asymmetric (flag/banner) shape renderer.
- * Uses arrow markers (▷) on left corners.
- *
- * Renders as:
- *   ▷─────────┐
- *   │  Label  │
- *   ▷─────────┘
- */
 export const asymmetricRenderer: ShapeRenderer = {
   getDimensions: getBoxDimensions,
 
@@ -233,15 +186,6 @@ export const asymmetricRenderer: ShapeRenderer = {
 }
 
 
-/**
- * Trapezoid shape renderer — wider at bottom.
- * Uses slope markers (◸◹) on top corners.
- *
- * Renders as:
- *   ◸─────────◹
- *   │  Label  │
- *   └─────────┘
- */
 export const trapezoidRenderer: ShapeRenderer = {
   getDimensions: getBoxDimensions,
 
@@ -254,15 +198,6 @@ export const trapezoidRenderer: ShapeRenderer = {
 }
 
 
-/**
- * Trapezoid-alt shape renderer — wider at top.
- * Uses slope markers (◺◿) on bottom corners.
- *
- * Renders as:
- *   ┌─────────┐
- *   │  Label  │
- *   ◺─────────◿
- */
 export const trapezoidAltRenderer: ShapeRenderer = {
   getDimensions: getBoxDimensions,
 

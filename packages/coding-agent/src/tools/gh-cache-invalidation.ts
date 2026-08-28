@@ -1,8 +1,6 @@
-/** Detect cache-mutating `gh` subcommands inside a bash invocation and drop the matching `github-cache` rows so a subsequent `issue://<n>` or */
 import { parseIssueUrl, parsePrUrl } from "./gh-url";
 import { invalidateAllForNumber, invalidateAllForRepo } from "./github-cache";
 
-/** Subcommands that mutate the rendered issue/PR view in any meaningful way. */
 const MUTATING_ISSUE_SUBCMDS: Record<string, true> = {
 	close: true,
 	reopen: true,
@@ -29,7 +27,6 @@ const MUTATING_PR_SUBCMDS: Record<string, true> = {
 	unlock: true,
 };
 
-/** Parse `token` as an issue or PR URL (per `subject`) via the shared `gh-url` parsers. */
 function parseSubjectUrl(subject: "issue" | "pr", token: string): { repo?: string; num?: number } {
 	if (subject === "pr") {
 		const { repo, prNumber } = parsePrUrl(token);
@@ -39,7 +36,6 @@ function parseSubjectUrl(subject: "issue" | "pr", token: string): { repo?: strin
 	return { repo, num: issueNumber };
 }
 
-/** Flags whose value is the next argv token (`--milestone 3`). The detector must skip those values so `gh pr edit --milestone 3 14` invalidates #14, */
 const VALUE_TAKING_FLAGS: ReadonlySet<string> = new Set([
 	"-m",
 	"--milestone",
@@ -74,7 +70,6 @@ const VALUE_TAKING_FLAGS: ReadonlySet<string> = new Set([
 	"--match-head-commit",
 	"--author-email",
 ]);
-/** Walk a single shell command's token stream looking for a top-level `gh (issue|pr) <subcmd> [<id-or-url>]` invocation and return the */
 function detectGhMutation(tokens: readonly string[]): { number?: number; repo?: string } | null {
 	const ghIdx = tokens.indexOf("gh");
 	if (ghIdx === -1) return null;
@@ -86,9 +81,6 @@ function detectGhMutation(tokens: readonly string[]): { number?: number; repo?: 
 	if (!expected[subcmd]) return null;
 
 	let repo: string | undefined;
-	// First pass: scan for --repo so it wins regardless of position relative
-	// to the issue/PR identifier (gh accepts the flag both before and after
-	// the positional argument).
 	for (let i = ghIdx + 3; i < tokens.length; i++) {
 		const token = tokens[i];
 		if (token === "-R" || token === "--repo") {
@@ -104,8 +96,6 @@ function detectGhMutation(tokens: readonly string[]): { number?: number; repo?: 
 	for (let i = ghIdx + 3; i < tokens.length; i++) {
 		const token = tokens[i];
 		if (token === "-R" || token === "--repo" || VALUE_TAKING_FLAGS.has(token)) {
-			// Skip the flag's value so it is never mistaken for the positional
-			// identifier (`--milestone 3 14` must invalidate #14, not #3).
 			i++;
 			continue;
 		}
@@ -116,16 +106,12 @@ function detectGhMutation(tokens: readonly string[]): { number?: number; repo?: 
 		}
 		const { repo: urlRepo, num } = parseSubjectUrl(subject, token);
 		if (num !== undefined && Number.isSafeInteger(num) && num > 0) {
-			// URL carries its own repo and wins over a stray --repo flag.
 			return { number: num, repo: urlRepo };
 		}
 	}
-	// Mutating subcommand with no identifier: gh operates on the current
-	// branch's PR, which we cannot resolve synchronously here.
 	return repo !== undefined ? { repo } : {};
 }
 
-/** Conservative tokenizer that splits a bash command into individual word tokens. Handles single/double-quoted strings, backslash escapes, and */
 function tokenize(command: string): string[][] {
 	const segments: string[][] = [];
 	let current: string[] = [];
@@ -188,7 +174,6 @@ function tokenize(command: string): string[][] {
 		}
 		if (ch === "\n" || ch === ";" || ch === "&" || ch === "|" || ch === "(" || ch === ")") {
 			pushSegment();
-			// `&&`, `||` already collapsed by the segment break above.
 			continue;
 		}
 		buffer += ch;
@@ -197,7 +182,6 @@ function tokenize(command: string): string[][] {
 	return segments;
 }
 
-/** Drop `github-cache` rows for any `gh issue|pr <mutating-subcmd>` call embedded in `command`. Safe to invoke unconditionally; no-op when the */
 export function invalidateGithubCacheForBashCommand(command: string): void {
 	if (!command?.includes("gh")) return;
 	const segments = tokenize(command);

@@ -1,19 +1,3 @@
-/**
- * Post-build script: reads the napi-rs generated `index.d.ts`, rewrites
- * TypeScript-only enum declarations to runtime-backed declarations, and writes
- * `native/index.js` from the checked-in ESM loader template.
- *
- * Why explicit ESM exports matter (issue #892):
- *
- * Consumers import named symbols from `@veyyon/natives`. The native addon
- * loader returns most values dynamically, while napi-rs `#[napi(string_enum)]`
- * emits `const enum` in the .d.ts — a TypeScript-only construct with no JS
- * runtime value. This script renders the ESM loader template and emits one
- * explicit `export const X = …` per public class/function declared in
- * `index.d.ts`, plus literal runtime objects for each enum.
- *
- * Run after `napi build`: `bun packages/natives/scripts/gen-enums.ts`
- */
 import * as path from "node:path";
 
 const nativeDir = path.resolve(import.meta.dir, "../native");
@@ -23,15 +7,10 @@ const jsPath = path.join(nativeDir, "index.js");
 const MARKER_START = "// --- generated native exports (do not edit) ---";
 const MARKER_END = "// --- end generated native exports ---";
 
-// Match each `export declare const enum Name { ... }` block. The closing `}`
-// is matched only at line start (enum bodies are indented).
 const CONST_ENUM_RE = /export declare (?:const )?enum (\w+)\s*\{(.*?)\n\}/gs;
 
-// Match `export declare class Name` (signatures or block headers). napi-rs
-// always emits these as top-level declarations; we just need the name.
 const CLASS_RE = /^export declare class (\w+)/gm;
 
-// Match `export declare function name(...)`. Same shape rationale.
 const FUNCTION_RE = /^export declare function (\w+)/gm;
 
 interface EnumExport {
@@ -83,11 +62,6 @@ function buildGeneratedBlock(dts: string): string {
 		throw new Error("No public symbols found in index.d.ts — check napi build output");
 	}
 
-	// Classes and functions are LAZY accessors (lazyNativeClass / lazyNativeFn),
-	// not eager `nativeBindings.X` reads, so importing `native/index.js` never
-	// calls `loadNative()` — pure registry/schema/doc-truth imports stay
-	// native-free (DOCS-NATIVES-1). See the head of `native/index.js` for the
-	// deferral contract. Enums stay inline literals (no native access).
 	const lines: string[] = [];
 	if (classes.length > 0) {
 		lines.push("// classes");
@@ -118,10 +92,6 @@ export async function generateEnumExports(): Promise<void> {
 	const existing = await Bun.file(jsPath).text();
 	const generatedBlock = buildGeneratedBlock(dts);
 
-	// Patch the generated block in place. `native/index.js` is the hand-edited
-	// loader; only the block between MARKER_START and MARKER_END is owned by
-	// this script. The markers are committed to disk so the patch is purely
-	// content replacement — no scaffold, no template file.
 	const blockStart = existing.indexOf(MARKER_START);
 	const blockEnd = existing.indexOf(MARKER_END);
 	if (blockStart === -1 || blockEnd === -1 || blockEnd < blockStart) {
@@ -134,8 +104,6 @@ export async function generateEnumExports(): Promise<void> {
 
 	await Bun.write(jsPath, js);
 
-	// Also fix the .d.ts: replace `const enum` with `enum` so TS allows
-	// assigning string literals to enum types without casts.
 	const constEnumCount = (dts.match(/export (?:declare )?const enum/g) ?? []).length;
 	const dtsContent = dts
 		.replaceAll("export const enum", "export declare enum")

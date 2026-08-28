@@ -3,11 +3,6 @@ import { join } from "node:path";
 import { errorMessage, logger } from "@veyyon/utils";
 import { hermesRoot } from "../config";
 
-/**
- * Resolved per call rather than baked at import: a constant computed from `homedir()`
- * cannot be moved by `MNEMOPI_HOME`, so a plugin write landed in the real home no
- * matter how the caller was isolated.
- */
 export function pluginRoot(env: NodeJS.ProcessEnv = process.env): string {
 	return join(hermesRoot(env), "mnemopi", "plugins");
 }
@@ -223,8 +218,6 @@ export class FilterPlugin extends MnemopiPlugin {
 			try {
 				if (!rule(item)) return false;
 			} catch (error) {
-				// Fail closed (block the memory), but say why: a rule that throws
-				// on every item would otherwise silently block everything.
 				logger.warn("mnemopi: filter rule threw; treating memory as blocked", {
 					error: errorMessage(error),
 				});
@@ -352,8 +345,6 @@ export class PluginManager {
 		this.#notify("onInvalidate", instance => instance.onInvalidate(memoryId));
 	}
 
-	/** A plugin's throwing hook must not break memory operations, but a broken
-	 *  plugin failing invisibly forever is a Law-10 bug — warn per failure. */
 	#notify(hook: string, call: (instance: MnemopiPlugin) => void): void {
 		for (const [name, instance] of this.#instances) {
 			if (!instance.enabled) continue;

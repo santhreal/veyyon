@@ -1,5 +1,3 @@
-/** Compatibility shim for legacy extensions importing the package root of `@veyyon/coding-agent` (or one of its aliased scopes like */
-
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
@@ -90,12 +88,10 @@ export interface BashToolOptions {
 }
 
 export interface ReadToolOptions {
-	/** Auto-resize large images; maps onto the `images.autoResize` setting. Default: true. */
 	autoResizeImages?: boolean;
 }
 
 export interface GrepToolOptions {
-	/** Unsupported. The historical grep operations seam (isDirectory/readFile for context lines) never delegated the search itself — ripgrep always ran */
 	operations?: unknown;
 }
 
@@ -222,7 +218,6 @@ function legacyBuiltinTool(cwd: string, name: LegacyCodingToolName): ToolDefinit
 	return markToolDefinition(definition);
 }
 
-// Deliberate local trio (string/number/boolean): unlike the @veyyon/utils getStringProperty family, these take `unknown` and read through Reflect.get so
 function stringField(value: unknown, key: string): string | undefined {
 	if (value === null || typeof value !== "object") return undefined;
 	const field = Reflect.get(value, key);
@@ -350,13 +345,11 @@ async function executeLegacyBashOperations(
 	}
 }
 
-/** Parse frontmatter using the historical Pi package-root helper. */
 export interface ParsedFrontmatter<T extends Record<string, unknown> = Record<string, unknown>> {
 	frontmatter: T;
 	body: string;
 }
 
-/** Parse YAML frontmatter and throw on invalid metadata. */
 export function parseFrontmatter<T extends Record<string, unknown> = Record<string, unknown>>(
 	content: string,
 ): ParsedFrontmatter<T> {
@@ -364,19 +357,16 @@ export function parseFrontmatter<T extends Record<string, unknown> = Record<stri
 	return { frontmatter: frontmatter as T, body };
 }
 
-/** Return content without YAML frontmatter. */
 export function stripFrontmatter(content: string): string {
 	return parseFrontmatter(content).body;
 }
 
-/** Mark an extension-authored tool as a Pi-compatible tool definition. */
 export function defineTool<TParams extends TSchema = TSchema, TDetails = unknown>(
 	tool: ToolDefinition<TParams, TDetails>,
 ): ToolDefinition<TParams, TDetails> {
 	return markToolDefinition(tool);
 }
 
-/** Create the legacy read tool definition. */
 export function createReadToolDefinition(cwd: string, options?: ReadToolOptions): ToolDefinition {
 	const tool = createRegistryTool(
 		cwd,
@@ -403,12 +393,10 @@ export function createReadToolDefinition(cwd: string, options?: ReadToolOptions)
 	});
 }
 
-/** Create the legacy read tool. */
 export function createReadTool(cwd: string, options?: ReadToolOptions): ToolDefinition {
 	return createReadToolDefinition(cwd, options);
 }
 
-/** Create the legacy bash tool definition. */
 export function createBashToolDefinition(cwd: string, options?: BashToolOptions): ToolDefinition {
 	const tool = createRegistryTool(cwd, "bash");
 	return markToolDefinition({
@@ -452,12 +440,10 @@ export function createBashToolDefinition(cwd: string, options?: BashToolOptions)
 	});
 }
 
-/** Create the legacy bash tool. */
 export function createBashTool(cwd: string, options?: BashToolOptions): ToolDefinition {
 	return createBashToolDefinition(cwd, options);
 }
 
-/** Create the legacy grep tool definition. */
 export function createGrepToolDefinition(cwd: string, options?: GrepToolOptions): ToolDefinition {
 	if (options?.operations) {
 		throw new Error(
@@ -487,8 +473,6 @@ export function createGrepToolDefinition(cwd: string, options?: GrepToolOptions)
 			const searchPath = stringField(params, "path") ?? ".";
 			const glob = stringField(params, "glob");
 			const context = numberField(params, "context");
-			// The new grep reads context from settings fixed at construction; build a
-			// per-call tool when the model passes an explicit legacy `context`.
 			const grepTool =
 				context === undefined
 					? tool
@@ -510,12 +494,10 @@ export function createGrepToolDefinition(cwd: string, options?: GrepToolOptions)
 	});
 }
 
-/** Create the legacy grep tool. */
 export function createGrepTool(cwd: string, options?: GrepToolOptions): ToolDefinition {
 	return createGrepToolDefinition(cwd, options);
 }
 
-/** Create the legacy find tool definition. */
 export function createFindToolDefinition(cwd: string, options?: FindToolOptions): ToolDefinition {
 	const tool = createRegistryTool(cwd, "glob");
 	return markToolDefinition({
@@ -566,12 +548,10 @@ export function createFindToolDefinition(cwd: string, options?: FindToolOptions)
 	});
 }
 
-/** Create the legacy find tool. */
 export function createFindTool(cwd: string, options?: FindToolOptions): ToolDefinition {
 	return createFindToolDefinition(cwd, options);
 }
 
-/** Create the legacy ls tool definition. */
 export function createLsToolDefinition(cwd: string, options?: LsToolOptions): ToolDefinition {
 	return markToolDefinition({
 		name: "ls",
@@ -611,17 +591,14 @@ export function createLsToolDefinition(cwd: string, options?: LsToolOptions): To
 	});
 }
 
-/** Create the legacy ls tool. */
 export function createLsTool(cwd: string, options?: LsToolOptions): ToolDefinition {
 	return createLsToolDefinition(cwd, options);
 }
 
-/** Create legacy read, bash, edit, and write tools. */
 export function createCodingTools(cwd: string): ToolDefinition[] {
 	return LEGACY_CODING_TOOL_NAMES.map(name => legacyBuiltinTool(cwd, name));
 }
 
-/** Create legacy read, grep, find, and ls tools. */
 export function createReadOnlyTools(cwd: string): ToolDefinition[] {
 	return LEGACY_READ_ONLY_TOOL_NAMES.map(name => {
 		if (name === "read") return createReadTool(cwd);
@@ -641,8 +618,6 @@ export const SettingsManager = {
 	},
 } as const;
 
-/** Resource-loader compatibility layer for legacy pi extensions. Upstream `@earendil-works/pi-coding-agent` centralizes extension / skill / */
-
 export type ResourceDiagnostic = {
 	type: "error" | "warning" | "info";
 	message: string;
@@ -654,7 +629,6 @@ export interface AgentsFile {
 	content: string;
 }
 
-/** Marker interface preserved for pi extensions that type against upstream. */
 export interface Theme {
 	name: string;
 }
@@ -694,7 +668,6 @@ export interface DefaultResourceLoaderOptions {
 	appendSystemPromptOverride?: (base: string[]) => string[];
 }
 
-/** The subset of {@link DefaultResourceLoader} state consumed by the {@link createAgentSession} adapter. Kept as an explicit interface so tests */
 export interface ResourceLoader {
 	getExtensions(): LoadExtensionsResult;
 	getSkills(): { skills: Skill[]; diagnostics: ResourceDiagnostic[] };
@@ -704,11 +677,9 @@ export interface ResourceLoader {
 	getSystemPrompt(): string | undefined;
 	getAppendSystemPrompt(): string[];
 	reload(): Promise<void>;
-	/** @internal — used by the shim's createAgentSession to detect its own loaders. */
 	readonly __veyyonLegacyPiLoader?: true;
 }
 
-/** Loader-owned inputs that {@link createAgentSession} needs regardless of whether the caller provided extra options. `cwd`/`agentDir` fall back to */
 interface ResolvedLoaderState {
 	cwd: string;
 	agentDir: string;
@@ -797,7 +768,6 @@ export class DefaultResourceLoader implements ResourceLoader {
 		return this.#appendSystemPrompt;
 	}
 
-	/** Discovery snapshot used to seed the session. Emulates upstream pi's `reload()` lifecycle: run every enabled discovery arm against the */
 	async reload(): Promise<void> {
 		const { cwd, agentDir } = this.#state;
 		const options = this.#options;
@@ -884,7 +854,6 @@ export class DefaultResourceLoader implements ResourceLoader {
 			return { extensions: [], errors: [], withheld: [], runtime: new ExtensionRuntime() };
 		}
 
-		// `agentDir` for the same reason `reload()` passes it to skills, prompt templates and context files: this loader resolves a caller-named
 		const paths = await discoverSessionExtensionPaths(
 			{
 				disableExtensionDiscovery: noExtensions,
@@ -1018,12 +987,10 @@ export class DefaultResourceLoader implements ResourceLoader {
 		return { prompts, diagnostics };
 	}
 
-	/** Test seam: whether `reload()` has completed at least once. */
 	get loaded(): boolean {
 		return this.#loaded;
 	}
 
-	/** @internal — used by the shim's createAgentSession to translate options. */
 	__getResolverState(): {
 		cwd: string;
 		agentDir: string;
@@ -1053,7 +1020,6 @@ export class DefaultResourceLoader implements ResourceLoader {
 	}
 }
 
-/** Legacy pi extensions call `createAgentSession({ resourceLoader })`. veyyon's native option surface has no such field — extension / skill / prompt / */
 export type LegacyPiCreateAgentSessionOptions = CreateAgentSessionOptions & {
 	resourceLoader?: ResourceLoader;
 };
@@ -1101,7 +1067,6 @@ export async function createAgentSession(
 		forwarded.settingsManager = state.settingsPromise;
 	}
 
-	// Route the loader's already-loaded extension result through the SDK's `preloadedExtensions` seam. Skipping this branch would let
 	if (rest.preloadedExtensions === undefined && rest.preloadedExtensionPaths === undefined) {
 		forwarded.preloadedExtensions = state.extensionsResult;
 	}

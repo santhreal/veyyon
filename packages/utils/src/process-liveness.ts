@@ -2,32 +2,6 @@ import { dlopen, FFIType, ptr } from "bun:ffi";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 
-/**
- * Whether the process with this pid still exists.
- *
- * This is the one owner of that question. It was hand-rolled in seven places
- * under three different names, and the copies disagreed on the case that
- * matters: what `process.kill(pid, 0)` throwing actually means.
- *
- * Sending signal 0 does not send a signal. It performs the error checks that a
- * real signal would, so it answers "could I signal this process?" and the kernel
- * distinguishes two failures:
- *
- * - `ESRCH`, no such process. The process is gone, and this returns false.
- * - `EPERM`, the process exists but belongs to a user you may not signal. It is
- *   alive, and this returns true.
- *
- * The naive form catches everything and reports dead, which is wrong under a
- * container, a sandbox, or any setup where the pid belongs to another user. That
- * matters most where liveness decides whether to reap something: a lock whose
- * owner is wrongly judged dead is taken from a live holder, and two processes
- * end up inside a critical section that was supposed to admit one.
- *
- * Liveness alone cannot distinguish the original owner from an unrelated
- * process that later reused its PID. Destructive callers pair this predicate
- * with {@link getProcessStartIdentity}; a platform that cannot prove process
- * incarnation must fail closed rather than reap from a merely-live PID.
- */
 const MAX_PROCESS_ID = 0x7fffffff;
 
 export function isProcessAlive(pid: number): boolean {
@@ -36,8 +10,6 @@ export function isProcessAlive(pid: number): boolean {
 		process.kill(pid, 0);
 		return true;
 	} catch (error) {
-		// Only "no such process" proves death. Anything else, most importantly
-		// EPERM, means the process is there and we simply may not signal it.
 		return (error as NodeJS.ErrnoException).code !== "ESRCH";
 	}
 }
@@ -59,8 +31,6 @@ function readBoundedTextFileSync(filePath: string): string | null {
 		fd = fs.openSync(filePath, fs.constants.O_RDONLY);
 		const stat = fs.fstatSync(fd);
 		if (!stat.isFile() || stat.size > MAX_PROC_IDENTITY_BYTES) return null;
-		// procfs reports many virtual files as size 0. A fixed upper-bound read
-		// still prevents allocation from depending on kernel-provided content.
 		const bytes = Buffer.allocUnsafe(MAX_PROC_IDENTITY_BYTES + 1);
 		const bytesRead = fs.readSync(fd, bytes, 0, bytes.length, 0);
 		if (bytesRead < 1 || bytesRead > MAX_PROC_IDENTITY_BYTES) return null;
@@ -71,9 +41,7 @@ function readBoundedTextFileSync(filePath: string): string | null {
 		if (fd !== undefined) {
 			try {
 				fs.closeSync(fd);
-			} catch {
-				// A failed close cannot make an unverified identity trustworthy.
-			}
+			} catch {}
 		}
 	}
 }
@@ -106,8 +74,6 @@ function queryDarwinProcessStartSync(pid: number): string | null {
 			},
 		});
 		try {
-			// PROC_PIDTBSDINFO returns proc_bsdinfo. Its final two uint64 fields
-			// are the start timeval seconds/useconds at offsets 120 and 128.
 			const bsdInfo = new Uint8Array(136);
 			const bytes = libproc.symbols.proc_pidinfo(pid, 3, 0n, ptr(bsdInfo), bsdInfo.byteLength);
 			if (bytes < bsdInfo.byteLength) return null;
@@ -135,8 +101,6 @@ function queryWindowsProcessStartSync(pid: number): string | null {
 			CloseHandle: { args: [FFIType.ptr], returns: FFIType.bool },
 		});
 		try {
-			// PROCESS_QUERY_LIMITED_INFORMATION is sufficient for GetProcessTimes
-			// and avoids asking for mutation/debug rights.
 			const handle = kernel32.symbols.OpenProcess(0x1000, false, pid);
 			if (handle === null || handle === 0) return null;
 			try {
@@ -175,10 +139,6 @@ function getLinuxProcessStartIdentity(pid: number, dependencies: ProcessIdentity
 		return null;
 	}
 
-	// `comm` is parenthesized and may itself contain spaces or `)`, so split only
-	// after its final closing parenthesis. The remainder starts at proc field 3;
-	// field 22 (`starttime`) is therefore index 19. Confirming field 1 prevents a
-	// malformed or substituted record from becoming an identity for another PID.
 	if (!stat.startsWith(`${pid} (`)) return null;
 	const commandEnd = stat.lastIndexOf(")");
 	if (commandEnd < `${pid} (`.length || stat[commandEnd + 1] !== " ") return null;
@@ -213,16 +173,6 @@ function getWindowsProcessStartIdentity(pid: number, dependencies: ProcessIdenti
 	return fileTime > 0n && fileTime <= 0xffffffffffffffffn ? `win32:${fileTime}` : null;
 }
 
-/**
- * Return an OS-verifiable boot + start identity for one incarnation of `pid`.
- *
- * Linux uses procfs boot UUID/start ticks, macOS combines bounded `sysctl`
- * boot time with native `proc_pidinfo` start time, and Windows calls
- * `OpenProcess`/`GetProcessTimes` directly. Native calls use Bun FFI; no path
- * constructs or invokes a command shell. A
- * failed or malformed query returns `null`, which destructive callers treat as
- * unverifiable and live.
- */
 export function getProcessStartIdentity(
 	pid: number,
 	dependencies: ProcessIdentityDependencies = DEFAULT_PROCESS_IDENTITY_DEPENDENCIES,
@@ -244,14 +194,6 @@ export function getProcessStartIdentity(
 	}
 }
 
-/**
- * Whether `pid` is still the same process incarnation recorded by an owner.
- *
- * Missing identity support or an unreadable process record is deliberately
- * treated as alive. Destructive recovery is allowed only when death or PID
- * reuse is proven; an EPERM/sandbox failure therefore costs availability, not
- * mutual exclusion.
- */
 export function isProcessInstanceAlive(
 	pid: number,
 	expectedIdentity: string | null,

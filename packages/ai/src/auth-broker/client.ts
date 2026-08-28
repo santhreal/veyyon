@@ -1,10 +1,3 @@
-/**
- * HTTP client for the veyyon auth-broker server.
- *
- * Used by {@link RemoteAuthCredentialStore} (snapshot pulls) and by
- * `veyyon auth-broker status` (liveness checks). All endpoints except
- * `/v1/healthz` require a bearer token.
- */
 import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import { readSseEvents } from "@veyyon/utils/stream";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
@@ -30,15 +23,10 @@ import type {
 import { wireSchemas } from "./wire-schemas";
 
 export interface AuthBrokerClientOptions {
-	/** Base URL (e.g. `https://broker.tailnet:8765`). Trailing slashes are trimmed. */
 	url: string;
-	/** Bearer token used for everything except `healthz`. */
 	token: string;
-	/** Per-request timeout in milliseconds. Default 10s. */
 	timeoutMs?: number;
-	/** Retry connection errors this many times. Default 1. */
 	maxRetries?: number;
-	/** Override fetch (used in tests). Default global `fetch`. */
 	fetchImpl?: typeof fetch;
 }
 
@@ -111,15 +99,6 @@ export class AuthBrokerClient {
 		return { status: 200, snapshot, generation: etagGeneration ?? snapshot.generation };
 	}
 
-	/**
-	 * Subscribe to the broker's SSE snapshot stream. The first frame is always
-	 * a full `snapshot`; subsequent frames are `entry` upserts / refreshes or
-	 * `removed` deletes. Caller controls lifecycle via `opts.signal`.
-	 *
-	 * Throws {@link AuthBrokerStreamUnsupportedError} when the broker responds
-	 * 404 — older brokers predate this endpoint and the caller should fall back
-	 * to long-polling for the remainder of its lifetime.
-	 */
 	async *openSnapshotStream(opts: { signal?: AbortSignal } = {}): AsyncGenerator<SnapshotStreamEvent> {
 		const url = `${this.#baseUrl}/v1/snapshot/stream`;
 		const headers: Record<string, string> = {
@@ -129,18 +108,12 @@ export class AuthBrokerClient {
 		if (opts.signal?.aborted) {
 			throw new AuthBrokerError("Auth broker request aborted", { cause: opts.signal.reason });
 		}
-		// No timeout: this connection is intentionally long-lived. Caller's signal
-		// is the only cancel path.
 		const response = await this.#fetch(url, { method: "GET", headers, signal: opts.signal });
 		if (response.status === 404) {
-			// Drain the body so the socket can be reused; tiny payload. Nobody reads it, so a drain that fails
-			// costs one connection and has no bearing on the unsupported-stream error thrown next.
 			await response.text().catch(() => {});
 			throw new AuthBrokerStreamUnsupportedError();
 		}
 		if (!response.ok) {
-			// The STATUS is the failure, and it is thrown below with the body attached as context. A body that
-			// cannot be read must not replace a 500 with a read error, so it degrades to empty.
 			const text = await response.text().catch(() => "");
 			throw new AuthBrokerError(`Auth broker stream failed: ${response.status} ${response.statusText}`, {
 				status: response.status,
@@ -152,8 +125,6 @@ export class AuthBrokerClient {
 		}
 		const contentType = response.headers.get("content-type")?.toLowerCase();
 		if (contentType?.split(";", 1)[0].trim() !== "text/event-stream") {
-			// The content type is the failure and it is thrown next. Cancelling the body we will not read is a
-			// courtesy to the socket; its failure cannot change what is wrong with this response.
 			await response.body.cancel().catch(() => {});
 			throw new AuthBrokerError("Auth broker stream returned non-SSE response", {
 				status: response.status,
@@ -199,10 +170,6 @@ export class AuthBrokerClient {
 	}
 
 	fetchUsage(signal?: AbortSignal): Promise<UsageResponse> {
-		// Validates the envelope (`generatedAt`, `reports[].provider`, `limits`,
-		// `metadata`) but leaves provider-specific extension fields permissive so
-		// the broker can ship new shapes ahead of the client. `raw` is accepted
-		// but normally stripped by the broker before send.
 		return this.#request<UsageResponse>("GET", "/v1/usage", { schema: wireSchemas().usageResponseSchema, signal });
 	}
 
@@ -312,17 +279,12 @@ export class AuthBrokerClient {
 			headers["Content-Type"] = "application/json";
 		}
 
-		// Fast-fail when the caller's signal is already aborted — avoids spinning
-		// up a fetch + timer that the first `await` would just abort anyway.
 		if (opts.signal?.aborted) {
 			throw new AuthBrokerError("Auth broker request aborted", { cause: opts.signal.reason });
 		}
 
 		let lastError: unknown;
 		for (let attempt = 0; attempt <= this.#maxRetries; attempt += 1) {
-			// Per-attempt deadline. The scoped handle clears its timer on settle
-			// (a bare AbortSignal.timeout stays armed), and the fence spans the
-			// body read — a stalled stream is only interrupted by the armed signal.
 			const requestTimeout = scopedTimeoutSignal(opts.timeoutMs ?? this.#timeoutMs, opts.signal);
 			try {
 				const response = await this.#fetch(url, {
@@ -342,12 +304,10 @@ export class AuthBrokerClient {
 				return { status: response.status, headers: response.headers, text };
 			} catch (error) {
 				lastError = error;
-				// Caller-driven abort wins over retry — the caller said stop.
 				if (opts.signal?.aborted) {
 					throw new AuthBrokerError("Auth broker request aborted", { cause: opts.signal.reason });
 				}
 				if (error instanceof AuthBrokerError && error.status !== undefined) {
-					// HTTP errors (4xx/5xx) don't retry — caller knows what to do.
 					throw error;
 				}
 				if (attempt >= this.#maxRetries) break;

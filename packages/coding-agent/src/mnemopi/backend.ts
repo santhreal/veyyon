@@ -40,8 +40,6 @@ import {
 	setMnemopiSessionState,
 } from "./state";
 
-// `/diagnose` is the only user of this subpath; load it lazily alongside the
-// loaders in ./state to keep mnemopi off the CLI startup module graph.
 let mnemopiDiagnoseMod: typeof MnemopiDiagnoseNs | undefined;
 
 async function loadMnemopiDiagnose(): Promise<typeof MnemopiDiagnoseNs> {
@@ -101,9 +99,6 @@ export const mnemopiBackend: MemoryBackend = {
 	},
 
 	async buildDeveloperInstructions(_agentDir, settings): Promise<string | undefined> {
-		// The static instructions only. A recalled memory changes with the session,
-		// so it goes to the context tail through `buildVolatileContext` instead of
-		// rewriting the provider's cache prefix on every recall.
 		const rendered = STATIC_INSTRUCTIONS.trim();
 		if (!rendered) return undefined;
 		return truncateApproxTokens(rendered, settings.get("mnemopi.injectionTokenLimit"));
@@ -128,7 +123,6 @@ export const mnemopiBackend: MemoryBackend = {
 		const config = previous?.config ?? (session ? loadMnemopiConfig(session.settings, agentDir) : undefined);
 		if (!config) return;
 		await loadMnemopiCore();
-		// Close the cached default Mnemopi instance so its SQLite handle doesn't keep the DB files locked on Windows when removeDbFiles tries to delete.
 		requireMnemopiCore().resetMemoryForTests();
 		await Bun.sleep(0);
 		await removeDbFiles(getMnemopiScopedDbPaths(config));
@@ -444,7 +438,6 @@ async function loadMnemopiConfigWithProviders(
 	return config;
 }
 
-/** When mnemopi targets OpenRouter (its default embedding host) without a user-pinned key, hand it the central {@link ApiKeyResolver} so requests pick */
 async function openrouterKeyResolver(
 	modelRegistry: ModelRegistry,
 	sessionId: string,
@@ -456,7 +449,6 @@ async function openrouterKeyResolver(
 	return modelRegistry.resolver("openrouter", { sessionId });
 }
 
-/** A memory credential the operator configured, read through the ONE config-value grammar. `mnemopi.llmApiKey` and `mnemopi.embeddingApiKey` were handed to Mnemopi as raw setting text while every */
 async function resolveMemoryCredential(
 	configured: MnemopiProviderOptions["embeddingApiKey"],
 	describedAs: string,
@@ -486,7 +478,6 @@ async function resolveMnemopiProviderOptions(
 
 	if (config.llm.mode === "none") return base;
 
-	// A local on-device memory model (providers.memoryModel) overrides the smol/remote LLM for both consolidation and the configured extraction path. `none` still wins
 	const memoryModel = settings.get("providers.memoryModel");
 	if (memoryModel !== ONLINE_MEMORY_MODEL_KEY && isTinyMemoryLocalModelKey(memoryModel)) {
 		return {
@@ -534,7 +525,6 @@ async function resolveMnemopiProviderOptions(
 					});
 					return null;
 				}
-				// Keep Mnemopi's secret-free placeholder in the provider context. The fetch wrapper runs after completeSimple resolves credentials
 				const message = await completeSimple(
 					model,
 					{
@@ -620,12 +610,10 @@ export function getMnemopiDbDirForTests(session: AgentSession): string | undefin
 	return state ? path.dirname(state.config.dbPath) : undefined;
 }
 
-/** Best-effort removal of a SQLite DB file and its WAL/SHM sidecars. Windows keeps `-wal`/`-shm` busy briefly after the DB handle closes, so a */
 async function removeDbFiles(dbPaths: readonly string[]): Promise<void> {
 	for (const dbPath of dbPaths) {
 		for (const suffix of ["", "-wal", "-shm"]) {
 			await removeWithRetries(`${dbPath}${suffix}`).catch(error => {
-				// `force: true` already makes ENOENT a non-error; anything else after the full retry window means the DB is genuinely locked and
 				const code = typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
 				if (code !== "ENOENT") {
 					logger.warn("Mnemopi: failed to remove DB file after retries", { path: `${dbPath}${suffix}`, code });

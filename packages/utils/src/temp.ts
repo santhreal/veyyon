@@ -6,25 +6,6 @@ import * as logger from "./logger";
 import { sleepSync } from "./sleep";
 import { errorMessage } from "./type-guards";
 
-/**
- * Remove a temporary file or directory on a path that must not fail because of the removal.
- *
- * This is the shape that appears wherever code writes to a temp path and then either renames it into place
- * or throws: a failed clone is deleted before the clone error is raised, a rename that failed deletes its
- * temp file before recording the reason, a finished playback deletes its wav in a `finally`. In all of them
- * the operation's own error or result is what the caller needs, and a removal that threw would replace it
- * with something about the cleanup instead.
- *
- * What it must NOT do is stay quiet. These paths live in the system temp directory or a cache directory, and
- * one that cannot be removed stays there for good, accumulating an entry per failed attempt until a disk
- * fills with nothing to explain it. So the removal never throws and always reports, naming path and reason.
- *
- * `force: true` means a path that does not exist is not a failure, which is what every caller wants: cleanup
- * may run after a partial failure where the temp path was never created.
- *
- * @param target Absolute path to remove.
- * @param context Short label for the call site, e.g. `"completion-write-failed"`, so a log line is traceable.
- */
 export async function removeTempPath(target: string, context: string): Promise<void> {
 	try {
 		await fsPromises.rm(target, { recursive: true, force: true });
@@ -83,7 +64,6 @@ export class TempDir {
 		return path.join(this.#path, ...paths);
 	}
 
-	// Dispose must not throw; report removal errors through logger.
 	async [Symbol.asyncDispose](): Promise<void> {
 		try {
 			await this.remove();
@@ -109,24 +89,6 @@ export class TempDir {
 
 const kTempDir = os.tmpdir();
 
-/**
- * Turn a caller's prefix into the absolute path `mkdtemp` gets.
- *
- * A BARE NAME MEANS THE SYSTEM TEMP DIRECTORY, which is what every caller has always meant and
- * what this function used not to do. `mkdtemp` resolves a relative path against `process.cwd()`,
- * so `TempDir.createSync("secret-runtime-lifecycle-")` created its directory INSIDE THE REPOSITORY,
- * silently, and left it there when a test crashed before cleanup. Forty-six of them had accumulated
- * across the tree, thirty-six from one suite, and sixteen call sites were written this way. The
- * escape hatch was a leading `@`, which is undiscoverable: the safe spelling looked like a typo and
- * the dangerous one looked normal, so the trap was set for whoever wrote the next test.
- *
- * An ABSOLUTE path is still honoured exactly as given, because that is a caller stating where it
- * wants the directory rather than naming one. That is the only way to opt out now, and no caller in
- * this repository uses it, so nothing that was working changes.
- *
- * The leading `@` is still accepted and still means the same thing, since it is written at fifty-odd
- * call sites and they are all correct. It is redundant now rather than load-bearing.
- */
 function normalizePrefix(prefix?: string): string {
 	if (!prefix) {
 		return `${kTempDir}${path.sep}pi-temp-`;
@@ -140,13 +102,9 @@ function normalizePrefix(prefix?: string): string {
 
 const kRemoveOptions = { recursive: true, force: true } as const;
 const kRemoveRetries = 40;
-// 50ms × 40 retries = 2s total retry window. Windows holds file locks on
-// SQLite DBs for up to ~1.5s after close(); the previous 25ms (1s total)
-// was too short for some test cleanup scenarios.
 const kRemoveRetryDelayMs = 50;
 const kRetryableRemoveErrorCodes = new Set(["EBUSY", "EPERM", "ENOTEMPTY"]);
 
-/** Removes a path recursively, retrying transient Windows deletion failures. */
 export async function removeWithRetries(target: string): Promise<void> {
 	for (let attempt = 0; ; attempt++) {
 		try {

@@ -1,4 +1,3 @@
-/** High-level patch orchestrator. */
 import * as path from "node:path";
 import { truncate } from "@veyyon/utils/format";
 import { applyEdits, collectRewrittenAnchorLines } from "./apply";
@@ -27,48 +26,29 @@ import { Recovery, type RecoveryResult } from "./recovery";
 import type { Snapshot, SnapshotStore } from "./snapshots";
 import type { ApplyResult, BlockResolution, BlockResolver, Edit, FileOp } from "./types";
 
-/** Maximum unseen anchor lines revealed in rejection error. */
 const SEEN_LINE_REVEAL_CAP = 40;
 
-/** Per-revealed-line character limit. */
 const SEEN_LINE_REVEAL_MAX_COLUMNS = 512;
 
 export interface PatcherOptions {
-	/** Storage backend used for all reads and writes. */
 	fs: Filesystem;
-	/** Snapshot store that minted and resolves hashline section tags. Required. */
 	snapshots: SnapshotStore;
-	/** Tree-sitter block resolver. */
 	blockResolver?: BlockResolver;
 }
 
-/** Per-section result returned by {@link Patcher.apply} / {@link Patcher.commit}. */
 export interface PatchSectionResult {
-	/** Section path (as authored, after cwd-resolution at parse time). */
 	path: string;
-	/** Filesystem-canonical key for this section (e.g. absolute path). */
 	canonicalPath: string;
-	/** `"noop"` when the apply produced no change; `"delete"` removes the file; otherwise `"create"` / `"update"`. */
 	op: "create" | "update" | "delete" | "noop";
-	/** Pre-edit text (LF-normalized, BOM-stripped). */
 	before: string;
-	/** Post-edit text (LF-normalized, BOM-stripped). For `"noop"` equals `before`. */
 	after: string;
-	/** Same text as `after` but with the original BOM and line ending restored. */
 	persisted: string;
-	/** Final text that the {@link Filesystem} actually wrote (may differ if the FS transformed it). */
 	written: string;
-	/** 4-hex content-hash tag for `after`. Use to anchor follow-up edits. */
 	fileHash: string;
-	/** Hashline section header (`[path#tag]`) of the post-edit content. */
 	header: string;
-	/** 1-indexed first changed line in `after`, or `undefined` for noops. */
 	firstChangedLine?: number;
-	/** Warnings collected by the parser, applier, and (optionally) recovery. */
 	warnings: string[];
-	/** Destination path when this section includes `MV DEST`. */
 	moveDest?: string;
-	/** Resolved spans for replace_block/delete_block ops. */
 	blockResolutions?: BlockResolution[];
 }
 
@@ -76,9 +56,7 @@ export interface PatcherApplyResult {
 	sections: PatchSectionResult[];
 }
 
-/** Prepared section token holding parsed state and in-memory apply result. */
 export class PreparedSection {
-	/** @internal */
 	constructor(
 		readonly section: PatchSection,
 		readonly canonicalPath: string,
@@ -92,7 +70,6 @@ export class PreparedSection {
 		readonly fileOp: FileOp | undefined,
 	) {}
 
-	/** Convenience: returns true when the apply produced no change and no file op. */
 	get isNoop(): boolean {
 		return this.fileOp === undefined && this.applyResult.text === this.normalized;
 	}
@@ -119,7 +96,6 @@ function mergeWarnings(...sources: ReadonlyArray<readonly string[] | undefined>)
 	return out;
 }
 
-/** Assert that no two prepared sections target the same canonical file path. */
 export function assertUniqueCanonicalPaths(prepared: readonly PreparedSection[]): void {
 	const seen = new Map<string, string>();
 	for (const entry of prepared) {
@@ -133,7 +109,6 @@ export function assertUniqueCanonicalPaths(prepared: readonly PreparedSection[])
 	}
 }
 
-/** High-level patcher orchestrating filesystem and snapshot store. */
 export class Patcher {
 	readonly fs: Filesystem;
 	readonly snapshots: SnapshotStore;
@@ -150,7 +125,6 @@ export class Patcher {
 		this.blockResolver = options.blockResolver;
 	}
 
-	/** Apply every section in patch. */
 	async apply(patch: Patch): Promise<PatcherApplyResult> {
 		if (patch.sections.length === 1) {
 			const prepared = await this.prepare(patch.sections[0]);
@@ -185,7 +159,6 @@ export class Patcher {
 		return { sections: results };
 	}
 
-	/** Run preflight pass in memory without writing to filesystem. */
 	async preflight(patch: Patch): Promise<void> {
 		const prepared: PreparedSection[] = [];
 		for (const section of patch.sections) prepared.push(await this.prepare(section));
@@ -197,7 +170,6 @@ export class Patcher {
 		}
 	}
 
-	/** Read, parse, validate, and apply edits in memory. */
 	async prepare(section: PatchSection): Promise<PreparedSection> {
 		const parsed = section.parse();
 		const parseWarnings = parsed.warnings.slice();
@@ -283,7 +255,6 @@ export class Patcher {
 		);
 	}
 
-	/** Resolve missing authored path by matching filename and snapshot tag. */
 	#recoverSectionPathFromTag(
 		section: PatchSection,
 		originalCanonicalPath: string,
@@ -303,7 +274,6 @@ export class Patcher {
 		return { section: section.withPath(resolved), canonicalPath: this.fs.canonicalPath(resolved) };
 	}
 
-	/** Commit prepared section to filesystem. */
 	async commit(prepared: PreparedSection): Promise<PatchSectionResult> {
 		const { section, normalized, bom, lineEnding, parseWarnings, exists, applyResult, canonicalPath, fileOp } =
 			prepared;
@@ -409,7 +379,6 @@ export class Patcher {
 		return this.snapshots.record(canonicalPath, normalized);
 	}
 
-	/** Reject anchored edits referencing lines not seen in snapshot. */
 	#assertSeenLines(section: PatchSection, expected: string, matchedSnapshot: Snapshot | null): void {
 		const seen = matchedSnapshot?.seenLines;
 		if (!seen || seen.size === 0) return;
@@ -479,7 +448,6 @@ export class Patcher {
 	}): ApplyResult {
 		const { section, canonicalPath, exists, normalized, edits } = args;
 		const expected = exists ? section.fileHash : undefined;
-		// Derive snapshot match and verify live hash.
 		const storedSnapshotForTag = expected === undefined ? null : this.snapshots.byHash(canonicalPath, expected);
 		const liveMatches = expected !== undefined && computeFileHash(normalized) === expected;
 		const matchedSnapshot = liveMatches ? this.snapshots.byContent(canonicalPath, normalized) : null;

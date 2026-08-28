@@ -39,27 +39,22 @@ import type {
 } from "./types";
 import { computeUserMessageMetrics } from "./user-metrics";
 
-/** Classify agent type from session file path. */
 export function classifyAgentType(sessionPath: string): AgentType {
 	const base = path.basename(sessionPath);
 	if (isAdvisorTranscriptName(base)) {
 		return "advisor";
 	}
 	const rel = path.relative(getSessionsDir(), sessionPath);
-	// `<project>/<file>.jsonl` -> 2 segments. Deeper nesting is a subagent.
 	return rel.split(path.sep).length <= 2 ? "main" : "subagent";
 }
 
-/** Extract folder name from session path. */
 function extractFolderFromPath(sessionPath: string): string {
 	const sessionsDir = getSessionsDir();
 	const rel = path.relative(sessionsDir, sessionPath);
 	const projectDir = rel.split(path.sep)[0];
-	// Convert --work--veyyon to /work/veyyon
 	return projectDir.replace(/^--/, "/").replace(/--/g, "/");
 }
 
-/** Check if an entry is a linkable assistant message. */
 function isLinkableAssistantEntry(entry: SessionLogEntry): entry is SessionMessageEntry {
 	if (entry.type !== "message") return false;
 	const msgEntry = entry as SessionMessageEntry;
@@ -67,7 +62,6 @@ function isLinkableAssistantEntry(entry: SessionLogEntry): entry is SessionMessa
 	return msgEntry.message?.role === "assistant";
 }
 
-/** Check if an entry is a user message. */
 function isUserMessage(entry: SessionLogEntry): entry is SessionMessageEntry {
 	if (entry.type !== "message") return false;
 	const msgEntry = entry as SessionMessageEntry;
@@ -75,24 +69,20 @@ function isUserMessage(entry: SessionLogEntry): entry is SessionMessageEntry {
 	return msgEntry.message?.role === "user";
 }
 
-/** Check if an entry is a service-tier change. */
 function isServiceTierChange(entry: SessionLogEntry): entry is SessionServiceTierChangeEntry {
 	return entry.type === "service_tier_change";
 }
 
-/** Check if an entry is a tool-result message. */
 function isToolResultMessage(entry: SessionLogEntry): entry is SessionMessageEntry {
 	if (entry.type !== "message") return false;
 	return (entry as SessionMessageEntry).message?.role === "toolResult";
 }
 
-/** Get parentId of entry or null. */
 function entryParentId(entry: SessionLogEntry): string | null {
 	const parentId = (entry as { parentId?: unknown }).parentId;
 	return typeof parentId === "string" && parentId.length > 0 ? parentId : null;
 }
 
-/** Build user-message stats from an entry. */
 function extractUserStats(sessionFile: string, folder: string, entry: SessionMessageEntry): UserMessageStats | null {
 	const msg = entry.message as { role: "user"; content?: unknown; synthetic?: boolean };
 	if (msg.role !== "user" || msg.synthetic) return null;
@@ -118,7 +108,6 @@ function extractUserStats(sessionFile: string, folder: string, entry: SessionMes
 	};
 }
 
-/** Extract stats from an assistant message entry. */
 function extractStats(
 	sessionFile: string,
 	folder: string,
@@ -166,8 +155,6 @@ function extractStats(
 		timestamp: coerceEntryTimestamp(msg.timestamp, entry),
 		duration: msg.duration ?? null,
 		ttft: msg.ttft ?? null,
-		// A message persisted without a terminal stop reason never completed
-		// normally: classify by whether it carried an error.
 		stopReason: msg.stopReason ?? (msg.errorMessage ? "error" : "aborted"),
 		errorMessage: msg.errorMessage ?? null,
 		usage,
@@ -175,17 +162,12 @@ function extractStats(
 	};
 }
 
-/** Message timestamp, falling back to the entry's ISO timestamp, then 0. */
 function coerceEntryTimestamp(timestamp: number | undefined, entry: SessionMessageEntry): number {
 	if (typeof timestamp === "number" && Number.isFinite(timestamp)) return timestamp;
 	const ts = Date.parse(entry.timestamp);
 	return Number.isFinite(ts) ? ts : 0;
 }
 
-/**
- * Extract one {@link ToolCallStats} per `toolCall` content block of an
- * assistant message. Returns an empty array for turns without tool calls.
- */
 function extractToolCalls(
 	sessionFile: string,
 	folder: string,
@@ -206,9 +188,7 @@ function extractToolCalls(
 		let argsChars = 0;
 		try {
 			argsChars = JSON.stringify(block.arguments ?? {}).length;
-		} catch {
-			// Non-serializable arguments (shouldn't happen in persisted JSONL); size unknown.
-		}
+		} catch {}
 		return {
 			sessionFile,
 			entryId: entry.id,
@@ -225,7 +205,6 @@ function extractToolCalls(
 	});
 }
 
-/** Build result linkage for a toolResult entry. */
 function extractToolResultLink(sessionFile: string, entry: SessionMessageEntry): ToolResultLink | null {
 	const msg = entry.message as ToolResultMessage;
 	if (msg.role !== "toolResult" || typeof msg.toolCallId !== "string" || msg.toolCallId.length === 0) return null;
@@ -243,16 +222,13 @@ function extractToolResultLink(sessionFile: string, entry: SessionMessageEntry):
 	};
 }
 
-/** Decode a session log entry line. */
 function decodeSessionEntry(text: string): SessionLogEntry | undefined {
 	const parsed = tryParseJson<SessionLogEntry>(text);
 	return parsed !== null && typeof parsed === "object" ? parsed : undefined;
 }
 
-/** Skipped line representation. */
 type SkippedLine = JsonlByteSkip;
 
-/** Lenient session entry visitor. */
 function visitSessionEntriesLenient(
 	bytes: Uint8Array,
 	visit: (entry: SessionLogEntry) => void,
@@ -269,10 +245,8 @@ function parseSessionEntriesLenient(
 	return { entries: items, read };
 }
 
-/** Longest list of skipped-line offsets reported, so one corrupt file cannot flood the log. */
 const REPORTED_SKIPS_MAX = 20;
 
-/** Log warning for unparseable session lines. */
 function reportSkippedLines(sessionPath: string, skips: SkippedLine[], start: number): void {
 	if (skips.length === 0) return;
 	logger.warn("Session file has unparseable lines; their messages are missing from every statistic", {
@@ -290,7 +264,6 @@ function scanLastServiceTier(bytes: Uint8Array): ServiceTierByFamily | undefined
 	});
 	return currentServiceTier;
 }
-/** Parse session file incrementally from offset and extract statistics. */
 export interface ParseSessionResult {
 	stats: MessageStats[];
 	userStats: UserMessageStats[];
@@ -349,7 +322,6 @@ export async function parseSessionFile(sessionPath: string, fromOffset = 0): Pro
 			if (msgStats) stats.push(msgStats);
 			const calls = extractToolCalls(sessionPath, folder, entry, agentType);
 			for (let ci = 0; ci < calls.length; ci++) toolCalls.push(calls[ci]!);
-			// Link assistant's responding model back to the user message it answered.
 			const parentId = (entry as SessionMessageEntry).parentId;
 			if (parentId) {
 				const msg = entry.message as AssistantMessage;
@@ -368,7 +340,6 @@ export async function parseSessionFile(sessionPath: string, fromOffset = 0): Pro
 	return { stats, userStats, userLinks, toolCalls, toolResults, newOffset: start + read };
 }
 
-/** List all session directories. */
 export async function listSessionFolders(): Promise<string[]> {
 	const sessionsDir = getSessionsDir();
 	try {
@@ -384,7 +355,6 @@ export async function listSessionFolders(): Promise<string[]> {
 	}
 }
 
-/** List all session files in a folder. */
 export async function listSessionFiles(folderPath: string): Promise<string[]> {
 	try {
 		const entries = await fs.readdir(folderPath, { recursive: true, withFileTypes: true });
@@ -399,7 +369,6 @@ export async function listSessionFiles(folderPath: string): Promise<string[]> {
 	}
 }
 
-/** List all session files across all folders. */
 export async function listAllSessionFiles(): Promise<string[]> {
 	const folders = await listSessionFolders();
 	const allFiles: string[] = [];
@@ -412,10 +381,8 @@ export async function listAllSessionFiles(): Promise<string[]> {
 	return allFiles;
 }
 
-/** Maximum turn entries to walk back through for context. */
 const MAX_CONTEXT_ENTRIES = 500;
 
-/** Return entry with turn context walking back to triggering prompt. */
 export async function getSessionEntryWithContext(
 	sessionPath: string,
 	entryId: string,

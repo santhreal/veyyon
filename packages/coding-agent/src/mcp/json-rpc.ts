@@ -1,15 +1,12 @@
-/** MCP JSON-RPC 2.0 over HTTPS. Lightweight utilities for calling MCP servers directly via HTTP */
 import { logger, tryParseJson } from "@veyyon/utils";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import { mcpHttpFailureMessage } from "./transports/http-failure";
 import type { JsonRpcResponse } from "./types";
 
-/** Hard ceiling on a single MCP HTTP request when the caller provides no signal. */
 const MCP_DEFAULT_TIMEOUT_MS = 60_000;
 
 const SENSITIVE_QUERY_PARAM = /key|token|secret|auth/i;
 
-/** Redact credential-bearing query params (e.g. `exaApiKey`) so failed requests never write secrets to the persistent log file. */
 export function redactUrlForLog(url: string): string {
 	try {
 		const parsed = new URL(url);
@@ -18,12 +15,10 @@ export function redactUrlForLog(url: string): string {
 		}
 		return parsed.toString();
 	} catch {
-		// Unparseable URL — drop the query string entirely rather than risk leaking it.
 		return url.split("?")[0];
 	}
 }
 
-/** Parse SSE response format (lines starting with "data: ") */
 export function parseSSE(text: string): unknown {
 	const lines = text.split("\n");
 	for (const line of lines) {
@@ -33,24 +28,18 @@ export function parseSSE(text: string): unknown {
 			try {
 				const result = JSON.parse(data) as unknown;
 				if (result) return result;
-			} catch {
-				// Non-JSON data line (keep-alive/comment) — skip and keep scanning.
-			}
+			} catch {}
 		}
 	}
-	// Fallback: try parsing entire response as JSON
 	return tryParseJson(text);
 }
 
-/** Re-exported so callers of {@link callMcp} do not have to know it is declared next door. This module used to declare its OWN `JsonRpcResponse`, one directory from `types.ts`'s, with */
 export type { JsonRpcResponse } from "./types";
 
-/** Options controlling a single MCP JSON-RPC HTTP request. */
 export interface CallMcpOptions {
 	signal?: AbortSignal;
 }
 
-/** Call an MCP server with JSON-RPC 2.0 over HTTPS. @param url - Full MCP server URL (including any query parameters) @param method - JSON-RPC method name (e.g., "tools/list", "tools/call") @param params - Method parameters @param options - Optional transport controls such as cancellation. @returns Parsed JSON-RPC response */
 export async function callMCP<T = unknown>(
 	url: string,
 	method: string,
@@ -64,8 +53,6 @@ export async function callMCP<T = unknown>(
 		params: params ?? {},
 	};
 
-	// The fence must span the body read as well: an SSE-style MCP response can
-	// stall mid-stream, and only the armed signal interrupts `response.text()`.
 	const requestTimeout = options?.signal ? undefined : scopedTimeoutSignal(MCP_DEFAULT_TIMEOUT_MS);
 	let text: string;
 	try {
@@ -80,9 +67,6 @@ export async function callMCP<T = unknown>(
 		});
 
 		if (!response.ok) {
-			// The same builder the HTTP transport uses, so a direct `callMCP` and a
-			// transport request report the same failure the same way, with the same
-			// bound on the echoed body and the same per-status remedy.
 			const errorMsg = mcpHttpFailureMessage(redactUrlForLog(url), response.status, response.statusText);
 			logger.error(errorMsg, { url: redactUrlForLog(url), method, params });
 			throw new Error(errorMsg);

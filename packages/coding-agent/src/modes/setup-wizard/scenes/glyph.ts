@@ -17,14 +17,12 @@ const GLYPH_SAMPLES: Readonly<Record<SymbolPreset, string>> = {
 	ascii: "[ok]  [x]  >  +  [D]  +-+  |--  *  ->",
 };
 
-/** One picker row per preset; the description column shows live sample glyphs instead of prose. */
 const GLYPH_ITEMS: readonly SelectItem[] = GLYPH_PRESETS.map((preset, index) => ({
 	value: preset,
 	label: `${index + 1}  ${GLYPH_LABELS[preset]}`,
 	description: preset === "nerd" ? `${GLYPH_SAMPLES.nerd}  ╭─╮  ├─  ◆    ` : GLYPH_SAMPLES[preset],
 }));
 
-/** A live sample of real Veyyon chrome — status marks, a spinner frame, tree connectors, the file glyph, checkboxes and the prompt cursor — rendered with */
 function renderGlyphPreview(rows = Number.POSITIVE_INFINITY): string[] {
 	const spinner = theme.getSpinnerFrames("activity")[0] ?? "-";
 	const sep = theme.fg("dim", theme.sep.pipe);
@@ -39,7 +37,6 @@ function renderGlyphPreview(rows = Number.POSITIVE_INFINITY): string[] {
 		theme.fg("muted", `${theme.tree.last} ${theme.checkbox.unchecked} ${theme.icon.file} src/app.test.ts`),
 		`${theme.fg("dim", `${spinner} running tests…`)}    ${theme.fg("accent", `${theme.nav.cursor} ready`)}`,
 	];
-	// Trimmed from the tail on a short terminal, and dropped whole rather than left as a "Preview" heading over nothing. The three picker rows carry live
 	if (rows < 2) return [];
 	return sample.slice(0, rows);
 }
@@ -50,11 +47,8 @@ class GlyphSceneController implements SetupSceneController {
 	#selectList: SelectList;
 	#previewRequest = 0;
 	#committing = false;
-	/** The preset the step found, put back when it ends without a choice. */
 	readonly #originalPreset: SymbolPreset;
-	/** The most recent preview still in flight, so the restore on the way out cannot land BEFORE the preview it is undoing and be overwritten by it. */
 	#previewSettled: Promise<void> = Promise.resolve();
-	/** Render line where the select list begins. */
 	#listRowStart = 0;
 
 	constructor(private readonly host: SetupSceneHost) {
@@ -69,11 +63,9 @@ class GlyphSceneController implements SetupSceneController {
 		this.#selectList.onSelect = item => {
 			void this.#commit(item.value as SymbolPreset);
 		};
-		// Unreachable through the wizard, which owns Esc and ctrl+c and only hands Esc to a scene that claims it. Kept so the list is complete on its own
 		this.#selectList.onCancel = () => host.finish("skipped");
 	}
 
-	/** Put the glyph preset back when the step ends without a choice. Moving the highlight applies the preset to the WHOLE running UI, which is */
 	onUnmount(): Promise<void> {
 		if (this.#committing) return Promise.resolve();
 		this.#previewRequest += 1;
@@ -89,7 +81,6 @@ class GlyphSceneController implements SetupSceneController {
 		this.#selectList.invalidate();
 	}
 
-	/** Three presets never overflow three rows, so this list is not searchable today and this returns nothing. It is wired anyway: every scene that mounts */
 	escapeAction(): SetupKeyHint | undefined {
 		return filterEscapeHint(this.#selectList);
 	}
@@ -106,14 +97,12 @@ class GlyphSceneController implements SetupSceneController {
 		this.#selectList.handleInput(data);
 	}
 
-	/** Wheel moves the highlight (live preview); hover lights the row under the pointer; click confirms it. */
 	routeMouse(event: SgrMouseEvent, line: number, _col: number): void {
 		if (this.#committing) return;
 		routeSelectListMouse(this.#selectList, event, line - this.#listRowStart);
 	}
 
 	render(width: number, rows?: number): readonly string[] {
-		// The three preset rows are the step; the sample above them is how you judge them. At 80x24 the body budget is eight rows and preview plus
 		const preview = renderGlyphPreview(rows === undefined ? undefined : rows - GLYPH_ITEMS.length - 1);
 		const lines = preview.length > 0 ? preview.concat("") : [];
 		this.#listRowStart = lines.length;
@@ -134,7 +123,6 @@ class GlyphSceneController implements SetupSceneController {
 
 	#preview(preset: SymbolPreset): void {
 		const request = ++this.#previewRequest;
-		// Chained, not launched beside the previous one: each call mutates the one global preset, so two in flight leave the terminal in whichever finished
 		this.#previewSettled = this.#previewSettled.then(async () => {
 			await setSymbolPreset(preset);
 			if (request !== this.#previewRequest || this.#committing) return;

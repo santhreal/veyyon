@@ -1,6 +1,3 @@
-/**
- * Extension runner - executes extensions and manages their lifecycle.
- */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { CredentialDisabledEvent, ImageContent, Model, ProviderResponseMetadata } from "@veyyon/ai";
 import type { KeyId } from "@veyyon/tui";
@@ -60,7 +57,6 @@ import type {
 	UserPythonEventResult,
 } from "./types";
 
-/** Combined result from all before_agent_start handlers */
 interface BeforeAgentStartCombinedResult {
 	messages?: NonNullable<BeforeAgentStartEventResult["message"]>[];
 	systemPrompt?: string[];
@@ -75,7 +71,6 @@ export function testSetExtensionHandlerTimeoutMs(timeoutMs: number): void {
 	extensionHandlerTimeoutMs = timeoutMs;
 }
 
-/** Dedicated cap for `session_shutdown` handlers. The generic 30s budget is appropriate for events extensions can observe (e.g. `session_start`, */
 export const SESSION_SHUTDOWN_HANDLER_TIMEOUT_MS = 2_000;
 let sessionShutdownHandlerTimeoutMs = SESSION_SHUTDOWN_HANDLER_TIMEOUT_MS;
 
@@ -83,15 +78,12 @@ export function testSetSessionShutdownHandlerTimeoutMs(timeoutMs: number): void 
 	sessionShutdownHandlerTimeoutMs = timeoutMs;
 }
 
-/** Per-event handler budget. Defaults to the generic cap; `session_shutdown`
- *  uses its own short cap so teardown stays prompt. */
 function handlerTimeoutForEvent(eventType: string): number {
 	return eventType === "session_shutdown" ? sessionShutdownHandlerTimeoutMs : extensionHandlerTimeoutMs;
 }
 
 const EXTENSION_HANDLER_TIMEOUT = Symbol("extensionHandlerTimeout");
 
-/** Race `work` against a `timeoutMs` budget, clearing the pending timer the instant the work settles. */
 async function raceHandlerWithTimeout<T>(
 	work: Promise<T>,
 	timeoutMs: number,
@@ -108,7 +100,6 @@ async function raceHandlerWithTimeout<T>(
 
 const MAX_PENDING_CREDENTIAL_DISABLED = 32;
 
-/** Events handled by the generic emit() method. Events with dedicated emitXxx() methods are excluded for stronger type safety. */
 type RunnerEmitEvent = Exclude<
 	ExtensionEvent,
 	| ToolCallEvent
@@ -147,15 +138,12 @@ type RunnerEmitResult<TEvent extends RunnerEmitEvent> = TEvent extends { type: "
 						? SessionStopEventResult | undefined
 						: undefined;
 
-// Session-lifecycle handler types live once in session-handler-types (imported
-// above for local use); re-exported here to keep this module's public API stable.
 export type { BranchHandler, NavigateTreeHandler, NewSessionHandler };
 
 export type SwitchSessionHandler = (sessionPath: string) => Promise<{ cancelled: boolean }>;
 
 export type ShutdownHandler = () => void;
 
-/** Helper function to emit session_shutdown event to extensions. Returns true if the event was emitted, false if there were no handlers. */
 export async function emitSessionShutdownEvent(extensionRunner: ExtensionRunner | undefined): Promise<boolean> {
 	if (extensionRunner?.hasHandlers("session_shutdown")) {
 		await extensionRunner.emit({
@@ -197,7 +185,6 @@ const noOpUIContext: ExtensionUIContext = {
 
 export class ExtensionRunner {
 	#uiContext: ExtensionUIContext;
-	/** Registry id of the agent this runner drives, when it is a spawned subagent. Undefined for a root session, which needs no attribution: its prompts are */
 	#agentId: string | undefined;
 
 	#errorListeners: Set<ExtensionErrorListener> = new Set();
@@ -219,7 +206,6 @@ export class ExtensionRunner {
 	#getMemoryFn?: () => MemoryRuntimeContext | undefined;
 	#commandDiagnostics: Array<{ type: string; message: string; path: string }> = [];
 	#initialized = false;
-	/** Buffer for `credential_disabled` events received via {@link emitCredentialDisabled} before {@link initialize} has run. Drained through {@link emit} once initialize sets */
 	#pendingCredentialDisabled: CredentialDisabledEvent[] = [];
 
 	constructor(
@@ -236,12 +222,10 @@ export class ExtensionRunner {
 		this.#getMemoryFn = getMemory;
 	}
 
-	/** See {@link ExtensionRunner.agentId}. Called by the spawner before `initialize`. */
 	setAgentId(agentId: string): void {
 		this.#agentId = agentId;
 	}
 
-	/** Registry id of the spawned agent this runner drives; undefined at a root session. */
 	get agentId(): string | undefined {
 		return this.#agentId;
 	}
@@ -252,7 +236,6 @@ export class ExtensionRunner {
 		commandContextActions?: ExtensionCommandContextActions,
 		uiContext?: ExtensionUIContext,
 	): void {
-		// Copy actions into the shared runtime (all extension APIs reference this)
 		this.runtime.sendMessage = actions.sendMessage;
 		this.runtime.sendUserMessage = actions.sendUserMessage;
 		this.runtime.appendEntry = actions.appendEntry;
@@ -266,7 +249,6 @@ export class ExtensionRunner {
 		this.runtime.getSessionName = actions.getSessionName;
 		this.runtime.setSessionName = actions.setSessionName;
 
-		// Context actions (required)
 		this.#getModel = contextActions.getModel;
 		this.#isIdleFn = contextActions.isIdle;
 		this.#abortFn = contextActions.abort;
@@ -275,7 +257,6 @@ export class ExtensionRunner {
 		this.#getSystemPromptFn = contextActions.getSystemPrompt;
 		this.#obfuscateProviderTextFn = contextActions.obfuscateProviderText ?? (text => text);
 
-		// Command context actions (optional, only for interactive mode)
 		if (commandContextActions) {
 			this.#waitForIdleFn = commandContextActions.waitForIdle;
 			this.#newSessionHandler = commandContextActions.newSession;
@@ -290,7 +271,6 @@ export class ExtensionRunner {
 		this.#uiContext = uiContext ?? noOpUIContext;
 		this.#initialized = true;
 
-		// Drain events buffered by emitCredentialDisabled() before initialize ran. The spread adds the `type` discriminator — `event` is the pi-ai shape (no `type`).
 		const pending = this.#pendingCredentialDisabled.splice(0);
 		queueMicrotask(() => {
 			for (const event of pending) {
@@ -304,7 +284,6 @@ export class ExtensionRunner {
 		});
 	}
 
-	/** Forward a `credential_disabled` event from `AuthStorage` to extension handlers. If {@link initialize} has not yet run, the event is buffered and replayed once */
 	async emitCredentialDisabled(event: CredentialDisabledEvent): Promise<void> {
 		if (!this.#initialized) {
 			if (this.#pendingCredentialDisabled.length >= MAX_PENDING_CREDENTIAL_DISABLED) {
@@ -332,7 +311,6 @@ export class ExtensionRunner {
 		return this.extensions.map(e => e.path);
 	}
 
-	/** Get all registered tools from all extensions. */
 	getAllRegisteredTools(): RegisteredTool[] {
 		const tools: RegisteredTool[] = [];
 		for (const ext of this.extensions) {
@@ -343,7 +321,6 @@ export class ExtensionRunner {
 		return tools;
 	}
 
-	/** Aggregate the registered CLI flags across a set of extensions (last write wins on name collision). Static so callers that need the flag set before a */
 	static aggregateFlags(extensions: readonly LoadedExtension[]): Map<string, ExtensionFlag> {
 		const allFlags = new Map<string, ExtensionFlag>();
 		for (const ext of extensions) {
@@ -377,7 +354,6 @@ export class ExtensionRunner {
 		"ctrl+t": true,
 		"ctrl+g": true,
 		"alt+m": true,
-		// Default chord for `app.message.followUp` (Windows Terminal can't deliver Ctrl+Enter; #1903).
 		"ctrl+q": true,
 		"shift+tab": true,
 		"shift+ctrl+p": true,
@@ -404,9 +380,6 @@ export class ExtensionRunner {
 
 				const existing = allShortcuts.get(normalizedKey);
 				if (existing) {
-					// It warned and then overwrote anyway, so the loser was silent about
-					// losing. Say WHICH binding is live: with two extensions fighting,
-					// the last one loaded wins and neither path told the reader that.
 					logger.warn(
 						`Two extensions bind ${key}: ${existing.extensionPath} and ${shortcut.extensionPath}. ` +
 							`Only ${shortcut.extensionPath} is active for that key. ` +
@@ -522,9 +495,6 @@ export class ExtensionRunner {
 		};
 	}
 
-	/**
-	 * Request a graceful shutdown. Called by extension tools and event handlers.
-	 */
 	shutdown(): void {
 		this.#shutdownHandler();
 	}
@@ -595,7 +565,6 @@ export class ExtensionRunner {
 	}
 
 	async emit<TEvent extends RunnerEmitEvent>(event: TEvent): Promise<RunnerEmitResult<TEvent>> {
-		// Defer the per-event context allocation (and the Promise.race/Bun.sleep timeout machinery) to the first matching handler. Streaming sessions emit
 		let ctx: ExtensionContext | undefined;
 		let result: SessionBeforeEventResult | SessionCompactingResult | SessionStopEventResult | undefined;
 
@@ -697,7 +666,6 @@ export class ExtensionRunner {
 		};
 	}
 
-	/** Emit a `tool_call` event to every subscribed extension before the tool executes. Each handler is bounded by `extensionHandlerTimeoutMs` (default 30s). This */
 	async emitToolCall(event: ToolCallEvent): Promise<ToolCallEventResult | undefined> {
 		const ctx = this.createContext();
 		const timeoutMs = extensionHandlerTimeoutMs;
@@ -727,7 +695,6 @@ export class ExtensionRunner {
 						});
 						return {
 							block: true,
-							// READ BY THE MODEL, which can neither edit the extension nor disable it, so its remedy is to stop and say so. It used to
 							reason:
 								`The extension at ${ext.path} vets tool calls and did not answer within ${timeoutMs}ms, ` +
 								"so this call was blocked rather than run unchecked. Do not retry it; tell the operator " +
@@ -846,7 +813,6 @@ export class ExtensionRunner {
 		return { skillPaths, promptPaths, themePaths };
 	}
 
-	/** Emit input event. Transforms chain, "handled" short-circuits. */
 	async emitInput(
 		text: string,
 		images: ImageContent[] | undefined,
@@ -875,7 +841,6 @@ export class ExtensionRunner {
 	async emitContext(messages: AgentMessage[]): Promise<AgentMessage[]> {
 		const ctx = this.createContext();
 
-		// Check if any extensions actually have context handlers before cloning
 		let hasContextHandlers = false;
 		for (const ext of this.extensions) {
 			if (ext.handlers.get("context")?.length) {
@@ -889,9 +854,6 @@ export class ExtensionRunner {
 		try {
 			currentMessages = structuredClone(messages);
 		} catch {
-			// Messages may contain non-cloneable objects (e.g. in ToolResultMessage.details
-			// or ProviderPayload). Fall back to a shallow array clone — extensions should
-			// return new message arrays rather than mutating in place.
 			currentMessages = [...messages];
 		}
 
@@ -1002,8 +964,6 @@ export class ExtensionRunner {
 						messages.push(result.message);
 					}
 					if (result.systemPrompt !== undefined) {
-						// A bare string is one section. Extensions are plain JavaScript
-						// loaded at runtime, so this is a shape that really arrives.
 						currentSystemPrompt =
 							typeof result.systemPrompt === "string" ? [result.systemPrompt] : result.systemPrompt;
 						systemPromptModified = true;

@@ -1,11 +1,6 @@
 import { type KeyId, parseKey } from "./keys";
 
-/**
- * Global keybinding registry.
- * Downstream packages can add keybindings via declaration merging.
- */
 export interface Keybindings {
-	// Editor navigation and editing
 	"tui.editor.cursorUp": true;
 	"tui.editor.cursorDown": true;
 	"tui.editor.cursorLeft": true;
@@ -27,14 +22,9 @@ export interface Keybindings {
 	"tui.editor.yank": true;
 	"tui.editor.yankPop": true;
 	"tui.editor.undo": true;
-	// Generic input actions
 	"tui.input.newLine": true;
 	"tui.input.submit": true;
 	"tui.input.tab": true;
-	// No `tui.input.copy`. The editor has no copy implementation, and it returns
-	// early on `ctrl+c` so the app-level interrupt keeps working, so the binding
-	// only ever told `/hotkeys` about a key that copies nothing.
-	// Generic selection actions
 	"tui.select.up": true;
 	"tui.select.down": true;
 	"tui.select.pageUp": true;
@@ -45,7 +35,6 @@ export interface Keybindings {
 
 export type Keybinding = keyof Keybindings;
 
-// Re-export KeyId from keys.ts
 export type { KeyId };
 
 export interface KeybindingDefinition {
@@ -337,7 +326,6 @@ export function getKeybindings(): KeybindingsManager {
 	return globalKeybindings;
 }
 
-/** Clear the process-global keybindings singleton. */
 export function resetKeybindingsForTests(): void {
 	globalKeybindings = null;
 }

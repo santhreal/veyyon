@@ -1,9 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Direct pipeline runner — executes a swarm pipeline outside of the TUI.
- *
- * Usage: bun cli.ts <path-to-yaml>
- */
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -33,14 +28,12 @@ console.log(`Mode: ${def.mode}`);
 console.log(`Target count: ${def.targetCount}`);
 console.log(`Agents: ${Array.from(def.agents.keys()).join(", ")}`);
 
-// Validate
 const errors = validateSwarmDefinition(def);
 if (errors.length > 0) {
 	console.error("Validation errors:", errors);
 	process.exit(1);
 }
 
-// Build DAG
 const deps = buildDependencyGraph(def);
 const cycles = detectCycles(deps);
 if (cycles) {
@@ -50,7 +43,6 @@ if (cycles) {
 const waves = buildExecutionWaves(deps);
 console.log(`Waves: ${waves.map((w, i) => `W${i + 1}:[${w.join(",")}]`).join(" -> ")}`);
 
-// Resolve workspace
 const workspace = path.isAbsolute(def.workspace)
 	? def.workspace
 	: path.resolve(path.dirname(resolvedPath), def.workspace);
@@ -58,20 +50,16 @@ const workspace = path.isAbsolute(def.workspace)
 await fs.mkdir(workspace, { recursive: true });
 console.log(`Workspace: ${workspace}`);
 
-// Initialize
 const stateTracker = new StateTracker(workspace, def.name);
 await stateTracker.init(Array.from(def.agents.keys()), def.targetCount, def.mode);
 
-// Auth + settings
 const authStorage = await discoverAuthStorage();
 const modelRegistry = new ModelRegistry(authStorage);
 const settings = Settings.isolated();
 
-// Progress display
 let lastProgressDump = 0;
 const PROGRESS_INTERVAL_MS = 5000;
 
-// Run
 console.log("\n--- Pipeline starting ---\n");
 
 const controller = new PipelineController(def, waves, stateTracker);
@@ -101,6 +89,5 @@ if (result.errors.length > 0) {
 }
 console.log(`\nState saved to: ${stateTracker.swarmDir}`);
 
-// Final state dump
 const lines = renderSwarmProgress(stateTracker.state);
 console.log(lines.join("\n"));

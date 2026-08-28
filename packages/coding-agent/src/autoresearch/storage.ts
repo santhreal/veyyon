@@ -5,7 +5,6 @@ import { errorMessage, getAutoresearchDbPath, getAutoresearchProjectDir, logger,
 import * as git from "../utils/git";
 import type { ASIData, ExperimentStatus, MetricDirection, NumericMetricMap } from "./types";
 
-/** Encode an absolute project path into a single filesystem-safe segment. Used to key per-project autoresearch state under `~/.veyyon/autoresearch/`. */
 function encodeProjectKey(repoRoot: string): string {
 	return `--${repoRoot.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
 }
@@ -254,7 +253,6 @@ export class AutoresearchStorage {
 		this.#projectDir = projectDir;
 		fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 		this.#db = new Database(dbPath);
-		// Install the busy handler BEFORE any lock-taking statement. See #2421.
 		this.#db.run("PRAGMA busy_timeout = 5000");
 		this.#db.run(SCHEMA_SQL);
 		const versionRow = this.#db.query("PRAGMA user_version").get() as { user_version: number } | null;
@@ -285,9 +283,6 @@ export class AutoresearchStorage {
 	}
 
 	getActiveSessionForBranch(branch: string | null): SessionRow | null {
-		// Most-recent active session whose recorded branch matches the caller's branch.
-		// `branch === null` means "no git repo / no branch info" — treat null on both
-		// sides as a match.
 		if (branch === null) {
 			const stmt = this.#db.prepare<SessionDbRow, []>(
 				"SELECT * FROM sessions WHERE closed_at IS NULL AND branch IS NULL ORDER BY id DESC LIMIT 1",
@@ -654,7 +649,6 @@ function parseStatus(value: string | null): ExperimentStatus | null {
 	return null;
 }
 
-/** A JSON string array out of a storage column, or `[]` when the column does not hold one. Empty is what an experiment with no scope paths, no off-limits paths and no pre-run dirty paths */
 function parseStringArray(json: string): string[] {
 	try {
 		const parsed = JSON.parse(json) as unknown;
@@ -677,9 +671,6 @@ function parseNumericMetricMap(json: string | null): NumericMetricMap | null {
 		}
 		return out;
 	} catch {
-		// Null is distinct from `{}` here and the callers rely on it: null means this run recorded no
-		// secondary metrics at all, while an empty object means it recorded a metric map that turned out to
-		// hold none. Same provenance as `parseStringArray` above -- this column is written by this module.
 		return null;
 	}
 }

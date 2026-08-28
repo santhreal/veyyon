@@ -3,10 +3,6 @@ const MIN = 60 * SEC;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 
-/**
- * Format a duration in milliseconds to a short human-readable string.
- * Examples: "123ms", "1.5s", "30m15s", "2h30m", "3d2h"
- */
 export function formatDuration(ms: number): string {
 	if (!Number.isFinite(ms) || ms <= 0) return "0ms";
 	if (ms < SEC) return `${ms}ms`;
@@ -26,13 +22,6 @@ export function formatDuration(ms: number): string {
 	return hours > 0 ? `${days}d${hours}h` : `${days}d`;
 }
 
-/**
- * Format an elapsed duration as a live colon clock, seconds-precise:
- * `0:07`, `12:34`, `1:02:03`. This is the house style for TICKING clocks
- * (pause hold, working-task elapsed, session elapsed) where a stable, widening
- * digital readout beats formatDuration's compound unit style ("3m20s"), which
- * suits one-shot completed durations.
- */
 export function formatClock(ms: number): string {
 	const totalSeconds = Number.isFinite(ms) ? Math.max(0, Math.floor(ms / SEC)) : 0;
 	const seconds = totalSeconds % 60;
@@ -42,21 +31,11 @@ export function formatClock(ms: number): string {
 	return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-/**
- * Format a number with K/M/B suffix for compact display.
- * Uses 1 decimal for small leading digits when non-zero, rounded otherwise.
- * Examples: "999", "1K", "1.5K", "25K", "1M", "1.5M", "25M", "1.5B"
- */
 export function formatNumber(n: number): string {
-	// Guard non-finite input so a NaN/Infinity never renders as "NaNB"/"InfinityB",
-	// matching formatCount/formatDuration. Signed negatives pass through with their
-	// sign (like formatCount), since a negative delta is a legitimate display value.
 	if (!Number.isFinite(n)) return "0";
 	if (n < 1_000) return n.toString();
 	if (n < 10_000) return `${trim1(n / 1_000)}K`;
 	if (n < 1_000_000) {
-		// Math.round can lift a value just under 1M (e.g. 999_500) to 1000, which
-		// must render as "1M", not "1000K"; the same rolls "1000M" up to "1B" below.
 		const k = Math.round(n / 1_000);
 		return k < 1_000 ? `${k}K` : "1M";
 	}
@@ -69,25 +48,14 @@ export function formatNumber(n: number): string {
 	return `${Math.round(n / 1_000_000_000)}B`;
 }
 
-/** Format with up to 1 decimal place, dropping trailing `.0`. */
 function trim1(n: number): string {
 	const s = n.toFixed(1);
 	return s.endsWith(".0") ? s.slice(0, -2) : s;
 }
 
-/**
- * Format a byte count to a human-readable string.
- * Examples: "512B", "1.5KB", "2.3MB", "1.2GB"
- */
 export function formatBytes(bytes: number): string {
-	// Guard non-finite input so a NaN/Infinity never renders as "NaNGB"/"InfinityGB"
-	// (same house convention as formatCount/formatDuration). Signed negatives pass
-	// through, since a byte-count delta can legitimately be negative.
 	if (!Number.isFinite(bytes)) return "0B";
 	if (bytes < 1024) return `${bytes}B`;
-	// Promote while the 1-decimal render would round up to a full 1024 of the
-	// current unit (e.g. 1_048_575 is 1023.999 KB → "1.0MB", not "1024.0KB"),
-	// capping at GB. Negatives already returned above, so `value` is positive.
 	const units = ["KB", "MB", "GB"];
 	let value = bytes / 1024;
 	let unit = 0;
@@ -98,12 +66,6 @@ export function formatBytes(bytes: number): string {
 	return `${value.toFixed(1)}${units[unit]}`;
 }
 
-/**
- * Truncate a string to maxLen characters, appending an ellipsis if truncated.
- * Counts and cuts by code point, not UTF-16 code unit, so truncation can never
- * split an astral character (emoji, rare CJK) into a lone surrogate.
- * For display-width-aware truncation (terminals), use truncateToWidth from @veyyon/tui.
- */
 export function truncate(str: string, maxLen: number, ellipsis = "…"): string {
 	if (str.length <= maxLen) return str;
 	const chars = Array.from(str);
@@ -112,23 +74,12 @@ export function truncate(str: string, maxLen: number, ellipsis = "…"): string 
 	return `${chars.slice(0, sliceLen).join("")}${ellipsis}`;
 }
 
-/**
- * Format count with pluralized label (e.g., "3 files", "1 error").
- */
 export function formatCount(label: string, count: number): string {
 	const safeCount = Number.isFinite(count) ? count : 0;
 	return `${safeCount} ${pluralize(label, safeCount)}`;
 }
 
-/**
- * Format age from seconds to human-readable string.
- */
 export function formatAge(ageSeconds: number | null | undefined): string {
-	// A negative age means a future timestamp (bad data or timezone skew). Treat
-	// it as unknown rather than letting it fall through every branch to "just
-	// now", which would mislabel a future-dated item as freshly published. This
-	// matches the sibling renderers that already guard `< 0` (the export/html
-	// view and workspace-tree's `Math.max(0, ...)`).
 	if (!ageSeconds || ageSeconds < 0) return "";
 	const mins = Math.floor(ageSeconds / 60);
 	const hours = Math.floor(mins / 60);
@@ -144,9 +95,6 @@ export function formatAge(ageSeconds: number | null | undefined): string {
 	return "just now";
 }
 
-/**
- * Pluralize a label based on the count.
- */
 export function pluralize(label: string, count: number): string {
 	if (count === 1) return label;
 	if (/(?:ch|sh|s|x|z)$/i.test(label)) return `${label}es`;
@@ -154,32 +102,11 @@ export function pluralize(label: string, count: number): string {
 	return `${label}s`;
 }
 
-/**
- * `4 more lines`, and `1 more line` when there is one of them.
- *
- * WHY THIS HAS AN OWNER. Nineteen surfaces write this phrase: every collapsed tool
- * block, the read tool's continuation notice, the edit preview, the LSP hover, the
- * MCP and eval renderers, the Agent Control Center's comms fold. Every one of them
- * wrote `${n} more lines` inline, so every one of them said "1 more lines" on the
- * commonest case of all, a block that hid exactly one line.
- *
- * It returns the COUNTED PHRASE only, without the leading ellipsis or the trailing
- * expand hint, because the surfaces frame it differently on purpose: some wrap it in
- * parentheses, some in brackets with a continuation offset, some append the expand
- * key. Folding the decoration in would force nineteen callers to share a shape they
- * do not share, which is how a helper gets copied instead of called.
- */
 export function formatMoreLines(count: number): string {
 	return `${count} more ${pluralize("line", count)}`;
 }
 
-/**
- * Format a ratio as a percentage.
- */
 export function formatPercent(ratio: number): string {
-	// A ratio of 0/0 is NaN; guard so it renders "0.0%" rather than "NaN%",
-	// matching the non-finite handling of the other formatters. The value range is
-	// not clamped (a ratio above 1 legitimately renders above 100%).
 	if (!Number.isFinite(ratio)) return "0.0%";
 	return `${(ratio * 100).toFixed(1)}%`;
 }

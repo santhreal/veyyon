@@ -22,7 +22,6 @@ export class AgentsSceneController implements SetupSceneController {
 	#list: SelectList;
 	#committing = false;
 	#listRowStart = 0;
-	/** Rows the wizard last offered this scene's body; see `render`. */
 	#rows = MAX_VISIBLE;
 
 	constructor(
@@ -36,7 +35,6 @@ export class AgentsSceneController implements SetupSceneController {
 	}
 
 	#buildList(selectedIndex: number): SelectList {
-		// No description column. Every role's description is a full sentence that cannot fit beside the name at this width: inline it arrived cut
 		const items: SelectItem[] = this.agents.map(agent => ({
 			value: agent.name,
 			label: `${this.#selected.has(agent.name) ? theme.checkbox.checked : theme.checkbox.unchecked} ${agent.name}`,
@@ -50,7 +48,6 @@ export class AgentsSceneController implements SetupSceneController {
 		return list;
 	}
 
-	/** The highlighted row's full description, wrapped, under the list. */
 	#renderDetail(width: number, budget: number): string[] {
 		if (budget <= 1) return [];
 		const value = this.#list.getSelectedItem()?.value;
@@ -105,12 +102,10 @@ export class AgentsSceneController implements SetupSceneController {
 		this.#list.invalidate();
 	}
 
-	/** More roles than the step has rows makes this list searchable, and its Esc clears the filter. Unclaimed, that Esc left onboarding instead, discarding */
 	escapeAction(): SetupKeyHint | undefined {
 		return filterEscapeHint(this.#list);
 	}
 
-	/** Space is this scene's real verb: rows are toggled, not picked once. */
 	keyHints(): readonly SetupKeyHint[] {
 		return [
 			{ keys: "↑↓", label: "select" },
@@ -137,7 +132,6 @@ export class AgentsSceneController implements SetupSceneController {
 	}
 
 	render(width: number, rows?: number): readonly string[] {
-		// One wrapped line, not two clipped ones. Both rows used to run past the 72-column content column at an 80-column terminal ("the model may
 		const lines = [
 			...wrapTextWithAnsi(
 				"Disabled roles stay with the main agent. Change this later in Settings → Subagents.",
@@ -146,8 +140,6 @@ export class AgentsSceneController implements SetupSceneController {
 			"",
 		];
 		this.#listRowStart = lines.length;
-		// The detail block gets a fixed slice of the budget so the list does not
-		// grow into it and push it off-screen; the list takes what is left.
 		const detailBudget = 4;
 		if (rows !== undefined) {
 			this.#rows = Math.max(1, rows - lines.length - detailBudget);
@@ -161,7 +153,6 @@ export class AgentsSceneController implements SetupSceneController {
 	}
 }
 
-/** Roles carried from `shouldRun`, which `selectSetupScenes` always runs first, to `mount`, which is sync. */
 const discoveredAgents = new WeakMap<SetupWizardContext, AgentDefinition[]>();
 
 export const agentsSetupScene: SetupScene = {

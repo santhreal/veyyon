@@ -1,5 +1,3 @@
-/** Keyboard input handling for legacy terminal sequences and Kitty keyboard protocol. */
-
 import type { KeyEventType } from "@veyyon/natives";
 import {
 	matchesKey as matchesKeyNative,
@@ -13,19 +11,9 @@ function isWindowsTerminalSession(): boolean {
 	);
 }
 
-/**
- * Raw 0x08 (BS) is ambiguous in legacy terminals.
- *
- * - Windows Terminal uses it for Ctrl+Backspace.
- * - Some legacy terminals and tmux setups send it for plain Backspace.
- *
- * Prefer explicit Kitty / CSI-u / modifyOtherKeys sequences whenever they are
- * available. Fall back to a Windows Terminal heuristic only for raw BS bytes.
- */
 function matchesRawBackspace(data: string, expectedModifier: number): boolean {
 	if (data === "\x7f") return expectedModifier === 0;
 	if (data !== "\x08") return false;
-	// On Windows Terminal, 0x08 = Ctrl+Backspace. On others, it's plain Backspace.
 	return isWindowsTerminalSession() ? expectedModifier === 4 : expectedModifier === 0;
 }
 
@@ -33,17 +21,10 @@ export { isWindowsTerminalSession, matchesRawBackspace };
 
 let kittyProtocolActive = false;
 
-/**
- * Set the global Kitty keyboard protocol state.
- * Called by ProcessTerminal after detecting protocol support.
- */
 export function setKittyProtocolActive(active: boolean): void {
 	kittyProtocolActive = active;
 }
 
-/**
- * Query whether Kitty keyboard protocol is currently active.
- */
 export function isKittyProtocolActive(): boolean {
 	return kittyProtocolActive;
 }
@@ -150,13 +131,8 @@ type ModifiedKeyId<Key extends string, RemainingModifiers extends ModifierName =
 	[M in RemainingModifiers]: `${M}+${Key}` | `${M}+${ModifiedKeyId<Key, Exclude<RemainingModifiers, M>>}`;
 }[RemainingModifiers];
 
-/**
- * Union type of all valid key identifiers.
- * Provides autocomplete and catches typos at compile time.
- */
 export type KeyId = BaseKey | ModifiedKeyId<BaseKey>;
 
-/** Typed helper for constructing key identifiers with autocomplete. */
 export const Key = {
 	escape: "escape",
 	esc: "esc",
@@ -247,9 +223,6 @@ interface ParsedKittySequence {
 	eventType?: KeyEventType;
 }
 
-// Regex for Kitty protocol event type detection
-// Matches CSI sequences with :2 (repeat) or :3 (release) event type
-// Format: \x1b[...;modifier:event_type<terminator> where terminator is u, ~, or A-F/H
 const KITTY_RELEASE_PATTERN = /^\x1b\[[\d:;]*:3[u~ABCDHF]$/;
 const KITTY_REPEAT_PATTERN = /^\x1b\[[\d:;]*:2[u~ABCDHF]$/;
 const KITTY_CSI_U_PATTERN = /^\x1b\[(\d+)(?::(\d*))?(?::(\d+))?(?:;(\d+))?(?::(\d+))?(?:;([\d:]*))?u$/;
@@ -281,43 +254,27 @@ const KITTY_NUMPAD_TEXT: Record<number, string> = {
 	57409: ".",
 };
 
-/**
- * Check if the input is a key release event.
- * Only meaningful when Kitty keyboard protocol with flag 2 is active.
- * Returns false if Kitty protocol is not active.
- */
 export function isKeyRelease(data: string): boolean {
-	// Only detect release events when Kitty protocol is active
 	if (!kittyProtocolActive) {
 		return false;
 	}
 
-	// Don't treat bracketed paste content as key release
 	if (data.includes("\x1b[200~")) {
 		return false;
 	}
 
-	// Match the full CSI sequence pattern for release events
 	return KITTY_RELEASE_PATTERN.test(data);
 }
 
-/**
- * Check if the input is a key repeat event.
- * Only meaningful when Kitty keyboard protocol with flag 2 is active.
- * Returns false if Kitty protocol is not active.
- */
 export function isKeyRepeat(data: string): boolean {
-	// Only detect repeat events when Kitty protocol is active
 	if (!kittyProtocolActive) {
 		return false;
 	}
 
-	// Don't treat bracketed paste content as key repeat
 	if (data.includes("\x1b[200~")) {
 		return false;
 	}
 
-	// Match the full CSI sequence pattern for repeat events
 	return KITTY_REPEAT_PATTERN.test(data);
 }
 
@@ -370,9 +327,6 @@ function decodeKittyPrintable(data: string): string | undefined {
 			try {
 				return String.fromCodePoint(...codepoints);
 			} catch {
-				// A codepoint outside Unicode's range is not text, so this key produces no text: undefined
-				// means "not printable input", exactly as it does for the control keys filtered above, and the
-				// key is then matched as a binding instead.
 				return undefined;
 			}
 		}
@@ -399,18 +353,10 @@ function decodeKittyPrintable(data: string): string | undefined {
 	try {
 		return String.fromCodePoint(effectiveCodepoint);
 	} catch {
-		// Same as above: an out-of-range codepoint yields no text, and undefined is the "not printable"
-		// answer the caller already handles for every non-text key.
 		return undefined;
 	}
 }
 
-/**
- * Extract printable text from raw terminal input.
- *
- * Handles Kitty CSI-u text-producing keys so text-entry components can treat
- * keypad digits, keypad operators, and shifted symbols the same as direct character input.
- */
 export function extractPrintableText(data: string): string | undefined {
 	const printable = decodePrintableKey(data);
 	if (printable !== undefined) return printable;
@@ -423,10 +369,6 @@ interface ParsedModifyOtherKeysSequence {
 	modifier: number;
 }
 
-/**
- * Parse an xterm `modifyOtherKeys` format sequence: `CSI 27 ; modifiers ; keycode ~`.
- * Modifier values are 1-indexed in the wire format; we normalize to a 0-based bitmask.
- */
 function parseModifyOtherKeysSequence(data: string): ParsedModifyOtherKeysSequence | null {
 	const match = data.match(MODIFY_OTHER_KEYS_PATTERN);
 	if (!match) return null;
@@ -436,12 +378,6 @@ function parseModifyOtherKeysSequence(data: string): ParsedModifyOtherKeysSequen
 	return { codepoint, modifier: modValue - 1 };
 }
 
-/**
- * Decode an xterm modifyOtherKeys sequence into the printable character it represents.
- *
- * Only sequences with no modifiers or Shift alone produce text; Ctrl/Alt/Super combos
- * are treated as bindings, not text input.
- */
 function decodeModifyOtherKeysPrintable(data: string): string | undefined {
 	const parsed = parseModifyOtherKeysSequence(data);
 	if (!parsed) return undefined;
@@ -451,30 +387,15 @@ function decodeModifyOtherKeysPrintable(data: string): string | undefined {
 	try {
 		return String.fromCodePoint(parsed.codepoint);
 	} catch {
-		// Same as the Kitty decoders: no text for an out-of-range codepoint, so the sequence is treated as a
-		// binding rather than as input.
 		return undefined;
 	}
 }
 
-/**
- * Decode terminal input into the printable character it represents.
- *
- * Tries Kitty CSI-u first, then falls back to xterm modifyOtherKeys. Returns
- * undefined for control sequences and modifier-only events.
- */
 export function decodePrintableKey(data: string): string | undefined {
 	return decodeKittyPrintable(data) ?? decodeModifyOtherKeysPrintable(data);
 }
 
-/** Decode a Kitty CSI-u keypad sequence into the text it produces. */
 function decodeKittyKeypadText(data: string): string | undefined {
-	// Necessary condition for KITTY_CSI_U_PATTERN, which is anchored `^\x1b\[ ... u$`. This runs
-	// ahead of the native parser on EVERY keypress, and the regex has six capture groups, so
-	// without the guard a plain `a` pays for a full match that cannot succeed. Three charCodeAt
-	// calls reject every printable character and every legacy sequence. This is not a second
-	// answer to the same question: the pattern already requires exactly these three characters, so
-	// anything the guard rejects the regex would have rejected too.
 	if (data.charCodeAt(0) !== 0x1b || data.charCodeAt(1) !== 0x5b || data.charCodeAt(data.length - 1) !== 0x75) {
 		return undefined;
 	}
@@ -491,43 +412,26 @@ function matchesKeypadKey(data: string, keyId: KeyId): boolean | undefined {
 	return printable === keyId;
 }
 
-/** Whether input is a bare line feed (0x0A). */
 export function isLoneLineFeed(data: string): boolean {
 	return data === "\n";
 }
 
-/** Translate ambiguous bare line feed (0x0A) based on active protocol state. */
 const KITTY_SHIFT_ENTER_SEQUENCE = "\x1b[13;2u";
 
 function canonicalizeAmbiguousLineFeed(data: string): string | undefined {
 	return kittyProtocolActive && data === "\n" ? KITTY_SHIFT_ENTER_SEQUENCE : undefined;
 }
 
-/** Memoization cache for key parsing results to avoid FFI overhead on hot paths. */
 const MEMO_MAX_INPUT_LENGTH = 24;
-/**
- * Entry ceiling per memo. The live working set is tiny (the keys someone actually presses), so this is
- * a runaway guard rather than a tuning knob, and it is enforced by clearing the whole map instead of
- * evicting one entry: there is no LRU bookkeeping to get wrong, and re-warming costs one native call
- * per key that comes back.
- */
 const MEMO_MAX_ENTRIES = 4096;
 const parseCache = new Map<string, string | undefined>();
 const matchCache = new Map<string, boolean>();
 
-/**
- * Drop every memoized answer.
- *
- * Exported for tests that need to observe the native parser directly (see `test/key-memo.test.ts`).
- * Production code never needs it: the protocol mode is part of every cache key, so
- * `setKittyProtocolActive` does not invalidate anything.
- */
 export function clearKeyAnswerMemo(): void {
 	parseCache.clear();
 	matchCache.clear();
 }
 
-/** Match input data against a key identifier string. */
 export function matchesKey(data: string, keyId: KeyId): boolean {
 	if (data.length > MEMO_MAX_INPUT_LENGTH) {
 		return (
@@ -535,8 +439,6 @@ export function matchesKey(data: string, keyId: KeyId): boolean {
 			matchesKeyNative(canonicalizeAmbiguousLineFeed(data) ?? data, keyId, kittyProtocolActive)
 		);
 	}
-	// NUL separator written as an escape, not a raw byte: key ids never contain NUL, while a space would
-	// let `data: "a b"` with `keyId: "c"` and `data: "a"` with `keyId: "b c"` build one cache key.
 	const cacheKey = `${kittyProtocolActive ? "1" : "0"}${data}\u0000${keyId}`;
 	const cached = matchCache.get(cacheKey);
 	if (cached !== undefined) return cached;
@@ -548,7 +450,6 @@ export function matchesKey(data: string, keyId: KeyId): boolean {
 	return answer;
 }
 
-/** Parse terminal input and return a normalized key identifier. */
 export function parseKey(data: string): string | undefined {
 	if (data.length > MEMO_MAX_INPUT_LENGTH) {
 		return (
@@ -558,8 +459,6 @@ export function parseKey(data: string): string | undefined {
 		);
 	}
 	const cacheKey = `${kittyProtocolActive ? "1" : "0"}${data}`;
-	// `has` before `get`, because `undefined` -- "this input is not a key" -- is a real answer worth
-	// caching, and a `get`-only check would re-cross FFI for every unrecognized input.
 	if (parseCache.has(cacheKey)) return parseCache.get(cacheKey);
 	const answer =
 		decodeKittyKeypadText(data) ??

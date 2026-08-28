@@ -1,39 +1,14 @@
-/**
- * Default tab width (display / tab expansion) and per-file width from `.editorconfig`.
- * Mirrors former `veyyon-natives` `indent` + `text` default-tab-width behavior (no N-API).
- */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { isFsError } from "./fs-error";
 import * as logger from "./logger";
 import { errorMessage } from "./type-guards";
 
-/**
- * The bounds an `.editorconfig` value is clamped into on its way to an LSP formatting request.
- * They stay on this side of the FFI: no native text op ever sees them.
- *
- * `crates/veyyon-text` declares its own pair and clamps every width it is handed to that range,
- * so the two are not one value with two owners. Do not wire these into a native call expecting
- * the clamp to agree.
- */
 export const MIN_TAB_WIDTH = 1;
 export const MAX_TAB_WIDTH = 16;
 
-/**
- * The display tab width, and the one number that DOES cross the FFI: `packages/tui/src/utils.ts`
- * charges it per tab in `visibleWidth` and hands it to every native cut, slice, wrap and overlay.
- * The native side clamps what it is handed to its own maximum and the JS oracle does not, so a
- * value above that maximum makes the two disagree and every cut overflow the width it was cut to.
- * `packages/tui/test/tab-width-crosses-ffi.test.ts` is what fails when it does.
- */
 export const DEFAULT_TAB_WIDTH = 3;
 
-/**
- * Per-component path length cap on common filesystems (`NAME_MAX = 255` on
- * Linux ext4 / macOS APFS / Windows NTFS). Paths with components longer than
- * this cannot be opened at all, so editorconfig discovery short-circuits to
- * the default instead of running into `ENAMETOOLONG` from `readFileSync`.
- */
 const NAME_MAX_BYTES = 255;
 
 const EDITORCONFIG_NAME = ".editorconfig";
@@ -95,7 +70,6 @@ function fixUnclosedBraces(pattern: string): string {
 	return pattern;
 }
 
-/** Match `crates/veyyon-natives/src/glob_util.rs` `build_glob_pattern`. */
 function buildGlobPattern(globStr: string, recursive: boolean): string {
 	const normalized = globStr.replace(/\\/g, "/");
 	const pattern =
@@ -103,20 +77,8 @@ function buildGlobPattern(globStr: string, recursive: boolean): string {
 	return fixUnclosedBraces(pattern);
 }
 
-/** Patterns already reported as unusable, so each bad `.editorconfig` section is named once. */
 const reportedBadGlobs = new Set<string>();
 
-/**
- * Match a path against an `.editorconfig`-derived glob.
- *
- * The `catch` is defence in depth, not a known failure path: `Bun.Glob` accepts every malformed pattern
- * that was tried against it (unterminated classes and braces, reversed ranges, empty classes, and
- * patterns hundreds of thousands of characters long), and the common typo of an unclosed brace is
- * repaired by `fixUnclosedBraces` before it gets here. Should a pattern ever be refused, the answer has
- * to stay "does not match", because one bad section must not discard the rest of the file and this runs
- * on a format-on-write path that must not throw. That answer is indistinguishable from a valid pattern
- * that does not apply, so the pattern is named once rather than dropped silently.
- */
 function globMatches(pattern: string, relativePath: string): boolean {
 	try {
 		const g = new Bun.Glob(pattern);
@@ -201,10 +163,6 @@ function parseCachedEditorConfig(configPath: string): ParsedEditorConfig | undef
 	try {
 		content = fs.readFileSync(key, "utf8");
 	} catch (err) {
-		// editorconfig discovery is best-effort. Any filesystem error
-		// (`ENOENT`, `ENAMETOOLONG`, `ENOTDIR`, `EACCES`, `ELOOP`, `EINVAL`,
-		// …) means "no usable config at this path" — never a fatal condition
-		// for callers like the edit renderer that hand us arbitrary strings.
 		if (isFsError(err)) return undefined;
 		throw err;
 	}
@@ -220,7 +178,6 @@ function resolveFilePath(projectDir: string, file: string): string {
 	return path.normalize(path.resolve(projectDir, file));
 }
 
-/** Like `pathdiff::diff_paths` + forward slashes (see `indent.rs`). */
 function relativePathUnified(baseDir: string, absoluteFile: string): string {
 	const base = path.resolve(baseDir);
 	const file = path.resolve(absoluteFile);
@@ -316,27 +273,11 @@ function hasOverlongPathComponent(filePath: string): boolean {
 	return false;
 }
 
-/**
- * `.editorconfig`-derived formatting options for an LSP `textDocument/formatting` request.
- *
- * Both fields are absent when the resolved `.editorconfig` chain does not pin them, so callers
- * can layer their own fallbacks (content sniffing, project defaults) underneath. Returned values
- * are clamped to {@link MIN_TAB_WIDTH}..{@link MAX_TAB_WIDTH}.
- */
 export interface EditorConfigFormatting {
-	/** Effective indent width in columns, from `indent_size` or `tab_width`. */
 	tabSize?: number;
-	/** `true` for `indent_style = space`, `false` for `indent_style = tab` (or `indent_size = tab`). */
 	insertSpaces?: boolean;
 }
 
-/**
- * Resolve `.editorconfig` formatting hints for `file` without falling back to any default.
- *
- * Used by the LSP format-on-write path so a missing `.editorconfig` declaration falls through
- * to caller-provided defaults instead of clobbering the file with the renderer's
- * display tab width (issue #2329).
- */
 export function getEditorConfigFormatting(file?: string | null, projectDir?: string | null): EditorConfigFormatting {
 	if (file === undefined || file === null || file === "") {
 		return {};
@@ -345,9 +286,6 @@ export function getEditorConfigFormatting(file?: string | null, projectDir?: str
 	const cwd = projectDir ?? process.cwd();
 	const absoluteFile = resolveFilePath(cwd, file);
 
-	// NAME_MAX guard: editorconfig discovery is
-	// best-effort and must never escape as `ENAMETOOLONG` from a renderer's
-	// stray gibberish path.
 	if (hasOverlongPathComponent(absoluteFile)) {
 		return {};
 	}
@@ -370,9 +308,6 @@ export function getEditorConfigFormatting(file?: string | null, projectDir?: str
 	} else if (match.indentStyle === IndentStyle.Tab || match.indentSize?.kind === "tab") {
 		result.insertSpaces = false;
 	} else if (match.indentSize?.kind === "spaces") {
-		// `indent_size = <n>` without an explicit `indent_style` is universally
-		// read as "indent with N spaces" — both VSCode and Sublime infer
-		// `indent_style = space` in that case.
 		result.insertSpaces = true;
 	}
 

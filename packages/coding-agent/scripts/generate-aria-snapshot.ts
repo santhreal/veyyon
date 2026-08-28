@@ -1,22 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Regenerates the committed browser asset
- *
- *   src/tools/browser/aria/aria-snapshot.bundle.txt   ← bundled CJS module
- *
- * by fetching Playwright's injected ARIA-snapshot sources (pinned to
- * PLAYWRIGHT_TAG), wrapping them with a small entry, and bundling — all in a
- * throwaway temp dir. Only the bundle is committed; the upstream sources are NOT
- * vendored into the repo (no shipping both source + generated copies). This is a
- * dev-time, network-bound step, exactly like `generate-models`.
- *
- * The tab worker imports the `.txt` with `{ type: "text" }`, wraps it in a
- * `new Function` worker-side, and runs it via puppeteer's CDP evaluate (it
- * installs nothing on `window`). The committed output means binary and source
- * installs need no network or build step at runtime.
- *
- * Usage: bun scripts/generate-aria-snapshot.ts
- */
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -26,7 +8,6 @@ const RAW_BASE = `https://raw.githubusercontent.com/microsoft/playwright/${PLAYW
 
 const OUTPUT = path.join(import.meta.dir, "..", "src", "tools", "browser", "aria", "aria-snapshot.bundle.txt");
 
-// Upstream source path -> temp path (relative to the temp root).
 const VENDOR_FILES: Array<[string, string]> = [
 	["injected/src/ariaSnapshot.ts", "injected/ariaSnapshot.ts"],
 	["injected/src/roleUtils.ts", "injected/roleUtils.ts"],
@@ -37,11 +18,6 @@ const VENDOR_FILES: Array<[string, string]> = [
 	["isomorphic/yaml.ts", "isomorphic/yaml.ts"],
 ];
 
-// Entry wrapping the upstream modules. Always runs Playwright's `ai` mode so every
-// node carries a `[ref=eN]` id; matched nodes get an `_ariaRef` expando. Existing
-// expandos are cleared first so the fresh module's counter renumbers from e1
-// deterministically (refs are valid until the next snapshot). Installs nothing on
-// `window`.
 const ENTRY_SOURCE = `
 import { generateAriaTree, renderAriaTree } from "./injected/ariaSnapshot";
 
@@ -84,7 +60,6 @@ export function resolveAriaRef(ref: string): Element | null {
 async function main(): Promise<void> {
 	const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-aria-"));
 	try {
-		// Fetch pinned upstream sources into the temp dir.
 		for (const [src, dst] of VENDOR_FILES) {
 			const url = `${RAW_BASE}/${src}`;
 			const res = await fetch(url);
@@ -94,9 +69,6 @@ async function main(): Promise<void> {
 		const entry = path.join(tmp, "entry.ts");
 		await Bun.write(entry, ENTRY_SOURCE);
 
-		// The injected sources import isomorphic modules via the `@isomorphic/*`
-		// alias and the `yaml` package (type-only). Resolve the alias to the fetched
-		// copies and stub `yaml` (only referenced from erased `import type`).
 		const aliasPlugin: Bun.BunPlugin = {
 			name: "aria-vendor-alias",
 			setup(build) {

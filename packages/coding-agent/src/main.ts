@@ -1,5 +1,3 @@
-/** Main entry point for the coding agent CLI. This file handles CLI argument parsing and translates them into */
-
 import * as fsSync from "node:fs";
 import * as os from "node:os";
 import { createInterface } from "node:readline/promises";
@@ -111,28 +109,21 @@ export function writeStartupNotice(parsedArgs: Pick<Args, "mode">, text: string)
 	(parsedArgs.mode === "json" ? process.stderr : process.stdout).write(text);
 }
 
-/** How long the startup version check waits on the registry. Short on purpose: this runs while you are waiting to type, so a slow or */
 const STARTUP_VERSION_CHECK_TIMEOUT_MS = 5_000;
 
 async function checkForNewVersion(currentVersion: string): Promise<ReleaseInfo | undefined> {
 	if (!settings.get("startup.checkUpdate")) {
 		return undefined;
 	}
-	// Delegates to the single registry lookup and the single version comparator. This used to hand-roll both, which meant a launch made two round trips for
 	try {
 		const release = await getLatestRelease(STARTUP_VERSION_CHECK_TIMEOUT_MS);
 		return isNewerVersion(release.version, currentVersion) ? release : undefined;
 	} catch (error) {
-		// Not reachable, rate-limited, offline, or a version string we cannot
-		// order. None of that should interrupt a launch, but none of it is
-		// allowed to vanish either (Law 10).
 		logger.debug("Startup version check did not complete", { error: errorMessage(error) });
 		return undefined;
 	}
 }
 
-// Todo settings are caller-controlled in protocol modes. Do not host-default them:
-// embedders need project-level opt-outs for reminder/prelude prompt injection.
 const HOST_DEFAULTED_SETTING_PATHS: SettingPath[] = [
 	"subagent.isolation.mode",
 	"subagent.isolation.merge",
@@ -142,8 +133,6 @@ const HOST_DEFAULTED_SETTING_PATHS: SettingPath[] = [
 	"subagent.maxConcurrency",
 	"subagent.maxNestedSpawnDepth",
 	"subagent.agents",
-	// Memory subsystems are off-by-default for RPC/ACP hosts; embedders that want
-	// memory should opt in explicitly through their own settings layer.
 	"memory.backend",
 	"memories.enabled",
 ];
@@ -155,7 +144,6 @@ const RPC_BACKGROUND_DEFAULTED_SETTING_PATHS: SettingPath[] = [
 	"bash.autoBackground.thresholdMs",
 ];
 
-// Protocol-mode hosts opt into a small set of paths whose host-default we re-apply at startup so embedders inherit veyyon's neutral defaults instead of
 function applyDefaultSettingOverrides(settingPaths: SettingPath[], targetSettings: Settings): void {
 	for (const settingPath of settingPaths) {
 		if (targetSettings.isConfigured(settingPath)) continue;
@@ -172,7 +160,6 @@ function applyAcpDefaultSettingOverrides(targetSettings: Settings = settings): v
 	applyDefaultSettingOverrides(HOST_DEFAULTED_SETTING_PATHS, targetSettings);
 }
 
-/** How long a run that ALREADY has a prompt waits for the first byte of piped stdin. A supervisor, CI runner or wrapper that spawns `veyyon -p "…"` with an inherited pipe it never writes to */
 const PIPED_STDIN_FIRST_BYTE_WAIT_MS = 10_000;
 
 function pipedStdinFirstByteWaitMs(): number {
@@ -180,10 +167,8 @@ function pipedStdinFirstByteWaitMs(): number {
 	return Number.isFinite(configured) && configured >= 0 ? configured : PIPED_STDIN_FIRST_BYTE_WAIT_MS;
 }
 
-/** Read stdin to EOF, giving up only if NOTHING arrives and the caller already has a prompt. Reads the stream in chunks rather than calling `Bun.stdin.text()` so "has anything arrived yet" is */
 export async function readStdinWithFirstByteBound(
 	havePromptArgument: boolean,
-	/** The stream to read. Injected by tests; production always reads the process's own stdin. */
 	stream: ReadableStream<Uint8Array> = Bun.stdin.stream(),
 ): Promise<string | undefined> {
 	const waitMs = pipedStdinFirstByteWaitMs();
@@ -194,8 +179,6 @@ export async function readStdinWithFirstByteBound(
 	try {
 		for (;;) {
 			const next = reader.read();
-			// Only the FIRST read races the deadline. `Promise.race` leaves the losing timer pending, so it
-			// is cleared explicitly rather than left to keep the process alive.
 			let timer: ReturnType<typeof setTimeout> | undefined;
 			const result =
 				chunks.length === 0
@@ -220,12 +203,8 @@ export async function readStdinWithFirstByteBound(
 			if (result.value !== undefined) chunks.push(result.value);
 		}
 	} finally {
-		// The read loop owns the lock; release it so nothing downstream (interactive keystroke handling on a
-		// pipe-fed run, a protocol transport in a later mode) finds stdin locked by a finished read.
 		reader.releaseLock();
 	}
-	// Concatenate by hand rather than through `Blob`: a multi-byte character split across two chunks must
-	// be decoded once over the whole buffer, or a UTF-8 boundary lands as a replacement character.
 	const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
 	const joined = new Uint8Array(total);
 	let offset = 0;
@@ -236,14 +215,8 @@ export async function readStdinWithFirstByteBound(
 	return new TextDecoder().decode(joined);
 }
 
-/** Read piped stdin to EOF. @param havePromptArgument true when the command line already carries a prompt, which is what makes a bounded first-byte wait safe: without it there is nothing to run and waiting is the only option. */
 async function readPipedInput(havePromptArgument = false): Promise<string | undefined> {
-	// On a pipe or redirect Bun/Node leave `isTTY` as `undefined`, never `false`
-	// — so this must be a truthy check. (`!== false` made every piped prompt
-	// vanish: `echo hi | veyyon -p` exited 0 with zero output.)
 	if (process.stdin.isTTY) return undefined;
-	// stdin is a pipe: a producer that never writes nor closes would block
-	// startup forever with zero output. Say what we're blocked on after 1s.
 	const notice = setTimeout(() => {
 		process.stderr.write(`${chalk.dim("Reading prompt from piped stdin (waiting for EOF; ctrl+c to abort)…")}\n`);
 	}, 1000);
@@ -254,7 +227,6 @@ async function readPipedInput(havePromptArgument = false): Promise<string | unde
 		if (text.trim().length === 0) return undefined;
 		return text;
 	} catch (error) {
-		// A read that FAILS is not the same as an empty pipe, and the difference is the whole bug this function's first comment describes: `undefined` sends the CLI on as if nothing was piped, so a
 		process.stderr.write(
 			`${chalk.yellow("Could not read the prompt from piped stdin")}: ${errorMessage(error)}\n` +
 				`${chalk.dim("Continuing without a piped prompt. Pass the prompt as an argument if this repeats.")}\n`,
@@ -264,8 +236,6 @@ async function readPipedInput(havePromptArgument = false): Promise<string | unde
 		clearTimeout(notice);
 	}
 }
-
-// Speculative-hang reporter: until startup hands off to a mode runner, print a stderr line every 10s naming the deepest in-flight startup phase. Turns
 
 const STARTUP_WATCHDOG_INTERVAL_MS = 10_000;
 let startupWatchdogTimer: NodeJS.Timeout | undefined;
@@ -291,25 +261,21 @@ function disarmStartupWatchdog(): void {
 	startupWatchdogTimer = undefined;
 }
 
-/** Begin watching startup (idempotent). */
 function startStartupWatchdog(): void {
 	startupWatchdogActive = true;
 	startupWatchdogStartedAt = Date.now();
 	armStartupWatchdog();
 }
 
-/** Permanently stop watching: a mode runner now owns the terminal. */
 function stopStartupWatchdog(): void {
 	startupWatchdogActive = false;
 	disarmStartupWatchdog();
 }
 
-/** Pause while an interactive prompt legitimately waits on the user. */
 function pauseStartupWatchdog(): void {
 	disarmStartupWatchdog();
 }
 
-/** Resume after an interactive prompt, if startup is still being watched. */
 function resumeStartupWatchdog(): void {
 	if (startupWatchdogActive) armStartupWatchdog();
 }
@@ -349,10 +315,7 @@ export async function submitInteractiveInput(
 
 	try {
 		using _keepalive = new EventLoopKeepalive();
-		// Honor the submission's queue intent, defaulting to followUp. Reading `session.isStreaming` to decide queue-vs-fresh is NOT atomic with the
 		const streamingBehavior = input.streamingBehavior ?? ("followUp" as const);
-		// Continue shortcuts submit an already-started synthetic developer prompt with
-		// no optimistic user message.
 		if (!input.started && !mode.markPendingSubmissionStarted(input)) {
 			return;
 		}
@@ -365,7 +328,6 @@ export async function submitInteractiveInput(
 			};
 			await session.promptCustomMessage(message, { streamingBehavior });
 		} else if (input.synthetic) {
-			// Synthetic continue shortcuts are hidden developer prompts. The streaming queue (#queueUserMessage) only carries user-attributed messages, so we do
 			await session.prompt(input.text, {
 				synthetic: true,
 				expandPromptTemplates: false,
@@ -396,13 +358,11 @@ export interface AcpSessionFactoryOptions {
 	createSession: (options: CreateAgentSessionOptions) => Promise<CreateAgentSessionResult>;
 }
 
-/** Build the per-`session/new` factory used by ACP mode. MCP servers in ACP sessions are owned exclusively by the ACP client, which */
 export function createAcpSessionFactory(args: AcpSessionFactoryOptions): AcpSessionFactory {
 	return async cwd => {
 		const nextSettings = await args.settings.cloneForCwd(cwd);
 		const nextSessionManager = SessionManager.create(cwd, args.sessionDir);
 		const agentId = `acp:${nextSessionManager.getSessionId()}`;
-		// `baseOptions.titleSystemPrompt` is resolved from the launch cwd; an ACP host can open `session/new` for any client-supplied workspace, so
 		const titleSystemPromptSource = discoverTitleSystemPromptFile(cwd);
 		const titleSystemPrompt = await resolvePromptInput(titleSystemPromptSource, "title system prompt");
 		const { session: nextSession } = await args.createSession({
@@ -461,7 +421,6 @@ async function runInteractiveMode(
 	const playStartupSplash = showStartupSplash && setupScenes.length === 0;
 	await mode.init();
 
-	// Subscribed BEFORE the wizard, not after it. The write-side twin of the unparseable-settings notice, and it cannot be a startup check: a save happens
 	settings.onSaveFailure(failure => {
 		mode.showSettingsSaveFailureNotification(failure);
 	});
@@ -474,14 +433,10 @@ async function runInteractiveMode(
 		await setupWizard.runSetupWizard(mode, setupScenes);
 	}
 
-	// A settings file that could not be parsed is not a log-only event: the
-	// session is running on defaults for it, and the user has to be told before
-	// they spend the session wondering why their configuration stopped applying.
 	if (settings.quarantinedFiles.length > 0) {
 		mode.showUnparseableSettingsNotification(settings.quarantinedFiles);
 	}
 
-	// First launch after an update: one line naming the version, pointing at `/changelog` for the notes and at the controls in `/settings`. Driven by the
 	if (settings.get("startup.updateNotice")) {
 		const marker = await readLastChangelogVersion();
 		const decision = decideUpdateNotice(marker, VERSION);
@@ -493,9 +448,6 @@ async function runInteractiveMode(
 		}
 	}
 
-	// Installed plugins go stale the same way the binary does, and
-	// `marketplace.autoUpdate` defaults to `notify`. Fire and forget: the check
-	// talks to every configured marketplace, so it must never gate the first paint.
 	scheduleMarketplaceAutoUpdate({
 		autoUpdate: settings.get("marketplace.autoUpdate"),
 		resolveActiveProjectRegistryPath,
@@ -503,37 +455,29 @@ async function runInteractiveMode(
 		onResult: result => {
 			if (result.kind === "available") mode.showPluginUpdatesNotification(result.count);
 			else if (result.kind === "installed") mode.showPluginUpdatesInstalledNotification(result.count);
-			// `none`, `disabled`, and `failed` say nothing here; `failed` already logged.
 		},
 	});
 
 	versionCheckPromise
 		.then(async release => {
 			if (!release) return;
-			// With automatic updates off, all we do is say a version exists and let
-			// the user run `veyyon update` themselves.
 			if (!settings.get("startup.autoUpdate")) {
 				mode.showNewVersionNotification(release.version);
 				return;
 			}
-			// Install in the background, reusing the release the check already resolved so the launch makes one registry round trip, not two. The
 			const outcome = await runAutoUpdate(VERSION, release);
 			if (outcome.status === "updated") {
 				mode.showUpdateReadyNotification(outcome.version, outcome.warnings);
 			} else if (outcome.status === "failed") {
 				mode.showUpdateFailedNotification(outcome.version ?? release.version, outcome.error);
 			} else if (outcome.status === "skipped") {
-				// No install happened, but nothing is wrong that this session can act on: either a sibling session is installing the same version, or the
 				mode.showNewVersionNotification(release.version);
 			}
 		})
 		.catch(error => {
-			// Nothing above is allowed to fail silently: a swallowed rejection here
-			// would leave a stale install with no signal at all (Law 10).
 			logger.warn("Startup update check failed", { error: errorMessage(error) });
 		});
 
-	// Cold-launch cleanup: this replay replaces the welcome/startup frame with the resumed/new transcript. It does NOT erase native history unless the operator
 	mode.renderInitialMessages({
 		preserveExistingChat: true,
 		clearTerminalHistory: settings.get("startup.clearScrollback"),
@@ -552,14 +496,11 @@ async function runInteractiveMode(
 		}
 	}
 
-	// The operator channel gets its surface here, once there is a transcript to write into. Everything buffered while the session was being built (a skill that failed to load, a
 	session.operatorNotices.setSink(notice => {
 		if (notice.severity === "error") mode.showError(formatNotice(notice));
 		else mode.showWarning(formatNotice(notice));
 	});
 
-	// `veyyon join <link>`: dispatch through the same builtin path as a typed
-	// `/join` so collab guards and error rendering stay in one place.
 	if (joinLink !== undefined) {
 		await executeBuiltinSlashCommand(`/join ${joinLink}`, { ctx: mode });
 	}
@@ -586,9 +527,6 @@ async function runInteractiveMode(
 
 	while (true) {
 		const input = await mode.getUserInput();
-		// `mode.session`, not the session this function was handed: `/new` on a
-		// running turn re-points the UI at a new session, and the next prompt
-		// belongs to whichever one is attached now.
 		await submitInteractiveInput(mode, mode.session, input);
 	}
 }
@@ -629,7 +567,6 @@ async function promptMoveSession(session: SessionInfo): Promise<SessionPromptRes
 	}
 }
 
-/** Friendly CLI failure raised by {@link createSessionManager} when the user's session-resolution flags (`--resume`/`--fork`/cross-project prompts) cannot */
 export class SessionResolutionError extends Error {
 	readonly hint?: string;
 	constructor(message: string, hint?: string) {
@@ -666,7 +603,6 @@ async function moveMissingCwdSessionIfNeeded(
 		return { status: "declined" };
 	}
 
-	// Open anchored at the (now-missing) recorded cwd: `open` otherwise falls back to the launch cwd, which would make the `moveTo` below a no-op whenever the
 	const manager = await SessionManager.open(session.path, sessionDir, undefined, { initialCwd: sourceCwd });
 	await manager.moveTo(cwd, sessionDir);
 	return { status: "moved", manager };
@@ -691,7 +627,6 @@ export function normalizeContinueSessionArgs(parsed: Args, rawArgs?: readonly st
 	parsed.messages.splice(messageIndex, 1);
 }
 
-/** Resolves CLI session flags into an existing, forked, in-memory, or cancelled session manager. */
 export async function createSessionManager(
 	parsed: Args,
 	cwd: string,
@@ -773,9 +708,6 @@ export async function createSessionManager(
 					);
 				}
 				if (forkPromptResult === "declined") {
-					// User declined the cross-project fork prompt. Caller distinguishes
-					// this cancellation from the "default new session" undefined return
-					// by checking `typeof parsed.resume === "string"`.
 					return undefined;
 				}
 				return await SessionManager.forkFrom(match.session.path, cwd, parsed.sessionDir);
@@ -786,12 +718,9 @@ export async function createSessionManager(
 	if (parsed.continue) {
 		return await SessionManager.continueRecent(cwd, parsed.sessionDir);
 	}
-	// --resume without value is handled separately (needs picker UI)
-	// If --session-dir provided without --continue/--resume, create new session there
 	if (parsed.sessionDir) {
 		return SessionManager.create(cwd, parsed.sessionDir);
 	}
-	// Auto-resume: behave like --continue if the setting is enabled and a prior session exists. When a prior session is resumed, mark parsed.continue so
 	if (activeSettings.get("autoResume")) {
 		const manager = await SessionManager.continueRecent(cwd, parsed.sessionDir);
 		if (manager.getEntries().length > 0) {
@@ -799,11 +728,9 @@ export async function createSessionManager(
 		}
 		return manager;
 	}
-	// Default case (new session) returns undefined, SDK will create one
 	return undefined;
 }
 
-/** Apply resolved CLI prompt inputs without bypassing system prompt templates. */
 export function applyResolvedSystemPromptInputs(
 	options: CreateAgentSessionOptions,
 	resolvedSystemPrompt: string | undefined,
@@ -817,7 +744,6 @@ export function applyResolvedSystemPromptInputs(
 	}
 }
 
-/** Builds startup session options from parsed CLI flags, scoped models, and resolved session lineage. */
 export async function buildSessionOptions(
 	parsed: Args,
 	scopedModels: ScopedModel[],
@@ -867,9 +793,6 @@ export async function buildSessionOptions(
 		}
 	}
 
-	// Model from CLI
-	// - supports --provider <name> --model <pattern>
-	// - supports --model <provider>/<pattern>
 	const modelMatchPreferences = getModelMatchPreferences(activeSettings);
 	if (parsed.model) {
 		const resolved = resolveCliModel({
@@ -884,8 +807,6 @@ export async function buildSessionOptions(
 		}
 		if (resolved.error) {
 			if (!parsed.provider && !parsed.model.includes(":")) {
-				// Model not found in built-in registry — defer resolution to after extensions load
-				// (extensions may register additional providers/models via registerProvider)
 				options.modelPattern = parsed.model;
 			} else {
 				process.stderr.write(`${chalk.red(resolved.error)}\n`);
@@ -922,7 +843,6 @@ export async function buildSessionOptions(
 				: scopedModels.find(scopedModel => scopedModel.model.id.toLowerCase() === remembered.toLowerCase());
 			if (rememberedModel) {
 				options.model = rememberedModel.model;
-				// Apply explicit thinking level from remembered role value
 				if (!parsed.thinking && rememberedSpec.explicitThinkingLevel && rememberedSpec.thinkingLevel) {
 					options.thinkingLevel = rememberedSpec.thinkingLevel;
 					options.thinkingSource = "selector";
@@ -931,9 +851,6 @@ export async function buildSessionOptions(
 		}
 		if (!options.model) {
 			if (remembered) {
-				// Law 10: substituting for a configured-but-unauthenticated default
-				// must be loud. fallbackForUnavailableDefault owns the substitution
-				// and the warning for every surface (session, commit, …).
 				const fallback = fallbackForUnavailableDefault(
 					remembered,
 					scopedModels.map(scopedModel => scopedModel.model),
@@ -957,7 +874,6 @@ export async function buildSessionOptions(
 			? true
 			: activeSettings.get("prewalk.enabled");
 	if (prewalkEnabled && !parsed.model && !parsed.continue && !parsed.resume) {
-		// Strong-model override: the start model an operator named for prewalk alone. An explicit --model wins; unset inherits the normal start chain.
 		const strongPattern = normalizeModelPatternList(activeSettings.get("prewalk.strongModel"))[0];
 		if (strongPattern) {
 			const resolved = resolveCliModel({
@@ -985,7 +901,6 @@ export async function buildSessionOptions(
 		}
 	}
 	if (prewalkEnabled) {
-		// The cheap target no longer falls back to a role alias. An unset role stopped resolving to a model (#980 fail-closed), so a target the
 		const cheapPattern =
 			normalizeModelPatternList(parsed.prewalkInto)[0] ||
 			normalizeModelPatternList(activeSettings.get("prewalk.cheapModel"))[0];
@@ -1029,7 +944,6 @@ export async function buildSessionOptions(
 		options.planYolo = { target: resolved.model, thinkingLevel: resolved.thinkingLevel };
 	}
 
-	// Thinking level
 	if (parsed.thinking) {
 		options.thinkingLevel = parsed.thinking;
 		options.thinkingSource = "session";
@@ -1043,7 +957,6 @@ export async function buildSessionOptions(
 		options.thinkingSource = "selector";
 	}
 
-	// Scoped models retain selector provenance instead of baking the current saved default into startup state. Unsuffixed entries therefore re-read
 	if (scopedModels.length > 0) {
 		options.scopedModels = scopedModels.map(scopedModel => ({
 			model: scopedModel.model,
@@ -1052,17 +965,11 @@ export async function buildSessionOptions(
 		}));
 	}
 
-	// API key from CLI - set in authStorage
-	// (handled by caller before createAgentSession)
-
-	// System prompt
 	applyResolvedSystemPromptInputs(options, resolvedSystemPrompt, resolvedAppendPrompt);
-	// Replan-driven title refresh resolves the override from this same field on `AgentSession`, so threading it through `CreateAgentSessionOptions` keeps
 	if (titleSystemPrompt) {
 		options.titleSystemPrompt = titleSystemPrompt;
 	}
 
-	// Tools
 	if (parsed.noTools) {
 		options.toolNames = parsed.tools && parsed.tools.length > 0 ? parsed.tools : [];
 	} else if (parsed.tools) {
@@ -1073,20 +980,16 @@ export async function buildSessionOptions(
 		options.enableLsp = false;
 	}
 
-	// Skills
 	if (parsed.noSkills) {
 		options.skills = [];
 	} else if (parsed.skills && parsed.skills.length > 0) {
-		// Override includeSkills for this session
 		activeSettings.override("skills.includeSkills", parsed.skills as string[]);
 	}
 
-	// Rules
 	if (parsed.noRules) {
 		options.rules = [];
 	}
 
-	// Additional extension paths from CLI
 	const cliExtensionPaths = parsed.noExtensions ? [] : [...(parsed.extensions ?? []), ...(parsed.hooks ?? [])];
 	if (cliExtensionPaths.length > 0) {
 		options.additionalExtensionPaths = cliExtensionPaths;
@@ -1107,7 +1010,6 @@ interface RunRootCommandDependencies {
 	runAcpMode?: RunAcpMode;
 	settings?: Settings;
 	forceSetupWizard?: boolean;
-	/** Reads the piped prompt, replacing the process-stdin read below. An in-process caller does not own stdin. The default reader waits for EOF */
 	readPipedInput?: (havePromptArgument?: boolean) => Promise<string | undefined>;
 }
 const DEFAULT_RUN_ROOT_DEPENDENCIES: RunRootCommandDependencies = {};
@@ -1122,13 +1024,10 @@ export async function runRootCommand(
 	try {
 		await runRootCommandInner(parsed, rawArgs, deps);
 	} finally {
-		// A throw or early return before a mode handoff must not leak the
-		// watchdog interval into embedders or long-lived test processes.
 		stopStartupWatchdog();
 	}
 }
 
-/** True while the startup watchdog interval is armed. Test observability only. */
 export function __startupWatchdogArmedForTests(): boolean {
 	return startupWatchdogTimer !== undefined;
 }

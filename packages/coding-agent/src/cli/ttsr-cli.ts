@@ -1,4 +1,3 @@
-/** TTSR CLI command handlers. `veyyon ttsr test` — feed a snippet (inline text, `--file`, or stdin) through the */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AstMatchStrictness, astMatch, FileType, type GlobMatch, glob } from "@veyyon/natives";
@@ -28,32 +27,20 @@ interface TtsrMatchContext {
 }
 
 export interface TtsrTestArgs {
-	/** Inline snippet text. */
 	snippet?: string;
-	/** Snippet file path, or `-` for stdin. */
 	file?: string;
-	/** Path to a rule markdown file to test in isolation (skips project loading). */
 	rule?: string;
-	/** TTSR match source; when omitted, inferred from --file (tool for source files, text otherwise). */
 	source?: TtsrMatchSource;
-	/** Tool name when `source === "tool"` (e.g. "edit", "write"). */
 	tool?: string;
-	/** Candidate file path used for scope/glob matching and AST language inference. */
 	filePath?: string;
-	/** Show every evaluated rule, not just triggered ones. */
 	verbose?: boolean;
 }
 
 export interface TtsrScanArgs {
-	/** Directory to glob and scan files in. */
 	directory?: string;
-	/** Path to a rule markdown file to test in isolation (skips project loading). */
 	rule?: string;
-	/** Respect gitignore files while discovering scan candidates. Defaults to true. */
 	gitignore?: boolean;
-	/** Maximum file size to scan in bytes; 0 disables the limit. */
 	maxBytes?: number;
-	/** Show details. */
 	verbose?: boolean;
 }
 
@@ -68,9 +55,7 @@ interface RuleMatchDetail {
 	name: string;
 	path: string;
 	sourceProvider?: string;
-	/** Conditions that matched the snippet. */
 	matched: { regex: string[]; ast: string[] };
-	/** All conditions defined on the rule (for verbose display). */
 	defined: { regex: string[]; ast: string[] };
 	skippedAst?: string;
 }
@@ -87,7 +72,6 @@ interface TestReport {
 }
 
 const STDIN_MARKER = "-";
-/** Extensions treated as source files for default tool-context inference. */
 const SOURCE_FILE_EXT =
 	/^\.(ts|tsx|js|jsx|mjs|cjs|rs|py|go|java|kt|swift|c|cc|cpp|h|hpp|rb|php|lua|css|scss|html|json|ya?ml|toml|md|mdc)$/i;
 
@@ -163,9 +147,7 @@ async function regexMatches(rule: Rule, snippet: string): Promise<string[]> {
 	for (const pattern of rule.condition ?? []) {
 		try {
 			if (new RegExp(pattern).test(snippet)) out.push(pattern);
-		} catch {
-			// Invalid regex — skip; the manager already warned at registration.
-		}
+		} catch {}
 	}
 	return out;
 }
@@ -182,14 +164,11 @@ async function astMatches(rule: Rule, snippet: string, lang: string): Promise<st
 				limit: 1,
 			});
 			if (result.totalMatches > 0) out.push(pattern);
-		} catch {
-			// Treat as no match (manager logs at runtime).
-		}
+		} catch {}
 	}
 	return out;
 }
 
-/** Run the snippet through the manager's real match paths and collect, for each triggered rule, which of its conditions fired. Returns triggered + the full */
 async function evaluate(
 	manager: TtsrManager,
 	rules: readonly Rule[],
@@ -231,7 +210,6 @@ async function createTtsrManager(settings?: TtsrSettings): Promise<TtsrManager> 
 	return new TtsrManager(settings);
 }
 
-/** The rules `ttsr scan` reports on: the enabled ones that carry a condition. Enablement is `ruleIsEnabled`'s to decide, not this file's. The scan exists */
 function filterTtsrRulesForScan(rules: readonly Rule[], options: BucketRulesOptions = {}): Rule[] {
 	const levers = resolveRuleLevers(options);
 	return rules.filter(rule => {
@@ -313,9 +291,6 @@ async function runTest(args: TtsrTestArgs, json: boolean, cwd: string): Promise<
 
 	const snippet = await readSnippet(args);
 
-	// Infer match context: when the user points --file at a source file and
-	// doesn't pick a source, default to tool/edit with that path so tool-scoped
-	// rules (the common case, e.g. tool:edit(*.ts)) match like they would live.
 	const filePath = args.filePath ?? (args.file && args.file !== STDIN_MARKER ? path.resolve(args.file) : undefined);
 	const source: TtsrMatchSource =
 		args.source ?? (filePath && SOURCE_FILE_EXT.test(path.extname(filePath)) ? "tool" : "text");
@@ -389,9 +364,6 @@ function renderTestReport(report: TestReport, verbose: boolean, isolated: boolea
 function renderRuleDetail(detail: RuleMatchDetail, hit: boolean): void {
 	const mark = hit ? chalk.green("[ok]") : chalk.red("[FAIL]");
 	const condParts: string[] = [];
-	// For triggered rules, show which conditions fired. For not-triggered
-	// rules (verbose), show the rule's full condition set so users can see
-	// what would match.
 	const regex = hit ? detail.matched.regex : detail.defined.regex;
 	const ast = hit ? detail.matched.ast : detail.defined.ast;
 	if (regex.length > 0) {
@@ -545,9 +517,7 @@ function compileScanRulePlans(rules: Rule[]): ScanRulePlan[] {
 		for (const pattern of rule.condition ?? []) {
 			try {
 				regexConditions.push({ pattern, regex: new RegExp(pattern) });
-			} catch {
-				// Same behavior as TtsrManager: invalid regex conditions are unusable.
-			}
+			} catch {}
 		}
 		const astConditions = (rule.astCondition ?? [])
 			.map(pattern => pattern.trim())
@@ -682,7 +652,6 @@ async function scanAnyAstConditionMatches(
 		}
 		return result.parseErrors && result.parseErrors.length > 0 ? undefined : false;
 	} catch {
-		// Three answers on purpose: true is a match, false is a confident no-match, and undefined is "could not tell" -- which is what the line above already returns for a file the parser could not read, and
 		return undefined;
 	}
 }
@@ -717,8 +686,6 @@ async function discoverScanFiles(scanDir: string, cwd: string, gitignore: boolea
 		candidates.sort((a, b) => a.path.localeCompare(b.path));
 		return candidates;
 	} catch (err) {
-		// An empty candidate list reads as "nothing to check", so a failure here would silently narrow the
-		// search rather than report it.
 		logger.warn("Candidate files could not be listed; this search covered none of them", {
 			error: errorMessage(err),
 		});

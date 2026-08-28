@@ -19,7 +19,6 @@ export interface MarkitConversionResult {
 }
 
 export interface MarkitFileConversionOptions {
-	/** Directory the PDF converter writes extracted images/diagrams into. When set, each embedded image is rendered to `<id>.png` and referenced by path */
 	imageDir?: string;
 }
 
@@ -34,9 +33,6 @@ function logMuPdfWasmOutput(stream: "stdout" | "stderr", values: unknown[]): voi
 	logger.debug("mupdf wasm output", { stream, message });
 }
 
-// `$libmupdf_wasm_Module` is declared globally (as `any`) by the mupdf package.
-// Install print hooks before the WASM module initializes so its stdout/stderr
-// route to the file logger instead of corrupting the TUI.
 function installMuPdfWasmLogger(): void {
 	const moduleConfig: MuPdfWasmModuleConfig = globalThis.$libmupdf_wasm_Module ?? {};
 	moduleConfig.print = (...values: unknown[]) => logMuPdfWasmOutput("stdout", values);
@@ -44,7 +40,6 @@ function installMuPdfWasmLogger(): void {
 	globalThis.$libmupdf_wasm_Module = moduleConfig;
 }
 
-// Hand the WASM module its bytes directly when the compiled binary embedded them (scripts/embed-mupdf-wasm.ts); a single-file binary has no node_modules for
 function installEmbeddedMupdfWasm(): void {
 	const wasmBinary = loadEmbeddedMupdfWasm();
 	if (!wasmBinary) return;
@@ -56,8 +51,6 @@ function installEmbeddedMupdfWasm(): void {
 installMuPdfWasmLogger();
 
 let markit: () => Markit | Promise<Markit> = async () => {
-	// Lazy: keep the document engine (mammoth/mupdf) off the startup
-	// import graph — it loads only when a document is first converted.
 	installEmbeddedMupdfWasm();
 	const promise = import("../markit").then(({ Markit }) => {
 		const instance = new Markit();
@@ -89,9 +82,6 @@ async function runMarkitConversion<T>(task: (markit: Markit) => Promise<T>, sign
 		if (error instanceof ToolAbortError) {
 			throw error;
 		}
-		// A deadline is a cancellation here too, and its reason is worth keeping:
-		// a document conversion that ran out of time is worth retrying with a
-		// longer limit, which "Operation aborted" does not tell anyone.
 		if (isCancellation(error)) throw toolAbort(error, "markit");
 		throw error;
 	}
@@ -156,9 +146,6 @@ export async function convertFileWithMarkit(
 	options?: MarkitFileConversionOptions,
 ): Promise<MarkitConversionResult> {
 	if (options?.imageDir) {
-		// Image extraction writes files into imageDir as a side effect; a
-		// markdown-only cache hit would leave the directory missing members, so
-		// this path stays uncached.
 		try {
 			const result = await runMarkitConversion(
 				markit => markit.convertFile(filePath, { imageDir: options.imageDir }),
@@ -179,9 +166,6 @@ export async function convertFileWithMarkit(
 		bytes = await untilAborted(signal, () => Bun.file(filePath).bytes());
 	} catch (error) {
 		if (error instanceof ToolAbortError) throw error;
-		// Must stay ahead of the degraded-result return below: a cancelled or
-		// timed-out read is not a conversion failure, and reporting it as one
-		// invites the caller to treat an empty document as the real content.
 		if (isCancellation(error)) throw toolAbort(error, "markit");
 		return { content: "", ok: false, error: normalizeError(error), cache: "miss" };
 	}

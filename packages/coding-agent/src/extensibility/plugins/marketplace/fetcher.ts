@@ -1,5 +1,3 @@
-/** Marketplace catalog fetcher. Classifies a source string, resolves it, and loads the catalog. */
-
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -9,51 +7,37 @@ import * as git from "../../../utils/git";
 import type { MarketplaceCatalog, MarketplaceSourceType } from "./types";
 import { isValidNameSegment } from "./types";
 
-// ── Types ─────────────────────────────────────────────────────────────
-
 export interface FetchResult {
 	catalog: MarketplaceCatalog;
-	/** For git sources: path to the cloned marketplace directory. */
 	clonePath?: string;
 }
 
-// ── classifySource ────────────────────────────────────────────────────
-
-/** Detects Windows-style absolute paths cross-platform: C:\path, C:/path → drive-letter + colon + separator */
 const WIN_ABS_RE = /^[A-Za-z]:[/\\]|^\\\\/;
 
-/** GitHub owner/repo shorthand: lowercase alphanumeric + hyphens/dots, one slash. Must NOT start with a protocol — that is ruled out by earlier checks. */
 const GITHUB_SHORTHAND_RE = /^[a-z0-9-]+\/[a-z0-9._-]+$/i;
 
-/** Classify a marketplace source string into one of the four source types. Rules are ordered; the first match wins. Protocol/pattern checks (rules 1-3) */
 export function classifySource(source: string): MarketplaceSourceType {
-	// Rule 1: HTTP(S) URLs — .json suffix → url, everything else → git
 	if (source.startsWith("https://") || source.startsWith("http://")) {
 		try {
 			const { pathname } = new URL(source);
 			return pathname.endsWith(".json") ? "url" : "git";
 		} catch {
-			// Malformed URL — treat as git
 			return "git";
 		}
 	}
 
-	// Rule 2: SCP-style SSH git URLs
 	if (source.startsWith("git@") || source.startsWith("ssh://")) {
 		return "git";
 	}
 
-	// Rule 3: GitHub owner/repo shorthand (no protocol, no leading slash)
 	if (GITHUB_SHORTHAND_RE.test(source)) {
 		return "github";
 	}
 
-	// Rule 4: Explicit relative or home-relative paths
 	if (source.startsWith("./") || source.startsWith("~/")) {
 		return "local";
 	}
 
-	// Rule 5: Absolute paths — POSIX via path.isAbsolute, Windows via regex
 	if (path.isAbsolute(source) || WIN_ABS_RE.test(source)) {
 		return "local";
 	}
@@ -61,15 +45,12 @@ export function classifySource(source: string): MarketplaceSourceType {
 	throw new Error(`Unrecognized source format. Did you mean './${source}' (local) or 'owner/repo' (GitHub)?`);
 }
 
-// ── parseMarketplaceCatalog ───────────────────────────────────────────
-
 function assertField(condition: boolean, field: string, filePath: string): void {
 	if (!condition) {
 		throw new Error(`Missing or invalid field "${field}" in catalog: ${filePath}`);
 	}
 }
 
-/** Parse and validate a marketplace.json catalog from raw JSON content. Required fields: name (valid name segment), owner.name, plugins array. */
 export function parseMarketplaceCatalog(content: string, filePath: string): MarketplaceCatalog {
 	let raw: unknown;
 	try {
@@ -84,15 +65,12 @@ export function parseMarketplaceCatalog(content: string, filePath: string): Mark
 
 	const obj = raw as Record<string, unknown>;
 
-	// name: required, must be a valid name segment
 	assertField(typeof obj.name === "string" && isValidNameSegment(obj.name), "name", filePath);
 
-	// owner: required object with name string
 	assertField(isRecord(obj.owner), "owner", filePath);
 	const owner = obj.owner as Record<string, unknown>;
 	assertField(typeof owner.name === "string", "owner.name", filePath);
 
-	// plugins: required array
 	assertField(Array.isArray(obj.plugins), "plugins", filePath);
 
 	const plugins = obj.plugins as unknown[];
@@ -103,8 +81,6 @@ export function parseMarketplaceCatalog(content: string, filePath: string): Mark
 			assertField(isRecord(entry), `plugins[${i}]`, filePath);
 			const p = entry as Record<string, unknown>;
 			assertField(typeof p.name === "string" && isValidNameSegment(p.name), `plugins[${i}].name`, filePath);
-			// source can be a string path or a typed object (github/url/git-subdir/npm)
-			// all typed objects carry a "source" discriminant string field
 			assertField(
 				typeof p.source === "string" ||
 					(typeof p.source === "object" &&
@@ -114,11 +90,9 @@ export function parseMarketplaceCatalog(content: string, filePath: string): Mark
 				`plugins[${i}].source`,
 				filePath,
 			);
-			// String sources must be relative paths starting with "./"
 			if (typeof p.source === "string") {
 				assertField((p.source as string).startsWith("./"), `plugins[${i}].source (must start with "./")`, filePath);
 			}
-			// Validate required fields for typed source variants
 			if (typeof p.source === "object" && p.source !== null) {
 				const src = p.source as Record<string, unknown>;
 				const variant = src.source as string;
@@ -145,8 +119,6 @@ export function parseMarketplaceCatalog(content: string, filePath: string): Mark
 			}
 			validPlugins.push(entry);
 		} catch (err) {
-			// Warn and skip invalid plugin entries instead of failing the entire catalog.
-			// This lets the rest of the marketplace load even if one entry has a bad name/source.
 			const name =
 				typeof plugins[i] === "object" && plugins[i] !== null
 					? ((plugins[i] as Record<string, unknown>).name ?? `[${i}]`)
@@ -154,16 +126,11 @@ export function parseMarketplaceCatalog(content: string, filePath: string): Mark
 			logger.warn(`Skipping invalid plugin ${name}: ${(err as Error).message}`);
 		}
 	}
-	// Replace the plugins array with only valid entries
 	obj.plugins = validPlugins;
 
-	// Extra fields are preserved — cast through unknown for type safety
 	return obj as unknown as MarketplaceCatalog;
 }
 
-// ── fetchMarketplace ──────────────────────────────────────────────────
-
-/** Catalog paths tried in priority order: veyyon-namespaced override first, then the Claude Code-compatible fallback so existing marketplaces keep loading. */
 const CATALOG_RELATIVE_PATHS: readonly string[] = [
 	".veyyon-plugin/marketplace.json",
 	".claude-plugin/marketplace.json",
@@ -192,7 +159,6 @@ async function readMarketplaceCatalog(
 	);
 }
 
-/** Expand a `~/...` path to an absolute path using os.homedir(). Other paths are returned unchanged. */
 function expandHome(p: string): string {
 	if (p.startsWith("~/")) {
 		return path.join(os.homedir(), p.slice(2));
@@ -200,7 +166,6 @@ function expandHome(p: string): string {
 	return p;
 }
 
-/** Fetch a marketplace catalog from a source. Dispatches on the source type: local filesystem paths are read directly; */
 export async function fetchMarketplace(source: string, cacheDir: string): Promise<FetchResult> {
 	const type = classifySource(source);
 
@@ -220,7 +185,6 @@ export async function fetchMarketplace(source: string, cacheDir: string): Promis
 		return cloneAndReadCatalog(source, source, cacheDir);
 	}
 
-	// type === "url" scopedTimeoutSignal cancels the 60s timer once the fetch and body read
 	const { signal, cancel } = scopedTimeoutSignal(60_000);
 	let text: string;
 	try {
@@ -242,9 +206,6 @@ export async function fetchMarketplace(source: string, cacheDir: string): Promis
 	return { catalog };
 }
 
-// ── cloneAndReadCatalog ───────────────────────────────────────────────
-
-/** Clone a git repository and read its marketplace catalog. Clones to a temporary directory and reads the catalog. The caller is */
 async function cloneAndReadCatalog(url: string, source: string, cacheDir: string): Promise<FetchResult> {
 	const tmpDir = path.join(cacheDir, `.tmp-clone-${Date.now()}`);
 	await fs.mkdir(cacheDir, { recursive: true });
@@ -262,7 +223,6 @@ async function cloneAndReadCatalog(url: string, source: string, cacheDir: string
 	}
 }
 
-/** Promote a temporary clone directory to its final cache location. Callers should invoke this only after duplicate/drift checks pass. */
 export async function promoteCloneToCache(tmpDir: string, cacheDir: string, name: string): Promise<string> {
 	const finalDir = path.join(cacheDir, name);
 	await fs.rm(finalDir, { recursive: true, force: true });

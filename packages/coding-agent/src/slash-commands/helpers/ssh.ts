@@ -17,7 +17,6 @@ const SSH_ADD_USAGE = "Usage: /ssh add <name> <host> [user <user>] [<port>] [key
 
 const SSH_REMOVE_USAGE = "Usage: /ssh remove <name>";
 
-/** The option spellings `/ssh add` no longer has, keyed by bare name. */
 export const SSH_ADD_REMOVED_OPTIONS: Record<string, string> = {
 	host: "write the host as the second word, after the name",
 	user: "write `user <user>`",
@@ -25,12 +24,10 @@ export const SSH_ADD_REMOVED_OPTIONS: Record<string, string> = {
 	key: "write `key <keyPath>`",
 };
 
-/** `/ssh remove` never had an option worth converting. Its declaration advertised a scope, which this parser refused and the interactive path read and then threw */
 export const SSH_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
 	scope: "drop it — SSH hosts live in one config file, so there is no scope to choose",
 };
 
-/** Parse the argument tail of `/ssh add`. Both required values are POSITION: token 1 is the name and token 2 is the */
 function parseSshAddArgs(rest: string): ParsedSshAddArgs {
 	const tokens = parseCommandArgs(rest);
 	if (tokens.length === 0) return {};
@@ -62,8 +59,6 @@ function parseSshAddArgs(rest: string): ParsedSshAddArgs {
 			word = token;
 			index += 2;
 		} else if (/^\d+$/.test(token)) {
-			// `Number.parseInt` accepts trailing garbage (parseInt("22oops") === 22),
-			// so the digit test above is what keeps a typo from becoming a port.
 			const port = Number(token);
 			if (port < 1 || port > 65535) {
 				return {
@@ -75,7 +70,6 @@ function parseSshAddArgs(rest: string): ParsedSshAddArgs {
 			word = "port";
 			index += 1;
 		} else {
-			// A WORD THE GRAMMAR USED TO READ AS AN OPTION gets the sentence naming what replaced it, rather than a bare `Unknown argument`, so `/ssh add box example.com host other`
 			if (Object.hasOwn(SSH_ADD_REMOVED_OPTIONS, token.toLowerCase())) {
 				return { ...parsed, error: removedOptionMessage(token, SSH_ADD_REMOVED_OPTIONS, SSH_ADD_USAGE) };
 			}
@@ -124,8 +118,6 @@ async function handleRemoveCommand(rest: string, runtime: SlashCommandRuntime): 
 	}
 	if (tokens.length > 1) {
 		const extra = tokens[1]!;
-		// Same rule as `/ssh add`: a plain `scope` is refused with the reason SSH has no scope,
-		// derived from the map rather than from a word written into this condition.
 		const message =
 			extra.startsWith("-") || Object.hasOwn(SSH_REMOVE_REMOVED_OPTIONS, extra.toLowerCase())
 				? removedOptionMessage(extra, SSH_REMOVE_REMOVED_OPTIONS, SSH_REMOVE_USAGE)
@@ -162,7 +154,6 @@ async function handleAddCommand(rest: string, runtime: SlashCommandRuntime): Pro
 	}
 }
 
-/** ACP/text-mode `/ssh` handler. Shared by both dispatchers via the spec. */
 export async function handleSshAcp(
 	command: ParsedSlashCommand,
 	runtime: SlashCommandRuntime,

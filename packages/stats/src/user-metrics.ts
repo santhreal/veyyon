@@ -1,29 +1,17 @@
-/** Behavioral metrics extracted from a single user message. */
-
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 
 export interface UserMessageMetrics {
-	/** Total characters of analyzed text. */
 	chars: number;
-	/** Whitespace-delimited word count. */
 	words: number;
-	/** Count of shouting sentences. */
 	yelling: number;
-	/** Profanity hits (word-boundary, case-insensitive). */
 	profanity: number;
-	/** Count of exasperation / anguish markers. */
 	anguish: number;
-	/** Count of corrective negation phrases. */
 	negation: number;
-	/** Count of user repetition phrases. */
 	repetition: number;
-	/** Count of second-person reproach phrases. */
 	blame: number;
 }
 
-/** Profanity wordlist. */
 const PROFANITY: readonly string[] = [
-	// f-word family
 	"fuck",
 	"fucks",
 	"fucked",
@@ -47,7 +35,6 @@ const PROFANITY: readonly string[] = [
 	"clusterfuck",
 	"ratfuck",
 	"unfuck",
-	// censored / euphemistic f-word
 	"fk",
 	"fks",
 	"fking",
@@ -73,7 +60,6 @@ const PROFANITY: readonly string[] = [
 	"freaking",
 	"freakin",
 	"freaked",
-	// s-word family
 	"shit",
 	"shits",
 	"shat",
@@ -109,7 +95,6 @@ const PROFANITY: readonly string[] = [
 	"jackshit",
 	"dumbshit",
 	"holyshit",
-	// mild swears
 	"damn",
 	"damns",
 	"damned",
@@ -135,7 +120,6 @@ const PROFANITY: readonly string[] = [
 	"bloody",
 	"bollocks",
 	"bollox",
-	// crap family
 	"crap",
 	"craps",
 	"crappy",
@@ -145,7 +129,6 @@ const PROFANITY: readonly string[] = [
 	"crapping",
 	"crapload",
 	"crapola",
-	// piss family
 	"piss",
 	"pisses",
 	"pissed",
@@ -154,7 +137,6 @@ const PROFANITY: readonly string[] = [
 	"pisspoor",
 	"pisstake",
 	"pisshead",
-	// ass family
 	"ass",
 	"asses",
 	"asshole",
@@ -184,7 +166,6 @@ const PROFANITY: readonly string[] = [
 	"arsehole",
 	"arseholes",
 	"arsewipe",
-	// bitch family
 	"bitch",
 	"bitches",
 	"bitched",
@@ -195,7 +176,6 @@ const PROFANITY: readonly string[] = [
 	"sonofabitch",
 	"biatch",
 	"biotch",
-	// strong vulgarity
 	"cunt",
 	"cunts",
 	"cunty",
@@ -205,7 +185,6 @@ const PROFANITY: readonly string[] = [
 	"twatty",
 	"bastard",
 	"bastards",
-	// body-part insults
 	"dick",
 	"dicks",
 	"dickhead",
@@ -251,7 +230,6 @@ const PROFANITY: readonly string[] = [
 	"lowlife",
 	"lowlifes",
 	"deadbeat",
-	// intelligence-based insults
 	"idiot",
 	"idiots",
 	"idiotic",
@@ -329,7 +307,6 @@ const PROFANITY: readonly string[] = [
 	"sodding",
 	"bugger",
 	"buggered",
-	// generic aggression / dismissal
 	"suck",
 	"sucks",
 	"sucked",
@@ -337,14 +314,12 @@ const PROFANITY: readonly string[] = [
 	"sucky",
 	"suckage",
 	"trashy",
-	// religious exclamations
 	"jesus",
 	"christ",
 	"jeez",
 	"jeezus",
 	"sheesh",
 	"godsake",
-	// chat acronyms
 	"wtf",
 	"wth",
 	"wtaf",
@@ -420,7 +395,6 @@ const IMAGE_MARKER_RE = /\[Image #\d+\]/g;
 
 const MAX_PROSE_LINES = 3;
 
-/** Count regex hits without materializing the match array. */
 function countMatches(text: string, re: RegExp): number {
 	let count = 0;
 	re.lastIndex = 0;
@@ -438,7 +412,6 @@ function isShoutedSentence(sentence: string): boolean {
 	return runs[0].length >= YELLING_MIN_LETTERS && TRIPLED_LETTER_RE.test(runs[0]);
 }
 
-/** Count sentences exceeding yelling threshold. */
 function countYellingSentences(text: string): number {
 	let count = 0;
 	SENTENCE_RE.lastIndex = 0;
@@ -455,7 +428,6 @@ function countYellingSentences(text: string): number {
 	return count;
 }
 
-/** Strip structured content (code, tags, urls, file mentions, quotes) from text. */
 export function stripStructuredContent(text: string): string {
 	return stripAnsi(text)
 		.replace(FENCED_CODE_RE, "\n")
@@ -477,11 +449,6 @@ function countNonEmptyLines(text: string): number {
 	return count;
 }
 
-/**
- * Compute behavioral metrics for a user message.
- *
- * `text` may be empty or whitespace; in that case every metric is 0.
- */
 export function computeUserMessageMetrics(text: string): UserMessageMetrics {
 	const trimmed = text.trim();
 	if (!trimmed) {
@@ -537,7 +504,6 @@ export function computeUserMessageMetrics(text: string): UserMessageMetrics {
 	};
 }
 
-/** Empty metrics constant for callers that need a default. */
 export const EMPTY_USER_METRICS: UserMessageMetrics = Object.freeze({
 	chars: 0,
 	words: 0,

@@ -1,4 +1,3 @@
-/** Default SQLite-backed credential store. */
 import { Database, type Statement } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -39,7 +38,6 @@ import type { OAuthCredentials } from "./registry/oauth/types";
 import type { Provider } from "./types";
 import type { UsageCostHistoryEntry, UsageCostHistoryQuery, UsageHistoryEntry, UsageHistoryQuery } from "./usage";
 
-/** Default SQLite-backed implementation of AuthCredentialStore. */
 export class SqliteAuthCredentialStore implements AuthCredentialStore {
 	#db: Database;
 	#listActiveStmt: Statement;
@@ -164,7 +162,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		this.#deleteExpiredCredentialBlocksStmt = this.#db.prepare(
 			"DELETE FROM auth_credential_blocks WHERE blocked_until_ms <= ?",
 		);
-		// Bind updated_at from application clock so lease timing checks are consistent.
 		this.#acquireCredentialRefreshLeaseStmt = this.#db.prepare(
 			`INSERT INTO auth_credential_refresh_leases (credential_id, owner, expires_at_ms, updated_at)
 			VALUES (?, ?, ?, ?)
@@ -179,9 +176,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 			"SELECT expires_at_ms, updated_at FROM auth_credential_refresh_leases WHERE credential_id = ?",
 		);
 		this.#renewCredentialRefreshLeaseStmt = this.#db.prepare(
-			// Same clock as the acquire above, for the same reason: a renewal that
-			// re-stamped this column from SQLite's clock would undo the fix on the
-			// first renewal of any long refresh.
 			`UPDATE auth_credential_refresh_leases SET expires_at_ms = ?, updated_at = ? WHERE credential_id = ? AND owner = ?`,
 		);
 		this.#releaseCredentialRefreshLeaseStmt = this.#db.prepare(
@@ -224,10 +218,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 
 	static async open(dbPath: string = getAgentDbPath()): Promise<SqliteAuthCredentialStore> {
 		const dir = path.dirname(dbPath);
-		// Fails CLOSED into the `mkdir` below: an unstattable parent is treated as absent, and `mkdir` then
-		// raises the real error (EACCES, ENOTDIR) with the path in it. Reporting the stat failure here would
-		// duplicate that error one line earlier and stop the ordinary "the directory is not there yet" case
-		// from proceeding.
 		const dirExists = await fs
 			.stat(dir)
 			.then(s => s.isDirectory())
@@ -236,10 +226,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 			await fs.mkdir(dir, { recursive: true, mode: 0o700 });
 		}
 
-		// Concurrent veyyon startups can race against WAL recovery and the schema
-		// init's first lock-taking statement. Bun's default `busy_timeout` is 0,
-		// so retry the open on `SQLITE_BUSY` / `SQLITE_BUSY_RECOVERY` with bounded
-		// exponential backoff before surfacing the failure. See issue #2421.
 		const maxAttempts = 4;
 		const baseDelayMs = 100;
 		let lastBusyError: Error | undefined;
@@ -249,9 +235,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 				db = new Database(dbPath);
 				try {
 					await fs.chmod(dbPath, 0o600);
-				} catch {
-					// Ignore chmod failures (e.g., Windows)
-				}
+				} catch {}
 				SqliteAuthCredentialStore.#ensureAuthCredentialRefreshLeasesTable(db);
 				return new SqliteAuthCredentialStore(db);
 			} catch (err) {
@@ -284,10 +268,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 	}
 
 	#initializeSchema(): void {
-		// Install the busy handler BEFORE any lock-taking statement (incl.
-		// `PRAGMA journal_mode=WAL`, which acquires an exclusive lock during WAL
-		// recovery). Without this, concurrent veyyon startups can crash here with
-		// `SQLITE_BUSY` / `SQLITE_BUSY_RECOVERY`. See issue #2421.
 		this.#db.run("PRAGMA busy_timeout = 5000");
 		this.#db.run(`
 			PRAGMA journal_mode=WAL;
@@ -361,8 +341,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		this.#createAuthCredentialBlocksTable();
 		this.#createAuthCredentialRefreshLeasesTable();
 		this.#backfillCredentialIdentityKeys();
-		// Rewriting an already-current version row is a no-op write transaction
-		// on every boot; only persist when the recorded version actually changes.
 		if (recordedVersion !== AUTH_SCHEMA_VERSION && schemaVersion <= AUTH_SCHEMA_VERSION) {
 			this.#writeAuthSchemaVersion(AUTH_SCHEMA_VERSION);
 		}
@@ -585,8 +563,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		try {
 			for (const row of rows) {
 				const identityKey = resolveRowCredentialIdentityKey(row.provider, row);
-				// Rows whose identity cannot be derived stay NULL; writing NULL over
-				// NULL would just burn a write transaction on every boot.
 				if (identityKey === null) continue;
 				updateIdentity ??= this.#db.prepare("UPDATE auth_credentials SET identity_key = ? WHERE id = ?");
 				updateIdentity.run(identityKey, row.id);
@@ -717,7 +693,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		return result;
 	}
 
-	/** Hard-deletes disabled rows for a provider when an active replacement exists. */
 	#purgeSupersededDisabledRows(provider: string, activeRows: StoredAuthCredential[]): void {
 		try {
 			let hasActiveApiKey = false;
@@ -743,12 +718,9 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 					this.#hardDeleteStmt.run(row.id);
 				}
 			}
-		} catch {
-			// Best-effort cleanup; don't let it break the main operation
-		}
+		} catch {}
 	}
 
-	/** Update credential and clear disabled_cause. */
 	updateAuthCredentialEnabling(id: number, credential: AuthCredential): void {
 		this.#writeCredential(id, credential, true);
 	}
@@ -757,7 +729,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		this.#writeCredential(id, credential, false);
 	}
 
-	/** Read one row by ID, including disabled rows. */
 	readAuthCredentialById(id: number): StoredAuthCredential | undefined {
 		const stmt = this.#db.prepare("SELECT * FROM auth_credentials WHERE id = ?");
 		try {
@@ -771,7 +742,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		}
 	}
 
-	/** List disabled rows, ordered by ID descending (newest first). */
 	listDisabledAuthCredentials(provider?: string): StoredAuthCredential[] {
 		const sql = provider
 			? "SELECT * FROM auth_credentials WHERE disabled_cause IS NOT NULL AND provider = ? ORDER BY id DESC"
@@ -808,10 +778,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 				this.#purgeSupersededDisabledRows(provider, this.listAuthCredentials(provider));
 			}
 		} catch (error) {
-			// NEVER silent. A dropped credential write is the logout bug: the caller
-			// believes the rotated token is on disk, the next process reads the old one,
-			// and a single-use refresh token is already spent. There is no safe recovery
-			// here, so the least-bad outcome is that the operator can SEE it happened.
 			logger.error("Failed to persist auth credential update", {
 				id,
 				clearDisabled: reenable,
@@ -865,9 +831,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		try {
 			this.#deleteStmt.run(normalizeDisabledCause(disabledCause), id);
 		} catch (error) {
-			// This method returns void, so a swallowed failure told the caller the
-			// credential was disabled when it is still enabled and still in rotation.
-			// A key revoked upstream then keeps being retried on every request.
 			logger.warn("Auth credential could not be disabled; it stays in rotation", {
 				id,
 				disabledCause,
@@ -876,7 +839,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		}
 	}
 
-	/** CAS-style disable matching expected data to avoid race conditions. */
 	tryDisableAuthCredentialIfMatches(
 		id: number,
 		expectedData: string,
@@ -901,8 +863,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		try {
 			this.#deleteByProviderStmt.run(normalizeDisabledCause(disabledCause), provider);
 		} catch (error) {
-			// Same masked outcome as deleteAuthCredential, for every credential the
-			// provider owns: the caller believes the provider was signed out.
 			logger.warn("Auth credentials for provider could not be disabled; they stay in rotation", {
 				provider,
 				disabledCause,
@@ -911,7 +871,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		}
 	}
 
-	/** Report failed cache statement once per operation. */
 	#reportedCacheFailures = new Set<string>();
 
 	#reportCacheFailure(operation: string, error: unknown): void {
@@ -933,8 +892,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 			const row = stmt.get(key) as { value?: string } | undefined;
 			return row?.value ?? null;
 		} catch (error) {
-			// A failed read is indistinguishable from a miss to the caller, which is why it has to be said
-			// out loud here: otherwise an unreadable database looks exactly like a cold cache, forever.
 			this.#reportCacheFailure("get", error);
 			return null;
 		}
@@ -948,13 +905,10 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		}
 	}
 
-	/** Drop all cache rows whose keys start with the supplied prefix. */
 	deleteCachePrefix(prefix: string): void {
 		try {
 			this.#deleteCachePrefixStmt.run(prefix.length, prefix);
 		} catch (error) {
-			// A delete that fails leaves STALE rows behind, so a later read can serve data the caller
-			// believed it had invalidated. Reported for that reason, not merely for symmetry.
 			this.#reportCacheFailure("deletePrefix", error);
 		}
 	}
@@ -974,11 +928,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 			| { blocked_until_ms?: number; updated_at?: number }
 			| undefined;
 		if (typeof row?.blocked_until_ms !== "number") return undefined;
-		// `updated_at` is whole seconds. A row written after the clock we are
-		// reading with cannot be measured against it; drop the block rather than
-		// hold the credential for the length of the jump. This matters more here
-		// than in memory: a persisted block survives restarts, so without the
-		// check the credential stays unusable across every later process too.
 		if (isRecordFromFutureClock(epochSecondsToMs(row.updated_at), nowMs)) return undefined;
 		return row.blocked_until_ms;
 	}
@@ -1019,16 +968,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		}
 	}
 
-	/**
-	 * Read the display name a user chose for one account identity.
-	 *
-	 * Names live in their OWN table, never inside `auth_credentials.data`. That is not a
-	 * preference: several persist paths rebuild an OAuth credential from an explicit field
-	 * list (`#persistRefreshedUsageCredential` is one), so a field carried inside the blob
-	 * is silently destroyed by the next token refresh. Keeping the name out of the blob also
-	 * means renaming an account cannot rewrite token bytes at all, which is the only way to
-	 * make a rename incapable of breaking a login.
-	 */
 	getAccountName(identity: string): string | undefined {
 		const row = this.#getAccountNameStmt.get(identity) as { name?: string } | undefined;
 		const name = row?.name?.trim();
@@ -1054,14 +993,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		this.#deleteAccountNameStmt.run(identity);
 	}
 
-	/**
-	 * The globally chosen account for a provider, as an identity string.
-	 *
-	 * Its own table rather than a `cache` row: the cache is expiry-driven and gets pruned, and a
-	 * user's account choice must outlive any TTL. It sits in the shared auth database beside the
-	 * credentials, which is what makes the choice cross-profile without a per-profile copy to
-	 * reconcile.
-	 */
 	getProviderSelection(provider: string): string | undefined {
 		const row = this.#getProviderSelectionStmt.get(provider);
 		if (!row || typeof row !== "object" || !("identity" in row)) return undefined;
@@ -1109,11 +1040,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 
 	tryAcquireCredentialRefreshLease(credentialId: number, owner: string, expiresAtMs: number): boolean {
 		const nowMs = Date.now();
-		// The second bound steals a lease stamped by a clock ahead of this one.
-		// Without it, a backward clock jump makes the row unstealable for the
-		// length of the jump and every refresh waiter polls until the clock
-		// catches up: a hung OAuth refresh, not a slow one. `updated_at` is whole
-		// seconds, so the tolerance is applied before the conversion.
 		const staleWriteCutoffSeconds = Math.ceil((nowMs + CREDENTIAL_CLOCK_TOLERANCE_MS) / 1000);
 		const result = this.#acquireCredentialRefreshLeaseStmt.run(
 			credentialId,
@@ -1135,8 +1061,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		if (typeof row?.expires_at_ms !== "number") return undefined;
 		const nowMs = Date.now();
 		if (row.expires_at_ms <= nowMs) return undefined;
-		// Report a lease from a future clock as absent so the waiter retries the
-		// acquire (which now steals it) instead of sleeping out the jump.
 		if (isRecordFromFutureClock(epochSecondsToMs(row.updated_at), nowMs)) return undefined;
 		return row.expires_at_ms;
 	}
@@ -1156,9 +1080,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 	releaseCredentialRefreshLease(credentialId: number, owner: string): void {
 		try {
 			this.#releaseCredentialRefreshLeaseStmt.run(credentialId, owner);
-		} catch {
-			// Ignore lease release failures; expired leases are stealable.
-		}
+		} catch {}
 	}
 
 	recordUsageSnapshots(entries: UsageHistoryEntry[]): void {
@@ -1196,9 +1118,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 					entry.resetsAt ?? null,
 				);
 			}
-		} catch {
-			// History is best-effort; never break the usage fetch path.
-		}
+		} catch {}
 	}
 
 	listUsageHistory(query?: UsageHistoryQuery): UsageHistoryEntry[] {
@@ -1231,7 +1151,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 				resetsAt: row.resets_at ?? undefined,
 			}));
 		} catch (error) {
-			// Return empty list on failed query so usage panel remains functional.
 			logger.warn("Usage history could not be read; the usage view is showing none of it", {
 				error: errorMessage(error),
 			});
@@ -1244,9 +1163,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 				this.#insertUsageCostStmt.run(entry.recordedAt, entry.provider, entry.accountKey, entry.costUsd);
 			}
 		} catch (error) {
-			// Still not fatal to the request, but this is money: a dropped batch makes
-			// the cost view under-report spend, and an under-report is indistinguishable
-			// from cheap usage unless the drop is named.
 			logger.warn("Usage costs could not be recorded; the cost view will under-report this spend", {
 				entries: entries.length,
 				error: errorMessage(error),
@@ -1277,9 +1193,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 				costUsd: row.cost_usd,
 			}));
 		} catch (error) {
-			// Same as `listUsageHistory`: zero recorded cost and an unreadable cost table are the same empty
-			// list, and reporting a total of $0 for a database that could not be queried is worse than saying
-			// so. The empty list is still returned so the view renders.
 			logger.warn("Usage cost history could not be read; the reported totals are missing all of it", {
 				error: errorMessage(error),
 			});
@@ -1287,20 +1200,11 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		}
 	}
 
-	// ─── Convenience methods for CLI ────────────────────────────────────────
-
-	/**
-	 * Save OAuth credentials for a provider.
-	 * Preserves unrelated identities and replaces only the matching credential.
-	 */
 	saveOAuth(provider: string, credentials: OAuthCredentials): void {
 		const credential: AuthCredential = { type: "oauth", ...credentials };
 		this.upsertAuthCredentialForProvider(provider, credential);
 	}
 
-	/**
-	 * Get OAuth credentials for a provider.
-	 */
 	getOAuth(provider: string): OAuthCredentials | null {
 		const rows = this.#listActiveByProviderStmt.all(provider) as AuthRow[];
 		for (const row of rows) {
@@ -1313,17 +1217,11 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		return null;
 	}
 
-	/**
-	 * Save API key for a provider (replaces existing).
-	 */
 	saveApiKey(provider: string, apiKey: string): void {
 		const credential: AuthCredential = { type: "api_key", key: apiKey };
 		this.replaceAuthCredentialsForProvider(provider, [credential]);
 	}
 
-	/**
-	 * Get API key for a provider.
-	 */
 	getApiKey(provider: string): string | null {
 		const rows = this.#listActiveByProviderStmt.all(provider) as AuthRow[];
 		for (const row of rows) {
@@ -1335,9 +1233,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		return null;
 	}
 
-	/**
-	 * List all providers with credentials.
-	 */
 	listProviders(): string[] {
 		const rows = this.#listActiveStmt.all() as AuthRow[];
 		const providers = new Set<string>();
@@ -1347,9 +1242,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		return Array.from(providers);
 	}
 
-	/**
-	 * Delete all credentials for a provider.
-	 */
 	deleteProvider(provider: string): void {
 		this.deleteAuthCredentialsForProvider(provider, "deleted by user");
 	}

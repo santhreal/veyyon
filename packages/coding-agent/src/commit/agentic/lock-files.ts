@@ -1,8 +1,5 @@
-/** Lock-file handling for the split-commit workflow. The commit agent hides these machine-generated files from analysis so the */
-
 import type { SplitCommitPlan } from "./state";
 
-/** Lock file basename -> ordered sibling manifests. Order matters: the first manifest present in a commit group's changes wins. */
 export const LOCK_FILE_MANIFESTS: Readonly<Record<string, readonly string[]>> = {
 	"Cargo.lock": ["Cargo.toml"],
 	"package-lock.json": ["package.json"],
@@ -23,10 +20,8 @@ export const LOCK_FILE_MANIFESTS: Readonly<Record<string, readonly string[]>> = 
 	"gradle.lockfile": ["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"],
 };
 
-/** Lock-file basenames the commit agent excludes from `git_overview` output and from split-commit validation. Derived from {@link LOCK_FILE_MANIFESTS} so a */
 export const EXCLUDED_LOCK_FILES: ReadonlySet<string> = new Set(Object.keys(LOCK_FILE_MANIFESTS));
 
-/** Attach staged lock files the model never saw to the split plan. Placement precedence per lock file: */
 export function assignLockFilesToPlan(plan: SplitCommitPlan, stagedFiles: readonly string[]): void {
 	if (plan.commits.length === 0) return;
 
@@ -52,8 +47,6 @@ export function assignLockFilesToPlan(plan: SplitCommitPlan, stagedFiles: readon
 }
 
 function findManifestCommitIndex(plan: SplitCommitPlan, lockDir: string, manifests: readonly string[]): number {
-	// Prefer a manifest in the same directory as the lock file — the strongest
-	// semantic signal (e.g. workspace-crate `Cargo.toml` next to `Cargo.lock`).
 	for (const manifestName of manifests) {
 		for (let i = 0; i < plan.commits.length; i++) {
 			for (const change of plan.commits[i].changes) {
@@ -64,8 +57,6 @@ function findManifestCommitIndex(plan: SplitCommitPlan, lockDir: string, manifes
 			}
 		}
 	}
-	// Fall back to any matching manifest — a monorepo may lock at repo root
-	// while the manifest sits under a subpath.
 	for (const manifestName of manifests) {
 		for (let i = 0; i < plan.commits.length; i++) {
 			for (const change of plan.commits[i].changes) {
@@ -74,6 +65,5 @@ function findManifestCommitIndex(plan: SplitCommitPlan, lockDir: string, manifes
 			}
 		}
 	}
-	// Nothing matched: attach to the last commit so the file still ships.
 	return plan.commits.length - 1;
 }

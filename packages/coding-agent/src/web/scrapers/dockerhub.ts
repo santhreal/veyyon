@@ -32,9 +32,6 @@ interface DockerHubTagsResponse {
 	results?: DockerHubTag[];
 }
 
-/**
- * Handle Docker Hub URLs via API
- */
 export const handleDockerHub: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -48,13 +45,11 @@ export const handleDockerHub: SpecialHandler = async (
 		let namespace: string;
 		let repository: string;
 
-		// Official images: /_ /{image}
 		const officialMatch = parsed.pathname.match(/^\/_\/([^/]+)/);
 		if (officialMatch) {
 			namespace = "library";
 			repository = officialMatch[1];
 		} else {
-			// Regular images: /r/{namespace}/{repository}
 			const repoMatch = parsed.pathname.match(/^\/r\/([^/]+)\/([^/]+)/);
 			if (!repoMatch) return null;
 			namespace = repoMatch[1];
@@ -63,7 +58,6 @@ export const handleDockerHub: SpecialHandler = async (
 
 		const fetchedAt = new Date().toISOString();
 
-		// Fetch repository info and tags in parallel
 		const repoUrl = `https://hub.docker.com/v2/repositories/${namespace}/${repository}/`;
 		const tagsUrl = `https://hub.docker.com/v2/repositories/${namespace}/${repository}/tags/?page_size=10`;
 
@@ -77,14 +71,12 @@ export const handleDockerHub: SpecialHandler = async (
 		const repo = tryParseJson<DockerHubRepo>(repoResult.content);
 		if (!repo) return scraperDegrade("dockerhub", "unexpected response shape");
 
-		// Parse tags
 		let tags: DockerHubTag[] = [];
 		if (tagsResult.ok) {
 			const tagsData = tryParseJson<DockerHubTagsResponse>(tagsResult.content);
 			if (tagsData?.results) tags = tagsData.results;
 		}
 
-		// Build markdown output
 		const fullName = namespace === "library" ? repo.name : `${namespace}/${repo.name}`;
 		let md = `# ${fullName}\n\n`;
 
@@ -92,7 +84,6 @@ export const handleDockerHub: SpecialHandler = async (
 			md += `${repo.description}\n\n`;
 		}
 
-		// Stats line
 		const stats: string[] = [];
 		if (repo.pull_count !== undefined) stats.push(`**Pulls:** ${formatNumber(repo.pull_count)}`);
 		if (repo.star_count !== undefined) stats.push(`**Stars:** ${formatNumber(repo.star_count)}`);
@@ -108,13 +99,11 @@ export const handleDockerHub: SpecialHandler = async (
 
 		md += "\n";
 
-		// Docker pull command
 		md += "## Quick Start\n\n";
 		md += "```bash\n";
 		md += `docker pull ${fullName}\n`;
 		md += "```\n\n";
 
-		// Tags
 		if (tags.length > 0) {
 			md += "## Recent Tags\n\n";
 			md += "| Tag | Size | Architectures | Updated |\n";
@@ -129,8 +118,6 @@ export const handleDockerHub: SpecialHandler = async (
 						.join(", ") || "-",
 				);
 				const updated = tag.last_updated ? formatIsoDate(tag.last_updated) : "-";
-				// Tag name and arch list come from the API; a `|` in either would split
-				// the GFM row (backticks do not shield a cell from row-level parsing).
 				md += `| \`${escapeMarkdownTableCell(tag.name)}\` | ${size} | ${archs} | ${updated} |\n`;
 			}
 			md += "\n";

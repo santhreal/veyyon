@@ -1,30 +1,17 @@
-/** Streaming markdown → speakable-segment transform for assistant speech. Sits between the assistant's raw streaming text deltas and the TTS engine, */
-
 import { hasAlphanumeric } from "@veyyon/utils";
 
-/** Minimum length before the very first segment may cut at a sentence boundary. */
 const FIRST_SEGMENT_MIN = 12;
-/** Buffer length past which the first segment may cut at a clause boundary instead. */
 const FIRST_CLAUSE_MIN = 40;
-/** Hard cap for the first segment: force a word cut for fast time-to-first-audio. */
 const FIRST_FORCED_MAX = 140;
-/** Minimum segment length once speech has started (merges stubby sentences). */
 const MIN_SEGMENT = 24;
-/** Mid-stream soft cut: once this much unpunctuated text is buffered, split at a clause boundary instead of waiting for the sentence to end. Long sentences */
 const SOFT_CLAUSE_LEN = 160;
-/** Hard cap per segment. Kokoro's `generate()` truncates past ~510 phoneme tokens rather than splitting, so every emission path must stay well under it. */
 const MAX_SEGMENT = 280;
 
-/** Sentence-ending punctuation, optional closers, then whitespace. */
 const SENTENCE_BOUNDARY_RE = /[.!?…]+[)\]"'»”’]*\s/g;
-/** Clause punctuation followed by whitespace — early-cut and force-split points. */
 const CLAUSE_BOUNDARY_RE = /[,;:—–]\s/g;
-/** Abbreviations whose trailing dot is not a sentence boundary. */
 const ABBREVIATION_RE = /(?:^|\s)(?:e\.g|i\.e|etc|vs|Mr|Mrs|Ms|Dr|St|No)\.$/i;
 
-/** Line-start prefixes that may still grow into a block marker. */
 const UNDECIDED_PREFIX_RE = /^(?:#{1,6}|[-*+]|-{2,}|\*{2,}|_{2,}|\d{1,3}|\d{1,3}[.)]|>+|`{1,2}|~{1,2})$/;
-/** A whole line that is a horizontal rule (or setext underline) — silence. */
 const HR_LINE_RE = /^(?:-{3,}|\*{3,}|_{3,})\s*$/;
 
 const IMAGE_RE = /!\[([^\]]*)\]\(([^()]*)\)/g;
@@ -39,7 +26,6 @@ const HTML_TAG_RE = /<\/?[a-zA-Z][^<>]*>/g;
 const HR_INLINE_RE = /(^|\s)[-*_]{3,}(?=\s|$)/g;
 const PATH_RE = /(^|[\s("'`])((?:~|\.{1,2})?\/?[\w.@+-]+(?:\/[\w.@+-]+){2,}\/?)/g;
 
-/** "https://github.com/foo/bar?x#y" → "github.com". */
 function speakableUrl(url: string): string {
 	return url
 		.replace(/^[a-z][\w+.-]*:\/\//i, "")
@@ -47,7 +33,6 @@ function speakableUrl(url: string): string {
 		.replace(/[/?#].*$/, "");
 }
 
-/** Collapse one raw segment to its speakable form; empty string when nothing in it is worth vocalizing (pure markup, URLs-only, whitespace). */
 function normalizeSpeakable(raw: string): string {
 	const spoken = raw
 		.replace(IMAGE_RE, "$1")
@@ -61,7 +46,6 @@ function normalizeSpeakable(raw: string): string {
 		.replace(HTML_TAG_RE, " ")
 		.replace(HR_INLINE_RE, "$1")
 		.replace(PATH_RE, (_match, lead: string, path: string) => {
-			// "packages/coding-agent/src/tts/vocalizer.ts" → "vocalizer.ts".
 			const parts = path.split("/").filter(part => part.length > 0);
 			return lead + (parts[parts.length - 1] ?? path);
 		})
@@ -70,7 +54,6 @@ function normalizeSpeakable(raw: string): string {
 	return hasAlphanumeric(spoken) ? spoken : "";
 }
 
-/** Earliest sentence boundary at or past `min` chars; -1 when none. Skips cuts that would strand an unclosed inline-code span or split an abbreviation. */
 function findSentenceCut(text: string, min: number): number {
 	SENTENCE_BOUNDARY_RE.lastIndex = 0;
 	for (let match = SENTENCE_BOUNDARY_RE.exec(text); match; match = SENTENCE_BOUNDARY_RE.exec(text)) {
@@ -84,7 +67,6 @@ function findSentenceCut(text: string, min: number): number {
 	return -1;
 }
 
-/** Earliest clause boundary at or past `min` chars; -1 when none. */
 function findClauseCut(text: string, min: number): number {
 	CLAUSE_BOUNDARY_RE.lastIndex = 0;
 	for (let match = CLAUSE_BOUNDARY_RE.exec(text); match; match = CLAUSE_BOUNDARY_RE.exec(text)) {
@@ -94,7 +76,6 @@ function findClauseCut(text: string, min: number): number {
 	return -1;
 }
 
-/** Latest clause boundary in `[min, max]` chars; -1 when none. Keeps soft-cut segments grouped near the target length instead of shaving off the earliest */
 function findLastClauseCut(text: string, min: number, max: number): number {
 	CLAUSE_BOUNDARY_RE.lastIndex = 0;
 	let best = -1;
@@ -106,13 +87,11 @@ function findLastClauseCut(text: string, min: number, max: number): number {
 	return best;
 }
 
-/** Word-level cut for text with no usable punctuation: last space at or before `max`. */
 function findForcedCut(text: string, max: number): number {
 	const space = text.lastIndexOf(" ", max);
 	return space > 0 ? space + 1 : Math.min(max, text.length);
 }
 
-/** How a line-start prefix resolved. */
 type PrefixDecision =
 	| { kind: "undecided" }
 	| { kind: "prose"; text: string }
@@ -134,26 +113,17 @@ function classifyPrefix(prefix: string): PrefixDecision {
 	return { kind: "prose", text: prefix };
 }
 
-/** Block-pass state: where the current character lands. */
 type BlockMode = "linestart" | "prose" | "swallow" | "code";
 
-/** One per utterance. Feed raw assistant deltas through {@link push}; each call returns the segments that became ready to speak. {@link flush} drains the */
 export class SpeakableStream {
 	#mode: BlockMode = "linestart";
-	/** Pending line-start characters while the block marker is still ambiguous. */
 	#prefix = "";
-	/** Opening fence of the code block being swallowed (``` or ~~~). */
 	#fence = "";
-	/** First characters of the current line inside a code block (fence-close probe). */
 	#codeLine = "";
-	/** Mode to enter after the current swallowed line ends (code for an opening fence). */
 	#afterSwallow: BlockMode = "linestart";
-	/** Prose accumulator the segmenter cuts from. */
 	#buf = "";
-	/** Whether anything has been emitted yet (enables the fast first segment). */
 	#spoke = false;
 
-	/** Consume a raw delta; returns segments now ready to speak, in order. */
 	push(delta: string): string[] {
 		const out: string[] = [];
 		for (const ch of delta) this.#consume(ch, out);
@@ -161,7 +131,6 @@ export class SpeakableStream {
 		return out;
 	}
 
-	/** Message end: drain everything left, including a trailing partial sentence. */
 	flush(): string[] {
 		const out: string[] = [];
 		if (this.#mode === "linestart" && this.#prefix.length > 0 && !HR_LINE_RE.test(this.#prefix)) {
@@ -173,7 +142,6 @@ export class SpeakableStream {
 		return out;
 	}
 
-	/** Generation stalled (tool call, thinking block): speak what we have rather than sit silent on buffered text. Keeps block state so the stream resumes */
 	flushIdle(): string[] {
 		const out: string[] = [];
 		const pending = this.#buf.trimEnd();
@@ -203,8 +171,6 @@ export class SpeakableStream {
 
 	#consumeLineStart(ch: string, out: string[]): void {
 		if (ch === "\n") {
-			// The whole line fit in the prefix: an hr/blank line is silence; a
-			// short undecided prefix ("Hi.", "OK") was prose all along.
 			const line = this.#prefix;
 			this.#prefix = "";
 			if (line.length > 0 && !HR_LINE_RE.test(line)) this.#buf += line;
@@ -252,20 +218,17 @@ export class SpeakableStream {
 		if (this.#codeLine.length < 3) {
 			this.#codeLine += ch;
 			if (this.#codeLine === this.#fence) {
-				// Closing fence: swallow the rest of its line, then resume prose.
 				this.#mode = "swallow";
 				this.#afterSwallow = "linestart";
 			}
 		}
 	}
 
-	/** Newline in prose: everything buffered is a complete unit — emit it now. */
 	#hardBreak(out: string[]): void {
 		this.#mode = "linestart";
 		this.#drain(out);
 	}
 
-	/** Emit every buffered character. Runs the bounded streaming segmenter first so a large buffer (paste-sized delta, one-shot push) prefers sentence and */
 	#drain(out: string[]): void {
 		this.#extract(out);
 		const text = this.#buf;
@@ -273,22 +236,16 @@ export class SpeakableStream {
 		this.#emit(text, out);
 	}
 
-	/** Cut ready segments off the front of the buffer (streaming path). */
 	#extract(out: string[]): void {
 		for (;;) {
 			const buf = this.#buf;
 			const min = this.#spoke ? MIN_SEGMENT : FIRST_SEGMENT_MIN;
-			// Bounded: a sentence past MAX_SEGMENT risks Kokoro's ~510-phoneme
-			// truncation — fall through to clause/word cuts instead.
 			const sentence = findSentenceCut(buf, min);
 			if (sentence !== -1 && sentence <= MAX_SEGMENT) {
 				this.#cut(sentence, out);
 				continue;
 			}
 			if (!this.#spoke && buf.length >= FIRST_CLAUSE_MIN) {
-				// Bounded like the sentence branch: in a one-shot buffer the earliest
-				// clause can lie far past the cap; per-char streaming would have
-				// force-cut at FIRST_FORCED_MAX long before seeing it.
 				const clause = findClauseCut(buf, FIRST_SEGMENT_MIN);
 				if (clause !== -1 && clause <= FIRST_FORCED_MAX) {
 					this.#cut(clause, out);

@@ -1,5 +1,3 @@
-/** Fuzzy matching utilities with word-local matching. Lower score = better match. */
-
 export interface FuzzyMatch {
 	matches: boolean;
 	score: number;
@@ -25,7 +23,6 @@ interface SearchWord {
 interface SearchIndex {
 	normalized: string;
 	compact: string;
-	/** Start offset of each word within `compact` → that word's length. */
 	compactWordStarts: Map<number, number>;
 	words: SearchWord[];
 }
@@ -33,9 +30,7 @@ interface SearchIndex {
 const ALPHANUMERIC_SWAP_PENALTY = 5;
 const COMPACT_PHRASE_BONUS = 1200;
 const PHRASE_BONUS = 1000;
-/** Inflections a query token may add past an indexed word ("themes" ⊃ "theme"). */
 const EXTENSION_SUFFIXES = new Set(["s", "es", "d", "ed"]);
-/** English stopwords that may not lead a cross-word compact match. */
 const COMPACT_STOPWORDS = new Set([
 	"the",
 	"a",
@@ -83,14 +78,11 @@ function normalizeForSearch(value: string): string {
 		.replace(/\s+/g, " ");
 }
 
-// Module-level cache for search index structures of short candidate texts.
 const INDEX_CACHE_MAX = 4096;
 const MAX_CACHED_TEXT_LEN = 4096;
 const indexCache = new Map<string, SearchIndex>();
 
 function buildSearchIndex(text: string): SearchIndex {
-	// Long inputs (pasted prompts, transcripts) are never cached; bypass the Map
-	// entirely so they don't pay a hash lookup on every search.
 	if (text.length > MAX_CACHED_TEXT_LEN) return buildUncachedSearchIndex(text);
 
 	const cached = indexCache.get(text);
@@ -188,7 +180,6 @@ function withPosition(score: number, index: number): number {
 	return score + index * 0.01;
 }
 
-/** Check if a compact match aligns appropriately with word boundaries. */
 function isCompactWordAligned(index: SearchIndex, start: number, length: number): boolean {
 	const firstWordLength = index.compactWordStarts.get(start);
 	if (firstWordLength === undefined) return false;
@@ -213,7 +204,6 @@ function scoreTokenAgainstWord(token: string, word: SearchWord): FuzzyMatch | nu
 		return { matches: true, score: withPosition(-170 + (word.text.length - token.length) * 0.5, word.index) };
 	}
 
-	// Allow recognized inflection suffixes for query tokens extending past a word.
 	if (word.text.length >= 4 && token.startsWith(word.text) && EXTENSION_SUFFIXES.has(token.slice(word.text.length))) {
 		return { matches: true, score: withPosition(-150 + token.length - word.text.length, word.index) };
 	}
@@ -300,8 +290,6 @@ function scoreToken(token: string, index: SearchIndex): FuzzyMatch {
 	return best;
 }
 
-/** A query normalized and split once, so `fuzzyRank` doesn't re-normalize the
- * same query for every candidate in the list. */
 interface PreparedQuery {
 	normalized: string;
 	tokens: string[];
@@ -314,7 +302,6 @@ function prepareQuery(query: string): PreparedQuery | null {
 	return { normalized, tokens: normalized.split(" "), compact: normalized.replaceAll(" ", "") };
 }
 
-/** Check if repeated query tokens have sufficient distinct words to match. */
 function hasDistinctWordsForRepeatedTokens(tokens: readonly string[], index: SearchIndex): boolean {
 	if (tokens.length < 2) return true;
 	const needed = new Map<string, number>();
@@ -364,7 +351,6 @@ function fuzzyMatchCore(pq: PreparedQuery | null, index: SearchIndex): FuzzyMatc
 		totalScore += match.score;
 	}
 
-	// Ensure repeated query tokens match distinct target words.
 	if (!hasDistinctWordsForRepeatedTokens(pq.tokens, index)) {
 		return { matches: false, score: 0 };
 	}
@@ -378,7 +364,6 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 	return fuzzyMatchCore(pq, buildSearchIndex(text));
 }
 
-/** Case-sensitive order-preserving subsequence test. */
 export function isSubsequenceMatch(query: string, target: string): boolean {
 	if (query.length === 0) return true;
 	if (query.length > target.length) return false;
@@ -389,7 +374,6 @@ export function isSubsequenceMatch(query: string, target: string): boolean {
 	return qi === query.length;
 }
 
-/** Rank quality of a subsequence match (higher score = better match). */
 export function subsequenceScore(query: string, target: string): number {
 	if (query.length === 0) return 1;
 	if (target === query) return 100;
@@ -409,7 +393,6 @@ export function subsequenceScore(query: string, target: string): number {
 	return Math.max(1, 40 - gaps * 5);
 }
 
-/** Pre-indexed text structure for efficient repeated fuzzy matching. */
 export class FuzzyText {
 	readonly #index: SearchIndex;
 
@@ -417,16 +400,11 @@ export class FuzzyText {
 		this.#index = buildUncachedSearchIndex(text);
 	}
 
-	/** Match `query` (space-separated tokens; all must match) against the prepared text. */
 	match(query: string): FuzzyMatch {
 		return fuzzyMatchCore(prepareQuery(query), this.#index);
 	}
 }
 
-/**
- * Filter and sort items by fuzzy match quality (best matches first).
- * Supports space-separated tokens: all tokens must match.
- */
 export function fuzzyRank<T>(items: readonly T[], query: string, getText: (item: T) => string): FuzzyFilterResult<T>[] {
 	if (!query.trim()) {
 		const result = new Array<FuzzyFilterResult<T>>(items.length);
@@ -434,9 +412,6 @@ export function fuzzyRank<T>(items: readonly T[], query: string, getText: (item:
 		return result;
 	}
 
-	// A non-blank query that normalizes to empty (pure punctuation) matches
-	// everything with score 0, but still calls getText per item — consumers rely
-	// on its side effects (see fuzzy-cache.test.ts).
 	const pq = prepareQuery(query);
 	const results: FuzzyFilterResult<T>[] = [];
 	for (let ii = 0; ii < items.length; ii++) {
@@ -459,18 +434,10 @@ export function fuzzyFilter<T>(items: readonly T[], query: string, getText: (ite
 	return result;
 }
 
-/**
- * Clear the fuzzy search-index cache. Intended for tests/benchmarks so a fresh
- * cold-start typing session can be measured on demand; not part of the supported
- * TUI API.
- *
- * @internal
- */
 export function resetFuzzyIndexCache(): void {
 	indexCache.clear();
 }
 
-/** Compute character positions in `text` to highlight for `query`. */
 export function matchPositions(query: string, text: string): number[] {
 	const q = query.trim().toLowerCase();
 	if (q.length === 0) return [];
@@ -480,7 +447,6 @@ export function matchPositions(query: string, text: string): number[] {
 	for (let qi = 0; qi < qTokens.length; qi++) {
 		const token = qTokens[qi]!;
 		if (token.length === 0) continue;
-		// Word-boundary substring first, then any substring.
 		let at = -1;
 		for (let i = t.indexOf(token); i >= 0; i = t.indexOf(token, i + 1)) {
 			const boundary = i === 0 || !/[a-z0-9]/.test(t[i - 1] ?? "");
@@ -494,7 +460,6 @@ export function matchPositions(query: string, text: string): number[] {
 			for (let i = 0; i < token.length; i++) hits.add(at + i);
 			continue;
 		}
-		// In-order subsequence fallback.
 		let qii = 0;
 		for (let ti = 0; ti < t.length && qii < token.length; ti++) {
 			if (t[ti] === token[qii]) {

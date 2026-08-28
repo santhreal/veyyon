@@ -1,4 +1,3 @@
-/** ExtensionList - Inventory list with Master Switch and fuzzy search. When viewing a specific provider (not "ALL"), Row #0 is the Master Switch */
 import {
 	type Component,
 	HoverFade,
@@ -17,19 +16,14 @@ import { applyFilter } from "./state-manager";
 import type { ExtensionKind, ExtensionRow, ExtensionState } from "./types";
 
 export interface ExtensionListCallbacks {
-	/** Called when selection changes */
 	onSelectionChange?: (extension: ExtensionRow | null) => void;
-	/** Called when extension is toggled */
 	onToggle?: (extensionId: string, enabled: boolean) => void;
-	/** Called when master switch is toggled */
 	onMasterToggle?: (providerId: string) => void;
-	/** Provider ID for master switch (null = no master switch) */
 	masterSwitchProvider?: string | null;
 }
 
 const DEFAULT_MAX_VISIBLE = 15;
 
-/** Flattened list item for rendering */
 type ListItem =
 	| { type: "master"; providerId: string; providerName: string; enabled: boolean }
 	| { type: "kind-header"; kind: ExtensionKind; label: string; icon: string; count: number }
@@ -44,9 +38,7 @@ export class ExtensionList implements Component {
 	#masterSwitchProvider: string | null = null;
 	#maxVisible: number;
 	#hoveredIndex: number | null = null;
-	/** The cross-fade, once the dashboard has lent this list a repaint ({@link setHoverMotion}). Absent, the band is switched. */
 	#hoverFade: HoverFade | undefined;
-	/** Item rows rendered in the last frame, for mouse hit-testing. */
 	#visibleCount = 0;
 
 	constructor(
@@ -94,7 +86,6 @@ export class ExtensionList implements Component {
 		return item?.type === "extension" ? item.item : null;
 	}
 
-	/** Get the currently selected kind header (for preview purposes) */
 	getSelectedKind(): ExtensionKind | null {
 		const item = this.#listItems[this.#selectedIndex];
 		return item?.type === "kind-header" ? item.kind : null;
@@ -118,7 +109,6 @@ export class ExtensionList implements Component {
 		const lines: string[] = [];
 		this.#visibleCount = 0;
 
-		// Search bar
 		const searchPrefix = theme.fg("muted", "Search: ");
 		const searchText = this.#searchQuery || (this.#focused ? "" : theme.fg("dim", "type to filter"));
 		const cursor = this.#focused ? theme.fg("accent", "_") : "";
@@ -130,10 +120,8 @@ export class ExtensionList implements Component {
 			return lines;
 		}
 
-		// Determine if master switch is off (for dimming child items)
 		const masterDisabled = this.#masterSwitchProvider !== null && !isProviderEnabled(this.#masterSwitchProvider);
 
-		// Calculate visible range
 		const startIdx = this.#scrollOffset;
 		const endIdx = Math.min(startIdx + this.#maxVisible, this.#listItems.length);
 
@@ -203,17 +191,13 @@ export class ExtensionList implements Component {
 	}
 
 	#renderExtensionRow(ext: ExtensionRow, isSelected: boolean, width: number, masterDisabled: boolean): string {
-		// When master is disabled, all items appear dimmed
 		const effectivelyDisabled = masterDisabled || ext.state === "disabled";
 
-		// Status icon
 		const stateIcon = this.#getStateIcon(ext.state, masterDisabled);
 
-		// Name
 		let name = ext.displayName;
 		const nameWidth = Math.min(24, width - 16);
 
-		// Build the line with indentation (visually "inside" the master switch)
 		let line = `   ${stateIcon} `;
 
 		if (isSelected && !masterDisabled) {
@@ -224,11 +208,9 @@ export class ExtensionList implements Component {
 			name = theme.fg("warning", name);
 		}
 
-		// Pad name
 		const namePadded = this.#padText(name, nameWidth);
 		line += namePadded;
 
-		// Trigger hint
 		if (ext.trigger) {
 			const triggerStyle = effectivelyDisabled ? "dim" : "muted";
 			const remainingWidth = width - visibleWidth(line) - 2;
@@ -237,8 +219,6 @@ export class ExtensionList implements Component {
 			}
 		}
 
-		// The band covers the whole row so the highlight keeps its shape as the
-		// cursor moves between a short name and a long one.
 		if (isSelected) {
 			return selectionBand(line, width);
 		}
@@ -298,10 +278,8 @@ export class ExtensionList implements Component {
 	#rebuildList(): void {
 		this.#listItems = [];
 
-		// Apply search filter
 		const filtered = this.#searchQuery.length > 0 ? applyFilter(this.extensions, this.#searchQuery) : this.extensions;
 
-		// When searching, show flat list
 		if (this.#searchQuery.length > 0) {
 			for (const ext of filtered) {
 				this.#listItems.push({ type: "extension", item: ext });
@@ -309,7 +287,6 @@ export class ExtensionList implements Component {
 			return;
 		}
 
-		// Provider-specific view: Master switch + flat list
 		if (this.#masterSwitchProvider) {
 			const providerName = filtered[0]?.source.providerName ?? this.#masterSwitchProvider;
 			const enabled = isProviderEnabled(this.#masterSwitchProvider);
@@ -327,7 +304,6 @@ export class ExtensionList implements Component {
 			return;
 		}
 
-		// ALL view: Group by kind with headers
 		const byKind = new Map<ExtensionKind, ExtensionRow[]>();
 		for (const ext of filtered) {
 			const list = byKind.get(ext.kind) ?? [];
@@ -399,13 +375,11 @@ export class ExtensionList implements Component {
 		this.#scrollOffset = next.scrollOffset;
 	}
 
-	/** Toggle the selected item, or flip the provider master switch when on it. */
 	#activateSelected(): void {
 		const item = this.#listItems[this.#selectedIndex];
 		if (item?.type === "master") {
 			this.callbacks.onMasterToggle?.(item.providerId);
 		} else if (item?.type === "extension") {
-			// Only allow toggling if the provider master switch is enabled.
 			const masterDisabled = this.#masterSwitchProvider !== null && !isProviderEnabled(this.#masterSwitchProvider);
 			if (!masterDisabled) {
 				const newEnabled = item.item.state === "disabled";
@@ -414,33 +388,28 @@ export class ExtensionList implements Component {
 		}
 	}
 
-	/** Band the row under the pointer (null clears). The band paints on every row, the cursor row included: the pointer does not move the cursor, so */
 	setHoverIndex(index: number | null): void {
 		this.#hoveredIndex = index;
 		this.#hoverFade?.set(index);
 	}
 
-	/** Lend the list a repaint so the band can cross-fade between rows. Without it the list has no frames of its own between two mouse reports and the band is switched, which is what every */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade(options);
 		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
 	}
 
-	/** Settle the band so no timer outlives the dashboard that owns this list. */
 	disposeHoverMotion(): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = undefined;
 		this.#hoveredIndex = null;
 	}
 
-	/** Band strength for a row; without a fade the hovered row is at 1 and the rest at 0. */
 	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
-	/** Map a 0-based line within this component's render to the absolute list-item index, or null when the line is the search banner, a padding row, or outside */
 	hitTest(line: number): number | null {
 		const rowLine = line - 2;
 		if (rowLine < 0 || rowLine >= this.#visibleCount) return null;
@@ -448,13 +417,11 @@ export class ExtensionList implements Component {
 		return index < this.#listItems.length ? index : null;
 	}
 
-	/** Wheel notch: move the selection (and the inspector) one row. */
 	handleWheel(delta: -1 | 1): void {
 		if (delta < 0) this.#moveSelectionUp();
 		else this.#moveSelectionDown();
 	}
 
-	/** Click: select the row under the pointer, or activate it when already selected. */
 	handleClick(line: number): void {
 		const index = this.hitTest(line);
 		if (index === null) return;
@@ -467,7 +434,6 @@ export class ExtensionList implements Component {
 	}
 
 	handleInput(data: string): void {
-		// Navigation
 		if (matchesSelectUp(data) || matchesKey(data, "k")) {
 			this.#moveSelectionUp();
 			return;
@@ -478,13 +444,11 @@ export class ExtensionList implements Component {
 			return;
 		}
 
-		// Space or Enter: activate the selected row (toggle item / master switch)
 		if (data === " " || matchesKey(data, "enter") || matchesKey(data, "return") || data === "\n") {
 			this.#activateSelected();
 			return;
 		}
 
-		// Backspace: Delete from search query
 		if (matchesKey(data, "backspace")) {
 			if (this.#searchQuery.length > 0) {
 				this.setSearchQuery(this.#searchQuery.slice(0, -1));
@@ -492,7 +456,6 @@ export class ExtensionList implements Component {
 			return;
 		}
 
-		// Printable characters -> search
 		const char = searchableChar(data);
 		if (char !== null) {
 			this.setSearchQuery(this.#searchQuery + char);

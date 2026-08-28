@@ -1,4 +1,3 @@
-/** Enhanced speech rewriting (`speech.enhanced`): turn assistant markdown into natural spoken prose with the tiny/smol model before synthesis. */
 import { type ApiKeyResolver, type AssistantMessage, type Context, completeSimple } from "@veyyon/ai";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { logger, prompt } from "@veyyon/utils";
@@ -10,24 +9,18 @@ import { isSecretPlaceholder, PLACEHOLDER_RE } from "../secrets/placeholder";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 
 const SYSTEM_PROMPT = prompt.render(sideChannelPrompts["side-channel/speech-rewrite"].text);
-// Rewrite budget: a paragraph in, a spoken paragraph (usually shorter) out. Always reserve enough room to survive backends that ignore `disableReasoning`
 const ANSWER_MAX_TOKENS = 1536;
-/** Per-block completion deadline before falling back to mechanical cleanup. */
 const REWRITE_TIMEOUT_MS = 6000;
-/** Bound block characters sent to the model (huge diffs/code dumps get elided). */
 const MAX_BLOCK_CHARS = 4000;
 
-/** Session-scoped dependencies; mirrors the auto-thinking classifier's deps. */
 export interface SpeechEnhancerDeps {
 	settings: Settings;
 	registry: ModelRegistry;
 	sessionId: string;
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined;
-	/** Final outbound confidentiality boundary for provider-bound session text. */
 	obfuscateProviderText?: (text: string) => string;
 }
 
-/** Rewrites one markdown block into spoken prose via the tiny/smol role. Constructed per session by the event controller and handed to the vocalizer. */
 export class SpeechEnhancer {
 	#deps: SpeechEnhancerDeps;
 
@@ -35,13 +28,9 @@ export class SpeechEnhancer {
 		this.#deps = deps;
 	}
 
-	/** Rewrite `block` for speech. Returns the spoken text (empty string when the model judged the block unspeakable — pure code/markup), or null when */
 	async rewrite(block: string, signal?: AbortSignal): Promise<string | null> {
 		try {
 			const { settings, registry, sessionId } = this.#deps;
-			// `@tiny` expands a configured `modelRoles.tiny` and otherwise falls
-			// through tiny's alias to the smol priority chain — unlike bare role
-			// lookup, this resolves even with no roles configured.
 			const model = resolveModelRoleValue("@tiny", registry.getAvailable(), {
 				settings,
 				matchPreferences: getModelMatchPreferences(settings),
@@ -49,14 +38,10 @@ export class SpeechEnhancer {
 			if (!model) return null;
 			const apiKey = await registry.getApiKey(model, sessionId);
 			if (!apiKey) return null;
-			// Resolve metadata after getApiKey so the session-sticky credential is recorded first.
 			const metadata = this.#deps.metadataResolver?.(model.provider);
 			const requestContext: Context = { systemPrompt: [], messages: [] };
 			const refreshProviderContext = (): void => {
 				const sanitize = this.#deps.obfuscateProviderText ?? ((text: string) => text);
-				// Replace exact secrets in the raw block before middle elision. If
-				// bounding runs first, either retained edge can become an unmatched
-				// fragment that the transform can no longer recognize.
 				const providerBlock = boundBlockWithAtomicPlaceholders(sanitize(block));
 				requestContext.systemPrompt = [sanitize(SYSTEM_PROMPT)];
 				requestContext.messages = [{ role: "user", content: providerBlock, timestamp: Date.now() }];
@@ -65,8 +50,6 @@ export class SpeechEnhancer {
 			const resolveApiKey = registry.resolver(model, sessionId);
 			const resolveAttemptApiKey: ApiKeyResolver = async options => {
 				const key = await resolveApiKey(options);
-				// A retry may refresh both credentials and the secret runtime. Build
-				// each physical attempt again from the unbounded raw speech block.
 				refreshProviderContext();
 				return key;
 			};
@@ -100,7 +83,6 @@ export class SpeechEnhancer {
 const PLACEHOLDER_SHIELD_START = 0xe100;
 const PLACEHOLDER_SHIELD_END = 0xf8ff;
 
-/** Keep real provider placeholders indivisible across speech middle elision. */
 function boundBlockWithAtomicPlaceholders(block: string): string {
 	const unavailable = new Set(block);
 	let nextCodePoint = PLACEHOLDER_SHIELD_START;
@@ -132,25 +114,18 @@ function boundBlockWithAtomicPlaceholders(block: string): string {
 	return bounded;
 }
 
-/** Elide the middle of an oversized block so the prompt stays bounded. */
 function boundBlock(block: string): string {
 	if (block.length <= MAX_BLOCK_CHARS) return block;
 	const half = MAX_BLOCK_CHARS / 2;
 	return `${block.slice(0, half)}\n… (elided) …\n${block.slice(-half)}`;
 }
 
-/** Fence-aware paragraph accumulator over raw streaming deltas. One instance per utterance. */
 export class BlockAccumulator {
-	/** Complete lines of the block being accumulated. */
 	#lines: string[] = [];
-	/** Trailing characters of the current, still-incomplete line. */
 	#partial = "";
-	/** Opening fence chars while inside a code block, else null. */
 	#fence: string | null = null;
-	/** Index into {@link #lines} where the open fence started (drop point for a truncated fence). */
 	#fenceStart = 0;
 
-	/** Feed a delta; returns the blocks it completed, in order. */
 	push(delta: string): string[] {
 		const out: string[] = [];
 		let text = this.#partial + delta;
@@ -165,7 +140,6 @@ export class BlockAccumulator {
 		return out;
 	}
 
-	/** Message end: drain everything. An unterminated code fence is dropped from its opening line onward (a truncated block is never worth speaking); the */
 	flush(): string | null {
 		if (this.#partial.length > 0) {
 			this.#lines.push(this.#partial);
@@ -178,7 +152,6 @@ export class BlockAccumulator {
 		return this.#take();
 	}
 
-	/** Generation stalled: drain the pending partial block — unless we are inside a code fence, where the only thing buffered is code and speaking */
 	flushPartial(): string | null {
 		if (this.#fence !== null) return null;
 		if (this.#partial.length > 0) {

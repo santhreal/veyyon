@@ -5,8 +5,6 @@ import { detectHostAvx2Support } from "../../../scripts/host-detect";
 import { generateEnumExports } from "./gen-enums";
 import { exceedsGlibcFloor, GLIBC_FLOOR, inspectGlibcRequirement, planLinuxNativeRoute } from "./native-portability";
 
-// pcre2-sys prefers a system libpcre2 when pkg-config finds one. Release addons
-// must not retain host Homebrew paths such as /opt/homebrew/opt/pcre2/*.dylib.
 process.env.PCRE2_SYS_STATIC ??= "1";
 
 const repoRoot = path.join(import.meta.dir, "../../..");
@@ -20,12 +18,6 @@ const targetArch = Bun.env.TARGET_ARCH || process.arch;
 const configuredVariantRaw = Bun.env.TARGET_VARIANT;
 const isCrossCompile = Boolean(crossTarget) || targetPlatform !== process.platform || targetArch !== process.arch;
 
-// Route linux-gnu builds toward the release glibc floor. Without this, a local
-// `gen:native` links the HOST glibc into the addon and any binary bundling it
-// hard-fails on older distros — while looking perfectly distributable. When the
-// zig toolchain is present the build pins the same floor CI ships; otherwise it
-// proceeds host-only and the post-build check below reports the real floor
-// loudly. `VEYYON_NATIVE_HOST_ONLY=1` opts out of the auto-pin explicitly.
 const nativeRoute = planLinuxNativeRoute({
 	crossTarget,
 	platform: targetPlatform,
@@ -64,9 +56,6 @@ function resolveEffectiveVariant(): X64Variant | null {
 	}
 	const support = detectHostAvx2Support();
 	if (support === "unknown") {
-		// The probe could not run — do NOT silently build a baseline-only artifact
-		// on a host that may well support the faster modern build (Law 10). Warn
-		// loudly and let the developer force the variant explicitly.
 		console.warn(
 			"[build-native] warning: could not detect this host's AVX2 support; building the slower `baseline` " +
 				"x64 variant. If this host has AVX2, set TARGET_VARIANT=modern to build the faster variant.",
@@ -78,8 +67,6 @@ function resolveEffectiveVariant(): X64Variant | null {
 const effectiveVariant = resolveEffectiveVariant();
 const variantSuffix = effectiveVariant ? `-${effectiveVariant}` : "";
 
-// Pin Rust target-cpu so x64 baseline/modern variants get a reproducible ISA floor
-// instead of inheriting the host CPU when RUSTFLAGS is unset.
 if (!isCrossCompile && !Bun.env.RUSTFLAGS) {
 	if (effectiveVariant === "modern") {
 		Bun.env.RUSTFLAGS = "-C target-cpu=x86-64-v3";
@@ -98,15 +85,10 @@ async function cleanupStaleTemps(dir: string): Promise<void> {
 				await fs.unlink(path.join(dir, entry)).catch(() => {});
 			}
 		}
-	} catch {
-		// Directory might not exist yet
-	}
+	} catch {}
 }
 
 async function resolveCargoTargetDir(): Promise<string | null> {
-	// Mirror napi's resolution order (CARGO_BUILD_TARGET_DIR, else `cargo
-	// metadata`'s target_directory, which already honors CARGO_TARGET_DIR and
-	// config files) so a symlink we create lands exactly where napi looks.
 	const explicit = process.env.CARGO_BUILD_TARGET_DIR;
 	if (explicit) return path.resolve(explicit);
 	const meta = await $`cargo metadata --no-deps --format-version 1`.cwd(rustDir).quiet().nothrow();
@@ -120,12 +102,6 @@ async function resolveCargoTargetDir(): Promise<string | null> {
 }
 
 async function ensureZigbuildTargetDirLink(suffixedTriple: string, bareTriple: string): Promise<void> {
-	// napi 3.7.0 reads the cdylib from `<targetDir>/<--target>/<profile>/`, using
-	// the full `--target` string verbatim. cargo-zigbuild strips the `.<glibc>`
-	// floor suffix before invoking cargo, so the cdylib actually lands under the
-	// bare-triple directory. Point the suffixed directory napi expects at the
-	// bare one or postBuild aborts with "Failed to copy artifact". No-op for
-	// targets without a floor suffix (arch-only cross builds, MSVC).
 	if (suffixedTriple === bareTriple) return;
 	const targetDir = await resolveCargoTargetDir();
 	if (!targetDir) {
@@ -143,7 +119,6 @@ async function ensureZigbuildTargetDirLink(suffixedTriple: string, bareTriple: s
 	} catch {
 		exists = false;
 	}
-	// Never clobber a real build directory; only replace a stale symlink.
 	if (exists && !isSymlink) return;
 	if (exists) await fs.unlink(linkPath);
 	await fs.symlink(bareTriple, linkPath);
@@ -155,11 +130,8 @@ async function installBinary(src: string, dest: string): Promise<void> {
 	await fs.copyFile(src, tempPath);
 
 	try {
-		// Atomic rename - works even if dest is loaded on Linux/macOS (old inode stays valid)
 		await fs.rename(tempPath, dest);
 	} catch {
-		// On Windows, loaded DLLs cannot be overwritten via rename
-		// Try delete-then-rename as fallback
 		try {
 			await fs.unlink(dest);
 		} catch (unlinkErr) {
@@ -180,10 +152,6 @@ async function installBinary(src: string, dest: string): Promise<void> {
 	}
 }
 async function resolveBuiltAddonPath(outputDir: string, canonicalFilename: string): Promise<string> {
-	// napi-rs 3.x emits `${binaryName}.${platformArchABI}.node` where
-	// platformArchABI is e.g. `darwin-x64`, `linux-x64-gnu`, `win32-x64-msvc`,
-	// `darwin-arm64`. Build into an isolated output dir so only this invocation's
-	// outputs are considered fresh candidates.
 	const entries = await fs.readdir(outputDir);
 
 	if (entries.includes(canonicalFilename)) {
@@ -219,25 +187,8 @@ function resolveBuildOutputDirPrefix(profileLabel: string): string {
 	return path.join(nativeDir, ".build", `${buildTarget}-${variantLabel}-${profileLabel}-`);
 }
 
-/**
- * Rebuild `native/embedded-addons.<platform>.tar.gz` from the addon that was just built.
- *
- * A rebuild has to BE a rebuild. This step used to belong only to `gen:native`, so `build:native`
- * left the archive at whatever a previous run had written, and the two artifacts drifted apart with
- * nothing to say so. A compiled binary loads the addon it extracted from the ARCHIVE, not the one in
- * the tree, so a corrected `.node` could sit in `native/` while every probe kept getting the old
- * behaviour out of `~/.veyyon/natives/<version>/` — and the startup marker printed the same file
- * name either way, which is what made it cost hours instead of minutes to see.
- *
- * Run as a subprocess rather than imported because `embed-native.ts` is a top-level script that does
- * its work on load; importing it would make its failure modes this script's control flow.
- */
 async function refreshEmbeddedArchive(): Promise<void> {
 	console.log("Refreshing embedded addon archive…");
-	// `--stub-metadata`: refresh the archive, leave `embedded-addon.js` as the checked-in
-	// stub. Without it a rebuild leaves the source tree claiming to be a compiled binary,
-	// and every CLI run in that checkout then stages 290 MB into whatever `HOME` it is
-	// given. See the flag's own comment in embed-native.ts.
 	const result = await $`bun ${path.join(import.meta.dir, "embed-native.ts")} --stub-metadata`.nothrow().quiet();
 	if (result.exitCode !== 0) {
 		const stderr = result.stderr.toString().trim();
@@ -261,13 +212,6 @@ async function installGeneratedBindings(outputDir: string): Promise<void> {
 	}
 }
 
-/**
- * Report — and on pinned targets, enforce — the addon's real glibc floor.
- * A linux-gnu addon that requires more than {@link GLIBC_FLOOR} runs only on
- * hosts at least as new as this build machine; bundled into `dist/vey` it
- * hard-fails (`GLIBC_x.y not found`) everywhere older, so the host-only case
- * must be impossible to miss in the build output.
- */
 async function verifyGlibcPortability(addonPath: string): Promise<void> {
 	if (targetPlatform !== "linux") return;
 	if (effectiveCrossTarget?.endsWith("-musl")) return;
@@ -444,7 +388,6 @@ const profileSuffix = ` (${profileLabel})`;
 
 const buildOutputDirPrefix = resolveBuildOutputDirPrefix(profileLabel);
 
-// Build napi args
 const napiArgs = [
 	"build",
 	"--manifest-path",
@@ -463,26 +406,13 @@ const napiArgs = [
 
 if (effectiveCrossTarget) {
 	napiArgs.push("--target", effectiveCrossTarget);
-	// Route through `cargo-zigbuild` (non-MSVC targets) or `cargo-xwin`
-	// (MSVC targets). The napi CLI picks the right backend from the target.
 	napiArgs.push("--cross-compile");
-	// cargo-zigbuild encodes the glibc floor as a `.<major>.<minor>` suffix on
-	// the triple (e.g. `x86_64-unknown-linux-gnu.2.17`) but strips it before
-	// invoking cargo, so cargo's TARGET — and the artifact dir — use the bare
-	// triple.
 	const bareTriple = effectiveCrossTarget.replace(/\.\d+(?:\.\d+)*$/, "");
-	// `zig cc` enables `NDEBUG` at `-O3`, which trips tree-sitter-just's
-	// scanner.c (`#error "expected assertions to be enabled"`). cc-rs reads
-	// `CFLAGS_<target>` (dashes → underscores) keyed off cargo's bare TARGET, so
-	// the override must use the bare triple or it is silently dropped.
 	if (!effectiveCrossTarget.endsWith("-msvc")) {
 		const envKey = `CFLAGS_${bareTriple.replace(/-/g, "_")}`;
 		const existing = process.env[envKey] ?? "";
 		process.env[envKey] = existing ? `${existing} -UNDEBUG` : "-UNDEBUG";
 	}
-	// napi 3.7.0 resolves the built artifact from the FULL `--target` directory,
-	// but cargo-zigbuild writes under the bare triple; bridge the two so napi's
-	// postBuild copyArtifact succeeds for glibc-pinned targets.
 	await ensureZigbuildTargetDirLink(effectiveCrossTarget, bareTriple);
 }
 
@@ -497,8 +427,6 @@ await fs.mkdir(path.join(nativeDir, ".build"), { recursive: true });
 const buildOutputDir = await fs.mkdtemp(buildOutputDirPrefix);
 napiArgs[10] = buildOutputDir;
 
-// Resolve napi bin directly: `bunx @napi-rs/cli` can pick up the wrong bin on
-// systems where `cli` exists on PATH (e.g. Mono's /usr/bin/cli on Ubuntu).
 const napiBin = Bun.which("napi", {
 	PATH: [
 		path.join(import.meta.dir, "..", "node_modules", ".bin"),
@@ -537,8 +465,6 @@ try {
 	const { buildResult, stderr } = await runNapiBuildWithSccacheFallback();
 	if (buildResult.exitCode !== 0) {
 		if (nativeRoute?.kind === "zigbuild") {
-			// No silent fallback to a host-glibc build: that would ship the exact
-			// portability lie this routing exists to prevent. Fail with the way out.
 			throw new Error(
 				`napi build failed on the auto-selected zigbuild target ${nativeRoute.target}${stderr ? `:\n${stderr}` : ""}\n` +
 					"Known incompatibility: rustc >= 1.9x emits `-Wl,--threads=N`, which zig's linker rejects " +

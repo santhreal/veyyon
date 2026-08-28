@@ -1,4 +1,3 @@
-/** Time Traveling Stream Rules (TTSR) Manager Manages rules that get injected mid-stream when their condition pattern matches */
 import * as path from "node:path";
 import { AstMatchStrictness, astMatch } from "@veyyon/natives";
 import { errorMessage, logger, nearestNames } from "@veyyon/utils";
@@ -7,14 +6,10 @@ import type { TtsrSettings } from "../config/settings";
 
 export type TtsrMatchSource = "text" | "thinking" | "tool";
 
-/** Context about the stream content currently being checked against TTSR rules. */
 export interface TtsrMatchContext {
 	source: TtsrMatchSource;
-	/** Tool name for tool argument deltas, e.g. "edit" or "write". */
 	toolName?: string;
-	/** Candidate file paths associated with the current stream chunk. */
 	filePaths?: string[];
-	/** Stable key to isolate buffering (for example a tool call ID). */
 	streamKey?: string;
 }
 
@@ -34,17 +29,13 @@ interface TtsrScope {
 interface TtsrEntry {
 	rule: Rule;
 	conditions: RegExp[];
-	/** ast-grep pattern strings; matched only against edit/write tool snapshots. */
 	astConditions: string[];
 	scope: TtsrScope;
 	globalPathGlobs?: Bun.Glob[];
 }
 
-/** Tracks when a rule was last injected (for repeat gating). */
 interface InjectionRecord {
-	/** Message count (turn index) when the rule was last injected. */
 	lastInjectedAt: number;
-	/** Transcript-reset count when the rule was last injected, so a `per-compact` rule can require several of them before it says the same thing again. */
 	resetAt: number;
 }
 
@@ -56,14 +47,11 @@ const DEFAULT_SETTINGS: Required<TtsrSettings> = {
 	repeatGap: 10,
 	builtinRules: true,
 	disabledRules: [],
-	// Empty by default: an experimental rule ships off until named here.
 	experimentalRules: [],
 };
 
-/** Absolute paths inside a matched fragment. Deliberately loose about what a path segment may contain and strict about the leading slash, so */
 const ABSOLUTE_PATH_IN_TEXT = /\/(?:[\w.@+-]+\/)*[\w.@+-]+/g;
 
-/** True when `candidate` resolves inside `root`, compared on paths rather than string prefixes. */
 function isInsideRoot(root: string, candidate: string): boolean {
 	const relative = path.relative(root, path.resolve(candidate));
 	return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
@@ -81,21 +69,15 @@ export class TtsrManager {
 	readonly #rules = new Map<string, TtsrEntry>();
 	readonly #injectionRecords = new Map<string, InjectionRecord>();
 	readonly #buffers = new Map<string, string>();
-	/** Last snapshot evaluated for AST conditions, keyed by stream key, to dedupe matcher runs. */
 	readonly #lastAstSnapshots = new Map<string, string>();
 	#messageCount = 0;
-	/** How many times the transcript has been replaced under this session: compaction, a history rewrite, a rewind, a shake. Every one of them takes */
 	#transcriptResets = 0;
 	#canMatchText = false;
 	#canMatchThinking = false;
 
-	/** Reads the session's CURRENT working directory, for rules that carry a `pathScope`. A getter rather than a value: `set_cwd` moves the working directory mid-session, and the */
 	readonly #getCwd?: () => string;
-	/** The path a `pathScope` rule last matched, keyed by rule name. Recorded here rather than returned, so the `check*` methods keep handing back `Rule[]` and */
 	readonly #lastMatchedPath = new Map<string, string>();
-	/** Distinct streams a warm-up rule has matched in since it was last injected, keyed by rule name. */
 	readonly #warmupStreams = new Map<string, Set<string>>();
-	/** The warm-up each rule had banked when its claim was taken. At most one set per rule that has ever been claimed, and each holds at most */
 	readonly #warmupAtClaim = new Map<string, Set<string>>();
 
 	constructor(settings?: TtsrSettings, options?: { getCwd?: () => string }) {
@@ -103,7 +85,6 @@ export class TtsrManager {
 		this.#getCwd = options?.getCwd;
 	}
 
-	/** Check if a rule can be triggered, honouring its own repeat policy before the global one. The global default is `once`: a rule fires at most once per session, and the record survives a */
 	#canTrigger(ruleName: string): boolean {
 		const record = this.#injectionRecords.get(ruleName);
 		if (!record) {
@@ -124,7 +105,6 @@ export class TtsrManager {
 		const compiled: RegExp[] = [];
 		for (const pattern of rule.condition ?? []) {
 			if (pattern.trim().length === 0) {
-				// `new RegExp("")` matches EVERY stream, so a blank condition compiled into a catch-all: a rule whose frontmatter said `condition: ""` fired on every delta rather than never,
 				logger.warn("TTSR condition is blank, skipping condition", { ruleName: rule.name });
 				continue;
 			}
@@ -316,7 +296,6 @@ export class TtsrManager {
 		return false;
 	}
 
-	/** The text a condition matched, or undefined when none did. The matched text rather than a boolean, because {@link Rule.pathScope} needs to ask where */
 	#matchedText(entry: TtsrEntry, streamBuffer: string): string | undefined {
 		for (const condition of entry.conditions) {
 			condition.lastIndex = 0;
@@ -328,7 +307,6 @@ export class TtsrManager {
 		return undefined;
 	}
 
-	/** Whether the matched text satisfies the rule's `pathScope`. Absent scope means every match counts, which is every rule that does not opt in. With a */
 	#satisfiesPathScope(entry: TtsrEntry, matched: string): boolean {
 		const scope = entry.rule.pathScope;
 		if (!scope) return true;
@@ -351,12 +329,10 @@ export class TtsrManager {
 		return false;
 	}
 
-	/** The path this rule last matched, for a body that names the directory it is advising about. */
 	lastMatchedPath(ruleName: string): string | undefined {
 		return this.#lastMatchedPath.get(ruleName);
 	}
 
-	/** Add a TTSR rule to be monitored. */
 	addRule(rule: Rule): boolean {
 		if (!this.#settings.enabled) {
 			return false;
@@ -368,7 +344,6 @@ export class TtsrManager {
 		const conditions = this.#compileConditions(rule);
 		const astConditions = (rule.astCondition ?? []).map(pattern => pattern.trim()).filter(p => p.length > 0);
 		if (conditions.length === 0 && astConditions.length === 0) {
-			// LOUD, because it is indistinguishable from a rule that simply never matches: a rule with no trigger is registered by the provider, listed by `/rules`, and silently never monitored.
 			logger.warn("TTSR rule has no condition or astCondition, never monitored", {
 				ruleName: rule.name,
 				path: rule.path,
@@ -406,7 +381,6 @@ export class TtsrManager {
 		return true;
 	}
 
-	/** Add a stream chunk to its scoped buffer and return matching rules. Buffers are isolated by source/tool key so matches don't bleed across */
 	checkDelta(delta: string, context: TtsrMatchContext): Rule[] {
 		if (context.source === "text" && !this.#canMatchText) {
 			return [];
@@ -420,14 +394,12 @@ export class TtsrManager {
 		return this.#matchBuffer(nextBuffer, context);
 	}
 
-	/** Replace the scoped buffer with a tool-provided normalized snapshot and return matching rules. */
 	checkSnapshot(snapshot: string, context: TtsrMatchContext): Rule[] {
 		const bufferKey = this.#bufferKey(context);
 		this.#buffers.set(bufferKey, snapshot);
 		return this.#matchBuffer(snapshot, context);
 	}
 
-	/** Derive an ast-grep language alias from candidate paths (bare extension, e.g. "ts"), if any. */
 	#deriveLang(filePaths: string[] | undefined): string | undefined {
 		for (const filePath of filePaths ?? []) {
 			const ext = path.extname(this.#normalizePath(filePath));
@@ -438,7 +410,6 @@ export class TtsrManager {
 		return undefined;
 	}
 
-	/** Evaluate ast-grep `astCondition` rules against a reconstructed tool snapshot. Only edit/write tool streams reach here (AST conditions need a language, which */
 	async checkAstSnapshot(snapshot: string, context: TtsrMatchContext): Promise<Rule[]> {
 		if (!this.#settings.enabled || context.source !== "tool") {
 			return [];
@@ -467,7 +438,6 @@ export class TtsrManager {
 			return [];
 		}
 
-		// Throttle: skip re-running the matcher when the source content is unchanged.
 		const bufferKey = this.#bufferKey(context);
 		if (this.#lastAstSnapshots.get(bufferKey) === snapshot) {
 			return [];
@@ -477,9 +447,6 @@ export class TtsrManager {
 		const matches: Rule[] = [];
 		for (const entry of candidates) {
 			if (await this.#astConditionsMatch(entry.astConditions, snapshot, lang)) {
-				// A warm-up belongs to the rule, not to the condition dialect it is
-				// written in, or an author moving a rule from regex to ast-grep would
-				// silently lose it.
 				if (!this.#clearedWarmup(entry.rule, bufferKey)) continue;
 				matches.push(entry.rule);
 				logger.debug("TTSR ast condition matched", {
@@ -513,7 +480,6 @@ export class TtsrManager {
 		}
 	}
 
-	/** True when any registered rule carries ast-grep conditions. */
 	hasAstRules(): boolean {
 		if (!this.#settings.enabled) {
 			return false;
@@ -566,7 +532,6 @@ export class TtsrManager {
 		return matches;
 	}
 
-	/** Whether a rule with a warm-up has now seen enough distinct streams to speak. The unit is the STREAM, not the match: one tool call is re-matched on every */
 	#clearedWarmup(rule: Rule, bufferKey: string): boolean {
 		const required = rule.warmupMatches ?? 1;
 		if (required <= 1) {
@@ -592,26 +557,20 @@ export class TtsrManager {
 		return true;
 	}
 
-	/** Mark rules as injected (won't trigger again until conditions allow). */
 	markInjected(rulesToMark: Rule[]): void {
 		this.markInjectedByNames(rulesToMark.map(rule => rule.name));
 	}
 
-	/** Mark rule names as injected (won't trigger again until conditions allow). */
 	markInjectedByNames(ruleNames: string[]): void {
 		for (const rawName of ruleNames) {
 			const ruleName = rawName.trim();
 			if (ruleName.length === 0) {
 				continue;
 			}
-			// One write rather than create-or-update: the record IS the last injection,
-			// on both fields, and a branch that updated only one of them was a way for the
-			// message stamp and the reset stamp to describe different moments.
 			this.#injectionRecords.set(ruleName, {
 				lastInjectedAt: this.#messageCount,
 				resetAt: this.#transcriptResets,
 			});
-			// The pattern has to be established again before the rule says it again, which is what keeps a warm-up rule from turning into a per-match rule the moment
 			const banked = this.#warmupStreams.get(ruleName);
 			if (banked) {
 				this.#warmupAtClaim.set(ruleName, banked);
@@ -620,20 +579,16 @@ export class TtsrManager {
 			logger.debug("TTSR rule marked as injected", {
 				ruleName,
 				messageCount: this.#messageCount,
-				// The EFFECTIVE mode, since a rule may override the global one; logging the global
-				// setting here reported a suppression that was not going to happen.
 				repeatMode: this.#rules.get(ruleName)?.rule.repeatMode ?? this.#settings.repeatMode,
 			});
 		}
 	}
 
-	/** Give back a claim that was taken but never delivered. A tool-scoped reminder is claimed the moment it is bucketed, so a sibling tool call in the */
 	releaseInjectedByNames(ruleNames: string[]): void {
 		for (const rawName of ruleNames) {
 			const ruleName = rawName.trim();
 			if (ruleName.length === 0) continue;
 			if (this.#injectionRecords.delete(ruleName)) {
-				// The reminder was never read, so the reaches that earned it still count.
 				const banked = this.#warmupAtClaim.get(ruleName);
 				if (banked) {
 					this.#warmupStreams.set(ruleName, banked);
@@ -644,7 +599,6 @@ export class TtsrManager {
 		}
 	}
 
-	/** Report every rule whose scope names a tool that does not exist. A bare scope token is read as a TOOL NAME, so `scope: "tool:raed"` parses cleanly and registers a */
 	reportUnknownToolScopes(knownToolNames: Iterable<string>): void {
 		const known = new Set<string>();
 		for (const name of knownToolNames) known.add(name.trim().toLowerCase());
@@ -664,12 +618,10 @@ export class TtsrManager {
 		}
 	}
 
-	/** Get names of all injected rules (for persistence). */
 	getInjectedRuleNames(): string[] {
 		return Array.from(this.#injectionRecords.keys());
 	}
 
-	/** Restore injected state from a list of rule names. */
 	restoreInjected(ruleNames: string[]): void {
 		for (const name of ruleNames) {
 			this.#injectionRecords.set(name, { lastInjectedAt: 0, resetAt: this.#transcriptResets });
@@ -679,7 +631,6 @@ export class TtsrManager {
 		}
 	}
 
-	/** Remove every monitored rule before a working-directory re-scope installs the destination rule set. Injection history remains session-scoped so a */
 	clearRules(): void {
 		this.#rules.clear();
 		this.#buffers.clear();
@@ -689,13 +640,11 @@ export class TtsrManager {
 		this.#canMatchThinking = false;
 	}
 
-	/** Reset stream buffers (called on new turn). */
 	resetBuffer(): void {
 		this.#buffers.clear();
 		this.#lastAstSnapshots.clear();
 	}
 
-	/** The transcript was replaced. Re-arm the `per-compact` rules that have waited long enough, and count the event for the ones that have not. */
 	resetForCompaction(): void {
 		this.#transcriptResets++;
 		for (const [ruleName, record] of this.#injectionRecords) {
@@ -709,7 +658,6 @@ export class TtsrManager {
 		}
 	}
 
-	/** Check if any TTSR rules are registered. */
 	hasRules(): boolean {
 		if (!this.#settings.enabled) {
 			return false;
@@ -717,22 +665,18 @@ export class TtsrManager {
 		return this.#rules.size > 0;
 	}
 
-	/** All rules currently registered for TTSR monitoring, in registration order. */
 	getRules(): Rule[] {
 		return Array.from(this.#rules.values(), entry => entry.rule);
 	}
 
-	/** Increment message counter (call after each turn). */
 	incrementMessageCount(): void {
 		this.#messageCount++;
 	}
 
-	/** Get current message count. */
 	getMessageCount(): number {
 		return this.#messageCount;
 	}
 
-	/** Get settings. */
 	getSettings(): Required<TtsrSettings> {
 		return this.#settings;
 	}

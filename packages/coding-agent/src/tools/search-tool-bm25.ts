@@ -74,7 +74,6 @@ function buildSearchToolBm25Content(details: SearchToolBm25Details): string {
 	});
 }
 
-/** The discoverable-tool inventory, for rendering this tool's description. A throw here is reported and the description falls back to the empty inventory, because a */
 function getDiscoverableToolsForDescription(session: ToolSession): DiscoverableTool[] {
 	try {
 		return session.getDiscoverableTools?.() ?? [];
@@ -86,7 +85,6 @@ function getDiscoverableToolsForDescription(session: ToolSession): DiscoverableT
 	}
 }
 
-/** The search index, for an actual `search_tool_bm25` call. Rebuilding when the session has no cached index is the ordinary path, not a fallback: the */
 function getDiscoverableToolSearchIndexForExecution(session: ToolSession): DiscoverableToolSearchIndex {
 	try {
 		const cached = session.getDiscoverableToolSearchIndex?.();
@@ -99,7 +97,6 @@ function getDiscoverableToolSearchIndexForExecution(session: ToolSession): Disco
 	return buildDiscoverableToolSearchIndex(getDiscoverableToolsForDescription(session));
 }
 
-/** Resolve the effective selected tool names (generic or legacy MCP). */
 function getSelectedToolNames(session: ToolSession): string[] {
 	if (session.getSelectedDiscoveredToolNames) {
 		return session.getSelectedDiscoveredToolNames();
@@ -107,7 +104,6 @@ function getSelectedToolNames(session: ToolSession): string[] {
 	return session.getSelectedMCPToolNames?.() ?? [];
 }
 
-/** Activate tools (generic or legacy MCP fallback). */
 async function activateTools(session: ToolSession, toolNames: string[]): Promise<string[]> {
 	if (session.activateDiscoveredTools) {
 		return session.activateDiscoveredTools(toolNames);
@@ -123,7 +119,6 @@ type DiscoveryExecutionSession = ToolSession & {
 };
 
 function supportsToolDiscoveryExecution(session: ToolSession): session is DiscoveryExecutionSession {
-	// Supports generic discovery
 	if (
 		typeof session.isToolDiscoveryEnabled === "function" &&
 		typeof session.getSelectedDiscoveredToolNames === "function" &&
@@ -131,7 +126,6 @@ function supportsToolDiscoveryExecution(session: ToolSession): session is Discov
 	) {
 		return true;
 	}
-	// Supports legacy MCP discovery
 	if (
 		typeof session.isMCPDiscoveryEnabled === "function" &&
 		typeof session.getSelectedMCPToolNames === "function" &&
@@ -208,7 +202,6 @@ function renderFallbackResult(text: string, theme: Theme): Component {
 	return new Text([header, ...bodyLines].join("\n"), 0, 0);
 }
 
-/** SearchToolsTool — wire name `search_tool_bm25` (preserved for persisted session back-compat). When tools.discoveryMode === "all", this covers both MCP tools and built-in discoverable tools. */
 export class SearchToolBm25Tool implements AgentTool<typeof searchToolBm25Schema, SearchToolBm25Details> {
 	readonly name = "search_tool_bm25";
 	readonly approval = "read" as const;
@@ -223,8 +216,6 @@ export class SearchToolBm25Tool implements AgentTool<typeof searchToolBm25Schema
 	constructor(private readonly session: ToolSession) {}
 
 	static createIf(session: ToolSession): SearchToolBm25Tool | null {
-		// Direct createTools() calls do not know the final MCP/extension catalog yet, so
-		// auto mode is activated later by createAgentSession after the full registry exists.
 		if (resolveEffectiveToolDiscoveryMode(session.settings, 0) === "off") return null;
 		return supportsToolDiscoveryExecution(session) ? new SearchToolBm25Tool(session) : null;
 	}
@@ -255,7 +246,6 @@ export class SearchToolBm25Tool implements AgentTool<typeof searchToolBm25Schema
 		}
 
 		const searchIndex = getDiscoverableToolSearchIndexForExecution(this.session);
-		// Discovery is enabled (checked above) and yet there is nothing to search, which means the inventory could not be read rather than that this session has no discoverable
 		if (searchIndex.documents.length === 0) {
 			throw new ToolError(
 				"The discoverable-tool inventory is empty, which should not happen while tool discovery is enabled. " +

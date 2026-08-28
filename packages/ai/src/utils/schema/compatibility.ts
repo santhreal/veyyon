@@ -61,7 +61,6 @@ function createViolation(
 	};
 }
 
-/** Recursively visit every schema node in a JSON Schema tree. */
 function walkSchema(
 	value: unknown,
 	state: TraversalState,
@@ -81,8 +80,6 @@ function walkSchema(
 	visitNode(value, state);
 
 	for (const key in value) {
-		// Schema-map keywords: value is `{ name: schema, … }`. Recurse into each
-		// entry's schema rather than the map object itself.
 		const entry = value[key];
 		if (key === "properties" || key === "$defs" || key === "definitions" || key === "dependentSchemas") {
 			if (isRecord(entry)) {
@@ -93,12 +90,10 @@ function walkSchema(
 			}
 			continue;
 		}
-		// Non-schema container keywords — values are not schemas, do not descend.
 
 		if (key in NON_SCHEMA_CONTAINER_ARRAY_KEYS || key in NON_SCHEMA_CONTAINER_OBJECT_KEYS) {
 			continue;
 		}
-		// Array-of-schemas keywords (e.g. `allOf`, `anyOf`, `oneOf`, `prefixItems`).
 
 		if (Array.isArray(entry)) {
 			for (let index = 0; index < entry.length; index++) {
@@ -113,7 +108,6 @@ function walkSchema(
 	}
 }
 
-/** Validate JSON Schema node against OpenAI strict-mode requirements. */
 function validateStrictNode(node: JsonObject, state: TraversalState): SchemaCompatibilityViolation[] {
 	const violations: SchemaCompatibilityViolation[] = [];
 
@@ -133,7 +127,6 @@ function validateStrictNode(node: JsonObject, state: TraversalState): SchemaComp
 			),
 		);
 	}
-	// Rule 2: node must declare at least one concrete shape descriptor.
 
 	const hasCombinator = COMBINATOR_KEYS.some(key => Array.isArray(node[key]));
 	const hasRef = typeof node.$ref === "string";
@@ -147,7 +140,6 @@ function validateStrictNode(node: JsonObject, state: TraversalState): SchemaComp
 			),
 		);
 	}
-	// Rules 3a-3d apply only to object-shaped nodes.
 
 	const isObjectNode = node.type === "object" || isRecord(node.properties);
 	if (!isObjectNode) {
@@ -165,7 +157,6 @@ function validateStrictNode(node: JsonObject, state: TraversalState): SchemaComp
 			),
 		);
 	}
-	// 3b: `properties` must exist and be an object — without it strict mode has nothing to validate.
 
 	if (!isRecord(node.properties)) {
 		violations.push(
@@ -200,7 +191,6 @@ function validateStrictNode(node: JsonObject, state: TraversalState): SchemaComp
 			),
 		);
 	}
-	// 3d: any property declared in `required` but missing from `properties` is unrepresentable.
 
 	const propertyNameSet = new Set(propertyNames);
 	for (const requiredKey of requiredValues) {

@@ -1,8 +1,3 @@
-/**
- * File verification for edit benchmark.
- *
- * Compares output files against expected fixtures with byte-for-byte equality.
- */
 import * as path from "node:path";
 import { errorMessage, splitTextLines } from "@veyyon/utils";
 import { diffLines } from "diff";
@@ -38,7 +33,6 @@ function createCompactDiff(expected: string, actual: string, contextLines = 3): 
 		const lines = splitTextLines(change.value);
 
 		if (change.added || change.removed) {
-			// Show context before (from previous unchanged chunk)
 			if (i > 0 && !changes[i - 1]!.added && !changes[i - 1]!.removed) {
 				const prevLines = splitTextLines(changes[i - 1]!.value);
 				const contextStart = Math.max(0, prevLines.length - contextLines);
@@ -50,13 +44,11 @@ function createCompactDiff(expected: string, actual: string, contextLines = 3): 
 				}
 			}
 
-			// Show the change
 			const prefix = change.added ? "+" : "-";
 			for (const line of lines) {
 				output.push(`${prefix}${line}`);
 			}
 
-			// Show context after (from next unchanged chunk)
 			if (i + 1 < changes.length && !changes[i + 1]!.added && !changes[i + 1]!.removed) {
 				const nextLines = splitTextLines(changes[i + 1]!.value);
 				const contextEnd = Math.min(nextLines.length, contextLines);
@@ -140,13 +132,10 @@ export async function verifyExpectedFileSubset(
 			);
 			const formattedEquivalent = expectedFormatted.formatted === actualFormatted.formatted;
 
-			// Indent score: distance between agent's raw output and formatted output
-			// This measures how much the formatter had to fix the agent's indentation
 			const fileIndentScore = computeIndentDistanceForDiff(actualNormalized, actualFormatted.formatted);
 			totalIndentScore += fileIndentScore;
 			fileCount++;
 
-			// Fail if formatted versions don't match (content is wrong, not just whitespace)
 			if (!formattedEquivalent) {
 				const diffOutput = createCompactDiff(expectedFormatted.formatted, actualFormatted.formatted);
 				const diffStats = computeDiffStats(expectedFormatted.formatted, actualFormatted.formatted);
@@ -239,7 +228,6 @@ function normalizeLineEndings(value: string): string {
 	return value.replace(/\r\n?/g, "\n");
 }
 
-/** Collapse runs of 2+ blank lines into a single blank line. */
 function normalizeBlankLines(text: string): string {
 	return text.replace(/\n{3,}/g, "\n\n");
 }
@@ -259,11 +247,9 @@ function restoreWhitespaceOnlyLineDiffs(expected: string, actual: string): strin
 				removedLine !== addedLine && equalsIgnoringWhitespace(removedLine, addedLine) ? removedLine : addedLine,
 			);
 		}
-		// Unmatched added lines (insertions beyond the removal window) stay as-is.
 		for (let i = pairs; i < pendingAdded.length; i++) {
 			out.push(pendingAdded[i]!);
 		}
-		// Unmatched removed lines have no counterpart in actual — drop them.
 		pendingRemoved = [];
 		pendingAdded = [];
 	};
@@ -283,8 +269,6 @@ function restoreWhitespaceOnlyLineDiffs(expected: string, actual: string): strin
 	}
 	flush();
 
-	// Preserve trailing newline semantics: rejoin with "\n" and add a trailing
-	// newline iff actual originally ended with one.
 	const joined = out.join("\n");
 	return actual.endsWith("\n") ? `${joined}\n` : joined;
 }

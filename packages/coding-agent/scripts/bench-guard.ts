@@ -1,30 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Boot-time regression guard.
- *
- * Re-runs the `VEYYON_TIMING=x` cold-boot benchmark under hyperfine and fails
- * when the median regresses past the budget in `bench-guard-decision.ts`.
- * `VEYYON_TIMING=x` runs the full pre-paint chain in `runRootCommand` and then
- * exits, so the never-exiting interactive launch becomes a terminating,
- * benchmarkable boot.
- *
- * Boot wall-clock is MACHINE-RELATIVE: a baseline captured on one machine says
- * nothing on another. This is a LOCAL guard, deliberately not wired into CI,
- * and every fact the comparison rests on — platform, arch, CPU, host, Bun
- * version, command, whether HOME was isolated, how many runs — travels with the
- * baseline and is checked before the medians are compared. A mismatch is a
- * refusal (exit 2), not a number.
- *
- * Each launch runs against a HOME created for the run, so a populated profile,
- * a session history or an MCP config on the measuring machine cannot move the
- * median, and stdin is closed so a launch cannot block on a terminal that is
- * not there.
- *
- *   bun scripts/bench-guard.ts --update   # capture the baseline for this host
- *   bun scripts/bench-guard.ts            # measure + compare; exit 1 on regression
- *
- * Requires `hyperfine` on PATH.
- */
 import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -44,11 +18,6 @@ const execFileAsync = promisify(execFile);
 
 const BASELINE_PATH = path.join(import.meta.dirname, "..", "bench", "boot-baseline.json");
 const LAUNCH = "VEYYON_TIMING=x VEYYON_STRICT_EDIT_MODE=1 bun src/cli.ts";
-// The interactive launch refuses a stdin that is not a terminal, and it refuses
-// before it reaches the pre-paint timing exit — so measuring it without a pty
-// measures the refusal (exit 2, which hyperfine reports as a failed command).
-// `script` supplies the pty; util-linux takes the command through a shell with
-// `-c`, BSD takes it as argv, which needs an explicit `sh -c`.
 const BENCH_COMMAND =
 	process.platform === "darwin" ? `script -q /dev/null sh -c '${LAUNCH}'` : `script -qec '${LAUNCH}' /dev/null`;
 const cwd = path.join(import.meta.dirname, "..");
@@ -70,9 +39,6 @@ async function measure(): Promise<{ median: number; runs: number; raw: string }>
 		["hyperfine", "--warmup", "3", "--min-runs", String(MIN_RUNS), "--export-json", exportPath, BENCH_COMMAND],
 		{
 			cwd,
-			// The measured launch inherits this environment. An isolated HOME and
-			// XDG root keep a populated profile, a session history or an MCP
-			// config on the measuring machine out of the median.
 			env: { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, ".config"), CI: "1" },
 			stdin: "ignore",
 			stdout: "inherit",

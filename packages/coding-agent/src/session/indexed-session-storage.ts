@@ -123,15 +123,12 @@ export class IndexedSessionStorage implements SessionStorage {
 		if (error) throw error;
 	}
 
-	ensureDirSync(_dir: string): void {
-		// Indexed backends are flat: directories are derived from key prefixes.
-	}
+	ensureDirSync(_dir: string): void {}
 
 	existsSync(path: string): boolean {
 		return this.#index.has(path);
 	}
 
-	/** Two answers, for the same reason as the in-memory backend: an index cannot be unreachable. The third state exists for the filesystem, where a path can be present and unreadable at once. Here */
 	existsStateSync(path: string): PathState {
 		return this.#index.has(path) ? "present" : "absent";
 	}
@@ -257,12 +254,7 @@ export class IndexedSessionStorage implements SessionStorage {
 		const commitGuard = options?.commitGuard;
 		if (commitGuard && !commitGuard()) return;
 		await this.#awaitPath(path);
-		// A concurrent flushSync (writeTextSync) may have taken over during the
-		// awaitPath yield and bumped the epoch. Re-check before touching the
-		// index or enqueueing the backend publish.
 		if (commitGuard && !commitGuard()) return;
-		// Only now: this backend keeps the whole text (it indexes the byte length and
-		// the title slot), but an abandoned write should not pay to build it.
 		const content = sessionBodyToString(body);
 		const previous = this.#index.get(path);
 		const mtimeMs = this.#allocMtimeMs();
@@ -272,7 +264,6 @@ export class IndexedSessionStorage implements SessionStorage {
 			await this.#enqueuePath(
 				path,
 				async () => {
-					// Final guard immediately before the backend actually publishes. If a concurrent writer has advanced the index past our
 					if (commitGuard && !commitGuard()) {
 						const current = this.#index.get(path);
 						if (current?.mtimeMs === mtimeMs) this.#restoreIndex(path, previous);
@@ -502,7 +493,6 @@ export class IndexedSessionStorage implements SessionStorage {
 			if (options.trackDrain && !this.#firstDrainError) this.#firstDrainError = error;
 			throw error;
 		});
-		// `tracked` is what the caller awaits, so the error is delivered there and is NOT swallowed here. The three guards below exist only to keep the bookkeeping copies of that promise from becoming
 		const tail = tracked.catch(() => {});
 		for (const path of unique) {
 			this.#pathTails.set(path, tail);
@@ -520,8 +510,6 @@ export class IndexedSessionStorage implements SessionStorage {
 				}
 			})
 			.catch(() => {});
-		// A caller that ignores the returned promise (fire-and-forget append) still reaches `#firstDrainError`
-		// above and surfaces at the next drain, so this marks the rejection handled rather than dropping it.
 		tracked.catch(() => {});
 		if (options.trackDrain) {
 			this.#drainPending.add(tracked);
@@ -577,9 +565,6 @@ class IndexedSessionStorageWriter implements SessionStorageWriter {
 				throw this.#recordError(err);
 			}
 		});
-		// The failure travels to the caller through the returned `next`, and `#recordError` also latches it in
-		// `#error` so every later call rethrows it. The chain copy must resolve, or the recorded error would be
-		// re-delivered to unrelated later writers as an unhandled rejection instead of through `#error`.
 		this.#pendingChain = next.catch(() => {});
 		return next;
 	}

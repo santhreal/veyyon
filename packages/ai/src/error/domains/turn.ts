@@ -1,17 +1,3 @@
-/**
- * The turn families: the turn itself ended badly, or ended on purpose.
- *
- * A malformed tool call, a stream that stopped with `finish_reason: error`, a server-side item that
- * is gone, a repetition loop the detector caught: none is fixed by a socket or a credential, and all
- * are fixed by sending the turn again, which is what makes them the turn-retriable set. `tool-call`
- * is the one family safe to replay after the failed turn already emitted a call, because the call
- * never parsed and there is nothing to duplicate.
- *
- * `content` and `interrupt` are not faults at all. A content filter is a verdict on the request, and
- * it vetoes a retry for the WHOLE failure however the rest of it classified — a filter whose body
- * also carried a 503 used to come back retryable through the transport wording. An interrupt is
- * somebody asking the turn to stop.
- */
 import { isAbortError } from "@veyyon/utils/abortable";
 import { Flag } from "../flag";
 import { PROVIDER_FINISH_ERROR_PATTERN } from "../provider";
@@ -86,26 +72,6 @@ export const thinkingLoopDomain: ErrorDomain = {
 };
 
 const CONTENT_FILTER_PATTERN = /\b(?:incomplete:\s*)?content_filter\b/i;
-/**
- * The other spellings of the same verdict.
- *
- * `content_filter` is OpenAI's word for it. Google ends the turn with a finish reason
- * (`PROHIBITED_CONTENT`, `SAFETY`, `RECITATION`, `BLOCKLIST`, `SPII`, and the `IMAGE_` forms of the
- * same verdicts), some hosts send `finish_reason: sensitive`, and Codex reports a policy refusal as
- * an error event carrying `code=cyber_policy`. Every one is the provider answering the request
- * rather than failing at it, so every one belongs to this family and vetoes a retry. Only
- * `MALFORMED_FUNCTION_CALL` had a rule, so its siblings reached the turn unclassified: they walled
- * by default rather than by decision, and a reworded refusal would have started being retried
- * against a filter that returns the same answer.
- *
- * The names come from `FinishReason` in `providers/google-types.ts`, which is the mirror of the
- * provider's own enum. `every-provider-failure-the-field-produced-reaches-a-decision.test.ts` maps
- * that union member by member, so adding one to the mirror fails the type check until somebody
- * says whether it is a content verdict — which is the step that was skipped when these were added.
- *
- * The finish-reason names are anchored to the phrase that introduces them. Unanchored, a
- * case-insensitive `SAFETY` or `BLOCKLIST` would match any prose using the word.
- */
 const CONTENT_VERDICT_PATTERN =
 	/\bfinish[_\s]?reason:?\s*(?:IMAGE_)?(?:PROHIBITED_CONTENT|SAFETY|RECITATION|BLOCKLIST|SPII|sensitive)\b|\b(?:PROHIBITED_CONTENT|IMAGE_SAFETY|IMAGE_PROHIBITED_CONTENT|IMAGE_RECITATION)\b|\bcode=cyber_policy\b/i;
 

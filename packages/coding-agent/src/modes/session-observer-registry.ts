@@ -1,5 +1,3 @@
-// `../task/types`, the module that DECLARES these, not the `../task` barrel that re-exports them: the
-// barrel is the whole task subsystem, 1,406 modules, and this file subscribes to two channels by name.
 import type { AgentProgress, SubagentLifecyclePayload, SubagentProgressPayload } from "../task/types";
 import { TASK_SUBAGENT_LIFECYCLE_CHANNEL, TASK_SUBAGENT_PROGRESS_CHANNEL } from "../task/types";
 import type { EventBus } from "../utils/event-bus";
@@ -13,15 +11,12 @@ export interface ObservableSession {
 	status: "active" | "completed" | "failed" | "aborted";
 	sessionFile?: string;
 	parentToolCallId?: string;
-	/** Spawn runs as a detached background job (parent turn not blocked on it). The anchored subagent HUD only lists detached spawns: sync task spawns */
 	detached?: boolean;
 	index?: number;
 	lastUpdate: number;
-	/** Latest progress snapshot from the subagent executor */
 	progress?: AgentProgress;
 }
 
-/** Coarse source of an observer change; callers use it to separate lifecycle work from high-frequency progress. */
 export type SessionObserverChangeKind = "main" | "reset" | "lifecycle" | "progress";
 
 const STATUS_MAP: Record<string, ObservableSession["status"]> = {
@@ -39,7 +34,6 @@ export class SessionObserverRegistry {
 	#parentSortOrderById = new Map<string, number>();
 	#nextSortOrder = 0;
 
-	/** Add a change listener. Returns unsubscribe function. */
 	onChange(cb: (kind: SessionObserverChangeKind) => void): () => void {
 		this.#listeners.add(cb);
 		return () => this.#listeners.delete(cb);
@@ -107,7 +101,6 @@ export class SessionObserverRegistry {
 		return sessions;
 	}
 
-	/** The subagents one session directly spawned, by the dotted-id spawn-tree convention: a requested id never contains ".", so a dot marks a nested */
 	getSessionsSpawnedBy(parentId: string | undefined): ObservableSession[] {
 		return this.getSessions().filter(session => {
 			if (session.kind !== "subagent") return false;
@@ -126,7 +119,6 @@ export class SessionObserverRegistry {
 		return count;
 	}
 
-	/** Clear all tracked sessions (e.g. on session switch). Keeps EventBus subscriptions and listeners. */
 	resetSessions(): void {
 		this.#sessions.clear();
 		this.#sortOrderById.clear();
@@ -146,7 +138,6 @@ export class SessionObserverRegistry {
 	}
 
 	subscribeToEventBus(eventBus: EventBus): void {
-		// Dispose previous EventBus subscriptions if called again
 		for (const unsub of this.#eventBusUnsubscribers) unsub();
 		this.#eventBusUnsubscribers = [];
 

@@ -11,9 +11,6 @@ const NITTER_INSTANCES = [
 	"nitter.woodland.cafe",
 ];
 
-/**
- * Handle Twitter/X URLs via Nitter
- */
 export const handleTwitter: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -26,12 +23,8 @@ export const handleTwitter: SpecialHandler = async (
 	}
 
 	const fetchedAt = new Date().toISOString();
-	// Why each instance did not answer, in the order tried. This is what the
-	// fallback message reports, so that message describes what actually happened
-	// instead of asserting a conclusion nobody checked.
 	const attempts: string[] = [];
 
-	// Try Nitter instances. The try sits INSIDE the loop on purpose: it used to wrap the whole loop, so the first instance that threw ended every remaining
 	for (const instance of NITTER_INSTANCES) {
 		const nitterUrl = `https://${instance}${parsed.pathname}`;
 		try {
@@ -45,11 +38,9 @@ export const handleTwitter: SpecialHandler = async (
 				attempts.push(`${instance}: response too short to be a tweet (${result.content.length} bytes)`);
 				continue;
 			}
-			// Parse the Nitter HTML
 			const { parseHTML } = await import("linkedom");
 			const doc = parseHTML(result.content).document;
 
-			// Extract tweet content
 			const tweetContent = doc.querySelector(".tweet-content")?.textContent?.trim();
 			const fullname = doc.querySelector(".fullname")?.textContent?.trim();
 			const username = doc.querySelector(".username")?.textContent?.trim();
@@ -66,7 +57,6 @@ export const handleTwitter: SpecialHandler = async (
 			md += `${tweetContent}\n\n`;
 			if (stats) md += `---\n${stats.replace(/\s+/g, " ")}\n`;
 
-			// Check for replies/thread
 			const replies = Array.from(doc.querySelectorAll(".timeline-item .tweet-content")) as HTMLElement[];
 			if (replies.length > 1) {
 				md += `\n---\n\n## Thread/Replies\n\n`;
@@ -84,17 +74,14 @@ export const handleTwitter: SpecialHandler = async (
 				notes: [`Via Nitter: ${instance}`],
 			});
 		} catch (error) {
-			// This is the one place the `isAbortError` / `isCancellation` split is load-bearing, so it is worth saying which one belongs here and why.
 			throwIfAborted(signal, "twitter");
 			if (isAbortError(error)) throw error;
-			// A per-instance DEADLINE does not end the walk, and this is the case the broader `isCancellation` would get wrong. `loadPage` is called with
 			attempts.push(`${instance}: ${errorMessage(error)}`);
 		}
 	}
 
 	throwIfAborted(signal, "twitter");
 
-	// Every instance was tried and none produced a tweet. X.com itself blocks automated access, so returning a result here rather than null is deliberate:
 	return {
 		url,
 		finalUrl: url,

@@ -1,4 +1,3 @@
-/** Tavily Web Search Provider Uses Tavily's agent-focused search API to return structured results with an */
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
@@ -11,9 +10,6 @@ import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
 const TAVILY_SEARCH_URL = "https://api.tavily.com/search";
-// Deliberately below the shared SEARCH_DEFAULT_NUM_RESULTS: five is Tavily's own
-// upstream default for `max_results`, so an unset limit behaves the same whether the
-// request goes through this provider or straight to their API.
 const DEFAULT_NUM_RESULTS = 5;
 const MAX_NUM_RESULTS = 20;
 
@@ -39,7 +35,6 @@ interface TavilySearchResponse {
 	request_id?: string | null;
 }
 
-/** Find Tavily API key through AuthStorage's unified refresh pipeline. */
 export async function findApiKey(
 	authStorage: AuthStorage,
 	sessionId: string | undefined,
@@ -48,10 +43,8 @@ export async function findApiKey(
 	return (await authStorage.getApiKey("tavily", sessionId, { signal })) ?? null;
 }
 
-/** Exported for testing. Builds the Tavily request body from unified params. */
 export function buildRequestBody(params: TavilySearchParams): Record<string, unknown> {
 	const numResults = clampNumResults(params.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
-	// Tavily's `topic` (general/news/finance) and `time_range` are orthogonal dimensions in the upstream API. Recency is a temporal filter only; it must
 	const body: Record<string, unknown> = {
 		query: params.query,
 		search_depth: "basic",
@@ -118,7 +111,6 @@ function hasRenderableResponse(response: SearchResponse): boolean {
 	return response.sources.length > 0;
 }
 
-/** Execute Tavily web search. */
 export async function searchTavily(params: SearchParams): Promise<SearchResponse> {
 	const tavilyParams: TavilySearchParams = {
 		query: params.query,
@@ -149,7 +141,6 @@ export async function searchTavily(params: SearchParams): Promise<SearchResponse
 	return toSearchResponse(await callWithAuth({ ...tavilyParams, recency: undefined }), numResults);
 }
 
-/** Search provider for Tavily web search. */
 export class TavilyProvider extends SearchProvider {
 	readonly id = "tavily";
 	readonly label = "Tavily";

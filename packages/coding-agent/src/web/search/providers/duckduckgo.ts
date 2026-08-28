@@ -9,11 +9,9 @@ import { SearchProvider } from "./base";
 import { browserFetch } from "./browser-page";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
-/** DuckDuckGo's no-JS HTML search frontend. POST `q=…` to receive a static results page we can parse without a real browser. The Instant Answer API */
 const DUCKDUCKGO_HTML_URL = "https://html.duckduckgo.com/html/";
 const MAX_NUM_RESULTS = 20;
 
-/** Recency → DDG `df` form param. DDG accepts single letters for the time filter; queries without a `df` value return the unfiltered default. */
 const RECENCY_TO_DDG_DF: Record<NonNullable<SearchParams["recency"]>, string> = {
 	day: "d",
 	week: "w",
@@ -27,14 +25,12 @@ interface ParsedResult {
 	snippet?: string;
 }
 
-/** Decode an HTML-encoded fragment lifted from DDG markup. Strips inline tags (the results page wraps query terms in `<b>`) first, then decodes entities */
 function decodeHtmlText(value: string): string {
 	return decodeHtmlEntities(value.replace(/<[^>]*>/g, " "))
 		.replace(/\s+/g, " ")
 		.trim();
 }
 
-/** Resolve a DDG result href back to the underlying target URL. DDG routes outbound clicks through `//duckduckgo.com/l/?uddg=<encoded>` so */
 function unwrapResultUrl(href: string): string | undefined {
 	if (!href) return undefined;
 	const decoded = href.replace(/&amp;/gi, "&");
@@ -43,8 +39,6 @@ function unwrapResultUrl(href: string): string | undefined {
 		try {
 			return decodeURIComponent(wrapMatch[1]);
 		} catch {
-			// A `uddg` payload whose percent-escapes are not valid UTF-8 is a row this scraper cannot read, and
-			// there is nothing to fall back on: half a decoded URL would be worse than no result at all.
 			return undefined;
 		}
 	}
@@ -53,7 +47,6 @@ function unwrapResultUrl(href: string): string | undefined {
 	return undefined;
 }
 
-/** Walk the HTML page and pull out result blocks in document order. DDG renders each result inside a `<div class="result …">` container with */
 function parseHtmlResults(html: string): ParsedResult[] {
 	const results: ParsedResult[] = [];
 	const blockRe =
@@ -75,7 +68,6 @@ function parseHtmlResults(html: string): ParsedResult[] {
 	return results;
 }
 
-/** `true` when the page DDG returned is the bot-challenge modal instead of real results. DDG mixes status codes (200 vs 202) on these so the body */
 function isAnomalyResponse(html: string): boolean {
 	return html.includes("anomaly-modal") || html.includes("anomaly.js");
 }
@@ -93,7 +85,6 @@ async function callDuckDuckGoHtml(params: SearchParams): Promise<string> {
 						q: params.query,
 						kl: "us-en",
 						...(df ? { df } : {}),
-						// Match the browser form submission shape.
 						b: "",
 					},
 					transform,
@@ -139,7 +130,6 @@ async function callDuckDuckGoHtml(params: SearchParams): Promise<string> {
 	});
 }
 
-/** Execute a DuckDuckGo web search via the no-JS HTML frontend. */
 export async function searchDuckDuckGo(params: SearchParams): Promise<SearchResponse> {
 	const numResults = clampNumResults(
 		params.numSearchResults ?? params.limit,
@@ -161,7 +151,6 @@ export async function searchDuckDuckGo(params: SearchParams): Promise<SearchResp
 	return { provider: "duckduckgo", sources };
 }
 
-/** Search provider for DuckDuckGo (no API key required). */
 export class DuckDuckGoProvider extends SearchProvider {
 	readonly id = "duckduckgo";
 	readonly label = "DuckDuckGo";

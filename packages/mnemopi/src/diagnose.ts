@@ -3,8 +3,6 @@ import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { dataDir as configuredDataDir, dbPath as configuredDbPath } from "./config";
-// `initBeam` is declared in `core/beam/schema.ts`, which reaches one module. Reaching it through
-// `core/beam` instead means importing the memory engine, 402 modules, to run a schema check.
 import { initBeam } from "./core/beam/schema";
 import { closeQuietly, openDatabase } from "./db";
 import { toUtcIso } from "./util/datetime";
@@ -77,31 +75,10 @@ function safeEnv(env: Env, name: string): string {
 	return env[name] ? "set" : "unset";
 }
 
-/**
- * The two knobs worth reporting even when they are unset, because "unset" is the answer an
- * operator is usually looking for: a database in an unexpected place and a vector encoding
- * that is not the one they configured are both explained by an absent variable.
- */
 const ALWAYS_REPORTED = ["MNEMOPI_DATA_DIR", "MNEMOPI_VEC_TYPE"] as const;
 
-/**
- * Names whose value is never printed, matched case-insensitively. `MNEMOPI_LLM_API_KEY` is
- * the credential that exists today, and the pattern is deliberately broader than that one
- * name so a credential added later is redacted by default rather than by someone
- * remembering to come back here.
- */
 const SECRET_NAME_PATTERN = /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL/i;
 
-/**
- * Every `MNEMOPI_*` variable the operator has actually set, with its value.
- *
- * Enumerated from the environment rather than from a list of names, for two reasons. A
- * list here would be a second copy of every name `config.ts` already spells, and it would
- * report only the variables someone remembered to add: mnemopi reads around sixty and
- * `diagnose` reported two of them, so an operator debugging a knob that appeared to do
- * nothing had nowhere to look. Enumerating also surfaces a misspelled name, which is the
- * case that otherwise looks identical to a knob that does not work.
- */
 function configuredEnvOverrides(env: Env): Array<readonly [name: string, value: string]> {
 	const always = new Set<string>(ALWAYS_REPORTED);
 	const found: Array<readonly [string, string]> = [];
@@ -114,7 +91,6 @@ function configuredEnvOverrides(env: Env): Array<readonly [name: string, value: 
 	return found;
 }
 
-/** The one place that decides whether a variable's value may be printed. */
 function reportedValue(name: string, value: string | undefined): string {
 	if (value === undefined || value === "") return "";
 	return SECRET_NAME_PATTERN.test(name) ? "(redacted)" : value;

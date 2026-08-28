@@ -48,11 +48,6 @@ interface ResolvedCanonicalModel {
 	source: CanonicalModelSource;
 }
 
-// Canonical-id trailing markers (routing/quantization/effort suffixes that do
-// not change model identity). `search` is intentionally excluded — canonical
-// coalescing treats e.g. `sonar-pro-search` as distinct from `sonar-pro`. This
-// is build-only (generator) code, so the vocabulary lives here rather than in
-// the runtime `identity/markers` module.
 const CANONICAL_TRAILING_MARKERS = [
 	"thinking",
 	"customtools",
@@ -118,11 +113,6 @@ function buildCanonicalSuffixAliasMap(references: ReadonlyMap<string, Model<Api>
 	return new Map([...aliases.entries()].map(([alias, referenceId]) => [normalizeCanonicalIdKey(alias), referenceId]));
 }
 
-/**
- * Build canonical reference data from a model catalog (typically the bundled
- * models). Pure: callers are responsible for memoizing the result — the
- * canonical index keeps per-reference resolution caches internally.
- */
 export function buildCanonicalReferenceData(models: Iterable<Model<Api>>): CanonicalReferenceData {
 	const references = new Map<string, Model<Api>>();
 	for (const candidate of models) {
@@ -307,10 +297,6 @@ function expandCompactSeriesMinorVersions(candidate: string): string[] {
 	return [...expanded];
 }
 
-// Bounded FIFO memo: pure function of `candidate`. Cached arrays are read-only at
-// every callsite (they are iterated to push into a queue — never mutated), so we
-// safely return the same instance. Cap keeps memory bounded under adversarial
-// model-id churn.
 const QUALIFIED_NAMESPACE_SUFFIX_CACHE = new Map<string, string[]>();
 const QUALIFIED_NAMESPACE_SUFFIX_CACHE_CAP = 4096;
 function getQualifiedNamespaceSuffixes(candidate: string): string[] {
@@ -701,9 +687,6 @@ function expandHeavyCanonicalCandidates(normalized: string, queue: string[]): vo
 	}
 }
 
-// Bounded FIFO memo: result depends only on `modelId` (the `_officialIds` param
-// is unused — kept for signature stability). The returned array is consumed via
-// `.filter` at every callsite, so sharing the cached instance is safe.
 const HEURISTIC_CANDIDATES_CACHE = new Map<string, string[]>();
 const HEURISTIC_CANDIDATES_CACHE_CAP = 4096;
 function getHeuristicCanonicalCandidates(modelId: string, _officialIds?: ReadonlySet<string>): string[] {
@@ -850,9 +833,6 @@ export function buildCanonicalModelIndex(
 	const byId = new Map<string, CanonicalModelRecord>();
 	const bySelector = new Map<string, string>();
 
-	// Resolution results depend on (model, equivalence, reference); cache them on
-	// the reference data keyed by the compiled equivalence config so neither a
-	// different reference dataset nor a different override set can poison entries.
 	let caches = referenceData[kResolutionCaches];
 	if (!caches) {
 		caches = new WeakMap();

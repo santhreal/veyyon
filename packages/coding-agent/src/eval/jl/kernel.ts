@@ -1,4 +1,3 @@
-/** Subprocess-backed Julia runner. The IPC loop, lifecycle, and display rendering are shared with the Python and */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -36,8 +35,6 @@ export type { KernelDisplayOutput };
 
 const TRACE_IPC = $flag(kernelIpcTraceEnvVar("JULIA"));
 
-// Cache the runner script on disk so the subprocess loads it normally. Cached
-// per script hash so installs don't race across versions.
 const RUNNER_CACHE_DIR = kernelRunnerCacheDir(os.tmpdir(), "julia");
 let RUNNER_SCRIPT_PATH: string | null = null;
 
@@ -53,9 +50,6 @@ async function ensureRunnerScript(): Promise<string> {
 	return target;
 }
 
-// Julia compiles both the runner and the prelude on first load. Clean hosted
-// runners have taken more than 30 seconds before accepting their first cell, so
-// cold starts need a wider budget than cached local launches.
 const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS + 50_000;
 
 export interface JuliaKernelAvailability {
@@ -65,15 +59,12 @@ export interface JuliaKernelAvailability {
 	reason?: string;
 }
 
-// Cache successful probes per resolved cwd + explicit interpreter. Failures are
-// not cached so installing Julia mid-session is picked up on the next attempt.
 const availabilityCache = new Map<string, Promise<JuliaKernelAvailability>>();
 
 export async function checkJuliaKernelAvailability(
 	cwd: string,
 	interpreter?: string,
 ): Promise<JuliaKernelAvailability> {
-	// Same fast path Python and Ruby have. Probing spawns the interpreter, so under `bun test` every suite that touches the executor paid a process spawn and then failed on machines without Julia, which is
 	if (isBunTestRuntime() || $flag("VEYYON_JULIA_SKIP_CHECK")) {
 		return { ok: true };
 	}
@@ -131,12 +122,10 @@ export class JuliaKernel extends BaseKernel<KernelExecuteOptions> {
 			interruptEscalationMs: KERNEL_INTERRUPT_ESCALATION_MS,
 			shutdownGraceMs: KERNEL_SHUTDOWN_GRACE_MS,
 			buildPayload: (code, msgId, opts) => {
-				// Convert arguments into a TSV / Base64 payload.
 				const cwdB64 = Buffer.from(opts?.cwd ?? "").toString("base64");
 				const silentVal = opts?.silent ? "1" : "0";
 				const storeHistVal = opts?.storeHistory !== false && !opts?.silent ? "1" : "0";
 
-				// Format environment variables as key1_b64:val1_b64 key2_b64:val2_b64. A `null` in the patch CLEARS the variable, and the wire needs a way to say
 				const envPairs: string[] = [];
 				if (opts?.env) {
 					for (const key in opts.env) {
@@ -213,7 +202,6 @@ export class JuliaKernel extends BaseKernel<KernelExecuteOptions> {
 	}
 }
 
-/** The `cd` + env preamble prepended to a Julia execution request. `null` CLEARS a variable and `undefined` leaves it alone, which is the contract */
 export function buildInitScript(cwd: string, env?: KernelEnvPatch): string {
 	const b64 = (text: string) => Buffer.from(text).toString("base64");
 	const lines = [
@@ -228,7 +216,6 @@ export function buildInitScript(cwd: string, env?: KernelEnvPatch): string {
 			value === null ? `delete!(ENV, ${keyExpr})` : `ENV[${keyExpr}] = String(Base64.base64decode("${b64(value)}"))`,
 		);
 	}
-	// Avoid modifying LOAD_PATH if not necessary, but if needed, prepend cwd
 	lines.push("if !(__veyyon_init_cwd in LOAD_PATH); pushfirst!(LOAD_PATH, __veyyon_init_cwd); end");
 	return lines.join("\n");
 }

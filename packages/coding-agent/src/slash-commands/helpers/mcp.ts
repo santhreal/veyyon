@@ -51,7 +51,6 @@ const MCP_SEARCH_USAGE = "Usage: /mcp smithery-search <keyword...> [<limit 1-100
 
 const MCP_REMOVE_USAGE = "Usage: /mcp remove <name>";
 
-/** The option spellings `/mcp add` no longer has, keyed by bare name. The empty key is the separator that used to mean "everything after this is a command to */
 export const MCP_ADD_REMOVED_OPTIONS: Record<string, string> = {
 	"": "write `run <command...>`, which takes the whole rest of the line",
 	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
@@ -62,7 +61,6 @@ export const MCP_ADD_REMOVED_OPTIONS: Record<string, string> = {
 	token: "write `token <token>`",
 };
 
-/** The option spellings `/mcp smithery-search` no longer has, keyed by bare name. */
 export const MCP_SEARCH_REMOVED_OPTIONS: Record<string, string> = {
 	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
 	project: MCP_SCOPE_REMOVED_REPLACEMENT,
@@ -93,7 +91,6 @@ function validateParsedMcpAddArgs(parsed: ParsedMcpAddArgs): ParsedMcpAddArgs {
 	return parsed;
 }
 
-/** Parse the argument tail of `/mcp add`. Every argument is a plain word, disambiguated two ways and no others. The name */
 function parseMcpAddArgs(rest: string): ParsedMcpAddArgs {
 	const tokens = parseCommandArgs(rest);
 	const parsed: ParsedMcpAddArgs = { transport: "http" };
@@ -125,7 +122,6 @@ function parseMcpAddArgs(rest: string): ParsedMcpAddArgs {
 			word = token;
 			index += 2;
 		} else if (Object.hasOwn(MCP_ADD_REMOVED_OPTIONS, token.toLowerCase())) {
-			// A PLAIN WORD THIS COMMAND USED TO READ AS AN OPTION, refused with the sentence naming what replaced it. Derived from the map rather than from a written-out
 			return { ...parsed, error: removedOptionMessage(token, MCP_ADD_REMOVED_OPTIONS, MCP_ADD_USAGE) };
 		} else if (token === "http" || token === "sse") {
 			parsed.transport = token;
@@ -141,7 +137,6 @@ function parseMcpAddArgs(rest: string): ParsedMcpAddArgs {
 	return validateParsedMcpAddArgs(parsed);
 }
 
-/** Parse the argument tail of `/mcp smithery-search`. The keyword is arbitrary text and the two options are words, so the keyword is */
 function parseMcpSearchArgs(rest: string): ParsedMcpSearchArgs {
 	const tokens = parseCommandArgs(rest);
 	const base: ParsedMcpSearchArgs = { keyword: "", limit: 20, semantic: false };
@@ -192,14 +187,12 @@ async function withPreparedMcpConnection<T>(
 	let connection: MCPServerConnection | undefined;
 	try {
 		const manager = new MCPManager(runtime.cwd);
-		// Auth storage must be wired in before prepareConfig so OAuth-backed servers can refresh credentials and inject Authorization headers.
 		manager.setAuthStorage(runtime.session.modelRegistry.authStorage);
 		const resolvedConfig = await manager.prepareConfig(config);
 		connection = await connectToServer(name, resolvedConfig);
 		return await fn(connection);
 	} finally {
 		if (connection) {
-			// Await cleanup so the stdio subprocess / HTTP DELETE has actually released the resource before this helper returns. Fire-and-forget
 			try {
 				await disconnectServer(connection);
 			} catch (err) {
@@ -224,9 +217,6 @@ async function collectConnectedMcpLines(
 			);
 			for (let li = 0; li < collected.length; li++) lines.push(collected[li]!);
 		} catch (error) {
-			// The server is simply absent from the listing, which reads exactly like a
-			// server that is up and has nothing to list. Name it so an operator whose
-			// MCP server stopped answering can tell the two apart.
 			logger.warn("MCP server could not be queried; it is missing from this listing", {
 				name,
 				error: errorMessage(error),
@@ -369,7 +359,6 @@ async function handleListCommand(runtime: SlashCommandRuntime): Promise<SlashCom
 					const enabled = config.enabled !== false && !disabledSet.has(name) ? "enabled" : "disabled";
 					let location: string | undefined;
 					if (config.type === "http" || config.type === "sse") {
-						// Strip query string and userinfo from URLs to avoid leaking API keys carried in the query (e.g. `?apiKey=…`). Skip the
 						const raw = (config as { url?: string }).url;
 						if (raw) {
 							try {
@@ -421,14 +410,12 @@ async function handleEnableDisableCommand(
 	}
 }
 
-/** The option spellings `/mcp remove` no longer has, keyed by bare name. */
 export const MCP_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
 	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
 	project: MCP_SCOPE_REMOVED_REPLACEMENT,
 	user: MCP_SCOPE_REMOVED_REPLACEMENT,
 };
 
-/** Parse the argument tail of `/mcp remove`. One word, read by POSITION: token 1 is the name whatever it spells, so a */
 function parseMcpRemoveArgs(rest: string): ParsedMcpRemoveArgs {
 	const tokens = parseCommandArgs(rest);
 	if (tokens.length === 0) return {};
@@ -478,7 +465,6 @@ const MCP_HELP_TEXT = [
 
 const TUI_ONLY_MCP_VERBS = new Set(["reauth", "unauth", "smithery-login", "smithery-logout", "reconnect"]);
 
-/** ACP/text-mode `/mcp` handler. Shared by both dispatchers via the spec. */
 export async function handleMcpAcp(
 	command: ParsedSlashCommand,
 	runtime: SlashCommandRuntime,

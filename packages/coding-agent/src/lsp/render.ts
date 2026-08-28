@@ -1,4 +1,3 @@
-/** LSP Tool TUI Rendering Renders LSP tool calls and results in the TUI with: */
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { type Component, Text } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";
@@ -19,7 +18,6 @@ import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block
 import { getLanguageFromPath } from "../utils/lang-from-path";
 import type { LspParams, LspToolDetails } from "./types";
 
-/** Render the LSP tool call in the TUI. Shows: "lsp <operation> <file/filecount>" */
 function sanitizeInlineText(value: string): string {
 	return replaceTabs(value).replaceAll(/\r?\n/g, " ");
 }
@@ -76,7 +74,6 @@ export function renderCall(args: LspParams, _options: RenderResultOptions, theme
 	return new Text(text, 0, 0);
 }
 
-/** Render LSP tool result with intelligent formatting based on result type. Detects hover, diagnostics, references, symbols, etc. and formats accordingly. */
 export function renderResult(
 	result: { content: Array<{ type: string; text?: string }>; details?: LspToolDetails; isError?: boolean },
 	options: RenderResultOptions,
@@ -93,7 +90,6 @@ export function renderResult(
 	const text = content.text;
 	const lines = text.split("\n");
 
-	// Static type detection (result content doesn't change between renders)
 	const codeBlockMatch = text.match(/```(\w*)\n([\s\S]*?)```/);
 	const errorMatch = text.match(/(\d+)\s+error\(s\)/);
 	const warningMatch = text.match(/(\d+)\s+warning\(s\)/);
@@ -101,7 +97,6 @@ export function renderResult(
 	const symbolsMatch = text.match(/Symbols in (.+):/);
 	const hasStatusError = text.includes(theme.status.error);
 
-	// Static request info
 	const request = args ?? result.details?.request;
 	const requestLines: string[] = [];
 	if (request?.file) {
@@ -121,10 +116,8 @@ export function renderResult(
 
 	return markFramedBlockComponent({
 		render(width: number): readonly string[] {
-			// Read mutable state at render time
 			const { expanded, isPartial, spinnerFrame } = options;
 
-			// Determine label, state, bodyLines based on type + current expanded
 			let label = "Result";
 			let state: "success" | "warning" | "error" = "success";
 			let bodyLines: string[] = [];
@@ -180,9 +173,6 @@ export function renderResult(
 	});
 }
 
-/**
- * Render hover information with syntax-highlighted code blocks.
- */
 function renderHover(
 	codeBlockMatch: RegExpMatchArray,
 	fullText: string,
@@ -200,8 +190,6 @@ function renderHover(
 	const icon = theme.styledSymbol("status.info", "accent");
 	const langLabel = lang ? theme.fg("mdCodeBlockBorder", ` ${lang}`) : "";
 
-	// The transcript frame supplies the block's single left edge, so a code row
-	// is indented under the header instead of carrying a border of its own.
 	const CODE_INDENT = "   ";
 	if (expanded) {
 		let output = `${icon}${langLabel}`;
@@ -219,7 +207,6 @@ function renderHover(
 		return output.split("\n");
 	}
 
-	// Collapsed view
 	const firstCodeLine = codeLines[0] || "";
 	const hasMore = codeLines.length > 1 || Boolean(afterCode) || Boolean(beforeCode);
 	const expandHint = formatExpandHint(theme, expanded, hasMore);
@@ -248,9 +235,6 @@ function formatDiagnosticLocation(file: string, line: string | number, col: stri
 	return `${theme.langBadge(lang)}${file}:${line}:${col}`;
 }
 
-/**
- * Render diagnostics with color-coded severity.
- */
 function renderDiagnostics(
 	errorMatch: RegExpMatchArray | null,
 	warningMatch: RegExpMatchArray | null,
@@ -309,7 +293,6 @@ function renderDiagnostics(
 		return output.split("\n");
 	}
 
-	// Collapsed view
 	const previewItems: DiagnosticItem[] =
 		parsedDiagnostics.length > 0 ? parsedDiagnostics.slice(0, 3) : fallbackDiagnostics.slice(0, 3);
 	const remaining =
@@ -338,9 +321,6 @@ function renderDiagnostics(
 	return output.split("\n");
 }
 
-/**
- * Render references grouped by file.
- */
 function renderReferences(refMatch: RegExpMatchArray, lines: string[], expanded: boolean, theme: Theme): string[] {
 	const refCount = Number.parseInt(refMatch[1], 10);
 	const icon =
@@ -348,7 +328,6 @@ function renderReferences(refMatch: RegExpMatchArray, lines: string[], expanded:
 
 	const locLines = lines.filter(l => /^\s*\S+:\d+:\d+/.test(l));
 
-	// Group by file
 	const byFile = new Map<string, Array<[string, string]>>();
 	for (const loc of locLines) {
 		const match = loc.trim().match(/^(.+):(\d+):(\d+)$/);
@@ -421,9 +400,6 @@ function renderReferences(refMatch: RegExpMatchArray, lines: string[], expanded:
 	return renderGrouped(3, 1, true).split("\n");
 }
 
-/**
- * Render document symbols in a hierarchical tree.
- */
 function renderSymbols(symbolsMatch: RegExpMatchArray, lines: string[], expanded: boolean, theme: Theme): string[] {
 	const fileName = symbolsMatch[1];
 	const icon = theme.styledSymbol("status.info", "accent");
@@ -495,7 +471,6 @@ function renderSymbols(symbolsMatch: RegExpMatchArray, lines: string[], expanded
 		return output.split("\n");
 	}
 
-	// Collapsed: show first 3 top-level symbols
 	const topLevel = symbols.filter(s => s.indent === 0).slice(0, 3);
 	const hasMoreSymbols = symbols.length > topLevel.length;
 	const expandHint = formatExpandHint(theme, expanded, hasMoreSymbols);
@@ -516,9 +491,6 @@ function renderSymbols(symbolsMatch: RegExpMatchArray, lines: string[], expanded
 	return output.split("\n");
 }
 
-/**
- * Generic fallback rendering for unknown result types.
- */
 function renderGeneric(text: string, lines: string[], expanded: boolean, theme: Theme): string[] {
 	const hasError = text.includes("Error:") || text.includes(theme.status.error);
 	const hasSuccess = text.includes(theme.status.success) || text.includes("Applied");

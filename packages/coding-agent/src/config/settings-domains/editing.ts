@@ -2,10 +2,7 @@ import { EDIT_MODES } from "../../utils/edit-mode";
 import { DEFAULT_BASH_INTERCEPTOR_RULES } from "../bash-interceptor-rules";
 import { EMPTY_STRING_ARRAY, EMPTY_STRING_RECORD } from "./shared";
 
-/** Editing domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const EDITING_SETTINGS = {
-	// Editing
-	// Edit tool
 	"edit.mode": {
 		type: "enum",
 		values: EDIT_MODES,
@@ -18,7 +15,6 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
-	// Per-model override of `edit.mode`, keyed by a substring of the model id (`{ "kimi": "replace" }`), read by `Settings.getEditVariantForModel` and
 	"edit.modelVariants": { type: "record", default: EMPTY_STRING_RECORD },
 
 	"edit.fuzzyMatch": {
@@ -207,12 +203,8 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
-	// LSP
 	"lsp.enabled": {
 		type: "boolean",
-		// Off: it starts a language server per project, and its two policy statements plus
-		// the tool description are among the larger things the prompt carries. Both drop
-		// out with the tool, so a session that does no symbol work does not pay for it.
 		default: false,
 		ui: {
 			tab: "files",
@@ -224,7 +216,6 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
-	// Every row below only means something while a language server runs, so each is conditioned on the master above. `lsp.enabled` ships off; without that
 	"lsp.tool": {
 		type: "boolean",
 		default: true,
@@ -328,7 +319,6 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
-	// Bash interceptor
 	"bashInterceptor.enabled": {
 		type: "boolean",
 		default: false,
@@ -341,7 +331,6 @@ export const EDITING_SETTINGS = {
 	},
 	"bashInterceptor.patterns": { type: "array", default: DEFAULT_BASH_INTERCEPTOR_RULES },
 
-	// Shell output minimizer
 	"shellMinimizer.enabled": {
 		type: "boolean",
 		default: true,
@@ -378,7 +367,6 @@ export const EDITING_SETTINGS = {
 		default: undefined,
 	},
 
-	// Eval (per-backend toggles; add more as new backends ship, e.g. eval.ts)
 	"eval.py": {
 		type: "boolean",
 		default: true,
@@ -423,7 +411,6 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
-	// Runtime knobs (consumed by eval backends and the /python slash command)
 	"ruby.kernelMode": {
 		type: "enum",
 		values: ["session", "per-call"] as const,

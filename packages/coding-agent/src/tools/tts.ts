@@ -1,11 +1,8 @@
-// Ported from NousResearch/hermes-agent (MIT) — tools/tts_tool.py L167-171, L896-959. The xAI Grok Voice path below is preserved intact; a local on-device neural TTS
-
 import type { AgentToolResult } from "@veyyon/agent-core";
 import type { ApiKey } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { ProviderHttpError } from "@veyyon/ai/error";
 import { type } from "arktype";
-// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
 import type { CustomTool, CustomToolContext } from "../extensibility/custom-tools/types";
 import { missingXAICredentialsMessage, resolveXAIHttpCredentials, veyyonXAIUserAgent } from "../lib/xai-http";
@@ -15,14 +12,11 @@ import { encodeWav } from "../tts/wav";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import { formatPathRelativeToCwd, resolveToCwd } from "./path-utils";
 
-// Hermes tts_tool.py L167-171
 const DEFAULT_XAI_VOICE_ID = "eve" as const;
 const DEFAULT_XAI_SAMPLE_RATE = 24_000;
 const DEFAULT_XAI_BIT_RATE = 128_000;
 const XAI_MAX_TEXT_LENGTH = 15_000;
 
-// Built-in voices per xAI Tier-1 docs (2026-05-16). xAI also accepts custom voice IDs,
-// so the schema does NOT enum-restrict voice_id; this constant only drives the description.
 const XAI_BUILTIN_VOICES = ["ara", "eve", "leo", "rex", "sal"] as const;
 
 const formatVoiceList = (): string =>
@@ -49,7 +43,6 @@ interface TtsToolDetails {
 	backend: TtsBackend;
 }
 
-/** Pick the synthesis backend. Pure for testability. - `xai` / `local` are honored verbatim (the xAI path still surfaces its own */
 export function resolveTtsBackend(opts: { preference: string; wantsMp3: boolean; hasXaiCreds: boolean }): TtsBackend {
 	if (opts.preference === "xai") return "xai";
 	if (opts.preference === "local") return "local";
@@ -57,7 +50,6 @@ export function resolveTtsBackend(opts: { preference: string; wantsMp3: boolean;
 	return "local";
 }
 
-/** Resolve the on-disk path for local synthesis. Local output is always WAV (no MP3 encoder is bundled), so an `.mp3` (or any non-`.wav`) request is rewritten */
 export function resolveLocalWavPath(outputPath: string): { wavPath: string; substituted: boolean } {
 	const lower = outputPath.toLowerCase();
 	if (lower.endsWith(".wav")) return { wavPath: outputPath, substituted: false };
@@ -72,14 +64,10 @@ function readStringSetting(key: "providers.tts" | "tts.localModel" | "tts.localV
 		const value = settings.get(key);
 		return typeof value === "string" ? value : undefined;
 	} catch {
-		// `settings.get` throws when there is no settings context at all (a bare library caller, a unit
-		// test). Undefined means "unset", which is exactly what the caller does next: fall back to the
-		// documented default. A configured value can never arrive here as undefined.
 		return undefined;
 	}
 }
 
-/** Resolve the live confidentiality callback at the physical request boundary. The callback itself can change after an auth refresh, so callers must invoke */
 function sanitizeCloudTtsField(ctx: CustomToolContext, value: string): string {
 	try {
 		return ctx.obfuscateProviderText?.(value) ?? value;
@@ -108,12 +96,10 @@ async function synthesizeXai(
 	const sampleRate = params.sample_rate ?? DEFAULT_XAI_SAMPLE_RATE;
 	const bitRate = params.bit_rate ?? DEFAULT_XAI_BIT_RATE;
 
-	// Hermes tts_tool.py L926-940 — only send output_format when caller overrides a default.
 	const codecOverridden = codec !== "mp3";
 	const sampleRateOverridden = sampleRate !== DEFAULT_XAI_SAMPLE_RATE;
 	const bitRateOverridden = codec === "mp3" && bitRate !== DEFAULT_XAI_BIT_RATE;
 
-	// Compose the caller signal with a 60 s timeout fence.
 	const requestTimeout = scopedTimeoutSignal(60_000, signal);
 	const combinedSignal = requestTimeout.signal;
 
@@ -129,9 +115,6 @@ async function synthesizeXai(
 		response = await withAuth(
 			apiKey,
 			async key => {
-				// Rebuild from the raw fields for every physical attempt. In
-				// particular, a 401 refresh may install a new live secret set
-				// before `withAuth` invokes this callback again.
 				const payload: Record<string, unknown> = {
 					text: sanitizeCloudTtsField(ctx, params.text),
 					voice_id: sanitizeCloudTtsField(ctx, params.voice_id),
@@ -154,8 +137,6 @@ async function synthesizeXai(
 					signal: combinedSignal,
 				});
 				if (!resp.ok) {
-					// Sanitize before slicing: truncating first can split a secret
-					// and make exact replacement impossible.
 					const detail = sanitizeCloudTtsField(ctx, await resp.text()).slice(0, 300);
 					throw new ProviderHttpError(`xAI TTS failed (${resp.status}): ${detail}`, resp.status, {
 						headers: resp.headers,
@@ -257,7 +238,6 @@ export const ttsTool: CustomTool<typeof ttsSchema, TtsToolDetails> = {
 		const codec: TtsCodec = outputPath.toLowerCase().endsWith(".wav") ? "wav" : "mp3";
 
 		const preference = readStringSetting("providers.tts") ?? "auto";
-		// Only resolve xAI creds when they can affect routing (skip for an explicit local preference).
 		const hasXaiCreds =
 			preference === "local" ? false : (await resolveXAIHttpCredentials(ctx.modelRegistry)) !== null;
 		const backend = resolveTtsBackend({ preference, wantsMp3: codec === "mp3", hasXaiCreds });

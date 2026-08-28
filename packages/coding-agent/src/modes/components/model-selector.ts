@@ -1,4 +1,3 @@
-/** Reusable searchable model selector with auth status on each row. Used by settings roles, subagent profiles, compaction, and any other surface */
 import type { Model } from "@veyyon/ai";
 import {
 	type Component,
@@ -23,21 +22,14 @@ import {
 } from "./model-browser";
 import { renderTrackingChild } from "./select-list-mouse-routing";
 
-/** Auth posture shown next to a model id in the selector. */
 export type ModelAuthStatus = "authenticated" | "unauthenticated" | "keyless";
 
 export interface ModelSelectorOptions {
-	/** Overlay / submenu title (accent heading). */
 	title: string;
-	/** Short muted description under the title. */
 	description?: string;
-	/** Currently assigned selector (`provider/id`), highlighted as current. */
 	currentSelector?: string;
-	/** When true, the slot can return to its unset state: a pinned {@link INHERIT_ROW_SELECTOR} row leads the list, and Del/Backspace with */
 	allowClear?: boolean;
-	/** Label of the pinned clear row, e.g. `(inherit main model)`. Defaults to it. */
 	clearLabel?: string;
-	/** Optional session context size for over-limit dimming. */
 	currentContextTokens?: number;
 }
 
@@ -47,7 +39,6 @@ export interface ModelSelectorCallbacks {
 	onCancel: () => void;
 }
 
-/** Resolve whether a model can be used without further login. */
 export function resolveModelAuthStatus(registry: ModelRegistry, model: Model): ModelAuthStatus {
 	if (registry.isKeylessProvider(model.provider) && !registry.authStorage.hasAuth(model.provider)) {
 		return "keyless";
@@ -56,7 +47,6 @@ export function resolveModelAuthStatus(registry: ModelRegistry, model: Model): M
 	return "unauthenticated";
 }
 
-/** Human badge for a {@link ModelAuthStatus}. */
 export function formatModelAuthBadge(status: ModelAuthStatus): {
 	text: string;
 	color: "success" | "warning" | "dim";
@@ -71,7 +61,6 @@ export function formatModelAuthBadge(status: ModelAuthStatus): {
 	}
 }
 
-/** Build browser rows with auth badges. Shared by settings and any host that needs the same catalog + auth chrome. */
 export function buildAuthAwareBrowserItems(models: ReadonlyArray<Model>, registry: ModelRegistry): ModelBrowserItem[] {
 	const items = buildBrowserItems(models);
 	for (const item of items) {
@@ -88,7 +77,6 @@ export function buildAuthAwareBrowserItems(models: ReadonlyArray<Model>, registr
 
 const MODEL_SELECTOR_ITEMS = new WeakMap<ReadonlyArray<Model>, ReadonlyArray<ModelBrowserItem>>();
 
-/** Reuse the expensive catalog projection and sort while one settings surface edits several model slots. Authentication badges remain live: they are */
 export function cachedAuthAwareBrowserItems(models: ReadonlyArray<Model>, registry: ModelRegistry): ModelBrowserItem[] {
 	let cached = MODEL_SELECTOR_ITEMS.get(models);
 	if (!cached) {
@@ -108,7 +96,6 @@ export function cachedAuthAwareBrowserItems(models: ReadonlyArray<Model>, regist
 	});
 }
 
-/** Host panel: title + searchable {@link ModelBrowser} with auth badges. Embed this in settings submenus, overlays, or any other TUI surface. */
 export class ModelSelectorPanel extends Container {
 	#browser: ModelBrowser;
 	#allowClear: boolean;
@@ -143,7 +130,6 @@ export class ModelSelectorPanel extends Container {
 
 		const items = cachedAuthAwareBrowserItems(models, registry);
 		if (this.#allowClear) {
-			// The way back to unset is a visible first-class row, not only a key.
 			const label = options.clearLabel ?? "(inherit main model)";
 			const detailState = label.startsWith("(") && label.endsWith(")") ? label.slice(1, -1) : label;
 			items.unshift(buildInheritRow(label, `Clear the assignment — ${detailState}.`));
@@ -151,11 +137,8 @@ export class ModelSelectorPanel extends Container {
 		this.#browser.setItems(items);
 		if (options.currentSelector) {
 			this.#browser.setCurrentSelector(options.currentSelector);
-			// Open with the assigned model selected, so a quick Enter re-picks it
-			// instead of landing on the pinned clear row.
 			this.#browser.selectSelector(options.currentSelector);
 		} else if (this.#allowClear) {
-			// Unset slot: the inherit row IS the current value, so it wears the mark.
 			this.#browser.setCurrentSelector(INHERIT_ROW_SELECTOR);
 		}
 
@@ -166,7 +149,6 @@ export class ModelSelectorPanel extends Container {
 			}
 			callbacks.onPick(item.model, item.selector);
 		};
-		// Through the field, like `#onClear` above. Reading `callbacks.onCancel` straight from the closure left `#onCancel` assigned and never read, so the
 		this.#browser.onCancel = () => this.#onCancel();
 
 		this.addChild(this.#browser as unknown as Component);
@@ -190,9 +172,6 @@ export class ModelSelectorPanel extends Container {
 	#browserLineOffset = 0;
 
 	render(width: number): string[] {
-		// Track where the browser lands so routed mouse events can be
-		// hit-tested against it; the plain concatenation this replaces was
-		// super.render(), which cannot report the offset.
 		const { lines, trackedLineOffset } = renderTrackingChild(this, this.#browser as unknown as Component, width);
 		this.#browserLineOffset = trackedLineOffset;
 		if (lines.length > 0) {
@@ -201,18 +180,15 @@ export class ModelSelectorPanel extends Container {
 		return lines;
 	}
 
-	/** Lend the browser the host card's repaint so its band cross-fades. The panel is embedded in someone else's card and owns no repaint, so the clock has to come from the host. */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#browser.setHoverMotion(options);
 	}
 
-	/** Settle the browser's band so no timer outlives a panel the host has swapped out. */
 	dispose(): void {
 		this.#browser.disposeHoverMotion();
 		super.dispose();
 	}
 
-	/** Mouse routed from the host: forwarded to the browser at its own offset (wheel pans, hover lights, click selects then activates). */
 	routeMouse(event: SgrMouseEvent, line: number): void {
 		this.#browser.routeMouse(event, line - this.#browserLineOffset);
 	}

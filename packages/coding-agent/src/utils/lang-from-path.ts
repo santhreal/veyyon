@@ -1,8 +1,6 @@
 import * as path from "node:path";
 
-/** Extension segment → [highlight language id, LSP language id]. Highlight ids match tree-sitter / native highlighter; LSP ids match Language Server Protocol. */
 const EXTENSION_LANG: Record<string, readonly [string, string]> = {
-	// TypeScript / JavaScript
 	ts: ["typescript", "typescript"],
 	cts: ["typescript", "typescript"],
 	mts: ["typescript", "typescript"],
@@ -12,7 +10,6 @@ const EXTENSION_LANG: Record<string, readonly [string, string]> = {
 	mjs: ["javascript", "javascript"],
 	cjs: ["javascript", "javascript"],
 
-	// Systems
 	rs: ["rust", "rust"],
 	go: ["go", "go"],
 	c: ["c", "c"],
@@ -27,7 +24,6 @@ const EXTENSION_LANG: Record<string, readonly [string, string]> = {
 	ino: ["cpp", "cpp"],
 	zig: ["zig", "zig"],
 
-	// Scripting
 	py: ["python", "python"],
 	pyi: ["python", "python"],
 	rb: ["ruby", "ruby"],
@@ -50,7 +46,6 @@ const EXTENSION_LANG: Record<string, readonly [string, string]> = {
 	perl: ["perl", "perl"],
 	php: ["php", "php"],
 
-	// JVM
 	java: ["java", "java"],
 	kt: ["kotlin", "kotlin"],
 	ktm: ["kotlin", "kotlin"],
@@ -65,12 +60,10 @@ const EXTENSION_LANG: Record<string, readonly [string, string]> = {
 	edn: ["clojure", "clojure"],
 	el: ["emacs-lisp", "emacs-lisp"],
 
-	// .NET
 	cs: ["csharp", "csharp"],
 	fs: ["fsharp", "fsharp"],
 	vb: ["vb", "vb"],
 
-	// Web
 	html: ["html", "html"],
 	htm: ["html", "html"],
 	xhtml: ["html", "html"],
@@ -82,7 +75,6 @@ const EXTENSION_LANG: Record<string, readonly [string, string]> = {
 	svelte: ["svelte", "svelte"],
 	astro: ["astro", "astro"],
 
-	// Data
 	json: ["json", "json"],
 	jsonc: ["jsonc", "jsonc"],
 	yaml: ["yaml", "yaml"],
@@ -95,7 +87,6 @@ const EXTENSION_LANG: Record<string, readonly [string, string]> = {
 	plist: ["xml", "xml"],
 	ini: ["ini", "ini"],
 
-	// Docs
 	md: ["markdown", "markdown"],
 	markdown: ["markdown", "markdown"],
 	mdx: ["markdown", "markdown"],
@@ -103,7 +94,6 @@ const EXTENSION_LANG: Record<string, readonly [string, string]> = {
 	adoc: ["asciidoc", "asciidoc"],
 	tex: ["latex", "latex"],
 
-	// Other languages
 	sql: ["sql", "sql"],
 	graphql: ["graphql", "graphql"],
 	gql: ["graphql", "graphql"],
@@ -184,7 +174,6 @@ const EXTENSION_LANG: Record<string, readonly [string, string]> = {
 	eslintignore: ["conf", "plaintext"],
 };
 
-/** Final segment after the last `.` in the full path (prior theme behavior). */
 function themeExtensionKey(filePath: string): string {
 	const extBeg = filePath.lastIndexOf(".");
 	return extBeg !== -1 ? filePath.slice(extBeg + 1).toLowerCase() : filePath.toLowerCase();
@@ -195,9 +184,6 @@ function lspExtensionKey(filePath: string): string {
 	return ext.startsWith(".") ? ext.slice(1) : "";
 }
 
-/**
- * Language id for syntax highlighting and UI (icons, read tool), or undefined if unknown.
- */
 export function getLanguageFromPath(filePath: string): string | undefined {
 	const baseName = path.basename(filePath).toLowerCase();
 	if (baseName.startsWith(".env.")) return "env";
@@ -207,7 +193,6 @@ export function getLanguageFromPath(filePath: string): string | undefined {
 	if (baseName === ".emacs") return "emacs-lisp";
 	if (baseName === "justfile") return "just";
 	if (baseName === "cmakelists.txt") return "cmake";
-	// Match by basename, like detectLanguageId does. themeExtensionKey slices the FULL path on its last dot, so an extensionless file in a subdirectory (e.g.
 	if (baseName === "makefile" || baseName === "gnumakefile") return "make";
 
 	const pair = EXTENSION_LANG[themeExtensionKey(filePath)];
@@ -216,9 +201,6 @@ export function getLanguageFromPath(filePath: string): string | undefined {
 	return undefined;
 }
 
-/**
- * LSP language identifier; falls back to `plaintext`.
- */
 export function detectLanguageId(filePath: string): string {
 	const baseName = path.basename(filePath).toLowerCase();
 	if (baseName === "dockerfile" || baseName.startsWith("dockerfile.") || baseName === "containerfile") {

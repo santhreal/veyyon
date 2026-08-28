@@ -73,10 +73,6 @@ interface ParsedUsage {
 	raw: CodexUsagePayload;
 }
 
-// The claim namespaces, the empty-claim rule and the email lowercasing all live in
-// `@veyyon/catalog/wire/codex`. This module's own copy passed an empty `chatgpt_account_id` through
-// unchanged, and an empty `chatgpt-account-id` header makes the usage endpoint answer a malformed-account
-// error instead of falling back to the token's own account.
 const extractAccountId = getCodexAccountId;
 const extractEmail = getCodexAccountEmail;
 
@@ -146,11 +142,6 @@ function parseUsagePayload(payload: unknown): ParsedUsage | null {
 	return parsed;
 }
 
-/**
- * Parse the `rate_limit_reset_credits` block from `/wham/usage`. OpenAI Codex
- * reports the count of saved rate-limit resets the account can redeem here; the
- * redeem action itself lives in `./openai-codex-reset`.
- */
 function parseResetCredits(payload: unknown): UsageResetCredits | undefined {
 	if (!isRecord(payload)) return undefined;
 	const block = payload.rate_limit_reset_credits;
@@ -221,9 +212,6 @@ function buildUsageAmount(window: ParsedUsageWindow): UsageAmount {
 	};
 }
 
-// Codex adds one provider-specific prefix: an explicit limit_reached flag from
-// the API forces "exhausted" even when the reported fraction is below 1. Past
-// that, the fraction-to-status mapping is the shared owner.
 function buildUsageStatus(usedFraction?: number, limitReached?: boolean): UsageLimit["status"] {
 	if (limitReached) return "exhausted";
 	return usageStatusFromUsedFraction(usedFraction);
@@ -303,12 +291,6 @@ function buildAdditionalUsageLimit(args: {
 	};
 }
 
-/**
- * Parse Codex `x-codex-{primary,secondary}-*` rate-limit response headers into
- * a usage report. The backend attaches these snapshots to every response, so
- * ingesting them lets credential selection block an exhausted account before
- * the next request burns a wire 429.
- */
 export function parseCodexRateLimitHeaders(headers: Record<string, string>, now = Date.now()): UsageReport | null {
 	const parseWindow = (key: "primary" | "secondary"): ParsedUsageWindow | undefined => {
 		const usedPercent = toNumber(headers[`x-codex-${key}-used-percent`]);
@@ -357,8 +339,6 @@ export const openaiCodexUsageProvider: UsageProvider = {
 
 		const baseUrl = normalizeCodexBaseUrl(params.baseUrl);
 		const accountId = credential.accountId ?? extractAccountId(accessToken);
-		// `normalizeStoredEmail` is the tree's one stored-email normalizer, in `../auth-credential-rows`, and it
-		// applies to the credential's own email as well as to the claim (which the owner already lowercased).
 		const email = normalizeStoredEmail(credential.email ?? extractEmail(accessToken)) ?? undefined;
 
 		const headers: Record<string, string> = {
@@ -467,9 +447,6 @@ export const openaiCodexUsageProvider: UsageProvider = {
 							status: c.status,
 						}));
 				}
-				// Always sync the live count from the detail endpoint — it may report
-				// fewer or zero available credits after expiry/redeem, even when the
-				// /wham/usage payload still has a stale count.
 				if (list) {
 					resetCredits.availableCount = list.availableCount;
 				}

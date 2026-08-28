@@ -1,6 +1,3 @@
-/**
- * Shared types and utilities for web-fetch handlers
- */
 import { scheduler } from "node:timers/promises";
 import { isCancellation } from "@veyyon/utils/abortable";
 import { clamp } from "@veyyon/utils/math";
@@ -25,20 +22,17 @@ export interface RenderResult {
 	notes: string[];
 }
 
-/** Loud degrade marker: the handler MATCHED the url but could not scrape it (upstream HTTP failure, response-shape drift, thrown error). The dispatcher */
 export interface ScraperDegrade {
 	readonly scraperDegrade: true;
 	readonly note: string;
 }
 
-/** The result a site handler returns when it MATCHED the URL and could not scrape it. The dispatcher puts the note on the generic-fetch result, so the user learns the */
 export function scraperDegrade(site: string, reason: unknown): ScraperDegrade {
 	if (reason instanceof ToolAbortError || isCancellation(reason)) throw reason;
 	const detail = errorMessage(reason);
 	return { scraperDegrade: true, note: `${site} scraper failed (${detail}); fell back to a generic fetch` };
 }
 
-/** Describe a failed {@link loadPage} result for a degrade note. */
 export function loadFailure(result: { status?: number; error?: string }): string {
 	if (result.status) return `HTTP ${result.status}`;
 	return result.error ?? "fetch failed";
@@ -48,13 +42,10 @@ export function isScraperDegrade(value: unknown): value is ScraperDegrade {
 	return typeof value === "object" && value !== null && (value as ScraperDegrade).scraperDegrade === true;
 }
 
-/** Parse a URL, returning null on invalid input (a non-match, not a degrade). */
-/** Parse a URL, or `null` when the string is not one. This is the ONE place a scraper decides "that is not a URL", and every URL classifier in this */
 export function tryParseUrl(url: string): URL | null {
 	try {
 		return new URL(url);
 	} catch {
-		// The throw IS the answer being asked for; there is nothing here to report.
 		return null;
 	}
 }
@@ -69,7 +60,6 @@ export type SpecialHandler = (
 export const MAX_OUTPUT_CHARS = 500_000;
 export const MAX_BYTES = 50 * 1024 * 1024;
 
-/** Escalation ladder for a page that answers as though we are a bot: plain curl, then a polite bot, then a real browser. Only the last rung has to get through, so its Chrome version comes from the one place that states */
 const USER_AGENTS = ["curl/8.0", "Mozilla/5.0 (compatible; TextBot/1.0)", CHROME_WINDOWS_USER_AGENT];
 
 function isBotBlocked(status: number, content: string): boolean {
@@ -87,9 +77,6 @@ function isBotBlocked(status: number, content: string): boolean {
 	return false;
 }
 
-/**
- * Truncate and cleanup output
- */
 export function finalizeOutput(content: string): { content: string; truncated: boolean } {
 	const cleaned = content.replace(/\n{3,}/g, "\n\n").trim();
 	const truncated = cleaned.length > MAX_OUTPUT_CHARS;
@@ -106,7 +93,6 @@ export interface LoadPageOptions {
 	body?: string;
 	maxBytes?: number;
 	signal?: AbortSignal;
-	/** Return true to skip reading the response body for this content type (lowercased mime, no params). The caller is expected to re-fetch the */
 	skipBodyForContentType?: (contentType: string) => boolean;
 }
 
@@ -116,17 +102,13 @@ export interface LoadPageResult {
 	finalUrl: string;
 	ok: boolean;
 	status?: number;
-	/** True when the body was cut mid-stream at maxBytes. */
 	truncated?: boolean;
-	/** Last transport-level error message when ok is false. */
 	error?: string;
-	/** True when the body read was skipped via skipBodyForContentType. */
 	bodySkipped?: boolean;
 }
 
 const RETRY_AFTER_MAX_MS = 10_000;
 
-/** Parse a Retry-After header (seconds or HTTP-date) into a bounded delay. */
 function parseRetryAfterMs(value: string | null): number {
 	if (!value) return 1_000;
 	const seconds = Number(value);
@@ -140,27 +122,19 @@ function charsetFromContentType(header: string): string | undefined {
 	return /charset\s*=\s*"?([\w-]+)"?/i.exec(header)?.[1];
 }
 
-/** Decode a response body honoring the declared charset (Content-Type header, then a cheap <meta charset> sniff), falling back to UTF-8. */
 function decodeBody(bytes: Buffer, contentTypeHeader: string): string {
 	let label = charsetFromContentType(contentTypeHeader);
 	if (!label) {
-		// All charsets we can decode are ASCII-compatible in the prefix, so a
-		// latin1 view of the first 2KB is enough to find a <meta charset>.
 		label = /<meta[^>]+charset\s*=\s*["']?([\w-]+)/i.exec(bytes.subarray(0, 2048).toString("latin1"))?.[1];
 	}
 	if (label && !/^utf-?8$/i.test(label)) {
 		try {
-			// Bun.Encoding's union is narrower than the runtime, which accepts
-			// WHATWG labels (shift_jis, euc-kr, gbk, big5, …); unknowns throw here.
 			return new TextDecoder(label as Bun.Encoding).decode(bytes);
-		} catch {
-			// Unknown/unsupported label — fall back to UTF-8.
-		}
+		} catch {}
 	}
 	return bytes.toString("utf-8");
 }
 
-/** Fetch a page with a timeout and a size limit. `timeout` is a per-attempt budget AND the whole call's ceiling: an attempt that */
 export async function loadPage(url: string, options: LoadPageOptions = {}): Promise<LoadPageResult> {
 	const { timeout = 20, headers = {}, maxBytes = MAX_BYTES, signal, method = "GET", body } = options;
 
@@ -170,9 +144,6 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 		throwIfAborted(signal, "loadPage");
 
 		const userAgent = USER_AGENTS[attempt];
-		// Scoped per attempt so the deadline timer is cleared on settle instead
-		// of staying armed like a bare AbortSignal.timeout; the fence spans the
-		// streamed body read below.
 		const requestTimeout = scopedTimeoutSignal(timeout * 1000, signal);
 
 		try {
@@ -200,16 +171,12 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 			const finalUrl = response.url;
 
 			if (response.status === 429 && !retried429) {
-				// Rate limited: retry once, honoring a bounded Retry-After. The
-				// wait observes the caller's signal so an Esc during the backoff
-				// does not stall for up to the full delay.
 				retried429 = true;
 				const delayMs = parseRetryAfterMs(response.headers.get("retry-after"));
 				void response.body?.cancel().catch(() => {});
 				try {
 					await scheduler.wait(delayMs, { signal });
 				} catch (error) {
-					// `scheduler.wait` rejects when the caller's signal aborts, which is the case worth naming: `throwIfAborted` keeps `signal.reason` as the
 					throwIfAborted(signal, "loadPage");
 					throw error;
 				}
@@ -240,8 +207,6 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 
 				if (totalSize > maxBytes) {
 					truncated = true;
-					// The size cap is reached, `truncated` is set, and the bytes collected so far are returned. A
-					// cancel that fails only means the stream ended on its own; the result is unaffected.
 					void reader.cancel().catch(() => {});
 					break;
 				}
@@ -258,11 +223,8 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 
 			return { content, contentType, finalUrl, ok: true, status: response.status, truncated };
 		} catch (error) {
-			// The caller stopping us ends everything, and `signal.reason` travels with
-			// the throw so the layer that reports it can say why.
 			throwIfAborted(signal, "loadPage");
 			lastError = errorMessage(error);
-			// A DEADLINE also ends the loop. Rotating the user agent is the answer to a BOT BLOCK, which `isBotBlocked` handles above on its own branch, and it is
 			if (isTimeoutError(error) || attempt === USER_AGENTS.length - 1) break;
 		} finally {
 			requestTimeout.cancel();
@@ -272,7 +234,6 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 	return { content: "", contentType: "", finalUrl: url, ok: false, error: lastError };
 }
 
-/** Cached import of the (heavy) turndown module. Lazy so turndown and turndown-plugin-gfm stay off the startup graph; memoized so `createTurndown` */
 let turndownModulePromise: Promise<typeof import("../../utils/turndown")> | undefined;
 
 function getTurndownModule(): Promise<typeof import("../../utils/turndown")> {
@@ -280,7 +241,6 @@ function getTurndownModule(): Promise<typeof import("../../utils/turndown")> {
 	return turndownModulePromise;
 }
 
-/** Module-level Turndown instance — built lazily on first use. */
 let turndownPromise: Promise<TurndownService> | undefined;
 
 function getTurndown(): Promise<TurndownService> {
@@ -288,16 +248,12 @@ function getTurndown(): Promise<TurndownService> {
 	return turndownPromise;
 }
 
-/** Convert HTML to markdown using Turndown with GFM support. Strips script/style tags before conversion, then normalizes tables so a */
 export async function htmlToBasicMarkdown(html: string): Promise<string> {
 	const cleaned = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
 	const [module, turndown] = await Promise.all([getTurndownModule(), getTurndown()]);
 	return turndown.turndown(module.normalizeTablesHtml(cleaned)).trim();
 }
 
-/**
- * Build a RenderResult from markdown content. Calls finalizeOutput internally.
- */
 export function buildResult(
 	md: string,
 	opts: { url: string; finalUrl?: string; method: string; fetchedAt: string; notes?: string[]; contentType?: string },
@@ -315,9 +271,6 @@ export function buildResult(
 	};
 }
 
-/**
- * Format a date value as YYYY-MM-DD. Returns empty string on invalid input.
- */
 export function formatIsoDate(value?: string | number | Date): string {
 	if (value == null) return "";
 	if (typeof value === "string") {
@@ -331,7 +284,6 @@ export function formatIsoDate(value?: string | number | Date): string {
 	}
 }
 
-/** The named HTML entities this decoder understands, mapped to their text. */
 const NAMED_ENTITIES: Record<string, string> = {
 	amp: "&",
 	lt: "<",
@@ -341,14 +293,9 @@ const NAMED_ENTITIES: Record<string, string> = {
 	nbsp: " ",
 };
 
-/** A single entity in the grammar {@link decodeHtmlEntities} recognizes: a decimal char ref (`&#39;`), a hex char ref (`&#x2F;`, `&#X1F600;`), or a named */
 const HTML_ENTITY_RE = /&(#\d+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g;
 
-/** Turn a Unicode code point into its character, or return `fallback` when it is not a valid scalar. */
 function codePointToChar(code: number, fallback: string): string {
-	// Reject out-of-range and lone-surrogate code points rather than emitting
-	// replacement junk. fromCodePoint (not fromCharCode) so an astral entity like
-	// `&#128512;` becomes one emoji, not a broken surrogate pair.
 	if (!Number.isInteger(code) || code < 0 || code > 0x10ffff) return fallback;
 	if (code >= 0xd800 && code <= 0xdfff) return fallback;
 	try {
@@ -358,7 +305,6 @@ function codePointToChar(code: number, fallback: string): string {
 	}
 }
 
-/** Decode the common HTML entities in a single left-to-right pass. One pass is the whole point: each `&...;` is replaced from the ORIGINAL text */
 export function decodeHtmlEntities(text: string): string {
 	return text.replace(HTML_ENTITY_RE, (match, body: string) => {
 		if (body[0] === "#") {
@@ -373,9 +319,6 @@ export function decodeHtmlEntities(text: string): string {
 	});
 }
 
-/**
- * Format seconds into HH:MM:SS or MM:SS.
- */
 export function formatMediaDuration(totalSeconds: number): string {
 	const hours = Math.floor(totalSeconds / 3600);
 	const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -384,9 +327,6 @@ export function formatMediaDuration(totalSeconds: number): string {
 	return `${minutes}:${String(secs).padStart(2, "0")}`;
 }
 
-/**
- * Extract localized text, preferring en-US/en.
- */
 export type LocalizedText = string | Record<string, string | null> | null | undefined;
 
 export function getLocalizedText(value: LocalizedText, defaultLocale?: string): string | undefined {
@@ -398,9 +338,6 @@ export function getLocalizedText(value: LocalizedText, defaultLocale?: string): 
 	);
 }
 
-/**
- * Check if content looks like HTML by inspecting the leading tag.
- */
 export function looksLikeHtml(content: string): boolean {
 	const trimmed = content.trim().toLowerCase();
 	return (

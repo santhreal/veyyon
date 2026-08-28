@@ -8,17 +8,13 @@ import { READ_SELECTOR_RANGE_LIST_SRC, splitReadSelector } from "@veyyon/utils/r
 import { trimTrailingSlashes, URL_SCHEME_PREFIX_RE } from "@veyyon/utils/url";
 import { ToolError } from "./tool-errors";
 
-// NOTHING HERE MAY IMPORT `../internal-urls`, DIRECTLY OR THROUGH A BARREL. This module is imported for small path helpers all over the package, and a
-
 export { expandTilde };
 
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
-// The line-range/`raw`/`conflicts` selector grammar and `splitPathAndSel` (the canonical filesystem splitter) live in @veyyon/utils (read-selector.ts), shared
 const INTERNAL_URL_SELECTOR_PART_RE = new RegExp(
 	String.raw`^(?:raw|conflicts|${READ_SELECTOR_RANGE_LIST_SRC}|-\d+(?:[-+]\d+)?)$`,
 	"i",
 );
-// Schemes whose host grammar is identifier-shaped, so any trailing `:<selector-chunk>` is unambiguously a read-tool selector. `mcp://` is
 const INTERNAL_SCHEMES_WITH_SELECTORS: Record<string, true> = {
 	agent: true,
 	artifact: true,
@@ -33,14 +29,9 @@ const INTERNAL_SCHEMES_WITH_SELECTORS: Record<string, true> = {
 	ssh: true,
 	vault: true,
 };
-// Schemes whose resource URIs are server-defined and may legitimately end with selector-shaped tails (e.g. `:raw`, `:conflicts`, `:1-50`, `/:raw`).
 const OPAQUE_RESOURCE_SCHEMES: ReadonlySet<string> = new Set(["mcp"]);
 const NARROW_NO_BREAK_SPACE = "\u202F";
-// Read once. `process.platform` is a getter, and resolving it per call was
-// measurably expensive on the hot path, so it is read once rather than as a
-// default argument evaluated on every `resolveToCwd`.
 const CURRENT_PLATFORM: NodeJS.Platform = process.platform;
-// Every scheme the internal-URL router registers. A scheme missing here is read as a filesystem path: it escapes `assertNotInternalUrl`, gets its backslashes
 const TOP_LEVEL_INTERNAL_URL_PREFIXES = [
 	"agent://",
 	"artifact://",
@@ -66,13 +57,10 @@ function tryMacOSScreenshotPath(filePath: string): string {
 }
 
 function tryNFDVariant(filePath: string): string {
-	// macOS stores filenames in NFD (decomposed) form, try converting user input to NFD
 	return filePath.normalize("NFD");
 }
 
 function tryCurlyQuoteVariant(filePath: string): string {
-	// macOS uses U+2019 (right single quotation mark) in screenshot names like "Capture d'écran"
-	// Users typically type U+0027 (straight apostrophe)
 	return filePath.replace(/'/g, "\u2019");
 }
 
@@ -86,9 +74,6 @@ function fileExists(filePath: string): boolean {
 		fs.accessSync(filePath, fs.constants.F_OK);
 		return true;
 	} catch {
-		// This picks between candidate spellings of a path the user typed (shell escapes, curly
-		// apostrophes). A spelling we cannot reach is not the one they meant, and the read that follows
-		// the chosen spelling reports its own failure with the path.
 		return false;
 	}
 }
@@ -98,15 +83,11 @@ function normalizeAtPrefix(filePath: string): string {
 
 	const withoutAt = filePath.slice(1);
 
-	// We only treat a leading "@" as a shorthand for a small set of well-known
-	// syntaxes. This avoids mangling literal paths like "@my-file.txt".
 	if (
 		withoutAt.startsWith("/") ||
 		withoutAt === "~" ||
 		withoutAt.startsWith("~/") ||
-		// Windows absolute paths (drive letters / UNC / root-relative)
 		path.win32.isAbsolute(withoutAt) ||
-		// Internal URL shorthands
 		withoutAt.startsWith("agent://") ||
 		withoutAt.startsWith("artifact://") ||
 		withoutAt.startsWith("skill://") ||
@@ -131,7 +112,6 @@ function stripFileUrl(filePath: string): string {
 }
 
 export function expandPath(filePath: string): string {
-	// Some models intermittently prefix an otherwise-valid path with a stray `:` (e.g. `:/abs/path`, `:../rel`). No real path starts with `:` and it
 	const deColoned = /^:(?=[/~]|\.\.?\/)/.test(filePath) ? filePath.slice(1) : filePath;
 	const normalized = stripWindowsExtendedLengthPathPrefix(
 		stripFileUrl(normalizeUnicodeSpaces(normalizeAtPrefix(deColoned))),
@@ -169,7 +149,6 @@ export function normalizeWindowsDriveAliasPath(filePath: string, platform: NodeJ
 	return windowsDriveAliasPath(filePath) ?? filePath;
 }
 
-/** Inclusive line range describing one selector segment (e.g. `50-100`, `301-`, or `50+10`). `endLine` is `undefined` for open-ended ranges. */
 export interface LineRange {
 	startLine: number;
 	endLine: number | undefined;
@@ -177,16 +156,13 @@ export interface LineRange {
 
 const LINE_RANGE_CHUNK_RE = /^L?(\d+)(?:(\.\.|[-+])L?(\d+)?)?$/i;
 
-/** Parse a single `N`, `N-M`, `N-`, `N+K`, or `..`-aliased (`N..M`, `N..`) chunk. Throws via {@link ToolError} on invalid bounds. */
 export function parseLineRangeChunk(sel: string): LineRange | null {
-	// Tolerate surrounding whitespace so a spaced multi-range list like `1-3, 5-7` parses. Without this the `" 5-7"` chunk fails the anchored
 	const lineMatch = LINE_RANGE_CHUNK_RE.exec(sel.trim());
 	if (!lineMatch) return null;
 	const rawStart = Number.parseInt(lineMatch[1]!, 10);
 	if (rawStart < 1) {
 		throw new ToolError("Line selector 0 is invalid; lines are 1-indexed. Use :1.");
 	}
-	// `..` is a forgiving alias for `-` (e.g. `2724..2727` == `2724-2727`).
 	const sep = lineMatch[2] === ".." ? "-" : lineMatch[2];
 	const rhs = lineMatch[3] ? Number.parseInt(lineMatch[3], 10) : undefined;
 	let rawEnd: number | undefined;
@@ -196,7 +172,6 @@ export function parseLineRangeChunk(sel: string): LineRange | null {
 		}
 		rawEnd = rawStart + rhs - 1;
 	} else if (sep === "-") {
-		// `301-` is shorthand for "from 301 onward" — equivalent to bare `301`.
 		if (rhs !== undefined) {
 			if (rhs < rawStart) {
 				throw new ToolError(`Invalid range ${rawStart}-${rhs}: end must be >= start.`);
@@ -207,7 +182,6 @@ export function parseLineRangeChunk(sel: string): LineRange | null {
 	return { startLine: rawStart, endLine: rawEnd };
 }
 
-/** Parse a comma-separated list of line ranges (e.g. `5-16,960-973`). Returns the ranges in ascending order with overlapping/adjacent ranges merged so */
 export function parseLineRanges(sel: string): [LineRange, ...LineRange[]] | null {
 	const chunks = sel.split(",");
 	const parsed: LineRange[] = [];
@@ -223,9 +197,7 @@ export function parseLineRanges(sel: string): [LineRange, ...LineRange[]] | null
 	for (let i = 1; i < parsed.length; i++) {
 		const current = parsed[i];
 		const last = merged[merged.length - 1];
-		// Open-ended (endLine undefined) means "to EOF" — any later range is absorbed.
 		if (last.endLine === undefined) continue;
-		// Merge when current starts within (or immediately after) the last range.
 		if (current.startLine <= last.endLine + 1) {
 			if (current.endLine === undefined || current.endLine > last.endLine) {
 				merged[merged.length - 1] = { startLine: last.startLine, endLine: current.endLine };
@@ -237,7 +209,6 @@ export function parseLineRanges(sel: string): [LineRange, ...LineRange[]] | null
 	return merged as [LineRange, ...LineRange[]];
 }
 
-/** Extract the line-range component from a read-tool selector that may also carry a verbatim/index display mode (`raw`, `conflicts`) — alone or compounded */
 export function selectorLineRanges(sel: string | undefined): [LineRange, ...LineRange[]] | undefined {
 	if (!sel) return undefined;
 	for (const chunk of sel.split(":")) {
@@ -249,7 +220,6 @@ export function selectorLineRanges(sel: string | undefined): [LineRange, ...Line
 	return undefined;
 }
 
-/** Return `true` when `lineNumber` (1-indexed) falls in any of the supplied ranges. */
 export function isLineInRanges(lineNumber: number, ranges: readonly LineRange[]): boolean {
 	for (const range of ranges) {
 		if (lineNumber < range.startLine) continue;
@@ -258,10 +228,8 @@ export function isLineInRanges(lineNumber: number, ranges: readonly LineRange[])
 	return false;
 }
 
-/** Split a read-tool path into its base path and trailing selector. The read tool's canonical splitter: delegates to the ONE-PLACE owner in @veyyon/utils */
 export const splitPathAndSel: (rawPath: string) => { path: string; sel?: string } = splitReadSelector;
 
-/** Three-way probe for whether the exact filesystem entry named by `filePath` exists. `stat` (used earlier) failed for reasons other than "no such file" */
 export async function probeLiteralPathExists(filePath: string, cwd: string): Promise<"exists" | "missing" | "unknown"> {
 	const resolved = resolveReadPath(filePath, cwd);
 	try {
@@ -273,7 +241,6 @@ export async function probeLiteralPathExists(filePath: string, cwd: string): Pro
 	}
 }
 
-/** Async sibling of {@link splitPathAndSel} that prefers a literal filesystem path over selector interpretation. Filenames whose tail matches the selector */
 export async function splitPathAndSelPreferringLiteral(
 	rawPath: string,
 	cwd: string,
@@ -284,20 +251,14 @@ export async function splitPathAndSelPreferringLiteral(
 	return probe === "missing" ? strict : { path: rawPath };
 }
 
-/** Variant of {@link splitPathAndSel} for internal URLs (`scheme://...`). The filesystem-path splitter is intentionally conservative: it refuses to */
-
 export function splitInternalUrlSel(rawPath: string): { path: string; sel?: string } {
 	const schemeMatch = rawPath.match(URL_SCHEME_PREFIX_RE);
 	if (!schemeMatch) return { path: rawPath };
 	const scheme = schemeMatch[1].toLowerCase();
-	// Opaque schemes (mcp://, etc.) carry server-defined resource URIs that may
-	// legitimately end in selector-shaped tails. Forward verbatim — see
-	// OPAQUE_RESOURCE_SCHEMES.
 	if (OPAQUE_RESOURCE_SCHEMES.has(scheme)) return { path: rawPath };
 	if (!INTERNAL_SCHEMES_WITH_SELECTORS[scheme]) return { path: rawPath };
 
 	const schemeEnd = schemeMatch[0].length;
-	// ssh:// authority carries an optional `:port`; with no `/path` after the authority, a trailing `:NNNN` is the port, not a read selector
 	if (scheme === "ssh" && rawPath.indexOf("/", schemeEnd) === -1) {
 		return { path: rawPath };
 	}
@@ -305,7 +266,6 @@ export function splitInternalUrlSel(rawPath: string): { path: string; sel?: stri
 	const chunks: string[] = [];
 	while (true) {
 		const colon = path.lastIndexOf(":");
-		// Stop before crossing into the scheme separator `://`.
 		if (colon < schemeEnd) break;
 		const tail = path.slice(colon + 1);
 		if (!INTERNAL_URL_SELECTOR_PART_RE.test(tail)) break;
@@ -316,11 +276,9 @@ export function splitInternalUrlSel(rawPath: string): { path: string; sel?: stri
 	return { path, sel: chunks.join(":") };
 }
 
-/** Peel a read-tool selector off an internal-URL write target so `write` resolves the same file `read` does (e.g. `ssh://h/f:raw` -> `ssh://h/f`). Only the */
 export function peelWriteUrlSelector(rawPath: string): string {
 	const { path, sel } = splitInternalUrlSel(rawPath);
 	if (sel === undefined) return rawPath;
-	// Case-insensitive to match read's selector grammar (parseSel + the /i regexes above).
 	if (/^(?:raw|conflicts)$/i.test(sel)) return path;
 	throw new ToolError(
 		`write does not accept the trailing selector ":${sel}" — it writes a whole file. ` +
@@ -328,7 +286,6 @@ export function peelWriteUrlSelector(rawPath: string): string {
 	);
 }
 
-/** Refuse a path containing a NUL byte, before it reaches the filesystem layer. A NUL cannot appear in any real filename: the kernel takes a C string, so */
 function assertNoNulByte(original: string): void {
 	const index = original.indexOf("\0");
 	if (index === -1) return;
@@ -338,21 +295,16 @@ function assertNoNulByte(original: string): void {
 	);
 }
 
-/** The kernel's filename limit, in BYTES not characters. `NAME_MAX` is 255 on Linux and macOS, and Windows applies the same per */
 const MAX_PATH_COMPONENT_BYTES = 255;
 
-/** The whole-path limit, in bytes. `PATH_MAX` is 4096 on Linux and 1024 on macOS; 4096 is used as the common */
 const MAX_PATH_TOTAL_BYTES = 4096;
 
-/** Reject a path that cannot fit the filesystem's name limits. `ENAMETOOLONG: name too long, open '<the entire 300-character path>'`, which */
 function assertPathLengthWithinLimits(original: string, resolved: string): void {
-	// FAST PATH, and the reason this function is shaped the way it is. The exact check below splits the path and measures every component, which allocates an
 	const MAX_UNITS_ALWAYS_SAFE = Math.floor(MAX_PATH_COMPONENT_BYTES / 3);
 	let componentStart = 0;
 	let mustMeasure = resolved.length > Math.floor(MAX_PATH_TOTAL_BYTES / 3);
 	if (!mustMeasure) {
 		for (let i = 0; i <= resolved.length; i++) {
-			// Treat end-of-string as a separator so the final component is measured.
 			const code = i < resolved.length ? resolved.charCodeAt(i) : 0x2f;
 			if (code !== 0x2f && code !== 0x5c) continue;
 			if (i - componentStart > MAX_UNITS_ALWAYS_SAFE) {
@@ -375,8 +327,6 @@ function assertPathLengthWithinLimits(original: string, resolved: string): void 
 			);
 		}
 	}
-	// Windows with an extended-length prefix reaches 32767, so a POSIX ceiling
-	// applied there would refuse paths that work.
 	if (process.platform === "win32") return;
 	const totalBytes = Buffer.byteLength(resolved, "utf8");
 	if (totalBytes > MAX_PATH_TOTAL_BYTES) {
@@ -387,7 +337,6 @@ function assertPathLengthWithinLimits(original: string, resolved: string): void 
 	}
 }
 
-/** Win32 device names. Reserved in EVERY directory, not just the drive root, and reserved with any extension too: `CON`, `CON.txt` and `con.log` all name the */
 const WINDOWS_RESERVED_NAMES: ReadonlySet<string> = new Set([
 	"con",
 	"prn",
@@ -413,7 +362,6 @@ const WINDOWS_RESERVED_NAMES: ReadonlySet<string> = new Set([
 	"lpt9",
 ]);
 
-/** Reject Windows paths that do not mean what they say. TWO DISTINCT WIN32 BEHAVIOURS, both of which make a write land somewhere other */
 export function assertNoWindowsReservedName(
 	original: string,
 	resolved: string,
@@ -421,9 +369,6 @@ export function assertNoWindowsReservedName(
 ): void {
 	if (platform !== "win32") return;
 	for (const component of resolved.split(/[/\\]/)) {
-		// `.` and `..` are navigation, not names ending in a dot, and a drive
-		// letter is never a filename. Measuring any of them against these rules
-		// would refuse ordinary relative paths.
 		if (!component || component === "." || component === ".." || /^[a-zA-Z]:$/.test(component)) continue;
 
 		const trimmedTail = component.replace(/[. ]+$/, "");
@@ -435,7 +380,6 @@ export function assertNoWindowsReservedName(
 			);
 		}
 
-		// The reservation applies to the stem, so `CON.txt` is still the console.
 		const stem = component.includes(".") ? component.slice(0, component.indexOf(".")) : component;
 		if (WINDOWS_RESERVED_NAMES.has(stem.toLowerCase())) {
 			throw new Error(
@@ -470,22 +414,18 @@ export function isInternalUrlPath(filePath: string): boolean {
 	return false;
 }
 
-/** True when a tool path argument references the `ssh://` scheme anywhere. Substring (not anchored) on purpose: it feeds the read/search/write approval */
 export function pathTargetsSsh(path: string): boolean {
 	return /ssh:\/\//i.test(path);
 }
 
-/** True when a path is specifically an `ssh://` URL (anchored scheme match). Unlike {@link pathTargetsSsh} (substring, for the pre-expansion approval */
 export function isSshUrl(path: string): boolean {
 	return /^ssh:\/\//i.test(path.trim());
 }
 
-/** True when the read tool's URL parser (`parseReadUrlTarget` in fetch.ts) would recognize this path as a readable external URL: a strict `http(s)://`, a */
 export function isReadableUrlPath(value: string): boolean {
 	return /^https?:\/\/?/i.test(value) || /^www\./i.test(value);
 }
 
-/** The literal base directory a glob/search pattern descends from — the longest leading path segment run that contains no glob metacharacter (`*?[{`). */
 export function globSearchBase(pattern: string): string {
 	const trimmed = pattern.trim();
 	const meta = trimmed.search(/[*?[{]/);
@@ -495,7 +435,6 @@ export function globSearchBase(pattern: string): string {
 	return lastSlash === -1 ? "" : literalPrefix.slice(0, lastSlash);
 }
 
-/** Resolve a path relative to the given cwd. Handles ~ expansion and absolute paths. */
 export function resolveToCwd(filePath: string, cwd: string): string {
 	assertNoNulByte(filePath);
 	const normalized = normalizeLocalScheme(filePath);
@@ -507,16 +446,12 @@ export function resolveToCwd(filePath: string, cwd: string): string {
 	if (/^\/+$/.test(expanded)) {
 		return cwd;
 	}
-	// Length is checked on the RESOLVED path, because that is the string the
-	// syscall receives: a short relative path under a deep cwd can exceed the
-	// total limit while looking fine on its own.
 	const resolved = path.isAbsolute(expanded) ? expanded : path.resolve(cwd, expanded);
 	assertPathLengthWithinLimits(filePath, resolved);
 	assertNoWindowsReservedName(filePath, resolved);
 	return resolved;
 }
 
-/** True when `resolvedPath` (an already-resolved absolute path) is inside `cwd`, or equal to it. Pure containment only: it does not expand `~`, resolve */
 export function isPathWithinCwd(resolvedPath: string, cwd: string): boolean {
 	const relative = path.relative(path.resolve(cwd), resolvedPath);
 	return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
@@ -543,20 +478,16 @@ export function formatPathRelativeToCwd(
 	return displayPath;
 }
 
-/** The path as the filesystem actually stores it, when that differs from the path that was asked for. */
 export function resolveStoredPathCase(absolutePath: string): string {
 	try {
 		const stored = fs.realpathSync.native(absolutePath);
 		if (stored === absolutePath) return absolutePath;
-		// Case-only difference, i.e. the same path spelled differently. Anything
-		// else is a real redirection (symlink, `..`) and is left alone.
 		return stored.toLowerCase() === absolutePath.toLowerCase() ? stored : absolutePath;
 	} catch {
 		return absolutePath;
 	}
 }
 
-/** Strip matching surrounding double quotes from a path string. Common when users paste quoted paths from Windows Explorer or shell copy-paste. */
 export function stripOuterDoubleQuotes(input: string): string {
 	return input.startsWith('"') && input.endsWith('"') && input.length > 1 ? input.slice(1, -1) : input;
 }
@@ -570,7 +501,6 @@ export function normalizePathLikeInput(input: string): string {
 	return stripOuterDoubleQuotes(input.trim());
 }
 
-/** Parse a JSON-encoded array of path strings (e.g. `'["a.ts","b.ts"]'`). Returns `null` when the input is not a bracketed JSON string array, so the */
 function parseStringEncodedPathArray(input: string): string[] | null {
 	const trimmed = input.trim();
 	if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return null;
@@ -582,7 +512,6 @@ function parseStringEncodedPathArray(input: string): string[] | null {
 	return parsed;
 }
 
-/** Normalize a path argument that may arrive as a single string, a JSON-encoded string array (`'["a.ts"]'`), or an actual array into a flat `string[]`. */
 export function toPathList(input: string | string[] | undefined): string[] {
 	if (typeof input === "string") return parseStringEncodedPathArray(input) ?? [input];
 	return input ?? [];
@@ -665,7 +594,6 @@ function getDelimitedCandidates(entry: string, mode: DelimitedPathSplitMode): st
 	return parts;
 }
 
-/** How many split parts must resolve to an existing path for the split to win. Semicolon is the documented list delimiter, so it splits unconditionally */
 type DelimitedResolveRequirement = "all" | "some" | "none";
 
 const DELIMITED_SPLIT_LADDER: ReadonlyArray<{
@@ -707,7 +635,6 @@ function probePartResolvesSync(entry: string, cwd: string, splitter: PathEntrySp
 		return true;
 	} catch (err) {
 		if (isMissingPath(err)) return false;
-		// Anything that is not "missing" answers the question this probe asks: the part IS on disk, it just cannot be stat'd from here. EACCES is the
 		return true;
 	}
 }
@@ -721,8 +648,6 @@ async function probePartResolvesAsync(entry: string, cwd: string, splitter: Path
 		return true;
 	} catch (err) {
 		if (isEnoent(err) || isMissingPath(err)) return false;
-		// See `probePartResolvesSync`: not-missing means it exists but is not
-		// stat-able from here, which is an answer, not a failure.
 		return true;
 	}
 }
@@ -749,14 +674,11 @@ async function validatePartsAsync(
 	return requirement === "all" ? resolved.every(Boolean) : resolved.some(Boolean);
 }
 
-/** How one path-like entry is allowed to fan out into several targets. */
 export interface DelimitedPathSplitOptions {
 	splitter?: PathEntrySplitter;
-	/** What happens to an entry that is an internal URL (`skill://`, `memory://`, …). `keep`, the default, leaves it whole: a search scope resolves a base path on */
 	internalUrls?: "keep" | "split-on-semicolon";
 }
 
-/** Synchronously split one path-like entry whose multiple targets were flattened into one string. */
 export function splitDelimitedPathEntrySync(
 	entry: string,
 	cwd: string = process.cwd(),
@@ -782,7 +704,6 @@ export function splitDelimitedPathEntrySync(
 	return null;
 }
 
-/** Expand delimited entries synchronously in-place while preserving unsplit entries. */
 export function expandDelimitedPathEntriesSync(
 	entries: readonly string[],
 	cwd: string = process.cwd(),
@@ -798,7 +719,6 @@ export function expandDelimitedPathEntriesSync(
 	return expanded;
 }
 
-/** Split one path-like entry whose multiple targets were flattened into one string. Existing paths are kept intact, so real filenames containing spaces, */
 export async function splitDelimitedPathEntry(
 	entry: string,
 	cwd: string = process.cwd(),
@@ -824,7 +744,6 @@ export async function splitDelimitedPathEntry(
 	return null;
 }
 
-/** Expand delimited entries in-place while preserving unsplit entries. */
 export async function expandDelimitedPathEntries(
 	entries: readonly string[],
 	cwd: string = process.cwd(),
@@ -900,7 +819,6 @@ export function parseSearchPath(filePath: string): ParsedSearchPath {
 	};
 }
 
-/** Async sibling of {@link parseSearchPath} that prefers literal interpretation when a path containing glob metacharacters resolves to an existing entry on */
 export async function parseSearchPathPreferringLiteral(filePath: string, cwd: string): Promise<ParsedSearchPath> {
 	if (!hasGlobPathChars(filePath) || isInternalUrlPath(filePath)) return parseSearchPath(filePath);
 	try {
@@ -911,7 +829,6 @@ export async function parseSearchPathPreferringLiteral(filePath: string, cwd: st
 	}
 }
 
-// Parse a find pattern into a base directory path and a glob pattern. Examples:
 export function parseFindPattern(pattern: string): ParsedFindPattern {
 	const normalizedPattern = normalizePathSeparators(pattern);
 	const segments = normalizedPattern.split("/");
@@ -1038,9 +955,7 @@ async function resolveSearchPathItems(
 		}
 		return relativeBasePath === "." ? path.basename(item.absoluteBasePath) : relativeBasePath;
 	});
-	// A single walk rooted at the common ancestor is only safe when that ancestor is itself one of the requested scopes (e.g. `.` + `src/foo.ts`):
 	const commonIsRequestedScope = parsedItems.some(item => item.absoluteBasePath === commonBasePath);
-	// Walkers prune `.git` unconditionally and honor gitignore, so a plain-file item folded into a directory walk's glob union (`.` + `.git/config`) can
 	const demotesFileItem =
 		fanOutFileItems && !allExactFiles && parsedItems.some(item => !item.parsedPath.glob && item.stat.isFile());
 	const targets =
@@ -1077,7 +992,6 @@ async function resolveFindPatternItems(
 		return undefined;
 	}
 
-	// Each path becomes its own walk root. Collapsing to a shared common ancestor (and filtering with a brace-union glob) would force the walker to traverse
 	const targets = patternItems.map(item => {
 		const parsedPattern = parseFindPattern(item);
 		return {
@@ -1100,15 +1014,11 @@ export async function resolveExplicitFindPatterns(
 	return resolveFindPatternItems(Array.from(new Set(patternItems)), cwd);
 }
 
-/** Result of partitioning a list of user-supplied paths/globs into entries whose base directory currently exists on disk versus those that do not. */
 export interface PartitionedPaths {
-	/** Raw input strings whose resolved base path exists. */
 	valid: string[];
-	/** Raw input strings whose resolved base path is missing (ENOENT). */
 	missing: string[];
 }
 
-/** Stat each input's base path concurrently; return entries split by existence. `splitter` is expected to be {@link parseFindPattern} or */
 export async function partitionExistingPaths(
 	items: string[],
 	cwd: string,
@@ -1148,25 +1058,21 @@ export function resolveReadPath(filePath: string, cwd: string): string {
 	}
 
 	for (const baseCandidate of baseCandidates) {
-		// Try macOS AM/PM variant (narrow no-break space before AM/PM)
 		const amPmVariant = tryMacOSScreenshotPath(baseCandidate);
 		if (amPmVariant !== baseCandidate && fileExists(amPmVariant)) {
 			return amPmVariant;
 		}
 
-		// Try NFD variant (macOS stores filenames in NFD form)
 		const nfdVariant = tryNFDVariant(baseCandidate);
 		if (nfdVariant !== baseCandidate && fileExists(nfdVariant)) {
 			return nfdVariant;
 		}
 
-		// Try curly quote variant (macOS uses U+2019 in screenshot names)
 		const curlyVariant = tryCurlyQuoteVariant(baseCandidate);
 		if (curlyVariant !== baseCandidate && fileExists(curlyVariant)) {
 			return curlyVariant;
 		}
 
-		// Try combined NFD + curly quote (for French macOS screenshots like "Capture d'écran")
 		const nfdCurlyVariant = tryCurlyQuoteVariant(nfdVariant);
 		if (nfdCurlyVariant !== baseCandidate && fileExists(nfdCurlyVariant)) {
 			return nfdCurlyVariant;

@@ -13,7 +13,6 @@ import { buildModel } from "@veyyon/catalog/build";
 import { emptyUsage } from "@veyyon/catalog/models";
 import { estimateTokensFromText } from "@veyyon/utils";
 
-/** Published Anthropic multipliers over the base input price. */
 export const PRICE = Object.freeze({
 	input: 1,
 	read: 0.1,
@@ -21,10 +20,8 @@ export const PRICE = Object.freeze({
 	write1h: 2.0,
 });
 
-/** Nominal entry lifetimes, in milliseconds of simulated time. */
 export const TTL_MS = Object.freeze({ short: 5 * 60_000, long: 60 * 60_000 });
 
-/** Minimum tokens for cacheability. */
 export const MIN_CACHEABLE_TOKENS = 2048;
 
 const MODEL_SPEC: ModelSpec<"anthropic-messages"> = {
@@ -47,7 +44,6 @@ type WireBlock = { type?: string; cache_control?: CacheControl } & Record<string
 type WireMessage = { role?: string; content?: string | WireBlock[] };
 export type WirePayload = { system?: WireBlock[]; messages?: WireMessage[]; tools?: WireBlock[] };
 
-/** Capture the body the shipped provider would have sent. */
 export function capturePayload(
 	context: Context,
 	options: { isOAuth: boolean; cacheRetention?: CacheRetention },
@@ -65,14 +61,12 @@ export function capturePayload(
 	return promise;
 }
 
-/** One cacheable prefix: everything up to and including a marked block. */
 export interface Prefix {
 	readonly joined: string;
 	readonly tokens: number;
 	readonly retention: "short" | "long";
 	readonly global: boolean;
 }
-/** Separator between serialized blocks; cannot appear inside JSON text. */
 const BLOCK_SEPARATOR = "\u0000";
 
 function withoutMarker(block: WireBlock): Record<string, unknown> {
@@ -80,7 +74,6 @@ function withoutMarker(block: WireBlock): Record<string, unknown> {
 	return rest;
 }
 
-/** Serialized blocks of a payload in billing order. */
 export function blocksOf(payload: WirePayload): Array<{ text: string; marker?: CacheControl }> {
 	const blocks: Array<{ text: string; marker?: CacheControl }> = [];
 	for (const tool of payload.tools ?? []) {
@@ -104,7 +97,6 @@ export function blocksOf(payload: WirePayload): Array<{ text: string; marker?: C
 	return blocks;
 }
 
-/** Prefixes offered by a payload, shallowest first. */
 export function prefixesOf(payload: WirePayload): Prefix[] {
 	const prefixes: Prefix[] = [];
 	const seen: string[] = [];
@@ -122,19 +114,16 @@ export function prefixesOf(payload: WirePayload): Prefix[] {
 	return prefixes;
 }
 
-/** The whole request as one separator-joined string: what a prefix matches against. */
 export function joinedOf(payload: WirePayload): string {
 	return blocksOf(payload)
 		.map(block => block.text)
 		.join(BLOCK_SEPARATOR);
 }
 
-/** Every byte of a payload, markers removed: the prompt the provider reads. */
 export function promptTokensOf(payload: WirePayload): number {
 	return estimateTokensFromText(joinedOf(payload));
 }
 
-/** What one request cost, in tokens and in base-input-price equivalents. */
 export interface TurnLedger {
 	readonly read: number;
 	readonly write: number;
@@ -143,7 +132,6 @@ export interface TurnLedger {
 	readonly cost: number;
 }
 
-/** What a whole simulated session cost. */
 export interface SessionLedger {
 	readonly turns: readonly TurnLedger[];
 	readonly read: number;
@@ -160,7 +148,6 @@ interface Entry {
 	retention: "short" | "long";
 	expiresAt: number;
 }
-/** A modelled provider prefix cache. */
 export class PrefixCache {
 	readonly #entries = new Map<string, Entry>();
 	readonly #globalWritePremium: number;
@@ -173,7 +160,6 @@ export class PrefixCache {
 		return `${prefix.global ? "" : session}${BLOCK_SEPARATOR}${prefix.joined}`;
 	}
 
-	/** Bill one request against the cache. */
 	serve(session: string, payload: WirePayload, now: number): TurnLedger {
 		const prefixes = prefixesOf(payload);
 		const request = joinedOf(payload);
@@ -215,7 +201,6 @@ export class PrefixCache {
 	}
 }
 
-/** Mark the deepest system block that does not change between turns. */
 export function deepAnchor(index: number): Arm {
 	return {
 		name: `deep-anchor@${index}`,
@@ -235,7 +220,6 @@ export function deepAnchor(index: number): Arm {
 	};
 }
 
-/** How a turn sequence is marked and billed. */
 export interface Arm {
 	readonly name: string;
 	readonly cacheRetention?: CacheRetention;
@@ -243,18 +227,15 @@ export interface Arm {
 	readonly remark?: (payload: WirePayload) => WirePayload;
 }
 
-/** The production arm: exactly what the shipped code sends today. */
 export const PRODUCTION: Arm = { name: "production" };
 
 export const SHORT_RETENTION: Arm = { name: "5m", cacheRetention: "short" };
 export const LONG_RETENTION: Arm = { name: "1h", cacheRetention: "long" };
 
-/** Text of a stated size, in the estimator's unit. */
 export function padding(tokens: number): string {
 	return "pad ".repeat(Math.max(0, tokens));
 }
 
-/** Comparison placement arm: first two system blocks and last two messages. */
 export const SIMPLE_PLACEMENT: Arm = {
 	name: "simple-placement",
 	remark: payload => {
@@ -280,7 +261,6 @@ function markableBlock(blocks: WireBlock[]): WireBlock | undefined {
 	return undefined;
 }
 
-/** A deep copy of a payload with every caching directive removed. */
 export function stripMarkers(payload: WirePayload): WirePayload {
 	const clone = JSON.parse(JSON.stringify(payload)) as WirePayload;
 	for (const tool of clone.tools ?? []) delete tool.cache_control;
@@ -292,21 +272,15 @@ export function stripMarkers(payload: WirePayload): WirePayload {
 	return clone;
 }
 
-/** The content a payload carries, markers excluded: what two arms must share. */
 export function contentOf(payload: WirePayload): string {
 	return JSON.stringify(stripMarkers(payload));
 }
 
-/**
- * One step of a simulated conversation: the request to send, and how much
- * simulated time passed since the previous one.
- */
 export interface Step {
 	readonly context: Context;
 	readonly gapMs: number;
 }
 
-/** Run one arm over one sequence of steps and bill every request. */
 export async function runArm(arm: Arm, steps: readonly Step[], session = "sim-session"): Promise<SessionLedger> {
 	const cache = new PrefixCache();
 	const turns: TurnLedger[] = [];
@@ -335,10 +309,6 @@ export async function runArm(arm: Arm, steps: readonly Step[], session = "sim-se
 	};
 }
 
-/**
- * The payloads one arm sends, for a scenario that needs to inspect the wire
- * rather than the bill.
- */
 export async function armPayloads(arm: Arm, steps: readonly Step[]): Promise<WirePayload[]> {
 	const payloads: WirePayload[] = [];
 	for (const step of steps) {
@@ -353,7 +323,6 @@ export async function armPayloads(arm: Arm, steps: readonly Step[]): Promise<Wir
 
 const usage = emptyUsage();
 
-/** A system prompt shaped like the one this product sends. */
 export function systemPrompt(options?: { volatileSuffix?: string }): string[] {
 	return [
 		`STABLE HARNESS\n${"tool and policy text that every session shares. ".repeat(400)}`,
@@ -389,7 +358,6 @@ function toolResultStep(index: number, body: string): ToolResultMessage {
 	};
 }
 
-/** The message list an agentic loop sends. */
 export function conversationAfter(steps: number, bodyFor: (index: number) => string = () => "payload"): Message[] {
 	const messages: Message[] = [{ role: "user", content: "Audit the cache placement", timestamp: 0 }];
 	for (let index = 1; index <= steps; index++) {
@@ -399,7 +367,6 @@ export function conversationAfter(steps: number, bodyFor: (index: number) => str
 	return messages;
 }
 
-/** A growing conversation as a step sequence. */
 export function growingSession(options: {
 	turns: number;
 	gapMs: number;
@@ -417,7 +384,6 @@ export function growingSession(options: {
 	return steps;
 }
 
-/** What one arm cost across a fleet of sessions. */
 export interface FleetLedger {
 	readonly sessions: Readonly<Record<string, SessionLedger>>;
 	readonly read: number;
@@ -426,7 +392,6 @@ export interface FleetLedger {
 	readonly cost: number;
 }
 
-/** Run one arm over several sessions sharing a provider cache. */
 export async function runFleet(
 	arm: Arm,
 	sessions: Readonly<Record<string, readonly Step[]>>,
@@ -481,7 +446,6 @@ export async function runFleet(
 	};
 }
 
-/** Arm with stable anchor shared globally across sessions. */
 export function sharedGlobally(arm: Arm, options?: { everySystemMarker?: boolean }): Arm {
 	const everyMarker = options?.everySystemMarker ?? false;
 	return {
@@ -514,10 +478,8 @@ const CODEX_MODEL_SPEC: ModelSpec<"openai-codex-responses"> = {
 
 export const IMPLICIT_SIM_MODEL: Model<"openai-codex-responses"> = buildModel(CODEX_MODEL_SPEC);
 
-/** Minimum tokens and block granularity for implicit cache. */
 export const IMPLICIT = Object.freeze({ minTokens: 1024, blockTokens: 128 });
 
-/** The wire body the shipped Codex builder produces, with no socket involved. */
 export async function captureImplicitBody(context: Context, options?: { sessionId?: string }): Promise<CodexBody> {
 	return (await buildTransformedCodexRequestBody(IMPLICIT_SIM_MODEL, context, {
 		sessionId: options?.sessionId ?? "sim-session",
@@ -529,7 +491,6 @@ export type CodexBody = { instructions?: string; input?: unknown[]; prompt_cache
 	unknown
 >;
 
-/** Request as the implicit cache sees it: an ordered list of blocks. */
 export function implicitBlocksOf(body: CodexBody): string[] {
 	const blocks: string[] = [];
 	if (body.instructions !== undefined) blocks.push(JSON.stringify(body.instructions));
@@ -537,7 +498,6 @@ export function implicitBlocksOf(body: CodexBody): string[] {
 	return blocks;
 }
 
-/** Modelled implicit prefix cache. */
 export class ImplicitCache {
 	readonly #entries = new Map<string, { blocks: string[]; expiresAt: number }>();
 
@@ -568,7 +528,6 @@ export class ImplicitCache {
 	}
 }
 
-/** Run one session of implicit-cache steps, billing each request. */
 export async function runImplicit(
 	steps: readonly Step[],
 	options?: { sessionIdFor?: (index: number) => string | undefined },

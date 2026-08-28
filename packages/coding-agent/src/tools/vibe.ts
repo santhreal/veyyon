@@ -1,4 +1,3 @@
-/** Vibe mode tools — the director's entire non-read surface. Five thin tools over {@link VibeSessionRegistry}: spawn/send/wait/kill/list */
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import { formatCount, prompt } from "@veyyon/utils";
 import { type } from "arktype";
@@ -42,10 +41,8 @@ const vibeListSchema = type({});
 
 export type VibeOp = "spawn" | "send" | "wait" | "kill" | "list";
 
-/** Details payload shared by every vibe tool for TUI rendering. */
 export interface VibeToolDetails {
 	op: VibeOp;
-	/** Live TV-wall snapshot of the owner's worker sessions at (or during) the call. */
 	screens: VibeScreenSnapshot[];
 	spawned?: { id: string; cli: VibeCli; jobId: string };
 	send?: VibeSendOutcome;
@@ -53,7 +50,6 @@ export interface VibeToolDetails {
 		settled: Array<{ id: string; jobId: string; status: "completed" | "failed" | "cancelled" }>;
 		stillRunning: string[];
 		timedOut: boolean;
-		/** True on interim progress emissions while the wait is still blocking. */
 		waiting?: boolean;
 	};
 	killed?: VibeKillOutcome;
@@ -134,8 +130,6 @@ export class VibeWaitTool implements AgentTool<typeof vibeWaitSchema, VibeToolDe
 		onUpdate?: AgentToolUpdateCallback<VibeToolDetails>,
 	): Promise<AgentToolResult<VibeToolDetails>> {
 		const registry = VibeSessionRegistry.global();
-		// Live TV-wall frames while the wait blocks: each tick re-snapshots the
-		// watched workers so their tool calls and streamed text play in place.
 		const emitProgress = (): void => {
 			onUpdate?.({
 				content: [{ type: "text", text: "" }],
@@ -181,7 +175,6 @@ export class VibeWaitTool implements AgentTool<typeof vibeWaitSchema, VibeToolDe
 			lines.push("Wait window elapsed before any turn settled — re-issue vibe_wait to keep waiting.");
 		}
 		const result = textResult(lines.join("\n").trimEnd(), details);
-		// A pure "still waiting" frame is noise once a newer wait exists.
 		return outcome.settled.length === 0 ? { ...result, useless: true } : result;
 	}
 }
@@ -241,7 +234,6 @@ export class VibeListTool implements AgentTool<typeof vibeListSchema, VibeToolDe
 	}
 }
 
-/** Creates the ephemeral tools installed while `/vibe` mode is active. */
 export function createVibeTools(session: ToolSession): Tool[] {
 	return [
 		new VibeSpawnTool(session),
@@ -252,7 +244,4 @@ export function createVibeTools(session: ToolSession): Tool[] {
 	];
 }
 
-// The TUI renderer lives in `vibe-render.ts` (light module, boot-path safe);
-// re-exported here so the library surface (`export * from "./tools/vibe"`)
-// and existing importers keep working.
 export { createVibeToolRenderer } from "./vibe-render";

@@ -35,22 +35,16 @@ export interface SttDownloadResult {
 	error?: string;
 }
 
-/** Live streaming session handle returned by {@link SttClient.startStream}. */
 export interface SttStreamHandle {
-	/** Feed 16 kHz mono float samples as the recorder produces them. */
 	pushAudio(audio: Float32Array): void;
-	/** Flush the trailing segment and resolve with the full joined transcript. */
 	stop(): Promise<string>;
-	/** Tear the session down without a final flush (resolves `stop()` with ""). */
 	cancel(): void;
 }
 
 export interface SttStreamOptions {
 	language?: string;
 	signal?: AbortSignal;
-	/** Volatile transcript of the in-progress segment, refreshed as audio arrives. */
 	onPartial?: (text: string) => void;
-	/** A finalized segment, emitted once when the endpointer commits it. */
 	onSegment?: (text: string, index: number) => void;
 }
 
@@ -60,13 +54,9 @@ interface StreamState {
 	onSegment: ((text: string, index: number) => void) | undefined;
 	resolve: (text: string) => void;
 	reject: (error: Error) => void;
-	/** Run `apply` (resolve/reject) once, then unregister the stream. */
 	finish: (apply: () => void) => void;
 }
 
-/** Hidden subcommand on the main CLI that boots the speech-recognition worker in the spawned subprocess. Kept in sync with the dispatch in `cli.ts`. */
-
-/** Spawn the speech worker as a subprocess. Exported for tests and the smoke probe; production callers go through {@link spawnSttWorker}. */
 export function createSttSubprocess(): SpawnedSubprocess<SttWorkerOutbound> {
 	return createWorkerSubprocess<SttWorkerOutbound>({
 		spawnCommand: resolveWorkerSpawnCmd(STT_WORKER_ARG),
@@ -103,7 +93,6 @@ export class SttClient {
 		return () => this.#progressListeners.delete(listener);
 	}
 
-	/** Transcribe 16 kHz mono audio on the warm worker. Rejects with the worker error on failure and with an `AbortError` when the signal fires (the warm */
 	async transcribe(modelKey: SttModelKey, audio: Float32Array, options: SttTranscribeOptions = {}): Promise<string> {
 		options.signal?.throwIfAborted();
 		const worker = this.#ensureWorker();
@@ -126,12 +115,10 @@ export class SttClient {
 		}
 	}
 
-	/** Open a live streaming session on the warm worker. Audio fed through the returned handle is segmented by the worker's endpointer: `onSegment` fires */
 	startStream(modelKey: SttModelKey, options: SttStreamOptions = {}): SttStreamHandle {
 		const worker = this.#ensureWorker();
 		const id = String(++this.#nextRequestId);
 		const { promise, resolve, reject } = Promise.withResolvers<string>();
-		// `stop()` is normally the only awaiter of `promise`, but with model loading now deferred to the stream, a load failure (or early worker error) can
 		void promise.catch(() => {});
 		const signal = options.signal;
 		let settled = false;
@@ -224,9 +211,7 @@ export class SttClient {
 		this.#failStreams(new Error("stt worker terminated"));
 		try {
 			await worker?.terminate();
-		} catch {
-			// Already gone.
-		}
+		} catch {}
 	}
 
 	#ensureWorker(): RefCountedWorkerHandle<SttWorkerInbound, SttWorkerOutbound> {
@@ -238,18 +223,15 @@ export class SttClient {
 		return worker;
 	}
 
-	/** Register a pending request and keep the worker referenced while work is in flight. */
 	#addPending(id: string, request: PendingRequest): void {
 		this.#pending.set(id, request);
 		this.#syncWorkerRef();
 	}
 
-	/** Drop a pending request and unref the worker once no request or stream is active. */
 	#deletePending(id: string): void {
 		if (this.#pending.delete(id)) this.#syncWorkerRef();
 	}
 
-	/** STT workers start unreferenced so an idle warm model never blocks exit. Setup/download commands must keep the worker alive while awaiting IPC, or */
 	#syncWorkerRef(): void {
 		const worker = this.#worker;
 		if (!worker) return;
@@ -300,7 +282,6 @@ export class SttClient {
 			if (pending.kind === "download") pending.resolve({ ok: true });
 			return;
 		}
-		// message.type === "error"
 		this.#emitProgress({ modelKey: pending.modelKey, status: "error" });
 		if (pending.kind === "transcribe") pending.reject(new Error(message.error));
 		else pending.resolve({ ok: false, error: message.error });

@@ -1,6 +1,3 @@
-/** Shared type definitions consumed by both server-side stats and client bundle. */
-
-/** Aggregated stats for a model or folder. */
 export interface AggregatedStats {
 	totalRequests: number;
 	successfulRequests: number;
@@ -20,18 +17,15 @@ export interface AggregatedStats {
 	lastTimestamp: number;
 }
 
-/** Stats grouped by model. */
 export interface ModelStats extends AggregatedStats {
 	model: string;
 	provider: string;
 }
 
-/** Stats grouped by folder. */
 export interface FolderStats extends AggregatedStats {
 	folder: string;
 }
 
-/** Time series data point. */
 export interface TimeSeriesPoint {
 	timestamp: number;
 	requests: number;
@@ -40,7 +34,6 @@ export interface TimeSeriesPoint {
 	cost: number;
 }
 
-/** Model usage time series data point (daily buckets). */
 export interface ModelTimeSeriesPoint {
 	timestamp: number;
 	model: string;
@@ -48,7 +41,6 @@ export interface ModelTimeSeriesPoint {
 	requests: number;
 }
 
-/** Model performance time series data point (daily buckets). */
 export interface ModelPerformancePoint {
 	timestamp: number;
 	model: string;
@@ -58,7 +50,6 @@ export interface ModelPerformancePoint {
 	avgTokensPerSecond: number | null;
 }
 
-/** Cost time series data point (daily buckets). */
 export interface CostTimeSeriesPoint {
 	timestamp: number;
 	model: string;
@@ -71,7 +62,6 @@ export interface CostTimeSeriesPoint {
 	requests: number;
 }
 
-/** Overall dashboard stats. */
 export interface DashboardStats {
 	overall: AggregatedStats;
 	byModel: ModelStats[];
@@ -83,10 +73,8 @@ export interface DashboardStats {
 	costSeries: CostTimeSeriesPoint[];
 }
 
-/** Source agent type. */
 export type AgentType = "main" | "subagent" | "advisor";
 
-/** Token usage aggregated by AgentType. */
 export interface AgentTypeStats {
 	agentType: AgentType;
 	totalRequests: number;
@@ -97,7 +85,6 @@ export interface AgentTypeStats {
 	totalCost: number;
 }
 
-/** Behavior time-series point. */
 export interface BehaviorTimeSeriesPoint {
 	timestamp: number;
 	model: string;
@@ -125,7 +112,6 @@ export interface BehaviorOverallStats {
 	lastTimestamp: number;
 }
 
-/** Per-model behavioral aggregate over active range. */
 export interface BehaviorModelStats {
 	model: string;
 	provider: string;
@@ -146,7 +132,6 @@ export interface BehaviorDashboardStats {
 	behaviorSeries: BehaviorTimeSeriesPoint[];
 }
 
-/** Aggregated usage for a single tool over active range. */
 export interface ToolUsageStats {
 	tool: string;
 	calls: number;
@@ -159,13 +144,11 @@ export interface ToolUsageStats {
 	lastUsed: number;
 }
 
-/** Per-(tool, model) breakdown with the same attribution as {@link ToolUsageStats}. */
 export interface ToolModelStats extends ToolUsageStats {
 	model: string;
 	provider: string;
 }
 
-/** Tool-call time-series point (one bucket per tool). */
 export interface ToolTimeSeriesPoint {
 	timestamp: number;
 	tool: string;
@@ -173,7 +156,6 @@ export interface ToolTimeSeriesPoint {
 	errors: number;
 }
 
-/** Complete tools dashboard payload. */
 export interface ToolDashboardStats {
 	byTool: ToolUsageStats[];
 	byToolModel: ToolModelStats[];

@@ -11,27 +11,22 @@ import {
 } from "@veyyon/utils/session-file";
 import { SessionManager } from "../session/session-manager";
 
-/** The advisor transcript naming contract, owned by `@veyyon/utils/session-file` and re-exported here. It lives there because `@veyyon/stats` classifies a transcript as the advisor's by matching this name and */
 export {
 	ADVISOR_TRANSCRIPT_FILENAME,
 	ADVISOR_TRANSCRIPT_STEM,
 	isAdvisorTranscriptName,
 } from "@veyyon/utils/session-file";
 
-/** Transcript filename for an advisor: `__advisor.jsonl` for the legacy/default advisor (empty slug), `__advisor.<slug>.jsonl` for a named advisor. The `.` */
 export function advisorTranscriptFilename(slug: string): string {
 	return slug ? sessionFileName(`${ADVISOR_TRANSCRIPT_STEM}.${slug}`) : ADVISOR_TRANSCRIPT_FILENAME;
 }
 
-/** Append-only persister for an advisor agent's transcript. The advisor is a passive reviewer with its own model usage, so — like a task */
 export class AdvisorTranscriptRecorder {
 	#manager: SessionManager | undefined;
 	#file: string | undefined;
 	#filename: string;
-	/** Serializes the async open/close against synchronous appends so records land in order. */
 	#queue: Promise<void>;
 
-	/** @param filename Transcript filename within the session dir. Defaults to `__advisor.jsonl`; named advisors pass `__advisor.<slug>.jsonl` via */
 	constructor(
 		private readonly resolveSessionFile: () => string | undefined,
 		private readonly resolveCwd: () => string,
@@ -47,7 +42,6 @@ export class AdvisorTranscriptRecorder {
 			: Promise.resolve();
 	}
 
-	/** Persist one finalized advisor message. Assistant turns carry the usage the stats parser reads; tool results round out the Hub transcript; user deltas */
 	record(message: AgentMessage): void {
 		let persisted: Message;
 		switch (message.role) {
@@ -56,8 +50,6 @@ export class AdvisorTranscriptRecorder {
 				persisted = message;
 				break;
 			case "user":
-				// Clone so the live advisor message stays untouched; mark synthetic so
-				// stats' user-message metrics skip these agent-internal review prompts.
 				persisted = { ...(message as UserMessage), synthetic: true, attribution: "agent" };
 				break;
 			default:
@@ -80,14 +72,12 @@ export class AdvisorTranscriptRecorder {
 		});
 	}
 
-	/** Flush pending writes (best-effort). */
 	flush(): Promise<void> {
 		return this.#enqueueResult(async () => {
 			if (this.#manager) await this.#manager.flush();
 		});
 	}
 
-	/** Flush and close the writer, releasing the session file. */
 	close(): Promise<void> {
 		return this.#enqueueResult(() => this.#closeManager());
 	}
@@ -112,8 +102,6 @@ export class AdvisorTranscriptRecorder {
 
 	#enqueueResult(work: () => Promise<void>): Promise<void> {
 		const next = this.#queue.then(work, work);
-		// `next` is returned and carries the failure to the caller; the queue copy must resolve so one failed
-		// record does not reject every later one. Note `then(work, work)`: the queue continues either way.
 		this.#queue = next.catch(() => {});
 		return next;
 	}

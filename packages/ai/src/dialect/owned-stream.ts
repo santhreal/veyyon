@@ -17,16 +17,6 @@ import { createInbandScanner } from "./factory";
 import type { Dialect, InbandScanEvent, InbandScanner, InbandTool } from "./types";
 import { TOOL_RESPONSE_OPEN } from "./wire-tags";
 
-/**
- * Where the host's own tool-result text begins, per dialect, so a model that keeps generating past its call can
- * be cut off before it hallucinates the result.
- *
- * Seven of these rows are the SHARED `<tool_response>` opener, which `rendering.ts` is what actually writes.
- * They were bare literals here, which made this table look like a list of independent per-dialect facts when
- * most of it is one fact restated: change the renderer's tag and these seven stop matching, silently, and the
- * model's invented continuation of the tool output reaches the transcript looking like real output. The rows
- * that are genuinely that model's own token stay spelled out.
- */
 const RESPONSE_OPEN_TOKENS: Record<Dialect, readonly string[]> = {
 	glm: [TOOL_RESPONSE_OPEN],
 	hermes: [TOOL_RESPONSE_OPEN],
@@ -122,11 +112,6 @@ export function wrapInbandToolStream(
 						projector?.thinkingEnd();
 						break;
 					case "text_delta":
-						// `text()` returns true once the model starts fabricating its own
-						// tool result. In abort mode we cut the turn immediately so the
-						// provider stops spending tokens on the hallucinated continuation; in
-						// discard mode we keep draining the stream — the projector is now
-						// stopped, so `finish` (on `done`) drops everything past the boundary.
 						if (projector?.text(event.delta) && abortOnFabrication) {
 							projector.finish(event.partial, true);
 							onAbort?.();
@@ -134,13 +119,6 @@ export function wrapInbandToolStream(
 						}
 						break;
 					case "toolcall_start": {
-						// Provider emitted a native structured tool call (e.g. Gemini via
-						// OpenRouter still returns `functionCall` parts even when owned mode
-						// sends no `tools`). Forward the native lifecycle live so the UI
-						// streams it; otherwise the turn loses its only actionable content
-						// and the loop retries forever on a reasoning-only message. The
-						// projector ignores nameless "ghost" parts and de-conflicts with the
-						// in-band channel.
 						const src = event.partial.content[event.contentIndex];
 						projector?.nativeToolStart(event.contentIndex, src?.type === "toolCall" ? src : undefined);
 						break;
@@ -166,10 +144,6 @@ export function wrapInbandToolStream(
 						return;
 				}
 			}
-			// Inner ended via end(result) without a terminal event (same case
-			// wrapLeakedThinkingStream handles): settle `out` through the same
-			// finish path a `done` event takes; a result-less end rejects into
-			// the catch, which fails `out`. Otherwise consumers park forever.
 			if (!out.done) {
 				const result = await inner.result();
 				projector ??= new InbandStreamProjector(out, tools, dialect, result, true);
@@ -195,11 +169,6 @@ class InbandStreamProjector {
 	#fedLen = 0;
 	#stopped = false;
 	#responsePending = "";
-	// Provider-native tool calls forwarded live (e.g. Gemini still returns
-	// `functionCall` parts under owned mode), keyed by the inner stream's
-	// `contentIndex`. `#toolChannel` records which channel produced the turn's
-	// first real call so the other is dropped — no double-dispatch, and no
-	// guessing from emptiness. Nameless "ghost" parts never lock a channel.
 	#nativeBlocks = new Map<number, { index: number; block: StreamingToolCall }>();
 	#toolChannel: "native" | "inband" | undefined;
 
@@ -229,12 +198,6 @@ class InbandStreamProjector {
 		this.#partial.content.push(block);
 	}
 
-	// Forward a native tool call's lifecycle live. `source` comes from the inner
-	// stream's current partial block. When owned mode wraps a provider that still
-	// emits native tool calls, the projected block must mirror the provider's live
-	// id / args / partial-json state rather than inventing `{ id: "", arguments:
-	// {} }` placeholders — otherwise the UI loses streaming args, can mis-key the
-	// call until `toolcall_end`.
 	nativeToolStart(srcIndex: number, source: StreamingToolCall | undefined): void {
 		if (this.#stopped || !hasNamedNativeToolCall(source) || this.#toolChannel === "inband") return;
 		this.#toolChannel = "native";
@@ -275,9 +238,6 @@ class InbandStreamProjector {
 			this.#nativeBlocks.delete(srcIndex);
 			return;
 		}
-		// Never streamed (name was empty at start). Salvage a real call whose name
-		// only arrived now; drop nameless ghosts and anything the in-band channel
-		// already claimed.
 		if (!hasNamedNativeToolCall(toolCall) || this.#toolChannel === "inband") return;
 		this.#toolChannel = "native";
 		this.#closeText();
@@ -432,7 +392,6 @@ class InbandStreamProjector {
 	}
 
 	#beginTool(event: Extract<InbandScanEvent, { type: "toolStart" }>): void {
-		// Native owns the turn → drop the in-band call to avoid double-dispatch.
 		if (this.#toolChannel === "native") return;
 		this.#toolChannel = "inband";
 		this.#closeText();

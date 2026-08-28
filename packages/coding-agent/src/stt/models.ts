@@ -1,43 +1,30 @@
 import type { TinyModelDtype } from "../tiny/dtype";
 
-/** On-device speech-to-text model registry. Each tier maps a stable settings key onto a locally-runnable ASR model and the engine that loads it: */
-
-/** ASR runtime that loads a given tier's model. */
 export type SttEngine = "transformers" | "sherpa";
 
 interface SttModelBase {
-	/** Stable key persisted in `stt.modelName` and sent over the worker protocol. */
 	key: string;
 	engine: SttEngine;
-	/** Hugging Face repo id (transformers.js ONNX repo, or sherpa-onnx model repo). */
 	repo: string;
-	/** English-only checkpoint: rejects a configured source `language`. */
 	englishOnly: boolean;
 	label: string;
 	description: string;
-	/** Approximate on-disk download size for the shipped weights (UI hint). */
 	sizeHint: string;
 }
 
-/** A Whisper-family tier loaded via the transformers.js ASR pipeline. */
 export interface TransformersSttModelSpec extends SttModelBase {
 	engine: "transformers";
-	/** ONNX precision used unless overridden by `VEYYON_TINY_DTYPE` / `providers.tinyModelDtype`. */
 	dtype: TinyModelDtype;
 }
 
-/** A sherpa-onnx offline tier (e.g. NeMo Parakeet transducer) loaded natively. */
 export interface SherpaSttModelSpec extends SttModelBase {
 	engine: "sherpa";
-	/** sherpa-onnx offline model family (e.g. `nemo_transducer`). */
 	modelType: string;
-	/** Model files (relative to the repo root) fetched into the local cache. */
 	files: { encoder: string; decoder: string; joiner: string; tokens: string };
 }
 
 export type SttModelSpec = TransformersSttModelSpec | SherpaSttModelSpec;
 
-/** Speech model tiers, ordered light → SoTA. Defaults to {@link DEFAULT_STT_MODEL_KEY}. `fast`/`balanced`/`turbo` are multilingual Whisper checkpoints on transformers.js; */
 export const STT_MODELS = [
 	{
 		key: "fast",
@@ -88,12 +75,10 @@ export const STT_MODELS = [
 	},
 ] as const satisfies readonly SttModelSpec[];
 
-/** SoTA default — NVIDIA Parakeet TDT 0.6B v3 (sherpa-onnx). Tops the Open ASR Leaderboard on accuracy while decoding ~20× faster than Whisper large-v3. */
 export const DEFAULT_STT_MODEL_KEY = "parakeet";
 
 export type SttModelKey = (typeof STT_MODELS)[number]["key"];
 
-/** A concrete entry from {@link STT_MODELS}; `key` is the literal tier union. */
 export type SttModel = (typeof STT_MODELS)[number];
 
 export const STT_MODEL_VALUES = ["fast", "balanced", "turbo", "parakeet"] as const satisfies readonly SttModelKey[];
@@ -121,7 +106,6 @@ export function getSttModelSpec(key: string): SttModel | undefined {
 	return STT_MODELS.find(model => model.key === key);
 }
 
-/** Resolve a (possibly stale or legacy) `stt.modelName` value onto a concrete spec, falling back to the SoTA default when the key is unknown. */
 export function resolveSttModelSpec(key: string | undefined): SttModel {
 	return (key !== undefined ? getSttModelSpec(key) : undefined) ?? getSttModelSpec(DEFAULT_STT_MODEL_KEY)!;
 }

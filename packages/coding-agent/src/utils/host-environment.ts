@@ -1,4 +1,3 @@
-/** What machine is this? — the host facts the prompt's environment block reports. ASSEMBLING A PROMPT, and none of this is: it spawns `lspci` and `wmic`, races them */
 import * as os from "node:os";
 import { errorMessage, firstNonEmpty, getGpuCachePath, isEnoent, logger } from "@veyyon/utils";
 
@@ -11,9 +10,7 @@ function parseWmicTable(output: string, header: string): string | null {
 	return filtered[0] ?? null;
 }
 
-/** How far inside the caller's budget the probe must finish. The invariant is that a probe which times out still has time to write its null */
 const GPU_PROBE_MARGIN_MS = 500;
-/** Drop stdout from a probe descendant that inherited the pipe after the probe exited. */
 const GPU_PROBE_STDOUT_DRAIN_MS = 250;
 
 async function runGpuProbe(cmd: string[], budgetMs: number): Promise<string | null> {
@@ -24,8 +21,6 @@ async function runGpuProbe(cmd: string[], budgetMs: number): Promise<string | nu
 			stderr: "ignore",
 			stdin: "ignore",
 			timeout: Math.max(0, budgetMs - GPU_PROBE_MARGIN_MS),
-			// SIGKILL so a probe ignoring SIGTERM (PATH wrapper, wedged WMI) still
-			// dies at the deadline and lets getCachedGpu reach the null-cache write.
 			killSignal: "SIGKILL",
 		});
 		const stdoutReader = proc.stdout.getReader();
@@ -40,9 +35,6 @@ async function runGpuProbe(cmd: string[], budgetMs: number): Promise<string | nu
 			stdout += decoder.decode();
 		})();
 		const exitCode = await proc.exited;
-		// Even on exit 0, a probe wrapper can leave a descendant holding stdout open.
-		// Bound the EOF wait so getCachedGpu cannot outlive the probe in either path;
-		// keep whatever bytes the reader already captured before cancelling.
 		const drained = await Promise.race([
 			stdoutDone.then(() => "ok" as const).catch(() => "err" as const),
 			Bun.sleep(GPU_PROBE_STDOUT_DRAIN_MS).then(() => "timeout" as const),
@@ -53,7 +45,6 @@ async function runGpuProbe(cmd: string[], budgetMs: number): Promise<string | nu
 		}
 		return exitCode === 0 ? stdout : null;
 	} catch (error) {
-		// `null` means "no GPU information", and the prompt's environment section then simply omits the GPU -- which on a machine that HAS one is a configuration bug, not a fact (Law 8). Two failures
 		if (isEnoent(error)) {
 			logger.debug("GPU probe binary is not installed; the prompt will omit the GPU", {
 				cmd: cmd.join(" "),
@@ -68,7 +59,6 @@ async function runGpuProbe(cmd: string[], budgetMs: number): Promise<string | nu
 	}
 }
 
-/** Pick the best GPU device name from `lspci` default-format output, or null if none is present. Exported for unit testing. */
 export function selectGpuFromLspci(output: string): string | null {
 	const gpus: Array<{ name: string; priority: number }> = [];
 	for (const line of output.split("\n")) {
@@ -76,9 +66,7 @@ export function selectGpuFromLspci(output: string): string | null {
 		const sep = line.indexOf(": ");
 		const name = sep >= 0 ? line.slice(sep + 2).trim() : line.trim();
 		const nameLower = name.toLowerCase();
-		// Skip BMC/server management adapters. Real lspci names read `Matrox Electronics Systems Ltd. MGA G200e`, so the model token is
 		if (/aspeed|mga\s*g200/i.test(name)) continue;
-		// Prioritize discrete GPUs
 		let priority = 0;
 		if (
 			nameLower.includes("nvidia") ||
@@ -129,12 +117,10 @@ function getTerminalName(): string | undefined {
 	return term ?? undefined;
 }
 
-/** Cached GPU probe result. */
 interface GpuCache {
 	gpu: string | null;
 }
 
-/** Read the GPU probe result cached on disk, or `null` to probe again. A damaged file (truncated by a crash mid-write, hand-edited, replaced with a */
 async function loadGpuCache(): Promise<GpuCache | null> {
 	const cachePath = getGpuCachePath();
 	let content: unknown;
@@ -151,7 +137,6 @@ async function loadGpuCache(): Promise<GpuCache | null> {
 	}
 	if (content && typeof content === "object" && "gpu" in content) {
 		const gpu = (content as { gpu: unknown }).gpu;
-		// `null` is a real cached answer ("probed, found nothing"), so it is a hit. Anything else that is not a string is damage: normalizing it to `null` and
 		if (typeof gpu === "string" || gpu === null) return { gpu };
 		logger.warn("GPU cache has a non-string `gpu`; re-probing and rewriting it", {
 			path: cachePath,
@@ -163,7 +148,6 @@ async function loadGpuCache(): Promise<GpuCache | null> {
 	return null;
 }
 
-/** Persist the probe result. A failed write costs only speed (the probe reruns next launch), so it must not throw, but it is reported for the same reason the */
 async function saveGpuCache(info: GpuCache): Promise<void> {
 	const cachePath = getGpuCachePath();
 	try {
@@ -176,14 +160,10 @@ async function saveGpuCache(info: GpuCache): Promise<void> {
 	}
 }
 
-/** How this process answered the GPU question, once. A miss answers `undefined` for the whole process life even after the background probe lands, because the GPU name sits in the cached */
 let processGpu: { value: string | undefined } | undefined;
-/** The probe filling the cache for the NEXT launch, while it runs. */
 let gpuProbe: Promise<void> | undefined;
-/** The CPU line, read once. The hardware cannot change under a running process. */
 let processCpuModel: { value: string | undefined } | undefined;
 
-/** The GPU name from the on-disk cache, or nothing while the cache is cold. A cache miss does NOT wait for the probe. `lspci` and `nvidia-smi` cost 224-557ms on the machine */
 export async function getCachedGpu(budgetMs: number): Promise<string | undefined> {
 	if (processGpu) return processGpu.value;
 	const cached = await logger.time("getCachedGpu:loadGpuCache", loadGpuCache);
@@ -196,7 +176,6 @@ export async function getCachedGpu(budgetMs: number): Promise<string | undefined
 	return undefined;
 }
 
-/** Probe once, cache the answer, and never let either failure reach a caller that has moved on. */
 async function probeGpuInBackground(budgetMs: number): Promise<void> {
 	try {
 		const gpu = await getGpuModel(budgetMs);
@@ -208,22 +187,18 @@ async function probeGpuInBackground(budgetMs: number): Promise<void> {
 	}
 }
 
-/** Resolves when the background probe has finished writing the cache, or immediately when none is running. A caller that needs the answer ON DISK rather than in this prompt — a diagnostic, a */
 export async function awaitGpuProbe(): Promise<void> {
 	await gpuProbe;
 }
 
-/** Forget this process's answer, so one test file can act as several launches. */
 export function __resetGpuStateForTests(): void {
 	processGpu = undefined;
 	gpuProbe = undefined;
 }
-/** Forget the cached CPU model, so one test file can act as several launches. */
 export function __resetCpuStateForTests(): void {
 	processCpuModel = undefined;
 }
 
-/** The CPU line of the environment section, or nothing when it cannot be had. Answered from a process-level cache after the first call, the way the GPU */
 export async function getCpuModel(): Promise<string | undefined> {
 	if (processCpuModel) return processCpuModel.value;
 	if (process.platform !== "linux") {
@@ -246,14 +221,12 @@ export async function getCpuModel(): Promise<string | undefined> {
 	return processCpuModel.value;
 }
 
-/** Kernel identity for the workstation block. Prefers the uname build string from `os.version()`, but Bun on macOS 15+ (Darwin 24/25) returns the literal */
 function getKernelIdentity(): string {
 	const version = os.version()?.trim();
 	if (version && version.toLowerCase() !== "unknown") return version;
 	return `${os.type()} ${os.release()}`.trim();
 }
 
-/** The labelled host rows the prompt's environment block renders, empty values dropped. */
 export function getEnvironmentInfo(
 	cpuModel: string | undefined,
 	gpu: string | undefined,

@@ -1,22 +1,13 @@
 import * as AIError from "../error";
 import type { AssistantMessage, AssistantMessageEvent } from "../types";
 
-// Generic event stream class for async iteration
 export class EventStream<T, R = T> implements AsyncIterable<T> {
 	queue: T[] = [];
 	waiting: Array<{ resolve: (value: IteratorResult<T, undefined>) => void; reject: (err: unknown) => void }> = [];
 	done = false;
-	/** True once finalResultPromise has been resolved or rejected. */
 	resultSettled = false;
 	#failed = false;
 	#error: unknown = undefined;
-	/**
-	 * Consumer-side local operations currently in flight for this stream — a
-	 * provider transport waiting on a server-requested local tool bridge
-	 * (e.g. the Cursor exec channel) before it can send the result upstream.
-	 * While non-zero, event silence is attributable to our own pending work,
-	 * not a provider stall; idle watchdogs consult {@link hasPendingLocalWork}.
-	 */
 	#pendingLocalWork = 0;
 	finalResultPromise: Promise<R>;
 	resolveFinalResult!: (result: R) => void;
@@ -26,8 +17,6 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 
 	constructor(isComplete: (event: T) => boolean, extractResult: (event: T) => R) {
 		const { promise, resolve, reject } = Promise.withResolvers<R>();
-		// Prevent an unhandled rejection when fail() is called but nobody awaits result().
-		// Callers who do await result() still receive the rejection normally.
 		promise.catch(() => {});
 		this.finalResultPromise = promise;
 		this.resolveFinalResult = resolve;
@@ -45,7 +34,6 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 			this.resolveFinalResult(this.extractResult(event));
 		}
 
-		// Deliver to waiting consumer or queue it
 		const waiter = this.waiting.shift();
 		if (waiter) {
 			waiter.resolve({ value: event, done: false });
@@ -69,10 +57,6 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 			this.resultSettled = true;
 			this.resolveFinalResult(result);
 		} else if (!this.resultSettled) {
-			// end() without a terminal value must still settle result(), because
-			// otherwise complete()/result() awaits hang forever. A stream that
-			// ended with no final message is an incomplete stream, which is what
-			// makes it retryable: nothing terminal was ever delivered.
 			this.resultSettled = true;
 			this.rejectFinalResult(
 				new AIError.ProviderResponseError("Stream ended without a final result", {
@@ -80,7 +64,6 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 				}),
 			);
 		}
-		// Notify all waiting consumers that we're done
 		while (this.waiting.length > 0) {
 			const waiter = this.waiting.shift()!;
 			waiter.resolve({ value: undefined, done: true });
@@ -129,15 +112,10 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 		return this.finalResultPromise;
 	}
 
-	/** True while local work tracked via {@link trackLocalWork} is pending. */
 	get hasPendingLocalWork(): boolean {
 		return this.#pendingLocalWork > 0;
 	}
 
-	/**
-	 * Track a local-work promise so idle watchdogs on this stream do not treat
-	 * the event silence while it is pending as a provider stall.
-	 */
 	async trackLocalWork<TWork>(work: Promise<TWork>): Promise<TWork> {
 		this.#pendingLocalWork++;
 		try {
@@ -170,7 +148,6 @@ export class AssistantMessageEventStream extends EventStream<AssistantMessageEve
 			AIError.classifyMessage(event.error);
 		}
 
-		// Completion resolves the final result and still emits the terminal event.
 		if (this.isComplete(event)) {
 			this.done = true;
 			this.resultSettled = true;
@@ -189,8 +166,6 @@ export class AssistantMessageEventStream extends EventStream<AssistantMessageEve
 			this.resultSettled = true;
 			this.resolveFinalResult(result);
 		} else if (!this.resultSettled) {
-			// Mirror the base class: a result-less end() must not leave
-			// result() pending forever, and it is an incomplete stream.
 			this.resultSettled = true;
 			this.rejectFinalResult(
 				new AIError.ProviderResponseError("Stream ended without a final result", {

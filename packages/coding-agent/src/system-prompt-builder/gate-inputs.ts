@@ -1,4 +1,3 @@
-/** Turning settings into system-prompt input, in ONE place. the other half: HOW each one becomes a `buildSystemPrompt` option. Those are different */
 import type { AgentTool } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { $flag } from "@veyyon/utils";
@@ -9,72 +8,44 @@ import type { Settings } from "../config/settings";
 import { enabledSubagentNames, resolveDelegation } from "../task/subagent-settings";
 import { isIrcEnabled } from "../tools/irc-enabled";
 
-/** The settings-derived slice of `BuildSystemPromptOptions`, and the ONE place these fields are declared. */
 export interface GateInputs {
-	/** The personality to render, by name. Resolved against built-ins plus Tier-B `~/.veyyon/personalities` and `.veyyon/personalities` */
 	readonly personality: string | undefined;
-	/** Whether Mermaid fenced blocks are described as rendering to terminal ASCII diagrams. */
 	readonly renderMermaid: boolean;
-	/** Whether `subagent.batch` is on, which selects the delegation guidance's call shape. */
 	readonly taskBatch: boolean;
-	/** The concurrency limit the delegation guidance quotes. Zero means unlimited. */
 	readonly taskMaxConcurrency: number;
-	/** Whether the IRC-backed parallel coordination clause may appear in delegation policy. */
 	readonly taskIrcEnabled: boolean;
-	/** Ask the model to delegate through tasks unless the change is trivial. */
 	readonly eagerTasks: boolean;
-	/** Use the hard MUST/ONLY delegation wording (`subagent.delegation: required`) over the softer nudge. */
 	readonly eagerTasksAlways: boolean;
-	/** The agent types this session may spawn (`subagent.agents`), in discovery order. Delegation prose names a specialist only when it is in this list: the bundled specialists ship */
 	readonly subagentNames: string[];
-	/** Whether the active model is surfaced in the workstation block. Prompt policy still uses it. */
 	readonly includeModelInPrompt: boolean;
-	/** Whether the workspace directory tree is included in the PROJECT section. */
 	readonly includeWorkspaceTree: boolean;
-	/** Inline full tool descriptors into the prompt body rather than naming the tools. */
 	readonly inlineToolDescriptors: boolean;
-	/** True when the provider takes tool calls natively, so the prompt leaves the tool list to it. Derived here rather than left to the caller because it is the option `tools.format` reaches */
 	readonly nativeTools: boolean;
-	/** The intent field name injected into every tool schema, or `undefined` when tracing is off. Both the presence and the name matter to the prompt: presence gates the paragraph, and the name */
 	readonly intentField: string | undefined;
 }
 
-/** What each gate is worth to a caller that passes no gate options at all. PLACE 3 OF SIX, given one home. A settings-fed fragment of prompt text used to be declared in up */
 export const OMITTED_GATE_DEFAULTS = {
-	/** The named default personality, which is a personality: `none` is the way to have none. */
 	personality: "default",
 	renderMermaid: true,
-	/** The batch call shape, matching `subagent.batch`, because the non-batch shape is the legacy one. */
 	taskBatch: true,
-	/** Zero means unlimited, so an omitting caller quotes no cap rather than inventing one. */
 	taskMaxConcurrency: 0,
 	taskIrcEnabled: false,
 	eagerTasks: false,
 	eagerTasksAlways: false,
-	/** No spawnable agent, so delegation prose names none: it cannot route work to an unknown agent. */
 	subagentNames: [] as readonly string[],
-	/** Off, matching the setting: the model name is the one turn-volatile field in the prompt. */
 	includeModelInPrompt: false,
 	includeWorkspaceTree: false,
 	inlineToolDescriptors: false,
-	/** True: with no model to ask, assume the provider takes tool calls natively and teach no dialect. */
 	nativeTools: true,
 } as const satisfies { readonly [K in Exclude<keyof GateInputs, "intentField">]: unknown };
 
 export interface GateInputContext {
-	/** The active tool map, needed because delegation strength is resolved against spawnable agents. */
 	readonly tools: ReadonlyMap<string, AgentTool>;
-	/** The active model, or `undefined` when there is none yet. The whole object rather than an id: `inlineToolDescriptors: "auto"` keys its per-model */
 	readonly model?: (Pick<Model, "supportsTools"> & Partial<Pick<Model, "id">>) | undefined;
-	/** How deep this session already is. A subagent always has peers, so IRC coordination is on regardless of the recursion limit; only a top-level session has to check it. */
 	readonly taskDepth?: number;
 }
 
-/** Read every setting the system prompt gates on, once. Each read is the one the session already made, moved here unchanged, so the session path's */
 export function resolveGateInputs(settings: Settings, context: GateInputContext): GateInputs {
-	// Resolved against the agents the task tool will actually accept, so the prompt cannot ask
-	// for delegation this session has nowhere to send. With every agent disabled, `preferred`
-	// and `required` both come back false.
 	const taskTool = context.tools.get("task");
 	const subagentNames = enabledSubagentNames(taskTool);
 	const delegation = resolveDelegation(settings, subagentNames);
@@ -91,14 +62,12 @@ export function resolveGateInputs(settings: Settings, context: GateInputContext)
 		subagentNames,
 		includeModelInPrompt: settings.get("includeModelInPrompt"),
 		includeWorkspaceTree: settings.get("includeWorkspaceTree") ?? false,
-		// `auto` enforces the per-model policy (inline for Gemini, off otherwise).
 		inlineToolDescriptors: shouldInlineToolDescriptors(settings.get("inlineToolDescriptors"), context.model?.id),
 		nativeTools: resolveDialect(settings.get("tools.format"), context.model) === undefined,
 		intentField: resolveIntentField(settings),
 	};
 }
 
-/** The intent field's name when intent tracing is on, or `undefined` when it is off. ONE OWNER, because there are two readers and they must never disagree. This decides BOTH whether the */
 export function resolveIntentField(settings: Settings): string | undefined {
 	return $flag("VEYYON_INTENT_TRACING", settings.get("tools.intentTracing")) ? INTENT_FIELD : undefined;
 }

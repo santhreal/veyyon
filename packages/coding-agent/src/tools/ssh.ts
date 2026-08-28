@@ -117,7 +117,6 @@ async function loadHosts(session: ToolSession): Promise<{
 	hostNames: string[];
 	hostsByName: Map<string, SSHHost>;
 }> {
-	// The profile is the ONLY scope for `ssh.json`, so which profile is the whole answer. `session.settings.getAgentDir()` is the dir the session actually
 	const result = await loadCapability<SSHHost>(sshCapability.id, {
 		cwd: session.cwd,
 		agentDir: session.settings.getAgentDir(),
@@ -196,9 +195,6 @@ export class SshTool implements AgentTool<typeof sshSchema, SSHToolDetails> {
 		const hostInfo = await ensureHostInfo(hostConfig);
 		const remoteCommand = buildRemoteCommand(command, cwd, hostInfo);
 
-		// Clamp to the tool's configured range (see TOOL_TIMEOUTS.ssh). A clamp
-		// silently changes the budget the agent asked for, so we surface it in the
-		// result text below (Law 10) instead of applying it quietly.
 		const timeoutSec = clampTimeout("ssh", rawTimeout, this.session.settings.get("tools.maxTimeout"));
 		const timeoutMs = timeoutSec * 1000;
 		const clampNotice = formatTimeoutClampNotice("ssh", rawTimeout, timeoutSec);
@@ -221,8 +217,6 @@ export class SshTool implements AgentTool<typeof sshSchema, SSHToolDetails> {
 		}
 
 		const commandOutput = result.output || "(no output)";
-		// The notice rides on the result text so it reaches the agent on every
-		// path: the success return, and the non-zero-exit throw below.
 		const outputText = clampNotice ? `${clampNotice}\n\n${commandOutput}` : commandOutput;
 		const details: SSHToolDetails = {};
 		const resultBuilder = toolResult(details).text(outputText).truncationFromSummary(result, { direction: "tail" });
@@ -255,19 +249,14 @@ interface SshRenderArgs {
 	timeout?: number;
 }
 
-/** Whether the painted call args still carry the streamed raw-JSON buffer —
- *  the shape that renders the `⏳ SSH: […]` / `$ …` placeholder. */
 function hasStreamedRenderArgs(args: unknown): boolean {
 	if (args == null || typeof args !== "object" || !("__partialJson" in args)) return false;
 	return typeof args.__partialJson === "string";
 }
 
 interface SshRenderContext {
-	/** Visual lines for truncated output (pre-computed by tool-execution) */
 	visualLines?: string[];
-	/** Number of lines skipped */
 	skippedCount?: number;
-	/** Total visual lines */
 	totalVisualLines?: number;
 }
 
@@ -345,9 +334,7 @@ export const sshToolRenderer = {
 
 		return markFramedBlockComponent({
 			render: (width: number): readonly string[] => {
-				// REACTIVE: read mutable options at render time
 				const { expanded } = options;
-				// Strip LLM-facing notice so we don't echo it next to the styled warning.
 				const output = stripOutputNotice(textContent, details?.meta).trimEnd();
 				const outputLines: string[] = [];
 
@@ -360,7 +347,6 @@ export const sshToolRenderer = {
 							}
 						}
 					} else {
-						// Measured at the box's inner width, the same way `bash` measures its own tail, so a wrapped remote line spends the lines it
 						const sanitized = output.split("\n").map(replaceTabs).join("\n");
 						const result = truncateToVisualLines(
 							sanitized,
@@ -390,8 +376,6 @@ export const sshToolRenderer = {
 						state: isPartial ? "pending" : isError ? "error" : "success",
 						sections: [
 							{
-								// Viewport-sized tail window in every state — streaming and final
-								// render identically; only ctrl+o uncaps.
 								lines: capPreviewLines(cmdLines, uiTheme, { expanded }),
 							},
 							{ label: uiTheme.fg("toolTitle", "Output"), lines: outputLines },
@@ -407,9 +391,6 @@ export const sshToolRenderer = {
 		});
 	},
 	mergeCallAndResult: true,
-	// Streamed args can initially render the SSH placeholder (`⏳ SSH: […]` / `$ …`), then the first partial result inserts the `Output` section and
 	forceFirstResultViewportRepaint: hasStreamedRenderArgs,
-	// The provisional pending-result frame settles into the final `⇄ SSH: [host]`
-	// frame, so clear/replay the viewport at that topology flip too.
 	forceResultViewportRepaintOnSettle: true,
 };

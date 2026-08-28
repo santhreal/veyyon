@@ -1,10 +1,8 @@
-/** Builds transcript components from persisted session message entries — the file/remote-backed counterpart to {@link UiHelpers.addMessageToChat} (which is */
 import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
 import type { Usage } from "@veyyon/ai";
 import { Text, type TUI } from "@veyyon/tui";
 import type { AdvisorMessageDetails } from "../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
-// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
 import {
@@ -58,7 +56,6 @@ export interface ChatTranscriptBuilderDeps {
 	requestRender: () => void;
 }
 
-/** Extracts the plain-text content of a user message (string or text blocks). */
 function userMessageText(message: Extract<AgentMessage, { role: "user" }>): string {
 	if (typeof message.content === "string") return message.content;
 	let result = "";
@@ -85,28 +82,21 @@ export class ChatTranscriptBuilder {
 
 	constructor(private readonly deps: ChatTranscriptBuilderDeps) {}
 
-	/** Whether the transcript currently holds any rendered rows. */
 	get isEmpty(): boolean {
 		return this.container.children.length === 0;
 	}
 
-	/** Discard all components and rebuild the whole transcript from `entries`. */
 	rebuild(entries: SessionMessageEntry[]): void {
 		this.reset();
 		for (const entry of entries) this.#appendChatMessage(entry.message);
-		// Flush the trailing turn's usage row only once its tools are materialized
-		// (a read whose result has not arrived stays pending); otherwise the row
-		// would sit above its tools. The drain happens here at the end of the pass.
 		if (this.#readArgs.size === 0 && this.#pendingTools.size === 0) this.#flushPendingUsage();
 	}
 
-	/** Append newly persisted entries without rebuilding already rendered rows. */
 	append(entries: SessionMessageEntry[]): void {
 		for (const entry of entries) this.#appendChatMessage(entry.message);
 		if (this.#readArgs.size === 0 && this.#pendingTools.size === 0) this.#flushPendingUsage();
 	}
 
-	/** Toggle tool-output expansion across every expandable component. */
 	setExpanded(expanded: boolean): void {
 		this.#expanded = expanded;
 		for (const component of this.#expandables) component.setExpanded(expanded);
@@ -116,7 +106,6 @@ export class ChatTranscriptBuilder {
 		return this.#expanded;
 	}
 
-	/** Tear down components (sealing pending spinners) and clear build state. */
 	reset(): void {
 		for (const pending of this.#pendingTools.values()) pending.seal();
 		this.#pendingTools.clear();
@@ -142,7 +131,6 @@ export class ChatTranscriptBuilder {
 		this.#expandables.push(component);
 	}
 
-	/** A `job` poll showing all-running is displaced by the next `job` call. */
 	#resolveWaitingPoll(nextToolName?: string): void {
 		const previous = this.#waitingPoll;
 		if (!previous) return;
@@ -184,7 +172,6 @@ export class ChatTranscriptBuilder {
 		return this.#readGroup;
 	}
 
-	// The per-turn token-usage row must land below the turn's tool blocks, but normal `read` calls only materialize their group in #appendToolResult. Defer
 	#flushPendingUsage(): void {
 		if (!this.#pendingUsage) return;
 		this.#readGroup?.seal();
@@ -208,13 +195,10 @@ export class ChatTranscriptBuilder {
 				break;
 			case "user":
 			case "developer": {
-				// A user prompt closes the poll-displacement window, same as the live path.
 				if (message.role === "user") this.#resolveWaitingPoll();
 				if (message.role === "user") this.#resolveTodoSnapshot();
 				const textContent = message.role === "user" ? userMessageText(message) : "";
 				if (textContent) {
-					// A turn-level batch ledger is a standing instruction to the
-					// model, not operator prose: collapse it to a one-line marker.
 					const ledgerMarker = ledgerMarkerLine(textContent);
 					if (ledgerMarker !== null) {
 						this.container.addChild(new Text(ledgerMarker, 0, 0));
@@ -256,8 +240,6 @@ export class ChatTranscriptBuilder {
 				break;
 			}
 			case "fileMention": {
-				// Indent one column to match the transcript's other rows (the viewer renders
-				// body rows without an outer gutter; rows own their left pad).
 				const block = buildFileMentionBlock(message.files, 1);
 				if (block.children.length > 0) this.container.addChild(block);
 				break;
@@ -278,8 +260,6 @@ export class ChatTranscriptBuilder {
 			this.deps.getMessageRenderer ? undefined : [], // placeholder for thinkingRenderers
 			this.deps.ui.imageBudget,
 			proseOnlyThinking,
-			// Scoped repaint for the streaming shimmer ticker: repaint just this row,
-			// never the whole transcript, so the 30fps liquid flow stays cheap (#4377).
 			() => this.deps.ui.requestComponentRender(assistantComponent),
 		);
 		this.container.addChild(assistantComponent);
@@ -296,7 +276,6 @@ export class ChatTranscriptBuilder {
 
 		const hasVisibleAssistantContent = assistantHasVisibleContent(message);
 		if (hasVisibleAssistantContent) {
-			// New visible turn content closes the current read run (mirrors rebuild).
 			this.#readGroup?.seal();
 			this.#readGroup = null;
 		}
@@ -352,8 +331,6 @@ export class ChatTranscriptBuilder {
 				content.name,
 				content.arguments,
 				{
-					// Stable ids and Kitty placeholder cells keep images anchored
-					// while the transcript viewport scrolls and reflows.
 					showImages: settings.get("terminal.showImages"),
 					editFuzzyThreshold: settings.get("edit.fuzzyThreshold"),
 					editAllowFuzzy: settings.get("edit.fuzzyMatch"),
@@ -407,9 +384,6 @@ export class ChatTranscriptBuilder {
 			pending instanceof ToolExecutionComponent &&
 			pending.canBeDisplacedBy("todo")
 		) {
-			// A successful todo result supersedes the prior live snapshot. Failed
-			// follow-ups return false from canBeDisplacedBy("todo"), so the
-			// last-good panel stays on screen.
 			this.#resolveTodoSnapshot("todo");
 			this.#todoSnapshot = pending;
 		}

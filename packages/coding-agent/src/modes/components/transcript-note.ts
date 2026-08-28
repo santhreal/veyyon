@@ -5,26 +5,18 @@ import { getVisibleGround } from "../theme/ground-tints";
 import { theme } from "../theme/theme";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 
-/** A note the session commits into the transcript: the todo reminder, an injected rule. One owner, because there were two of them and they were the same mistake */
 export interface TranscriptNote {
-	/** Theme colour for the rail and the headline (`warning`, `accent`, …). */
 	tone: ThemeColor;
-	/** First row. Styled by this module — pass plain text. */
 	headline: string;
-	/** Rows under the headline, already styled by the caller (a rule name in bold, a description in italic). A row may hold newlines and may be wider than the */
 	rows: readonly string[];
 }
 
-/** How far a note stands off the page, as a fraction of the distance from the ground to its contrast pole. A card's plate is 0.1 and its footer tray 0.04; a note in */
 const NOTE_LIFT = 0.075;
 
-/** The rail glyph, the space after it, and one column of air at the end. */
 const NOTE_CHROME_COLS = 4;
 
-/** Rows of one note, at the width its content is allowed to occupy. */
 export function renderTranscriptNote(note: TranscriptNote, contentWidth: number): string[] {
 	const rail = theme.fg(note.tone, theme.sep.block);
-	// Two columns for the rail and its space; one for the air at the right edge.
 	const textWidth = Math.max(8, contentWidth - NOTE_CHROME_COLS + 1);
 	const headline = wrapTextWithAnsi(note.headline, textWidth);
 	const rows: string[] = [];
@@ -48,9 +40,6 @@ export function renderTranscriptNote(note: TranscriptNote, contentWidth: number)
 		lines[li++] = rows[ri] === "" ? rail : `${rail} ${rows[ri]!}`;
 	}
 
-	// A surface is only painted onto a ground that is actually on screen, and only
-	// where 24-bit colour can express the step. Everything else keeps the rail and
-	// the colours, which is a readable note on any terminal.
 	const ground = TERMINAL.trueColor ? getVisibleGround() : undefined;
 	if (ground === undefined) return lines;
 	let widest = 0;
@@ -66,7 +55,6 @@ export function renderTranscriptNote(note: TranscriptNote, contentWidth: number)
 	return fillSurface(lines, noteWidth, { ground, lift: NOTE_LIFT });
 }
 
-/** A note as a transcript block: blank line, note, blank line. The note is rebuilt at render time, so a component that merges more content into itself while it is still */
 export class TranscriptNoteComponent extends Container {
 	#note: TranscriptNote;
 	readonly #text: WidthAwareText;
@@ -85,7 +73,6 @@ export class TranscriptNoteComponent extends Container {
 		this.addChild(new Spacer(1));
 	}
 
-	/** The note this block is carrying. Read by the off arm of the note's proof, which renders this exact content through the chrome the notes used to have: a */
 	get note(): TranscriptNote {
 		return this.#note;
 	}

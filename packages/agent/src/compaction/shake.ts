@@ -1,5 +1,3 @@
-/** Context-reducing surgical compaction ("shake"). */
-
 import type { TextContent, ToolResultMessage } from "@veyyon/ai";
 import { countTokens } from "../tokenizer";
 import type { AgentMessage, AgentToolCall } from "../types";
@@ -14,19 +12,13 @@ import {
 } from "./tool-protection";
 
 export interface ShakeConfig {
-	/** Keep the most recent context tokens (across all entries) intact. */
 	protectTokens: number;
-	/** Only shake when total estimated savings meets this threshold. */
 	minSavings: number;
-	/** Tool-result protection matchers. String entries protect every result from that tool; predicates may inspect the paired tool call. */
 	protectedTools: ProtectedToolMatcher[];
-	/** Minimum token size for a fenced/XML block to be eligible. */
 	fenceMinTokens: number;
-	/** Compaction boundary (`firstKeptEntryId` of the latest compaction). Entries */
 	keepBoundaryId?: string;
 }
 
-/** Auto-shake config: protects the live tail, conservative thresholds. */
 export const DEFAULT_SHAKE_CONFIG: ShakeConfig = {
 	protectTokens: 16_000,
 	minSavings: 4_000,
@@ -34,7 +26,6 @@ export const DEFAULT_SHAKE_CONFIG: ShakeConfig = {
 	fenceMinTokens: 400,
 };
 
-/** Manual `/shake`: aggressive — drops every eligible region across history. */
 export const AGGRESSIVE_SHAKE_CONFIG: ShakeConfig = {
 	protectTokens: 0,
 	minSavings: 0,
@@ -42,37 +33,29 @@ export const AGGRESSIVE_SHAKE_CONFIG: ShakeConfig = {
 	fenceMinTokens: 400,
 };
 
-/** Rough token cost of a placeholder line; used only for the savings gate. */
 const PLACEHOLDER_TOKEN_ESTIMATE = 16;
 
-/** A located eligible region. */
 export interface ToolResultShakeRegion {
 	kind: "toolResult";
 	entry: SessionMessageEntry;
 	tokens: number;
 	originalText: string;
-	/** Human label for the offload doc (tool name). */
 	label: string;
 }
 
 export interface BlockShakeRegion {
 	kind: "block";
 	entry: SessionMessageEntry | CustomMessageEntry;
-	/** Index into the content array, or -1 for string-form content. */
 	blockIndex: number;
-	/** Character offsets into the target text (start inclusive, end exclusive). */
 	start: number;
 	end: number;
 	tokens: number;
 	originalText: string;
-	/** Human label for the offload doc (role / customType). */
 	label: string;
 }
 
 export type ShakeRegion = ToolResultShakeRegion | BlockShakeRegion;
 
-// Mirror prompt.ts top-level XML detection. Lowercase tag names only —
-// conservative by design (uppercase / mixed-case tags are ignored).
 const OPENING_XML = /^<([a-z_-]+)(?:\s+[^>]*)?>$/;
 const CLOSING_XML = /^<\/([a-z_-]+)>$/;
 
@@ -83,7 +66,6 @@ function toolResultText(message: ToolResultMessage): string {
 		.join("\n");
 }
 
-/** Estimate the token contribution of an entry for the protect-recent window. */
 function entryTokens(entry: SessionEntry): number {
 	if (entry.type === "message") {
 		return estimateTokens(entry.message);
@@ -97,7 +79,6 @@ function entryTokens(entry: SessionEntry): number {
 	return 0;
 }
 
-/** Locate fenced code blocks and top-level XML element spans inside `text`. */
 function scanTextForBlockRanges(text: string): Array<{ start: number; end: number }> {
 	const ranges: Array<{ start: number; end: number }> = [];
 	let inFence = false;
@@ -152,7 +133,6 @@ function scanTextForBlockRanges(text: string): Array<{ start: number; end: numbe
 	return mergeRanges(ranges);
 }
 
-/** Sort ascending by start and drop any range that overlaps an already-kept */
 function mergeRanges(ranges: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> {
 	if (ranges.length <= 1) return ranges;
 	const sorted = ranges.slice().sort((a, b) => a.start - b.start);
@@ -211,7 +191,6 @@ function collectBlockRegions(
 		}
 		return;
 	}
-	// custom_message
 	scanContentBlocks(entry, entry.content, config, entry.customType, out);
 }
 
@@ -234,12 +213,10 @@ function scanContentBlocks(
 	}
 }
 
-/** Pure detection: locate every eligible shake region on a branch. */
 export function collectShakeRegions(entries: SessionEntry[], config: ShakeConfig): ShakeRegion[] {
 	const n = entries.length;
 	if (n === 0) return [];
 
-	// Tokens of all entries strictly more recent than index i.
 	const accumulatedAfter = new Array<number>(n);
 	let acc = 0;
 	for (let i = n - 1; i >= 0; i--) {
@@ -249,8 +226,6 @@ export function collectShakeRegions(entries: SessionEntry[], config: ShakeConfig
 
 	const toolCallsById = collectToolCallsById(entries);
 
-	// Entries before the compaction boundary are summarized away and never sent —
-	// shaking them only churns persisted history (no prompt/cache effect).
 	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
 
 	const regions: ShakeRegion[] = [];
@@ -258,8 +233,6 @@ export function collectShakeRegions(entries: SessionEntry[], config: ShakeConfig
 		const entry = entries[i];
 		if (i < boundaryIndex) continue;
 		const toolResult = getToolResultMessage(entry);
-		// Useless-flagged results carry no information once consumed; they are
-		// eligible even inside the protect-recent window.
 		const uselessResult = toolResult !== undefined && toolResult.useless === true && toolResult.isError !== true;
 		if (!uselessResult && accumulatedAfter[i] < config.protectTokens) continue;
 		if (toolResult) {
@@ -290,14 +263,12 @@ export function collectShakeRegions(entries: SessionEntry[], config: ShakeConfig
 	return regions;
 }
 
-/** Stable signature of a tool-result for redundancy matching: tool name, the */
 function redundancySignature(toolName: string, call: AgentToolCall | undefined, outputText: string): string {
 	const args = call?.arguments;
 	const argsKey = args === undefined ? "" : JSON.stringify(args, Object.keys(args).sort());
 	return `${toolName}\x00${argsKey}\x00${outputText}`;
 }
 
-/** Locate earlier tool-result messages whose (tool, arguments, output) is */
 export function collectRedundantToolResultRegions(entries: SessionEntry[], config: ShakeConfig): ShakeRegion[] {
 	const n = entries.length;
 	if (n === 0) return [];
@@ -314,7 +285,6 @@ export function collectRedundantToolResultRegions(entries: SessionEntry[], confi
 		text: string;
 	}
 	const candidates: Candidate[] = [];
-	// signature -> index of the newest (survivor) candidate.
 	const latestBySignature = new Map<string, number>();
 
 	for (let i = boundaryIndex; i < n; i++) {
@@ -332,7 +302,6 @@ export function collectRedundantToolResultRegions(entries: SessionEntry[], confi
 
 	const regions: ShakeRegion[] = [];
 	for (const candidate of candidates) {
-		// The newest copy of each signature survives; every earlier copy is elided.
 		if (latestBySignature.get(candidate.signature) === candidate.index) continue;
 		regions.push({
 			kind: "toolResult",
@@ -372,7 +341,6 @@ function getBlockTextSlot(entry: SessionMessageEntry | CustomMessageEntry, block
 			},
 		};
 	}
-	// custom_message
 	if (blockIndex === -1) {
 		if (typeof entry.content !== "string") return undefined;
 		return {
@@ -393,7 +361,6 @@ function getBlockTextSlot(entry: SessionMessageEntry | CustomMessageEntry, block
 	};
 }
 
-/** Pure mutation: replace a single region's content in place. */
 export function applyShakeRegion(region: ShakeRegion, replacement: string): void {
 	if (region.kind === "toolResult") {
 		const message = region.entry.message as ToolResultMessage;
@@ -407,7 +374,6 @@ export function applyShakeRegion(region: ShakeRegion, replacement: string): void
 	slot.write(text.slice(0, region.start) + replacement + text.slice(region.end));
 }
 
-/** Apply many regions at once. Block regions are applied highest-start-first so */
 export function applyShakeRegions(items: Array<{ region: ShakeRegion; replacement: string }>): void {
 	const ordered = items.slice().sort((a, b) => {
 		const aStart = a.region.kind === "block" ? a.region.start : -1;

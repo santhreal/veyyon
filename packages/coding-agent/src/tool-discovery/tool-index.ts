@@ -3,19 +3,14 @@ import type { Tool as AiTool } from "@veyyon/ai";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
 import { formatCount, isRecord, NON_ALNUM_RUN_RE } from "@veyyon/utils";
 
-// ─── Generic Tool Discovery Types ────────────────────────────────────────────
-
 export type DiscoverableToolSource = "builtin" | "mcp" | "extension" | "custom";
 
 export interface DiscoverableTool {
 	name: string;
 	label: string;
-	/** Short BM25 corpus entry; falls back to description first 200 chars */
 	summary: string;
 	source: DiscoverableToolSource;
-	/** MCP only */
 	serverName?: string;
-	/** MCP only */
 	mcpToolName?: string;
 	schemaKeys: string[];
 }
@@ -47,8 +42,6 @@ export interface DiscoverableToolSearchResult {
 	score: number;
 }
 
-// ─── BM25 Constants ───────────────────────────────────────────────────────────
-
 const BM25_K1 = 1.2;
 const BM25_B = 0.75;
 const BM25_DELTA = 1.0;
@@ -61,8 +54,6 @@ const FIELD_WEIGHTS = {
 	schemaKey: 1,
 } as const;
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 export function isMCPToolName(name: string): boolean {
 	return name.startsWith("mcp__");
 }
@@ -71,9 +62,7 @@ function getSchemaPropertyKeys(tool: Pick<AiTool, "name" | "description" | "para
 	let parameters: unknown = tool.parameters;
 	try {
 		parameters = toolWireSchema(tool as AiTool);
-	} catch {
-		// Schema may contain functions or cycles; fall back to the raw shape.
-	}
+	} catch {}
 	if (!isRecord(parameters)) return [];
 	const properties = (parameters as { properties?: unknown }).properties;
 	if (!isRecord(properties)) return [];
@@ -81,24 +70,16 @@ function getSchemaPropertyKeys(tool: Pick<AiTool, "name" | "description" | "para
 }
 
 function tokenize(value: string): string[] {
-	return (
-		value
-			.normalize("NFKD")
-			// Drop combining marks (accents) so "café" → "cafe".
-			.replace(/\p{M}+/gu, "")
-			// Split ACRONYMBoundary: "MCPTool" → "MCP Tool".
-			.replace(/(\p{Lu}+)(\p{Lu}\p{Ll})/gu, "$1 $2")
-			// Split camelCase / digit→letter: "fooBar" → "foo Bar", "v2Beta" → "v2 Beta".
-			.replace(/(\p{Ll}|\p{N})(\p{Lu})/gu, "$1 $2")
-			// Everything that isn't a letter or digit becomes a separator. This subsumes markdown
-			// punctuation (`|*_`#-~>[]()`), box-drawing glyphs (─│┌), em/en dashes, smart quotes,
-			// zero-width spaces, NBSPs, etc.
-			.replace(NON_ALNUM_RUN_RE, " ")
-			.toLowerCase()
-			.trim()
-			.split(/\s+/)
-			.filter(token => token.length > 0)
-	);
+	return value
+		.normalize("NFKD")
+		.replace(/\p{M}+/gu, "")
+		.replace(/(\p{Lu}+)(\p{Lu}\p{Ll})/gu, "$1 $2")
+		.replace(/(\p{Ll}|\p{N})(\p{Lu})/gu, "$1 $2")
+		.replace(NON_ALNUM_RUN_RE, " ")
+		.toLowerCase()
+		.trim()
+		.split(/\s+/)
+		.filter(token => token.length > 0);
 }
 
 function addWeightedTokens(termFrequencies: Map<string, number>, value: string | undefined, weight: number): void {
@@ -122,9 +103,6 @@ function buildSearchDocument(tool: DiscoverableTool): DiscoverableToolSearchDocu
 	return { tool, termFrequencies, length };
 }
 
-// ─── Generic Tool Discovery Functions ────────────────────────────────────────
-
-/** Convert a raw AgentTool into a DiscoverableTool generic descriptor. source: "mcp" if name starts with "mcp__", else "builtin" (caller may override). */
 export function getDiscoverableTool(
 	tool: AgentTool,
 	overrides?: { source?: DiscoverableToolSource; summary?: string },
@@ -164,7 +142,6 @@ export function getDiscoverableTool(
 	};
 }
 
-/** Collect all DiscoverableTools from a tool iterable. Skips tools that return null. */
 export function collectDiscoverableTools(
 	tools: Iterable<AgentTool>,
 	options?: { source?: DiscoverableToolSource; summaryMap?: Map<string, string> },
@@ -180,7 +157,6 @@ export function collectDiscoverableTools(
 	return discoverable;
 }
 
-/** Filter discoverable tools by source */
 export function filterBySource(tools: DiscoverableTool[], source: DiscoverableToolSource): DiscoverableTool[] {
 	return tools.filter(t => t.source === source);
 }

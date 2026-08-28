@@ -4,9 +4,6 @@ import { colorLuma } from "@veyyon/utils/color";
 import { getCustomThemesDir } from "@veyyon/utils/dirs";
 import { resolveVarRefs, type ThemeJson } from "./color";
 
-/** The synchronous light/dark classifier, and the one place a bundled theme's class is written down. migration: an old flat `theme: "<name>"` string has to be placed in the `theme.light` or `theme.dark` */
-
-/** Whether a bundled theme is light or dark, by name. Generated from the shipped theme JSON by `isLightThemeJson`, which reads the perceived luminance of */
 export const BUILTIN_THEME_CLASSES: Readonly<Record<string, "light" | "dark">> = {
 	alabaster: "light",
 	amethyst: "dark",
@@ -110,21 +107,16 @@ export const BUILTIN_THEME_CLASSES: Readonly<Record<string, "light" | "dark">> =
 	titanium: "dark",
 };
 
-/** Classify a parsed theme JSON as light/dark by the perceived luminance of its status-line background. Mirrors {@link Theme.isLight} so the synchronous helpers stay in lockstep with the runtime */
 export function isLightThemeJson(themeJson: ThemeJson): boolean {
 	try {
 		const resolved = resolveVarRefs(themeJson.colors.statusLineBg, themeJson.vars ?? {});
 		const luminance = colorLuma(resolved);
 		return luminance !== undefined && luminance > 0.5;
 	} catch {
-		// A theme whose status-line background cannot be resolved gets classified as dark, which is the
-		// same answer an unreadable luminance gives above. Dark is the safe default because it is the
-		// shipped default, and the load path reports the malformed theme with its parse error.
 		return false;
 	}
 }
 
-/** Is this theme a light theme? Synchronous, for callers in synchronous flows: the settings migration and the setup wizard. */
 export function isLightTheme(themeName?: string): boolean {
 	const name = themeName ?? "dark";
 	const bundled = BUILTIN_THEME_CLASSES[name];
@@ -134,9 +126,6 @@ export function isLightTheme(themeName?: string): boolean {
 		const customPath = path.join(getCustomThemesDir(), `${name}.json`);
 		themeJson = JSON.parse(fs.readFileSync(customPath, "utf-8")) as ThemeJson;
 	} catch {
-		// Classified as dark rather than reported, deliberately: this is a synchronous classifier called
-		// on render paths, and the theme's LOAD reports the same broken file once with its error. A
-		// warning here would repeat it for every frame.
 		return false;
 	}
 	return isLightThemeJson(themeJson);

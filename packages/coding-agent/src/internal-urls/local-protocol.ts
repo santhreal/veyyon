@@ -39,9 +39,6 @@ function safeSessionId(options: LocalProtocolOptions): string {
 }
 
 function shortLocalRoot(options: LocalProtocolOptions): string {
-	// Derive the short root from the stable session id, never the artifact path,
-	// so `SessionManager.moveTo()` and the resume-after-move flow keep finding
-	// the same `local://` directory the session wrote pre-move.
 	return path.join(os.tmpdir(), "veyyon-local", safeSessionId(options));
 }
 
@@ -122,8 +119,6 @@ function isUtf8Text(bytes: Uint8Array): boolean {
 		new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 		return true;
 	} catch {
-		// The throw IS the answer: `fatal` decoding rejects exactly the byte sequences that are not UTF-8,
-		// which is the question asked. Nothing is being swallowed, so there is nothing to report.
 		return false;
 	}
 }
@@ -227,7 +222,6 @@ function extractRelativePath(url: InternalUrl): string {
 	return decoded;
 }
 
-/** Resolve the session-scoped local:// root, shortening long Windows artifact paths before writes hit MAX_PATH. */
 export function resolveLocalRoot(options: LocalProtocolOptions, platform: NodeJS.Platform = process.platform): string {
 	const artifactsDir = options.getArtifactsDir?.();
 	if (artifactsDir) {
@@ -241,8 +235,6 @@ export function resolveLocalRoot(options: LocalProtocolOptions, platform: NodeJS
 	return path.join(os.tmpdir(), "veyyon-local", safeSessionId(options));
 }
 
-/** Resolve a local:// URL to an on-disk path under the active session's local root. */
-/** List the plan files in a session-local root as `local://` URLs, newest first. This is the fallback both the interactive and the ACP plan-approval paths use when a plan reference */
 export async function listLocalPlanFileUrls(localRoot: string): Promise<string[]> {
 	let entries: Dirent[];
 	try {
@@ -260,8 +252,6 @@ export async function listLocalPlanFileUrls(localRoot: string): Promise<string[]
 		entries
 			.filter(entry => entry.isFile() && /plan\.md$/i.test(entry.name))
 			.map(async entry => {
-				// An entry that vanished between the listing and the stat sorts last rather than dropping
-				// out: its URL is still worth offering, and reading it reports its own failure.
 				const stat = await fs.stat(path.join(localRoot, entry.name)).catch(() => null);
 				return { url: `local://${entry.name}`, mtime: stat?.mtimeMs ?? 0 };
 			}),
@@ -287,7 +277,6 @@ export function resolveLocalUrlToPath(
 	return resolved;
 }
 
-/** On-disk roots the eval helpers (`read`/`write`) substitute for internal-URL schemes so e.g. `write("local://x.md")` lands where a later */
 export function buildEvalUrlRoots(options: LocalProtocolOptions): Record<string, string> {
 	return { local: resolveLocalRoot(options) };
 }
@@ -299,7 +288,6 @@ type ResolvedLocalTarget =
 	| { kind: "directory"; path: string }
 	| { kind: "file"; path: string; size: number };
 
-/** Resolve a local:// URL to its on-disk target with realpath + containment checks on the root, parent, and target so symlinks cannot escape the session */
 async function resolveLocalTarget(url: InternalUrl, opts: LocalProtocolOptions): Promise<ResolvedLocalTarget> {
 	const localRoot = path.resolve(resolveLocalRoot(opts));
 	await fs.mkdir(localRoot, { recursive: true });
@@ -352,7 +340,6 @@ async function resolveLocalTarget(url: InternalUrl, opts: LocalProtocolOptions):
 	return { kind: "file", path: realTargetPath, size: stat.size };
 }
 
-/** Resolve a local:// URL to a regular on-disk file, applying the same realpath + containment guarantees as {@link LocalProtocolHandler.resolve} */
 export async function resolveLocalUrlToFile(
 	input: string | InternalUrl,
 	context?: ResolveContext,
@@ -364,24 +351,20 @@ export async function resolveLocalUrlToFile(
 	return resolved.kind === "file" ? { path: resolved.path, size: resolved.size } : null;
 }
 
-/** Protocol handler for local:// URLs. URL forms: */
 export class LocalProtocolHandler implements ProtocolHandler {
 	readonly scheme = "local";
 	readonly immutable = false;
 
 	static #override: LocalProtocolOptions | undefined;
 
-	/** Install a process-global override that wins over the AgentRegistry-based derivation. Used by SDK consumers that wire `localProtocolOptions` on */
 	static setOverride(value: LocalProtocolOptions | undefined): void {
 		LocalProtocolHandler.#override = value;
 	}
 
-	/** Reset the process-global override. Test-only. */
 	static resetOverrideForTests(): void {
 		LocalProtocolHandler.#override = undefined;
 	}
 
-	/** Returns the active local-protocol options. Resolution order: */
 	static resolveOptions(context?: ResolveContext): LocalProtocolOptions | undefined {
 		const fromContext = context?.localProtocolOptions;
 		if (fromContext) return fromContext;

@@ -1,4 +1,3 @@
-/** Shared output-schema validation for subagent yield + executor finalization. Both the in-process `yield` tool (subagent side) and the executor's post-mortem */
 import {
 	dereferenceJsonSchema,
 	isValidJsonSchema,
@@ -9,34 +8,22 @@ import {
 import { isRecord } from "@veyyon/utils";
 import { jtdToJsonSchema, normalizeSchema } from "./jtd-to-json-schema";
 
-/** A validator bound to a specific output schema. */
 export interface OutputValidator {
-	/** Run JSON Schema validation; returns the raw `success`/`issues` shape so callers may inspect every failure. */
 	validate(value: unknown): JsonSchemaValidationResult;
-	/** Top-level required property names. Empty if the schema has no `required` array at root. */
 	readonly requiredFields: readonly string[];
-	/** Per-label validators for incremental yields (`type: ["<label>"]`). Each entry validates the `data` payload of a single section against the matching top-level property's sub-schema — */
 	readonly validateSection: ReadonlyMap<string, (value: unknown) => JsonSchemaValidationResult>;
-	/** Whether top-level schema closure makes unknown incremental yield labels invalid. */
 	readonly rejectUnknownSections: boolean;
-	/** Finite top-level section labels declared directly by the schema. Pattern-backed labels are accepted via `isKnownSection`. */
 	readonly knownSectionLabels: readonly string[];
-	/** Whether an incremental yield label is accepted by the top-level schema declaration. */
 	isKnownSection(label: string): boolean;
 }
 
 export interface BuildOutputValidatorResult {
-	/** Present when the schema produced a usable validator (i.e. constraining schemas). Absent for missing/unconstrained schemas. */
 	validator?: OutputValidator;
-	/** Raw JSON Schema produced by `jtdToJsonSchema`. Available alongside the validator so callers can derive related artifacts (strict-mode probe, dereference, hint text). */
 	jsonSchema?: Record<string, unknown>;
-	/** Normalized schema (post-`normalizeSchema`). Surfaced so callers can distinguish "no schema provided" (`undefined`) from "intentionally unconstrained" (`true`) */
 	normalized?: unknown;
-	/** Set when the schema cannot be used. Callers should treat this as a "no validation" case (loose acceptance) and surface the message in diagnostics. */
 	error?: string;
 }
 
-/** Build the canonical validator for a JTD-or-JSON-Schema output declaration. Returns: */
 export function buildOutputValidator(schema: unknown): BuildOutputValidatorResult {
 	const { normalized, error: normalizeError } = normalizeSchema(schema);
 	if (normalizeError) return { error: normalizeError, normalized };
@@ -54,7 +41,6 @@ export function buildOutputValidator(schema: unknown): BuildOutputValidatorResul
 	if (!isValidJsonSchema(jsonSchema)) return { error: "invalid JSON schema", normalized };
 
 	const jsonSchemaRecord = jsonSchema as Record<string, unknown>;
-	// Resolve a root `$ref` (e.g. caller schemas exported as `{ $ref: "#/$defs/Closed", $defs: ... }`) before deriving incremental-label metadata. AJV-style validation chases the ref at runtime, so
 	const dereferenced = dereferenceJsonSchema(jsonSchemaRecord);
 	const labelSchema = isRecord(dereferenced) ? (dereferenced as Record<string, unknown>) : jsonSchemaRecord;
 	const required = extractRequiredFields(labelSchema);
@@ -73,7 +59,6 @@ export function buildOutputValidator(schema: unknown): BuildOutputValidatorResul
 	};
 }
 
-/** Build per-top-level-property validators for incremental yields. Each entry validates the `data` payload of one `type: ["<label>"]` section against the */
 function buildSectionValidators(
 	jsonSchema: Record<string, unknown>,
 ): ReadonlyMap<string, (value: unknown) => JsonSchemaValidationResult> {
@@ -98,7 +83,6 @@ interface SectionLabelMetadata {
 	isKnown(label: string): boolean;
 }
 
-/** Derive incremental-label metadata from top-level schema closure. The unknown-label gate (`rejectUnknownSections`) engages when the schema constrains top-level */
 function buildSectionLabelMetadata(jsonSchema: Record<string, unknown>): SectionLabelMetadata {
 	const closedConjuncts = collectClosedTopLevelSchemas(jsonSchema);
 	const closedUnions = collectClosedTopLevelUnions(jsonSchema);
@@ -138,10 +122,8 @@ function collectClosedTopLevelSchemas(jsonSchema: Record<string, unknown>): Reco
 	return schemas;
 }
 
-/** One fully-closed `oneOf`/`anyOf` union: per variant, that variant's closed conjunct schemas. */
 type ClosedUnionVariants = Record<string, unknown>[][];
 
-/** Collect top-level `oneOf`/`anyOf` unions in which EVERY variant is closed — i.e. each variant (or one of its `allOf` conjuncts, resolved via `collectClosedTopLevelSchemas`) carries */
 function collectClosedTopLevelUnions(jsonSchema: Record<string, unknown>): ClosedUnionVariants[] {
 	const unions: ClosedUnionVariants[] = [];
 	for (const key of ["oneOf", "anyOf"] as const) {
@@ -189,15 +171,12 @@ function schemaAcceptsSectionLabel(jsonSchema: Record<string, unknown>, label: s
 		for (const pattern in patternProperties) {
 			try {
 				if (new RegExp(pattern).test(label)) return true;
-			} catch {
-				// `isValidJsonSchema` already rejected malformed regexes; ignore any unexpected runtime mismatch.
-			}
+			} catch {}
 		}
 	}
 	return jsonSchema.additionalProperties !== false;
 }
 
-/** Produce the executor's headline+missing-required summary from a failed validation. */
 export function summarizeValidationFailure(
 	result: JsonSchemaValidationResult,
 	value: unknown,
@@ -223,14 +202,12 @@ export function computeMissingRequired(required: readonly string[], value: unkno
 	return required.filter(key => !(key in record) || record[key] === undefined);
 }
 
-/** Format a single validation issue as `path.with.dots: message`. Used by the executor's post-mortem `schema_violation` headline — one line, dot-separated path, */
 export function formatValidationIssueHeadline(issue: JsonSchemaValidationIssue | undefined): string | undefined {
 	if (!issue) return undefined;
 	const path = issue.path.length > 0 ? issue.path.map(String).join(".") : "(root)";
 	return `${path}: ${issue.message}`;
 }
 
-/** Format every validation issue as `path/with/slashes: message; ...`. Used by the yield tool's model-facing retry feedback — the model gets every problem at once so it */
 export function formatAllValidationIssues(issues: ReadonlyArray<JsonSchemaValidationIssue> | undefined): string {
 	if (!issues || issues.length === 0) return "Unknown schema validation error.";
 	return issues

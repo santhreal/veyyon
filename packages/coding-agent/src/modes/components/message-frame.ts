@@ -1,5 +1,3 @@
-/** Shared rendering for extension/hook custom message frames. Both `CustomMessageComponent` and `HookMessageComponent` wrap a */
-
 import type { TextContent } from "@veyyon/ai";
 import type { Box, Component } from "@veyyon/tui";
 import { Markdown, Spacer, TERMINAL, Text } from "@veyyon/tui";
@@ -8,20 +6,17 @@ import { type Theme, theme } from "../../modes/theme/theme";
 import { groundHairlineHex, groundTintFgAnsi } from "../theme/ground-tints";
 import { reportRendererFailure } from "./renderer-failure";
 
-/** Card-outline paint: the OSC 11-derived ground tint when the terminal reported its background (a fixed contrast step above ANY ground), else the */
 export function cardOutlineColor(): (text: string) => string {
 	const derived = groundTintFgAnsi(groundHairlineHex(), TERMINAL.trueColor);
 	if (derived !== undefined) return text => `${derived}${text}\x1b[39m`;
 	return text => theme.fg("borderMuted", text);
 }
 
-/** Message shape consumed by the shared frame. */
 export interface FramedMessage {
 	customType: string;
 	content: string | (TextContent | { type: string })[];
 }
 
-/** Callable signature shared by `MessageRenderer` (extensions) and `HookMessageRenderer` (hooks). Both narrow `message` to their own type; */
 export type FramedRenderer<M extends FramedMessage> = (
 	message: M,
 	options: { expanded: boolean },
@@ -32,19 +27,15 @@ export interface RebuildFrameOptions<M extends FramedMessage> {
 	message: M;
 	box: Box;
 	expanded: boolean;
-	/** Icon glyph shown before the customType in the default header (e.g. a hook/extension icon). */
 	icon?: string;
-	/** Collapse the markdown body to this many lines when `expanded` is false. Omit to never collapse. */
 	collapseAfterLines?: number;
 	customRenderer?: FramedRenderer<M>;
 }
 
-/** Reader-facing name for a framed message's renderer, used in a failure notice. */
 export function framedRendererSubject(customType: string): string {
 	return `custom message "${customType}"`;
 }
 
-/** Attempt the custom renderer; on failure or undefined return, populate `box` with the default outlined card — an `icon customType` header + markdown body — */
 export function renderFramedMessage<M extends FramedMessage>(opts: RebuildFrameOptions<M>): Component | undefined {
 	let failureRow: Text | undefined;
 	if (opts.customRenderer) {
@@ -61,10 +52,7 @@ export function renderFramedMessage<M extends FramedMessage>(opts: RebuildFrameO
 	}
 
 	opts.box.clear();
-	// Match the skill card: a subtle rounded outline so injected messages read as cards.
 	opts.box.setBorder({ chars: theme.boxSharp, color: cardOutlineColor() });
-	// Cards hug their content instead of stretching the frame to the terminal
-	// edge (defect: boxes always full width regardless of content).
 	opts.box.setHugContent(true);
 
 	const tag = opts.icon ? `${opts.icon} ${opts.message.customType}` : opts.message.customType;

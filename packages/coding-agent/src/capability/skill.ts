@@ -1,35 +1,22 @@
-/** Skills Capability Skills provide specialized knowledge or workflows that extend agent capabilities. */
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 
-/**
- * Parsed frontmatter from a skill file.
- */
 export interface SkillFrontmatter {
 	name?: string;
 	description?: string;
 	globs?: string[];
 	alwaysApply?: boolean;
-	/** When `true`, the skill is loaded and accessible via `skill://<name>` (and `/skill:<name>` slash commands), but is omitted from the rendered system */
 	hide?: boolean;
-	/** Agent Skills standard equivalent of `hide`. When `true`, the skill is excluded from the system prompt listing. */
 	disableModelInvocation?: boolean;
 	[key: string]: unknown;
 }
 
-/** A skill file as the discovery layer loads it: the whole markdown body plus its parsed frontmatter. `extensibility/skills.ts` owns a different `Skill`, the session-facing summary */
 export interface DiscoveredSkill {
-	/** Skill name (unique key, derived from filename or frontmatter) */
 	name: string;
-	/** Absolute path to skill file */
 	path: string;
-	/** Skill content (markdown) */
 	content: string;
-	/** Parsed frontmatter */
 	frontmatter?: SkillFrontmatter;
-	/** Source level */
 	level: "user" | "project";
-	/** Source metadata */
 	_source: SourceMeta;
 }
 

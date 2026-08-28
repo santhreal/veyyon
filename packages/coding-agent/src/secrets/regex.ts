@@ -5,23 +5,16 @@ const MAX_GROUP_DEPTH = 64;
 const MAX_FLAG_LENGTH = 16;
 
 interface PatternAnalysis {
-	/** Whether this expression can succeed without consuming a character. */
 	nullable: boolean;
-	/** Minimum and maximum characters this expression can consume. */
 	minimumWidth: number;
 	maximumWidth: number;
-	/** Variable-width alternation decisions encountered along one matching path. */
 	variableWidthAlternations: number;
-	/** Whether this expression contains a variable-width quantifier. */
 	hasVariableQuantifier: boolean;
-	/** Whether this expression contains an alternation. */
 	hasAlternation: boolean;
-	/** Source shapes of variably quantified atoms at the consuming boundaries. */
 	startsWithVariableAtom: string | undefined;
 	endsWithVariableAtom: string | undefined;
 }
 
-/** Add global scanning while preserving user-provided flags. A sticky expression is deliberately refused rather than combined with `g`: `y` requires the */
 function enforceGlobalFlag(flags: string): string {
 	if (flags.includes("y")) {
 		throw new Error('the sticky "y" flag is incompatible with global secret scanning');
@@ -29,7 +22,6 @@ function enforceGlobalFlag(flags: string): string {
 	return flags.includes("g") ? flags : `${flags}g`;
 }
 
-/** Split documented `/pattern/flags` syntax without maintaining a stale allow-list of flags. The suffix is intentionally allowed to contain any ASCII letters here. The runtime validates it */
 function splitRegexLiteral(pattern: string): { pattern: string; flags: string } | undefined {
 	if (!pattern.startsWith("/")) return undefined;
 
@@ -48,7 +40,6 @@ function splitRegexLiteral(pattern: string): { pattern: string; flags: string } 
 	return undefined;
 }
 
-/** Ask the active JavaScript runtime which flags it supports, while adding security semantics. */
 function validateFlags(flags: string, source: string): void {
 	if (flags.length > MAX_FLAG_LENGTH) {
 		throw new Error(`${source} regex flags are too long to be valid`);
@@ -57,8 +48,6 @@ function validateFlags(flags: string, source: string): void {
 		throw new Error(`the sticky "y" flag in ${source} is incompatible with global secret scanning`);
 	}
 	try {
-		// The empty pattern isolates flag validation from pattern validation. In particular this
-		// accepts newer runtime flags such as `d` and `v` without a hard-coded list going stale.
 		new RegExp("", flags);
 	} catch (error) {
 		const message = errorMessage(error);
@@ -66,7 +55,6 @@ function validateFlags(flags: string, source: string): void {
 	}
 }
 
-/** A small, bounded structural parser for the two regex properties that matter at this boundary. JavaScript offers no match timeout. Running an operator-supplied expression against a probe is */
 class PatternSafetyParser {
 	#index = 0;
 	#depth = 0;
@@ -297,7 +285,6 @@ class PatternSafetyParser {
 			maximum = match[2] === undefined ? minimum : match[2] === "" ? Number.POSITIVE_INFINITY : Number(match[2]);
 			this.#index += match[0].length;
 		}
-		// A trailing question mark changes greediness, not the language or its safety analysis.
 		if (this.pattern[this.#index] === "?") this.#index++;
 		return { minimum, maximum };
 	}
@@ -400,7 +387,6 @@ function validatePatternSafety(pattern: string, flags: string): void {
 	}
 }
 
-/** Compile a secret regex entry with global scanning enabled and unsafe semantics refused. */
 export function compileSecretRegex(pattern: string, flags?: string): RegExp {
 	const literal = splitRegexLiteral(pattern);
 	const resolvedPattern = literal?.pattern ?? pattern;
@@ -410,8 +396,6 @@ export function compileSecretRegex(pattern: string, flags?: string): RegExp {
 	validateFlags(explicitFlags, 'the explicit "flags" field');
 	validateFlags(literalFlags, "the regex literal");
 
-	// Each source is validated before de-duplication so `/secret/ii` remains an error, while a
-	// deliberate `g` in both supported flag locations is harmless.
 	const mergedFlags = Array.from(new Set(explicitFlags + literalFlags)).join("");
 	const resolvedFlags = enforceGlobalFlag(mergedFlags);
 	validatePatternSafety(resolvedPattern, resolvedFlags);

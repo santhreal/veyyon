@@ -12,15 +12,6 @@ import {
 	weightForVeracity,
 } from "./veracity";
 
-/**
- * The vocabulary, from the one module that owns it.
- *
- * These four were declared here, and this file's list was the SHORTER of the package's two:
- * five values against recall's eight, while `clampVeracity` and `isVeracity` read this list
- * to validate every write. A fact stored as `false` was therefore clamped to `unknown` on
- * its way in and scored 0.8 instead of 0 on its way out. See `core/veracity.ts` for the
- * whole account; consolidation reads the vocabulary now rather than defining it.
- */
 export {
 	aggregateVeracity,
 	clampVeracity,
@@ -109,8 +100,6 @@ function parseSources(raw: string | null): string[] {
 		}
 		return out;
 	} catch {
-		// Same as the episodic tag reader: an unparseable stored list yields no entries, matching what a row
-		// with none gives, and consolidation proceeds with the memory rather than dropping it.
 		return [];
 	}
 }
@@ -203,9 +192,7 @@ export class VeracityConsolidator {
 			if (started) {
 				try {
 					conn.exec("ROLLBACK");
-				} catch {
-					// Preserve original error.
-				}
+				} catch {}
 			}
 			throw error;
 		} finally {
@@ -219,8 +206,6 @@ export class VeracityConsolidator {
 	}
 
 	bayesianUpdate(currentConfidence: number, veracity: string): number {
-		// One loud reader for "what is this veracity worth": an unrecognized value is named
-		// rather than folded into the `unknown` weight without a word.
 		const weight = weightForVeracity(veracity, "bayesianUpdate");
 		const increment = (1.0 - currentConfidence) * weight * 0.3;
 		return Math.min(currentConfidence + increment, 1.0);

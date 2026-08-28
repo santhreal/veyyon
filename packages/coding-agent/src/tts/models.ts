@@ -1,26 +1,21 @@
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { TinyModelDtype } from "../tiny/dtype";
 
-/** Voice exposed by a local TTS model. Kokoro ships a fixed catalog of named voices; a voice is just a stable id (e.g. `af_heart`) plus a display label. */
 export interface TtsLocalVoiceSpec {
 	id: string;
 	label: string;
 }
 
-/** A local (on-device, ONNX) text-to-speech model the worker can load. `repo` is the Hugging Face model id loaded through `kokoro-js` */
 export interface TtsLocalModelSpec {
 	key: string;
 	repo: string;
 	dtype: TinyModelDtype;
-	/** PCM sample rate the model emits; fallback only — the worker uses the value RawAudio reports. */
 	sampleRate: number;
 	label: string;
 	description: string;
-	/** First entry is the model's default voice. */
 	voices: readonly TtsLocalVoiceSpec[];
 }
 
-/** Curated Kokoro-82M voice catalog. Kokoro ships ~28 voices; we surface the higher-graded ones across American/British × female/male so the picker stays */
 export const KOKORO_VOICES: readonly TtsLocalVoiceSpec[] = [
 	{ id: "af_heart", label: "Heart (American female)" },
 	{ id: "af_bella", label: "Bella (American female)" },
@@ -36,13 +31,10 @@ export const KOKORO_VOICES: readonly TtsLocalVoiceSpec[] = [
 	{ id: "bm_fable", label: "Fable (British male)" },
 ] as const;
 
-/** Default voice within the default model — Kokoro's flagship grade-A voice. */
 export const DEFAULT_TTS_VOICE = "af_heart";
 
-/** Default local TTS model used when `tts.localModel` is unset. */
 export const DEFAULT_TTS_LOCAL_MODEL_KEY = "kokoro";
 
-/** Local TTS model registry. Kokoro-82M is the on-device SoTA tiny TTS (tops the TTS Arena leaderboard); the `onnx-community` ONNX export runs through */
 export const TTS_LOCAL_MODELS = [
 	{
 		key: "kokoro",
@@ -76,13 +68,11 @@ export const TTS_LOCAL_MODEL_OPTIONS = [
 	},
 ] as const satisfies ReadonlyArray<{ value: TtsLocalModelKey; label: string; description: string }>;
 
-/** Voice options for the `tts.localVoice` setting picker (default model's catalog). */
 export const TTS_LOCAL_VOICE_OPTIONS = KOKORO_VOICES.map(voice => ({
 	value: voice.id,
 	label: voice.label,
 })) as ReadonlyArray<{ value: string; label: string }>;
 
-/** Accepted `tts.localVoice` values (default model's catalog) for schema validation. */
 export const TTS_LOCAL_VOICE_VALUES = KOKORO_VOICES.map(voice => voice.id) as readonly string[];
 
 export function getTtsLocalModelSpec(key: string): TtsLocalModelSpec | undefined {
@@ -93,14 +83,12 @@ export function isTtsLocalModelKey(value: string): value is TtsLocalModelKey {
 	return getTtsLocalModelSpec(value) !== undefined;
 }
 
-/** Resolve a model key (or the default) to its Hugging Face repo id. */
 export function resolveTtsRepo(modelKey: string | undefined): string {
 	const spec = (modelKey && getTtsLocalModelSpec(modelKey)) || getTtsLocalModelSpec(DEFAULT_TTS_LOCAL_MODEL_KEY);
 	if (!spec) throw new Error(`No local TTS model registered for key: ${modelKey ?? DEFAULT_TTS_LOCAL_MODEL_KEY}`);
 	return spec.repo;
 }
 
-/** Resolve a requested voice id to a concrete voice the model supports, falling back to the model's default voice (first entry) when the id is unknown or the */
 export function resolveTtsVoice(modelKey: string | undefined, voice: string | undefined): string {
 	const spec = (modelKey && getTtsLocalModelSpec(modelKey)) || getTtsLocalModelSpec(DEFAULT_TTS_LOCAL_MODEL_KEY);
 	const fallback = spec?.voices[0]?.id ?? DEFAULT_TTS_VOICE;
@@ -109,7 +97,6 @@ export function resolveTtsVoice(modelKey: string | undefined, voice: string | un
 	return match ? match.id : fallback;
 }
 
-/** An interrupted first download leaves a truncated weight file in the transformers.js cache; the Hub loader trusts any present file, so every later */
 export function isCorruptModelCacheError(error: unknown): boolean {
 	const message = errorMessage(error);
 	return /protobuf parsing failed|load model from .+ failed/i.test(message);

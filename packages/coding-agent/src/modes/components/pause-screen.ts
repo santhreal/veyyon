@@ -1,4 +1,3 @@
-/** Fullscreen `/pause` screen. `/pause` engages the process-global {@link agentPauseGate}, freezing every */
 import { agentPauseGate } from "@veyyon/agent-core";
 import {
 	type Component,
@@ -16,7 +15,6 @@ import { theme } from "../theme/theme";
 import { matchesAppInterrupt } from "../utils/keybinding-matchers";
 import { renderEmberField } from "./sun";
 
-/** Slice of `InteractiveModeContext` the pause screen drives. Narrow so tests can exercise the full engage → hold → release lifecycle without a real TUI. */
 export interface PauseScreenHost {
 	ui: {
 		showOverlay(component: Component, options?: OverlayOptions): OverlayHandle;
@@ -28,15 +26,12 @@ export interface PauseScreenHost {
 	readonly sessionName?: string;
 }
 
-/** Refresh cadence for the live "paused for" clock. */
 const TICK_MS = 1_000;
 
-/** Pause-bar glyph geometry (rows × columns of full blocks per bar). */
 const BAR_ROWS = 7;
 const BAR_WIDTH = 5;
 const BAR_GAP = 4;
 
-/** Below either bound the full scene cannot breathe; drop to the compact card. */
 const MIN_FULL_WIDTH = 64;
 const MIN_FULL_HEIGHT = 18;
 
@@ -46,10 +41,8 @@ const BODY_LINES = [
 	"In-flight calls finish; nothing new starts until you resume.",
 ] as const;
 const RESUME_HINT = "esc · enter · space · click — resume";
-/** The compact card has no room for the key list; both surfaces name the click. */
 const COMPACT_RESUME_HINT = "esc · click — resume";
 
-/** Paint the pause scene as exactly `height` rows, vertically centered. Exported for tests. */
 export function renderPauseScreen(width: number, height: number, elapsedMs: number, sessionName?: string): string[] {
 	const compact = width < MIN_FULL_WIDTH || height < MIN_FULL_HEIGHT;
 	const content: string[] = [];
@@ -69,7 +62,6 @@ export function renderPauseScreen(width: number, height: number, elapsedMs: numb
 			content.push("");
 			content.push("");
 		}
-		// The pause bars are two fields of burning ember, not flat blocks.
 		const t = Math.min(1, elapsedMs / 6000);
 		const left = renderEmberField({ cols: BAR_WIDTH, rows: BAR_ROWS, time: t, trueColor: TERMINAL.trueColor });
 		const right = renderEmberField({
@@ -101,7 +93,6 @@ export function renderPauseScreen(width: number, height: number, elapsedMs: numb
 	return lines.slice(0, Math.max(1, height));
 }
 
-/** Fullscreen overlay component; resolves {@link run} when a resume key lands. */
 export class PauseScreenComponent implements Component, OverlayFocusOwner {
 	#timer: NodeJS.Timeout | undefined;
 	#done = Promise.withResolvers<void>();
@@ -110,7 +101,6 @@ export class PauseScreenComponent implements Component, OverlayFocusOwner {
 
 	constructor(readonly host: PauseScreenHost) {}
 
-	/** Start the clock; resolves once the user asks to resume. */
 	run(): Promise<void> {
 		this.#startedAt = agentPauseGate.pausedAt ?? Date.now();
 		this.#timer ??= setInterval(() => {
@@ -133,14 +123,10 @@ export class PauseScreenComponent implements Component, OverlayFocusOwner {
 	}
 
 	handleInput(data: string): void {
-		// The scene is one target: anywhere on it resumes, which is what the hint promises. A fullscreen overlay holds the whole mouse-tracking
 		if (data.startsWith("\x1b[<")) {
 			if (parseSgrMouse(data)?.leftClick && !this.#disposed) this.#done.resolve();
 			return;
 		}
-		// Every dismissal path resumes — including ctrl+c, which must never
-		// double as "abort agents" while the whole point of the screen is that
-		// nothing gets lost.
 		if (
 			matchesAppInterrupt(data) ||
 			matchesKey(data, "enter") ||
@@ -163,7 +149,6 @@ export class PauseScreenComponent implements Component, OverlayFocusOwner {
 	}
 }
 
-/** Engage the global pause gate and hold the fullscreen pause screen until the user resumes. No-op when the gate is already engaged. Always releases the */
 export async function runPauseScreen(host: PauseScreenHost): Promise<void> {
 	if (!agentPauseGate.pause()) return;
 	const component = new PauseScreenComponent(host);

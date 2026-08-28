@@ -19,9 +19,6 @@ import {
 	parseDaemonWireResponse,
 } from "./protocol";
 
-// How long a client waits to reach the LOCAL broker over its unix socket,
-// including spawning one if none is live. A loopback budget, unrelated to the
-// relay connect timeout in collab/host.ts, which crosses the network.
 const BROKER_CONNECT_TIMEOUT_MS = 10_000;
 const CONNECT_RETRY_MS = 50;
 
@@ -33,19 +30,13 @@ interface PendingRequest {
 	removeAbort?: () => void;
 }
 
-/** Broker location and lifecycle overrides used by smoke tests and isolated consumers. */
 export interface DaemonBrokerClientOptions {
-	/** Runtime directory override; defaults to the project-scoped config path. */
 	runtimeDir?: string;
-	/** Last-client shutdown grace override in milliseconds. */
 	idleGraceMs?: number;
-	/** Exited process retention TTL before purge in milliseconds (0 = never clean up). */
 	cleanupWaitMs?: number;
-	/** Session CPU budget hook for the broker spawn. The broker is shared per project and spawns every managed daemon, so adopting the broker joins */
 	adoptSpawnedPid?: (pid: number) => void;
 }
 
-/** Persistent per-process connection to one project's daemon broker. */
 export interface DaemonBrokerClient {
 	readonly projectDir: string;
 	request(operation: DaemonOperation, signal?: AbortSignal): Promise<DaemonRpcResult>;
@@ -198,10 +189,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 		try {
 			this.#bindSocket(await openSocket(this.#endpoint, 250));
 			return;
-		} catch {
-			// No live broker. Multiple clients may race to spawn; the broker's PID
-			// lease selects one winner before any candidate touches the socket.
-		}
+		} catch {}
 		this.#spawnBroker();
 		const deadline = Date.now() + BROKER_CONNECT_TIMEOUT_MS;
 		let lastError: Error | undefined;
@@ -242,9 +230,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 		this.#buffer = "";
 		socket.setEncoding("utf8");
 		socket.on("data", chunk => this.#onData(chunk));
-		socket.on("error", () => {
-			// The close handler rejects pending requests with one stable error.
-		});
+		socket.on("error", () => {});
 		socket.on("close", () => {
 			if (this.#socket === socket) this.#socket = undefined;
 			this.#rejectPending(new Error("Daemon broker connection closed"));
@@ -297,7 +283,6 @@ class SocketDaemonClient implements DaemonBrokerClient {
 const sharedClients = new Map<string, Promise<DaemonBrokerClient>>();
 let cancelExitCleanup: (() => void) | undefined;
 
-/** Create an independent socket connection to one project's shared daemon broker. */
 export async function createDaemonBrokerClient(
 	projectDir: string,
 	options: DaemonBrokerClientOptions = {},
@@ -308,7 +293,6 @@ export async function createDaemonBrokerClient(
 	return new SocketDaemonClient(canonical, runtimeDir, token, options);
 }
 
-/** Get the process-shared daemon broker client for one canonical project directory. */
 export async function daemonClientForProject(
 	projectDir: string,
 	options: DaemonBrokerClientOptions = {},
@@ -320,7 +304,6 @@ export async function daemonClientForProject(
 			options.cleanupWaitMs ?? (isSettingsInitialized() ? Settings.instance.get("launch.cleanupWaitMs") : undefined);
 		pending = createDaemonBrokerClient(canonical, { ...options, cleanupWaitMs });
 		sharedClients.set(canonical, pending);
-		// A connection that fails is not cached. `createDaemonBrokerClient` reads the runtime token and canonicalizes the project directory, and both fail
 		const attempt = pending;
 		void attempt.catch(() => {
 			if (sharedClients.get(canonical) === attempt) sharedClients.delete(canonical);
@@ -332,12 +315,9 @@ export async function daemonClientForProject(
 	return pending;
 }
 
-/** Close every project broker connection held by this veyyon process. */
 export async function closeDaemonClients(): Promise<void> {
 	const pending = Array.from(sharedClients.values());
 	sharedClients.clear();
-	// One connection that never resolved must not strand the rest: settle every
-	// entry and close the ones that produced a client.
 	for (const result of await Promise.allSettled(pending)) {
 		if (result.status === "fulfilled") result.value.close();
 	}
@@ -345,7 +325,6 @@ export async function closeDaemonClients(): Promise<void> {
 	cancelExitCleanup = undefined;
 }
 
-/** Exercise worker-host broker startup and authenticated RPC for distribution smoke tests. */
 export async function smokeTestDaemonBroker(): Promise<void> {
 	const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-daemon-smoke-project-"));
 	const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-daemon-smoke-run-"));

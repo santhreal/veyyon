@@ -1,4 +1,3 @@
-/** Plain-text / markdown session formatting for `/dump` and `/advisor dump raw`. Renders a prelude (system prompt, model/thinking config, tool inventory) */
 import type { AgentMessage, ThinkingLevel } from "@veyyon/agent-core";
 import type { AssistantMessage, Model, ToolExample, TSchema } from "@veyyon/ai";
 import { renderDelimitedThinking, renderToolInventory } from "@veyyon/ai/dialect";
@@ -17,7 +16,6 @@ import {
 	pythonExecutionToText,
 } from "./messages";
 
-/** Minimal tool shape for dump output (matches AgentTool fields used by formatSessionDumpText). */
 export interface SessionDumpToolInfo {
 	name: string;
 	description: string;
@@ -50,7 +48,6 @@ function toInventoryTools(tools: readonly SessionDumpToolInfo[]): InventoryTool[
 	}));
 }
 
-/** System prompt + model/thinking config + tool inventory — shared by both transcript styles. */
 function renderDumpHeader(options: FormatSessionDumpTextOptions, inventoryTools: readonly InventoryTool[]): string[] {
 	const lines: string[] = [];
 
@@ -82,7 +79,6 @@ function renderDumpHeader(options: FormatSessionDumpTextOptions, inventoryTools:
 	return lines;
 }
 
-/** Append the legacy per-message markdown-heading transcript (the pre-16.x `/dump` body). */
 function appendMarkdownTranscript(lines: string[], messages: readonly AgentMessage[]): void {
 	for (const msg of messages) {
 		if (msg.role === "user" || msg.role === "developer") {
@@ -105,8 +101,6 @@ function appendMarkdownTranscript(lines: string[], messages: readonly AgentMessa
 				} else if (c.type === "thinking") {
 					const thinking = canonicalizeMessage(c.thinking);
 					if (thinking.length === 0) continue;
-					// Unwrap any literal `<thinking>` envelope already present in the
-					// block (e.g. Opus 4.5 — issue #2700) so the dump never nests tags.
 					lines.push(`${renderDelimitedThinking("<thinking>", "</thinking>", thinking)}\n`);
 				} else if (c.type === "toolCall") {
 					lines.push(`### Tool Call: ${c.name}`);
@@ -188,8 +182,6 @@ function appendMarkdownTranscript(lines: string[], messages: readonly AgentMessa
 			lines.push("## File Mention\n");
 			for (const file of fileMsg.files) {
 				lines.push(`<file path="${file.path}">`);
-				// A collab guest holds a replica whose mention bodies were never sent, and saying so
-				// beats an empty block that reads like a file with nothing in it.
 				if (file.contentNotReplicated) lines.push("[body not replicated to this collab guest]");
 				else if (file.content) lines.push(file.content);
 				if (file.image) lines.push("[Image attached]");
@@ -200,7 +192,6 @@ function appendMarkdownTranscript(lines: string[], messages: readonly AgentMessa
 	}
 }
 
-/** Format messages and session metadata as markdown/plain text (same as AgentSession.formatSessionAsText / /dump). */
 export function formatSessionDumpText(options: FormatSessionDumpTextOptions): string {
 	const inventoryTools = toInventoryTools(options.tools ?? []);
 	const lines = renderDumpHeader(options, inventoryTools);

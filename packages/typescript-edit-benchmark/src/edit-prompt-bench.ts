@@ -1,27 +1,3 @@
-/**
- * Edit-prompt cost/quality bench.
- *
- * The `edit` tool's description is the single largest thing Veyyon sends: about
- * 2,000 tokens of patch-language prose against a 27-token schema, shipped on
- * every request forever. Some of it is provably redundant, the `<critical>`
- * block summarises rules stated in full a few lines above. Deleting redundant
- * prose from a tool description is nevertheless the most dangerous kind of
- * saving, because repetition inside a `<critical>` block is an EMPHASIS
- * mechanism: the model may be complying because the rule was said twice.
- *
- * So the prune is not a judgement call, it is a measurement. This bench runs the
- * real edit fixtures through a real model and reports the two numbers that
- * decide it: how many tasks still pass, and what the turn cost. Run it before
- * the prune, prune, run it again. A prune that loses tasks is reverted, whatever
- * it saved.
- *
- * Deliberately NOT a test. It needs a live model and costs money, so a test that
- * ran it would either be skipped in CI forever or make CI pay per commit. It is
- * a tool you point at a model when you are about to change the prompt.
- *
- *   bun packages/typescript-edit-benchmark/src/edit-prompt-bench.ts \
- *     --model cursor/cursor-grok-4.5-medium --label before --json /tmp/before.json
- */
 /// <reference types="./bun-imports.d.ts" />
 
 import * as fs from "node:fs/promises";
@@ -53,18 +29,12 @@ interface BenchReport {
 	tasks: TaskOutcome[];
 }
 
-/** Copy a fixture's input tree into a scratch directory the model may mutate. */
 async function prepareWorkdir(task: EditTask): Promise<string> {
 	const dir = await fs.mkdtemp(path.join(os.tmpdir(), `edit-prompt-bench-${task.id}-`));
 	await fs.cp(task.inputDir, dir, { recursive: true });
 	return dir;
 }
 
-/**
- * The `edit` tool description as this build actually renders it. Reported so a
- * run's cost is attributable to a specific prompt size rather than to whatever
- * the working tree happened to contain when someone ran it.
- */
 async function editToolDescriptionTokens(client: InProcessClient): Promise<number> {
 	const state = await client.getState();
 	const editTool = state.dumpTools?.find(tool => tool.name === "edit");
@@ -129,8 +99,6 @@ async function main(): Promise<void> {
 
 		console.log(`label=${label} model=${model} tasks=${tasks.length}`);
 
-		// Measured once against a throwaway session so the reported prompt size is
-		// this build's, not a stale note in a commit message.
 		const probeDir = await fs.mkdtemp(path.join(os.tmpdir(), "edit-prompt-probe-"));
 		const probe = new InProcessClient({ cwd: probeDir, model, shared, tools: ["read", "edit", "write"] });
 		await probe.start();

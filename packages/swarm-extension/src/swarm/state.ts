@@ -1,16 +1,6 @@
-/**
- * Filesystem state tracker for swarm pipeline execution.
- *
- * Persists pipeline and per-agent state to `.swarm_<name>/` in the workspace.
- * Supports resumability by loading state from disk.
- */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { tryParseJson } from "@veyyon/utils";
-
-// ============================================================================
-// State types
-// ============================================================================
 
 export type PipelineStatus = "idle" | "running" | "completed" | "failed" | "aborted";
 export type AgentStatus = "pending" | "waiting" | "running" | "completed" | "failed";
@@ -35,10 +25,6 @@ export interface SwarmState {
 	startedAt: number;
 	completedAt?: number;
 }
-
-// ============================================================================
-// State tracker
-// ============================================================================
 
 export class StateTracker {
 	#swarmDir: string;
@@ -120,7 +106,6 @@ export class StateTracker {
 			this.#state = state;
 			return state;
 		} catch {
-			// Missing/unreadable state file (text() throws) — no persisted state.
 			return null;
 		}
 	}

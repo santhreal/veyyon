@@ -13,20 +13,17 @@ import {
 import type { Type } from "arktype";
 import { JSONC, YAML } from "bun";
 
-/** Minimal subset of the AJV ConfigSchemaError shape this module actually relies on. */
 interface ConfigSchemaError {
 	instancePath: string;
 	message: string | undefined;
 }
 
-/** Module-private cache of JSON → YAML migrations this process already ran. Prevents `ConfigFile.relocate()` / repeated `tryLoad()` calls from re-running */
 const migratedPaths = new Set<string>();
 
 function migrationKey(jsonPath: string, ymlPath: string): string {
 	return `${jsonPath}\u0000${ymlPath}`;
 }
 
-/** Synchronous JSON → YAML migration kept for callers that still want the eager path (settings init, tests that observe migration completion). */
 function migrateJsonToYml(jsonPath: string, ymlPath: string) {
 	const key = migrationKey(jsonPath, ymlPath);
 	if (migratedPaths.has(key)) return;
@@ -47,7 +44,6 @@ function migrateJsonToYml(jsonPath: string, ymlPath: string) {
 			migratedPaths.add(key);
 			return;
 		}
-		// Atomic write (temp + fsync + rename) so an interrupted migration never leaves a partial .yml. A torn file would keep existing, short-circuit
 		atomicWriteFileSync(ymlPath, YAML.stringify(parsed, null, 2));
 		migratedPaths.add(key);
 	} catch (error) {
@@ -63,16 +59,12 @@ export interface IConfigFile<T> {
 	invalidate?(): void;
 }
 
-/** Bound on ONE issue line. ArkType writes the REJECTED VALUE into its problem text (`transport: must be "pi-native" (was "zzz…")`), so a single oversized */
 const MAX_CONFIG_ISSUE_LENGTH = 200;
-/** Issue lines listed before the rest becomes a count. Bounding each line does not bound the list: 400 short bad providers measured 25,538 characters across */
 const MAX_CONFIG_ISSUES = 20;
-/** Hard ceiling on the whole message. The two caps above are expected to keep it far under this; it exists because per-part caps do not compose into a */
 const MAX_CONFIG_ERROR_LENGTH = 4500;
 
 export class ConfigError extends Error {
 	readonly #message: string;
-	/** @param configPath The file that failed, so the message can name it. The old message named only the config ID (`models`), and an ID is not a location: */
 	constructor(
 		public readonly id: string,
 		public readonly schemaErrors: ConfigSchemaError[] | null | undefined,
@@ -116,12 +108,7 @@ export class ConfigError extends Error {
 			default:
 				message = `${title}\n${messages!.map(m => `  - ${m}`).join("\n")}`;
 		}
-		// The remedy is the file, because that is the only thing the reader can act
-		// on: a schema problem names the key inside it, and a parse problem names
-		// no key at all. Without this the message stated a fault and no next step.
 		if (configPath) message = `${message}\nFix: edit ${configPath}, or delete it to fall back to the defaults.`;
-		// Last, so it holds whatever the parts above produced. Per-part caps do not
-		// compose into a whole-message bound, and this string reaches a transcript.
 		message = truncate(message, MAX_CONFIG_ERROR_LENGTH);
 
 		super(message, { cause });
@@ -145,13 +132,11 @@ export type LoadResult<T> =
 	| { value: T; error?: undefined; status: "ok" }
 	| { value?: null; error?: unknown; status: "not-found" };
 
-/** A schema supplied as a builder instead of a constructed Type, so ConfigFile defers ArkType construction until the config is actually validated (missing */
 export interface DeferredSchema {
 	readonly deferredSchema: true;
 	readonly build: () => Type;
 }
 
-/** Mark a schema builder for lazy construction on first validation. */
 export function deferSchema(build: () => Type): DeferredSchema {
 	return { deferredSchema: true, build };
 }
@@ -168,7 +153,6 @@ export class ConfigFile<T> implements IConfigFile<T> {
 	#resolvedSchema?: Type;
 	#cache?: LoadResult<T>;
 	#auxValidate?: (value: T) => void;
-	/** Whether the unreadable-base fault has been reported for this instance. `#resolveReadPath` runs on every `tryLoad` and every `getMtimeMs`, and `getMtimeMs` is what a */
 	#reportedUnreadable = false;
 
 	constructor(
@@ -186,7 +170,6 @@ export class ConfigFile<T> implements IConfigFile<T> {
 			this.#jsonMigrationPath = `${configPath.slice(0, -5)}.json`;
 		} else if (configPath.endsWith(".json") || configPath.endsWith(".jsonc")) {
 			this.#yamlFallbackPath = null;
-			// JSON configs are still supported without migration.
 			this.#jsonMigrationPath = null;
 		} else {
 			this.#yamlFallbackPath = null;
@@ -194,13 +177,9 @@ export class ConfigFile<T> implements IConfigFile<T> {
 		}
 	}
 
-	/** Run the JSON → YAML migration synchronously, if applicable. Idempotent. Sync callers (tests, settings init) hit this implicitly via {@link tryLoad}. */
 	#ensureMigrated(): void {
 		if (!this.#jsonMigrationPath) return;
 		const baseState = pathStateSync(this.#basePath);
-		// An unreadable base is a base that IS there, so a migration must not run against it. The probe
-		// was `!fs.existsSync(this.#basePath)`, which reads unreadable as absent, so the one state where
-		// writing is unsafe was the state that let the write through.
 		if (baseState === "unreadable") return;
 		if (this.#yamlFallbackPath && baseState === "absent" && fs.existsSync(this.#yamlFallbackPath)) {
 			return;
@@ -208,7 +187,6 @@ export class ConfigFile<T> implements IConfigFile<T> {
 		migrateJsonToYml(this.#jsonMigrationPath, this.#basePath);
 	}
 
-	/** The validation schema, constructing a deferred one on first access. */
 	get schema(): Type {
 		this.#resolvedSchema ??= isDeferredSchema(this.#schemaSource) ? this.#schemaSource.build() : this.#schemaSource;
 		return this.#resolvedSchema;
@@ -222,7 +200,6 @@ export class ConfigFile<T> implements IConfigFile<T> {
 		return result;
 	}
 
-	/** Which file to read: the base path, or the YAML fallback when the base is genuinely not there. FALLING BACK IS ONLY CORRECT FOR AN ABSENT BASE, and `fs.existsSync` cannot express that: it */
 	#resolveReadPath(): string {
 		const baseState = pathStateSync(this.#basePath);
 		if (baseState === "present") {

@@ -1,8 +1,6 @@
-/** Who may re-wake the agent after it settles, and when it must not. A turn that ends with a question to the user is finished: the next thing that */
 import type { AssistantMessage } from "@veyyon/ai";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 
-/** Every autonomous continuation the settle tail can schedule. */
 export type SettleContinuationRoute =
 	| "rewind-checkpoint"
 	| "plan-mode-decision"
@@ -12,9 +10,7 @@ export type SettleContinuationRoute =
 	| "unexpected-stop-retry";
 
 interface SettleContinuationRule {
-	/** Whether this route defers while the reply is a question to the user. Deferring is not dropping: the guard's own state (checkpoint, plan mode, */
 	holdsForUserAnswer: boolean;
-	/** Why that answer, for whoever adds the next route. */
 	why: string;
 }
 
@@ -45,13 +41,10 @@ export const SETTLE_CONTINUATION_POLICY: Record<SettleContinuationRoute, SettleC
 	},
 };
 
-/** The settle facts every route consults, read once per `agent_end`. */
 export interface SettleContinuationState {
-	/** Whether the reply that just landed hands the turn back to the user. */
 	awaitingUserAnswer: boolean;
 }
 
-/** Whether `route` may schedule a continuation at this settle. The only fact today is whether the reply is waiting on the user, but it */
 export function mayContinueAtSettle(route: SettleContinuationRoute, state: SettleContinuationState): boolean {
 	if (state.awaitingUserAnswer && SETTLE_CONTINUATION_POLICY[route].holdsForUserAnswer) return false;
 	return true;
@@ -60,7 +53,6 @@ export function mayContinueAtSettle(route: SettleContinuationRoute, state: Settl
 const MARKDOWN_PROMPT_PREFIX_RE = /^(?:>\s*)?(?:(?:[-*+]|\d+[.)])\s+)*/;
 const PROMPT_LABEL_RE = /^(?:q(?:uestion)?|ask)\s*\d*\s*[:.)-]\s*/i;
 
-/** The word a question opens with, when it ends in a question mark. Exported as data rather than buried in a pattern because the defect this module */
 export const QUESTION_OPENERS = [
 	"what",
 	"which",
@@ -86,7 +78,6 @@ export const QUESTION_OPENERS = [
 	"shall",
 ] as const;
 
-/** Asking for an answer outright, with or without a question mark. */
 export const REQUEST_CUES = [
 	"confirm",
 	"reply",
@@ -99,7 +90,6 @@ export const REQUEST_CUES = [
 	"tell me",
 ] as const;
 
-/** Saying the turn is over without asking anything: the agent is now waiting. */
 export const WAITING_CUES = [
 	"wait for you",
 	"wait for your",
@@ -118,7 +108,6 @@ export const WAITING_CUES = [
 	"holding off until your",
 ] as const;
 
-/** A cue's spaces match any run of whitespace, so a wrapped line reads the same as a straight one, and an apostrophe is optional to cover `ill` for `i'll`. */
 function cueAlternation(cues: readonly string[]): string {
 	return cues
 		.map(cue =>
@@ -168,39 +157,27 @@ function isResponseCueLine(line: string): boolean {
 	return USER_RESPONSE_CUE_RE.test(candidate);
 }
 
-/** Opening or closing line of a Markdown code fence. */
 function isFenceDelimiter(line: string): boolean {
 	return /^(?:```|~~~)/.test(line.trim());
 }
 
-/** A trailing line that carries no sentence of its own: the answer choices, table, rule or fence that a question is followed by. */
 function isStructuralTailLine(line: string): boolean {
 	const text = line.trim();
 	if (text.length === 0) return true;
-	// Fence delimiter, table row, horizontal rule, heading.
 	if (isFenceDelimiter(text)) return true;
 	if (text.startsWith("|")) return true;
 	if (/^(?:[-*_]\s*){3,}$/.test(text)) return true;
 	if (/^#{1,6}\s/.test(text)) return true;
-	// A list item or numbered step. `promptLine` strips these markers, so a
-	// question written as a bullet is caught by the test that runs first.
 	return /^(?:[-*+]|\d+[.)])\s+\S/.test(text);
 }
 
-/** How far back the walk looks for the line that ends the reply's prose. */
 const MAX_TAIL_LINES_SCANNED = 40;
 
-/** Whether this reply hands the turn back to the user. True when the last prose line asks the user something or cues a reply, with */
 export function isAwaitingUserAnswer(message: AssistantMessage): boolean {
-	// Trim is load-bearing: a trailing newline would make the last line empty.
-	// The shared @veyyon/ai assistantText leaves trimming to the caller.
 	const text = assistantText(message).trim();
 	if (!text) return false;
 	const lines = text.split(/\r?\n/);
 	const floor = Math.max(0, lines.length - MAX_TAIL_LINES_SCANNED);
-	// A trailing fenced block is diff, code or output, so its body is not prose
-	// and must not decide. Walking upward, the first delimiter met is the block's
-	// closer, and everything up to its opener is skipped wholesale.
 	let insideFence = false;
 	for (let index = lines.length - 1; index >= floor; index--) {
 		const line = lines[index]?.trim();
@@ -211,9 +188,6 @@ export function isAwaitingUserAnswer(message: AssistantMessage): boolean {
 		}
 		if (insideFence) continue;
 		if (isQuestionPromptLine(line) || isResponseCueLine(line)) return true;
-		// The first line that carries prose of its own decides, so a reply that
-		// ends in an ordinary sentence is not read as a question just because
-		// one appeared earlier in the message.
 		if (!isStructuralTailLine(line)) return false;
 	}
 	return false;

@@ -57,10 +57,6 @@ function normalizeResponsesItemId(itemId: string, fallbackPrefix: ResponsesToolI
 	return truncateResponseItemId(itemId, prefix);
 }
 
-/**
- * Truncate an OpenAI Responses API item ID to 64 characters.
- * IDs exceeding the limit are replaced with a hash-based ID using the given prefix.
- */
 export function truncateResponseItemId(id: string, prefix: string): string {
 	if (id.length <= 64) return id;
 	return `${prefix}_${Bun.hash(id).toString(36)}`;
@@ -70,11 +66,6 @@ interface OpenAIResponsesReplaySanitizeOptions {
 	supportsImageDetailOriginal?: boolean;
 }
 
-/**
- * Clamp `detail: "original"` only where Responses input_image parts live —
- * top-level items and `message.content[]`. Avoids a deep tree walk/clone of
- * every history node on providers that reject native-resolution images.
- */
 function clampReplayItemImageDetail(
 	item: Record<string, unknown>,
 	supportsImageDetailOriginal: boolean,
@@ -114,13 +105,6 @@ export function sanitizeOpenAIResponsesHistoryItemsForReplay(
 	});
 }
 
-/**
- * Sanitize assistant-native Responses history for replay.
- *
- * Returns `undefined` for hidden-empty turns that only contain reasoning and an
- * empty assistant message, allowing callers to rebuild visible transcript
- * history instead of replaying stale native state.
- */
 export function sanitizeOpenAIResponsesAssistantHistoryItemsForReplay(
 	items: Array<Record<string, unknown>>,
 	options: OpenAIResponsesReplaySanitizeOptions = {},
@@ -157,9 +141,6 @@ export function sanitizeOpenAIResponsesAssistantHistoryItemsForReplay(
 	return hasReplayableAssistantOutput ? sanitized : undefined;
 }
 
-/**
- * Drop hidden-only fallback assistant replay after a native Responses snapshot is rejected.
- */
 export function sanitizeOpenAIResponsesAssistantFallbackItemsForReplay(items: ResponseInput): ResponseInput {
 	const sanitized: ResponseInput = [];
 
@@ -201,7 +182,6 @@ function sanitizeOpenAIResponsesHistoryItemForReplay(
 	if (item.type === "image_generation_call") return sanitizeOpenAIResponsesImageGenerationCallForReplay(item);
 	if (item.type === "reasoning") return sanitizeOpenAIResponsesReasoningItemForReplay(item);
 
-	// providerPayload stores raw output items; replay strips item ids and keeps only normalized call_id.
 	const { id: _id, ...sanitizedItem } = item;
 	if (typeof item.call_id === "string") {
 		sanitizedItem.call_id = normalizeReplayedResponsesHistoryCallId(item.call_id, normalizedCallIds);
@@ -284,10 +264,6 @@ export function getOpenAIResponsesHistoryItems(
 	return getOpenAIResponsesHistoryPayload(providerPayload, currentProvider, fallbackProvider)?.items;
 }
 
-/**
- * Resolve cache retention preference.
- * Defaults to "short" and uses VEYYON_CACHE_RETENTION for backward compatibility.
- */
 export function resolveCacheRetention(cacheRetention?: CacheRetention): CacheRetention {
 	if (cacheRetention) return cacheRetention;
 	if ($env.VEYYON_CACHE_RETENTION === "long") return "long";

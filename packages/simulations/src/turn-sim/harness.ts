@@ -50,7 +50,6 @@ export const SIM_IDLE_BUDGET_SECONDS = 0.3;
 export const SIM_FIRST_EVENT_BUDGET_SECONDS = 0.3;
 export const SIM_COST_PER_TOKEN = 0.001;
 
-/** Handle a script uses to emit provider events for one turn. */
 export interface ScriptedTurn {
 	readonly stream: AssistantMessageEventStream;
 	readonly call: number;
@@ -73,10 +72,8 @@ export interface ScriptedTurn {
 	onLocalWorkProbe(callback: (probeCount: number) => void): void;
 }
 
-/** One provider call, scripted. Return when the turn's events are all queued. */
 export type ProviderScript = (turn: ScriptedTurn) => void | Promise<void>;
 
-/** Simulated provider stream with local-work probe hook. */
 class SimulatedProviderStream extends AssistantMessageEventStream {
 	probeCount = 0;
 	onProbe: ((probeCount: number) => void) | undefined;
@@ -121,7 +118,6 @@ setDevinProviderModule({ streamDevin: (m, c, o) => createSimulatedStream(m, c, o
 setAzureOpenAIResponsesProviderModule({ streamAzureOpenAIResponses: (m, c, o) => createSimulatedStream(m, c, o) });
 setOpenAICodexResponsesProviderModule({ streamOpenAICodexResponses: (m, c, o) => createSimulatedStream(m, c, o) });
 
-/** Verify scripted text/thinking does not trip the output-loop detector. */
 function assertScriptedPayloadIsNotALoop(kind: "text" | "thinking", value: string): void {
 	const detector = new ThinkingLoopDetector();
 	const detail = detector.push(value) ?? detector.flush();
@@ -132,7 +128,6 @@ function assertScriptedPayloadIsNotALoop(kind: "text" | "thinking", value: strin
 	);
 }
 
-/** Deterministic filler vocabulary for bulkProse. */
 const FILLER_WORDS = [
 	"parser",
 	"buffer",
@@ -168,7 +163,6 @@ const FILLER_WORDS = [
 	"reader",
 ] as const;
 
-/** Deterministic filler text that avoids loop detector patterns. */
 export function bulkProse(words: number, tag = "sim"): string {
 	const out: string[] = [];
 	for (let i = 0; i < words; i += 1) {
@@ -339,18 +333,15 @@ async function runScript(
 	}
 }
 
-/** Install the script the next provider calls will run. */
 export function installScript(script: ProviderScript): void {
 	activeScript = script;
 }
 
-/** Drop the script and reset the call counter. Call from `afterEach`. */
 export function resetScript(): void {
 	activeScript = undefined;
 	callCount = 0;
 }
 
-/** Fixed list of per-call behaviours. */
 export function scriptTurns(...turns: ProviderScript[]): ProviderScript {
 	return async turn => {
 		const step = turns[Math.min(turn.call, turns.length) - 1];
@@ -359,7 +350,6 @@ export function scriptTurns(...turns: ProviderScript[]): ProviderScript {
 	};
 }
 
-/** Build a simulated model. `id` matters: the loop guard keys off it. */
 export function simulatedModel(id = "sim-model", options?: SimulatedModelOptions): Model<Api> {
 	return buildModel({
 		id,
@@ -387,7 +377,6 @@ export interface SimulatedModelOptions {
 
 const ANY_OBJECT = type("object");
 
-/** Define a tool for a simulation. Defaults keep the declaration to one line. */
 export function simTool(
 	name: string,
 	execute: (toolCallId: string, args: Record<string, unknown>, signal?: AbortSignal) => Promise<unknown>,
@@ -404,7 +393,6 @@ export function simTool(
 	} as AgentTool;
 }
 
-/** Tool whose result is large and distinct across calls. */
 export function bulkTool(name = "work", lines = 900): AgentTool {
 	let call = 0;
 	return simTool(name, async () => {
@@ -425,7 +413,6 @@ export interface SimulationOptions {
 	modelsConfig?: Record<string, unknown>;
 }
 
-/** One provider request as the session made it. */
 export interface SimulationRequest {
 	call: number;
 	provider: string;
@@ -447,7 +434,6 @@ export interface Simulation {
 	dispose(): Promise<void>;
 }
 
-/** Settings shared by every simulation. */
 function simulationSettings(overrides: Record<string, unknown> | undefined): Settings {
 	return Settings.isolated({
 		"compaction.enabled": false,
@@ -590,7 +576,6 @@ export async function createSimulation(options: SimulationOptions): Promise<Simu
 	);
 }
 
-/** Await a condition the session drives without a sleep. */
 export function whenSessionEvent(
 	session: AgentSession,
 	predicate: (event: AgentSessionEvent) => boolean,
@@ -604,7 +589,6 @@ export function whenSessionEvent(
 	return promise;
 }
 
-/** Text of the last assistant message, or "" when the tail is not assistant. */
 export function lastAssistantText(session: AgentSession): string {
 	const last = session.messages.at(-1);
 	if (last?.role !== "assistant") return "";
@@ -614,7 +598,6 @@ export function lastAssistantText(session: AgentSession): string {
 		.join("");
 }
 
-/** Every tool-result text the session recorded, in order. */
 export function toolResultTexts(session: AgentSession): string[] {
 	const texts: string[] = [];
 	for (const message of session.messages) {

@@ -1,4 +1,3 @@
-// Adapted from markit-ai (MIT). See ../NOTICE.
 import { XMLParser } from "fast-xml-parser";
 import { renderMarkdownTable } from "../../utils/markdown-table";
 import { resolveArchiveMemberPath, unzip, unzipText } from "../../utils/zip";
@@ -8,7 +7,6 @@ import { xmlNodeText } from "./xml-text";
 const EXTENSIONS = [".xlsx"];
 const MIMETYPES = ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
 
-/** A text value: bare string/number, or a `{ "#text" }` node when the element carries attributes. */
 type XmlText = string | number | { "#text"?: string };
 
 interface RichTextRun {
@@ -20,7 +18,6 @@ interface StringItem {
 }
 interface Cell {
 	"@_t"?: string;
-	/** A1 cell reference, e.g. "C2". XLSX omits empty cells, so this is the only reliable column source. */
 	"@_r"?: string;
 	v?: string | number;
 	is?: StringItem;
@@ -66,17 +63,14 @@ export class XlsxConverter implements Converter {
 			textNodeName: "#text",
 			processEntities: { maxTotalExpansions: 1_000_000 },
 		});
-		// Parse shared strings
 		const ssXml = unzipText(entries, "xl/sharedStrings.xml");
 		const ss = ssXml ? (parser.parse(ssXml) as SharedStringsDoc) : null;
 		const siList = ss?.sst?.si;
 		const shared = toArray(siList);
-		// Parse workbook for sheet names
 		const wbXml = unzipText(entries, "xl/workbook.xml");
 		if (!wbXml) throw new Error("Invalid XLSX: missing workbook.xml");
 		const wb = parser.parse(wbXml) as WorkbookDoc;
 		const sheets = toArray(wb.workbook?.sheets?.sheet);
-		// Parse workbook rels to map rIds to sheet files
 		const relsXml = unzipText(entries, "xl/_rels/workbook.xml.rels");
 		const rels = relsXml ? (parser.parse(relsXml) as RelationshipsDoc) : null;
 		const relList = toArray(rels?.Relationships?.Relationship);
@@ -90,15 +84,12 @@ export class XlsxConverter implements Converter {
 			const rId = sheet["@_r:id"];
 			const target = relMap.get(rId);
 			if (!target) continue;
-			// The workbook rel Target is relative to xl/ (e.g. worksheets/sheet1.xml,
-			// or ../somesheet.xml); decode and normalize it through the shared resolver.
 			const sheetPath = resolveArchiveMemberPath("xl", target);
 			const sheetXml = unzipText(entries, sheetPath);
 			if (!sheetXml) continue;
 			const parsed = parser.parse(sheetXml) as WorksheetDoc;
 			const rows = toArray(parsed.worksheet?.sheetData?.row);
 			if (rows.length === 0) continue;
-			// Extract all rows as string arrays
 			const tableRows: string[][] = [];
 			for (const row of rows) {
 				const cells = toArray(row.c).map(cell => ({
@@ -117,11 +108,9 @@ export class XlsxConverter implements Converter {
 	}
 
 	getCellValue(cell: Cell, shared: StringItem[]): string {
-		// Shared string
 		if (cell["@_t"] === "s") {
 			return this.getSharedString(shared, Number(cell.v));
 		}
-		// Inline string
 		if (cell["@_t"] === "inlineStr") {
 			const is = cell.is;
 			if (!is) return "";
@@ -132,11 +121,9 @@ export class XlsxConverter implements Converter {
 					.join("");
 			return "";
 		}
-		// Boolean
 		if (cell["@_t"] === "b") {
 			return cell.v === 1 || cell.v === "1" ? "TRUE" : "FALSE";
 		}
-		// Number or formula result
 		if (cell.v != null) return String(cell.v);
 		return "";
 	}
@@ -144,9 +131,7 @@ export class XlsxConverter implements Converter {
 	getSharedString(shared: StringItem[], idx: number): string {
 		const si = shared[idx];
 		if (!si) return "";
-		// Simple text
 		if (si.t != null) return textValue(si.t);
-		// Rich text runs
 		if (si.r) {
 			return toArray(si.r)
 				.map(r => textValue(r.t))
@@ -160,7 +145,6 @@ function textValue(t: XmlText | undefined): string {
 	return xmlNodeText(t);
 }
 
-/** Convert the column part of an A1 reference (e.g. "C" in "C2") to a 0-based column index using bijective base-26: A->0, Z->25, AA->26, AB->27. Returns */
 export function columnRefToIndex(ref: string): number | undefined {
 	const match = /^[A-Za-z]+/.exec(ref);
 	if (!match) return undefined;
@@ -171,7 +155,6 @@ export function columnRefToIndex(ref: string): number | undefined {
 	return index - 1;
 }
 
-/** Place resolved cell values into their true columns. XLSX omits empty cells, so document order is not column order; each cell's A1 `ref` gives its real */
 export function positionRowValues(cells: { ref: string | undefined; value: string }[]): string[] {
 	const row: string[] = [];
 	let next = 0;

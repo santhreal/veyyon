@@ -8,8 +8,6 @@ import type {
 	ChatCompletionToolChoiceOption,
 } from "./openai-chat-wire";
 
-// ─── User-message content parts ─────────────────────────────────────────────
-
 export const textPartSchema = type({
 	type: "'text'",
 	text: "string",
@@ -54,8 +52,6 @@ export const userContentPartSchema = textPartSchema
 	.or(refusalPartSchema)
 	.or(unknownPartSchema);
 
-// ─── Tool calls / tools ─────────────────────────────────────────────────────
-
 export const toolCallSchema = type({
 	id: "string",
 	"type?": "'function'",
@@ -75,8 +71,6 @@ export const toolSchema = type({
 	},
 });
 
-// ─── Tool choice ────────────────────────────────────────────────────────────
-
 export const toolChoiceSchema = type("'auto' | 'none' | 'required'")
 	.or({
 		type: "'function'",
@@ -86,8 +80,6 @@ export const toolChoiceSchema = type("'auto' | 'none' | 'required'")
 		type: "'tool'",
 		name: "string >= 1",
 	});
-
-// ─── Messages ───────────────────────────────────────────────────────────────
 
 const baseContent = type("string").or(userContentPartSchema.array());
 const assistantContent = baseContent.or("null");
@@ -111,10 +103,6 @@ export const assistantMessageSchema = type({
 	role: "'assistant'",
 	"content?": assistantContent,
 	"tool_calls?": toolCallSchema.array(),
-	// DeepSeek-style reasoning channel. The gateway emits it on the way out
-	// (encodeResponse/encodeStream); accept it back so thinking-mode
-	// continuations replay the model's actual reasoning instead of a
-	// synthesized placeholder.
 	"reasoning_content?": "string | null",
 });
 
@@ -122,11 +110,6 @@ export const toolMessageSchema = type({
 	role: "'tool'",
 	"content?": baseContent,
 	"tool_call_id?": "string",
-	// OpenAI's wire spec omits `name` on `role:"tool"`, but in practice the
-	// official Python SDK and several wrappers do send it. Accept it so we can
-	// honour it downstream (Google's `functionResponse.name` is required and
-	// non-empty); empty strings are coerced to undefined so the back-resolve
-	// path runs.
 	"name?": type("string").pipe(v => (v && v.length > 0 ? v : undefined)),
 });
 
@@ -143,19 +126,12 @@ export const messageSchema = systemMessageSchema
 	.or(toolMessageSchema)
 	.or(functionMessageSchema);
 
-// ─── Stream options ─────────────────────────────────────────────────────────
-
 export const streamOptionsSchema = type({
 	"+": "delete",
 	"include_usage?": "boolean",
 });
 
-// ─── Stop sequences ─────────────────────────────────────────────────────────
-
-// OpenAI rejects > 4 stop strings; mirror that at the gateway.
 export const stopSchema = type("string").or("string[] <= 4");
-
-// ─── Top-level request ──────────────────────────────────────────────────────
 
 export const openaiChatRequestSchema = type({
 	model: "string >= 1",
@@ -170,7 +146,6 @@ export const openaiChatRequestSchema = type({
 	"stream?": "boolean",
 	"stream_options?": streamOptionsSchema,
 
-	// ── Typed first-class passthroughs (now consumed by the walker) ────────
 	"response_format?": "unknown",
 	"seed?": "number",
 	"presence_penalty?": "number",
@@ -182,9 +157,6 @@ export const openaiChatRequestSchema = type({
 	"service_tier?": "'auto' | 'default' | 'flex' | 'scale' | 'priority'",
 	"metadata?": type({ "[string]": "unknown" }),
 
-	// ── Accept-and-ignore passthroughs ─────────────────────────────────────
-	// Forward acceptance only: validating these would 400 on shapes the
-	// gateway has no opinion on. The downstream provider does the real check.
 	"logprobs?": "unknown",
 	"top_logprobs?": "unknown",
 	"prediction?": "unknown",

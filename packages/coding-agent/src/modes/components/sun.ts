@@ -1,9 +1,6 @@
-/** The Veyyon sun — the brand signature, rendered in the terminal's own cells. veyyōn (வெய்யோன்) is Tamil for "the sun". This is the terminal port of */
-
 import { SGR_RESET } from "@veyyon/tui/ansi";
 import { clamp01 } from "@veyyon/utils";
 
-/** The disc's shape: where it fades out, and how it dims toward the limb. The ramp and the glyph vocabulary already had one owner; the SHAPE did not, and */
 export const FALLOFF = {
 	innerEdge: 0.72,
 	outerEdge: 1.02,
@@ -11,10 +8,8 @@ export const FALLOFF = {
 	limbExponent: 1.5,
 } as const;
 
-/** Intensity → glyph. Eight stops, dark core of the void to a solid disc. Exported so brand-conformance can pin website/sun-field.js to this exact */
 export const GLYPH = ["·", "·", ":", "░", "▒", "▒", "▓", "█"] as const;
 
-/** Ember band stops (dark rim → white-hot core), truecolor. Mirrors sun.js. Bands 4/5 are the brand ember (website --sun / --sun-hi); brand-conformance */
 export const EMBER: ReadonlyArray<readonly [number, number, number]> = [
 	[0x4a, 0x27, 0x14],
 	[0x6e, 0x34, 0x18],
@@ -26,42 +21,28 @@ export const EMBER: ReadonlyArray<readonly [number, number, number]> = [
 	[0xff, 0xe3, 0xad],
 ];
 
-/** xterm-256 ember approximation for non-truecolor terminals, same ordering. */
 const EMBER_256 = [52, 88, 130, 166, 208, 214, 220, 223] as const;
-/** Pre-computed SGR sequences for each ember band — eliminates per-cell template
- *  literal allocation in the sun/sunset renderers (400+ cells per frame). */
 export const EMBER_FG_TRUECOLOR: readonly string[] = EMBER.map(([r, g, b]) => `\x1b[38;2;${r};${g};${b}m`);
 const EMBER_FG_256: readonly string[] = EMBER_256.map(n => `\x1b[38;5;${n}m`);
 
-/** Terminal cells are about twice as tall as they are wide, so a geometric circle in cell space looks like a tall ellipse. Counting each row-step as */
 const CELL_ASPECT = 2.1;
 
 export interface Ripple {
-	/** Centre in cells. */
 	x: number;
 	y: number;
-	/** Seconds since this ripple was spawned (caller advances it). */
 	age: number;
-	/** Peak amplitude (cursor drift ~0.3, click/keypress flare ~1.0). */
 	amp: number;
 }
 
 export interface SunFieldOptions {
-	/** Field size in cells. */
 	cols: number;
 	rows: number;
-	/** Sun centre, in cells (may be fractional). */
 	cx: number;
 	cy: number;
-	/** Sun radius, in columns. */
 	radius: number;
-	/** Seconds — drives churn, dither animation, and core shimmer. */
 	time: number;
-	/** True to emit 24-bit colour; false uses the 256-colour ember ramp. */
 	trueColor: boolean;
-	/** Active ripples that perturb the field (cursor drift, keypress flares). */
 	ripples?: readonly Ripple[];
-	/** 0..1 — scales every cell down the ember ramp (faded ghost marks). Omit for full fire. */
 	intensity?: number;
 }
 
@@ -70,7 +51,6 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 	return t * t * (3 - 2 * t);
 }
 
-/** Stable per-cell hash in [0, 1) — the ordered-dither and corona source. */
 function hash(x: number, y: number, s: number): number {
 	let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 1274126177)) >>> 0;
 	h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
@@ -81,12 +61,10 @@ function fg(trueColor: boolean, band: number): string {
 	return trueColor ? EMBER_FG_TRUECOLOR[band]! : EMBER_FG_256[band]!;
 }
 
-/** Render the sun as an array of `rows` strings, each `cols` cells wide. Cells below the visibility threshold are spaces that carry no background escape, so */
 export function renderSunField(o: SunFieldOptions): string[] {
 	const { cols, rows, cx, cy, radius, time, trueColor } = o;
 	const ripples = o.ripples ?? [];
 	const R = Math.max(1, radius);
-	// Animation step for the dither so it shimmers without thrashing every frame.
 	const step = Math.floor(time * 5);
 	const out: string[] = [];
 
@@ -99,13 +77,11 @@ export function renderSunField(o: SunFieldOptions): string[] {
 			const dy = (y - cy) * CELL_ASPECT;
 			const d = Math.hypot(dx, dy) / R;
 
-			// Core disc falls off between 0.72R and 1.02R; a faint corona lives just outside. The second term is limb darkening, and it is what makes the
 			const base =
 				(1 - smoothstep(FALLOFF.innerEdge, FALLOFF.outerEdge, d)) *
 				(1 - FALLOFF.limbStrength * d ** FALLOFF.limbExponent);
 			const corona = d > 1.0 && d < 1.26 ? smoothstep(1.26, 1.0, d) * 0.5 : 0;
 
-			// Ripples: damped ring wavelets, like a struck pond, cell-space distance.
 			let rp = 0;
 			for (let ri = 0; ri < ripples.length; ri++) {
 				const r = ripples[ri]!;
@@ -114,7 +90,6 @@ export function renderSunField(o: SunFieldOptions): string[] {
 				rp += Math.sin(rd * 0.9 - r.age * 7) * Math.exp(-r.age * 1.7) * Math.exp(-rd * 0.12) * r.amp;
 			}
 
-			// Low-frequency churn keeps the disc alive without a smooth gradient.
 			const churn =
 				(Math.sin(x * 0.34 + time * 0.9) * Math.sin(y * 0.42 - time * 0.75) +
 					Math.sin(x * 0.13 - y * 0.17 + time * 0.5)) *
@@ -154,24 +129,17 @@ export function renderSunField(o: SunFieldOptions): string[] {
 
 export interface SunMarkOptions {
 	trueColor: boolean;
-	/** 0 = a hot point, 1 = the fully bloomed resting disc. Omit to rest at full. */
 	bloom?: number;
-	/** 0 = fully below the field's bottom edge (the horizon), 1 = risen to centre. */
 	rise?: number;
-	/** Advance for live shimmer/churn; defaults to a fixed resting seed. */
 	time?: number;
 	ripples?: readonly Ripple[];
 }
 
-/** A centred sun mark sized for a logo slot — the tuned recipe behind the launch signature so callers do not re-derive it. The radius is cell-aspect correct for */
 export function sunMark(cols: number, rows: number, o: SunMarkOptions): string[] {
 	const fullR = cols * 0.3;
 	const p = o.bloom === undefined ? 1 : clamp01(o.bloom);
 	const eased = 1 - (1 - p) ** 3; // easeOutCubic
 	const radius = fullR * (0.12 + 0.88 * eased);
-	// The sunrise: at rise 0 the disc rests fully below the field's bottom edge
-	// (the horizon); at rise 1 it has risen to centre. Same easeOutCubic so the
-	// rise and bloom stay in lockstep when driven by one clock.
 	const rise = o.rise === undefined ? 1 : 1 - (1 - clamp01(o.rise)) ** 3;
 	const cy = (rows - 1) / 2 + (1 - rise) * (rows * 0.5 + radius + 1);
 	return renderSunField({
@@ -186,9 +154,6 @@ export function sunMark(cols: number, rows: number, o: SunMarkOptions): string[]
 	});
 }
 
-/* The sunset — the ceremony's closing beat, mirroring the website's page finale: a blood-orange dithered sky (true background pixels, not fg tints), */
-
-/** Sunset sky ramp: near-black zenith down to the ember band at the horizon. */
 const SKY: ReadonlyArray<readonly [number, number, number]> = [
 	[0x05, 0x04, 0x06],
 	[0x0a, 0x06, 0x08],
@@ -212,14 +177,10 @@ const SKY_BG_TRUECOLOR: readonly string[] = SKY.map(([r, g, bl]) => `\x1b[48;2;$
 const SKY_BG_256: readonly string[] = SKY_256.map(n => `\x1b[48;5;${n}m`);
 
 export interface SunsetFieldOptions {
-	/** Field size in cells. */
 	cols: number;
 	rows: number;
-	/** Seconds — drives sky dither and spark drift. */
 	time: number;
-	/** True to emit 24-bit colour; false uses the 256-colour ramps. */
 	trueColor: boolean;
-	/** Horizon row from the top; defaults to ~0.78 of the field. */
 	horizonY?: number;
 }
 
@@ -228,7 +189,6 @@ function skyBg(trueColor: boolean, band: number): string {
 	return trueColor ? SKY_BG_TRUECOLOR[b]! : SKY_BG_256[b]!;
 }
 
-/** Render the sunset as `rows` strings of `cols` cells. Composed as a cell matrix — sky band, sun arc, and sparks resolved per cell, then painted with */
 export function renderSunsetField(o: SunsetFieldOptions): string[] {
 	const { cols, rows, time, trueColor } = o;
 	const horizon = o.horizonY ?? Math.max(1, Math.round(rows * 0.78));
@@ -237,7 +197,6 @@ export function renderSunsetField(o: SunsetFieldOptions): string[] {
 	const sunCy = horizon + 1.2; // the sun is mostly below the horizon — only its cap shows
 	const sunR = Math.max(3, cols * 0.16);
 
-	// Per-cell compose: "sky" carries a SKY band, "sun" an EMBER band.
 	type Cell = { kind: "sky"; band: number } | { kind: "sun"; band: number };
 	const grid: Cell[][] = [];
 	for (let y = 0; y < rows; y++) {
@@ -254,9 +213,6 @@ export function renderSunsetField(o: SunsetFieldOptions): string[] {
 				rowCells.push({ kind: "sun", band: Math.min(7, Math.max(4, Math.floor((1 - d) * 8))) });
 				continue;
 			}
-			// Sky band: darker with altitude, squared easing so the blend out of
-			// black never pops (the website's sunset lesson), ordered dither so
-			// the ramp reads as texture, not stripes.
 			const t = 1 - y / Math.max(1, horizon);
 			const bandF = t * t * (SKY.length - 1);
 			const dither = (hash(x, y, 7) - 0.5) * 1.6;
@@ -265,7 +221,6 @@ export function renderSunsetField(o: SunsetFieldOptions): string[] {
 		grid.push(rowCells);
 	}
 
-	// Sparks: nine embers drifting up off the sunset, fading with altitude.
 	for (let s = 0; s < 9; s++) {
 		const sx = Math.floor(hash(s, 3, 11) * cols);
 		const speed = 0.5 + hash(s, 5, 17) * 0.8;
@@ -280,7 +235,6 @@ export function renderSunsetField(o: SunsetFieldOptions): string[] {
 	const out: string[] = [];
 	for (let y = 0; y < rows; y++) {
 		if (y === horizon) {
-			// The horizon: one hot line the sun melts into.
 			out.push(
 				trueColor
 					? `\x1b[38;2;251;192;109m${"─".repeat(cols)}${SGR_RESET}`
@@ -317,16 +271,12 @@ export function renderSunsetField(o: SunsetFieldOptions): string[] {
 	return out;
 }
 
-/** A position on the ember ramp as an fg escape — the sun heating from a low
- *  coal (0) toward white-hot (1). The cold end starts at band 2 so text stays
- *  legible; band 0 is near-black ground. */
 export function emberBandEscape(ratio: number, trueColor: boolean): string {
 	const t = Math.min(1, Math.max(0, ratio));
 	const band = Math.min(7, 2 + Math.round(t * 5));
 	return fg(trueColor, band);
 }
 
-/** A rectangular patch of the sun's churn — dithered ember bands with no disc. The texture the pause bars are cut from; `seed` offsets the dither so two */
 export function renderEmberField(o: {
 	cols: number;
 	rows: number;

@@ -4,24 +4,16 @@ import { COMPOSER_INSET_COLS } from "./composer-chrome";
 import { appKey } from "./keybinding-hints";
 import { layoutShortcutRows, type ModalShortcut, type ShortcutHitRect } from "./modal-shell";
 
-/** Stable empty-row array for the idle/no-chip render path, so the TUI
- * engine's stableRows reference-equality check sees the same identity. */
 const EMPTY_SHORTCUT_ROWS: readonly string[] = [""];
 
 export interface ComposerShortcutContext {
-	/** Session is streaming/executing (turn in flight). */
 	busy: boolean;
-	/** Editor has a non-empty draft. */
 	hasDraft: boolean;
-	/** Queue holds steered/follow-up messages. */
 	hasQueue: boolean;
-	/** Focused session is a subagent (Esc returns instead of interrupting). */
 	focused: boolean;
-	/** A foreground bash command is waiting (Ctrl+B moves it to background). */
 	canBackgroundBash: boolean;
 }
 
-/** Build the composer chip strip: a single row of actionable context hints rendered between the footline and the input card. */
 export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: ComposerShortcutContext): ModalShortcut[] {
 	const chips: ModalShortcut[] = [];
 
@@ -29,7 +21,6 @@ export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: Com
 		chips.push({ label: `${appKey(keybindings, "app.interrupt")} interrupt`, clickable: true, id: "interrupt" });
 	}
 	if (ctx.canBackgroundBash) {
-		// Ordered after interrupt deliberately. Both appear while a command runs, and the footline reads left-to-right as escalation: background the
 		chips.push({
 			label: `${appKey(keybindings, "app.bash.background")} background`,
 			clickable: true,
@@ -37,8 +28,6 @@ export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: Com
 		});
 	}
 	if (ctx.hasQueue && !ctx.focused) {
-		// The queue hint is the most actionable — the operator usually wants to
-		// either drain it (if the draft was wrong) or add to it.
 		chips.push({
 			label: `${appKey(keybindings, "app.message.dequeue")} dequeue`,
 			clickable: true,
@@ -49,18 +38,15 @@ export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: Com
 	return chips;
 }
 
-/** Composer chip strip. Fixed height (one row), rendered inside the composer zone between the footline and the input card. */
 export class ComposerShortcutsBar implements Component, MouseRoutable {
 	#shortcuts: readonly ModalShortcut[] = [];
 	#hits: ShortcutHitRect[] = [];
 
-	// Render cache: when shortcuts and width are unchanged between frames, return the same array reference so the TUI engine's stableRows tracking
 	#cachedWidth = -1;
 	#cachedShortcuts: readonly ModalShortcut[] | null = null;
 	#cachedRows: readonly string[] = [];
 	#cachedHits: ShortcutHitRect[] = [];
 
-	/** Host maps a clicked chip id to the action its keybinding runs. */
 	onChipClick?: (id: string) => void;
 
 	setShortcuts(shortcuts: readonly ModalShortcut[]): void {
@@ -73,15 +59,12 @@ export class ComposerShortcutsBar implements Component, MouseRoutable {
 	}
 
 	render(width: number): string[] {
-		// Cache hit: same width and same shortcuts reference as last frame.
 		if (width === this.#cachedWidth && this.#shortcuts === this.#cachedShortcuts) {
 			this.#hits = this.#cachedHits;
 			return this.#cachedRows as string[];
 		}
 		this.#cachedWidth = width;
 		this.#cachedShortcuts = this.#shortcuts;
-		// Fixed height: one row in every state, blank when idle, so the footer
-		// never jumps when a turn starts or the queue drains.
 		if (this.#shortcuts.length === 0) {
 			this.#hits = [];
 			this.#cachedHits = [];
@@ -96,8 +79,6 @@ export class ComposerShortcutsBar implements Component, MouseRoutable {
 			this.#cachedRows = EMPTY_SHORTCUT_ROWS;
 			return this.#cachedRows as string[];
 		}
-		// One row in every state: on a narrow terminal the layout would wrap to
-		// two, so keep the first row and drop the rest rather than grow the band.
 		const first = rows[0]!;
 		const hits: ShortcutHitRect[] = [];
 		for (let ci = 0; ci < first.chips.length; ci++) {
@@ -117,7 +98,6 @@ export class ComposerShortcutsBar implements Component, MouseRoutable {
 		return this.#cachedRows as string[];
 	}
 
-	/** The grab is worth taking only while a chip is actually on screen. */
 	wantsPointer(): boolean {
 		return this.#hits.length > 0;
 	}

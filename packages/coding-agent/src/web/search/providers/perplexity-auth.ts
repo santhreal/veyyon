@@ -4,7 +4,6 @@ import { $env, decodeJwtPayload } from "@veyyon/utils";
 
 export const PERPLEXITY_CHAT_BASE_URL = "https://api.perplexity.ai";
 export const PERPLEXITY_RESPONSES_BASE_URL = "https://api.perplexity.ai/v1";
-/** OpenRouter's API base. Re-exported from the owner rather than declared. The name matches the environment variable that overrides it, */
 export const OPENROUTER_BASE_URL = OPENROUTER_API_ENDPOINT;
 export const OAUTH_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 
@@ -37,7 +36,6 @@ export interface PerplexityAuthOptions {
 	forceRefresh?: boolean;
 }
 
-/** Detect API-key endpoints to try in priority order (Perplexity direct, then OpenRouter). */
 export async function getApiConfigs(
 	authStorage: AuthStorage,
 	sessionId: string | undefined,
@@ -46,7 +44,6 @@ export async function getApiConfigs(
 	const useResponses = $env.VEYYON_PERPLEXITY_RESPONSES === "1";
 	const configs: ApiConfig[] = [];
 
-	// A Perplexity OAuth session and a real API key are mutually exclusive here: when the active credential origin is OAuth, `getApiKey("perplexity")`
 	if (authStorage.getCredentialOrigin("perplexity")?.kind !== "oauth") {
 		const perplexityKey = await authStorage.getApiKey("perplexity", sessionId, options);
 		if (perplexityKey) {
@@ -78,14 +75,12 @@ export async function getApiConfigs(
 	return configs;
 }
 
-/** Decode a Perplexity JWT's `exp` claim, in ms. Returns `undefined` when the token has no `exp` (which is the common case — Perplexity sessions are */
 export function jwtExpiryMs(token: string): number | undefined {
 	const decoded = decodeJwtPayload<{ exp?: unknown }>(token);
 	if (!decoded || typeof decoded.exp !== "number" || !Number.isFinite(decoded.exp)) return undefined;
 	return decoded.exp * 1000;
 }
 
-/** Collect all available auth methods to try in priority order */
 export async function getAvailableAuthMethods(
 	authStorage: AuthStorage,
 	sessionId: string | undefined,
@@ -93,13 +88,11 @@ export async function getAvailableAuthMethods(
 ): Promise<PerplexityAuth[]> {
 	const methods: PerplexityAuth[] = [];
 
-	// 1. Cookies take precedence over OAuth as noted in comments/docs
 	const cookies = $env.PERPLEXITY_COOKIES?.trim();
 	if (cookies) {
 		methods.push({ type: "cookies", cookies });
 	}
 
-	// 2. Perplexity OAuth (session bearer)
 	try {
 		const access = await authStorage.getOAuthAccess("perplexity", sessionId, options);
 		const token = access?.accessToken;
@@ -109,15 +102,11 @@ export async function getAvailableAuthMethods(
 				methods.push({ type: "oauth", access });
 			}
 		}
-	} catch {
-		// ignored
-	}
+	} catch {}
 
-	// 3. API key configs (direct, then openrouter)
 	const apiConfigs = await getApiConfigs(authStorage, sessionId, options);
 	for (let mi = 0; mi < apiConfigs.length; mi++) methods.push(apiConfigs[mi]!);
 
-	// 4. Fallback to Perplexity free (anonymous)
 	if (methods.length === 0) {
 		methods.push({ type: "anonymous" });
 	}

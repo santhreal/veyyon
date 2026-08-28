@@ -1,56 +1,39 @@
 import type { ToolChoice } from "@veyyon/ai";
 
-// ── Callback types ──────────────────────────────────────────────────────────
-
 export interface ResolveInfo {
-	/** The ToolChoice that was served to the LLM. */
 	choice: ToolChoice;
 }
 
 export interface RejectInfo {
-	/** The ToolChoice that was yielded but never (or unsuccessfully) served. */
 	choice: ToolChoice;
 	reason: "aborted" | "error" | "cleared" | "removed" | "unavailable" | "not_invoked";
 }
 
-/** "requeue" replays the lost yield next turn; "drop" (or void/undefined) discards it. */
 export type RejectOutcome = "requeue" | "drop";
 
 export interface DirectiveCallbacks {
-	/** Fires when the yield completed; onInvoked directives require the requested tool to run first. */
 	onResolved?: (info: ResolveInfo) => void;
-	/** Fires when the yield is being discarded. Return "requeue" to replay the same value at the head of the queue for the next turn. Default: "drop". */
 	onRejected?: (info: RejectInfo) => RejectOutcome | undefined;
-	/** Handler invoked when the model actually calls the forced tool. The queue directive carries the real execution logic; the tool's own execute() is */
 	onInvoked?: (input: unknown) => Promise<unknown> | unknown;
 }
 
-// ── Directive ───────────────────────────────────────────────────────────────
-
 export interface ToolChoiceDirective {
 	generator: Iterator<ToolChoice>;
-	/** Stable label for targeted removal and debugging (e.g. "user-force"). */
 	label: string;
 	callbacks: DirectiveCallbacks;
 }
 
 export interface PushOptions {
-	/** Prepend to head instead of appending to tail. Default: false. */
 	now?: boolean;
 	label?: string;
-	/** Lifecycle callbacks for this directive. */
 	onResolved?: DirectiveCallbacks["onResolved"];
 	onRejected?: DirectiveCallbacks["onRejected"];
 	onInvoked?: DirectiveCallbacks["onInvoked"];
 }
 
-// ── Generators ──────────────────────────────────────────────────────────────
-
 export function* onceGen(choice: ToolChoice): Generator<ToolChoice, void, unknown> {
 	yield choice;
 }
-
-// ── In-flight state ─────────────────────────────────────────────────────────
 
 interface InFlight {
 	directive: ToolChoiceDirective;
@@ -58,26 +41,17 @@ interface InFlight {
 	invoked: boolean;
 }
 
-/** A non-forcing pending preview invoker. Registered by `queueResolveHandler` (resolve previews) so the `resolve` tool can dispatch to a staged action */
 interface PendingInvoker {
-	/** Unique id for this staged preview; never reused (never clobbered by label). */
 	id: string;
-	/** Source tool that staged the preview (e.g. "ast_edit"), for the reminder. */
 	sourceToolName: string;
 	onInvoked: (input: unknown) => Promise<unknown> | unknown;
 }
 
-// ── Queue ───────────────────────────────────────────────────────────────────
-
 export class ToolChoiceQueue {
 	#queue: ToolChoiceDirective[] = [];
 	#inFlight: InFlight | undefined;
-	/** Label of the directive whose last yield was resolved this turn. Consumers (e.g. todo reminder suppression) read via consumeLastServedLabel(). */
 	#lastResolvedLabel: string | undefined;
-	/** Non-forcing pending preview invokers, stacked by UNIQUE id. The `resolve` tool dispatches to the head; the agent-loop's soft-tool-requirement */
 	#pendingInvokers: PendingInvoker[] = [];
-
-	// ── Push ──────────────────────────────────────────────────────────────
 
 	pushOnce(choice: ToolChoice, options?: PushOptions): void {
 		this.push(onceGen(choice), options);
@@ -104,9 +78,6 @@ export class ToolChoiceQueue {
 		}
 	}
 
-	// ── Consume ───────────────────────────────────────────────────────────
-
-	/** Advance the head directive and return its next yield. Records the value as in-flight until resolve() or reject() is called. */
 	nextToolChoice(): ToolChoice | undefined {
 		while (this.#queue.length > 0) {
 			const head = this.#queue[0]!;
@@ -121,9 +92,6 @@ export class ToolChoiceQueue {
 		return undefined;
 	}
 
-	// ── Lifecycle ─────────────────────────────────────────────────────────
-
-	/** The in-flight yield completed normally. Directives with onInvoked are only consumed after their requested tool ran; a normal text turn or a different */
 	resolve(): void {
 		const inFlight = this.#inFlight;
 		if (!inFlight) return;
@@ -137,7 +105,6 @@ export class ToolChoiceQueue {
 		inFlight.directive.callbacks.onResolved?.({ choice: inFlight.yielded });
 	}
 
-	/** The in-flight yield was not served, or the turn aborted/errored. Fires onRejected to let the caller decide: "requeue" replays the exact */
 	reject(reason: RejectInfo["reason"]): void {
 		const inFlight = this.#inFlight;
 		this.#inFlight = undefined;
@@ -149,7 +116,6 @@ export class ToolChoiceQueue {
 		});
 
 		if (outcome === "requeue") {
-			// Re-queue only the lost yield, not the rest of the sequence. Carry forward callbacks so the replayed yield still executes and finalizes correctly,
 			this.#queue.unshift({
 				generator: onceGen(inFlight.yielded),
 				label: inFlight.directive.label,
@@ -162,12 +128,10 @@ export class ToolChoiceQueue {
 		}
 	}
 
-	/** True if there is an in-flight yield that hasn't been resolved or rejected. */
 	get hasInFlight(): boolean {
 		return this.#inFlight !== undefined;
 	}
 
-	/** Return the in-flight directive's onInvoked handler and mark it when called. */
 	peekInFlightInvoker(): ((input: unknown) => Promise<unknown> | unknown) | undefined {
 		const inFlight = this.#inFlight;
 		const onInvoked = inFlight?.directive.callbacks.onInvoked;
@@ -178,9 +142,6 @@ export class ToolChoiceQueue {
 		};
 	}
 
-	// ── Non-forcing pending invokers ────────────────────────────────────── Preview producers (queueResolveHandler) register here so `resolve` can
-
-	/** Register (or replace by exact id) a non-forcing pending preview invoker. */
 	registerPendingInvoker(
 		id: string,
 		sourceToolName: string,
@@ -190,37 +151,28 @@ export class ToolChoiceQueue {
 		this.#pendingInvokers.push({ id, sourceToolName, onInvoked });
 	}
 
-	/** Drop the pending invoker with this id (e.g. after it resolves). */
 	removePendingInvoker(id: string): void {
 		this.#pendingInvokers = this.#pendingInvokers.filter(p => p.id !== id);
 	}
 
-	/** Drop every pending preview invoker without touching hard tool-choice directives. */
 	clearPendingInvokers(): void {
 		if (this.#pendingInvokers.length === 0) return;
 		this.#pendingInvokers = [];
 	}
 
-	/** True when at least one non-forcing pending preview is registered. */
 	get hasPendingInvoker(): boolean {
 		return this.#pendingInvokers.length > 0;
 	}
 
-	/** The head (most-recently registered) pending invoker's handler, for resolve dispatch. */
 	peekPendingInvoker(): ((input: unknown) => Promise<unknown> | unknown) | undefined {
 		return this.#pendingInvokers.at(-1)?.onInvoked;
 	}
 
-	/** The head pending preview's stable id + source tool, for building the agent-level
-	 *  SoftToolRequirement (the id drives reminder re-injection when the head changes). */
 	peekPendingHead(): { id: string; sourceToolName: string } | undefined {
 		const head = this.#pendingInvokers.at(-1);
 		return head ? { id: head.id, sourceToolName: head.sourceToolName } : undefined;
 	}
 
-	// ── Cleanup ───────────────────────────────────────────────────────────
-
-	/** Remove all directives with the given label. Rejects in-flight if it matches. */
 	removeByLabel(label: string): void {
 		if (this.#inFlight?.directive.label === label) {
 			this.reject("removed");
@@ -228,7 +180,6 @@ export class ToolChoiceQueue {
 		this.#queue = this.#queue.filter(d => d.label !== label);
 	}
 
-	/** Empty the queue and reject any in-flight yield. */
 	clear(): void {
 		if (this.#inFlight) {
 			this.reject("cleared");
@@ -238,16 +189,12 @@ export class ToolChoiceQueue {
 		this.#lastResolvedLabel = undefined;
 	}
 
-	// ── Observation ───────────────────────────────────────────────────────
-
-	/** Return the label of the most recently resolved directive, then clear it. */
 	consumeLastServedLabel(): string | undefined {
 		const label = this.#lastResolvedLabel;
 		this.#lastResolvedLabel = undefined;
 		return label;
 	}
 
-	/** For tests/debug: labels of currently queued directives in order. */
 	inspect(): readonly string[] {
 		return this.#queue.map(d => d.label);
 	}

@@ -78,16 +78,6 @@ function containsScope(value: unknown, expected: string): boolean {
 	return false;
 }
 
-/**
- * The body of a Nous Portal response, or the reason there is no usable body.
- *
- * The status is read BEFORE the parse failure is reported. Every caller here parses the body
- * before it looks at `response.ok`, because a Portal error arrives as a JSON `error` field on a
- * 4xx. A gateway in front of the Portal does not play along: a 502 or a 503 answers with an HTML
- * page, and reporting that as "returned invalid JSON" of kind `validation` describes the operator's
- * request as malformed when the Portal was never reached. The status is what happened, so a failed
- * response says so and keeps the parse failure as its cause.
- */
 async function responseJson<T>(response: Response, operation: string): Promise<T> {
 	try {
 		return (await response.json()) as T;
@@ -210,8 +200,6 @@ async function requestDeviceAuthorization(fetchImpl: FetchImpl, signal?: AbortSi
 		deviceCode: payload.device_code.trim(),
 		userCode: payload.user_code.trim(),
 		verificationUri,
-		// RFC 8628 marks `verification_uri_complete` optional. Without it the
-		// user opens the plain URI and types the code shown beside it.
 		verificationUriComplete: isNonEmptyString(payload.verification_uri_complete)
 			? payload.verification_uri_complete.trim()
 			: verificationUri,
@@ -226,8 +214,6 @@ async function pollForToken(
 	signal?: AbortSignal,
 ): Promise<OAuthCredentials> {
 	return pollOAuthDeviceCodeFlow<OAuthCredentials>({
-		// RFC 8628 `interval` is a floor, not a ceiling. `pollOAuthDeviceCodeFlow`
-		// enforces its own 1s minimum and 5s default.
 		intervalSeconds: device.intervalSeconds,
 		expiresInSeconds: device.expiresInSeconds,
 		signal,

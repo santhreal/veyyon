@@ -24,15 +24,6 @@ import type {
 } from "./types";
 import { THINK_CLOSE, THINK_OPEN } from "./wire-tags";
 
-// Spec: docs/internal/toolconv/pi-native.md. Calls are `<call:NAME …>…</call:NAME>`
-// blocks; arguments are attributes (scalars), child elements (anything), or a
-// verbatim inline body (bulk string). Typing is schema-driven: string-typed
-// values are verbatim, everything else JSON-coerces.
-
-/**
- * Pi-native's own tags, prefixed with the dialect because `gemma.ts` used the bare `PI_CALL_OPEN` for a completely
- * different byte sequence. See the note in that file.
- */
 const PI_CALL_OPEN = "<call:";
 const PI_CALL_CLOSE_PREFIX = "</call:";
 
@@ -46,9 +37,7 @@ interface OpenCall {
 	attrs: Record<string, unknown>;
 	rawBlock: string;
 	body: string;
-	/** "unknown" until the first non-whitespace body content decides the shape. */
 	bodyMode: "unknown" | "inline" | "elements";
-	/** Target parameter the inline body fills; deltas stream against it. */
 	inlineKey: string | null;
 	streamedInline: number;
 }
@@ -88,7 +77,6 @@ class PiNativeInbandScanner implements InbandScanner {
 		}
 		if (final) {
 			if (this.#state === "thinking") this.#endThinking(events);
-			// An unterminated call at end of stream is dropped (mirrors GLM/hermes).
 			this.#call = null;
 			this.#state = "outside";
 			this.#buffer = "";
@@ -149,12 +137,10 @@ class PiNativeInbandScanner implements InbandScanner {
 		this.#state = "outside";
 	}
 
-	/** Consume the `<call:NAME attr…>` / `<call:NAME attr…/>` opening tag. */
 	#consumeOpenTag(final: boolean, events: InbandScanEvent[]): boolean {
 		const end = findTagEnd(this.#buffer);
 		if (end === -1) {
 			if (final) {
-				// Malformed / truncated open tag at stream end: surface as text.
 				events.push({ type: "text", text: this.#buffer });
 				this.#buffer = "";
 				this.#state = "outside";
@@ -164,7 +150,6 @@ class PiNativeInbandScanner implements InbandScanner {
 		const tag = this.#buffer.slice(0, end + 1);
 		const parsed = parseOpenTag(tag);
 		if (!parsed) {
-			// Not a well-formed call tag (bad name): emit `<call:` as text and rescan.
 			events.push({ type: "text", text: PI_CALL_OPEN });
 			this.#buffer = this.#buffer.slice(PI_CALL_OPEN.length);
 			this.#state = "outside";
@@ -196,16 +181,12 @@ class PiNativeInbandScanner implements InbandScanner {
 		return true;
 	}
 
-	/** Accumulate the call body verbatim up to the call's own named closer. */
 	#consumeBody(final: boolean, events: InbandScanEvent[]): boolean {
 		const call = this.#call;
 		if (!call) {
 			this.#state = "outside";
 			return true;
 		}
-		// Search the whole accumulated body: in element form the closer text may
-		// legitimately appear inside a string-typed child element, so a candidate
-		// closer only counts when everything before it parses as closed elements.
 		const combined = call.body + this.#buffer;
 		let close = combined.indexOf(call.closer);
 		if (call.bodyMode === "elements") {
@@ -226,7 +207,6 @@ class PiNativeInbandScanner implements InbandScanner {
 		call.rawBlock += call.closer;
 		const args = finalizeCall(call);
 		if (call.bodyMode === "inline" && call.inlineKey !== null) {
-			// Flush the delta the trailing-newline holdback kept out of the stream.
 			const value = typeof args[call.inlineKey] === "string" ? (args[call.inlineKey] as string) : "";
 			const tail = value.slice(call.streamedInline);
 			if (tail.length > 0) {
@@ -246,9 +226,6 @@ class PiNativeInbandScanner implements InbandScanner {
 		if (call.bodyMode === "unknown") {
 			const probe = call.body.replace(/^[\s]*/, "");
 			if (probe.length === 0) return;
-			// Element form when the body's first non-whitespace content is a child
-			// tag; otherwise the verbatim inline body (spec "Element form vs inline
-			// body"). `<` followed by a name char is the child-tag signature.
 			if (probe[0] === "<") {
 				if (probe.length < 2) return;
 				call.bodyMode = /[A-Za-z_]/.test(probe[1]!) ? "elements" : "inline";
@@ -257,10 +234,6 @@ class PiNativeInbandScanner implements InbandScanner {
 			}
 		}
 		if (call.bodyMode === "inline" && call.inlineKey !== null) {
-			// Stream the verbatim body as arg deltas against the inline target
-			// parameter, holding back the block-delimiter newlines: the leading
-			// one is skipped, and a trailing one stays unstreamed until the next
-			// chunk proves it is interior (the closer's newline is not value).
 			let text = call.body;
 			if (text.startsWith("\n")) text = text.slice(1);
 			const streamEnd = text.endsWith("\n") ? text.length - 1 : text.length;
@@ -273,7 +246,6 @@ class PiNativeInbandScanner implements InbandScanner {
 	}
 }
 
-/** Index of the unquoted `>` ending an open tag, or -1 while incomplete. */
 function findTagEnd(text: string): number {
 	let quote: string | null = null;
 	for (let i = 0; i < text.length; i++) {
@@ -290,7 +262,6 @@ function findTagEnd(text: string): number {
 
 interface RawAttr {
 	key: string;
-	/** null for a bare attribute (boolean true). */
 	value: string | null;
 	quoted: boolean;
 }
@@ -301,7 +272,6 @@ interface ParsedOpenTag {
 	selfClosing: boolean;
 }
 
-/** Parse `<call:NAME attr…>` / `<call:NAME attr…/>`; null when malformed. */
 function parseOpenTag(tag: string): ParsedOpenTag | null {
 	if (!tag.startsWith(PI_CALL_OPEN) || !tag.endsWith(">")) return null;
 	let inner = tag.slice(PI_CALL_OPEN.length, -1);
@@ -315,7 +285,6 @@ function parseOpenTag(tag: string): ParsedOpenTag | null {
 	return { name, attrs, selfClosing };
 }
 
-/** Tokenize `KEY="…"` / `KEY='…'` / `KEY=bare` / bare `KEY` attributes. */
 function parseAttrs(text: string): RawAttr[] | null {
 	const attrs: RawAttr[] = [];
 	let i = 0;
@@ -350,7 +319,6 @@ function parseAttrs(text: string): RawAttr[] | null {
 	return attrs;
 }
 
-/** Coerce raw attributes by each property's schema (quotes are delimiters, not types). */
 function coerceAttrs(
 	attrs: readonly RawAttr[],
 	properties: Record<string, unknown> | undefined,
@@ -366,11 +334,6 @@ function coerceAttrs(
 	return out;
 }
 
-/**
- * The parameter a verbatim inline body would fill: the first schema parameter
- * not already supplied as an attribute, when that parameter is string-typed.
- * Null when the tool is unknown or the target is not a string.
- */
 function inlineBodyKey(shape: ToolArgShape | undefined, attrs: Record<string, unknown>): string | null {
 	if (!shape) return null;
 	for (const key of shape.parameterOrder) {
@@ -380,7 +343,6 @@ function inlineBodyKey(shape: ToolArgShape | undefined, attrs: Record<string, un
 	return null;
 }
 
-/** Strip the single leading/trailing block-delimiter newline from a body. */
 function stripBlockNewlines(text: string): string {
 	let out = text;
 	if (out.startsWith("\n")) out = out.slice(1);
@@ -395,7 +357,6 @@ function finalizeCall(call: OpenCall): Record<string, unknown> {
 		for (const key of Object.keys(members)) setToolArg(args, key, getOwnArg(members, key));
 		return args;
 	}
-	// Inline body (or an all-whitespace body, which contributes nothing).
 	const value = stripBlockNewlines(call.body);
 	if (call.bodyMode === "unknown" || (call.bodyMode === "inline" && value.length === 0 && call.inlineKey === null)) {
 		return args;
@@ -404,7 +365,6 @@ function finalizeCall(call: OpenCall): Record<string, unknown> {
 		args[call.inlineKey] = value;
 		return args;
 	}
-	// No schema for this tool: fall back to the conventional single parameter.
 	if (value.length > 0) args.input = value;
 	return args;
 }
@@ -414,15 +374,6 @@ interface ParsedElement {
 	value: unknown;
 }
 
-/**
- * Fold a flat list of parsed sibling elements into an arguments record. Repeated
- * sibling names collapse into an array; a name whose schema is array-typed is an
- * array even with a single occurrence; every other name keeps its scalar value.
- * Model-supplied names route through {@link setToolArg}/{@link getOwnArg} so a
- * literal `__proto__` (or `constructor`/`prototype`) lands as a safe own property
- * instead of mutating the record's prototype. This is the single owner of the
- * fold rule; both the top-level body parser and the nested-object parser use it.
- */
 function foldParsedElements(
 	entries: readonly ParsedElement[],
 	properties: Record<string, unknown> | undefined,
@@ -444,11 +395,6 @@ function foldParsedElements(
 	return out;
 }
 
-/**
- * Recursive element-form parser (runs on the complete body at call close).
- * Repeated sibling names fold into arrays; schema-typed arrays are arrays even
- * with one occurrence; scalar bodies coerce by the parameter's schema type.
- */
 function parseMembers(text: string, properties: Record<string, unknown> | undefined): Record<string, unknown> {
 	const entries: ParsedElement[] = [];
 	let pos = 0;
@@ -487,13 +433,11 @@ function parseElementAt(
 	const attrs = parseAttrs(inner.slice(name.length));
 	if (attrs === null) return null;
 	let schema = properties?.[name];
-	// Array-typed fields parse each occurrence as the item type.
 	if (schema !== undefined && isArraySchema(schema)) schema = getArrayItemSchema(schema);
 	const childProps = schema !== undefined ? getObjectProperties(schema) : undefined;
 	const coercedAttrs = coerceAttrs(attrs, childProps);
 
 	if (selfClosing) {
-		// Object via attrs, or an empty value.
 		if (attrs.length > 0 || (schema !== undefined && isObjectSchema(schema)))
 			return { name, value: coercedAttrs, end: start + tagEnd + 1 };
 		if (schema !== undefined && isStringOnlySchema(schema)) return { name, value: "", end: start + tagEnd + 1 };
@@ -508,20 +452,17 @@ function parseElementAt(
 			? isObjectSchema(schema)
 			: attrs.length > 0 || bodyStartsWithChildTag(text, bodyStart, closer);
 	if (objectLike) {
-		// Recursive descent consumes child tags, so nesting closes correctly.
 		const members = parseObjectBody(text, bodyStart, name, childProps);
 		if (!members) return null;
 		return { name, value: { ...coercedAttrs, ...members.value }, end: members.end };
 	}
 
-	// Scalar/string body: verbatim up to the first matching closer.
 	const close = text.indexOf(closer, bodyStart);
 	if (close === -1) return null;
 	const raw = stripBlockNewlines(text.slice(bodyStart, close));
 	return { name, value: coerceValue(raw, schema), end: close + closer.length };
 }
 
-/** Whether a body parses as a run of fully closed elements (validates closer candidates in element form). */
 function elementsBodyClean(text: string): boolean {
 	let pos = 0;
 	while (pos < text.length) {
@@ -534,7 +475,6 @@ function elementsBodyClean(text: string): boolean {
 	return true;
 }
 
-/** Whether a block body's first non-whitespace content is a child tag (heuristic for no-schema object detection). */
 function bodyStartsWithChildTag(text: string, from: number, closer: string): boolean {
 	let i = from;
 	while (i < text.length && /\s/.test(text[i]!)) i++;
@@ -565,9 +505,6 @@ function parseObjectBody(
 	return null;
 }
 
-// ---- rendering ----
-
-/** True when the value renders safely inside a double-quoted attribute. */
 function attrSafe(value: unknown): boolean {
 	if (typeof value === "string") return !value.includes('"') && !value.includes("\n") && !value.includes(">");
 	return value === null || typeof value === "number" || typeof value === "boolean";
@@ -593,8 +530,6 @@ function renderElement(name: string, value: unknown, schema: unknown, indent: st
 		return `${indent}<${name}>\n${children}\n${indent}</${name}>`;
 	}
 	if (typeof value === "string" && (schema === undefined ? true : isStringOnlySchema(schema))) {
-		// String-typed values are verbatim; multi-line bodies keep the newline
-		// block delimiters.
 		return value.includes("\n")
 			? `${indent}<${name}>\n${value}\n${indent.length > 0 ? indent : ""}</${name}>`
 			: `${indent}<${name}>${value}</${name}>`;
@@ -613,8 +548,6 @@ function piNativeInvocation(call: ToolCall, shape: ToolArgShape | undefined): st
 	const closer = `${PI_CALL_CLOSE_PREFIX}${call.name}>`;
 
 	if (shape) {
-		// Inline-body form: every parameter is string-typed, the bulk value goes
-		// verbatim in the body, remaining string scalars ride as attributes.
 		const allString = shape.parameterOrder.length > 0 && shape.parameterOrder.every(key => shape.stringArgs.has(key));
 		if (allString && keys.length > 0 && keys.every(key => typeof args[key] === "string")) {
 			let bulk: string | null = null;
@@ -630,14 +563,12 @@ function piNativeInvocation(call: ToolCall, shape: ToolArgShape | undefined): st
 				return `${PI_CALL_OPEN}${call.name}${attrText}>\n${bulkValue}\n${closer}`;
 			}
 		}
-		// Attribute form: all-scalar arguments collapse onto a self-closing tag.
 		if (keys.length > 0 && keys.every(key => attrSafe(args[key]))) {
 			const attrText = keys.map(key => ` ${key}=${renderAttrValue(args[key], shape.stringArgs.has(key))}`).join("");
 			return `${PI_CALL_OPEN}${call.name}${attrText}/>`;
 		}
 	}
 
-	// Element form (canonical, fully general).
 	if (keys.length === 0) return `${PI_CALL_OPEN}${call.name}/>`;
 	const children = keys.map(key => renderElement(key, args[key], shape?.properties[key], "")).join("\n");
 	return `${PI_CALL_OPEN}${call.name}>\n${children}\n${closer}`;

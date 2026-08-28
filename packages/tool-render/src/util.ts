@@ -7,7 +7,6 @@ import type { ToolResultImage, ToolResultLike } from "./types";
 
 export { isRecord, stripAnsi };
 
-/** String passthrough; anything else (including null/undefined) → null. */
 export function str(value: unknown): string | null {
 	return typeof value === "string" ? value : null;
 }
@@ -16,7 +15,6 @@ export function num(value: unknown): number | null {
 	return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-/** Coerce unknown to a display string ("" for null/undefined). */
 export function display(value: unknown): string {
 	if (value == null) return "";
 	if (typeof value === "string") return value;
@@ -24,7 +22,6 @@ export function display(value: unknown): string {
 	return stringifyJsonSafe(value);
 }
 
-/** Replace the `/Users/<x>` or `/home/<x>` prefix with `~` for display. */
 export function shortenPath(p: string, opts?: { collapseAfter?: number }): string {
 	let out = p;
 	for (const prefix of ["/Users/", "/home/"]) {
@@ -45,7 +42,6 @@ export function shortenPath(p: string, opts?: { collapseAfter?: number }): strin
 	return out;
 }
 
-/** Search scope for display, normalized to a string array. */
 export function scopePaths(args: Record<string, unknown>): string[] {
 	const raw = args.path ?? args.paths;
 	if (typeof raw === "string") {
@@ -56,9 +52,7 @@ export function scopePaths(args: Record<string, unknown>): string[] {
 				if (Array.isArray(parsed) && parsed.every((p): p is string => typeof p === "string")) {
 					return parsed;
 				}
-			} catch {
-				// Not valid JSON — treat the whole string as one path.
-			}
+			} catch {}
 		}
 		return [raw];
 	}
@@ -66,12 +60,10 @@ export function scopePaths(args: Record<string, unknown>): string[] {
 	return [];
 }
 
-/** Truncate to `maxLen` code points, appending an ellipsis when cut. */
 export function truncate(s: string, maxLen = 100): string {
 	return truncateChars(s, maxLen);
 }
 
-/** Collapse all whitespace runs to single spaces (for one-line summaries). */
 export function normalizeWs(s: string): string {
 	return collapseWhitespace(s);
 }
@@ -137,7 +129,6 @@ export function languageFromPath(filePath: string): string | null {
 	return EXT_TO_LANG[ext] ?? null;
 }
 
-/** Joined text blocks of a tool result ("" when absent). */
 export function resultTextOf(result: ToolResultLike | undefined): string {
 	if (!result) return "";
 	const parts: string[] = [];
@@ -161,12 +152,10 @@ export function resultImagesOf(result: ToolResultLike | undefined): ToolResultIm
 	return images;
 }
 
-/** `result.details` when it is a plain object; renderers narrow field-by-field. */
 export function detailsRecord(result: ToolResultLike | undefined): Record<string, unknown> | null {
 	return result && isRecord(result.details) ? result.details : null;
 }
 
-/** Compact one-line JSON digest of arbitrary args (generic summary fallback). */
 export function argsDigest(args: unknown, maxLen = 96): string {
 	if (args == null) return "";
 	if (isRecord(args) && Object.keys(args).length === 0) return "";
@@ -178,7 +167,6 @@ interface HljsLike {
 	highlight(code: string, options: { language: string; ignoreIllegals?: boolean }): { value: string };
 }
 
-/** Optional syntax highlighter seam; returns global hljs when present. */
 export function getHljs(): HljsLike | null {
 	const candidate = (globalThis as { hljs?: HljsLike }).hljs;
 	return candidate && typeof candidate.highlight === "function" ? candidate : null;

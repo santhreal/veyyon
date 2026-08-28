@@ -4,7 +4,6 @@ import { parseImageMetadata } from "@veyyon/utils/mime";
 export interface ImageResizeOptions {
 	maxWidth?: number;
 	maxHeight?: number;
-	/** Smallest allowed edge length (px). Inputs below this are scaled up. */
 	minDimension?: number;
 	maxBytes?: number;
 	jpegQuality?: number;
@@ -31,14 +30,10 @@ export interface CanonicalImage {
 	get data(): string;
 }
 
-// 500KB target — aggressive compression; Anthropic's 5MB per-image cap is rarely the
-// binding constraint once images are downsized to 1568px (Anthropic's internal threshold).
 const DEFAULT_MAX_BYTES = 500 * 1024;
 
-// Smallest edge length (px) vision backends reliably accept. They tile images into fixed patches (Anthropic uses 28px) and reject degenerate sub-patch images — e.g.
 const DEFAULT_MIN_DIMENSION = 200;
 
-/** Hard header ceilings enforced before Bun allocates a decoded pixel buffer. */
 export const MAX_IMAGE_INPUT_WIDTH = 16_384;
 export const MAX_IMAGE_INPUT_HEIGHT = 16_384;
 export const MAX_IMAGE_INPUT_PIXELS = 40_000_000;
@@ -46,8 +41,6 @@ export const MAX_IMAGE_DECODED_BYTES = 128 * 1024 * 1024;
 const DECODED_BYTES_PER_PIXEL = 4;
 
 const DEFAULT_OPTIONS: Required<Omit<ImageResizeOptions, "excludeWebP">> = {
-	// Anthropic's "internal recommended size" — Claude internally caps images at
-	// 1568px on the longest edge before vision processing.
 	maxWidth: 1568,
 	maxHeight: 1568,
 	maxBytes: DEFAULT_MAX_BYTES,
@@ -55,7 +48,6 @@ const DEFAULT_OPTIONS: Required<Omit<ImageResizeOptions, "excludeWebP">> = {
 	minDimension: DEFAULT_MIN_DIMENSION,
 };
 
-/** Read `VEYYON_NO_WEBP` per-call so runtime toggles take effect. Only `"1"` and `"true"` (case-insensitive) enable exclusion — an empty string */
 function isWebPExcluded(): boolean {
 	const raw = Bun.env.VEYYON_NO_WEBP;
 	if (raw === undefined) return false;
@@ -63,7 +55,6 @@ function isWebPExcluded(): boolean {
 	return v === "1" || v === "true";
 }
 
-/** Pick the smallest of N encoded buffers. */
 function pickSmallest(...candidates: Array<{ buffer: Uint8Array; mimeType: string }>): {
 	buffer: Uint8Array;
 	mimeType: string;
@@ -71,12 +62,10 @@ function pickSmallest(...candidates: Array<{ buffer: Uint8Array; mimeType: strin
 	return candidates.reduce((best, c) => (c.buffer.length < best.buffer.length ? c : best));
 }
 
-/** Polyfill for Buffer.toBase64, technically since it derives from Uint8Array it should exist but Bun reasons... */
 Buffer.prototype.toBase64 = function (this: Buffer) {
 	return new Uint8Array(this.buffer, this.byteOffset, this.byteLength).toBase64();
 };
 
-/** Decode and canonically re-encode an image before it can cross a provider boundary. The caller's MIME label is deliberately ignored: the decoder and */
 export async function canonicalizeImageContent(
 	img: Pick<ImageContent, "data">,
 	options?: Pick<ImageResizeOptions, "excludeWebP">,
@@ -101,7 +90,6 @@ export async function canonicalizeImageContent(
 	}
 }
 
-/** Resize and recompress an image to fit within the specified max dimensions and file size. Strategy: */
 export async function resizeImage(img: ImageContent, options?: ImageResizeOptions): Promise<ResizedImage> {
 	try {
 		const excludeWebP = options?.excludeWebP ?? isWebPExcluded();
@@ -120,7 +108,6 @@ export async function resizeImage(img: ImageContent, options?: ImageResizeOption
 		);
 		const dimensionsChanged = targetWidth !== originalWidth || targetHeight !== originalHeight;
 
-		// A within-bounds image is still re-encoded once so EXIF/container metadata never crosses the provider boundary. Oversized images skip
 		if (!dimensionsChanged) {
 			const canonicalMime = canonicalMimeType(source.mimeType, excludeWebP);
 			const canonicalBuffer = await encodeImage(source.inputBuffer, canonicalMime, undefined, undefined, 100);
@@ -143,9 +130,6 @@ export async function resizeImage(img: ImageContent, options?: ImageResizeOption
 			height: number,
 			quality: number,
 		): Promise<{ buffer: Uint8Array; mimeType: CanonicalImage["mimeType"] }> {
-			// Run decoders sequentially. Each native decoder is individually
-			// bounded, and sequencing prevents the format race from multiplying
-			// that decoded-allocation ceiling by three.
 			const candidates: Array<{ buffer: Uint8Array; mimeType: CanonicalImage["mimeType"] }> = [];
 			for (const mimeType of [
 				"image/png",
@@ -387,7 +371,6 @@ function resizedResult(
 	};
 }
 
-/** Format a dimension note for resized images. This helps the model understand the coordinate mapping. */
 export function formatDimensionNote(result: ResizedImage): string | undefined {
 	if (!result.wasResized) {
 		return undefined;

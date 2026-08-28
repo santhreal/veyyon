@@ -1,6 +1,3 @@
-/**
- * GitHub Copilot OAuth flow (opencode OAuth app)
- */
 import { scheduler } from "node:timers/promises";
 import { getBundledModels } from "@veyyon/catalog/models";
 import {
@@ -198,13 +195,8 @@ async function pollForGitHubAccessToken(
 	throw new AIError.OAuthError("Device flow timed out", { kind: "timeout", provider: "github-copilot" });
 }
 
-/** Far-future expiry (10 years). GitHub OAuth tokens are long-lived; no JWT exchange needed. */
 const FAR_FUTURE_MS = Date.now() + 10 * 365.25 * DAY_MS;
 
-/**
- * Refresh GitHub Copilot token.
- * With the opencode OAuth flow, the GitHub token is used directly — no JWT exchange needed.
- */
 export function refreshGitHubCopilotToken(
 	refreshToken: string,
 	enterpriseDomain?: string,
@@ -232,17 +224,10 @@ async function discoverGitHubCopilotApiEndpoint(token: string, fetchImpl: FetchI
 		const endpoints = (data as { endpoints?: { api?: unknown } }).endpoints;
 		return typeof endpoints?.api === "string" ? normalizeGitHubCopilotApiEndpoint(endpoints.api) : undefined;
 	} catch {
-		// Undefined means "no endpoint advertised", so the caller uses the documented default base URL. That
-		// is the same path a response without an `endpoints.api` takes, and a wrong endpoint would be worse
-		// than the default; the request that follows reports if the default does not work either.
 		return undefined;
 	}
 }
 
-/**
- * Enable a model for the user's GitHub Copilot account.
- * This is required for some models (like Claude, Grok) before they can be used.
- */
 async function enableGitHubCopilotModel(
 	token: string,
 	modelId: string,
@@ -267,17 +252,10 @@ async function enableGitHubCopilotModel(
 		});
 		return response.ok;
 	} catch {
-		// False means "the policy could not be enabled", which the caller surfaces to the user as the reason
-		// sign-in did not complete. Same answer as a non-ok response, so a network failure and a refusal are
-		// treated alike on purpose: neither one leaves the policy enabled.
 		return false;
 	}
 }
 
-/**
- * Enable all known GitHub Copilot models that may require policy acceptance.
- * Called after successful login to ensure all models are available.
- */
 async function enableAllGitHubCopilotModels(
 	token: string,
 	enterpriseDomain: string | undefined,
@@ -285,8 +263,6 @@ async function enableAllGitHubCopilotModels(
 	fetchImpl: FetchImpl,
 	onProgress?: (model: string, success: boolean) => void,
 ): Promise<void> {
-	// Synthesized catalog variants (Copilot long-context `-1m` entries) share
-	// the upstream model id; enable each wire id exactly once.
 	const wireModelIds = Array.from(
 		new Set(getBundledModels("github-copilot").map(model => model.requestModelId ?? model.id)),
 	);
@@ -301,21 +277,12 @@ async function enableAllGitHubCopilotModels(
 	}
 }
 
-/**
- * Login with GitHub Copilot OAuth (device code flow)
- *
- * @param options.onAuth - Callback with URL and optional instructions (user code)
- * @param options.onPrompt - Callback to prompt user for input
- * @param options.onProgress - Optional progress callback
- * @param options.signal - Optional AbortSignal for cancellation
- */
 export async function loginGitHubCopilot(options: GitHubCopilotLoginOptions): Promise<OAuthCredentials> {
 	const fetchImpl = options.fetch ?? fetch;
 	const input = await options.onPrompt({
 		message: "GitHub Enterprise URL/domain (blank for github.com)",
 		placeholder: "company.ghe.com",
 		allowEmpty: true,
-		// A hostname, not a credential, and it is rejected for a typo you have to be able to see.
 		secret: false,
 	});
 
@@ -351,7 +318,6 @@ export async function loginGitHubCopilot(options: GitHubCopilotLoginOptions): Pr
 
 	const apiEndpoint = await discoverGitHubCopilotApiEndpoint(githubAccessToken, fetchImpl);
 
-	// With opencode OAuth, the GitHub token is used directly for all API requests
 	const credentials: OAuthCredentials = {
 		refresh: githubAccessToken,
 		access: githubAccessToken,
@@ -360,10 +326,8 @@ export async function loginGitHubCopilot(options: GitHubCopilotLoginOptions): Pr
 		apiEndpoint,
 	};
 
-	// Enable all models after successful login
 	options.onProgress?.("Enabling models...");
 	await enableAllGitHubCopilotModels(githubAccessToken, enterpriseDomain ?? undefined, apiEndpoint, fetchImpl);
-	// Device-code flow has no browser redirect; show the branded success page.
 	emitOAuthSuccessPage(options);
 	return credentials;
 }

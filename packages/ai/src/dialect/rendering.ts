@@ -16,20 +16,6 @@ export function renderToolResponseResults(results: readonly DialectToolResult[])
 	return results.map(result => `${TOOL_RESPONSE_OPEN}\n${result.text}\n${TOOL_RESPONSE_CLOSE}`).join("\n");
 }
 
-/**
- * One tool call as Anthropic's `<invoke>` element.
- *
- * Three dialects speak this syntax: `anthropic` itself, `xml`, and `minimax`, which wraps
- * the same invokes in a tag of its own. All three had a byte-identical private copy of this
- * function and of {@link renderInvokes}, which is a wire format restated three times: a
- * change to the escaping or to the string-argument rule in one of them would leave the
- * other two rendering a shape the model was not prompted for, and the only symptom is a
- * model that stops calling tools properly.
- *
- * `shape` decides which arguments the model wrote as bare text. An argument the tool
- * declares as a string is emitted verbatim, so a code snippet keeps its newlines and
- * quotes; anything else is JSON, so a number stays a number when it is parsed back.
- */
 export function renderInvoke(call: ToolCall, shape: ToolArgShape | undefined): string {
 	let body = `<invoke name="${escapeXmlAttribute(call.name)}">`;
 	for (const key in call.arguments) {
@@ -41,31 +27,15 @@ export function renderInvoke(call: ToolCall, shape: ToolArgShape | undefined): s
 	return `${body}</invoke>`;
 }
 
-/** Every call in a turn as `<invoke>` elements, one per line. See {@link renderInvoke}. */
 export function renderInvokes(calls: readonly ToolCall[], tools: NonNullable<DialectRenderOptions["tools"]>): string {
 	const shapes = buildArgShapes(tools);
 	return calls.map(call => renderInvoke(call, shapes.get(call.name))).join("\n");
 }
 
-/**
- * A single tool call rendered on its own, which is what the tool-call preview asks for.
- *
- * The same one-liner in all three dialects: look up the call's argument shape and render
- * the invoke. It is separate from {@link renderInvokes} because that one takes a whole turn
- * and builds the shape table once.
- */
 export function renderInvokeToolCall(call: ToolCall, options: DialectRenderOptions = {}): string {
 	return renderInvoke(call, buildArgShapes(options.tools).get(call.name));
 }
 
-/**
- * Tool results as Anthropic's `<function_results>` block.
- *
- * Shared by `anthropic` and `minimax`, which had identical copies. A failed call is
- * reported as `<error>` with the text on `<stderr>`, so the model can tell a failure from
- * an empty result: collapsing the two is how a model ends up retrying a call that
- * succeeded, or treating an error as data.
- */
 export function renderFunctionResults(results: readonly DialectToolResult[]): string {
 	const body = results
 		.map(result => {
@@ -77,22 +47,12 @@ export function renderFunctionResults(results: readonly DialectToolResult[]): st
 	return `<function_results>\n${body}\n</function_results>`;
 }
 
-/**
- * Bind a legacy-text transcript configuration into the renderer a dialect definition
- * exposes.
- *
- * Every dialect in that family wrote the same three-line wrapper around
- * {@link renderLegacyTextTranscript}, differing only in the three functions it closed over,
- * so the wrapper was byte-identical in each of them while meaning something different.
- * Binding the config once says the same thing without the copy.
- */
 export function legacyTextTranscriptRenderer(
 	config: LegacyTextTranscriptConfig,
 ): (messages: readonly Message[], options?: DialectRenderOptions) => string {
 	return (messages, options = {}) => renderLegacyTextTranscript(messages, options, config);
 }
 
-/** {@link legacyTextTranscriptRenderer} for the ChatML family. */
 export function chatMlTranscriptRenderer(
 	config: ChatMlTranscriptConfig,
 ): (messages: readonly Message[], options?: DialectRenderOptions) => string {
@@ -112,13 +72,6 @@ export function stringifyJson(value: unknown): string {
 	return stringifyJsonValue(value) ?? "null";
 }
 
-// XML escaping has ONE owner in @veyyon/utils: `escapeXmlText` (escapes `&`,
-// `<`, `>`) and `escapeXmlAttribute` (also escapes `"` for attribute values),
-// both single-pass with a no-alloc fast path. Re-exported here (the attribute
-// one under this module's shorter `escapeXmlAttr` name) so dialect modules keep
-// importing them from `./rendering` alongside the other render helpers. Behavior
-// parity with the naive replaceAll chains these replaced is locked by the
-// differentials in utils/test/sanitize-text.test.ts.
 export { escapeXmlAttribute as escapeXmlAttr, escapeXmlText } from "@veyyon/utils/sanitize-text";
 
 export type AssistantTranscriptParts = {
@@ -312,15 +265,10 @@ export function renderDelimitedThinking(open: string, close: string, text: strin
 	return `${open}\n${unwrapDelimitedThinking(open, close, text)}\n${close}`;
 }
 
-/**
- * Render thinking text inside the shared `<think>` envelope. Collapses tags that
- * are already present rather than nesting a second envelope around them.
- */
 export function renderThinkTags(text: string): string {
 	return renderDelimitedThinking(THINK_OPEN, THINK_CLOSE, text);
 }
 
-/** Render thinking text inside the shared `<thinking>` envelope. */
 export function renderXmlThinkingTags(text: string): string {
 	return renderDelimitedThinking(XML_THINKING_OPEN, XML_THINKING_CLOSE, text);
 }

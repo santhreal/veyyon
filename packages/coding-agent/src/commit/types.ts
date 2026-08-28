@@ -1,6 +1,3 @@
-/**
- * Types for the veyyon commit pipeline.
- */
 export type CommitType =
 	| "feat"
 	| "fix"
@@ -34,17 +31,11 @@ export const CHANGELOG_CATEGORIES: ChangelogCategory[] = [
 ];
 
 export interface CommitCommandArgs {
-	/** Push after commit */
 	push: boolean;
-	/** Preview without committing */
 	dryRun: boolean;
-	/** Skip changelog updates */
 	noChangelog: boolean;
-	/** Use legacy deterministic pipeline */
 	legacy?: boolean;
-	/** Additional user context for the model */
 	context?: string;
-	/** Override the model selection */
 	model?: string;
 }
 

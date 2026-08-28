@@ -1,5 +1,3 @@
-/** Wire-format protocol types for collaboration sessions. */
-
 export interface TextContent {
 	type: "text";
 	text: string;
@@ -7,9 +5,7 @@ export interface TextContent {
 
 export interface ImageContent {
 	type: "image";
-	/** Base64-encoded image data. */
 	data: string;
-	/** e.g. "image/png". */
 	mimeType: string;
 }
 
@@ -31,12 +27,9 @@ export interface ToolCallContent {
 	intent?: string;
 }
 
-/** Anthropic server-side-fallback boundary marker, persisted on an assistant turn whose request opted */
 export interface FallbackContent {
 	type: "fallback";
-	/** The model the turn started on. */
 	from: { model: string };
-	/** The model the provider fell back to. */
 	to: { model: string };
 }
 
@@ -47,10 +40,8 @@ export type AssistantContent =
 	| ToolCallContent
 	| FallbackContent;
 
-/** Why a turn ended, as a guest receives it. */
 export type WireStopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
 
-/** The old name for {@link WireStopReason}, kept because this package is published. */
 export type { WireStopReason as StopReason };
 
 export interface WireUsage {
@@ -62,29 +53,23 @@ export interface WireUsage {
 	cost: { total: number };
 }
 
-/** A user turn, as a guest receives it. */
 export interface WireUserMessage {
 	role: "user";
 	content: string | (TextContent | ImageContent)[];
-	/** True if the message was injected by the system (e.g. auto-continue). */
 	synthetic?: boolean;
-	/** Unix timestamp in milliseconds. */
 	timestamp: number;
 }
 
-/** Developer turn message as received by guest replica. */
 export interface WireDeveloperMessage {
 	role: "developer";
 	content: string | (TextContent | ImageContent)[];
 	timestamp: number;
 }
 
-/** An assistant turn, as a guest receives it. */
 export interface WireAssistantMessage {
 	role: "assistant";
 	content: AssistantContent[];
 	model: string;
-	/** Which provider answered, as a bare id such as `"anthropic"`. */
 	provider: string;
 	usage: WireUsage;
 	stopReason: WireStopReason;
@@ -92,7 +77,6 @@ export interface WireAssistantMessage {
 	timestamp: number;
 }
 
-/** Tool result message as received by guest replica. */
 export interface WireToolResultMessage {
 	role: "toolResult";
 	toolCallId: string;
@@ -103,26 +87,21 @@ export interface WireToolResultMessage {
 	timestamp: number;
 }
 
-/** The output notice a guest draws under a command's output. */
 export type WireOutputMeta = unknown;
 
-/** Command execution message and output. */
 export interface WireBashExecutionMessage {
 	role: "bashExecution";
 	command: string;
 	output: string;
 	exitCode: number | undefined;
-	/** The signal that killed it, when it died from one. Absent means "not known", not "not a signal". */
 	signal?: number;
 	cancelled: boolean;
 	truncated: boolean;
 	meta?: WireOutputMeta;
-	/** Drawn: a `!!` execution is marked in the transcript as excluded from the model's context. */
 	excludeFromContext?: boolean;
 	timestamp: number;
 }
 
-/** Eval cell execution message and output. */
 export interface WirePythonExecutionMessage {
 	role: "pythonExecution";
 	code: string;
@@ -135,7 +114,6 @@ export interface WirePythonExecutionMessage {
 	timestamp: number;
 }
 
-/** A message an extension injected. */
 export interface WireCustomMessage {
 	role: "custom";
 	customType: string;
@@ -145,7 +123,6 @@ export interface WireCustomMessage {
 	timestamp: number;
 }
 
-/** The pre-extensions spelling of the above, kept because old sessions still contain them. */
 export interface WireHookMessage {
 	role: "hookMessage";
 	customType: string;
@@ -155,7 +132,6 @@ export interface WireHookMessage {
 	timestamp: number;
 }
 
-/** Summary message left when a branch is cut. */
 export interface WireBranchSummaryMessage {
 	role: "branchSummary";
 	summary: string;
@@ -163,23 +139,19 @@ export interface WireBranchSummaryMessage {
 	timestamp: number;
 }
 
-/** The summary compaction left in place of the turns it replaced. */
 export interface WireCompactionSummaryMessage {
 	role: "compactionSummary";
 	summary: string;
 	shortSummary?: string;
 	tokensBefore: number;
-	/** A dead-end warning the progress guard attached; drawn beneath the summary. */
 	warning?: string;
 	timestamp: number;
 }
 
-/** Files pulled in by `@path`, drawn as a list of "Read <path>" rows. */
 export interface WireFileMentionMessage {
 	role: "fileMention";
 	files: {
 		path: string;
-		/** Whether the host read a body for this file. The body itself is not sent. */
 		hasContent: boolean;
 		lineCount?: number;
 		byteSize?: number;
@@ -202,7 +174,6 @@ export type WireMessage =
 	| WireCompactionSummaryMessage
 	| WireFileMentionMessage;
 
-/** The old names for the four message shapes above, kept because this package is published. */
 export type {
 	WireAssistantMessage as AssistantMessage,
 	WireDeveloperMessage as DeveloperMessage,
@@ -210,7 +181,6 @@ export type {
 	WireUserMessage as UserMessage,
 };
 
-/** The session's first log line, as a guest receives it. */
 export interface WireSessionHeader {
 	type: "session";
 	id: string;
@@ -219,7 +189,6 @@ export interface WireSessionHeader {
 	cwd: string;
 }
 
-/** The old name for {@link WireSessionHeader}, kept because this package is published. */
 export type { WireSessionHeader as SessionHeader };
 
 export interface EntryBase {
@@ -257,7 +226,6 @@ export interface BranchSummaryEntry extends EntryBase {
 
 export interface ModelChangeEntry extends EntryBase {
 	type: "model_change";
-	/** Model in "provider/modelId" format. */
 	model: string;
 	role?: string;
 }
@@ -267,7 +235,6 @@ export interface ThinkingLevelChangeEntry extends EntryBase {
 	thinkingLevel?: string | null;
 }
 
-/** Session entry variants rendered by guest. */
 export type WireSessionEntry =
 	| MessageEntry
 	| CustomMessageEntry
@@ -276,13 +243,10 @@ export type WireSessionEntry =
 	| ModelChangeEntry
 	| ThinkingLevelChangeEntry;
 
-/** The old name for {@link WireSessionEntry}, kept because this package is published. */
 export type { WireSessionEntry as SessionEntry };
 
-/** customType of collab guest prompts injected on the host. */
 export const COLLAB_PROMPT_MESSAGE_TYPE = "collab-prompt";
 
-/** `details` shape of `custom_message` entries with `customType === "collab-prompt"`. */
 export interface CollabPromptDetails {
 	from?: string;
 }
@@ -293,7 +257,6 @@ export type AgentEvent =
 	| { type: "turn_start" }
 	| { type: "turn_end" }
 	| { type: "message_start"; message: WireMessage }
-	/** Carries the FULL accumulating partial message — no delta tracking needed. */
 	| { type: "message_update"; message: WireMessage }
 	| { type: "message_end"; message: WireMessage }
 	| { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown; intent?: string }
@@ -308,21 +271,17 @@ export type AgentEvent =
 			maxAttempts: number;
 			delayMs: number;
 			errorMessage: string;
-			/** Which recovery is waiting. Absent means a retry; `continue` is a tool */
 			mode?: "continue" | "retry";
 	  }
 	| { type: "auto_retry_end"; success: boolean; attempt: number; finalError?: string; mode?: "continue" | "retry" }
 	| { type: "thinking_level_changed"; thinkingLevel?: string };
 
-/** The model a guest renders. */
 export interface WireModel {
 	id: string;
 	name: string;
 	provider: string;
 	contextWindow: number | null;
-	/** Whether the model reasons at all. Gates the whole thinking display. */
 	reasoning?: boolean;
-	/** Which thinking efforts the model offers, and which one it starts on. */
 	thinking?: {
 		mode: string;
 		efforts: readonly string[];
@@ -339,16 +298,13 @@ export interface ContextUsage {
 export interface Participant {
 	name: string;
 	role: "host" | "guest";
-	/** True when the guest joined through a read-only (view) link. */
 	readOnly?: boolean;
 }
 
-/** Debounced footer snapshot broadcast by the host. */
 export interface SessionState {
 	isStreaming: boolean;
 	queuedMessageCount: number;
 	sessionName?: string;
-	/** Host cwd — display only; the guest never chdirs. */
 	cwd: string;
 	model?: WireModel;
 	thinkingLevel?: string;
@@ -363,11 +319,9 @@ export interface AgentSnapshot {
 	kind: "main" | "sub";
 	parentId?: string;
 	status: "running" | "idle" | "parked" | "aborted";
-	/** Whether the host has a transcript file for this agent (gates remote transcript fetch). */
 	hasSessionFile: boolean;
 	createdAt: number;
 	lastActivity: number;
-	/** Model the agent runs on, as a `provider/id` string. Display-only; omitted when the host does not know it. */
 	model?: string;
 }
 
@@ -442,7 +396,6 @@ export type GuestFrame =
 			t: "hello";
 			proto: number;
 			name: string;
-			/** base64url write token proving full-link possession; absent for */
 			writeToken?: string;
 	  }
 	| { t: "prompt"; text: string; images?: ImageContent[] }
@@ -451,7 +404,6 @@ export type GuestFrame =
 	| { t: "agent-cmd"; cmd: "chat" | "kill" | "revive"; agentId: string; text?: string }
 	| { t: "fetch-transcript"; reqId: number; agentId: string; fromByte: number };
 
-/** EventBus channels mirrored to guests. */
 export type BusChannel = "task:subagent:progress" | "task:subagent:lifecycle";
 
 export type HostFrame =
@@ -461,38 +413,29 @@ export type HostFrame =
 			header: WireSessionHeader;
 			state: SessionState;
 			agents: AgentSnapshot[];
-			/** Total number of `WireSessionEntry` items the host will deliver in the */
 			entryCount: number;
-			/** True when this peer joined through a read-only (view) link. */
 			readOnly?: boolean;
 	  }
-	/** Targeted snapshot fragment delivered after `welcome`. Hosts split the */
 	| { t: "snapshot-chunk"; entries: WireSessionEntry[]; final: boolean }
 	| { t: "entry"; entry: WireSessionEntry }
 	| { t: "event"; event: AgentEvent }
 	| { t: "state"; state: SessionState }
-	/** Mirrored EventBus traffic (task subagent lifecycle/progress channels only). */
 	| { t: "bus"; channel: BusChannel; data: unknown }
 	| { t: "agents"; agents: AgentSnapshot[] }
 	| { t: "ui-request"; request: CollabUiRequest }
 	| { t: "ui-request-end"; reqId: number }
-	/** Targeted reply to fetch-transcript; `text` is decoded JSONL from `fromByte`, `newSize` the next offset base. */
 	| { t: "transcript"; reqId: number; text: string; newSize: number; error?: string }
 	| { t: "bye"; reason: string }
 	| { t: "error"; message: string };
 
 export type WireFrame = GuestFrame | HostFrame;
 
-/** Wire protocol version carried in `hello`; the host rejects mismatches. */
 export const COLLAB_PROTO = 3;
 
-/** Parameter key used for intent tracing (e.g. prompt explanation/reasoning) */
 export const INTENT_FIELD = "i";
 
-/** Envelope prefix codec for peer frames. */
 export const ENVELOPE_HEADER_LENGTH = 4;
 
-/** Wrap a sealed payload in the plaintext envelope. */
 export function packEnvelope(peerId: number, sealed: Uint8Array): Uint8Array<ArrayBuffer> {
 	const out = new Uint8Array(ENVELOPE_HEADER_LENGTH + sealed.byteLength);
 	new DataView(out.buffer).setUint32(0, peerId, false);
@@ -500,70 +443,56 @@ export function packEnvelope(peerId: number, sealed: Uint8Array): Uint8Array<Arr
 	return out;
 }
 
-/** Split an envelope into its peer id and payload, or null when it is too short */
 export function unpackEnvelope(data: Uint8Array): { peerId: number; payload: Uint8Array } | null {
 	if (data.byteLength < ENVELOPE_HEADER_LENGTH) return null;
 	const peerId = new DataView(data.buffer, data.byteOffset, ENVELOPE_HEADER_LENGTH).getUint32(0, false);
 	return { peerId, payload: data.subarray(ENVELOPE_HEADER_LENGTH) };
 }
 
-/** Rewrite the peer id in place, without copying the payload. */
 export function rewriteEnvelopePeer(data: Uint8Array, peerId: number): void {
 	new DataView(data.buffer, data.byteOffset, ENVELOPE_HEADER_LENGTH).setUint32(0, peerId, false);
 }
 
 export const ROOM_ID_BYTES = 16;
 
-/** Room cryptographic keys and tokens. */
 export const ROOM_KEY_BYTES = 32;
 
-/** Random write token appended to the room key in full links */
 export const WRITE_TOKEN_BYTES = 16;
 
-/** The sealed-frame layout: a 12-byte random IV, then the AES-GCM ciphertext with its tag. */
 const AES_ALGORITHM = "AES-GCM";
 
-/** Bytes of random IV prefixed to every sealed frame. */
 export const SEAL_IV_BYTES = 12;
 
 const SEAL_TEXT_ENCODER = new TextEncoder();
 const SEAL_TEXT_DECODER = new TextDecoder();
 
-/** Generate fresh random room key. */
 export function generateRoomKey(): Uint8Array {
 	const key = new Uint8Array(ROOM_KEY_BYTES);
 	crypto.getRandomValues(key);
 	return key;
 }
 
-/** Generate fresh random write token. */
 export function generateWriteToken(): Uint8Array {
 	const token = new Uint8Array(WRITE_TOKEN_BYTES);
 	crypto.getRandomValues(token);
 	return token;
 }
 
-/** Import a raw room key for sealing and opening. */
 export async function importRoomKey(raw: Uint8Array): Promise<CryptoKey> {
 	if (raw.byteLength !== ROOM_KEY_BYTES) {
 		throw new Error(`Room key must be ${ROOM_KEY_BYTES} bytes, got ${raw.byteLength}`);
 	}
-	// A fresh copy: WebCrypto reads the whole backing buffer of a view, so a key that arrived as a
-	// slice of a larger read would otherwise import its neighbouring bytes too.
 	return crypto.subtle.importKey("raw", new Uint8Array(raw), AES_ALGORITHM, false, ["encrypt", "decrypt"]);
 }
 
-/** Seal a frame as JSON under the room key. */
 export async function sealFrame<Frame>(key: CryptoKey, frame: Frame): Promise<Uint8Array> {
 	return sealBytes(key, SEAL_TEXT_ENCODER.encode(JSON.stringify(frame)));
 }
 
-/** Inverse of {@link sealFrame}. Throws on authentication failure or malformed input. */
 export async function openFrame<Frame>(key: CryptoKey, data: Uint8Array): Promise<Frame> {
 	return JSON.parse(SEAL_TEXT_DECODER.decode(await openBytes(key, data))) as Frame;
 }
 
-/** The envelope itself: `[12B random IV][AES-256-GCM ciphertext with its tag]`. */
 export async function sealBytes(key: CryptoKey, plaintext: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {
 	const iv = new Uint8Array(SEAL_IV_BYTES);
 	crypto.getRandomValues(iv);
@@ -574,7 +503,6 @@ export async function sealBytes(key: CryptoKey, plaintext: Uint8Array<ArrayBuffe
 	return out;
 }
 
-/** Decrypt and verify sealed frame bytes. */
 export async function openBytes(key: CryptoKey, data: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
 	if (data.byteLength <= SEAL_IV_BYTES) {
 		throw new Error("Sealed frame too short");
@@ -584,27 +512,20 @@ export async function openBytes(key: CryptoKey, data: Uint8Array): Promise<Uint8
 	return new Uint8Array(await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv }, key, ciphertext));
 }
 
-/** A host that never answers `hello` ends the join. */
 export const WELCOME_TIMEOUT_MS = 30_000;
 
-/** Every snapshot chunk must make progress; the timer resets on each arrival, */
 export const SNAPSHOT_PROGRESS_TIMEOUT_MS = 30_000;
 
-/** One `fetch-transcript` round trip. Generous relative to a normal response */
 export const TRANSCRIPT_TIMEOUT_MS = 20_000;
 
-/** Default public relay; bare `<roomId>.<key>` links resolve against it. */
 export const DEFAULT_RELAY_URL = "wss://share.veyyon.dev";
 
-/** Default share viewer/upload base; `/share` links resolve against */
 export const DEFAULT_SHARE_URL = "https://share.veyyon.dev/s";
 
 export interface ParsedCollabLink {
-	/** wss://host[:port]/r/<roomId> — no query, no fragment. */
 	wsUrl: string;
 	roomId: string;
 	key: Uint8Array;
-	/** Write token from a full link; absent for read-only (view) links. */
 	writeToken?: Uint8Array;
 }
 
@@ -618,20 +539,16 @@ export {
 	relayFatalCloseReason,
 } from "./relay";
 
-/** Marker the ask dialog appends to the recommended option's label. */
 export const RECOMMENDED_SUFFIX = " (Recommended)";
 
-/** Append {@link RECOMMENDED_SUFFIX} unless `label` already carries it. */
 export function withRecommendedSuffix(label: string): string {
 	return label.endsWith(RECOMMENDED_SUFFIX) ? label : label + RECOMMENDED_SUFFIX;
 }
 
-/** Remove a trailing {@link RECOMMENDED_SUFFIX}, leaving any other label untouched. */
 export function stripRecommendedSuffix(label: string): string {
 	return label.endsWith(RECOMMENDED_SUFFIX) ? label.slice(0, -RECOMMENDED_SUFFIX.length) : label;
 }
 
-/** Every todo status, paired with the one question every surface asks of it: */
 export const TODO_STATUS_IS_TERMINAL = {
 	pending: false,
 	in_progress: false,
@@ -641,25 +558,20 @@ export const TODO_STATUS_IS_TERMINAL = {
 
 export type TodoStatus = keyof typeof TODO_STATUS_IS_TERMINAL;
 
-/** Every status in {@link TODO_STATUS_IS_TERMINAL}, for enumeration at run time. */
 export const TODO_STATUSES: readonly TodoStatus[] = Object.keys(TODO_STATUS_IS_TERMINAL) as TodoStatus[];
 
-/** A status no further work is expected on. The complement is open work. */
 export function isTerminalTodoStatus(status: TodoStatus): boolean {
 	return TODO_STATUS_IS_TERMINAL[status] === true;
 }
 
-/** Narrow arbitrary JSON (a transcript, a wire frame) to a status; anything */
 export function asTodoStatus(value: unknown): TodoStatus {
 	return typeof value === "string" && Object.hasOwn(TODO_STATUS_IS_TERMINAL, value)
 		? (value as TodoStatus)
 		: "pending";
 }
 
-/** Render summary line for finished todo board. */
 export const TODO_DONE_SUMMARY = "Todo list done";
 
-/** The board holds work and all of it is closed. */
 export function isTodoListDone(
 	phases: readonly { readonly tasks?: readonly { readonly status: TodoStatus }[] }[],
 ): boolean {

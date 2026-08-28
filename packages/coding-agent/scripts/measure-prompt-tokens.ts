@@ -1,14 +1,3 @@
-/**
- * Per-tool schema cost, alongside the system prompt's per-section cost.
- *
- * The prompt half is NOT measured here. It comes from `inspectSystemPrompt`,
- * the same call `veyyon prompt --sections` makes, because this script used to
- * assemble and measure the prompt itself with a private `est()` that
- * re-implemented `estimateTokensFromText` — two owners for one number, and they
- * drift the moment either changes. What remains is the part the command does
- * not cover: the tool schemas, which are sent alongside the prompt and are
- * usually the larger of the two.
- */
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { estimateToolSchemaTokens } from "@veyyon/coding-agent/session/context-usage";
 import { formatInspectionTable, inspectSystemPrompt } from "@veyyon/coding-agent/system-prompt-builder/prompt-inspect";

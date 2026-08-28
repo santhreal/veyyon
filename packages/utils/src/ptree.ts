@@ -1,12 +1,3 @@
-/**
- * Process tree management utilities for Bun subprocesses.
- *
- * - Track managed child processes for cleanup on shutdown (postmortem).
- * - Drain stdout/stderr to avoid subprocess pipe deadlocks.
- * - Cross-platform tree kill for process groups (Windows taskkill, Unix -pid).
- * - Convenience helpers: captureText / execText, AbortSignal, timeouts.
- */
-
 import type { Spawn, Subprocess } from "bun";
 import { processHandle } from "./native-process";
 import { readPipeText } from "./stream";
@@ -14,15 +5,8 @@ import { errorMessage } from "./type-guards";
 
 type InMask = "pipe" | "ignore" | Buffer | Uint8Array | null;
 
-/** A Bun subprocess with stdout/stderr always piped (stdin may vary). */
 type PipedSubprocess<In extends InMask = InMask> = Subprocess<In, "pipe", "pipe">;
 
-// ── Exceptions ───────────────────────────────────────────────────────────────
-
-/**
- * Base for all exceptions representing child process nonzero exit, killed, or
- * cancellation.
- */
 export abstract class Exception extends Error {
 	constructor(
 		message: string,
@@ -35,7 +19,6 @@ export abstract class Exception extends Error {
 	abstract readonly aborted: boolean;
 }
 
-/** Exception for nonzero exit codes (not cancellation). */
 export class NonZeroExitError extends Exception {
 	static readonly MAX_TRACE = 32 * 1024;
 
@@ -47,22 +30,6 @@ export class NonZeroExitError extends Exception {
 	}
 }
 
-/**
- * A child process was killed on purpose: a signal fired, or the tree was disposed.
- *
- * Named for the layer it comes from. Three unrelated classes in this workspace used to be called
- * `AbortError` -- this one, the signal-shaped one in `abortable.ts`, and a cancelled provider request
- * in `@veyyon/ai` -- and `@veyyon/utils`'s barrel exported THIS one, so `import { AbortError } from
- * "@veyyon/utils"` handed you the process-abort class whichever one you meant. A wrong constructor
- * call is the cheap version of that trap; an `instanceof AbortError` check that compiles, passes, and
- * asks about a different class than the author had in mind is the expensive one.
- *
- * The `name` stays `"AbortError"` on the wire. `isAbortError` reads the name rather than testing an
- * instance, precisely so a caller never has to know which class it caught, and session message shapes
- * and log output carry that string. `Exception` derives `name` from the constructor, so the wire name
- * is restored here, and only for THIS class: {@link TimeoutError} extends it and keeps its own name,
- * which `isTimeoutError` depends on.
- */
 export class ProcessAbortError extends Exception {
 	constructor(
 		public readonly reason: unknown,
@@ -79,23 +46,18 @@ export class ProcessAbortError extends Exception {
 	}
 }
 
-/** Exception for process timeout. */
 export class TimeoutError extends ProcessAbortError {
 	constructor(timeout: number, stderr: string) {
 		super(new Error(`Timed out after ${Math.round(timeout / 1000)}s`), stderr);
 	}
 }
 
-// ── Wait / Exec types ────────────────────────────────────────────────────────
-
-/** Options for waiting for process exit and capturing output. */
 export interface WaitOptions {
 	allowNonZero?: boolean;
 	allowAbort?: boolean;
 	stderr?: "full" | "buffer";
 }
 
-/** Result from wait and exec. */
 export interface ExecResult {
 	stdout: string;
 	stderr: string;
@@ -104,16 +66,6 @@ export interface ExecResult {
 	exitError?: Exception;
 }
 
-// ── ChildProcess ─────────────────────────────────────────────────────────────
-
-/**
- * ChildProcess wraps a managed subprocess, capturing stderr tail, providing
- * cross-platform kill/detach logic plus AbortSignal integration.
- *
- * Stdout is exposed directly from the underlying Bun subprocess; consumers
- * must read it (via text(), wait(), etc.) to prevent pipe deadlock.
- * Stderr is eagerly drained into an internal buffer.
- */
 export class ChildProcess<In extends InMask = InMask> {
 	#nothrow = false;
 	#stderrTail = "";
@@ -128,7 +80,6 @@ export class ChildProcess<In extends InMask = InMask> {
 		readonly proc: PipedSubprocess<In>,
 		readonly exposeStderr: boolean,
 	) {
-		// Eagerly drain stderr into a truncated tail string + raw chunks.
 		const dec = new TextDecoder();
 		const trim = () => {
 			if (this.#stderrTail.length > NonZeroExitError.MAX_TRACE)
@@ -148,19 +99,12 @@ export class ChildProcess<In extends InMask = InMask> {
 					trim();
 				}
 			} catch (error) {
-				// The tail is not a debug convenience: it IS the diagnostic
-				// `NonZeroExitError` shows when a child fails. A drain that stopped early
-				// used to leave a tail that looked complete, so the reader saw a truncated
-				// trace and concluded the child said nothing more. The marker goes into the
-				// tail itself rather than a log, because the tail is the surface the reader
-				// is already looking at.
 				this.#stderrTail += `\n[stderr capture stopped early: ${errorMessage(error)}]`;
 			}
 			this.#stderrTail += dec.decode();
 			trim();
 		})();
 
-		// Normalize Bun's exited promise into our exitReason / exitedCleanly model.
 		const { promise, resolve, reject } = Promise.withResolvers<number>();
 		this.#exited = promise;
 
@@ -193,8 +137,6 @@ export class ChildProcess<In extends InMask = InMask> {
 			});
 	}
 
-	// ── Properties ───────────────────────────────────────────────────────
-
 	get pid() {
 		return this.proc.pid;
 	}
@@ -214,12 +156,10 @@ export class ChildProcess<In extends InMask = InMask> {
 		return this.proc.stdin;
 	}
 
-	/** Raw stdout stream. Must be consumed to prevent pipe deadlock. */
 	get stdout() {
 		return this.proc.stdout;
 	}
 
-	/** Optional stderr stream (only when requested in spawn options). */
 	get stderr() {
 		return this.#stderrStream;
 	}
@@ -232,7 +172,6 @@ export class ChildProcess<In extends InMask = InMask> {
 		});
 	}
 
-	/** Returns the truncated stderr tail (last 32KB). */
 	peekStderr() {
 		return this.#stderrTail;
 	}
@@ -250,17 +189,10 @@ export class ChildProcess<In extends InMask = InMask> {
 			void handle.terminate()?.catch(e => void e);
 			return;
 		}
-		// No addon means no tree walk, so a descendant that outlived its parent
-		// is not reached. Ending the direct child is what the runtime still
-		// offers, and it is what the exit handlers below wait on.
 		try {
 			this.proc.kill();
-		} catch {
-			// Already gone, which is the state this asked for.
-		}
+		} catch {}
 	}
-
-	// ── Output helpers ───────────────────────────────────────────────────
 
 	async text(): Promise<string> {
 		const p = readPipeText(this.stdout);
@@ -285,31 +217,15 @@ export class ChildProcess<In extends InMask = InMask> {
 	}
 
 	async bytes(): Promise<Uint8Array> {
-		// Bun's `Response(stream).bytes()` returns the raw `ArrayBuffer` once the
-		// stream emits more than one chunk (subprocess stdout chunks past ~128 KB).
-		// Normalize at the contract boundary so every caller — SSH read,
-		// `decodeUtf8Text`, callers slicing with `.subarray` — sees a `Uint8Array`.
-		// `Response.bytes()` exists at runtime (Bun) but is absent from the
-		// constructor's DOM-lib type here (unlike a `fetch()` result, which types
-		// it), so annotate the call. The union return is the Bun quirk the comment
-		// above describes; the cast carries no runtime effect.
 		const body = await (
 			new Response(this.stdout) as Response & { bytes(): Promise<Uint8Array | ArrayBuffer> }
 		).bytes();
 		return body instanceof Uint8Array ? body : new Uint8Array(body);
 	}
 
-	// ── Wait ─────────────────────────────────────────────────────────────
-
 	async wait(opts?: WaitOptions): Promise<ExecResult> {
 		const { allowNonZero = false, allowAbort = false, stderr: stderrMode = "buffer" } = opts ?? {};
 
-		// Attach the exit handler synchronously, BEFORE draining stdout/stderr.
-		// A kill that lands during the drain window (timeout fired, signal
-		// aborted) rejects `#exited` immediately; if nothing were awaiting it
-		// yet, that rejection would surface as a spurious unhandledRejection for
-		// a process being cancelled exactly as designed. This settled promise
-		// never rejects (both paths capture into locals), so there is no window.
 		let exitError: Exception | undefined;
 		let fatalError: unknown;
 		let hasFatal = false;
@@ -350,15 +266,10 @@ export class ChildProcess<In extends InMask = InMask> {
 		return { stdout, stderr, exitCode, ok, exitError };
 	}
 
-	// ── Signal / timeout ─────────────────────────────────────────────────
-
 	attachSignal(signal: AbortSignal): void {
 		const onAbort = () => this.kill(new ProcessAbortError(signal.reason, "<cancelled>"));
 		if (signal.aborted) return void onAbort();
 		signal.addEventListener("abort", onAbort, { once: true });
-		// The `catch` is here to attach the `finally` without creating an unhandled rejection, not to handle
-		// anything: whoever awaits `#exited` still gets the exit failure in full. Removing it would make every
-		// aborted or failed process log an unhandled rejection for a promise that IS being awaited elsewhere.
 		this.#exited.catch(() => {}).finally(() => signal.removeEventListener("abort", onAbort));
 	}
 
@@ -381,9 +292,6 @@ export class ChildProcess<In extends InMask = InMask> {
 	}
 }
 
-// ── Spawn / exec ─────────────────────────────────────────────────────────────
-
-/** Options for child spawn. Always pipes stdout/stderr. */
 type ChildSpawnOptions<In extends InMask = InMask> = Omit<
 	Spawn.SpawnOptions<In, "pipe", "pipe">,
 	"stdout" | "stderr" | "detached"
@@ -391,11 +299,9 @@ type ChildSpawnOptions<In extends InMask = InMask> = Omit<
 	signal?: AbortSignal;
 	detached?: boolean;
 	stderr?: "full" | null;
-	/** Called with the fresh child pid right after spawn (session CPU budget adoption). */
 	onSpawnPid?: (pid: number) => void;
 };
 
-/** Spawn a child process with piped stdout/stderr. */
 export function spawn<In extends InMask = InMask>(cmd: string[], opts?: ChildSpawnOptions<In>): ChildProcess<In> {
 	const { timeout = -1, signal, stderr, onSpawnPid, ...rest } = opts ?? {};
 	const child = Bun.spawn(cmd, {
@@ -412,12 +318,10 @@ export function spawn<In extends InMask = InMask>(cmd: string[], opts?: ChildSpa
 	return cp;
 }
 
-/** Options for exec. */
 export interface ExecOptions extends Omit<ChildSpawnOptions, "stderr" | "stdin">, WaitOptions {
 	input?: string | Buffer | Uint8Array;
 }
 
-/** Spawn, wait, and return captured output. */
 export async function exec(cmd: string[], opts?: ExecOptions): Promise<ExecResult> {
 	const { input, stderr, allowAbort, allowNonZero, ...spawnOpts } = opts ?? {};
 	const stdin = typeof input === "string" ? Buffer.from(input) : input;
@@ -426,19 +330,8 @@ export async function exec(cmd: string[], opts?: ExecOptions): Promise<ExecResul
 	return await child.wait({ stderr, allowAbort, allowNonZero });
 }
 
-// ── Signal combinators ───────────────────────────────────────────────────────
-
 type SignalValue = AbortSignal | null | undefined;
 
-/**
- * Combine AbortSignals into a single signal.
- *
- * Deliberately signal-only: it used to also accept timeout numbers, which
- * minted a bare `AbortSignal.timeout` whose backing timer no caller could
- * clear — the API shape itself forced a timer leak. For a deadline, use
- * `scopedTimeoutSignal(timeoutMs, parent)` from ./scoped-timeout and cancel
- * it when the operation settles.
- */
 export function combineSignals(...signals: SignalValue[]): AbortSignal | undefined {
 	let n = 0;
 	for (let i = 0; i < signals.length; i++) {

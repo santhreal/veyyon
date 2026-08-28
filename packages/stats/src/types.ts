@@ -3,7 +3,6 @@ import type { AgentType } from "./shared-types";
 
 export * from "./shared-types";
 
-/** Extracted stats from an assistant message. */
 export interface MessageStats {
 	id?: number;
 	sessionFile: string;
@@ -21,18 +20,13 @@ export interface MessageStats {
 	agentType: AgentType;
 }
 
-/** Full details of a request, including content. */
 export interface RequestDetails extends MessageStats {
-	/** The full conversation history or just the last turn. */
 	messages: unknown[];
-	/** The model's response. */
 	output: unknown;
 }
 
-/** First line of a session JSONL log. */
 export interface SessionLogHeader {
 	type: "session";
-	/** Schema version. */
 	version?: number;
 	id: string;
 	timestamp: string;
@@ -40,7 +34,6 @@ export interface SessionLogHeader {
 	title?: string;
 }
 
-/** Deprecated alias for SessionLogHeader. */
 export type { SessionLogHeader as SessionHeader };
 
 export interface SessionMessageEntry {
@@ -59,13 +52,10 @@ export interface SessionServiceTierChangeEntry {
 	serviceTier: ServiceTierByFamily | ServiceTier | null;
 }
 
-/** One line of a session JSONL log as the stats parser sees it. */
 export type SessionLogEntry = SessionLogHeader | SessionMessageEntry | SessionServiceTierChangeEntry | { type: string };
 
-/** Deprecated alias for SessionLogEntry. */
 export type { SessionLogEntry as SessionEntry };
 
-/** Behavioral stats extracted from a single user message. */
 export interface UserMessageStats {
 	id?: number;
 	sessionFile: string;
@@ -84,7 +74,6 @@ export interface UserMessageStats {
 	blame: number;
 }
 
-/** Pair emitted by parser for linking user messages. */
 export interface UserMessageLink {
 	sessionFile: string;
 	entryId: string;
@@ -92,7 +81,6 @@ export interface UserMessageLink {
 	provider: string;
 }
 
-/** One tool call extracted from assistant message toolCall blocks. */
 export interface ToolCallStats {
 	sessionFile: string;
 	entryId: string;
@@ -107,7 +95,6 @@ export interface ToolCallStats {
 	argsChars: number;
 }
 
-/** Result linkage emitted for toolResult message entry. */
 export interface ToolResultLink {
 	sessionFile: string;
 	toolCallId: string;

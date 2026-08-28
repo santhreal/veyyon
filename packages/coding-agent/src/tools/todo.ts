@@ -19,7 +19,6 @@ import { normalizePathLikeInput, resolveToCwd } from "./path-utils";
 import { formatErrorDetail } from "./render-utils";
 
 export type { TodoStatus };
-/** Operation names accepted by the todo tool and echoed in successful result details. */
 export type TodoOperation = "init" | "start" | "done" | "rm" | "drop" | "append" | "view";
 
 export interface TodoItem {
@@ -33,12 +32,9 @@ export interface TodoPhase {
 }
 
 export const TODO_REMINDER_PREVIEW_LIMIT = 5;
-/** Maximum raw characters and visible columns retained from one todo preview row. */
 export const TODO_ITEM_PREVIEW_WIDTH = 160;
-/** Maximum aggregate raw characters and visible columns retained across todo preview rows. */
 export const TODO_TOTAL_PREVIEW_WIDTH = 480;
 
-/** Convert arbitrary todo text into one safe, bounded display row. The raw-character cap matters independently of terminal width: ANSI controls */
 export function boundedTodoPreviewText(text: string, maxWidth: number): string {
 	const width = Math.max(1, Math.floor(maxWidth));
 	const normalized = collapseWhitespace(sanitizeText(text));
@@ -52,7 +48,6 @@ export function boundedTodoPreviewText(text: string, maxWidth: number): string {
 	return truncateToWidth(rawBounded, width);
 }
 
-/** Emit todo preview rows against one shared aggregate budget. Every surface that projects the board for a reader needs the same three */
 export function createBoundedTodoPreview(
 	totalWidth: number = TODO_TOTAL_PREVIEW_WIDTH,
 	itemWidth: number = TODO_ITEM_PREVIEW_WIDTH,
@@ -64,7 +59,6 @@ export function createBoundedTodoPreview(
 	const lines: string[] = [];
 	return {
 		lines,
-		/** Append `prefix` + bounded `text`; false when the budget cannot fit another row. */
 		push(prefix: string, text: string): boolean {
 			const prefixWidth = Math.max(prefix.length, visibleWidth(prefix));
 			const available = Math.min(itemWidth, remaining) - prefixWidth;
@@ -77,7 +71,6 @@ export function createBoundedTodoPreview(
 	};
 }
 
-/** Stable display-only ordering that keeps actionable work ahead of closed history. */
 export function prioritizeTodoItems<T extends TodoItem>(items: readonly T[]): T[] {
 	const rank: Record<TodoStatus, number> = {
 		in_progress: 0,
@@ -96,7 +89,6 @@ export interface TodoCompletionTransition {
 	content: string;
 }
 
-/** Measurable task-state totals after a todo operation. `open` includes pending and in-progress work. */
 export interface TodoTaskStateCounts {
 	total: number;
 	open: number;
@@ -105,7 +97,6 @@ export interface TodoTaskStateCounts {
 	completed: number;
 }
 
-/** Aggregate mutations caused by one operation, including automatic in-progress normalization. */
 export interface TodoTaskTransitionCounts {
 	total: number;
 	added: number;
@@ -116,7 +107,6 @@ export interface TodoTaskTransitionCounts {
 	toCompleted: number;
 }
 
-/** Reference into the existing todo representation. Phase/task text is the stable identity already used by todo operations; ordinals are supplemental */
 export interface TodoTaskReference {
 	phase: string;
 	task?: string;
@@ -130,33 +120,25 @@ export interface TodoTaskTransition {
 	to?: TodoStatus;
 }
 
-/** Additive task-state telemetry. The canonical goal-verification policy gates this entire record and progressively richer fields within it. */
 export interface TodoTaskTelemetry {
 	operation: TodoOperation;
 	counts: TodoTaskStateCounts;
 	transitions: TodoTaskTransitionCounts;
-	/** Rich+: state before the operation. */
 	before?: TodoTaskStateCounts;
-	/** Rich+: references for phases changed directly or by normalization. */
 	affectedPhases?: TodoTaskReference[];
-	/** Rich+: references for tasks changed directly or by normalization. */
 	affectedTasks?: TodoTaskReference[];
-	/** Ultra only: individual added, removed, and status transitions. */
 	taskTransitions?: TodoTaskTransition[];
 }
 
 export interface TodoToolDetails {
-	/** Operation that produced this snapshot; absent on legacy transcript entries. */
 	op?: TodoOperation;
 	phases: TodoPhase[];
 	storage: "session" | "memory";
 	completedTasks?: TodoCompletionTransition[];
 	telemetry?: TodoTaskTelemetry;
-	/** Non-fatal adjustments the tool made to a write that LANDED. Present only when the applied board differs in structure from what the caller sent. */
 	notes?: string[];
 }
 
-/** The two OUTPUT channels of one todo operation. They are a single object with two named arrays, rather than two `string[]` parameters, so a call site */
 export interface TodoOpReport {
 	errors: string[];
 	notes: string[];
@@ -169,7 +151,6 @@ const InitListEntry = type({
 	items: type("string").describe("task content").array().atLeastLength(1).describe("tasks for this phase"),
 });
 
-/** Compatibility shape: models trained on the Claude/Cursor `TodoWrite` tool emit a whole-board write (`{ merge, todos: [{ id, content, status }] }`) */
 const TodoWriteEntry = type({
 	"id?": type("string").describe("caller-side item id; veyyon keys tasks by content and ignores it"),
 	content: type("string").describe("task content"),
@@ -177,15 +158,11 @@ const TodoWriteEntry = type({
 	status: type('"pending" | "in_progress" | "completed" | "cancelled"').describe("desired task status"),
 });
 
-/** `op` names the operation and is required for every call EXCEPT the compatibility whole-board write, which carries `todos` and no `op` at all. */
 const todoSchema = type({
 	"op?": TodoOp,
 	"list?": InitListEntry.array().describe("phased task list (init)"),
 	"task?": type("string").describe("task content"),
 	"phase?": type("string").describe("phase name"),
-	// No `atLeastLength(1)` here: `items` is only meaningful for `init`/`append`,
-	// and both enforce non-empty with op-specific errors. A stray `items: []` on
-	// an op that ignores it (e.g. `view`) must not be a hard schema rejection.
 	"items?": type("string").describe("task content").array().describe("tasks to append"),
 	"todos?": TodoWriteEntry.array().describe("compatibility whole-board write; prefer op"),
 	"merge?": type("boolean").describe("compatibility: false replaces the board, true or omitted merges by content"),
@@ -202,24 +179,19 @@ const todoSchema = type({
 
 type TodoSchema = typeof todoSchema.infer;
 type TodoParams = TodoSchema & { op: TodoOperation };
-/** A single normalized todo op entry. */
 type TodoOpEntryValue = TodoParams;
 
-/** Outcome of resolving free text against the board. `ambiguous` exists so a caller can say which of several tasks it could not choose between instead of */
 type TodoTaskMatch =
 	| { kind: "hit"; task: TodoItem; phase: TodoPhase }
 	| { kind: "none" }
 	| { kind: "ambiguous"; candidates: string[] };
 
-/** Resolve a task by content: exact text first, then a normalized comparison ({@link normalizeForTodoMatch}: lowercased, punctuation and whitespace runs */
 function matchTaskByContent(phases: TodoPhase[], content: string): TodoTaskMatch {
 	for (const phase of phases) {
 		const task = phase.tasks.find(candidate => candidate.content === content);
 		if (task) return { kind: "hit", task, phase };
 	}
 	const key = normalizeForTodoMatch(content);
-	// Punctuation-only text normalizes to nothing and would match every other
-	// punctuation-only task, so it never resolves through the fallback.
 	if (!key) return { kind: "none" };
 	const matches: Array<{ task: TodoItem; phase: TodoPhase }> = [];
 	for (const phase of phases) {
@@ -232,7 +204,6 @@ function matchTaskByContent(phases: TodoPhase[], content: string): TodoTaskMatch
 	return { kind: "none" };
 }
 
-/** Phase counterpart of {@link matchTaskByContent}, with the same fallback. */
 function matchPhaseByName(phases: TodoPhase[], name: string): TodoPhase | undefined | "ambiguous" {
 	const exact = phases.find(phase => phase.name === name);
 	if (exact) return exact;
@@ -292,9 +263,6 @@ function countTodoTaskStates(phases: readonly TodoPhase[]): TodoTaskStateCounts 
 	for (const phase of phases) {
 		for (const task of phase.tasks) {
 			counts.total++;
-			// `open` is the COMPLEMENT of terminal, not a list of the two open
-			// spellings. A status added to the vocabulary lands on the correct side
-			// of this count without anyone remembering to come back here.
 			if (!isTerminalTodoStatus(task.status)) counts.open++;
 			switch (task.status) {
 				case "pending":
@@ -309,7 +277,6 @@ function countTodoTaskStates(phases: readonly TodoPhase[]): TodoTaskStateCounts 
 					counts.completed++;
 					break;
 				default:
-					// A new status needs its own tally before it can be counted here.
 					task.status satisfies never;
 			}
 		}
@@ -386,9 +353,6 @@ function countTaskTransitions(transitions: readonly TodoTaskTransition[]): TodoT
 				counts.toCompleted++;
 				break;
 			default:
-				// A new status needs its own tally before a transition into it can
-				// be reported. Silently uncounted transitions read as "nothing
-				// happened" in telemetry.
 				transition.to satisfies never;
 		}
 	}
@@ -453,7 +417,6 @@ function nextActionableEntry(phases: readonly TodoPhase[]): { task: TodoItem; ph
 	for (const phase of phases) {
 		for (const task of phase.tasks) {
 			if (task.status === "in_progress") return { task, phase };
-			// The preference order names two statuses; the FALLBACK asks the owner. Naming only `pending` here meant a board whose open work sat in a
 			if (isTerminalTodoStatus(task.status)) continue;
 			firstOpen ??= { task, phase };
 			if (task.status === "pending") firstPending ??= { task, phase };
@@ -462,7 +425,6 @@ function nextActionableEntry(phases: readonly TodoPhase[]): { task: TodoItem; ph
 	return firstPending ?? firstOpen;
 }
 
-/** Return the active todo task, preferring an in-progress item over the first pending item. */
 export function nextActionableTask(phases: readonly TodoPhase[]): TodoItem | undefined {
 	return nextActionableEntry(phases)?.task;
 }
@@ -501,14 +463,12 @@ export function getLatestTodoPhasesFromEntries(entries: SessionEntry[]): TodoPha
 	return getLatestTodoPhasesSnapshotFromEntries(entries).phases;
 }
 
-/** Minimum overlap (after normalization) required for a substring match. Picked at six chars to admit single-word identifiers like "review" / */
 const TODO_DESCRIPTION_MIN_OVERLAP = 6;
 
 function normalizeForTodoMatch(value: string): string {
 	return value.toLowerCase().replace(NON_ALNUM_RUN_RE, " ").trim();
 }
 
-/** Report whether `content` likely names the same work as any entry in `descriptions`. Used by the sticky todo panel to light up a pending todo */
 export function todoMatchesAnyDescription(content: string, descriptions: readonly string[]): boolean {
 	const target = normalizeForTodoMatch(content);
 	if (!target) return false;
@@ -579,11 +539,9 @@ function getTaskTargets(phases: TodoPhase[], entry: TodoOpEntryValue, errors: st
 	return phases.flatMap(phase => phase.tasks);
 }
 
-/** Phase name for `init` given a flat `items` list with no explicit `phase`. */
 const DEFAULT_INIT_PHASE = "Tasks";
 
 function initPhases(entry: TodoOpEntryValue, report: TodoOpReport): TodoPhase[] {
-	// Models routinely flatten the single-phase init into `{op:"init", items:[...]}` (optionally with a bare `phase`) instead of the canonical
 	const list =
 		entry.list ??
 		(entry.items && entry.items.length > 0
@@ -594,7 +552,6 @@ function initPhases(entry: TodoOpEntryValue, report: TodoOpReport): TodoPhase[] 
 		return [];
 	}
 
-	// Repeated phase entries are a common parallel-planning shape: merge them in first-seen order so every task remains addressable through one phase, and
 	const phases: TodoPhase[] = [];
 	const byName = new Map<string, TodoPhase>();
 	const entriesPerPhase = new Map<string, number>();
@@ -622,9 +579,6 @@ function initPhases(entry: TodoOpEntryValue, report: TodoOpReport): TodoPhase[] 
 	}
 	for (const [phaseKey, count] of entriesPerPhase) {
 		const name = byName.get(phaseKey)?.name ?? phaseKey;
-		// Names the phase that collapsed, never its items: the board itself is
-		// already in the result, and an unbounded echo is what made the todo
-		// failures unreadable in the first place.
 		report.notes.push(
 			`Merged ${count} repeated "${boundedTodoPreviewText(name, TODO_ITEM_PREVIEW_WIDTH)}" phase entries into one phase; every task is addressable through it.`,
 		);
@@ -642,7 +596,6 @@ function appendItems(phases: TodoPhase[], entry: TodoOpEntryValue, errors: strin
 		return phases;
 	}
 
-	// Validate the whole batch before mutating so a failing op reports every duplicate and leaves nothing half-applied. Collision is judged the same
 	const seen = new Set<string>();
 	let hasDuplicate = false;
 	for (const content of entry.items) {
@@ -727,7 +680,6 @@ function applyEntry(phases: TodoPhase[], entry: TodoOpEntryValue, report: TodoOp
 		case "view":
 			return phases;
 		default:
-			// Unreachable for a validated tool call: the schema requires `op` and pins it to the seven names above. Reachable for the OTHER callers of
 			entry.op satisfies never;
 			report.errors.push(
 				`Unknown op ${JSON.stringify(entry.op)}; expected init, start, done, rm, drop, append or view`,
@@ -736,9 +688,6 @@ function applyEntry(phases: TodoPhase[], entry: TodoOpEntryValue, report: TodoOp
 	}
 }
 
-/** `op` is REQUIRED by the schema, so there is nothing to normalize: a call that omits it, or names it something the schema does not declare, is refused by */
-
-/** Translate a Claude/Cursor `TodoWrite` whole-board write into the ordered `{op,...}` batch veyyon applies, plus the notes describing any adjustment */
 export function adaptTodoWriteBatch(
 	params: TodoSchema,
 	currentPhases: readonly TodoPhase[],
@@ -746,7 +695,6 @@ export function adaptTodoWriteBatch(
 	const incoming = params.todos ?? [];
 	const notes: string[] = [];
 	if (incoming.length === 0) return { ops: [], notes };
-	// The incoming list is deduped against itself before anything else, in both branches, because task identity is normalized text
 	const todos: typeof incoming = [];
 	const collapsedByKey = new Map<string, { content: string; count: number }>();
 	const seenIncoming = new Map<string, { content: string; count: number }>();
@@ -763,9 +711,6 @@ export function adaptTodoWriteBatch(
 		todos.push(todo);
 	}
 	for (const { content, count } of collapsedByKey.values()) {
-		// Names the survivor and the count, never every collapsed variant: the
-		// board itself is already in the result, and an unbounded echo is what
-		// made the todo failures unreadable in the first place.
 		notes.push(
 			`Collapsed ${count} items differing only in case or punctuation into "${boundedTodoPreviewText(content, TODO_ITEM_PREVIEW_WIDTH)}"; task targeting cannot tell them apart.`,
 		);
@@ -777,8 +722,6 @@ export function adaptTodoWriteBatch(
 	if (replace) {
 		ops.push({ op: "init", list: [{ phase: params.phase ?? DEFAULT_INIT_PHASE, items: todos.map(t => t.content) }] });
 	} else {
-		// Presence is judged the way targeting resolves a task, so an item the
-		// board already carries is not appended a second time.
 		const existing = new Set(
 			currentPhases.flatMap(phase => phase.tasks.map(task => normalizeForTodoMatch(task.content) || task.content)),
 		);
@@ -790,8 +733,6 @@ export function adaptTodoWriteBatch(
 			missing.push(todo.content);
 		}
 		if (missing.length > 0) {
-			// Landing zone for items the board has never seen: an explicitly named
-			// phase, else the last phase already in play, else the init default.
 			const target = params.phase ?? currentPhases.at(-1)?.name ?? DEFAULT_INIT_PHASE;
 			ops.push({ op: "append", phase: target, items: missing });
 		}
@@ -809,8 +750,6 @@ export function adaptTodoWriteBatch(
 				ops.push({ op: "drop", task: todo.content });
 				break;
 			case "pending":
-				// `init`/`append` already created it pending, and no op moves a task
-				// back to pending, so a pending entry is a presence assertion only.
 				break;
 		}
 	}
@@ -824,7 +763,6 @@ function applyParams(phases: TodoPhase[], params: TodoParams): TodoOpReport & { 
 	return { phases: next, ...report };
 }
 
-/** Apply an array of `todo`-style ops to existing phases. Used by /todo slash command. `errors` non-empty means the caller must discard `phases`; `notes` */
 export function applyOpsToPhases(
 	currentPhases: TodoPhase[],
 	ops: TodoParams[],
@@ -850,7 +788,6 @@ export function resolveTodoMarkdownPath(input: string, cwd: string): string {
 	return resolveToCwd(raw, cwd);
 }
 
-/** Render todo phases as a Markdown checklist suitable for editing/copying. */
 export function phasesToMarkdown(phases: TodoPhase[]): string {
 	if (phases.length === 0) return "# Todos\n";
 	const out: string[] = [];
@@ -875,7 +812,6 @@ const MARKER_TO_STATUS: Record<string, TodoStatus> = {
 	"~": "abandoned",
 };
 
-/** Parse a Markdown checklist back into todo phases. */
 export function markdownToPhases(md: string): { phases: TodoPhase[]; errors: string[] } {
 	const errors: string[] = [];
 	const phases: TodoPhase[] = [];
@@ -918,7 +854,6 @@ export function markdownToPhases(md: string): { phases: TodoPhase[]; errors: str
 	return { phases, errors };
 }
 
-/** The tally every summary ends with. `done` is the COMPLETED count and nothing else. A dropped task is closed, so it leaves the open count — but reporting it */
 function formatOverall(tasks: readonly TodoItem[]): string {
 	let done = 0;
 	let dropped = 0;
@@ -967,7 +902,6 @@ function formatMutationSummary(phases: TodoPhase[], params: TodoParams): string 
 	return `${changed}${nextText} ${formatOverall(tasks)}`;
 }
 
-/** Render the model-facing result text. Notes ride ABOVE the body and are phrased as an applied adjustment, never as a failure: the board printed */
 function formatSummary(phases: TodoPhase[], report: TodoOpReport, readOnly = false, params?: TodoParams): string {
 	const body = formatSummaryBody(phases, report.errors, readOnly, params);
 	if (report.notes.length === 0) return body;
@@ -975,7 +909,6 @@ function formatSummary(phases: TodoPhase[], report: TodoOpReport, readOnly = fal
 	return `Applied with adjustments: ${notes}\n${body}`;
 }
 
-/** Bracket markers for the model-facing board preview. A table rather than a ternary chain so a status added to the vocabulary stops the build here */
 const TODO_PREVIEW_MARKERS: Record<TodoStatus, string> = {
 	pending: "[ ]",
 	in_progress: "[/]",
@@ -1018,9 +951,6 @@ function formatSummaryBody(phases: TodoPhase[], errors: string[], readOnly: bool
 	} else {
 		const current = phases[currentIdx];
 		const done = current.tasks.filter(task => isTerminalTodoStatus(task.status)).length;
-		// The active phase is the EARLIEST one still holding open work, so the
-		// in-progress pointer can sit in a phase whose successors already have
-		// completed tasks. Explain that worked-ahead case explicitly.
 		const workedAhead = phases.some(
 			(phase, idx) => idx > currentIdx && phase.tasks.some(task => isTerminalTodoStatus(task.status)),
 		);
@@ -1087,13 +1017,9 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
 	): Promise<AgentToolResult<TodoToolDetails>> {
 		const previousPhases = clonePhases(this.session.getTodoPhases?.() ?? []);
 
-		// A `TodoWrite`-shaped whole-board write expands to an ordered op batch
-		// before the single-op path runs. Without this branch the call validates
-		// clean, falls through to `view`, and the board write is silently lost.
 		if (params.todos && params.todos.length > 0) {
 			return this.#executeCompatBatch(params, previousPhases);
 		}
-		// `todos: []` is the one shape the schema's narrow admits without an `op` that cannot be carried out: an EMPTY container is not a read. With
 		if (params.todos) {
 			const storage = this.session.getSessionFile() ? "session" : "memory";
 			return {
@@ -1116,10 +1042,7 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
 				isError: true,
 			};
 		}
-		// The narrow admits an absent `op` only alongside `todos`, which both
-		// branches above consumed. Everything from here carries one.
 		const normalized = params as TodoParams;
-		// Pure-view calls are reads: no state write.
 		const readOnly = normalized.op === "view";
 		const {
 			phases: updated,
@@ -1128,9 +1051,6 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
 		} = readOnly
 			? { phases: previousPhases, errors: [] as string[], notes: [] as string[] }
 			: applyParams(clonePhases(previousPhases), normalized);
-		// A batch with any error is discarded wholesale: persisting a
-		// half-applied batch makes the natural retry hit "already exists" for
-		// the ops that did land. State and rendered summary stay at previous.
 		const failed = errors.length > 0;
 		const effective = failed ? previousPhases : updated;
 		const completedTasks = readOnly || failed ? [] : getCompletionTransitions(previousPhases, updated);
@@ -1138,8 +1058,6 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
 		const storage = this.session.getSessionFile() ? "session" : "memory";
 		const details: TodoToolDetails = { op: normalized.op, phases: effective, storage };
 		if (completedTasks.length > 0) details.completedTasks = completedTasks;
-		// A note describes an adjustment to a write that LANDED, so it is dropped
-		// when the batch failed: there is nothing applied for it to describe.
 		if (!failed && notes.length > 0) details.notes = notes;
 		const telemetryDetail = sessionTelemetryDetail(
 			this.session.settings.get("session.instrumentation"),
@@ -1161,18 +1079,14 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
 		};
 	}
 
-	/** Apply an adapted `TodoWrite` batch. The whole batch is atomic for the same reason a single op is: a half-applied board makes the natural retry hit */
 	#executeCompatBatch(params: TodoSchema, previousPhases: TodoPhase[]): AgentToolResult<TodoToolDetails> {
 		const { ops, notes: adapterNotes } = adaptTodoWriteBatch(params, previousPhases);
 		const { phases: updated, errors, notes: applyNotes } = applyOpsToPhases(previousPhases, ops);
-		// Adjustments the adapter made to the caller's list come first: they
-		// explain the shape the ops below were built from.
 		const notes = adapterNotes.concat(applyNotes);
 		const failed = errors.length > 0;
 		const effective = failed ? previousPhases : updated;
 		const storage = this.session.getSessionFile() ? "session" : "memory";
 		if (!failed) this.session.setTodoPhases?.(updated);
-		// The batch's leading op is the honest single-word label for it: `init` when the write replaced the board, `append` when it introduced tasks,
 		const batchOp: TodoOperation = ops[0]?.op ?? "view";
 		const details: TodoToolDetails = { op: batchOp, phases: effective, storage };
 		const completedTasks = failed ? [] : getCompletionTransitions(previousPhases, updated);
@@ -1186,8 +1100,6 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
 			details.telemetry = buildTodoTelemetry(batchOp, previousPhases, effective, telemetryDetail);
 		}
 		return {
-			// No `params` argument: a whole-board write has no single mutation
-			// line, so the full board summary is the accurate report.
 			content: [{ type: "text", text: formatSummary(effective, { errors, notes: failed ? [] : notes }, false) }],
 			details,
 			isError: failed ? true : undefined,
@@ -1202,12 +1114,10 @@ type TodoRenderOp = {
 	items?: string[];
 };
 
-/** New single-op shape `{op,...}`; legacy `{ops:[...]}` still seen in old transcripts. */
 type TodoRenderArgs = TodoRenderOp & {
 	ops?: TodoRenderOp[];
 };
 
-/** Normalize streaming/legacy render args to a flat op list. Accepts the new top-level `{op,...}` shape (returned as a one-element list), the legacy */
 function normalizeTodoArg(args: TodoRenderArgs | undefined): TodoRenderOp[] {
 	if (!args || typeof args !== "object") return [];
 	if (Array.isArray(args.ops)) {
@@ -1232,7 +1142,6 @@ const ROMAN_PAIRS: Array<[number, string]> = [
 	[1, "I"],
 ];
 
-/** One-based ASCII roman numeral for display (I, II, III, IV, …). */
 export function phaseRomanNumeral(oneBasedIndex: number): string {
 	if (oneBasedIndex <= 0) return "";
 	let out = "";
@@ -1246,7 +1155,6 @@ export function phaseRomanNumeral(oneBasedIndex: number): string {
 	return out;
 }
 
-/** Display-only phase header: `I. Foundation`. State and prompts never see this. */
 export function formatPhaseDisplayName(name: string, oneBasedIndex: number): string {
 	return `${phaseRomanNumeral(oneBasedIndex)}. ${name}`;
 }
@@ -1278,7 +1186,6 @@ function strikeRevealCount(text: string, frame: number | undefined): number | un
 	return Math.ceil((chars.length * revealFrame) / TODO_STRIKE_REVEAL_FRAMES);
 }
 
-/** A task's text with the completion strike swept across it, `frame` frames in. The sweep is the one gesture that says a task closed, and both surfaces that */
 export function todoStrikeReveal(text: string, frame: number | undefined): string {
 	const revealCount = strikeRevealCount(text, frame);
 	if (revealCount === undefined) return strikethroughText(text);
@@ -1300,17 +1207,12 @@ function formatTodoLine(
 			return uiTheme.fg("success", `${prefix}${checkbox.checked} ${todoStrikeReveal(safeContent, strikeFrame)}`);
 		}
 		case "in_progress":
-			// Its own glyph, not the pending box in a different colour, and the
-			// same one the HUD above the composer draws for this state.
 			return uiTheme.fg("accent", `${prefix}${checkbox.progress} ${safeContent}`);
 		case "abandoned":
 			return uiTheme.fg("error", `${prefix}${checkbox.unchecked} ${strikethroughText(safeContent)}`);
 		case "pending":
 			return uiTheme.fg("dim", `${prefix}${checkbox.unchecked} ${safeContent}`);
 		default:
-			// A new status needs its own glyph and colour before the card can draw
-			// it. Falling through to the pending box would paint closed work as
-			// open, which is the collapse defect wearing a per-row disguise.
 			item.status satisfies never;
 			return uiTheme.fg("dim", `${prefix}${checkbox.unchecked} ${safeContent}`);
 	}
@@ -1318,7 +1220,6 @@ function formatTodoLine(
 
 export const todoToolRenderer = {
 	renderCall(args: TodoRenderArgs, options: RenderResultOptions, uiTheme: Theme): Component {
-		// `args` is the raw partially-parsed JSON from the streaming tool-call delta and may not satisfy `TodoRenderArgs` at runtime:
 		const opsList = normalizeTodoArg(args);
 		const visibleOps = opsList.slice(0, TODO_REMINDER_PREVIEW_LIMIT);
 		const ops =
@@ -1335,8 +1236,6 @@ export const todoToolRenderer = {
 					});
 		if (opsList.length > visibleOps.length)
 			ops.push(`… ${formatCount("operation", opsList.length - visibleOps.length)} more`);
-		// No body worth boxing while the call streams — a lone status line reads
-		// cleaner than an empty frame. The container renders it without chrome.
 		const header = renderStatusLine(
 			{ icon: "pending", spinnerFrame: options?.spinnerFrame, title: "Todo", meta: ops },
 			uiTheme,
@@ -1363,7 +1262,6 @@ export const todoToolRenderer = {
 		}
 
 		const phases = (result.details?.phases ?? []).filter(phase => phase.tasks.length > 0);
-		// A board with work on it and nothing left open is one green line: the card is history the moment it is finished, and a finished plan redrawn
 		if (isTodoListDone(phases)) {
 			const doneTasks = phases.reduce((count, phase) => count + phase.tasks.length, 0);
 			const summary = `${uiTheme.checkbox.checked} ${TODO_DONE_SUMMARY} · ${formatCount("task", doneTasks)}`;
@@ -1400,7 +1298,6 @@ export const todoToolRenderer = {
 			return new Text(`${header}\n  ${uiTheme.fg("dim", fallback)}`, 0, 0);
 		}
 
-		// An OPEN plan is drawn by the anchored board above the composer, which is the live surface: it is rebuilt on every change, it carries the phase
 		if (!options.expanded) {
 			const active = allTasks.find(task => task.status === "in_progress");
 			const moved = active ?? completedTasks[completedTasks.length - 1];

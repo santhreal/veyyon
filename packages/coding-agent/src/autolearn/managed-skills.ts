@@ -1,25 +1,19 @@
-/** Managed-skills primitives for the experimental auto-learn feature. Managed skills are auto-generated/enhanced `SKILL.md` files kept in an */
 import { constants as fsConstants, type Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getAgentDir, isEnoent } from "@veyyon/utils";
 import { YAML } from "bun";
 
-/** Provider id stamped on discovered managed skills (distinguishes them from authored). */
-// Persisted in user settings (`disabledProviders`).
 export const MANAGED_SKILLS_PROVIDER_ID = "veyyon-managed";
 
-/** Hard cap on a managed SKILL.md body to keep generated skills bounded. */
 export const MAX_MANAGED_SKILL_BYTES = 64_000;
 
 const SKILL_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
-/** Resolve the isolated managed-skills directory (`<agentDir>/managed-skills`; default `~/.veyyon/profiles/<name>/agent/managed-skills`). */
 export function getManagedSkillsDir(agentDir: string = getAgentDir()): string {
 	return path.join(agentDir, "managed-skills");
 }
 
-/** Validate + normalize a managed-skill name. Throws on anything outside the strict allowlist so a bad name can never escape `getManagedSkillsDir()` */
 export function sanitizeSkillName(raw: string): string {
 	const name = raw.trim().toLowerCase();
 	if (!SKILL_NAME_PATTERN.test(name)) {
@@ -30,12 +24,10 @@ export function sanitizeSkillName(raw: string): string {
 	return name;
 }
 
-/** Whether `name` is a safe managed-skill name (the exact post-sanitize shape). Used to validate names read from disk at discovery time — a managed */
 export function isValidManagedSkillName(name: string): boolean {
 	return SKILL_NAME_PATTERN.test(name);
 }
 
-/** Neutralize a machine-generated managed-skill description so it cannot break out of the system prompt's `<skills>` listing. Managed descriptions are */
 export function sanitizeManagedDescription(raw: string): string {
 	return raw
 		.replace(/[\p{Cc}\p{Cf}]/gu, " ")
@@ -45,7 +37,6 @@ export function sanitizeManagedDescription(raw: string): string {
 		.trim();
 }
 
-/** Serialize the minimal `name`/`description` frontmatter block via the repo's YAML helper (round-trips through `parseFrontmatter`). */
 export function toSkillFrontmatter(name: string, description: string): string {
 	const frontmatter = YAML.stringify(
 		{ name, description: sanitizeManagedDescription(description) },
@@ -62,7 +53,6 @@ export interface WriteManagedSkillInput {
 	body: string;
 }
 
-/** Serialize create/update/delete on the same skill name. Both tools are non-exclusive, so a parallel tool batch in one turn can run two mutations on */
 const skillMutationChains = new Map<string, Promise<unknown>>();
 function serializeSkillMutation<T>(name: string, op: () => Promise<T>): Promise<T> {
 	const prev = skillMutationChains.get(name) ?? Promise.resolve();
@@ -75,7 +65,6 @@ function serializeSkillMutation<T>(name: string, op: () => Promise<T>): Promise<
 	return run;
 }
 
-/** Reject when the managed-skills root itself is a symlink. lstat on a child follows intermediate components, so a symlinked root would let an otherwise */
 async function assertManagedRootSafe(): Promise<void> {
 	const rootStat = await fs.lstat(getManagedSkillsDir()).catch(err => {
 		if (isEnoent(err)) return null;
@@ -110,14 +99,10 @@ async function openManagedSkillFileForUpdate(name: string, file: string) {
 	}
 }
 
-/** Create or update a managed `SKILL.md`. Returns the resolved file path. */
 export async function writeManagedSkill(input: WriteManagedSkillInput): Promise<{ path: string }> {
 	const name = sanitizeSkillName(input.name);
 	const description = sanitizeManagedDescription(input.description);
 	const body = input.body.trim();
-	// Reject empty content: an all-whitespace/control description sanitizes to ""
-	// and the `requireDescription` discovery scan then silently drops the skill,
-	// so the tool would report success for a skill that never appears.
 	if (!description) {
 		throw new Error(`Managed skill "${name}" needs a non-empty description.`);
 	}
@@ -125,8 +110,6 @@ export async function writeManagedSkill(input: WriteManagedSkillInput): Promise<
 		throw new Error(`Managed skill "${name}" needs a non-empty body.`);
 	}
 	const content = `${toSkillFrontmatter(name, description)}\n${body}\n`;
-	// Cap the UTF-8 byte size of the FINAL file (body + description + frontmatter),
-	// not the UTF-16 code-unit length of the body alone.
 	const bytes = Buffer.byteLength(content, "utf8");
 	if (bytes > MAX_MANAGED_SKILL_BYTES) {
 		throw new Error(
@@ -137,9 +120,6 @@ export async function writeManagedSkill(input: WriteManagedSkillInput): Promise<
 		await assertManagedRootSafe();
 		const dir = path.join(getManagedSkillsDir(), name);
 		const file = path.join(dir, "SKILL.md");
-		// Reject a symlinked skill directory: an intermediate symlink would let the
-		// write escape the isolated managed root. lstat does not follow the final
-		// component, so a symlinked `dir` is caught here.
 		const dirStat = await fs.lstat(dir).catch(err => {
 			if (isEnoent(err)) return null;
 			throw err;
@@ -151,8 +131,6 @@ export async function writeManagedSkill(input: WriteManagedSkillInput): Promise<
 		}
 		if (input.action === "create") {
 			await fs.mkdir(dir, { recursive: true });
-			// O_CREAT|O_EXCL ("wx"): atomic create that fails if the file already
-			// exists (closing the check-then-write race) and refuses a symlinked SKILL.md.
 			try {
 				await fs.writeFile(file, content, { flag: "wx" });
 			} catch (err) {
@@ -163,7 +141,6 @@ export async function writeManagedSkill(input: WriteManagedSkillInput): Promise<
 			}
 			return { path: file };
 		}
-		// update: the file must already exist, be a plain managed file, and must not share an inode with a user-authored file via hard link. Open the
 		const fileStat = await fs.lstat(file).catch(err => {
 			if (isEnoent(err)) return null;
 			throw err;
@@ -188,13 +165,11 @@ export async function writeManagedSkill(input: WriteManagedSkillInput): Promise<
 	});
 }
 
-/** Delete a managed skill directory. Throws when it does not exist. */
 export async function deleteManagedSkill(name: string): Promise<void> {
 	const safe = sanitizeSkillName(name);
 	await serializeSkillMutation(safe, async () => {
 		await assertManagedRootSafe();
 		const dir = path.join(getManagedSkillsDir(), safe);
-		// Refuse to follow a symlinked skill directory (rm would delete the target).
 		const dirStat = await fs.lstat(dir).catch(err => {
 			if (isEnoent(err)) return null;
 			throw err;

@@ -199,8 +199,6 @@ async function resolveArchiveSearchPaths(
 
 	const cleanup = async () => {
 		if (tempDir) {
-			// A failed cleanup must not fail the grep the caller asked for, but it leaves a temp directory
-			// behind, and a silently leaked directory grows without bound across a long session. Report it.
 			await rm(tempDir, { recursive: true, force: true }).catch((error: unknown) => {
 				logger.warn("grep could not remove its temp directory", { dir: tempDir, error: errorMessage(error) });
 			});
@@ -732,8 +730,6 @@ async function resolveInternalSearchInputs(opts: {
 			continue;
 		}
 
-		// No sourcePath: this handler needs its content materialized so the
-		// virtual expansion can search it. Re-resolve without pathOnly.
 		if (context.pathOnly) {
 			resource = await internalRouter.resolve(rawPath, { ...context, pathOnly: false });
 		}
@@ -778,20 +774,9 @@ export interface GrepToolDetails {
 	fileMatches?: Array<{ path: string; count: number }>;
 	truncated?: boolean;
 	error?: string;
-	/** Pre-formatted text for the user-visible TUI render. Mirrors the model-facing
-	 * `result.text` lines but uses a `│` gutter and `*` to mark match lines (vs space for
-	 * context). The TUI uses this directly so it never parses model-facing hashline anchors. */
 	displayContent?: string;
-	/** Absolute base directory used during search. Used by the renderer to resolve
-	 * display-relative paths to absolute paths for OSC 8 hyperlinks. */
 	searchPath?: string;
-	/** Session cwd at search time. The renderer resolves the display-relative
-	 * (cwd-relative) header/match paths against this for OSC 8 hyperlinks;
-	 * `searchPath` is the scope label target, not the display-path base. */
 	cwd?: string;
-	/** User-supplied paths whose base directory was missing on disk. The tool
-	 * skipped these and continued with the surviving entries; surfaced as a
-	 * non-fatal warning in the renderer and in the model-facing text. */
 	missingPaths?: string[];
 }
 
@@ -1325,9 +1310,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 					if (st.isFile() && st.size > NATIVE_GREP_MAX_FILE_BYTES) {
 						oversized.push(path.relative(this.session.cwd, target) || target);
 					}
-				} catch {
-					// Stat failure handled elsewhere
-				}
+				} catch {}
 			}),
 		);
 		if (oversized.length === 0) return undefined;
@@ -1610,7 +1593,6 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 interface GrepRenderArgs {
 	pattern: string;
 	path?: string | string[];
-	/** Legacy pre-`path` argument name; kept so historical transcripts still render a scope. */
 	paths?: string | string[];
 	case?: boolean;
 	gitignore?: boolean;
@@ -1618,9 +1600,6 @@ interface GrepRenderArgs {
 }
 
 const COLLAPSED_TEXT_LIMIT = PREVIEW_LIMITS.COLLAPSED_LINES * 2;
-/** Line budget for the expanded view. Larger than collapsed so expanding
- * reveals more matches with context, but still bounded so a single hot file
- * whose matches span the whole file can't dump its entire length. */
 const EXPANDED_TEXT_LIMIT = PREVIEW_LIMITS.EXPANDED_LINES * 2;
 
 const SEARCH_CODE_FRAME_LINE_RE = /^\s*\*?(\d+)│/;
@@ -1667,8 +1646,6 @@ function renderSearchDisplayLines(
 	uiTheme: Theme,
 ): RenderedSearchLine[] {
 	const contexts = classifyGroupedLines(lines, headerBase, fileScope);
-	// `classifyGroupedLines` can't resolve internal URLs (TUI-only), so track the
-	// resolved URL target here and use it for the body lines that follow.
 	let urlFile: string | undefined;
 	return lines.map((line, index) => {
 		const ctx = contexts[index]!;
@@ -1688,7 +1665,6 @@ function renderSearchDisplayLines(
 				return { raw: line, styled: linked.line };
 			}
 			urlFile = undefined;
-			// Root-level files keep the bright accent; nested file headers are dimmed.
 			const styled = uiTheme.fg(ctx.depth === 1 ? "accent" : "dim", line);
 			return { raw: line, styled: ctx.headerPath ? fileHyperlink(ctx.headerPath, styled) : styled };
 		}
@@ -1893,7 +1869,6 @@ export const grepToolRenderer = {
 
 		const textContent = result.details?.displayContent ?? result.content?.find(c => c.type === "text")?.text ?? "";
 		const allLines = textContent.split("\n");
-		// Resolve hyperlinks once over the whole output so a nested directory stack reconstructs correctly across blank-line group boundaries.
 		const renderedLines = renderSearchDisplayLines(
 			allLines,
 			details?.cwd ?? details?.searchPath,

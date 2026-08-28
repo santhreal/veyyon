@@ -1,21 +1,12 @@
-// Adapted from markit-ai (MIT). See ../../NOTICE.
-
-/** Running header/footer detection and removal. Many PDFs have repeated text at the top or bottom of every page: */
 import type { PageContent } from "./types";
 
-/** Minimum number of pages to enable header/footer detection. */
 const MIN_PAGES = 5;
-/** Minimum Y position for top zone (from bottom of page in PDF coords). */
 const TOP_ZONE_MIN_Y = 700;
-/** Maximum Y position for bottom zone. */
 const BOTTOM_ZONE_MAX_Y = 80;
-/** Minimum consecutive pages a text must appear on to be considered a running header/footer. Catches both document-wide headers (appearing */
 const MIN_CONSECUTIVE_PAGES = 8;
 
-/** Detect and remove running headers and footers from all pages. Mutates the pages array in place, removing header/footer text boxes. */
 export function stripHeadersFooters(pages: PageContent[]): void {
 	if (pages.length < MIN_PAGES) return;
-	// Step 1: Build per-page zone text sets
 	const pageZoneTexts: Set<string>[] = [];
 	for (const page of pages) {
 		const zoneTexts = new Set<string>();
@@ -28,10 +19,8 @@ export function stripHeadersFooters(pages: PageContent[]): void {
 		}
 		pageZoneTexts.push(zoneTexts);
 	}
-	// Step 2: Count global frequency AND longest consecutive run for each text
 	const globalCount = new Map<string, number>();
 	const maxConsecutive = new Map<string, number>();
-	// Collect all unique zone texts
 	const allTexts = new Set<string>();
 	for (const zts of pageZoneTexts) {
 		for (const t of zts) allTexts.add(t);
@@ -52,24 +41,20 @@ export function stripHeadersFooters(pages: PageContent[]): void {
 		globalCount.set(text, total);
 		maxConsecutive.set(text, maxRun);
 	}
-	// Step 3: Identify running headers/footers
 	const globalThreshold = Math.max(3, Math.floor(pages.length * 0.2));
 	const repeatedTexts = new Set<string>();
 	for (const text of allTexts) {
 		const gc = globalCount.get(text) ?? 0;
 		const mc = maxConsecutive.get(text) ?? 0;
-		// Global: appears on 20%+ of pages
 		if (gc >= globalThreshold) {
 			repeatedTexts.add(text);
 			continue;
 		}
-		// Consecutive: appears on 8+ consecutive pages (chapter-level headers)
 		if (mc >= MIN_CONSECUTIVE_PAGES) {
 			repeatedTexts.add(text);
 		}
 	}
 	if (repeatedTexts.size === 0) return;
-	// Step 4: Remove matching text boxes from each page
 	for (const page of pages) {
 		page.textBoxes = page.textBoxes.filter(tb => {
 			const midY = (tb.bounds.top + tb.bounds.bottom) / 2;

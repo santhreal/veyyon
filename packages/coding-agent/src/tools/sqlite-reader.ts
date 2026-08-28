@@ -20,17 +20,12 @@ const SQLITE_PATH_PATTERN = /\.(?:sqlite3?|db3?)(?=(?::|\?|$))/gi;
 const DEFAULT_QUERY_LIMIT = 20;
 const DEFAULT_SCHEMA_SAMPLE_LIMIT = 5;
 const MAX_QUERY_LIMIT = 500;
-/** Row cap for raw `?q=` SQL — protects against `SELECT *` on multi-million-row tables. */
 export const MAX_RAW_QUERY_ROWS = 1000;
 const MAX_RENDER_WIDTH = 120;
 const MAX_COLUMN_WIDTH = 40;
-/** Floor for each ASCII-table column. At width 2 (or 1) every multi-char cell collapses to a lone ellipsis, so the renderer keeps each column wide enough */
 const MIN_COLUMN_WIDTH = 3;
-/** Separator overhead per column in the ASCII table (`" | "`). */
 const COLUMN_SEPARATOR_WIDTH = 3;
-/** Constant frame overhead added once to every row (leading `"|"` + trailing `" |"` after the per-column accounting). */
 const TABLE_FRAME_WIDTH = 1;
-/** Upper bound on rows scanned when counting a table for the listing. SQLite has no stored row count, so `COUNT(*)` is a full b-tree scan — multi-second on a */
 const ROW_COUNT_PROBE_CAP = 50_000;
 
 type SqliteBinding = Exclude<SQLQueryBindings, Record<string, unknown>>;
@@ -75,7 +70,6 @@ export type SqliteSelector =
 
 export type SqliteRowLookup = { kind: "pk"; column: string; type: string } | { kind: "rowid" };
 
-/** Row count for a table in the listing. - `exact`: counted in full (the table is small enough to count cheaply). */
 export type TableRowCount =
 	| { kind: "exact"; rows: number }
 	| { kind: "estimate"; rows: number }
@@ -132,12 +126,10 @@ function padCell(value: string, width: number): string {
 	return `${truncated}${" ".repeat(width - visibleWidth)}`;
 }
 
-/** Width budget the ASCII layout needs at the floor (each column at `MIN_COLUMN_WIDTH`). When this exceeds `MAX_RENDER_WIDTH`, no choice of */
 function tableFitsAtMinimum(columnCount: number): boolean {
 	return MIN_COLUMN_WIDTH * columnCount + COLUMN_SEPARATOR_WIDTH * columnCount + TABLE_FRAME_WIDTH <= MAX_RENDER_WIDTH;
 }
 
-/** Vertical fallback used when a table has too many columns to fit horizontally (>19 at the default 120-cell budget). Each row becomes a labelled block of */
 function buildVerticalBlocks(columns: string[], rows: SqliteRow[]): string {
 	if (rows.length === 0) {
 		return "(no rows)";
@@ -332,7 +324,6 @@ const COMMENT_OR_TERMINATOR_ERROR =
 const FORBIDDEN_KEYWORD_ERROR =
 	"SQLite 'where' clause must not contain LIMIT/OFFSET/UNION/INTERSECT/EXCEPT/ATTACH/DETACH/PRAGMA; use '?q=SELECT ...' for raw SQL";
 
-/** Scans a `where=` clause character-by-character, tracking single- and double-quoted string literals, and rejects SQL control syntax that would otherwise let the */
 function findWhereClauseViolation(sql: string): string | null {
 	let inSingleQuote = false;
 	let inDoubleQuote = false;
@@ -441,7 +432,6 @@ function validateWriteColumns(
 }
 
 export function parseSqlitePathCandidates(filePath: string): SqlitePathCandidate[] {
-	// The pattern is module-scoped and global, so it carries `lastIndex` between calls. Draining to null resets it, but a throw out of the loop below does
 	SQLITE_PATH_PATTERN.lastIndex = 0;
 	const normalized = filePath.replace(/\\/g, "/");
 	const seen = new Set<string>();
@@ -471,9 +461,6 @@ export async function isSqliteFile(absolutePath: string): Promise<boolean> {
 	try {
 		return looksLikeSqlite(await Bun.file(absolutePath).slice(0, SQLITE_MAGIC.byteLength).bytes());
 	} catch {
-		// A file whose first bytes cannot be read is handled as an ordinary file, and the ordinary read
-		// path then reports why it could not be opened. Claiming it is a database we cannot open would
-		// replace that report with a worse one.
 		return false;
 	}
 }
@@ -544,7 +531,6 @@ export function parseSqliteSelector(subPath: string, queryString: string): Sqlit
 	return { kind: "schema", table, sampleLimit: DEFAULT_SCHEMA_SAMPLE_LIMIT };
 }
 
-/** Reads the planner's per-table row estimate from `sqlite_stat1` (populated by `ANALYZE`). The first integer of each `stat` string is the number of rows in */
 function loadRowEstimates(db: Database): Map<string, number> {
 	const estimates = new Map<string, number>();
 	if (!tableExists(db, "sqlite_stat1")) return estimates;
@@ -559,7 +545,6 @@ function loadRowEstimates(db: Database): Map<string, number> {
 	return estimates;
 }
 
-/** Counts a table while reading at most `cap + 1` rows. Returns an exact count when the table holds `cap` rows or fewer, otherwise a lower bound of `cap`. */
 function probeRowCount(db: Database, table: string, cap: number): TableRowCount {
 	const sql = `SELECT COUNT(*) AS count FROM (SELECT 1 FROM ${quoteSqliteIdentifier(table)} LIMIT ${cap + 1})`;
 	const counted = db.prepare<SqliteCountRow, []>(sql).get()?.count ?? 0;
@@ -577,9 +562,6 @@ export function listTables(db: Database, options: { probeCap?: number } = {}): S
 
 	return names.map(({ name }) => {
 		const estimate = estimates.get(name);
-		// Trust the planner only when it says the table is too large to count
-		// cheaply; otherwise count exactly (bounded), which also corrects a
-		// stale-low estimate without ever scanning more than `cap` rows.
 		const count: TableRowCount =
 			estimate !== undefined && estimate > cap ? { kind: "estimate", rows: estimate } : probeRowCount(db, name, cap);
 		return { name, count };

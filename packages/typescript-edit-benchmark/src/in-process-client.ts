@@ -1,10 +1,3 @@
-/**
- * In-process benchmark client.
- *
- * Replaces RpcClient subprocess spawning with direct AgentSession usage.
- * Eliminates ~2-3s CLI startup overhead per task by creating sessions
- * in-process and sharing auth/model infrastructure across tasks.
- */
 import type { AgentEvent, AgentMessage, ResolvedThinkingLevel, ThinkingLevel } from "@veyyon/agent-core";
 import type { Model, ToolExample } from "@veyyon/ai";
 import type { AgentSession, AgentSessionEvent, AuthStorage, SessionStats } from "@veyyon/coding-agent";
@@ -22,19 +15,14 @@ export type InProcessEventListener = (event: AgentEvent) => void;
 export interface InProcessClientOptions {
 	cwd: string;
 	model: string;
-	/** Extra system prompt to append */
 	appendSystemPrompt?: string;
-	/** Tool names to enable */
 	tools?: string[];
-	/** Edit tool settings (passed via Settings, not env vars) */
 	editVariant?: string;
 	editFuzzy?: boolean | "auto";
 	editFuzzyThreshold?: number | "auto";
-	/** Shared infra (pass to avoid re-discovery per task) */
 	shared?: SharedInfra;
 }
 
-/** Shared infrastructure that can be reused across tasks. */
 export interface SharedInfra {
 	authStorage: AuthStorage;
 	modelRegistry: ModelRegistry;
@@ -47,13 +35,11 @@ export interface DiscoverSharedInfraOptions {
 	editFuzzyThreshold?: number | "auto";
 }
 
-/** Discover shared infrastructure once for the entire benchmark run. */
 export async function discoverSharedInfra(options: DiscoverSharedInfraOptions = {}): Promise<SharedInfra> {
 	const authStorage = await discoverAuthStorage();
 	try {
 		const modelRegistry = new ModelRegistry(authStorage);
 
-		// Initialize global Settings singleton (required by code paths that use the global `settings` proxy)
 		const overrides: Record<string, unknown> = {};
 		if (options.editVariant && options.editVariant !== "auto") {
 			overrides["edit.mode"] = options.editVariant;
@@ -73,10 +59,6 @@ export async function discoverSharedInfra(options: DiscoverSharedInfraOptions = 
 	}
 }
 
-/**
- * In-process client that wraps AgentSession with the same interface
- * that the benchmark runner expects from RpcClient.
- */
 export class InProcessClient {
 	#session: AgentSession | null = null;
 	#sessionResult: CreateAgentSessionResult | null = null;
@@ -113,9 +95,7 @@ export class InProcessClient {
 		this.#sessionResult = result;
 		this.#session = result.session;
 
-		// Subscribe to events and forward to listeners
 		this.#unsubscribe = this.#session.subscribe((event: AgentSessionEvent) => {
-			// Only forward AgentEvent types (not session-specific ones)
 			if (isAgentEvent(event)) {
 				for (const listener of this.#eventListeners) {
 					listener(event);
@@ -201,9 +181,6 @@ export class InProcessClient {
 	}
 
 	[Symbol.dispose](): void {
-		// `Symbol.dispose` is synchronous and cannot await or reject, so there is nowhere for a teardown
-		// failure to go: throwing here would replace whatever error ended the `using` block. A caller that
-		// needs the teardown to succeed awaits `dispose()` itself, which reports in full.
 		this.dispose().catch(() => {});
 	}
 }

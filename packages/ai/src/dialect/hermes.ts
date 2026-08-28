@@ -102,11 +102,6 @@ class HermesInbandScanner implements InbandScanner {
 			if (!this.#started) this.#tryStart(body, events);
 			if (close === -1) {
 				if (final) {
-					// Stream ended with no closing tag. If a toolStart was already
-					// announced, it MUST be balanced by a toolEnd — otherwise the
-					// downstream projector keeps the half-open toolCall block it created
-					// on toolStart (arguments: {}) and the agent dispatches the named
-					// tool with EMPTY args. Emit a best-effort end before resetting.
 					this.#emitBestEffortEnd(body, `${TOOL_CALL_OPEN}${body}`, events);
 					this.#reset();
 				}
@@ -122,10 +117,6 @@ class HermesInbandScanner implements InbandScanner {
 				}
 				events.push({ type: "toolEnd", id: this.#id, name: parsed.name, arguments: parsed.arguments, rawBlock });
 			} else {
-				// The body closed but did not parse into a valid call. A toolStart may
-				// already have been announced (#tryStart extracts the name from a
-				// partial body); balance its lifecycle with a best-effort toolEnd
-				// rather than resetting and stranding a half-open, empty-args call.
 				this.#emitBestEffortEnd(body, rawBlock, events);
 			}
 			this.#buffer = this.#buffer.slice(close + TOOL_CALL_CLOSE.length);
@@ -141,9 +132,7 @@ class HermesInbandScanner implements InbandScanner {
 			this.#name = partial.name;
 			this.#started = true;
 			events.push({ type: "toolStart", id: this.#id, name: this.#name });
-		} catch {
-			// Partial JSON is allowed until the closing tag arrives.
-		}
+		} catch {}
 	}
 
 	#parseCall(body: string): { name: string; arguments: Record<string, unknown> } | undefined {
@@ -152,33 +141,16 @@ class HermesInbandScanner implements InbandScanner {
 			if (typeof parsed.name !== "string" || parsed.name.length === 0) return undefined;
 			let args = parsed.arguments;
 			if (typeof args === "string") {
-				// Double-encoded arguments (the model JSON-stringified the object). Parse
-				// it; if it is unrepairable let it throw to the outer catch so the whole
-				// call is handled by the single best-effort-end path — never silently
-				// replaced with {} here (a Law-10 silent fallback that hid data loss).
 				args = parseJsonWithRepair<unknown>(args);
 			}
 			return { name: parsed.name, arguments: recordOrEmpty(args) };
 		} catch {
-			// A body that closed but will not parse is not a call, and saying so is not a swallow: the
-			// caller checks for `undefined` and emits a best-effort `toolEnd` so an already-announced
-			// `toolStart` is never left half-open with empty arguments. Reporting the parse error instead
-			// would abort a stream over one malformed block the model may still recover from.
 			return undefined;
 		}
 	}
 
-	/**
-	 * Balance an already-announced toolStart with a toolEnd when the body could
-	 * not be parsed (truncated stream or malformed JSON). Salvages whatever named
-	 * arguments partial parsing can recover, else empty. Emitting the end closes
-	 * the tool block cleanly instead of leaving it half-open; the tool's own
-	 * argument validation then surfaces a malformed payload loudly.
-	 */
 	#emitBestEffortEnd(body: string, rawBlock: string, events: InbandScanEvent[]): void {
 		if (!this.#started) return;
-		// #name was captured early from a PARTIAL body (it may be a prefix like "r"
-		// of "read"); re-derive the fuller name from the current body when possible.
 		let name = this.#name;
 		let args: unknown;
 		try {

@@ -1,21 +1,8 @@
-/**
- * Re-number a unified diff that uses the `+<lineNum>|content` /
- * `-<lineNum>|content` / ` <lineNum>|content` line format into a compact
- * current-file preview. Removed lines are counted for stats and post-edit
- * offset tracking, but omitted from the preview. Added and context lines are
- * anchored to their post-edit positions so a follow-up edit can reuse visible
- * concrete lines directly. Long contiguous added runs are summarized with a
- * `…` marker instead of echoing every inserted line.
- *
- * This is intentionally decoupled from the diff producer: anything that
- * emits the `<sign><lineNum>|<content>` shape works.
- */
 import type { CompactDiffOptions, CompactDiffPreview } from "./types";
 
 const DEFAULT_ADDED_RUN_CONTEXT_LINES = 2;
 
 const PREVIEW_ELISION_MARKER = "…";
-/** Blank row separating non-contiguous regions of a numbered diff. */
 const PREVIEW_GAP_ROW = "";
 const RAW_ELISION_MARKERS = new Set(["...", PREVIEW_ELISION_MARKER, `+${PREVIEW_ELISION_MARKER}`]);
 
@@ -25,9 +12,6 @@ function isPreviewSeparator(line: string | undefined): boolean {
 
 function appendPreviewLine(output: string[], line: string): void {
 	const normalized = RAW_ELISION_MARKERS.has(line) ? PREVIEW_ELISION_MARKER : line;
-	// Separators (elision markers, blank gap rows) never stack: omitted
-	// removed lines between two separators would otherwise leave them
-	// adjacent. A leading separator is dropped outright.
 	if (isPreviewSeparator(normalized) && (output.length === 0 || isPreviewSeparator(output[output.length - 1]))) {
 		return;
 	}
@@ -86,11 +70,6 @@ export function buildCompactDiffPreview(diff: string, options: CompactDiffOption
 		addedRun.length = 0;
 	};
 
-	// External diff producers number `+` lines with the post-edit line number,
-	// `-` lines with the pre-edit line number, and context lines with the
-	// pre-edit line number. To emit fresh line numbers usable for follow-up
-	// edits, convert context-line numbers to post-edit positions by tracking
-	// the running offset (added so far - removed so far) as we walk the diff.
 	for (const line of lines) {
 		const parsed = parseNumberedDiffLine(line);
 		if (!parsed) {

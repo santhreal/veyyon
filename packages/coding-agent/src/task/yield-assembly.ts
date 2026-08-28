@@ -1,10 +1,8 @@
-/** Pure assembly of subagent `yield` calls into the final payload consumed by output-schema validation. */
 import { dereferenceJsonSchema } from "@veyyon/ai/utils/schema";
 import { isRecord } from "@veyyon/utils";
 import { buildOutputValidator } from "../tools/output-schema-validator";
 import type { YieldItem } from "./types";
 
-/** Outcome of folding a run's yield calls into one payload, with provenance flags. */
 interface AssembledYieldResult {
 	data: unknown;
 	schemaOverridden: boolean;
@@ -71,7 +69,6 @@ function appendYieldSection(
 	sectionCounts.set(label, count + 1);
 }
 
-/** True when `value` is a JSON-schema node whose instances are arrays. */
 function isArrayTypedSchema(value: unknown): boolean {
 	if (value === null || typeof value !== "object") return false;
 	const record = value as Record<string, unknown>;
@@ -84,12 +81,8 @@ function isArrayTypedSchema(value: unknown): boolean {
 	return false;
 }
 
-/** Top-level output-schema property names declared as arrays (JTD `elements` → JSON `type: "array"`). An incremental yield section for such a label */
 export function arrayValuedLabels(outputSchema: unknown): ReadonlySet<string> {
 	const labels = new Set<string>();
-	// Use the JTD-converted JSON Schema (matches what validation runs against):
-	// JTD `optionalProperties.findings.elements` becomes `properties.findings`
-	// with `type: "array"`, which raw `normalizeSchema` would not expose.
 	const { jsonSchema } = buildOutputValidator(outputSchema);
 	if (jsonSchema === undefined) return labels;
 	const dereferenced = dereferenceJsonSchema(jsonSchema);
@@ -102,7 +95,6 @@ export function arrayValuedLabels(outputSchema: unknown): ReadonlySet<string> {
 	return labels;
 }
 
-/** Assemble typed yield calls into the final payload consumed by schema validation. A non-empty array `type` contributes an incremental section and never decides */
 export function assembleYieldResult(
 	yieldItems: YieldItem[],
 	lastAssistantText?: string,
@@ -110,9 +102,6 @@ export function assembleYieldResult(
 ): AssembledYieldResult | undefined {
 	if (yieldItems.length === 0) return undefined;
 
-	// Terminal = the last non-incremental yield (untyped, or string-typed like
-	// `type: "result"`). Array-typed yields are incremental sections and never
-	// terminate on their own.
 	let terminalItem: YieldItem | undefined;
 	for (let index = yieldItems.length - 1; index >= 0; index--) {
 		const item = yieldItems[index];
@@ -122,7 +111,6 @@ export function assembleYieldResult(
 		}
 	}
 
-	// Sections come ONLY from incremental (array-typed) yields. A string `type` is a terminal marker, never a section label: folding its data under the
 	const sections: Record<string, unknown> = {};
 	const sectionCounts = new Map<string, number>();
 	let schemaOverridden = false;
@@ -141,9 +129,6 @@ export function assembleYieldResult(
 		}
 	}
 
-	// An explicit `type: "result"` object finalizes scalar fields while
-	// preserving accepted incremental collections. Untyped terminal objects keep
-	// the historical last-yield-wins contract and are returned verbatim.
 	if (terminalItem && terminalItem.data !== undefined) {
 		const resolved = resolveYieldPayload(terminalItem, lastAssistantText, []);
 		const value = resolved.value;
@@ -157,8 +142,6 @@ export function assembleYieldResult(
 		};
 	}
 
-	// A data-less terminal finalize keeps accumulated sections; only when none
-	// exist does the last assistant turn become the raw result.
 	if (hasSections) {
 		return { data: sections, schemaOverridden, rawText: false, missingData };
 	}

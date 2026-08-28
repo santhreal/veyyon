@@ -38,23 +38,17 @@ interface VimeoVideoConfig {
 	};
 }
 
-/**
- * Extract video ID from various Vimeo URL formats
- */
 function extractVideoId(url: string): string | null {
 	const parsed = tryParseUrl(url);
 	if (!parsed) return null;
 
-	// player.vimeo.com/video/{id}
 	if (parsed.hostname === "player.vimeo.com") {
 		const match = parsed.pathname.match(/^\/video\/(\d+)/);
 		return match?.[1] ?? null;
 	}
 
-	// vimeo.com/{id} or vimeo.com/{user}/{id}
 	if (parsed.hostname === "vimeo.com" || parsed.hostname === "www.vimeo.com") {
 		const parts = parsed.pathname.split("/").filter(Boolean);
-		// Last part should be the video ID
 		const lastPart = parts[parts.length - 1];
 		if (lastPart && /^\d+$/.test(lastPart)) {
 			return lastPart;
@@ -64,9 +58,6 @@ function extractVideoId(url: string): string | null {
 	return null;
 }
 
-/**
- * Handle Vimeo URLs via oEmbed API
- */
 export const handleVimeo: SpecialHandler = async (url: string, timeout: number, signal?: AbortSignal) => {
 	try {
 		const parsed = tryParseUrl(url);
@@ -78,7 +69,6 @@ export const handleVimeo: SpecialHandler = async (url: string, timeout: number, 
 
 		const fetchedAt = new Date().toISOString();
 
-		// Use canonical URL for oEmbed (handles staffpicks and other URL formats)
 		const canonicalUrl = `https://vimeo.com/${videoId}`;
 		const oembedUrl = `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(canonicalUrl)}`;
 		const oembedResult = await loadPage(oembedUrl, { timeout, signal });
@@ -104,7 +94,6 @@ export const handleVimeo: SpecialHandler = async (url: string, timeout: number, 
 
 		md += `---\n\n**Thumbnail:** ${oembed.thumbnail_url}\n`;
 
-		// Try to get additional details from video config
 		try {
 			const configUrl = `https://player.vimeo.com/video/${videoId}/config`;
 			const configResult = await loadPage(configUrl, { timeout: Math.min(timeout, 5), signal });
@@ -112,7 +101,6 @@ export const handleVimeo: SpecialHandler = async (url: string, timeout: number, 
 			if (configResult.ok) {
 				const config = tryParseJson<VimeoVideoConfig>(configResult.content);
 
-				// Add video quality info if available
 				const progressive = config?.request?.files?.progressive;
 				if (progressive && progressive.length > 0) {
 					md += `\n**Available Qualities:**\n`;
@@ -121,9 +109,7 @@ export const handleVimeo: SpecialHandler = async (url: string, timeout: number, 
 					}
 				}
 			}
-		} catch {
-			// Config fetch is optional - continue without it
-		}
+		} catch {}
 
 		return buildResult(md, { url, method: "vimeo", fetchedAt, notes: ["Fetched via Vimeo oEmbed API"] });
 	} catch (error) {

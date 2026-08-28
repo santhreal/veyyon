@@ -1,19 +1,5 @@
-/**
- * Directed Acyclic Graph operations for swarm agent dependencies.
- *
- * Builds a dependency graph from waits_for / reports_to relationships,
- * detects cycles, and produces execution waves via topological sort.
- */
 import type { SwarmDefinition } from "./schema";
 
-/**
- * Build a dependency map: agent name → set of agents it depends on.
- *
- * Dependencies come from:
- * 1. Explicit `waits_for` declarations
- * 2. Implicit from `reports_to` (if A reports_to B, then B depends on A)
- * 3. For pipeline/sequential mode with no explicit deps: chain by YAML declaration order
- */
 export function buildDependencyGraph(def: SwarmDefinition): Map<string, Set<string>> {
 	const deps = new Map<string, Set<string>>();
 
@@ -21,7 +7,6 @@ export function buildDependencyGraph(def: SwarmDefinition): Map<string, Set<stri
 		deps.set(name, new Set());
 	}
 
-	// Explicit waits_for
 	for (const [name, agent] of def.agents) {
 		for (const dep of agent.waitsFor) {
 			if (deps.has(dep)) {
@@ -30,7 +15,6 @@ export function buildDependencyGraph(def: SwarmDefinition): Map<string, Set<stri
 		}
 	}
 
-	// reports_to implies the target waits for the reporter
 	for (const [name, agent] of def.agents) {
 		for (const target of agent.reportsTo) {
 			if (deps.has(target)) {
@@ -39,7 +23,6 @@ export function buildDependencyGraph(def: SwarmDefinition): Map<string, Set<stri
 		}
 	}
 
-	// For pipeline/sequential with no explicit deps, chain by declaration order
 	if ((def.mode === "pipeline" || def.mode === "sequential") && !hasExplicitDeps(deps)) {
 		for (let i = 1; i < def.agentOrder.length; i++) {
 			deps.get(def.agentOrder[i])!.add(def.agentOrder[i - 1]);
@@ -56,12 +39,7 @@ function hasExplicitDeps(deps: Map<string, Set<string>>): boolean {
 	return false;
 }
 
-/**
- * Detect cycles in the dependency graph.
- * Returns the names of agents involved in cycles, or null if acyclic.
- */
 export function detectCycles(deps: Map<string, Set<string>>): string[] | null {
-	// Kahn's algorithm: if topological sort doesn't include all nodes, cycles exist
 	const inDegree = new Map<string, number>();
 	const forward = new Map<string, string[]>(); // dependency → its dependents
 
@@ -97,12 +75,6 @@ export function detectCycles(deps: Map<string, Set<string>>): string[] | null {
 	return null;
 }
 
-/**
- * Build execution waves from dependency graph via topological sort.
- *
- * Each wave contains agents whose dependencies are all in earlier waves.
- * Agents within a wave can execute in parallel.
- */
 export function buildExecutionWaves(deps: Map<string, Set<string>>): string[][] {
 	const waves: string[][] = [];
 	const completed = new Set<string>();
@@ -131,7 +103,6 @@ export function buildExecutionWaves(deps: Map<string, Set<string>>): string[][] 
 			);
 		}
 
-		// Sort for deterministic execution order
 		wave.sort();
 
 		for (const node of wave) {

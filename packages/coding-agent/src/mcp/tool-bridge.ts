@@ -1,5 +1,3 @@
-/** MCP to CustomTool bridge. Converts MCP tool definitions to CustomTool format for the agent. */
-
 import type { AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { TSchema } from "@veyyon/ai";
 import { namesDeadSocket } from "@veyyon/ai/error/flags";
@@ -25,17 +23,12 @@ import { retainMCPToolArgsAttemptFactory } from "./transports/http";
 import { isMCPTransportStateMessage } from "./transports/transport-failure";
 import type { MCPContent, MCPServerConnection, MCPToolCallParams, MCPToolCallResult, MCPToolDefinition } from "./types";
 
-/** Reconnect callback: tears down stale connection, returns new one or null. */
 export type MCPReconnect = () => Promise<MCPServerConnection | null>;
 
-/** Whether a failed MCP call is worth tearing the connection down and sending once more. Two kinds of fault qualify, and they belong to different layers. The socket vocabulary is the */
 export function mcpFailureWarrantsReconnect(error: unknown): boolean {
 	if (!(error instanceof Error)) return false;
 	const msg = error.message.toLowerCase();
-	// Stale session (server restarted, old session ID is gone). Unanchored on purpose: `mcpHttpFailureMessage` leads with the URL that failed, so the
 	if (/\bhttp (404|502|503)\b/.test(msg)) return true;
-	// The transports' own wording for a dead connection, owned next to the
-	// strings rather than duplicated as literals here.
 	if (isMCPTransportStateMessage(msg)) return true;
 	return namesDeadSocket(msg);
 }
@@ -71,7 +64,6 @@ function omitUnusedOptionalArgs(args: MCPToolArgs, inputSchema: MCPToolDefinitio
 	return cleaned ?? args;
 }
 
-/** Drop the harness-internal intent field (`INTENT_FIELD`) before forwarding args to an MCP server. The harness injects `i` into every tool's wire */
 function stripHarnessIntent(args: MCPToolArgs, inputSchema: MCPToolDefinition["inputSchema"]): MCPToolArgs {
 	if (!Object.hasOwn(args, INTENT_FIELD)) return args;
 	if (inputSchema.properties && Object.hasOwn(inputSchema.properties, INTENT_FIELD)) return args;
@@ -122,7 +114,6 @@ async function resolveOutboundLocalUrlArgs(
 	return resolved ?? value;
 }
 
-/** Build one physical tools/call attempt from the untouched caller params. Session-local URLs are expanded first. Only after that asynchronous local */
 async function prepareOutboundArgs(
 	params: unknown,
 	inputSchema: MCPToolDefinition["inputSchema"],
@@ -137,26 +128,15 @@ async function prepareOutboundArgs(
 	);
 }
 
-/** Details included in MCP tool results for rendering */
 export interface MCPToolDetails {
-	/** Server name */
 	serverName: string;
-	/** Original MCP tool name */
 	mcpToolName: string;
-	/** Whether the call resulted in an error */
 	isError?: boolean;
-	/** Raw content from MCP response */
 	rawContent?: MCPContent[];
-	/** Provider ID (e.g., "claude", "mcp-json") */
 	provider?: string;
-	/** Provider display name (e.g., "Claude Code", "MCP Config") */
 	providerName?: string;
-	/** Structured output metadata (set by the spill wrapper when output is truncated to an artifact). */
 	meta?: OutputMeta;
 }
-/**
- * Format MCP content for LLM consumption.
- */
 function formatMCPContent(content: MCPContent[]): string {
 	const parts: string[] = [];
 
@@ -191,23 +171,19 @@ function containsRawToolArgument(text: string, value: unknown, seen: WeakSet<obj
 	);
 }
 
-/** The MODEL is the first reader of every message below, and that decides the wording. A failing MCP tool used to hand the model `MCP error: Transport not connected`. */
 const MODEL_NEXT_STEP =
 	"Next step: retry this call at most once. A transport, auth or configuration failure returns the same error on every attempt, so a retry loop costs turns and changes nothing. If a second attempt fails, stop calling this tool and tell the operator what failed, which server it was on, and the fix named above.";
 
-/** `serverName` and `mcpToolName` come from config and the tool schema, never from the caller's arguments, so naming them cannot leak one. */
 function mcpToolFailureText(serverName: string, mcpToolName: string, detail: string): string {
 	return `MCP tool "${mcpToolName}" on server "${serverName}" failed: ${detail}\n${MODEL_NEXT_STEP}`;
 }
 
-/** The error text, or an explanation of its absence. When a server echoes the call's arguments back inside its error, the error is */
 function safeMCPErrorMessage(error: unknown, rawParams: unknown): string {
 	const message = errorMessage(error);
 	if (!containsRawToolArgument(message, rawParams)) return message;
 	return "the server's error message echoed this call's arguments back, so it was withheld to keep credentials out of the transcript. Change the arguments and call again, or ask the operator to check the server's own logs for the real error.";
 }
 
-/** Build a CustomToolResult from a callTool response. */
 function buildResult(
 	result: MCPToolCallResult,
 	serverName: string,
@@ -242,7 +218,6 @@ function buildResult(
 	return toolResult;
 }
 
-/** Build an error CustomToolResult from a caught exception. */
 function buildErrorResult(
 	error: unknown,
 	serverName: string,
@@ -259,7 +234,6 @@ function buildErrorResult(
 	};
 }
 
-/** Re-throw abort-related errors so they bypass error-result handling. The guard itself was always right: it fires before every error-to-result */
 function rethrowIfAborted(error: unknown, signal?: AbortSignal, what = "MCP call"): void {
 	if (error instanceof ToolAbortError) throw error;
 	if (isAbortError(error)) throw toolAbort(error, what);
@@ -275,8 +249,6 @@ async function reconnectWithAbort(reconnect: MCPReconnect, signal?: AbortSignal)
 	}
 }
 
-/** Create a unique tool name for an MCP tool. Prefixes with server name to avoid conflicts. If the tool name already */
-/** Reduce a server or tool name to the characters a tool name may contain. DIGITS ARE KEPT. They used to be replaced along with everything else, which */
 function sanitizeMCPToolNamePart(value: string, fallback: string): string {
 	const sanitized = value
 		.toLowerCase()
@@ -287,7 +259,6 @@ function sanitizeMCPToolNamePart(value: string, fallback: string): string {
 	return sanitized.length > 0 ? sanitized : fallback;
 }
 
-/** The `mcp__<server>_` prefix every tool from `serverName` carries. One owner, because two callers need the exact same string and derived it */
 export function mcpToolNamePrefix(serverName: string): string {
 	return `mcp__${sanitizeMCPToolNamePart(serverName, "server")}_`;
 }
@@ -296,7 +267,6 @@ export function createMCPToolName(serverName: string, toolName: string): string 
 	const sanitizedServerName = sanitizeMCPToolNamePart(serverName, "server");
 	const sanitizedToolName = sanitizeMCPToolNamePart(toolName, "tool");
 
-	// Strip redundant server name prefix from tool name if present
 	const prefixWithUnderscore = `${sanitizedServerName}_`;
 
 	let normalizedToolName = sanitizedToolName;
@@ -307,7 +277,6 @@ export function createMCPToolName(serverName: string, toolName: string): string 
 	return `${mcpToolNamePrefix(serverName)}${normalizedToolName}`;
 }
 
-/** Parse an MCP tool name back to server and tool components. Note: This returns the normalized tool name (with server prefix stripped). */
 export function parseMCPToolName(name: string): { serverName: string; toolName: string } | null {
 	if (!name.startsWith("mcp__")) return null;
 
@@ -321,25 +290,17 @@ export function parseMCPToolName(name: string): { serverName: string; toolName: 
 	};
 }
 
-/**
- * CustomTool wrapping an MCP tool with an active connection.
- */
 export class MCPTool implements CustomTool<TSchema, MCPToolDetails> {
 	readonly name: string;
 	readonly label: string;
 	readonly description: string;
 	readonly parameters: TSchema;
-	/** Original MCP tool name (before normalization) */
 	readonly mcpToolName: string;
-	/** Server name */
 	readonly mcpServerName: string;
 	readonly approval = "write" as const;
-	/** Render completed MCP calls with the result header replacing the pending call header. */
 	readonly mergeCallAndResult = true;
-	/** MCP-backed tools opt out of strict structured-output grammar. The server owns validation, and strict mode makes OpenAI-family models over-fill */
 	readonly strict = false as const;
 
-	/** Create MCPTool instances for all tools from an MCP server connection */
 	static fromTools(connection: MCPServerConnection, tools: MCPToolDefinition[], reconnect?: MCPReconnect): MCPTool[] {
 		return tools.map(tool => new MCPTool(connection, tool, reconnect));
 	}
@@ -387,7 +348,6 @@ export class MCPTool implements CustomTool<TSchema, MCPToolDetails> {
 			if (this.reconnect && mcpFailureWarrantsReconnect(error)) {
 				const newConn = await reconnectWithAbort(this.reconnect, signal);
 				if (newConn) {
-					// Rebind so subsequent calls on this instance use the fresh connection
 					this.connection = newConn;
 					const retryProvider = newConn._source?.provider ?? provider;
 					const retryProviderName = newConn._source?.providerName ?? providerName;
@@ -414,28 +374,20 @@ export class MCPTool implements CustomTool<TSchema, MCPToolDetails> {
 	}
 }
 
-/**
- * CustomTool wrapping an MCP tool with deferred connection resolution.
- */
 export class DeferredMCPTool implements CustomTool<TSchema, MCPToolDetails> {
 	readonly name: string;
 	readonly label: string;
 	readonly description: string;
 	readonly parameters: TSchema;
-	/** Original MCP tool name (before normalization) */
 	readonly mcpToolName: string;
-	/** Server name */
 	readonly mcpServerName: string;
 	readonly approval = "write" as const;
-	/** Render completed MCP calls with the result header replacing the pending call header. */
 	readonly mergeCallAndResult = true;
-	/** See {@link MCPTool.strict}: MCP servers own validation, so stay non-strict. */
 	readonly strict = false as const;
 
 	readonly #fallbackProvider: string | undefined;
 	readonly #fallbackProviderName: string | undefined;
 
-	/** Create DeferredMCPTool instances for all tools from an MCP server */
 	static fromTools(
 		serverName: string,
 		tools: MCPToolDefinition[],
@@ -533,9 +485,6 @@ export class DeferredMCPTool implements CustomTool<TSchema, MCPToolDetails> {
 				return buildErrorResult(callError, this.serverName, this.tool.name, provider, providerName, rawParams);
 			}
 		} catch (connError) {
-			// getConnection() failed — server never connected or connection lost.
-			// This is always worth a reconnect attempt for deferred tools, since the
-			// error ("MCP server not connected") isn't a network error from callTool.
 			rethrowIfAborted(connError, signal);
 			if (this.reconnect) {
 				const newConn = await reconnectWithAbort(this.reconnect, signal);

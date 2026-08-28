@@ -1,13 +1,8 @@
-/** Single source of truth for argv flag classification, shared by: - `parseArgs` in `./args.ts` (the launch-time CLI parser) */
-
 import type { ConfiguredThinkingLevel } from "../thinking";
-// approval-modes.ts is intentionally free of runtime deps (no @veyyon/utils), so
-// importing it here does not violate the bootstrap-race IMPORT RULE above.
 import { APPROVAL_MODE_VALUES, isKnownApprovalMode } from "../tools/approval-modes";
 import type { Args, Mode } from "./args";
 import { CliUsageError } from "./usage-error";
 
-/** Runtime dependencies injected into setters that need to validate input. `args.ts` constructs one object at module load and passes it to each */
 export interface ParseDeps {
 	parseThinking: (value: string | null | undefined) => ConfiguredThinkingLevel | undefined;
 	builtinToolNames: readonly string[];
@@ -17,16 +12,13 @@ export interface ParseDeps {
 
 export type StringSetter = (result: Args, value: string, deps: ParseDeps) => void;
 
-/** Setter for a flag that may or may not consume the next argv token. Receives `undefined` for the bare form (`--resume` with no value, etc.). */
 export type OptionalSetter = (result: Args, value: string | undefined) => void;
 
-/** Per-flag optional-value consumption policy. Every optional flag always rejects tokens that start with `-` — that shared */
 export interface OptionalFlagConfig {
 	set: OptionalSetter;
 	rejectEmpty?: boolean;
 }
 
-// Shared setters for flags that alias the same field.
 const setExtension: StringSetter = (result, value) => {
 	result.extensions = result.extensions ?? [];
 	result.extensions.push(value);
@@ -54,7 +46,6 @@ function parseMaxTimeSeconds(value: string): number {
 	);
 }
 
-/** Accepted `--mode` values, with the guard that gates them. Mirrors the `isKnownApprovalMode` shape in `../tools/approval-modes` so both enum-valued */
 const MODE_ACCEPTED: Record<Mode, true> = { text: true, json: true, rpc: true, acp: true, "rpc-ui": true };
 
 export const MODE_VALUES: readonly Mode[] = Object.keys(MODE_ACCEPTED) as Mode[];
@@ -63,14 +54,12 @@ function isKnownMode(value: string): value is Mode {
 	return Object.hasOwn(MODE_ACCEPTED, value);
 }
 
-/** A rejected flag value, phrased so the terminal output names the fix. Every enum-valued flag routes its failure through here for one reason: a */
 function invalidFlagValue(flag: string, value: string, accepted: readonly string[]): CliUsageError {
 	return new CliUsageError(
 		`Invalid ${flag} value: ${JSON.stringify(value)}. Expected one of: ${accepted.join(", ")}.`,
 	);
 }
 
-/** Setters for flags with string values. Most built-ins consume the next argv token even when it starts with `-`; flags listed in */
 export const STRING_SETTERS: Record<string, StringSetter> = {
 	"--cwd": (result, value) => {
 		result.cwd = value;
@@ -173,41 +162,31 @@ export const STRING_SETTERS: Record<string, StringSetter> = {
 		result.skills = value.split(",").map(s => s.trim());
 	},
 	"--approval-mode": (result, value) => {
-		// Never fall back to the configured default: the whole point of writing
-		// `--approval-mode=ask` is to constrain THIS run, so honouring a typo as
-		// "whatever the config said" hands the user more autonomy than requested.
 		if (!isKnownApprovalMode(value)) throw invalidFlagValue("--approval-mode", value, APPROVAL_MODE_VALUES);
 		result.approvalMode = value;
 	},
 };
 
-/** Optional-value flags. Setters receive `undefined` for the bare form. The dispatch in `args.ts` applies the shared "doesn't start with `-`" */
 export const OPTIONAL_FLAGS: Record<string, OptionalFlagConfig> = {
 	"--resume": { set: setResume, rejectEmpty: true },
 	"-r": { set: setResume, rejectEmpty: true },
 	"--session": { set: setResume, rejectEmpty: true },
 };
 
-/** Derived from {@link STRING_SETTERS}. A flag is in this set if and only if it has a setter — by construction, drift between "the bootstrap thinks */
 export const STRING_VALUE_FLAGS: ReadonlySet<string> = new Set(Object.keys(STRING_SETTERS));
 
-/** Built-in string flags known to be shadowed by bundled/common boolean extensions before extension metadata is available. They still accept a */
 export const EXTENSION_SHADOWABLE_STRING_FLAGS: ReadonlySet<string> = new Set(["--plan"]);
 
-/** Derived from {@link OPTIONAL_FLAGS}. Same single-source contract as {@link STRING_VALUE_FLAGS}. */
 export const OPTIONAL_VALUE_FLAGS: ReadonlySet<string> = new Set(Object.keys(OPTIONAL_FLAGS));
 
-/** Internal marker inserted by the profile bootstrap when removing `--profile` or `--alias` would otherwise make the following value-like token become the */
 export const PROFILE_BOOTSTRAP_BOUNDARY_ARG = "--veyyon-profile-boundary";
 
-/** Long-form launch flags that take NO value (booleans). The bootstrap pre-parser needs this to tell a known value-less flag (whose successor is a fresh */
 export const VALUELESS_FLAGS: ReadonlySet<string> = new Set([
 	"--help",
 	"--version",
 	"--allow-home",
 	"--continue",
 	"--no-session",
-	// The short forms of `--continue` and `--print`. `parseArgs` accepted these from an inline `arg === "-c"` check while the table did not list them, so
 	"-c",
 	"-p",
 	"--no-tools",
@@ -229,7 +208,6 @@ export const VALUELESS_FLAGS: ReadonlySet<string> = new Set([
 	"--dangerously-skip-permissions",
 ]);
 
-/** Whether a bare long option (`--xxx`, no `=`) is unclassified — not a known string-, optional-, or value-less flag. The bootstrap and subcommand */
 export function isUnknownLongValueCandidate(arg: string): boolean {
 	return (
 		arg.startsWith("--") &&
@@ -240,16 +218,11 @@ export function isUnknownLongValueCandidate(arg: string): boolean {
 	);
 }
 
-/** Whether a leading option `flag` consumes the following argv token `next` as its value, applying the same contract as `extractProfileFlags` / `parseArgs`. */
 export function flagConsumesValue(flag: string, next: string | undefined): boolean {
-	// `--flag=value` carries its own value inline.
 	if (flag.startsWith("--") && flag.includes("=")) return false;
 	if (next === undefined) return false;
 	const valueLike = !next.startsWith("-");
-	// Extension-shadowable string flags (`--plan`) accept only a value-like successor: a flag-looking successor stays a fresh flag (`--plan --profile
 	if (EXTENSION_SHADOWABLE_STRING_FLAGS.has(flag)) return valueLike;
-	// Other known string flags consume any successor, even a flag-looking one
-	// (`--system-prompt --foo` ⇒ the system prompt is literally `--foo`).
 	if (STRING_VALUE_FLAGS.has(flag)) return true;
 	if (OPTIONAL_VALUE_FLAGS.has(flag)) {
 		const config = OPTIONAL_FLAGS[flag];

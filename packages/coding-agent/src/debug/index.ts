@@ -1,4 +1,3 @@
-/** Debug command handler with interactive menu. Provides tools for debugging, bug report generation, and system diagnostics. */
 import * as fs from "node:fs/promises";
 import * as url from "node:url";
 import { getWorkProfile } from "@veyyon/natives";
@@ -30,8 +29,6 @@ import { clearArtifactCache, createDebugLogSource, createReportBundle, getArtifa
 import { collectSystemInfo, formatSystemInfo } from "./system-info";
 import { collectTerminalState, formatTerminalState } from "./terminal-info";
 
-/** Debug menu options */
-/** The slice of the interactive context the debug selector uses. 15 members of 215. Naming them is what makes this surface reachable from a */
 export type DebugSelectorContext = Pick<
 	InteractiveModeContext,
 	| "editor"
@@ -84,7 +81,6 @@ const formatFileHyperlink = (path: string): string => {
 	return `\x1b]8;;${fileUrl}\x07${path}\x1b]8;;\x07`;
 };
 
-/** Debug selector — floating ModalShell medium card (replaces the DynamicBorder sandwich; hosted fullscreen via `showModalSelector`). */
 export class DebugSelectorComponent {
 	#inner: ModalSelectListComponent;
 
@@ -170,7 +166,6 @@ export class DebugSelectorComponent {
 	}
 
 	async #handlePerformanceReport(): Promise<void> {
-		// Start profiling
 		let session: ProfilerSession;
 		try {
 			session = await startCpuProfile();
@@ -179,7 +174,6 @@ export class DebugSelectorComponent {
 			return;
 		}
 
-		// Show message and wait for keypress
 		const block = new TranscriptBlock();
 		block.addChild(new Text(theme.fg("accent", `${theme.status.info} CPU profiling started`), 1, 0));
 		block.addChild(new Spacer(1));
@@ -188,7 +182,6 @@ export class DebugSelectorComponent {
 		);
 		this.ctx.present(block);
 
-		// Wait for Enter keypress
 		const { promise, resolve } = Promise.withResolvers<void>();
 		const originalOnEscape = this.ctx.editor.onEscape;
 		const originalOnSubmit = this.ctx.editor.onSubmit;
@@ -207,7 +200,6 @@ export class DebugSelectorComponent {
 
 		await promise;
 
-		// Stop profiling and create report
 		const loader = new Loader(
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),
@@ -253,7 +245,6 @@ export class DebugSelectorComponent {
 				return;
 			}
 
-			// Write SVG to temp file and open in browser
 			const tmpPath = `/tmp/work-profile-${Date.now()}.svg`;
 			await Bun.write(tmpPath, workProfile.svg);
 
@@ -468,9 +459,6 @@ export class DebugSelectorComponent {
 	}
 
 	async #handleViewProtocols(): Promise<void> {
-		// Fire the desktop notification as a real side effect, then render a
-		// panel that samples every other special protocol and reports the
-		// notification outcome.
 		const suppressed = isNotificationSuppressed();
 		if (!suppressed) {
 			const sessionName = this.ctx.sessionManager.getSessionName();
@@ -479,7 +467,6 @@ export class DebugSelectorComponent {
 				body: "Terminal protocol test",
 				type: "test",
 				actions: "focus",
-				// The operator pressed this to find out whether notifications reach their desktop, and they are looking at this window while they do
 				deliverWhenFocused: true,
 			};
 			TERMINAL.sendNotification(notification);
@@ -525,7 +512,6 @@ export class DebugSelectorComponent {
 	async #handleClearCache(): Promise<void> {
 		const sessionsDir = getSessionsDir();
 
-		// Get stats first
 		const stats = await getArtifactCacheStats(sessionsDir);
 
 		if (stats.count === 0) {
@@ -536,7 +522,6 @@ export class DebugSelectorComponent {
 		const sizeStr = formatBytes(stats.totalSize);
 		const oldestStr = stats.oldestDate ? stats.oldestDate.toLocaleDateString() : "unknown";
 
-		// Show confirmation
 		const confirmed = await this.ctx.showHookConfirm(
 			"Clear Artifact Cache",
 			`Found ${stats.count} artifact files (${sizeStr})\nOldest: ${oldestStr}\n\nRemove artifacts older than 30 days?`,
@@ -547,7 +532,6 @@ export class DebugSelectorComponent {
 			return;
 		}
 
-		// Clear cache
 		const loader = new Loader(
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),
@@ -581,7 +565,6 @@ export class DebugSelectorComponent {
 	}
 
 	#getResolvedSettings(): Record<string, unknown> {
-		// Extract key settings for the report
 		return {
 			model: this.ctx.session.model?.id,
 			thinkingLevel: this.ctx.session.thinkingLevel,
@@ -592,9 +575,6 @@ export class DebugSelectorComponent {
 	}
 }
 
-/**
- * Show the debug selector.
- */
 export function showDebugSelector(ctx: DebugSelectorContext, done: () => void): DebugSelectorComponent {
 	const selector = new DebugSelectorComponent(ctx, done);
 	return selector;

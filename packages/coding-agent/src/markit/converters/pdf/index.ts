@@ -1,6 +1,3 @@
-// Adapted from markit-ai (MIT). See ../../NOTICE.
-
-/** PDF to Markdown converter. Uses mupdf (native WASM) for fast PDF parsing and a custom pipeline for */
 import * as path from "node:path";
 import type { ConversionResult, Converter, StreamInfo } from "../../types";
 import { detectColumns } from "./columns";
@@ -15,7 +12,6 @@ const MIMETYPES = ["application/pdf", "application/x-pdf"];
 
 type ImageBlock = { topY: number; markdown: string };
 
-/** Process a set of text boxes (one column or full page): run table detection, separate free text, and render to markdown. */
 function processColumn(
 	pageNumber: number,
 	textBoxes: TextBox[],
@@ -44,13 +40,11 @@ export class PdfConverter implements Converter {
 	async convert(input: Buffer, streamInfo: StreamInfo): Promise<ConversionResult> {
 		const pdfBytes = new Uint8Array(input);
 		const pages = await extractPages(pdfBytes);
-		// Remove running headers/footers before processing.
 		stripHeadersFooters(pages);
 		const imageDir = streamInfo.imageDir;
 
 		const pageMarkdowns: string[] = [];
 		for (const page of pages) {
-			// Build image blocks for this page.
 			const imageBlocks: ImageBlock[] = [];
 			if (imageDir && page.images.length > 0) {
 				for (const img of page.images) {
@@ -60,9 +54,7 @@ export class PdfConverter implements Converter {
 						const png = await renderImageRegion(pdfBytes, img);
 						await Bun.write(filepath, png);
 						imageBlocks.push({ topY: img.topY, markdown: `![${img.id}](${filepath})` });
-					} catch {
-						// Image rendering failed — skip.
-					}
+					} catch {}
 				}
 			} else if (page.images.length > 0) {
 				for (const img of page.images) {
@@ -73,7 +65,6 @@ export class PdfConverter implements Converter {
 				}
 			}
 
-			// Detect column layout. If the page has vertical segments (tables), suppress column detection
 			const layout = detectColumns(page.textBoxes);
 			if (layout.columnCount > 1 && page.segments.some(s => Math.abs(s.x1 - s.x2) <= 0.8)) {
 				const pageXMin = Math.min(...page.textBoxes.map(tb => tb.bounds.left));
@@ -93,14 +84,11 @@ export class PdfConverter implements Converter {
 			}
 
 			if (layout.columnCount === 1) {
-				// Single column — process normally.
 				const md = processColumn(page.pageNumber, page.textBoxes, page.segments, imageBlocks);
 				if (md.length > 0) pageMarkdowns.push(md);
 			} else {
-				// Multi-column — process each column independently, then join.
 				const columnMarkdowns: string[] = [];
 				for (const colBoxes of layout.columns) {
-					// Filter segments to those within this column's X range.
 					const colXMin = Math.min(...colBoxes.map(tb => tb.bounds.left));
 					const colXMax = Math.max(...colBoxes.map(tb => tb.bounds.right));
 					const margin = 10;
@@ -109,7 +97,6 @@ export class PdfConverter implements Converter {
 						const segXMax = Math.max(seg.x1, seg.x2);
 						return segXMax >= colXMin - margin && segXMin <= colXMax + margin;
 					});
-					// Images go with the first column only (no X info to split by).
 					const md = processColumn(
 						page.pageNumber,
 						colBoxes,

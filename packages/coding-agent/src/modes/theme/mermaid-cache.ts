@@ -1,17 +1,11 @@
 import { type MermaidAsciiRenderOptions, renderMermaidAsciiSafe } from "@veyyon/utils/mermaid-ascii";
 
-/** Options controlling how fenced Mermaid source is resolved to terminal ASCII. Extends the raw render options (theme, color mode, spacing, `useAscii`) with a */
 export interface MermaidResolveOptions extends MermaidAsciiRenderOptions {
-	/** Maximum display width (terminal columns) the diagram should occupy. A layout that overflows this width is re-rendered in the perpendicular */
 	maxWidth?: number;
 }
 
-// Memoizes rendered ASCII (and failures) keyed on the render options + the
-// layout-direction variant + source. Width selection happens per call against
-// the cached renders, so a terminal resize re-decides without re-rendering.
 const cache = new Map<string, string | null>();
 
-/** Widest rendered row in display columns (ANSI- and CJK-aware). */
 function asciiDisplayWidth(ascii: string): number {
 	let max = 0;
 	for (const line of ascii.split("\n")) {
@@ -36,13 +30,11 @@ function renderVariant(
 	return ascii;
 }
 
-/** Resolve mermaid ASCII from fenced block source text. Returns null when rendering fails, while memoizing failures to avoid repeated work. */
 export function resolveMermaidAscii(source: string, options?: MermaidResolveOptions): string | null {
 	const normalizedSource = source.replace(/\r\n?/g, "\n").trim();
 	if (!normalizedSource) return null;
 
 	const { maxWidth, ...rest } = options ?? {};
-	// Default to uncolored output; callers opt into a themed palette explicitly.
 	const baseOptions: MermaidAsciiRenderOptions = { colorMode: "none", ...rest };
 	const baseKey = JSON.stringify(baseOptions);
 
@@ -54,7 +46,6 @@ export function resolveMermaidAscii(source: string, options?: MermaidResolveOpti
 	let bestWidth = asciiDisplayWidth(base);
 	if (bestWidth <= maxWidth) return base;
 
-	// The as-authored layout overflows. Render both forced orientations and keep the narrowest (clipping at the call site handles any residual overflow).
 	for (const direction of ["TD", "LR"] as const) {
 		const variant = renderVariant(normalizedSource, baseOptions, baseKey, direction);
 		if (variant === null) continue;
@@ -67,9 +58,6 @@ export function resolveMermaidAscii(source: string, options?: MermaidResolveOpti
 	return best;
 }
 
-/**
- * Clear the mermaid cache.
- */
 export function clearMermaidCache(): void {
 	cache.clear();
 }

@@ -1,5 +1,3 @@
-/** Shared renderer for a horizontal row of colored "segments" styled after the status line: each segment is colored by its track position from the theme's */
-
 import { SGR_BG_RESET, SGR_FG_RESET, SGR_INTENSITY_RESET } from "@veyyon/tui/ansi";
 import { type ThemeColor, theme } from "../theme/theme";
 
@@ -7,7 +5,6 @@ export interface TrackSegment {
 	label: string;
 }
 
-/** Vivid theme colors for position-based segment coloring, in preference order. Themes alias many of these to the same value (titanium maps most of */
 const SEGMENT_COLOR_CANDIDATES: ThemeColor[] = [
 	"accent",
 	"success",
@@ -23,7 +20,6 @@ const SEGMENT_COLOR_CANDIDATES: ThemeColor[] = [
 	"syntaxVariable",
 ];
 
-/** Resolve up to `count` theme colors that render distinctly under the active theme, in candidate preference order. May return fewer than `count` when the */
 export function resolveSegmentPalette(count: number): ThemeColor[] {
 	const palette: ThemeColor[] = [];
 	const seen = new Set<string>();
@@ -37,10 +33,7 @@ export function resolveSegmentPalette(count: number): ThemeColor[] {
 	return palette;
 }
 
-/** Render `segments` as a colored chip track with `activeIndex` filled. Returns a single line of styled text with no surrounding caption or arrows — callers */
 export function renderSegmentTrack(segments: TrackSegment[], activeIndex: number): string {
-	// Powerline triangles point *into* the chip so the colored caps merge with
-	// the filled body: left cap points left, right cap points right.
 	const capLeft = theme.sep.powerlineRight;
 	const capRight = theme.sep.powerlineLeft;
 	const thinSep = theme.fg("statusLineSep", theme.sep.powerlineThin);
@@ -50,8 +43,6 @@ export function renderSegmentTrack(segments: TrackSegment[], activeIndex: number
 	for (let i = 0; i < segments.length; i++) {
 		const segment = segments[i]!;
 		if (i > 0) {
-			// A thin separator reads cleanly only between two plain labels; the chip
-			// caps already delimit the active segment, so pad around it instead.
 			track += i === activeIndex || i - 1 === activeIndex ? "  " : ` ${thinSep} `;
 		}
 		const color = palette[i % palette.length];
@@ -67,7 +58,6 @@ export function renderSegmentTrack(segments: TrackSegment[], activeIndex: number
 	return track;
 }
 
-/** Render the full slider line every segment-slider surface shares: optional dim caption, prev/next arrows (theme `nav.prev`/`nav.next`, accent while a */
 export function renderSliderLines(
 	segments: Array<TrackSegment & { detail?: string }>,
 	activeIndex: number,

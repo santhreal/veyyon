@@ -1,4 +1,3 @@
-/** OpenAI Codex Web Search Provider Uses Codex's built-in web_search tool via the Responses API. */
 import * as os from "node:os";
 import type { AuthStorage, FetchImpl, Model, OAuthAccess } from "@veyyon/ai";
 import { withOAuthAccess } from "@veyyon/ai/auth-retry";
@@ -9,7 +8,6 @@ import {
 import { createOpenAICodexCompatibilityMetadata } from "@veyyon/ai/providers/openai-codex-responses";
 import { getBundledModels } from "@veyyon/catalog/models";
 import {
-	// The host is imported, never respelled. `@veyyon/catalog/wire/codex` owns it and six other modules already read it from there; this file had its own copy of the
 	CODEX_BASE_URL,
 	CODEX_CLIENT_VERSION,
 	getCodexAccountId,
@@ -108,12 +106,10 @@ export interface CodexSearchParams {
 	query: string;
 	system_prompt?: string;
 	num_results?: number;
-	/** Search context size: controls how much web content to include */
 	search_context_size?: "low" | "medium" | "high";
 	resolveProviderTextTransform?: ProviderTextTransformResolver;
 }
 
-/** Codex API response structure */
 interface CodexResponseItem {
 	type: string;
 	id?: string;
@@ -154,7 +150,6 @@ interface CodexResponse {
 	usage?: CodexUsage;
 }
 
-/** Known Codex "image placeholder" answers — short prose the assistant emits in place of a real answer when it produced a screenshot instead of text. These */
 const IMAGE_PLACEHOLDER_ANSWERS: ReadonlySet<string> = new Set([
 	"see attached image",
 	"attached image",
@@ -167,8 +162,6 @@ const IMAGE_PLACEHOLDER_ANSWERS: ReadonlySet<string> = new Set([
 ]);
 
 function isImagePlaceholderAnswer(text: string): boolean {
-	// Strip surrounding brackets/quotes and trailing punctuation, lowercase,
-	// then match against the known-placeholder set.
 	const normalized = text
 		.trim()
 		.replace(/^[[("'`*_]+/, "")
@@ -194,7 +187,6 @@ function countCharacter(text: string, target: string): number {
 	return count;
 }
 
-/** Strips prose punctuation and unmatched closing delimiters from extracted URLs. Codex often returns links in markdown or sentence text without structured annotations. */
 function normalizeExtractedUrl(candidate: string): string | null {
 	let url = candidate.trim();
 
@@ -227,9 +219,6 @@ function normalizeExtractedUrl(candidate: string): string | null {
 	try {
 		return new URL(url).toString();
 	} catch {
-		// A citation URL trimmed out of model prose. The trailing-punctuation loop above strips what it can,
-		// and what is left either parses or was never a URL, so the throw is the answer: no citation rather
-		// than a guessed one, since the URL is shown to the reader as a source.
 		return null;
 	}
 }
@@ -261,7 +250,6 @@ function findMarkdownLinkUrlEnd(text: string, openParenIndex: number): number | 
 	return null;
 }
 
-/** Extracts citation sources from markdown links and bare URLs in the answer text. Used as a fallback when the Codex response omits `url_citation` annotations. */
 function extractTextSources(text: string): SearchSource[] {
 	const sources: SearchSource[] = [];
 
@@ -294,14 +282,10 @@ function extractTextSources(text: string): SearchSource[] {
 	return sources;
 }
 
-/** Extracts account ID from a Codex access token. @param accessToken - JWT access token @returns Account ID string, or null if not found */
 function getAccountIdFromJwt(accessToken: string): string | null {
-	// `null` rather than `undefined` because this module's auth resolution reports every absence as `null`.
-	// The claim namespace and the empty-claim rule are the owner's, in `@veyyon/catalog/wire/codex`.
 	return getCodexAccountId(accessToken) ?? null;
 }
 
-/** Resolve a Codex bearer + accountId through {@link AuthStorage} — the single refresh authority. Returns `null` when no OAuth credential is configured, */
 async function findCodexAuth(
 	authStorage: AuthStorage,
 	sessionId: string | undefined,
@@ -314,9 +298,6 @@ async function findCodexAuth(
 	return { access, accountId };
 }
 
-/**
- * Builds HTTP headers for Codex API requests.
- */
 function buildCodexHeaders(accessToken: string, accountId: string): Record<string, string> {
 	return {
 		Authorization: `Bearer ${accessToken}`,
@@ -330,7 +311,6 @@ function buildCodexHeaders(accessToken: string, accountId: string): Record<strin
 	};
 }
 
-/** Calls the Codex Responses API with web search tool enabled. The caller provides the exact model id to send; retry / fallback policy */
 async function callCodexSearch(
 	auth: { accessToken: string; accountId: string },
 	query: string,
@@ -422,7 +402,6 @@ async function callCodexSearch(
 			throw new SearchProviderError("codex", "Codex API returned no response body", 500);
 		}
 
-		// Parse SSE stream
 		const answerParts: string[] = [];
 		const streamedAnswerParts: string[] = [];
 		const sources: SearchSource[] = [];
@@ -443,17 +422,14 @@ async function callCodexSearch(
 				const item = rawEvent.item as CodexResponseItem | undefined;
 				if (!item) continue;
 
-				// Handle text message content and extract sources from annotations
 				if (item.type === "message" && item.content) {
 					for (const part of item.content) {
 						if (part.type === "output_text" && part.text) {
 							answerParts.push(part.text);
 
-							// Extract sources from url_citation annotations
 							if (part.annotations) {
 								for (const annotation of part.annotations) {
 									if (annotation.type === "url_citation" && annotation.url) {
-										// Deduplicate by URL
 										addSource(sources, { title: annotation.title ?? annotation.url, url: annotation.url });
 									}
 								}
@@ -462,7 +438,6 @@ async function callCodexSearch(
 					}
 				}
 
-				// Handle reasoning summary as part of answer
 				if (item.type === "reasoning" && item.summary) {
 					for (const part of item.summary) {
 						if (part.type === "summary_text" && part.text) {
@@ -497,7 +472,6 @@ async function callCodexSearch(
 
 		const finalAnswer = answerParts.join("\n\n").trim();
 		const streamedAnswer = streamedAnswerParts.join("").trim();
-		// Throw to advance the chain whenever Codex emitted nothing but image placeholder prose — including the case where the streamed delta itself
 		const finalIsPlaceholder = finalAnswer.length > 0 && isImagePlaceholderAnswer(finalAnswer);
 		const streamedIsPlaceholder = streamedAnswer.length > 0 && isImagePlaceholderAnswer(streamedAnswer);
 		const hasFinalText = finalAnswer.length > 0 && !finalIsPlaceholder;
@@ -507,8 +481,6 @@ async function callCodexSearch(
 		}
 		const answer = hasFinalText ? finalAnswer : hasStreamedText ? streamedAnswer : "";
 
-		// Fallback: when Codex omits url_citation annotations, scrape markdown links
-		// and bare URLs from the synthesized answer so callers still receive sources.
 		if (sources.length === 0 && answer.length > 0) {
 			for (const source of extractTextSources(answer)) {
 				addSource(sources, source);
@@ -525,7 +497,6 @@ async function callCodexSearch(
 	});
 }
 
-/** Executes a web search using OpenAI Codex's built-in web search tool. Default-model behavior: */
 export async function searchCodex(params: SearchParams): Promise<SearchResponse> {
 	const seed = await findCodexAuth(params.authStorage, params.sessionId, params.signal);
 	if (!seed) {
@@ -541,9 +512,6 @@ export async function searchCodex(params: SearchParams): Promise<SearchResponse>
 		params.authStorage,
 		"openai-codex",
 		async access => {
-			// Derive ALL auth material from the access this attempt received —
-			// a refreshed/rotated credential carries a different bearer and
-			// ChatGPT account id than the seed.
 			const accountId = access.accountId ?? getAccountIdFromJwt(access.accessToken);
 			if (!accountId) {
 				throw new Error("Codex OAuth credential is missing a ChatGPT account id");
@@ -596,15 +564,10 @@ export async function searchCodex(params: SearchParams): Promise<SearchResponse>
 	};
 }
 
-/**
- * Checks if Codex web search is available.
- */
 export async function hasCodexSearch(authStorage: AuthStorage): Promise<boolean> {
-	// `isAvailable` runs before every request — keep the probe cheap. `hasOAuth(...)` is a synchronous in-memory check that returns true as soon
 	return authStorage.hasOAuth("openai-codex");
 }
 
-/** Search provider for OpenAI Codex web search. */
 export class CodexProvider extends SearchProvider {
 	readonly id = "codex";
 	readonly label = "OpenAI";

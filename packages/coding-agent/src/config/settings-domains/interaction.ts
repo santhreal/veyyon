@@ -3,10 +3,7 @@ import { DEFAULT_RELAY_URL } from "../../collab/protocol";
 import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS, STT_MODEL_VALUES } from "../../stt/models";
 import { STT_SUBMIT_TRIGGER_OPTIONS, STT_SUBMIT_TRIGGER_VALUES } from "../../stt/submit-trigger";
 
-/** Interaction domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const INTERACTION_SETTINGS = {
-	// Interaction
-	// Conversation flow
 	steeringMode: {
 		type: "enum",
 		values: ["all", "one-at-a-time"] as const,
@@ -68,7 +65,6 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
-	// Input and startup
 	doubleEscapeAction: {
 		type: "enum",
 		values: ["branch", "tree", "none"] as const,
@@ -165,7 +161,6 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
-	// Off by default on purpose. The on state emits ED 3, which erases the terminal's saved scrollback: not just what veyyon drew, but the shell
 	"startup.clearScrollback": {
 		type: "boolean",
 		default: false,
@@ -217,8 +212,6 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
-	// Depends on startup.checkUpdate: the check is what finds the release to
-	// install, so turning the check off turns automatic updating off with it.
 	"startup.autoUpdate": {
 		type: "boolean",
 		default: true,
@@ -226,7 +219,6 @@ export const INTERACTION_SETTINGS = {
 			tab: "interaction",
 			group: "Startup & Updates",
 			label: "Automatic Updates",
-			// The off state is spelled out because the setting reads as "updates on/off" otherwise, and somebody who wants to stop updates landing on
 			description: "Install a newer version in the background; off means updates only when you run `veyyon update`",
 		},
 	},
@@ -298,7 +290,6 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
-	// Notifications. The two are not the same kind of event, and they no longer default the same way. A toast is an
 	"completion.notify": {
 		type: "enum",
 		values: ["on", "off"] as const,
@@ -332,7 +323,6 @@ export const INTERACTION_SETTINGS = {
 	"ask.notify": {
 		type: "enum",
 		values: ["on", "off"] as const,
-		// ON, and the one notification that earns it: the turn has stopped and will not continue until the operator answers. Nothing else in the session is waiting on them like this, and the
 		default: "on",
 		ui: {
 			tab: "interaction",
@@ -371,7 +361,6 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
-	// Collab
 	"collab.relayUrl": {
 		type: "string",
 		default: DEFAULT_RELAY_URL,
@@ -429,7 +418,6 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
-	/** What `/new` does to a turn that is still streaming. Two outcomes, and the difference is money: keeping the old conversation */
 	"session.newKeepsBackground": {
 		type: "boolean",
 		default: false,
@@ -489,7 +477,6 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
-	// Speech-to-text
 	"stt.enabled": {
 		type: "boolean",
 		default: false,

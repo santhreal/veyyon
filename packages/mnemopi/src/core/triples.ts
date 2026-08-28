@@ -92,14 +92,6 @@ function copyLegacyDb(source: string, destination: string): void {
 	try {
 		sourceDb = openDatabase(source, { create: false, readwrite: false, pragmas: false });
 		const serialized = (sourceDb as SerializableDatabase).serialize();
-		// One-time legacy migration: copy the old triples DB to its new home.
-		// The previous code wrote a temp then `copyFileSync`'d it into place, and
-		// copyFileSync streams bytes straight into `destination`, so a crash mid
-		// copy left a truncated SQLite file at the destination. The `existsSync`
-		// guard would then treat that corrupt half-DB as a completed migration and
-		// never retry, silently losing the user's triple store. Write via a
-		// sibling temp + atomic rename so the destination only ever appears as the
-		// whole, valid database.
 		if (!existsSync(destination)) atomicWriteFileSync(destination, serialized);
 	} finally {
 		closeQuietly(sourceDb);
@@ -383,9 +375,7 @@ export class TripleStore {
 		} catch (error) {
 			try {
 				this.conn.run("ROLLBACK");
-			} catch {
-				// Preserve the original error.
-			}
+			} catch {}
 			throw error;
 		}
 	}

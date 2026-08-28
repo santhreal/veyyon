@@ -1,5 +1,3 @@
-/** Generic OAuth flow for MCP servers. Allows users to authenticate with any OAuth-compatible MCP server */
-
 import type { OAuthCallbackFlowOptions } from "@veyyon/ai/oauth/callback-server";
 import { DEFAULT_CALLBACK_PATH, OAuthCallbackFlow } from "@veyyon/ai/oauth/callback-server";
 import type { OAuthController, OAuthCredentials } from "@veyyon/ai/oauth/types";
@@ -8,18 +6,14 @@ import { truncate } from "@veyyon/utils";
 import { getActiveProfile } from "@veyyon/utils/dirs";
 import type { OAuthCredential } from "../session/auth-storage";
 
-/** Credential-id prefix for veyyon-managed MCP OAuth credentials keyed by profile and server URL. */
 const MCP_OAUTH_URL_CREDENTIAL_PREFIX = "mcp_oauth:";
 
-/** Credential-id prefix for profile-scoped MCP OAuth credentials (`mcp_oauth:profile:<profile>:<serverUrl>`). */
 const MCP_OAUTH_PROFILE_CREDENTIAL_PREFIX = `${MCP_OAUTH_URL_CREDENTIAL_PREFIX}profile:`;
 
-/** Deterministic credential id for an MCP server URL scoped to an veyyon profile. Local profile stores are already separate, but auth-broker storage shares one */
 export function mcpOAuthCredentialId(serverUrl: string, profile: string | undefined = getActiveProfile()): string {
 	return `${MCP_OAUTH_PROFILE_CREDENTIAL_PREFIX}${profile ?? "default"}:${serverUrl}`;
 }
 
-/** Whether a credential id was minted by veyyon's MCP OAuth flows (either era). */
 export function isManagedMCPOAuthCredentialId(credentialId: string | undefined): credentialId is string {
 	return (
 		!!credentialId &&
@@ -27,20 +21,17 @@ export function isManagedMCPOAuthCredentialId(credentialId: string | undefined):
 	);
 }
 
-/** Profile segment of a profile-scoped `mcp_oauth:profile:<profile>:<serverUrl>` credential id, or `undefined` for legacy non-profile-scoped managed ids */
 export function mcpOAuthCredentialProfile(credentialId: string): string | undefined {
 	if (!credentialId.startsWith(MCP_OAUTH_PROFILE_CREDENTIAL_PREFIX)) return undefined;
 	const separator = credentialId.indexOf(":", MCP_OAUTH_PROFILE_CREDENTIAL_PREFIX.length);
 	return separator === -1 ? undefined : credentialId.slice(MCP_OAUTH_PROFILE_CREDENTIAL_PREFIX.length, separator);
 }
 
-/** Stored MCP OAuth credential. Refresh material is embedded so token refresh works without any `auth` block persisted in (possibly shared) config files. */
 export interface MCPStoredOAuthCredential extends OAuthCredential {
 	tokenUrl?: string;
 	clientId?: string;
 	clientSecret?: string;
 	resource?: string;
-	/** Authorization-server URL (the issuer the grant was minted against). Used to filter same-origin resource indicators on refresh: RFC 8414 lets the */
 	authorizationUrl?: string;
 }
 
@@ -50,7 +41,6 @@ function hasOAuthScope(scopes: string | null | undefined, scope: string): boolea
 	return !!scopes && scopes.split(/\s+/).includes(scope);
 }
 
-/** Trim a DCR failure body / thrown error message to a single, short line the caller can splice into an error string. `undefined` when nothing salvageable */
 function truncateDetail(raw: string | undefined): string | undefined {
 	if (!raw) return undefined;
 	const firstLine = raw.split(/\r?\n/, 1)[0]?.trim();
@@ -58,7 +48,6 @@ function truncateDetail(raw: string | undefined): string | undefined {
 	return truncate(firstLine, 200);
 }
 
-/** Read the response body of a rejected DCR request as a short diagnostic string. Never throws — the caller is already building an error and cannot */
 async function readRegistrationFailureDetail(response: Response): Promise<string | undefined> {
 	try {
 		return truncateDetail(await response.text());
@@ -145,16 +134,12 @@ function resolveCallbackHostname(redirectUri: string | undefined): string | unde
 	return parsed.hostname;
 }
 
-/** Resolve the client_id MCPOAuthFlow would use without doing any I/O — either the explicitly configured value or one embedded as a query parameter */
 function staticClientIdFromConfig(config: MCPOAuthConfig): string | undefined {
 	const fromConfig = config.clientId?.trim();
 	if (fromConfig) return fromConfig;
 	try {
 		return new URL(config.authorizationUrl).searchParams.get("client_id") ?? undefined;
 	} catch {
-		// No parseable authorization URL means no client_id can be mined from one, which is the same
-		// state as a URL that simply does not carry the parameter: dynamic client registration runs next.
-		// The URL is validated where the grant actually uses it, so a bad one is reported there.
 		return undefined;
 	}
 }
@@ -162,7 +147,6 @@ function staticClientIdFromConfig(config: MCPOAuthConfig): string | undefined {
 function resolveCallbackOptions(config: MCPOAuthConfig): OAuthCallbackFlowOptions {
 	const redirectUri = resolveRedirectUri(config.redirectUri);
 	validateRedirectConfig(config, redirectUri);
-	// When a client_id is already pinned (config-supplied or embedded in the authorization URL), it was registered against a specific redirect URI.
 	const allowPortFallback = staticClientIdFromConfig(config) === undefined;
 	return {
 		preferredPort: resolveCallbackPort(config.callbackPort, redirectUri),
@@ -197,11 +181,9 @@ function resolveResourceUri(resource: string | undefined): string | undefined {
 }
 
 interface ResourceIndicatorFilterOptions {
-	/** Strip any resource URL on the same origin as the authorization server. */
 	stripSameOriginResource?: boolean;
 }
 
-/** Drop a redundant fallback resource indicator relative to {@link serverUrl}. Provider-advertised resource indicators are authoritative even when they are */
 function filterResourceIndicator(
 	resource: string | undefined,
 	serverUrl: string,
@@ -213,54 +195,35 @@ function filterResourceIndicator(
 		const parsedResource = new URL(resource);
 		if (parsedResource.origin !== origin) return resource;
 		if (options.stripSameOriginResource) return undefined;
-	} catch {
-		// Malformed serverUrl will fail elsewhere; fall through.
-	}
+	} catch {}
 	return resource;
 }
 
 export interface MCPOAuthConfig {
-	/** Authorization endpoint URL */
 	authorizationUrl: string;
-	/** Token endpoint URL */
 	tokenUrl: string;
-	/** Dynamic client registration endpoint advertised by the authorization server. */
 	registrationUrl?: string;
-	/** Client ID (optional when already embedded in authorization URL) */
 	clientId?: string;
-	/** Client secret (optional for PKCE flows) */
 	clientSecret?: string;
-	/** OAuth scopes (space-separated) */
 	scopes?: string;
-	/** `prompt` parameter for the authorization request. By default the parameter is omitted, matching the reference MCP SDK, except for `offline_access` */
 	prompt?: string;
-	/** Exact redirect URI to advertise to the provider */
 	redirectUri?: string;
-	/** Custom callback port (default: 3000) */
 	callbackPort?: number;
-	/** Custom callback path (default: /callback or redirectUri pathname) */
 	callbackPath?: string;
-	/** MCP resource URI for RFC 8707 resource indicators */
 	resource?: string;
-	/** True when `resource` was synthesized from the server URL fallback rather than advertised by OAuth/protected-resource metadata. Fallback resources */
 	stripSameOriginResource?: boolean;
-	/** Fetch implementation for token exchange and discovery requests. */
 	fetch?: FetchImpl;
 }
 
-/** Generic OAuth flow for MCP servers. Supports standard OAuth 2.0 authorization code flow with PKCE. */
 export class MCPOAuthFlow extends OAuthCallbackFlow {
 	#resolvedClientId?: string;
 	#registeredClientSecret?: string;
 	#codeVerifier?: string;
 	#fetch: FetchImpl;
 	#resource?: string;
-	/** Details of a rejected dynamic client-registration attempt. Populated by {@link #tryRegisterClient} when the provider advertises a registration */
 	#registrationFailure?: {
 		endpoint: string;
-		/** HTTP status returned by the endpoint; `0` when the request threw. */
 		status: number;
-		/** First line of the response body (or thrown error message), trimmed. */
 		detail?: string;
 	};
 
@@ -276,19 +239,16 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 		);
 	}
 
-	/** Client id used during the authorization request. Returns the value supplied via {@link MCPOAuthConfig.clientId} or, when the server required dynamic */
 	get resolvedClientId(): string | undefined {
 		return this.#resolvedClientId;
 	}
 
-	/** Client secret issued by dynamic client registration, if any. Always `undefined` for PKCE-only/public clients and when the caller supplies the */
 	get registeredClientSecret(): string | undefined {
 		return this.#registeredClientSecret;
 	}
 	get resource(): string | undefined {
 		return this.#resource;
 	}
-	/** Authorization-server URL the flow used. Persist alongside the credential so refresh can filter same-origin resource indicators against the issuer's */
 	get authorizationUrl(): string {
 		return this.config.authorizationUrl;
 	}
@@ -317,13 +277,10 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 		}
 		const existingResource = params.get("resource")?.trim();
 		if (existingResource) {
-			// A resource already embedded in the provider's authorization URL is provider-authored, not veyyon's server-URL fallback. Preserve same-host
 			const filtered = filterResourceIndicator(resolveResourceUri(existingResource), this.config.authorizationUrl);
 			if (filtered) {
 				this.#resource = filtered;
 			} else {
-				// Defensive path for future policy additions: when filtering says
-				// "omit", drop it from both authorize and token requests.
 				params.delete("resource");
 				this.#resource = undefined;
 			}
@@ -333,13 +290,11 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 		params.set("redirect_uri", redirectUri);
 		params.set("state", state);
 
-		// Add PKCE challenge (some providers require it)
 		const codeVerifier = this.#generateCodeVerifier();
 		const codeChallenge = await this.#generateCodeChallenge(codeVerifier);
 		params.set("code_challenge", codeChallenge);
 		params.set("code_challenge_method", "S256");
 
-		// Store code verifier for token exchange
 		this.#codeVerifier = codeVerifier;
 
 		if (!params.get("client_id")) {
@@ -359,13 +314,11 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 			params.set("client_id", this.#resolvedClientId);
 		}
 
-		// Add code verifier for PKCE
 		if (this.#codeVerifier) {
 			params.set("code_verifier", this.#codeVerifier);
 		}
 		this.#codeVerifier = undefined;
 
-		// Add client secret if provided
 		if (this.#resource) {
 			params.set("resource", this.#resource);
 		}
@@ -397,7 +350,6 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 			token_type?: string;
 		};
 
-		// Calculate expiry timestamp
 		const expiresIn = data.expires_in ?? 3600; // Default to 1 hour
 		const expires = Date.now() + expiresIn * 1000;
 
@@ -408,18 +360,12 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 		};
 	}
 
-	/**
-	 * Generate PKCE code verifier (random string).
-	 */
 	#generateCodeVerifier(): string {
 		const bytes = new Uint8Array(32);
 		crypto.getRandomValues(bytes);
 		return this.#base64UrlEncode(bytes);
 	}
 
-	/**
-	 * Generate PKCE code challenge from verifier.
-	 */
 	async #generateCodeChallenge(verifier: string): Promise<string> {
 		const encoder = new TextEncoder();
 		const data = encoder.encode(verifier);
@@ -427,9 +373,6 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 		return this.#base64UrlEncode(new Uint8Array(hash));
 	}
 
-	/**
-	 * Base64 URL encode (without padding).
-	 */
 	#base64UrlEncode(bytes: Uint8Array): string {
 		const base64 = btoa(String.fromCharCode(...bytes));
 		return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
@@ -442,20 +385,16 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 		try {
 			return new URL(authorizationUrl).searchParams.get("resource") ?? undefined;
 		} catch {
-			// An optional RFC 8707 hint. Undefined means "not advertised in the URL", which is also what a
-			// parseable URL without the parameter gives, and the request omits `resource` in both cases.
 			return undefined;
 		}
 	}
 
-	/** Drop redundant resource indicators for this authorization server. Provider-advertised path-scoped values are preserved; fallback server-URL */
 	#filterResourceIndicator(resource: string | undefined): string | undefined {
 		return filterResourceIndicator(resource, this.config.authorizationUrl, {
 			stripSameOriginResource: this.config.stripSameOriginResource,
 		});
 	}
 
-	/** Try OAuth dynamic client registration when provider requires a client_id. Records rejection details on {@link #registrationFailure} so that when */
 	async #tryRegisterClient(redirectUri: string): Promise<void> {
 		const registrationEndpoint = this.config.registrationUrl ?? (await this.#resolveRegistrationEndpoint());
 		if (!registrationEndpoint) return;
@@ -504,8 +443,6 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 				this.#registeredClientSecret = data.client_secret;
 			}
 		} catch (error) {
-			// Distinguish real transport/parse failures from a benign no-DCR
-			// response so #missingClientIdError can surface what went wrong.
 			this.#registrationFailure = {
 				endpoint: registrationEndpoint,
 				status: 0,
@@ -517,19 +454,14 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 	async #resolveRegistrationEndpoint(): Promise<string | null> {
 		const authorizationUrl = new URL(this.config.authorizationUrl);
 
-		// origin-root well-known; most servers serve metadata here.
 		const rootUrl = new URL("/.well-known/oauth-authorization-server", authorizationUrl.origin).toString();
 		const endpoint = await this.#tryWellKnownForRegistration(rootUrl);
 		if (endpoint) return endpoint;
 
-		// path-prefixed well-known for gateways (e.g. https://gateway.example.com/my-service/).
 		const normalizedPath = authorizationUrl.pathname.replace(/\/$/, "");
 		const lastSlash = normalizedPath.lastIndexOf("/");
-		// Bare-origin authorization URL — nothing further to try.
 		if (lastSlash < 0) return null;
 
-		// Single-segment paths are the gateway prefix itself; multi-segment paths
-		// drop the trailing segment (typically a service endpoint).
 		const prefixPath = lastSlash === 0 ? normalizedPath : normalizedPath.slice(0, lastSlash);
 		const prefixedUrl = new URL(
 			".well-known/oauth-authorization-server",
@@ -538,7 +470,6 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 		const prefixedEndpoint = await this.#tryWellKnownForRegistration(prefixedUrl);
 		if (prefixedEndpoint) return prefixedEndpoint;
 
-		// RFC 8414 §3.1 path-ful issuer form: /.well-known/oauth-authorization-server/<path>.
 		const pathfulUrl = new URL(
 			`/.well-known/oauth-authorization-server${normalizedPath}`,
 			authorizationUrl.origin,
@@ -558,9 +489,7 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 			if (metadata.registration_endpoint && metadata.registration_endpoint.trim() !== "") {
 				return metadata.registration_endpoint;
 			}
-		} catch {
-			// Ignore fetch/parse failures.
-		}
+		} catch {}
 		return null;
 	}
 
@@ -581,11 +510,9 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 			if (error instanceof Error && /client[_-]?id/i.test(error.message)) {
 				throw error;
 			}
-			// Ignore network/probe failures to avoid blocking flows that still work.
 		}
 	}
 
-	/** Build the error thrown when the authorize probe confirms the provider demands a `client_id`. When dynamic client registration was attempted and */
 	#missingClientIdError(): Error {
 		const failure = this.#registrationFailure;
 		const manualHint =
@@ -608,17 +535,13 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 	}
 }
 
-/** Options for {@link refreshMCPOAuthToken}. Carried via the trailing object so positional callers keep working. */
 export interface RefreshMCPOAuthTokenOptions {
 	fetch?: FetchImpl;
 	signal?: AbortSignal;
-	/** Authorization-server URL the original grant was minted against. Used to filter same-origin resource indicators on refresh. Defaults to `tokenUrl`'s */
 	authorizationUrl?: string;
-	/** True when the refresh `resource` was synthesized from the server URL fallback because the credential/auth material carried no resource. */
 	stripSameOriginResource?: boolean;
 }
 
-/** Refresh an MCP OAuth token using the standard refresh_token grant. Returns updated credentials; preserves the old refresh token if the server doesn't rotate it. */
 export async function refreshMCPOAuthToken(
 	tokenUrl: string,
 	refreshToken: string,
@@ -630,15 +553,12 @@ export async function refreshMCPOAuthToken(
 	const optsFromTrailing = typeof resourceOrOpts === "string" ? opts : resourceOrOpts;
 	const fetchImpl: FetchImpl = optsFromTrailing?.fetch ?? fetch;
 	const resource = typeof resourceOrOpts === "string" ? resourceOrOpts : undefined;
-	// Filter against the authorization-server origin when known (RFC 8414 permits authorize/token endpoints on separate origins). Fall back to
 	const filterAnchor = optsFromTrailing?.authorizationUrl ?? tokenUrl;
 	const params = new URLSearchParams({
 		grant_type: "refresh_token",
 		refresh_token: refreshToken,
 	});
 	if (clientId) params.set("client_id", clientId);
-	// Drop redundant indicators so refresh stays consistent with the initial
-	// grant; see {@link filterResourceIndicator} for context.
 	const resolvedResource = filterResourceIndicator(resolveResourceUri(resource), filterAnchor, {
 		stripSameOriginResource: optsFromTrailing?.stripSameOriginResource,
 	});

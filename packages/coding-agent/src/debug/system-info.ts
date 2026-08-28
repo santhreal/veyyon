@@ -1,7 +1,3 @@
-/**
- * System information collection for debug reports.
- */
-
 import * as os from "node:os";
 import { formatBytes, getProjectDir, VERSION } from "@veyyon/utils";
 
@@ -23,7 +19,6 @@ export interface SystemInfo {
 	terminal: string | undefined;
 }
 
-/** Map Darwin kernel major version to macOS marketing name. */
 function macosMarketingName(release: string): string | undefined {
 	const major = Number.parseInt(release.split(".")[0] ?? "", 10);
 	if (Number.isNaN(major)) return undefined;
@@ -38,16 +33,12 @@ function macosMarketingName(release: string): string | undefined {
 	return names[major];
 }
 
-/** Collect system information */
 export async function collectSystemInfo(): Promise<SystemInfo> {
 	let cpuModel = "Unknown CPU";
 	try {
 		cpuModel = os.cpus()[0]?.model ?? cpuModel;
-	} catch {
-		// Keep debug report collection best-effort when CPU probing fails.
-	}
+	} catch {}
 
-	// Try to get shell from environment
 	const shell = Bun.env.SHELL ?? Bun.env.ComSpec ?? "unknown";
 	const terminal = Bun.env.TERM_PROGRAM ?? Bun.env.TERM ?? undefined;
 
@@ -76,7 +67,6 @@ export async function collectSystemInfo(): Promise<SystemInfo> {
 	};
 }
 
-/** Format system info for display */
 export function formatSystemInfo(info: SystemInfo): string {
 	const lines = [
 		"System Information",
@@ -97,7 +87,6 @@ export function formatSystemInfo(info: SystemInfo): string {
 	return lines.join("\n");
 }
 
-/** Sanitize environment variables by redacting sensitive values */
 export function sanitizeEnv(env: Record<string, string | undefined>): Record<string, string> {
 	const SENSITIVE_PATTERNS = [/key/i, /secret/i, /token/i, /pass/i, /auth/i, /credential/i, /api/i, /private/i];
 

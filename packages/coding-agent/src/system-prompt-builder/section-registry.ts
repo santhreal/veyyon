@@ -1,4 +1,3 @@
-/** The single registry of every section in the model's system prompt. Rows declare section identity, order, purpose, source class, and banner name. */
 import { kebabToCamel, type PromptSection } from "@veyyon/utils";
 import { hasBanner, renderBanner } from "./banner-grammar";
 
@@ -6,20 +5,16 @@ export interface TemplateSection extends PromptSection {
 	readonly source: "template";
 }
 
-/** Where a runtime section's text comes from. `option` means the text is handed to `buildSystemPrompt` by its caller, which */
 export type RuntimeSectionInput = { readonly kind: "computed" } | { readonly kind: "option"; readonly key: string };
 
 export interface RuntimeSection extends PromptSection {
 	readonly source: "runtime";
-	/** Runtime sections always carry a registry-owned banner, so never `null`. */
 	readonly name: string;
 	readonly input: RuntimeSectionInput;
 }
 
-/** A row in the system prompt's section list: static-prefix or runtime-sourced. This union extends the shared `PromptSection` shape with source information */
 export type SystemPromptSection = TemplateSection | RuntimeSection;
 
-/** Static cached-prefix sections in model-visible order. Their bodies come exclusively from statement modules and are inserted into */
 export const TEMPLATE_SECTIONS = [
 	{
 		id: "conventions",
@@ -59,7 +54,6 @@ export const TEMPLATE_SECTIONS = [
 	},
 ] as const satisfies readonly TemplateSection[];
 
-/** The sections assembled from runtime state, in emission order. `project` carries the workstation/environment framing, the discovered context */
 export const RUNTIME_SECTIONS = [
 	{
 		id: "project",
@@ -67,8 +61,6 @@ export const RUNTIME_SECTIONS = [
 		name: "PROJECT",
 		input: { kind: "computed" },
 		purpose: "environment, cwd, context files, workspace tree, active repo context",
-		// Renders even with an empty workspace tree and no context files: it always
-		// carries at least the environment framing and the cwd.
 		optional: false,
 	},
 	{
@@ -98,61 +90,46 @@ export const RUNTIME_SECTIONS = [
 	},
 ] as const satisfies readonly RuntimeSection[];
 
-/** One entry of {@link TEMPLATE_SECTIONS}, with its literal id and name intact. */
 export type TemplateSectionEntry = (typeof TEMPLATE_SECTIONS)[number];
 
-/** One entry of {@link RUNTIME_SECTIONS}, with its literal id, kind and key intact. */
 export type RuntimeSectionEntry = (typeof RUNTIME_SECTIONS)[number];
 
 export type TemplateSectionId = TemplateSectionEntry["id"];
 export type RuntimeSectionId = RuntimeSectionEntry["id"];
 
-/** The ids of the template's regions, in document order, read off the rows. Declared as its own literal list until now, which made adding a section two */
 export const TEMPLATE_SECTION_IDS: readonly TemplateSectionId[] = TEMPLATE_SECTIONS.map(section => section.id);
 
-/** The ids of the runtime sections, in emission order, read off the rows. */
 export const RUNTIME_SECTION_IDS: readonly RuntimeSectionId[] = RUNTIME_SECTIONS.map(section => section.id);
 
-/** The ids of the sections whose text the BUILDER produces, derived from the registry's own `input.kind`. */
 export type ComputedRuntimeSectionId = Extract<RuntimeSectionEntry, { input: { kind: "computed" } }>["id"];
 
-/** Every option key the registry declares, as a union of literals. This is what lets `system-prompt.ts` prove the keys are real fields of */
 export type OptionBackedSectionKey = Extract<RuntimeSectionEntry, { input: { kind: "option" } }>["input"]["key"];
 
-/** The banner that introduces the argot handle table, read off the section that owns it rather than restated. */
 const SHORTHAND_HANDLES_SECTION = RUNTIME_SECTIONS[2];
 
-/** The positional pick above is the `shorthand-handles` row, proved at build time. `RUNTIME_SECTIONS.find(...)` returns `T | undefined`, and the old code spent an */
 const _assertHandlesRow: (typeof SHORTHAND_HANDLES_SECTION)["id"] extends "shorthand-handles" ? true : never = true;
 void _assertHandlesRow;
 
 export const ARGOT_HANDLES_BANNER: string = renderBanner(SHORTHAND_HANDLES_SECTION.name);
 
-/** Every section, in the order it reaches the model. */
 export const SYSTEM_PROMPT_SECTIONS: readonly SystemPromptSection[] = [...TEMPLATE_SECTIONS, ...RUNTIME_SECTIONS];
 
-/** Every banner-bearing section, in order — template and runtime alike. This is what makes the model uniform: the splitter and the reorderer key off */
 export const BANNERED_SECTIONS: readonly (SystemPromptSection & { name: string })[] =
 	SYSTEM_PROMPT_SECTIONS.filter(hasBanner);
 
-/** Banner-bearing static sections. These rows define the banner table used to split, inspect, override, and */
 export const BANNERED_TEMPLATE_SECTIONS: readonly (TemplateSection & { name: string })[] =
 	TEMPLATE_SECTIONS.filter(hasBanner);
 
-/** Type-level counterpart to {@link kebabToCamel} for registry-derived keys. */
 type KebabToCamelKey<Value extends string> = Value extends `${infer Head}-${infer Tail}`
 	? `${Head}${Capitalize<KebabToCamelKey<Tail>>}`
 	: Value;
 
-/** Internal camel-case key for one static section. */
 export type TemplateSectionKey = KebabToCamelKey<TemplateSectionId>;
 
-/** The camelCase override keys for the template sections, in document order. Derived, never declared: the override keys and the section ids used to be two */
 export const TEMPLATE_SECTION_CAMEL_KEYS: readonly TemplateSectionKey[] = TEMPLATE_SECTION_IDS.map(
 	kebabToCamel,
 ) as TemplateSectionKey[];
 
-/** Prefix assembled section body text with its registered banner. Returns "" for empty text so an absent optional section stays absent rather */
 export function withSectionBanner(
 	section: SystemPromptSection & { readonly name: string },
 	text: string | undefined,
@@ -162,10 +139,8 @@ export function withSectionBanner(
 	return `${renderBanner(section.name)}\n\n${body}`;
 }
 
-/** Runtime sections whose text arrives as a `buildSystemPrompt` option. The wiring contract keys off this list: every entry names an option a */
 export type OptionBackedRuntimeSection = Extract<RuntimeSectionEntry, { input: { kind: "option" } }>;
 
-/** Narrow a registry row to the option-backed case. A predicate rather than an inline `section.input.kind === "option"` because */
 export function isOptionBackedSection(section: RuntimeSectionEntry): section is OptionBackedRuntimeSection {
 	return section.input.kind === "option";
 }

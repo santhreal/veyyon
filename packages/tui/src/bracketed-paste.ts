@@ -1,40 +1,16 @@
-/** The bracketed-paste start marker emitted by terminals before pasted bytes. */
 export const PASTE_START = "\x1b[200~";
 
-/** The bracketed-paste end marker. A terminal that truncates it is what the byte cap below recovers from. */
 export const PASTE_END = "\x1b[201~";
 
 export type PasteResult =
 	| { handled: false }
 	| {
 			handled: true;
-			/**
-			 * Ordinary input bytes that arrived in the same chunk *before* the paste
-			 * start marker. They are not part of the paste and must be handled as
-			 * normal keyboard input, without being fed back through paste detection
-			 * (they contain no start marker and would otherwise be swallowed into an
-			 * active buffer). Omitted when the start marker was at the chunk head.
-			 */
 			prefix?: string;
 			pasteContent?: string;
 			remaining: string;
 	  };
 
-// Some terminals re-encode the control bytes inside a bracketed paste as key-event
-// escape sequences (observed with tmux extended-keys passthrough under kitty). tmux
-// emits one of two formats depending on `extended-keys-format`:
-//   - csi-u:  ESC [ <codepoint> ; 5 u        (Ctrl+J → ESC [ 106 ; 5 u)
-//   - xterm:  ESC [ 27 ; 5 ; <codepoint> ~   (Ctrl+J → ESC [ 27 ; 5 ; 106 ~)
-// Callers must decode these back to the literal control byte (Ctrl+J → "\n") before
-// stripping control chars; otherwise ESC is dropped and the printable tail
-// ("[106;5u" / "[27;5;106~") leaks into the editor.
-//
-// Only Ctrl+<letter> is decoded (codepoint a-z/A-Z → 0x01..0x1A). That is the set tmux
-// actually re-encodes from paste content in practice — TAB (Ctrl+I), LF (Ctrl+J), CR
-// (Ctrl+M), VT (Ctrl+K), FF (Ctrl+L), … Non-letter Ctrl combos (NUL, ESC, FS-US, DEL)
-// never appear as re-encoded paste bytes, so they are left untouched rather than
-// synthesized into raw control bytes. Callers still strip leftover control characters
-// after decoding (the editor keeps "\n"; the single-line input strips all of them).
 const REENCODED_CTRL_CSI_U = /\x1b\[(\d+);5u/g;
 const REENCODED_CTRL_XTERM = /\x1b\[27;5;(\d+)~/g;
 
@@ -45,36 +21,18 @@ function decodeReencodedCtrlByte(match: string, code: string): string {
 	return match;
 }
 
-/**
- * Decode tmux's re-encoded control bytes (both `extended-keys-format` variants) inside a
- * bracketed-paste payload back to their literal byte (e.g. Ctrl+J → "\n"). Leaves the rest of
- * the text untouched. Call before any control-character stripping so newlines/tabs survive
- * instead of leaking the printable escape tail into the buffer.
- */
 export function decodeReencodedPasteControls(text: string): string {
 	return text
 		.replace(REENCODED_CTRL_CSI_U, decodeReencodedCtrlByte)
 		.replace(REENCODED_CTRL_XTERM, decodeReencodedCtrlByte);
 }
 
-/**
- * Options for {@link BracketedPasteHandler}.
- */
 export type BracketedPasteHandlerOptions = {
-	/** Byte cap for buffered paste content in bytes (default: 64 MiB). */
 	byteLimit?: number;
 };
 
-/** Default cap on a single buffered paste (64 MiB). */
 export const PASTE_MAX_BYTES = 64 * 1024 * 1024;
 
-/**
- * Handles bracketed paste mode buffering for terminal input components.
- *
- * Bracketed paste mode wraps pasted content between start (\x1b[200~) and
- * end (\x1b[201~) markers, which may arrive split across multiple chunks.
- * This class buffers incoming data and assembles complete paste payloads.
- */
 export class BracketedPasteHandler {
 	#buffer = "";
 	#active = false;
@@ -84,25 +42,11 @@ export class BracketedPasteHandler {
 		this.#byteLimit = options.byteLimit ?? PASTE_MAX_BYTES;
 	}
 
-	/**
-	 * Process incoming terminal data for bracketed paste sequences.
-	 *
-	 * @returns `{ handled: false }` if the data contains no paste sequence and
-	 *          should be processed normally. `{ handled: true }` if the data was
-	 *          consumed by paste buffering — `pasteContent` is set when a complete
-	 *          paste has been assembled (or the byte cap has aborted a runaway
-	 *          buffer); omitted when still buffering.
-	 */
 	process(data: string): PasteResult {
 		let prefix: string | undefined;
 
 		const startIndex = data.indexOf(PASTE_START);
 		if (startIndex !== -1) {
-			// Bytes before the start marker are ordinary input that merely shared a
-			// chunk with the paste, not paste content. Split them off as `prefix`
-			// (only when non-empty) and begin buffering from just after the marker.
-			// Replacing only the marker, as the previous code did, folded the
-			// pre-marker bytes into the paste payload.
 			if (startIndex > 0) prefix = data.slice(0, startIndex);
 			this.#active = true;
 			this.#buffer = "";
@@ -124,11 +68,6 @@ export class BracketedPasteHandler {
 			return { handled: true, prefix, pasteContent, remaining };
 		}
 
-		// Byte cap: a lost/corrupted end marker (ssh/tmux truncation) must not
-		// consume unbounded memory. Deliver the accumulated bytes so they are
-		// neither lost nor held forever, and reset paste mode so subsequent
-		// input recovers. See `StdinBuffer#abortPaste` for the sibling recovery
-		// semantics inside `StdinBuffer`.
 		if (this.#buffer.length > this.#byteLimit) {
 			const pasteContent = this.#buffer;
 			this.#buffer = "";

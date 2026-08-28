@@ -1,27 +1,20 @@
-/** Append-only context mode for stabilizing prefix caches across turns. */
-
 import type { Context, Message, Tool } from "@veyyon/ai";
 import type { Dialect } from "@veyyon/ai/dialect";
 import { normalizeTools } from "./agent-loop";
 import type { AgentContext } from "./types";
 
-/** Frozen system prompt + tool spec snapshot. */
 export interface StablePrefixSnapshot {
 	systemPrompt: string[];
 	tools: Tool[];
 	fingerprint: string;
 }
 
-/** Options threaded through `build()` so the snapshot reflects loop-time settings. */
 export interface BuildOptions {
-	/** Inject the `i` intent field into tool schemas (must match agent-loop's normalizeTools). */
 	intentTracing: boolean;
 	exampleDialect?: Dialect;
-	/** Strip tool descriptions from the provider-bound specs (must match normalizeTools). */
 	pruneToolDescriptions?: boolean;
 }
 
-/** A frozen prefix (system prompt + tools) that produces stable byte */
 export class StablePrefix {
 	#snapshot: StablePrefixSnapshot | null = null;
 	#version = 0;
@@ -36,7 +29,6 @@ export class StablePrefix {
 		return this.#snapshot !== null;
 	}
 
-	/** Build or rebuild from live context. */
 	build(context: AgentContext, options: BuildOptions): boolean {
 		const snapshot = takeSnapshot(context, options);
 		if (this.#snapshot && this.#snapshot.fingerprint === snapshot.fingerprint) {
@@ -47,12 +39,10 @@ export class StablePrefix {
 		return true;
 	}
 
-	/** Force rebuild on the next `build()` call. */
 	invalidate(): void {
 		this.#snapshot = null;
 	}
 
-	/** Returns the cached prefix. */
 	toContext(): { systemPrompt: string[]; tools: Tool[] } {
 		const s = this.#snapshot;
 		if (!s) throw new Error("StablePrefix.toContext() called before build()");
@@ -60,7 +50,6 @@ export class StablePrefix {
 	}
 }
 
-/** Append-only message log at the `Message[]` (provider-level) layer. */
 export class AppendOnlyLog {
 	#entries: Message[] = [];
 
@@ -76,23 +65,19 @@ export class AppendOnlyLog {
 		for (const m of messages) this.#entries.push(m);
 	}
 
-	/** Replace the last entry — only legal for compaction. */
 	replaceTail(replacement: Message): void {
 		const idx = this.#entries.length - 1;
 		if (idx >= 0) this.#entries[idx] = replacement;
 	}
 
-	/** Returns a shallow copy of all entries. */
 	toMessages(): Message[] {
 		return this.#entries.slice();
 	}
 
-	/** Direct readonly access for in-place inspection. */
 	entries(): readonly Message[] {
 		return this.#entries;
 	}
 
-	/** Drop entries past index `count`, keeping the first `count` byte-stable. */
 	truncate(count: number): void {
 		if (count < 0) count = 0;
 		if (count >= this.#entries.length) return;
@@ -104,13 +89,10 @@ export class AppendOnlyLog {
 	}
 }
 
-/** Manages a stable prefix + append-only log for the agent loop. */
 export class AppendOnlyContextManager {
 	readonly prefix = new StablePrefix();
 	readonly log = new AppendOnlyLog();
-	/** How many normalized messages were synced into the log as of the last sync. */
 	#lastSyncCount = 0;
-	/** Per-message digests of the synced log. Lets a deep or tail rewrite */
 	#messageDigests: number[] = [];
 
 	build(context: AgentContext, options: BuildOptions): Context {
@@ -119,10 +101,7 @@ export class AppendOnlyContextManager {
 		return { systemPrompt, messages: this.log.toMessages(), tools };
 	}
 
-	/** Sync normalized (provider-level) messages into the append-only log. */
 	syncMessages(normalizedMessages: Message[]): void {
-		// Compaction (array shrunk) — every previously-synced message is gone,
-		// so the log can't carry any byte-stable bytes forward.
 		if (normalizedMessages.length < this.#lastSyncCount) {
 			this.log.clear();
 			this.#lastSyncCount = 0;
@@ -138,7 +117,6 @@ export class AppendOnlyContextManager {
 			}
 		}
 
-		// Append the diverged tail (or the full delta on a normal turn).
 		for (let i = this.#lastSyncCount; i < normalizedMessages.length; i++) {
 			const msg = normalizedMessages[i];
 			this.log.append(msg);
@@ -147,7 +125,6 @@ export class AppendOnlyContextManager {
 		this.#lastSyncCount = normalizedMessages.length;
 	}
 
-	/** Reset prefix + log for a model/provider switch while mode stays active. */
 	invalidateForModelChange(): void {
 		this.prefix.invalidate();
 		this.log.clear();
@@ -155,7 +132,6 @@ export class AppendOnlyContextManager {
 		this.#messageDigests = [];
 	}
 
-	/** Reset the sync cursor AND clear the log. */
 	resetSyncCursor(): void {
 		this.log.clear();
 		this.#lastSyncCount = 0;
@@ -182,7 +158,6 @@ export class AppendOnlyContextManager {
 		this.prefix.build(context, options);
 	}
 
-	/** Index of the first message whose serialized bytes differ from the */
 	#longestStablePrefix(normalizedMessages: readonly unknown[]): number {
 		const bound = Math.min(this.#lastSyncCount, normalizedMessages.length);
 		for (let i = 0; i < bound; i++) {
@@ -193,7 +168,6 @@ export class AppendOnlyContextManager {
 		return bound;
 	}
 
-	/** Deterministic digest over every field the provider may serialize — role, */
 	#messageDigest(msg: unknown): number {
 		if (!msg || typeof msg !== "object") return 0;
 		const m = msg as Record<string, unknown>;

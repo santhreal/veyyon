@@ -1,4 +1,3 @@
-/** Plugin settings UI components. Provides a hierarchical settings interface: */
 import {
 	Input,
 	matchesKey,
@@ -18,7 +17,6 @@ import { shortenPath } from "../../tools/render-utils";
 import { type ModalShortcut, SETTINGS_SUBPANE_SHORTCUTS } from "./modal-shell";
 import { MouseRoutedSubmenu, type TrackedMouseTarget } from "./select-list-mouse-routing";
 
-/** Forwards a keystroke to `input`, but cancels via `onCancel` when the user presses Escape. Escape is decoded via `matchesKey` rather than a raw `\x1b` compare: inside the */
 export function handleInputOrEscape(
 	data: string,
 	input: { handleInput(data: string): void },
@@ -31,7 +29,6 @@ export function handleInputOrEscape(
 	input.handleInput(data);
 }
 
-/** Footer chips per view. The plugins tab lives inside the settings card, so these reach the user through that card's footer, named the way every other */
 const PLUGIN_LIST_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "up/down navigate" },
 	{ label: "enter configure" },
@@ -50,7 +47,6 @@ const MARKETPLACE_DETAIL_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "esc back", clickable: true, id: "back" },
 ];
 
-/** One row in the unified plugin list. npm and marketplace plugins live in separate registries with different shapes, so a tagged union keeps both */
 export type PluginListEntry =
 	| { kind: "npm"; plugin: InstalledPlugin }
 	| { kind: "marketplace"; plugin: InstalledPluginSummary };
@@ -61,12 +57,10 @@ export interface PluginListCallbacks {
 	onCancel: () => void;
 }
 
-/** True when the marketplace summary's first entry is not explicitly disabled. Mirrors the `/plugins list` convention: a missing `enabled` flag means enabled. */
 function marketplaceEnabled(summary: InstalledPluginSummary): boolean {
 	return summary.entries[0]?.enabled !== false;
 }
 
-/** Stable SelectList value for a list entry. Combined with `findEntryByValue` this keeps lookup correct even when the same plugin id exists in both user */
 function entryValue(entry: PluginListEntry): string {
 	if (entry.kind === "npm") return `npm:${entry.plugin.name}`;
 	return `mkt:${entry.plugin.scope}:${entry.plugin.id}`;
@@ -76,7 +70,6 @@ function findEntryByValue(entries: ReadonlyArray<PluginListEntry>, value: string
 	return entries.find(e => entryValue(e) === value);
 }
 
-/** Shows installed plugins from both registries (npm + marketplace) with enable/disable status, scope tag, and shadow indicator. Selecting an entry */
 export class PluginListComponent extends MouseRoutedSubmenu {
 	readonly #selectList: SelectList;
 
@@ -86,7 +79,6 @@ export class PluginListComponent extends MouseRoutedSubmenu {
 	) {
 		super();
 
-		// Title
 		this.addChild(new Text(theme.bold(theme.fg("accent", "  Plugins")), 0, 0));
 		this.addChild(new Spacer(1));
 
@@ -104,7 +96,6 @@ export class PluginListComponent extends MouseRoutedSubmenu {
 				),
 			);
 
-			// Empty list still handles Escape so the user can leave the panel.
 			this.#selectList = new SelectList([], 1, getSelectListTheme());
 			this.#selectList.onCancel = callbacks.onCancel;
 			return;
@@ -112,9 +103,6 @@ export class PluginListComponent extends MouseRoutedSubmenu {
 
 		const items: SelectItem[] = entries.map(entry => this.#renderItem(entry));
 
-		// Marketplace plugin ids (`name@marketplace`) routinely run past the
-		// SelectList default primary column (32 chars). Widen the bound so the
-		// id remains readable; the description gets whatever width is left.
 		this.#selectList = new SelectList(items, Math.min(items.length, 8), getSelectListTheme(), {
 			minPrimaryColumnWidth: 24,
 			maxPrimaryColumnWidth: 64,
@@ -194,7 +182,6 @@ export interface PluginDetailCallbacks {
 	onBack: () => void;
 }
 
-/** Shows detail settings for a single plugin: - Enable/disable toggle */
 export class PluginDetailComponent extends MouseRoutedSubmenu {
 	#settingsList!: SettingsList;
 
@@ -214,7 +201,6 @@ export class PluginDetailComponent extends MouseRoutedSubmenu {
 		const plugin = this.plugin;
 		const manifest = plugin.manifest;
 
-		// Header
 		this.addChild(new Text(theme.bold(theme.fg("accent", `  ${plugin.name}`)), 0, 0));
 		if (manifest.description) {
 			this.addChild(new Text(theme.fg("muted", `  ${manifest.description}`), 0, 0));
@@ -223,7 +209,6 @@ export class PluginDetailComponent extends MouseRoutedSubmenu {
 
 		const items: SettingItem[] = [];
 
-		// Enable/disable toggle
 		items.push({
 			id: "__enabled__",
 			label: "Enabled",
@@ -232,14 +217,12 @@ export class PluginDetailComponent extends MouseRoutedSubmenu {
 			values: ["true", "false"],
 		});
 
-		// Feature toggles
 		if (manifest.features && Object.keys(manifest.features).length > 0) {
 			const enabledSet = new Set(plugin.enabledFeatures ?? []);
 			const defaultFeatures = Object.entries(manifest.features)
 				.filter(([_, f]) => f.default)
 				.map(([name]) => name);
 
-			// If enabledFeatures is null, use defaults
 			const effectiveEnabled = plugin.enabledFeatures === null ? new Set(defaultFeatures) : enabledSet;
 
 			for (const [featName, feat] of Object.entries(manifest.features)) {
@@ -254,7 +237,6 @@ export class PluginDetailComponent extends MouseRoutedSubmenu {
 			}
 		}
 
-		// Config settings
 		if (manifest.settings && Object.keys(manifest.settings).length > 0) {
 			const settings = await this.manager.getPluginSettings(plugin.name);
 
@@ -290,7 +272,6 @@ export class PluginDetailComponent extends MouseRoutedSubmenu {
 							),
 					});
 				} else {
-					// string or number - show as submenu with input
 					items.push({
 						id: `config:${key}`,
 						label: `  ${key}`,
@@ -324,7 +305,6 @@ export class PluginDetailComponent extends MouseRoutedSubmenu {
 				} else if (id.startsWith("feature:")) {
 					const featName = id.slice(8);
 					this.callbacks.onFeatureChange(featName, newValue === "true");
-					// Update local state
 					const current = new Set(this.plugin.enabledFeatures ?? []);
 					if (newValue === "true") {
 						current.add(featName);
@@ -347,13 +327,10 @@ export class PluginDetailComponent extends MouseRoutedSubmenu {
 	}
 
 	mouseTarget(): TrackedMouseTarget | undefined {
-		// The list mounts asynchronously (plugin settings are read from disk).
 		return this.#settingsList;
 	}
 
 	shortcuts(): readonly ModalShortcut[] {
-		// A config row opens its own sub-pane inside the list; while it owns the
-		// keys, the footer names ITS keys and not the pane behind it.
 		if (this.#settingsList?.hasOpenSubmenu()) return SETTINGS_SUBPANE_SHORTCUTS;
 		return PLUGIN_DETAIL_SHORTCUTS;
 	}
@@ -369,7 +346,6 @@ export interface MarketplacePluginDetailCallbacks {
 	onBack: () => void;
 }
 
-/** Detail view for a marketplace plugin. Marketplace plugins do not declare features or settings, so the panel exposes a single enable/disable toggle */
 export class MarketplacePluginDetailComponent extends MouseRoutedSubmenu {
 	#settingsList: SettingsList;
 
@@ -382,7 +358,6 @@ export class MarketplacePluginDetailComponent extends MouseRoutedSubmenu {
 		const entry = plugin.entries[0];
 		const enabled = marketplaceEnabled(plugin);
 
-		// Header
 		this.addChild(new Text(theme.bold(theme.fg("accent", `  ${plugin.id}`)), 0, 0));
 
 		const subtitleParts = [`[${plugin.scope}]`];
@@ -420,8 +395,6 @@ export class MarketplacePluginDetailComponent extends MouseRoutedSubmenu {
 		this.addChild(this.#settingsList);
 		this.addChild(new Spacer(1));
 
-		// Read-only metadata. SettingsList rejects items without `values`/`submenu`,
-		// so we render the metadata as plain text rows beneath the toggle.
 		this.addChild(new Text(theme.fg("dim", `  version       ${entry?.version ?? "(unknown)"}`), 0, 0));
 		this.addChild(new Text(theme.fg("dim", `  scope         ${plugin.scope}`), 0, 0));
 		this.addChild(
@@ -451,9 +424,6 @@ export class MarketplacePluginDetailComponent extends MouseRoutedSubmenu {
 	}
 }
 
-/**
- * Submenu for enum config values.
- */
 class ConfigEnumSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList;
 
@@ -497,9 +467,6 @@ class ConfigEnumSubmenu extends MouseRoutedSubmenu {
 	}
 }
 
-/**
- * Submenu for string/number config values with text input.
- */
 class ConfigInputSubmenu extends MouseRoutedSubmenu {
 	#input: Input;
 
@@ -518,7 +485,6 @@ class ConfigInputSubmenu extends MouseRoutedSubmenu {
 			this.addChild(new Text(theme.fg("muted", schema.description), 0, 0));
 		}
 
-		// Type hint
 		let hint = `Type: ${schema.type}`;
 		if (schema.type === "number") {
 			const numSchema = schema as { min?: number; max?: number };
@@ -531,7 +497,6 @@ class ConfigInputSubmenu extends MouseRoutedSubmenu {
 
 		this.addChild(new Spacer(1));
 
-		// Input field
 		this.#input = new Input();
 		if (!schema.secret && currentValue) {
 			this.#input.setValue(currentValue);
@@ -549,8 +514,6 @@ class ConfigInputSubmenu extends MouseRoutedSubmenu {
 	}
 
 	mouseTarget(): TrackedMouseTarget | undefined {
-		// A text field has no rows to hit: the pointer is swallowed, which is the
-		// settings-list contract for a submenu without a route.
 		return undefined;
 	}
 
@@ -564,27 +527,14 @@ export interface PluginSettingsCallbacks {
 	onPluginChanged: () => void | Promise<void>;
 }
 
-/** A plugin tab view: it handles keys, names its own footer chips, and points the pointer at whichever list it currently shows. */
 interface PluginView extends MouseRoutedSubmenu {
 	handleInput(data: string): void;
 	shortcuts(): readonly ModalShortcut[];
 }
 
-/** Top-level plugin settings component. Manages navigation between plugin list and plugin detail views. */
 export class PluginSettingsComponent extends MouseRoutedSubmenu {
 	#cwd: string;
 	#manager: PluginManager;
-	/**
-	 * The view currently mounted, and the ONLY representation of which view that is.
-	 *
-	 * Three fields used to shadow it — `#currentView` ("list" / "npm-detail" /
-	 * "marketplace-detail"), `#currentPlugin` and `#currentMarketplacePlugin` —
-	 * assigned at every transition and read by nothing, each carrying a
-	 * `biome-ignore` claiming it was "state tracking for view management". Every
-	 * transition clears the container and mounts a component, so the mounted
-	 * component already answers the question; the fields were a second state
-	 * machine that could only ever go out of step with the first.
-	 */
 	#viewComponent: PluginView | null = null;
 
 	constructor(
@@ -605,7 +555,6 @@ export class PluginSettingsComponent extends MouseRoutedSubmenu {
 	async #showPluginList(): Promise<void> {
 		this.clear();
 
-		// Surface registry failures without taking the whole tab down — either registry can fail to load (corrupt JSON, missing project root) and the
 		const [npmPlugins, marketplacePlugins] = await Promise.all([
 			this.#manager.list().catch(err => {
 				logger.error("Settings → Plugins: failed to list npm plugins", {
@@ -693,14 +642,12 @@ export class PluginSettingsComponent extends MouseRoutedSubmenu {
 		return this.#viewComponent ?? undefined;
 	}
 
-	/** The settings card owns the footer, so the view in front of the user names its own keys there rather than printing a dim hint line under itself. */
 	shortcuts(): readonly ModalShortcut[] {
 		return this.#viewComponent?.shortcuts() ?? PLUGIN_LIST_SHORTCUTS;
 	}
 
 	handleInput(data: string): void {
 		if (!this.#viewComponent) {
-			// The list view mounts asynchronously (npm + marketplace listing). Until it does — or if listing rejected and no view ever mounted —
 			if (data === "\x1b" || data === "\x1b\x1b") {
 				this.callbacks.onClose();
 			}

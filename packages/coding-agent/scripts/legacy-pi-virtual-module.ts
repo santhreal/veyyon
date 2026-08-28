@@ -2,7 +2,6 @@ import * as path from "node:path";
 import { isEnoent } from "@veyyon/utils/fs-error";
 import { isRecord } from "@veyyon/utils/type-guards";
 
-/** Build-time specifier resolved to bundled legacy Pi module namespaces. */
 export const LEGACY_PI_MODULES_SPECIFIER = "veyyon-legacy-pi-modules";
 
 const VIRTUAL_NAMESPACE = "veyyon-legacy-pi-modules-build";
@@ -29,13 +28,9 @@ const TYPEBOX_SHIM = "typebox.ts";
 const SKIPPED_WILDCARD_BASENAMES = new Set(["index"]);
 const MAIN_THREAD_UNSAFE_WILDCARD_BASENAMES = new Set(["worker-entry"]);
 
-/** One namespace module the binary must retain for legacy extension imports. */
 export interface BundledPiEntry {
-	/** Canonical import key exposed to extensions. */
 	readonly key: string;
-	/** Unique identifier used by the virtual module's generated import. */
 	readonly binding: string;
-	/** Package or absolute source specifier compiled into the binary. */
 	readonly importSpecifier: string;
 }
 
@@ -92,11 +87,6 @@ function shimSpecifier(file: string): string {
 	return path.join(packageDir, "src", "extensibility", file);
 }
 
-/**
- * Derive the bundled legacy Pi module surface from current package exports.
- * Named wildcard exports are expanded from source; root catch-alls stay out to
- * avoid importing CLI entrypoints and other non-extension surfaces.
- */
 export async function collectBundledPiEntries(): Promise<BundledPiEntry[]> {
 	const entries: BundledPiEntry[] = [];
 	const seenKeys = new Set<string>();
@@ -169,11 +159,6 @@ function renderVirtualModule(entries: readonly BundledPiEntry[]): string {
 	return [...imports, "", "export const BUNDLED_PI_MODULES = {", ...modules, "};", ""].join("\n");
 }
 
-/**
- * Build plugin that materializes the legacy Pi module graph entirely in
- * memory. Bun still needs static import edges at compile time, but no generated
- * source or key-list file is written to the repository.
- */
 export async function createLegacyPiVirtualModulePlugin(): Promise<Bun.BunPlugin> {
 	const source = renderVirtualModule(await collectBundledPiEntries());
 	return {

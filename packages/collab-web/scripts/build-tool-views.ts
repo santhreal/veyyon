@@ -1,12 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Bundle `@veyyon/tool-render` + the local `<vey-tool-view>` web component
- * into a single self-contained script (React included, CSS inlined) for
- * embedding in coding-agent HTML session exports.
- *
- * Output: packages/coding-agent/src/export/html/tool-views.generated.js
- * Run via `bun run gen:tool-views` after changing packages/tool-render or src/tool-render/.
- */
 import * as path from "node:path";
 
 const root = path.join(import.meta.dir, "..");
@@ -36,10 +28,6 @@ if (!js) {
 	console.error("bundle produced no JS output");
 	process.exit(1);
 }
-// The bundle is inlined into a `<script>` tag by coding-agent's
-// `src/export/html` `getTemplate()`; a literal `</script` inside a JS string (react-dom
-// emits one) would terminate that tag early. `<\/script` is byte-identical
-// to the parser inside string literals, so escape unconditionally.
 const escapeInlineScript = (s: string): string => s.replaceAll("</script", "<\\/script");
 
 const styleInject = css

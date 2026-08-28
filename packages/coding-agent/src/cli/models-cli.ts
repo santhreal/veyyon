@@ -1,4 +1,3 @@
-/** `veyyon models` — list, search, and refresh available models. Subcommands: */
 import type { Api, Effort, Model } from "@veyyon/ai";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import { formatNumber, getProjectDir } from "@veyyon/utils";
@@ -6,8 +5,6 @@ import chalk from "chalk";
 import { ModelRegistry } from "../config/model-registry";
 import { Settings } from "../config/settings";
 import { discoverAndLoadExtensions, loadExtensions } from "../extensibility/extensions";
-// `session/auth-broker-config`, which OWNS this, not the `sdk` barrel that re-exports it: the barrel is
-// the whole application and this file wants one function.
 import { discoverAuthStorage } from "../session/auth-broker-config";
 import { EventBus } from "../utils/event-bus";
 import { EXIT_USAGE } from "./exit-codes";
@@ -16,20 +13,15 @@ export type ModelsAction = "ls" | "find" | "refresh";
 
 export interface ModelsCommandArgs {
 	action: ModelsAction;
-	/** Search substring for `find`, optional filter for `ls`, or exact provider for `refresh`. */
 	pattern?: string;
 	flags: {
 		json?: boolean;
-		/** CLI `-e <path>` extension paths to load before listing (issue #905). */
 		extensions?: string[];
-		/** Skip extension discovery; only load explicit `extensions`. */
 		noExtensions?: boolean;
-		/** Extra `config.yml` overlays to apply for this invocation. */
 		config?: string[];
 	};
 }
 
-/** Known action keywords. Any other first token (e.g. `openai-codex`) is treated as a provider/substring filter for the default `ls` view, so every provider */
 const KNOWN_ACTIONS: Record<string, ModelsAction> = {
 	ls: "ls",
 	list: "ls",
@@ -37,7 +29,6 @@ const KNOWN_ACTIONS: Record<string, ModelsAction> = {
 	refresh: "refresh",
 };
 
-/** Resolve the two positional args into an action + filter (provider names fall through to `ls`). */
 export function resolveModelsArgs(
 	first: string | undefined,
 	second: string | undefined,
@@ -57,7 +48,6 @@ interface ModelJson {
 	contextWindow: number | null;
 	maxTokens: number | null;
 	reasoning: boolean;
-	/** Supported thinking efforts when the model thinks, otherwise null. */
 	thinking: readonly Effort[] | null;
 	input: ("text" | "image")[];
 	cost: Model<Api>["cost"];
@@ -111,7 +101,6 @@ interface BoxColumn {
 	align?: ColumnAlign;
 }
 
-/** Right- or left-pad a plain (ANSI-free) cell to `width` display columns. */
 function padCell(text: string, width: number, align: ColumnAlign = "left"): string {
 	const space = width - Bun.stringWidth(text);
 	if (space <= 0) return text;
@@ -119,7 +108,6 @@ function padCell(text: string, width: number, align: ColumnAlign = "left"): stri
 	return align === "right" ? fill + text : text + fill;
 }
 
-/** Render `rows` as a box-drawing table. Cells must be plain text (no ANSI); the header row is bolded and the borders dimmed (both no-ops on non-TTY output). */
 function boxTable(columns: BoxColumn[], rows: string[][]): string[] {
 	const widths = columns.map((column, index) =>
 		Math.max(Bun.stringWidth(column.header), ...rows.map(row => Bun.stringWidth(row[index] ?? ""))),
@@ -148,7 +136,6 @@ function boxTable(columns: BoxColumn[], rows: string[][]): string[] {
 	return lines;
 }
 
-/** `veyyon models ls`/`find`: provider-grouped listing (one box table per provider). */
 function renderProviderModels(
 	modelRegistry: ModelRegistry,
 	action: ModelsAction,
@@ -197,9 +184,6 @@ function renderProviderModels(
 	}
 
 	if (available.length === 0) {
-		// `veyyon models` has no TUI, so `/login` is not a route its reader has.
-		// The old sentence said so ("in an interactive session") and then named
-		// nothing this reader could actually run.
 		writeLine(
 			"No models available. Fix: set an API key environment variable (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, …), or run `veyyon auth-broker login <provider>` to sign in.",
 		);
@@ -213,7 +197,6 @@ function renderProviderModels(
 		return;
 	}
 
-	// One section per provider: bold heading + a box table of that provider's models.
 	const byProvider = new Map<string, Model<Api>[]>();
 	for (const model of filtered.slice().sort(byProviderThenId)) {
 		let group = byProvider.get(model.provider);
@@ -251,20 +234,15 @@ function renderProviderModels(
 	}
 }
 
-/** Options for {@link runModelsListing}: render the catalog from a caller-supplied registry. Loads extensions (CLI `-e` paths and configured `settings.extensions`) */
 export interface RunModelsListingOptions {
 	modelRegistry: ModelRegistry;
 	cwd: string;
 	action?: ModelsAction;
 	pattern?: string;
 	json?: boolean;
-	/** CLI-supplied extension paths (e.g. from `-e <path>`). */
 	additionalExtensionPaths?: string[];
-	/** Extension paths configured under `extensions:` in user settings. */
 	settingsExtensions?: string[];
-	/** Disabled extension ids from settings (`disabledExtensions`). */
 	disabledExtensionIds?: string[];
-	/** When true, skip discovery and only load `additionalExtensionPaths`. */
 	disableExtensionDiscovery?: boolean;
 }
 
@@ -284,7 +262,6 @@ export async function runModelsListing(options: RunModelsListingOptions): Promis
 	const eventBus = new EventBus();
 	const extensionsResult = disableExtensionDiscovery
 		? // The paths came from `--extension`, so they are the operator's own even when they
-			// live inside the project; the gate exempts them exactly as a session's do.
 			await loadExtensions(additionalExtensionPaths, cwd, eventBus, undefined, {
 				configuredPaths: additionalExtensionPaths,
 			})
@@ -296,13 +273,9 @@ export async function runModelsListing(options: RunModelsListingOptions): Promis
 			);
 
 	for (const { path: extPath, error } of extensionsResult.errors) {
-		// The loader's own sentence already begins with the diagnosis, so a second
-		// `Failed to load extension:` here printed the phrase twice and the path
-		// once between the two copies.
 		process.stderr.write(`${extPath}: ${error}\n`);
 	}
 
-	// Mirror sdk.ts: drain pending provider registrations into the registry.
 	const activeSources = extensionsResult.extensions.map(extension => extension.path);
 	modelRegistry.syncExtensionSources(activeSources);
 	for (const sourceId of new Set(activeSources)) {
@@ -312,7 +285,6 @@ export async function runModelsListing(options: RunModelsListingOptions): Promis
 		modelRegistry.registerProvider(name, config, sourceId);
 	}
 	extensionsResult.runtime.pendingProviderRegistrations = [];
-	// Discover runtime (extension) provider catalogs now that they are registered.
 	await modelRegistry.refreshRuntimeProviders(
 		action === "refresh" ? "online" : "online-if-uncached",
 		action === "refresh" ? pattern : undefined,
@@ -321,7 +293,6 @@ export async function runModelsListing(options: RunModelsListingOptions): Promis
 	renderProviderModels(modelRegistry, action, pattern, json);
 }
 
-/** Entry point for the standalone `veyyon models` command: bootstraps auth storage, settings, and the model registry, force/cache-refreshes built-in providers per */
 export async function runModelsCommand(command: ModelsCommandArgs): Promise<void> {
 	const { action, pattern } = command;
 	const json = command.flags.json ?? false;

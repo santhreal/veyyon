@@ -1,36 +1,9 @@
 import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL, DICT_FILENAME } from "./constants.js";
 
-/**
- * Options that decide the wording of the notation block.
- *
- * The block is model-facing text, so it must describe only the affordances the
- * model actually has this turn. There is exactly one such switch: whether the
- * harness exposes the load and unload tools. Everything else about the block is
- * fixed. The sigil is deliberately not an option here; it belongs to a
- * vocabulary, and the block only shows `§` as an illustration.
- */
 export interface PreambleOptions {
-	/**
-	 * Whether {@link ARGOT_LOAD_TOOL} and {@link ARGOT_UNLOAD_TOOL} are available to
-	 * the model. When `true`, the block tells the model it can activate a folder's
-	 * shorthand itself by calling them. When `false` (the default), it describes
-	 * only the passive paths, because you must never instruct a model to call a
-	 * tool that is not in its tool list.
-	 */
 	tools?: boolean;
 }
 
-/**
- * Build the fixed, model-facing notation block. A harness injects this once into
- * the system prompt, always, whether or not a project has an `AGENTS.dict`. It
- * teaches the model how the shorthand works and how it comes to know a project's
- * handles; the per-project handle table itself rides in separately (through a
- * tool result, a file read, or {@link ArgotSession.promptFragment}) so this block
- * stays constant and cacheable.
- *
- * This is the one home for the notation. Keep the wording here in sync with the
- * SPEC and the handbook.
- */
 export function renderPreamble(options: PreambleOptions = {}): string {
 	const learn = options.tools
 		? `You learn a project's handles one of two ways: the harness lists them for you,
@@ -66,9 +39,4 @@ for the exact string it stands for; never invent one that has not been defined f
 you.`;
 }
 
-/**
- * The notation block for a harness with no load/unload tools: the passive default.
- * Equivalent to `renderPreamble({ tools: false })`. Kept as a named constant
- * because it is a stable, cacheable string many callers inject verbatim.
- */
 export const ARGOT_PREAMBLE = renderPreamble();

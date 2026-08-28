@@ -1,5 +1,3 @@
-// The Theme class: resolved color/symbol accessors for one loaded theme, including SGR emission (fg/bg), symbol lookup, spinner frames, and language
-
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Effort } from "@veyyon/ai";
 import { attributesEnabled, colorEnabled } from "@veyyon/tui";
@@ -115,7 +113,6 @@ const langMap: Record<string, SymbolKey> = {
 	bin: "lang.binary",
 };
 
-/** Brand colors for language icons, keyed by the resolved `lang.*` SymbolKey. Used by {@link Theme.getLangIconStyled} so eval-kernel cell headers tint each */
 const LANG_BRAND_COLORS: Partial<Record<SymbolKey, string>> = {
 	"lang.javascript": "#f7df1e",
 	"lang.python": "#3776ab",
@@ -126,13 +123,10 @@ const LANG_BRAND_COLORS: Partial<Record<SymbolKey, string>> = {
 export class Theme {
 	#fgColors: Record<ThemeColor, string>;
 	#bgColors: Record<ThemeBg, string>;
-	/** Resolved hex strings for foreground colors — populated at construction. */
 	readonly #hexFgColors: Record<ThemeColor, string>;
-	/** Resolved hex strings for background colors — populated at construction. */
 	readonly #hexBgColors: Record<ThemeBg, string>;
 	#symbols: SymbolMap;
 	#spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>>;
-	// Cached symbol-category objects. `#symbols` is immutable after construction, so each getter's return value is constant for the life of the Theme instance. The getters used
 	readonly #statusCache;
 	readonly #navCache;
 	readonly #treeCache;
@@ -145,11 +139,8 @@ export class Theme {
 	readonly #radioCache;
 	readonly #formatCache;
 	readonly #mdCache;
-	/** Perceptual luma (0..1) of the status-line background — used to classify the theme light/dark. Undefined when it can't be resolved. Classified against the */
 	readonly statusLineLuminance: number | undefined;
-	/** WCAG relative luminance of the status-line background — basis for accent contrast. */
 	readonly #statusLineContrastLuminance: number | undefined;
-	/** The theme's terminal ground as `#RRGGBB`, or undefined when the theme declares none. This is the color the painted-ground feature */
 	readonly #groundHex: string | undefined;
 	constructor(
 		fgColors: Record<ThemeColor, string | number>,
@@ -171,8 +162,6 @@ export class Theme {
 			this.#fgColors[key] = fgAnsi(value, mode);
 			this.#hexFgColors[key] = resolveToHex(value, slIsLight);
 		}
-		// `link` (bare-URL/interactive link color) is optional in theme JSON;
-		// themes without it inherit the markdown link color.
 		if (this.#fgColors.link === undefined) {
 			this.#fgColors.link = this.#fgColors.mdLink;
 			this.#hexFgColors.link = this.#hexFgColors.mdLink;
@@ -183,7 +172,6 @@ export class Theme {
 			this.#bgColors[key] = bgAnsi(value, mode);
 			this.#hexBgColors[key] = resolveToHex(value, slIsLight);
 		}
-		// Build symbol map from preset + overrides
 		const baseSymbols = SYMBOL_PRESETS[symbolPreset];
 		this.#symbols = { ...baseSymbols };
 		for (const [key, value] of Object.entries(symbolOverrides)) {
@@ -345,48 +333,38 @@ export class Theme {
 		};
 	}
 
-	/** True when the active theme has a light status-line background. */
 	get isLight(): boolean {
 		return this.statusLineLuminance !== undefined && this.statusLineLuminance > 0.5;
 	}
 
-	/** Surface luminance to size session accents against on light themes; undefined on dark themes so accents stay vivid. Pass straight to `getSessionAccentHex`. */
 	get accentSurfaceLuminance(): number | undefined {
 		return this.isLight ? this.#statusLineContrastLuminance : undefined;
 	}
 
-	/**
-	 * Get the resolved CSS hex string for a foreground theme color.
-	 */
 	getColorHex(color: ThemeColor): string {
 		const hex = this.#hexFgColors[color];
 		if (hex === undefined) throw new Error(`Unknown theme color: ${color}`);
 		return hex || (this.isLight ? "#000000" : "#e5e5e7");
 	}
 
-	/** Get the resolved CSS hex string for a background theme color (the background-key counterpart to {@link getColorHex}). Backgrounds are */
 	getBgColorHex(color: ThemeBg): string {
 		const hex = this.#hexBgColors[color];
 		if (hex === undefined) throw new Error(`Unknown theme background color: ${color}`);
 		return hex;
 	}
 
-	/** The theme's terminal ground color as `#RRGGBB`, or undefined when the theme declares none. The painted-ground consumer (`tui.paintGround`) uses this as */
 	getGroundHex(): string | undefined {
 		return this.#groundHex;
 	}
 
-	/** The ground an animation resolves a color OUT OF: the declared ground when the theme has one, else the extreme of its appearance. */
 	getResolvedGroundHex(): string {
 		return this.#groundHex ?? (this.isLight ? "#ffffff" : "#000000");
 	}
 
-	/** The ground a row VISIBLY sits on: what this process painted, else what the terminal reported, else {@link getResolvedGroundHex}. */
 	visibleGroundHex(): string {
 		return getVisibleGround() ?? this.getResolvedGroundHex();
 	}
 
-	/** Get all foreground and background theme colors as CSS hex strings. Skips colors resolved to the default terminal color (unstyled). */
 	getAllThemeColorHexes(): string[] {
 		const hexes: string[] = [];
 		for (const hex of Object.values(this.#hexFgColors)) {
@@ -398,7 +376,6 @@ export class Theme {
 		return hexes;
 	}
 
-	/** Get the most visually dominant theme colors as CSS hex strings — accent, border, success, error, warning, heading, link, diff markers, etc. */
 	getMajorThemeColorHexes(): string[] {
 		const majors: ThemeColor[] = [
 			"accent",
@@ -426,9 +403,6 @@ export class Theme {
 		}
 		return hexes;
 	}
-	/**
-	 * Get the resolved CSS hex string for the theme's accent color.
-	 */
 	getAccentColorHex(): string {
 		return this.getColorHex("accent");
 	}
@@ -436,9 +410,6 @@ export class Theme {
 	fg(color: ThemeColor, text: string): string {
 		const ansi = this.#fgColors[color];
 		if (!ansi) throw new Error(`Unknown theme color: ${color}`);
-		// The unknown-colour check runs FIRST and unconditionally: a typo'd key
-		// must fail the same way whether or not colour happens to be enabled, or
-		// the bug only surfaces on the machines that render it.
 		if (!colorEnabled()) return text;
 		return `${ansi}${text}\x1b[39m`; // Reset only foreground color
 	}
@@ -450,19 +421,16 @@ export class Theme {
 		return `${ansi}${text}\x1b[49m`; // Reset only background color
 	}
 
-	/** A background band in a hex an animation computed, rather than one of the theme's named backgrounds. Degradation is the same as {@link bg}: the color */
 	bgHex(hex: string, text: string): string {
 		if (!colorEnabled()) return text;
 		return `${bgAnsi(hex, this.mode)}${text}\x1b[49m`;
 	}
 
-	/** The foreground SGR — the opening sequence alone — for a hex an animation computed. The {@link bgHex} argument in the foreground: the colour of a */
 	fgHexAnsi(hex: string): string {
 		if (!colorEnabled()) return "";
 		return colorToAnsi(hex, this.mode);
 	}
 
-	// Text attributes emit raw SGR pairs, NEVER chalk: chalk's level auto-detection returned 0 under bun-in-tmux and silently stripped every
 	bold(text: string): string {
 		return attributesEnabled() ? `\x1b[1m${text}\x1b[22m` : text;
 	}
@@ -495,7 +463,6 @@ export class Theme {
 		return ansi;
 	}
 
-	/** Foreground ANSI for text drawn **on top of** `fillColor` used as a solid background (e.g. a powerline chip). Picks near-black or near-white by the */
 	getContrastFgAnsi(fillColor: ThemeColor): string {
 		const ansi = this.#fgColors[fillColor];
 		const match = ansi ? /38;2;(\d+);(\d+);(\d+)/.exec(ansi) : null;
@@ -509,7 +476,6 @@ export class Theme {
 	}
 
 	getThinkingBorderColor(level: ThinkingLevel | Effort): (str: string) => string {
-		// Map thinking levels to dedicated theme colors
 		switch (level) {
 			case "off":
 				return (str: string) => this.fg("thinkingOff", str);
@@ -524,7 +490,6 @@ export class Theme {
 			case "xhigh":
 				return (str: string) => this.fg("thinkingXhigh", str);
 			case "max":
-				// thinkingMax is optional; themes without it resolve to the xhigh color.
 				return (str: string) => this.fg(this.#fgColors.thinkingMax ? "thinkingMax" : "thinkingXhigh", str);
 			default:
 				return (str: string) => this.fg("thinkingOff", str);
@@ -539,35 +504,23 @@ export class Theme {
 		return (str: string) => this.fg("pythonMode", str);
 	}
 
-	/** Border/glyph color for the `/yolo` full-bypass danger state. Uses the theme's `error` role so "every prompt is off" reads as loud and unmistakable */
 	getBypassModeBorderColor(): (str: string) => string {
 		return (str: string) => this.fg("error", str);
 	}
 
-	// Symbol Methods
-	/**
-	 * Get a symbol by key.
-	 */
 	symbol(key: SymbolKey): string {
 		return this.#symbols[key];
 	}
 
-	/**
-	 * Get a symbol styled with a color.
-	 */
 	styledSymbol(key: SymbolKey, color: ThemeColor): string {
 		const symbol = this.#symbols[key];
 		return symbol ? this.fg(color, symbol) : "";
 	}
 
-	/**
-	 * Get the current symbol preset.
-	 */
 	getSymbolPreset(): SymbolPreset {
 		return this.symbolPreset;
 	}
 
-	// Symbol Category Accessors
 	get status() {
 		return this.#statusCache;
 	}
@@ -600,7 +553,6 @@ export class Theme {
 		return this.#thinkingCache;
 	}
 
-	/** Three task states, not two plus a colour. `progress` is total the same way its siblings are: every preset is typed `SymbolMap`, so a preset cannot */
 	get checkbox() {
 		return this.#checkboxCache;
 	}
@@ -617,39 +569,29 @@ export class Theme {
 		return this.#mdCache;
 	}
 
-	/**
-	 * Default spinner frames (status spinner).
-	 */
 	get spinnerFrames(): string[] {
 		return this.getSpinnerFrames();
 	}
 
-	/**
-	 * Get spinner frames by type.
-	 */
 	getSpinnerFrames(type: SpinnerType = "status"): string[] {
 		return this.#spinnerFramesOverrides[type] ?? SPINNER_FRAMES[this.symbolPreset][type];
 	}
 
-	/** The glyphs a bar is drawn from under the active symbol preset. One accessor rather than each bar reading the preset itself, for the same */
 	getBarRamp(): SubCellBarRamp {
 		return BAR_RAMPS[this.symbolPreset];
 	}
 
-	/** The badge for a language, or the empty string when the preset has none. AN EMPTY GLYPH IS AN ANSWER, not a hole to patch. This used to resurrect a blank */
 	getLangIcon(lang: string | undefined): string {
 		if (!lang) return this.#symbols["lang.default"];
 		const key = langMap[lang.toLowerCase()];
 		return key ? this.#symbols[key] : this.#symbols["lang.default"];
 	}
 
-	/** The muted language badge AND the space after it, or `""` when the preset has none. Every header that puts a badge before a path wants exactly this, and each one used to */
 	langBadge(lang: string | undefined): string {
 		const icon = this.getLangIcon(lang);
 		return icon ? `${this.fg("muted", icon)} ` : "";
 	}
 
-	/** Language icon tinted with the language's brand color (see {@link LANG_BRAND_COLORS}). Falls back to the muted theme color for */
 	getLangIconStyled(lang: string | undefined): string {
 		const icon = this.getLangIcon(lang);
 		if (!icon) return icon;

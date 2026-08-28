@@ -37,9 +37,6 @@ interface LobstersStoryResponse {
 	comments: LobstersComment[];
 }
 
-/**
- * Render comments recursively
- */
 function renderComments(comments: LobstersComment[], maxDepth = 5): string {
 	let md = "";
 	for (const comment of comments) {
@@ -58,9 +55,6 @@ function renderComments(comments: LobstersComment[], maxDepth = 5): string {
 	return md;
 }
 
-/**
- * Handle Lobste.rs URLs via JSON API
- */
 export const handleLobsters: SpecialHandler = async (url: string, timeout: number, signal?: AbortSignal) => {
 	try {
 		const parsed = tryParseUrl(url);
@@ -71,7 +65,6 @@ export const handleLobsters: SpecialHandler = async (url: string, timeout: numbe
 		let jsonUrl = "";
 		let md = "";
 
-		// Story page: lobste.rs/s/{short_id}/{slug}
 		const storyMatch = parsed.pathname.match(/^\/s\/([^/]+)/);
 		if (storyMatch) {
 			jsonUrl = `https://lobste.rs/s/${storyMatch[1]}.json`;
@@ -95,7 +88,6 @@ export const handleLobsters: SpecialHandler = async (url: string, timeout: numbe
 				md += `**Link:** ${story.url}\n\n`;
 			}
 
-			// Add comments
 			if (story.comments && story.comments.length > 0) {
 				md += `---\n\n## Comments\n\n`;
 				md += renderComments(story.comments);
@@ -110,7 +102,6 @@ export const handleLobsters: SpecialHandler = async (url: string, timeout: numbe
 			});
 		}
 
-		// Front page, newest, or tag page
 		if (parsed.pathname === "/" || parsed.pathname === "/newest" || parsed.pathname.startsWith("/t/")) {
 			if (parsed.pathname === "/") {
 				jsonUrl = "https://lobste.rs/hottest.json";
@@ -166,6 +157,5 @@ export const handleLobsters: SpecialHandler = async (url: string, timeout: numbe
 		return scraperDegrade("lobsters", error);
 	}
 
-	// Known host but unrecognized path shape: not a match.
 	return null;
 };

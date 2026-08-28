@@ -121,9 +121,6 @@ class Qwen3InbandScanner implements InbandScanner {
 		if (!this.#started) this.#tryStart(body, events);
 		if (close === -1) {
 			if (final) {
-				// Stream ended with no closing tag. A toolStart already announced here
-				// MUST be balanced by a toolEnd, or the downstream projector dispatches
-				// the named tool with the empty {} args it seeded on toolStart.
 				this.#emitBestEffortEnd(body, `${TOOL_CALL_OPEN}${body}`, events);
 				this.#resetTool();
 			}
@@ -139,24 +136,14 @@ class Qwen3InbandScanner implements InbandScanner {
 			}
 			events.push({ type: "toolEnd", id: this.#id, name: parsed.name, arguments: parsed.arguments, rawBlock });
 		} else {
-			// Body closed but did not parse. Balance an already-announced toolStart
-			// with a best-effort toolEnd rather than stranding a half-open call.
 			this.#emitBestEffortEnd(body, rawBlock, events);
 		}
 		this.#buffer = this.#buffer.slice(close + TOOL_CALL_CLOSE.length);
 		this.#resetTool();
 	}
 
-	/**
-	 * Balance an already-announced toolStart with a toolEnd when the body could
-	 * not be parsed (truncated stream or malformed JSON). Salvages whatever named
-	 * arguments partial parsing can recover, else empty, so the tool block is
-	 * finalized instead of dispatched half-open with empty args.
-	 */
 	#emitBestEffortEnd(body: string, rawBlock: string, events: InbandScanEvent[]): void {
 		if (!this.#started) return;
-		// #name was captured early from a PARTIAL body (it may be a prefix like "r"
-		// of "read"); re-derive the fuller name from the current body when possible.
 		let name = this.#name;
 		let args: unknown;
 		try {
@@ -202,16 +189,10 @@ class Qwen3InbandScanner implements InbandScanner {
 			if (typeof parsed.name !== "string" || parsed.name.length === 0) return undefined;
 			let args = parsed.arguments;
 			if (typeof args === "string") {
-				// Double-encoded arguments: parse the stringified object. If unrepairable,
-				// let it throw to the outer catch so the one best-effort-end path handles
-				// it — never silently replaced with {} here (a Law-10 silent fallback).
 				args = parseJsonWithRepair<unknown>(args);
 			}
 			return { name: parsed.name, arguments: recordOrEmpty(args) };
 		} catch {
-			// Same contract as the Hermes scanner: `undefined` means "not a call", and the caller balances
-			// any announced `toolStart` with a best-effort `toolEnd` rather than stranding it with empty
-			// arguments. The failure is visible in the emitted raw block, not discarded.
 			return undefined;
 		}
 	}

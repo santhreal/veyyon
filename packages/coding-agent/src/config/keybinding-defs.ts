@@ -1,8 +1,6 @@
-/** The keybinding TABLE, with nothing that reads a file. This is a leaf on purpose. `config/keybindings.ts` owns the manager, the */
 import type { KeybindingDefinitions, KeyId } from "@veyyon/tui";
 import { TUI_KEYBINDINGS } from "@veyyon/tui";
 
-/** Application-level keybindings (coding agent specific). Values are always `true` — used for declaration merging. */
 interface AppKeybindings {
 	"app.interrupt": true;
 	"app.clear": true;
@@ -42,18 +40,12 @@ declare module "@veyyon/tui" {
 	interface Keybindings extends AppKeybindings {}
 }
 
-/**
- * Resolve default image-paste shortcuts for the current terminal platform.
- */
 export function getDefaultPasteImageKeys(platform: NodeJS.Platform = process.platform): KeyId[] {
 	if (platform === "win32") return ["ctrl+v", "alt+v"];
 	if (platform === "darwin") return ["ctrl+v", "super+v"];
 	return ["ctrl+v"];
 }
 
-/**
- * All keybindings definitions: TUI + app-specific.
- */
 export const KEYBINDINGS = {
 	...TUI_KEYBINDINGS,
 	"app.interrupt": {
@@ -113,9 +105,6 @@ export const KEYBINDINGS = {
 		description: "Open external editor",
 	},
 	"app.message.followUp": {
-		// Ctrl+Enter is preserved for terminals that deliver it (Kitty/iTerm2/WezTerm/Ghostty),
-		// but Windows Terminal does not emit a distinct event for Ctrl+Enter — Ctrl+Q is listed
-		// first so the default binding works there without remapping (#1903).
 		defaultKeys: ["ctrl+q", "ctrl+enter"],
 		description: "Send follow-up message",
 	},
@@ -163,14 +152,10 @@ export const KEYBINDINGS = {
 		defaultKeys: "alt+a",
 		description: "Open the Agent Control Center",
 	},
-	// Two chords, one screen. `app.session.observe` was bound to a separate
-	// observation view; it opens the same card, and both close it again, so the
-	// key you opened it with is the key that dismisses it.
 	"app.session.observe": {
 		defaultKeys: "ctrl+s",
 		description: "Open the Agent Control Center",
 	},
-	// SEVEN IDS USED TO SIT HERE AND NOTHING READ ANY OF THEM. `app.session.rename`, `togglePath`, `toggleSort` and `deleteNoninvasive` named actions the session
 	"app.plan.toggle": {
 		defaultKeys: "alt+shift+p",
 		description: "Toggle plan mode",

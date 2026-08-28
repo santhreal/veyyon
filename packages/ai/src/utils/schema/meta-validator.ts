@@ -2,15 +2,6 @@ import { isRecord } from "@veyyon/utils/type-guards";
 import { areJsonValuesEqual } from "./equality";
 import { epochNext, once } from "./stamps";
 
-/**
- * Hand-rolled JSON Schema meta-validator.
- *
- * Replaces the old AJV meta-schema check in request hot paths with a small
- * structural validator for the JSON Schema subset this repo emits and forwards.
- * Unknown keywords are accepted for forward compatibility; known keywords are
- * checked so malformed provider payloads still fall back instead of being sent.
- */
-
 type Json = unknown;
 
 const TYPE_NAMES: Record<string, true> = {
@@ -59,9 +50,7 @@ function checkSchemaMap(value: Json, epoch: number): boolean {
 	return true;
 }
 
-/** Validate a single sub-schema node. */
 function checkNode(node: Json, epoch: number): boolean {
-	// Boolean schemas (`true` / `false`) are valid JSON Schema.
 	if (node === true || node === false) return true;
 	if (!isRecord(node)) return false;
 	if (!once(node, epoch)) return true;
@@ -99,8 +88,6 @@ function checkNode(node: Json, epoch: number): boolean {
 		if (!checkNode(items, epoch)) return false;
 	}
 	if ("prefixItems" in node && !checkSchemaArray(node.prefixItems, epoch)) return false;
-	// Obsolete tuple/dependency keywords are not valid in the 2020-12 schema
-	// shape we emit and forward.
 	if ("additionalItems" in node || "dependencies" in node) return false;
 
 	for (const key of ["additionalProperties", "unevaluatedProperties", "unevaluatedItems"] as const) {
@@ -142,9 +129,6 @@ function checkNode(node: Json, epoch: number): boolean {
 		try {
 			new RegExp(node.pattern);
 		} catch {
-			// A `pattern` that is not a usable regex makes the schema invalid, which is the question this
-			// function answers. False is the verdict, not a swallowed error, and the caller reports the schema
-			// as invalid.
 			return false;
 		}
 	}
@@ -157,14 +141,10 @@ function checkNode(node: Json, epoch: number): boolean {
 	return true;
 }
 
-/** Validate that `schema` is structurally a valid JSON Schema (subset). */
 export function isValidJsonSchema(schema: unknown): boolean {
 	try {
 		return checkNode(schema, epochNext());
 	} catch {
-		// Fail CLOSED: a schema whose validation blew up (recursion depth, a hostile shape) is treated as
-		// invalid rather than accepted, because this gate decides what gets sent to a provider as a tool
-		// schema. "Could not prove it valid" must never read as "valid".
 		return false;
 	}
 }

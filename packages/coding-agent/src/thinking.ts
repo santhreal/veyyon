@@ -1,15 +1,8 @@
-// The owner, not the `@veyyon/agent-core` barrel. The barrel is the agent loop: 406 modules, including the whole `@veyyon/ai` streaming engine. `@veyyon/agent-core/thinking` is the six-entry ladder and a clamp.
 import { type ResolvedThinkingLevel, ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { Model } from "@veyyon/ai";
-// The effort ladder from the module that OWNS it, not through the `@veyyon/ai` barrel that
-// re-exports it. `@veyyon/catalog/effort` imports nothing; the barrel is 325 modules, and this
-// file is on `config/settings`'s path through the settings schema, which ~530 test files import.
 import { Effort, THINKING_EFFORTS } from "@veyyon/catalog/effort";
 import { clampThinkingLevelForModel, getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 
-/**
- * Metadata used to render thinking selector values in the coding-agent UI.
- */
 export interface ThinkingLevelMetadata {
 	value: ThinkingLevel;
 	label: string;
@@ -69,38 +62,23 @@ const THINKING_LEVEL_BY_SELECTOR: Readonly<Record<string, ThinkingLevel>> = {
 function getOwnSelector<T>(selectors: Readonly<Record<string, T>>, value: string | null | undefined): T | undefined {
 	if (value === undefined || value === null) return undefined;
 	if (Object.hasOwn(selectors, value)) return selectors[value];
-	// Accept unambiguous abbreviations (`xhi` → xhigh, `med` → medium) so every
-	// selector surface (`--thinking`, `:suffix`, role values) parses alike.
-	// Two-character minimum keeps single letters (`m`) from guessing.
 	if (value.length < 2) return undefined;
 	const matches = Object.keys(selectors).filter(selector => selector.startsWith(value));
 	return matches.length === 1 ? selectors[matches[0]] : undefined;
 }
 
-/**
- * Parses a provider-facing effort value. Accepts unambiguous abbreviations.
- */
 export function parseEffort(value: string | null | undefined): Effort | undefined {
 	return getOwnSelector(EFFORT_BY_SELECTOR, value);
 }
 
-/**
- * Parses an agent-local thinking selector. Accepts unambiguous abbreviations.
- */
 export function parseThinkingLevel(value: string | null | undefined): ThinkingLevel | undefined {
 	return getOwnSelector(THINKING_LEVEL_BY_SELECTOR, value);
 }
 
-/**
- * Returns display metadata for a thinking selector.
- */
 export function getThinkingLevelMetadata(level: ThinkingLevel): ThinkingLevelMetadata {
 	return THINKING_LEVEL_METADATA[level];
 }
 
-/**
- * Converts an agent-local selector into the effort sent to providers.
- */
 export function toReasoningEffort(level: ThinkingLevel | undefined): Effort | undefined {
 	if (level === undefined || level === ThinkingLevel.Off || level === ThinkingLevel.Inherit) {
 		return undefined;
@@ -108,16 +86,10 @@ export function toReasoningEffort(level: ThinkingLevel | undefined): Effort | un
 	return level;
 }
 
-/**
- * True when a selector explicitly requests provider-side reasoning disablement.
- */
 export function shouldDisableReasoning(level: ThinkingLevel | undefined): boolean {
 	return level === ThinkingLevel.Off;
 }
 
-/**
- * Resolves a selector against the current model while preserving explicit "off".
- */
 export function resolveThinkingLevelForModel(
 	model: Model | undefined,
 	level: ThinkingLevel | undefined,
@@ -131,18 +103,14 @@ export function resolveThinkingLevelForModel(
 	return clampThinkingLevelForModel(model, level);
 }
 
-/** Sentinel selector for the coding-agent "auto" thinking mode. Kept entirely inside the coding-agent layer: it is never an {@link Effort} or */
 export const AUTO_THINKING = "auto" as const;
 
-/** A thinking selector as configured by the user — a concrete level or `auto`. */
 export type ConfiguredThinkingLevel = ThinkingLevel | typeof AUTO_THINKING;
 
-/** Maps the session-level `auto` sentinel to `undefined`; concrete levels pass through. */
 export function concreteThinkingLevel(level: ConfiguredThinkingLevel | undefined): ThinkingLevel | undefined {
 	return level === AUTO_THINKING ? undefined : level;
 }
 
-/** Metadata used to render the `auto` selector value alongside concrete levels. */
 export interface ConfiguredThinkingLevelMetadata {
 	value: ConfiguredThinkingLevel;
 	label: string;
@@ -155,42 +123,35 @@ const AUTO_THINKING_METADATA: ConfiguredThinkingLevelMetadata = {
 	description: "Auto-detect per prompt (low–xhigh)",
 };
 
-/** Parses a configured thinking selector, accepting `auto` in addition to every value {@link parseThinkingLevel} accepts. {@link parseThinkingLevel} itself */
 export function parseConfiguredThinkingLevel(value: string | null | undefined): ConfiguredThinkingLevel | undefined {
 	if (value === AUTO_THINKING) return AUTO_THINKING;
 	return parseThinkingLevel(value);
 }
 
-/** Returns display metadata for a configured selector, including `auto`. */
 export function getConfiguredThinkingLevelMetadata(level: ConfiguredThinkingLevel): ConfiguredThinkingLevelMetadata {
 	return level === AUTO_THINKING ? AUTO_THINKING_METADATA : getThinkingLevelMetadata(level);
 }
 
-/** True when the model exposes named effort variants rather than fixed reasoning. */
 export function hasConfigurableThinkingEffort(model: Model | undefined): model is Model {
 	return model?.reasoning === true && getSupportedEfforts(model).length > 0;
 }
 
-/** The complete configuration vocabulary. Model pickers narrow this vocabulary to the variants the active model */
 export const CONFIGURED_THINKING_LEVELS: readonly ConfiguredThinkingLevel[] = [
 	ThinkingLevel.Off,
 	AUTO_THINKING,
 	...THINKING_EFFORTS,
 ];
 
-/** The choices ONE model accepts, in cycle order. No model means no choices. It used to mean the whole vocabulary, on the */
 export function configuredThinkingLevelsForModel(model: Model | undefined): readonly ConfiguredThinkingLevel[] {
 	if (!model) return [];
 	const supported = getSupportedEfforts(model);
 	if (supported.length === 0) return [];
-	// On a routed row (effort lives in sibling model ids, not a wire field), `off` and `auto` only mean something when an off sibling exists: without
 	const routing = model.thinking?.effortRouting;
 	const offRoutable = routing === undefined || routing.off !== undefined;
 	const offerOff = offRoutable && model.thinking?.requiresEffort !== true;
 	return [...(offerOff ? [ThinkingLevel.Off] : []), ...(offRoutable ? [AUTO_THINKING] : []), ...supported];
 }
 
-/** The choices a BLANKET row can offer: the union of what the models in scope declare, in canonical order. */
 export function configuredThinkingLevelsInScope(
 	models: ReadonlyArray<Model> | undefined,
 ): readonly ConfiguredThinkingLevel[] {
@@ -202,42 +163,34 @@ export function configuredThinkingLevelsInScope(
 	return CONFIGURED_THINKING_LEVELS.filter(level => seen.has(level));
 }
 
-/** Bracketed argument hint for `/effort` listing the choices the model actually accepts (`[off|auto|high|max]`), derived from the same row read as */
 export function thinkingLevelArgHint(model: Model | undefined): string | undefined {
 	if (!model) return undefined;
 	const levels = configuredThinkingLevelsForModel(model);
 	return levels.length === 0 ? undefined : `[${levels.join("|")}]`;
 }
 
-/** Thinking selectors accepted by the `--thinking` CLI flag. The CLI, settings, model hub, chain editor, and cycle key all read the same ordered vocabulary. */
 export const CLI_THINKING_LEVELS: readonly string[] = CONFIGURED_THINKING_LEVELS;
 
-/** The value an effort picker stores for "no effort of my own — inherit". */
 export const INHERIT_EFFORT_OPTION_VALUE = "";
 
-/** Why an effort picker has a single row, said in one sentence with one owner. A model whose effort lives in sibling model ids (or that has no effort field */
 export function noSelectableEffortNotice(inheritLabel = "Inherit"): string {
 	return `This model exposes no selectable effort, so only ${inheritLabel} applies.`;
 }
 
 export interface ConfiguredThinkingLevelOptions {
-	/** The one model this picker sits under. */
 	model?: Model;
-	/** The catalog a BLANKET row spans, used only when `model` is absent: the rows offered are the union of what these models declare. Absent as well means no */
 	scope?: ReadonlyArray<Model>;
 	includeInherit?: boolean;
 	inheritLabel?: string;
 	inheritDescription?: string;
 }
 
-/** The row description for one level. `auto` names the efforts it will choose between, so a blanket row says what */
 function effortDescription(level: ConfiguredThinkingLevel, efforts: ReadonlyArray<ConfiguredThinkingLevel>): string {
 	const metadata = getConfiguredThinkingLevelMetadata(level);
 	if (level !== AUTO_THINKING || efforts.length === 0) return metadata.description;
 	return `Choose per prompt from ${efforts.join(", ")}`;
 }
 
-/** Picker rows for the effort variants something in scope actually declares. Like OpenCode's variant selector, this shows only valid model-specific */
 export function configuredThinkingLevelOptions(
 	options: ConfiguredThinkingLevelOptions = {},
 ): ReadonlyArray<{ value: string; label: string; description: string }> {
@@ -264,13 +217,11 @@ export function configuredThinkingLevelOptions(
 	];
 }
 
-/** Parses a `--thinking` CLI value. Accepts every {@link parseConfiguredThinkingLevel} selector (`off`, `auto`, `minimal`..`max`) but rejects */
 export function parseCliThinkingLevel(value: string | null | undefined): ConfiguredThinkingLevel | undefined {
 	const level = parseConfiguredThinkingLevel(value);
 	return level === ThinkingLevel.Inherit ? undefined : level;
 }
 
-/** Resolves an auto-classified effort against the active model's supported range. Unlike {@link clampThinkingLevelForModel}, `auto` never resolves below */
 export function clampAutoThinkingEffort(model: Model | undefined, effort: Effort): Effort | undefined {
 	const supported = model ? getSupportedEfforts(model) : THINKING_EFFORTS;
 	if (supported.length === 0) return undefined;
@@ -286,7 +237,6 @@ export function clampAutoThinkingEffort(model: Model | undefined, effort: Effort
 	return chosen;
 }
 
-/** The provisional concrete level shown while `auto` is configured but before a turn has been classified. Prefers the model's `defaultLevel`, otherwise High, */
 export function resolveProvisionalAutoLevel(model: Model | undefined): Effort | undefined {
 	if (!model?.reasoning) return undefined;
 	const preferred = model.thinking?.defaultLevel ?? Effort.High;

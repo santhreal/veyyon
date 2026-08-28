@@ -19,20 +19,8 @@ export interface ImageOptions {
 	maxWidthCells?: number;
 	maxHeightCells?: number;
 	filename?: string;
-	/** Shared budget that caps how many inline images render as live graphics. */
 	budget?: ImageBudget;
-	/**
-	 * Stable identity for the underlying image (e.g. `toolCallId:index`). Lets the
-	 * budget hand back the same graphics id across component re-creations so a
-	 * repaint replaces the placement instead of stacking a duplicate.
-	 */
 	imageKey?: string;
-	/**
-	 * Called when the picture's on-screen state changes: the cause it fell back
-	 * to text, or `undefined` once it draws as a graphic. The budget and the
-	 * terminal decide this inside {@link Image.render}, so a caller that has to
-	 * state whether the picture reached the screen learns it here.
-	 */
 	onDisplayed?: (fallback: ImageFallbackReason | undefined) => void;
 }
 
@@ -40,12 +28,8 @@ const EMPTY_IDS: readonly number[] = [];
 const EMPTY_TRANSMITS: readonly string[] = [];
 const SAVE_CURSOR = "\x1b7";
 const RESTORE_CURSOR = "\x1b8";
-// Direct placements reserve height with leading zero-width rows. Keep them
-// non-plain so transcript blank-edge trimming does not collapse image-only blocks.
-// A reserved row carries nothing but an attribute reset, so the terminal leaves the cells alone.
 const RESERVED_IMAGE_ROW = SGR_RESET;
 
-/** Default count of inline images kept as live graphics before older ones fall back to text. */
 export const DEFAULT_MAX_INLINE_IMAGES = 8;
 
 let nextImageBudgetSeed = Math.floor(Math.random() * 0xffffff);
@@ -53,42 +37,21 @@ function nextImageIdSeed(): number {
 	nextImageBudgetSeed = (nextImageBudgetSeed + 0x10000) & 0xffffff;
 	return nextImageBudgetSeed || 1;
 }
-/** Bounds how many inline images render as live terminal graphics at once. */
 export class ImageBudget {
 	#cap: number;
 	#requestRender: () => void;
 	#nextId = nextImageIdSeed();
 	#keyToId = new Map<string, number>();
 	#idToKey = new Map<number, string>();
-	/** Display-order image ids observed during the in-flight pass. */
 	#passIds: number[] = [];
-	/**
-	 * Suppress threshold reflected in the frame currently on the terminal: images
-	 * at display indices `[0, #onTerminal)` are shown as text there.
-	 */
 	#onTerminal = 0;
-	/** Suppress threshold the current/next render should apply. */
 	#planned = 0;
-	/**
-	 * True while the in-flight pass applies a stricter threshold than the terminal
-	 * shows — the demotion frame that must purge graphics and fully repaint.
-	 */
 	#applyingReset = false;
 	#lastTotal = 0;
 	#purgeIds: number[] = [];
-	/** Image ids whose data is believed to be loaded in the terminal's store. */
 	#transmitted = new Set<number>();
-	/** Transmit sequences (full base64) to write once, before this frame's placements. */
 	#pendingTransmits: string[] = [];
-	// True while the in-flight pass is a partial/throwaway pass (the
-	// non-multiplexer resize viewport fast path) that walks only the visible
-	// tail, bottom-up. Such a pass cannot derive display order from observe()
-	// call order, so its suppression decisions replay the committed split below.
 	#stablePass = false;
-	// Image ids shown as text in the frame currently on the terminal: the
-	// display-order prefix [0, #onTerminal) of the last full pass, snapshotted by
-	// id so a partial pass reproduces the on-screen live/text split without a
-	// full, correctly-ordered walk.
 	#suppressedIds = new Set<number>();
 
 	constructor(cap: number = DEFAULT_MAX_INLINE_IMAGES, requestRender: () => void = () => {}) {
@@ -115,11 +78,6 @@ export class ImageBudget {
 		this.#reconcile(this.#lastTotal);
 	}
 
-	/**
-	 * Stable graphics id for a logical image. A non-empty `key` maps to the same
-	 * id across re-creations (so repaints replace the placement); a missing key
-	 * gets a fresh id every call.
-	 */
 	acquireId(key?: string): number {
 		if (key) {
 			const existing = this.#keyToId.get(key);
@@ -135,14 +93,12 @@ export class ImageBudget {
 		return id;
 	}
 
-	/** Begin a render pass. */
 	beginPass(stable = false): void {
 		this.#passIds.length = 0;
 		this.#stablePass = stable;
 		this.#applyingReset = !stable && this.#cap > 0 && this.#planned > this.#onTerminal;
 	}
 
-	/** Record an image in display order and check if text fallback is required. */
 	observe(imageId: number): boolean {
 		if (this.#stablePass) {
 			const suppressed = this.#cap > 0 && this.#suppressedIds.has(imageId);
@@ -156,7 +112,6 @@ export class ImageBudget {
 		return suppressed;
 	}
 
-	/** End a render pass. Returns true if graphics purge and full repaint are required. */
 	endPass(): boolean {
 		const total = this.#passIds.length;
 		this.#lastTotal = total;
@@ -165,7 +120,6 @@ export class ImageBudget {
 			for (let i = this.#onTerminal; i < this.#planned && i < total; i++) {
 				const id = this.#passIds[i];
 				this.#purgeIds.push(id);
-				// d=I frees the data too, so the image must re-transmit if it returns.
 				this.#transmitted.delete(id);
 				this.#forgetKeyForId(id);
 			}
@@ -174,15 +128,10 @@ export class ImageBudget {
 			reset = true;
 		}
 		this.#reconcile(total);
-		// Snapshot the committed display-order suppression by id: the prefix
-		// [0, #onTerminal) is what the terminal currently shows as text. Partial
-		// passes replay this per id (see #stablePass) instead of re-deriving it
-		// from a reversed, tail-only walk.
 		this.#suppressedIds = new Set(this.#passIds.slice(0, this.#onTerminal));
 		return reset;
 	}
 
-	/** Image ids to delete from the terminal this frame; clears the pending set. */
 	takePurgeIds(): readonly number[] {
 		if (this.#purgeIds.length === 0) return EMPTY_IDS;
 		const ids = this.#purgeIds;
@@ -190,7 +139,6 @@ export class ImageBudget {
 		return ids;
 	}
 
-	/** All image ids believed to be loaded in the terminal store; clears tracking. */
 	takeAllTransmittedIds(): readonly number[] {
 		if (this.#transmitted.size === 0) return EMPTY_IDS;
 		const ids = new Array<number>(this.#transmitted.size);
@@ -204,32 +152,20 @@ export class ImageBudget {
 		return ids;
 	}
 
-	/** Whether `imageId`'s data still needs to be transmitted to the terminal. */
 	shouldTransmit(imageId: number): boolean {
 		return !this.#transmitted.has(imageId);
 	}
 
-	/**
-	 * Queue a one-time transmit for `imageId`. No-op if already transmitted, so a
-	 * repeated call (e.g. a width-change re-render) never re-sends the data.
-	 */
 	enqueueTransmit(imageId: number, sequence: string): void {
 		if (this.#transmitted.has(imageId)) return;
 		this.#transmitted.add(imageId);
 		this.#pendingTransmits.push(sequence);
 	}
 
-	/** Whether a frame has image data queued but not yet written to the terminal. */
 	hasPendingTransmits(): boolean {
 		return this.#pendingTransmits.length > 0;
 	}
 
-	/**
-	 * True when the budget has nothing in flight: no live images observed on
-	 * the last pass, no queued transmits, no pending purges, and no stricter
-	 * threshold left to apply. A component-scoped frame may skip the observe
-	 * pass only then — a partial tree walk would under-count display order.
-	 */
 	get quiescent(): boolean {
 		return (
 			this.#lastTotal === 0 &&
@@ -239,7 +175,6 @@ export class ImageBudget {
 		);
 	}
 
-	/** Transmit sequences to write before this frame's placements; clears the queue. */
 	takeTransmits(): readonly string[] {
 		if (this.#pendingTransmits.length === 0) return EMPTY_TRANSMITS;
 		const sequences = this.#pendingTransmits;
@@ -247,7 +182,6 @@ export class ImageBudget {
 		return sequences;
 	}
 
-	/** Drop transmit tracking so active images re-enqueue their data on next render. */
 	forgetTransmitted(): void {
 		if (this.#transmitted.size === 0 && this.#pendingTransmits.length === 0) return;
 		this.#transmitted.clear();
@@ -264,17 +198,10 @@ export class ImageBudget {
 	#reconcile(total: number): void {
 		const desired = this.#cap > 0 ? Math.max(0, total - this.#cap) : 0;
 		if (desired === this.#planned) {
-			// Budget relaxed without a stricter frame (cap raised or images
-			// removed): surviving graphics are untouched and re-exposed rows
-			// repaint normally, so just track the looser threshold.
 			if (this.#planned < this.#onTerminal) this.#onTerminal = this.#planned;
 			return;
 		}
 		this.#planned = desired;
-		// More images must be demoted than the terminal shows: schedule the purge +
-		// full-redraw frame. Fewer: no ghosts to clear, so just catch the tracking
-		// up — a normal repaint re-exposes the un-demoted images. Either way a
-		// render is needed to apply the new threshold.
 		if (desired <= this.#onTerminal) this.#onTerminal = desired;
 		this.#requestRender();
 	}
@@ -301,12 +228,7 @@ export class Image implements Component {
 	#cachedCellWidthPx = 0;
 	#cachedCellHeightPx = 0;
 	#cachedKittyUnicodePlaceholders = false;
-	// Tallest graphic placement this image has rendered. The text fallback
-	// pads itself to this height so a budget demotion never shrinks the block
-	// (its rows may already be committed to native scrollback).
 	#renderedGraphicRows = 0;
-	// The fallback cause this image last told its caller about, so a repaint that
-	// changes nothing reports nothing.
 	#reportedFallback: ImageFallbackReason | undefined;
 
 	constructor(
@@ -335,10 +257,6 @@ export class Image implements Component {
 		const hasProtocol = imageProtocol != null;
 		const cellDimensions = getCellDimensions();
 		const kittyUnicodePlaceholders = getKittyGraphics().unicodePlaceholders;
-		// observe() must run on every pass — even a cache hit — so the image keeps
-		// its display-order slot in the budget. Only graphics-capable frames count
-		// toward (and are demoted by) the budget; without a protocol every image is
-		// already text.
 		const suppressed = hasProtocol && this.#budget !== undefined ? this.#budget.observe(this.#imageId ?? 0) : false;
 
 		if (
@@ -360,8 +278,6 @@ export class Image implements Component {
 		let fallback: ImageFallbackReason | undefined;
 
 		if (hasProtocol && !suppressed) {
-			// Transmit the data once (keyed by id); thereafter renderImage returns
-			// just the placement, so repaints never re-send the base64.
 			const needsTransmit = this.#imageId != null && (this.#budget?.shouldTransmit(this.#imageId) ?? false);
 			const result = renderImage(this.#base64Data, this.#dimensions, {
 				maxWidthCells: maxWidth,
@@ -375,16 +291,8 @@ export class Image implements Component {
 			}
 
 			if (result?.lines) {
-				// Unicode placeholders: the image is already a block of real text-cell
-				// lines (line 0 carries the virtual-placement APC). No cursor moves.
 				lines = result.lines;
 			} else if (result) {
-				// Direct placement: return `rows` lines so TUI accounts for image
-				// height. First (rows-1) lines are empty (TUI clears them); the last
-				// saves the final-row cursor, moves up to the image origin, emits the
-				// image sequence, then restores the final-row cursor. Save/restore is
-				// required because CUU clamps at the viewport top when leading rows are
-				// clipped away.
 				lines = [];
 				for (let i = 0; i < result.rows - 1; i++) {
 					lines.push(RESERVED_IMAGE_ROW);
@@ -403,8 +311,6 @@ export class Image implements Component {
 			lines = this.#fallbackLines(fallback);
 		}
 
-		// Only a change is reported: the same cause every frame would ask a caller
-		// to decide over and over whether anything moved.
 		if (fallback !== this.#reportedFallback) {
 			this.#reportedFallback = fallback;
 			this.#options.onDisplayed?.(fallback);
@@ -421,7 +327,6 @@ export class Image implements Component {
 		return lines;
 	}
 
-	/** Render height-preserving text fallback for demoted or unrenderable images. */
 	#fallbackLines(reason: ImageFallbackReason): string[] {
 		const fallback = this.#theme.fallbackColor(
 			imageFallback({

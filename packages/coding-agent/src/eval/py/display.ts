@@ -1,11 +1,7 @@
-/** Display bundle rendering shared between the Python runner output and the legacy Jupyter MIME conventions. Pure function, no kernel coupling. */
 import { htmlToBasicMarkdown } from "../../web/scrapers/types";
 
-/** Status event emitted by prelude helpers for TUI rendering. */
 export interface PythonStatusEvent {
-	/** Operation name (e.g., "find", "read", "write") */
 	op: string;
-	/** Additional data fields (count, path, pattern, etc.) */
 	[key: string]: unknown;
 }
 
@@ -19,20 +15,16 @@ function normalizeDisplayText(text: string): string {
 	return text.endsWith("\n") ? text : `${text}\n`;
 }
 
-/** Render a MIME bundle into text + structured outputs. */
 export async function renderKernelDisplay(content: Record<string, unknown>): Promise<{
 	text: string;
 	outputs: KernelDisplayOutput[];
 }> {
-	// Accept both raw bundles ({"text/plain": ...}) and Jupyter-style
-	// content envelopes ({ data: {...} }) so callers don't need to unwrap.
 	const data =
 		(content.data as Record<string, unknown> | undefined) ?? (content as Record<string, unknown> | undefined);
 	if (!data) return { text: "", outputs: [] };
 
 	const outputs: KernelDisplayOutput[] = [];
 
-	// Status events bypass the text path entirely — they exist only for TUI hooks.
 	if (data["application/x-veyyon-status"] !== undefined) {
 		const statusData = data["application/x-veyyon-status"];
 		if (statusData && typeof statusData === "object" && "op" in statusData) {
@@ -51,8 +43,6 @@ export async function renderKernelDisplay(content: Record<string, unknown>): Pro
 		outputs.push({ type: "json", data: data["application/json"] });
 	}
 
-	// text/markdown takes precedence over text/plain (Markdown objects expose both
-	// where text/plain is just the repr).
 	if (typeof data["text/markdown"] === "string") {
 		outputs.push({ type: "markdown" });
 		return { text: normalizeDisplayText(String(data["text/markdown"])), outputs };

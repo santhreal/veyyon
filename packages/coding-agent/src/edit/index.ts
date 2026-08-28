@@ -29,8 +29,6 @@ export * from "./apply-patch";
 export * from "./diff";
 export * from "./file-snapshot-store";
 export * from "./hashline";
-// The matching engine moved out of `./modes/replace` to break a cycle with
-// `./diff`; re-exported here so the barrel surface is unchanged.
 export * from "./match";
 export * from "./modes/apply-patch";
 export * from "./modes/patch";
@@ -104,7 +102,6 @@ function resolveFuzzyThreshold(session: ToolSession, rawValue: string): number {
 	return threshold;
 }
 
-/** The edit tool's disk-commit path, wrapped in the session tree's write budget. */
 function createEditWritethrough(session: ToolSession): WritethroughCallback {
 	const enableLsp = (session.enableLsp ?? true) && session.settings.get("lsp.enabled");
 	const enableDiagnostics = enableLsp && session.settings.get("lsp.diagnosticsOnEdit");
@@ -128,7 +125,6 @@ function createEditWritethrough(session: ToolSession): WritethroughCallback {
 	);
 }
 
-/** The error a multi-step edit throws when it is cancelled partway through. A multi-step edit is the one place where "was it aborted" and "what happened */
 function editAbortedPartway(
 	unit: "file" | "entry",
 	applied: readonly string[],
@@ -149,13 +145,11 @@ function editAbortedPartway(
 	);
 }
 
-/** Finalize the files a cancelled multi-step edit already wrote. Deliberately flushes WITHOUT the signal. The batch holds files that are */
 async function flushAfterAbort(batchRequest: LspBatchRequest | undefined, cwd: string): Promise<void> {
 	if (!batchRequest?.flush) return;
 	await flushLspWritethroughBatch(batchRequest.id, cwd);
 }
 
-/** Run apply_patch file operations and aggregate their multi-file result. */
 async function executeApplyPatchPerFile(
 	fileEntries: {
 		path: string;
@@ -167,7 +161,6 @@ async function executeApplyPatchPerFile(
 	onUpdate?: (partialResult: AgentToolResult<EditToolDetails, TInput>) => void,
 ): Promise<AgentToolResult<EditToolDetails, TInput>> {
 	if (fileEntries.length === 1) {
-		// Single file — just run directly, no wrapping
 		return fileEntries[0].run(outerBatchRequest);
 	}
 
@@ -178,13 +171,11 @@ async function executeApplyPatchPerFile(
 	const filePaths = fileEntries.map(entry => entry.path);
 	for (let i = 0; i < fileEntries.length; i++) {
 		const { path, run } = fileEntries[i];
-		// Do not START another file once the operator has cancelled. Without this the loop relied on the innermost atomic write noticing the signal, which
 		if (signal?.aborted) {
 			await flushAfterAbort(outerBatchRequest, cwd);
 			throw editAbortedPartway("file", filePaths.slice(0, i), filePaths.slice(i), signal.reason);
 		}
 		const isLast = i === fileEntries.length - 1;
-		// Per-file writes join the outer LSP write batch; only the last entry flushes it, so cross-file writes coalesce into a single
 		const batchRequest: LspBatchRequest | undefined = outerBatchRequest
 			? { id: outerBatchRequest.id, flush: isLast && outerBatchRequest.flush }
 			: undefined;
@@ -208,7 +199,6 @@ async function executeApplyPatchPerFile(
 			const text = result.content?.find(c => c.type === "text")?.text ?? "";
 			if (text) contentTexts.push(text);
 		} catch (err) {
-			// A cancellation is not an edit failure and must not be reported as one: the caller has to be able to stop rather than re-issue. The
 			if (isCancellation(err)) {
 				await flushAfterAbort(outerBatchRequest, cwd);
 				throw editAbortedPartway("file", filePaths.slice(0, i), filePaths.slice(i), err);
@@ -218,7 +208,6 @@ async function executeApplyPatchPerFile(
 			perFileResults.push({ path, diff: "", isError: true, errorText, displayErrorText });
 			contentTexts.push(`Error editing ${path}: ${errorText}`);
 			hasError = true;
-			// Later entries were authored assuming this file's post-state; a partial cascade after failure typically compounds damage. Stop
 			if (i > 0) {
 				const appliedPaths = fileEntries
 					.slice(0, i)
@@ -235,14 +224,12 @@ async function executeApplyPatchPerFile(
 					`Files NOT applied: ${skippedPaths}; re-read the affected files and re-issue only the failed and unapplied files.`,
 				);
 			}
-			// Stopping early skips the last-entry flush above; finalize the already-written files so an intervening failure cannot leave them
 			if (outerBatchRequest?.flush) {
 				await flushLspWritethroughBatch(outerBatchRequest.id, cwd, signal);
 			}
 			break;
 		}
 
-		// Emit partial result after each file so UI shows progressive completion
 		if (!isLast && onUpdate) {
 			onUpdate({
 				content: [{ type: "text", text: contentTexts.join("\n") }],
@@ -268,9 +255,6 @@ async function executeApplyPatchPerFile(
 			firstChangedLine: perFileResults.find(r => r.firstChangedLine)?.firstChangedLine,
 			perFileResults,
 		}),
-		// Any per-file failure marks the aggregate result as an error so the
-		// agent loop and renderer take the error branch instead of treating
-		// a mixed partial application as a successful edit.
 		...(hasError ? { isError: true } : {}),
 	};
 }
@@ -296,15 +280,10 @@ async function executeSinglePathEntries(
 	let firstOldText: string | undefined;
 	let hasLastNewText = false;
 	let lastNewText: string | undefined;
-	// Any pruned child invalidates the aggregate snapshot: combining a kept first-entry oldText with a pruned next entry's newText (or vice-versa)
 	let snapshotsPruned = false;
 
-	// Entries are numbered rather than named: they all target the same path, so a
-	// list of paths would say the same thing `runs.length` times.
 	const entryLabels = runs.map((_, index) => `entry ${index + 1}`);
 	for (let i = 0; i < runs.length; i++) {
-		// Same reason as the per-file loop: stop before starting the next entry,
-		// rather than trusting the innermost write to refuse.
 		if (signal?.aborted) {
 			await flushAfterAbort(outerBatchRequest, cwd);
 			throw editAbortedPartway("entry", entryLabels.slice(0, i), entryLabels.slice(i), signal.reason);
@@ -352,9 +331,6 @@ async function executeSinglePathEntries(
 				);
 			}
 			hasError = true;
-			// Stop at the first failure: later entries were authored against
-			// line numbers/content that assumed this entry succeeded, and
-			// applying them after a failure compounds the damage.
 			if (outerBatchRequest?.flush) {
 				await flushLspWritethroughBatch(outerBatchRequest.id, cwd, signal);
 			}
@@ -386,7 +362,6 @@ async function executeSinglePathEntries(
 						...(hasLastNewText ? { newText: lastNewText } : {}),
 					}),
 		}),
-		// Any per-entry failure marks the aggregate result as an error so the renderer takes the error branch instead of falling through to the
 		...(hasError ? { isError: true } : {}),
 	};
 }
@@ -406,7 +381,6 @@ function extractApprovalPath(args: unknown): string {
 	return typeof targetPath === "string" && targetPath.length > 0 ? targetPath : "(unknown)";
 }
 
-/** Every real filesystem path an edit call would touch, for the cwd boundary (see cwd-boundary.ts). Unlike {@link extractApprovalPath} (which returns a */
 export function editFilesystemTargets(args: unknown): string[] {
 	const record = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
 	const targets: string[] = [];
@@ -419,8 +393,6 @@ export function editFilesystemTargets(args: unknown): string[] {
 		for (const match of input.matchAll(/^\*\*\* (?:Add|Update|Delete) File:\s*(.+)$/gm)) {
 			if (match[1]) targets.push(match[1].trim());
 		}
-		// Move/rename destinations. Over-matching only over-prompts (fail-closed);
-		// missing one would let an out-of-cwd move dodge the boundary.
 		for (const match of input.matchAll(/^\*\*\* Move to:\s*(.+)$/gm)) {
 			if (match[1]) targets.push(match[1].trim());
 		}
@@ -439,8 +411,6 @@ export class EditTool implements AgentTool<TInput> {
 	readonly formatApprovalDetails = (args: unknown): string[] => [
 		`File: ${truncateForPrompt(extractApprovalPath(args))}`,
 	];
-	// The cwd boundary gates out-of-cwd edits in non-yolo modes; an apply-patch
-	// body can touch several files, so all are reported. See cwd-boundary.ts.
 	readonly filesystemTargets = (args: unknown): string[] => editFilesystemTargets(args);
 	readonly name = "edit";
 	readonly label = "Edit";
@@ -490,30 +460,25 @@ export class EditTool implements AgentTool<TInput> {
 		return this.#getModeDefinition().examples;
 	}
 
-	/** When in `apply_patch` mode, expose the Codex Lark grammar so providers that support OpenAI-style custom tools can emit a grammar-constrained */
 	get customFormat(): { syntax: "lark"; definition: string } | undefined {
 		if (this.mode === "apply_patch") return { syntax: "lark", definition: applyPatchGrammar };
 		if (this.mode === "hashline") return { syntax: "lark", definition: hashlineGrammar };
 		return undefined;
 	}
 
-	/** Wire-level tool name used when the custom-tool variant is active. GPT-5+ is trained on the literal name `apply_patch`; internally this is just a */
 	get customWireName(): string | undefined {
 		if (this.mode !== "apply_patch") return undefined;
 		return "apply_patch";
 	}
 
-	/** Normalize streamed args into the source text this edit introduces, so stream matchers (TTSR rules) run against real file content instead of the */
 	matcherDigest(args: unknown): string | undefined {
 		return EDIT_MODE_STRATEGIES[this.mode].matcherDigest(args);
 	}
 
-	/** Project the streamed args onto their target file paths so path-scoped stream matchers (e.g. TTSR `tool:edit(*.ts)` globs) match hashline and */
 	matcherPaths(args: unknown): readonly string[] | undefined {
 		return EDIT_MODE_STRATEGIES[this.mode].matcherPaths(args);
 	}
 
-	/** Per-file projection of the streamed args, splitting multi-section hashline / multi-hunk apply_patch payloads into one (path, digest) entry */
 	matcherEntries(args: unknown): readonly { path: string; digest: string }[] | undefined {
 		return EDIT_MODE_STRATEGIES[this.mode].matcherEntries(args);
 	}
@@ -585,8 +550,6 @@ export class EditTool implements AgentTool<TInput> {
 								batchRequest: br,
 								allowFuzzy: tool.#allowFuzzy,
 								fuzzyThreshold: tool.#fuzzyThreshold,
-								// The JSON grammar has no `*** Update File`; its `op: "create"`
-								// doubles as the documented full-file overwrite (patch.md <avoid>).
 								allowCreateOverwrite: true,
 								writethrough: tool.#writethrough,
 								beginDeferredDiagnosticsForPath: p => tool.#deferredDiagnostics.begin(p),

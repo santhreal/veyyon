@@ -1,31 +1,20 @@
-/** Pure heading/section parser for the plan-review overlay. It splits a plan's markdown into a flat list of sections — a leading preamble (text before the */
-
 import { collapseWhitespace } from "@veyyon/utils";
 
-/** ATX heading: 1-6 `#`, required whitespace, a title, optional closing `#`s. */
 const HEADING_RE = /^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/;
-/** Opening/closing code fence run (``` or ~~~), allowing up to 3 lead spaces. */
 const FENCE_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 
 export interface PlanSection {
-	/** `0` = preamble (no heading, no ToC entry); `1..6` = heading depth. */
 	level: number;
-	/** Plain-text heading label with inline markdown lightly stripped. */
 	title: string;
-	/** Exact source slice for this section, including its trailing newline(s). */
 	raw: string;
 }
 
-/** Collapse inline markdown emphasis/link/code syntax to readable text. This is a deliberately light strip (not a full markdown render) just so ToC entries */
 export function stripInlineMarkdown(text: string): string {
 	let out = text;
-	// Images first (so the link pass below does not eat the `(url)`), then links.
 	out = out.replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1");
 	out = out.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
 	out = out.replace(/\[([^\]]*)\]\[[^\]]*\]/g, "$1");
-	// Autolinks `<https://…>` keep their URL as the readable text.
 	out = out.replace(/<([^>\s]+)>/g, "$1");
-	// Inline code, then bold/italic/strikethrough emphasis runs.
 	out = out.replace(/`([^`]+)`/g, "$1");
 	out = out.replace(/(\*\*|__)(.+?)\1/g, "$2");
 	out = out.replace(/(\*|_)(.+?)\1/g, "$2");
@@ -33,10 +22,8 @@ export function stripInlineMarkdown(text: string): string {
 	return collapseWhitespace(out);
 }
 
-/** Split `text` into preamble + heading sections. `#` characters inside fenced code blocks are never treated as headings. Concatenating every section's */
 export function parsePlanSections(text: string): PlanSection[] {
 	const lines = text.split("\n");
-	// Character offset of each line start so section `raw` can slice the source.
 	const offsets: number[] = new Array(lines.length);
 	let cursor = 0;
 	for (let i = 0; i < lines.length; i++) {
@@ -44,7 +31,6 @@ export function parsePlanSections(text: string): PlanSection[] {
 		cursor += lines[i]!.length + 1; // +1 for the "\n" join separator
 	}
 
-	// Heading line indices (start of each heading section), with metadata.
 	const heads: { line: number; level: number; title: string }[] = [];
 	let fenceChar: string | null = null;
 	let fenceLen = 0;
@@ -56,10 +42,8 @@ export function parsePlanSections(text: string): PlanSection[] {
 				fenceChar = fence[1]![0]!;
 				fenceLen = fence[1]!.length;
 			}
-			// Opening-fence lines are body, not headings.
 			if (fence) continue;
 		} else {
-			// Inside a fence: only a matching-or-longer run of the same char closes.
 			if (fence && fence[1]![0] === fenceChar && fence[1]!.length >= fenceLen && fence[2]!.trim() === "") {
 				fenceChar = null;
 				fenceLen = 0;
@@ -79,7 +63,6 @@ export function parsePlanSections(text: string): PlanSection[] {
 		return text.slice(startOffset, endOffset);
 	};
 
-	// Preamble: everything before the first heading (only when non-empty).
 	const firstHeadLine = heads.length > 0 ? heads[0]!.line : lines.length;
 	if (firstHeadLine > 0) {
 		const raw = sliceRaw(0, firstHeadLine);
@@ -95,7 +78,6 @@ export function parsePlanSections(text: string): PlanSection[] {
 	return sections;
 }
 
-/** Concatenate every section's `raw` back into a single document and guarantee a single trailing newline. Inverse of {@link parsePlanSections} for any input */
 export function joinPlanSections(sections: readonly PlanSection[]): string {
 	let joined = "";
 	for (const section of sections) joined += section.raw;
@@ -103,7 +85,6 @@ export function joinPlanSections(sections: readonly PlanSection[]): string {
 	return joined.endsWith("\n") ? joined : `${joined}\n`;
 }
 
-/** Indices to remove when deleting `sections[index]`: the heading itself plus every following section nested deeper than it (its sub-headings). The */
 export function sectionDeletionSpan(sections: readonly PlanSection[], index: number): number[] {
 	const target = sections[index];
 	if (!target || target.level === 0) return [];

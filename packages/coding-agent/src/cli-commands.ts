@@ -1,8 +1,3 @@
-/** Top-level CLI command table. Lives in its own module (importable without side effects) so that tests can */
-// Subpath import, not the barrel: this module is in cli.ts's pre-profile
-// import graph (via profile-bootstrap), and the barrel loads dotenv at import
-// time — before `setProfile` picks the profile agent dir (profile-cli.test.ts).
-
 import type { CommandEntry } from "@veyyon/utils/cli";
 import { levenshteinDistance } from "@veyyon/utils/levenshtein";
 import { flagConsumesValue } from "./cli/flag-tables";
@@ -212,7 +207,6 @@ export const commands: CommandEntry[] = [
 	},
 ];
 
-// Documented-looking plugin-management verbs that are NOT registered top-level commands. Without a guard `resolveCliArgv` rewrites e.g. `veyyon list` to
 const RESERVED_TOP_LEVEL_WORDS = new Map<string, string>([
 	[
 		"extensions",
@@ -233,12 +227,8 @@ export function reservedTopLevelWordMessage(first: string | undefined, argc = 1)
 	return RESERVED_TOP_LEVEL_WORDS.get(first);
 }
 
-/** "Did you mean" for a bare single token that is a near-miss of a registered subcommand (typo within edit distance 2, or a prefix like `auth` → */
 export function nearMissSubcommandMessage(first: string | undefined, argc = 1): string | undefined {
 	if (argc !== 1 || !first || first.length < 3 || first.startsWith("-") || first.startsWith("@")) return undefined;
-	// Short tokens only match at distance 1: at distance 2 a 5-letter English
-	// word collides with unrelated commands ("hello" is 2 edits from "shell"),
-	// which would reject genuine one-word prompts like `veyyon -p hello`.
 	const maxDistance = first.length <= 5 ? 1 : 2;
 	const candidates: string[] = [];
 	for (const entry of commands) {
@@ -257,7 +247,6 @@ export function nearMissSubcommandMessage(first: string | undefined, argc = 1): 
 	return `\`veyyon ${first}\` is not a command. Did you mean ${suggestions}? To send "${first}" as a prompt instead, run \`veyyon launch ${first}\`.`;
 }
 
-/** Return true when `first` matches a registered subcommand name or alias. Flags (`-…`) and `@file` arguments are never subcommands; for those the CLI */
 export function isSubcommand(first: string | undefined): boolean {
 	if (!first || first.startsWith("-") || first.startsWith("@")) return false;
 	return commands.some(entry => entry.name === first || entry.aliases?.includes(first));
@@ -265,7 +254,6 @@ export function isSubcommand(first: string | undefined): boolean {
 
 export type ResolvedCliArgv = { argv: string[] } | { error: string };
 
-/** Index of the first argv token that names a registered subcommand, skipping leading global option flags (and any value they consume) with the same */
 function leadingSubcommandIndex(argv: string[]): number {
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
@@ -276,7 +264,6 @@ function leadingSubcommandIndex(argv: string[]): number {
 	return -1;
 }
 
-/** The single positional token in argv, if there is exactly one — flags (and any value they consume) are skipped with the launch parser's contract. Two */
 function solePositional(argv: string[]): string | undefined {
 	let sole: string | undefined;
 	for (let index = 0; index < argv.length; index += 1) {
@@ -292,7 +279,6 @@ function solePositional(argv: string[]): string | undefined {
 	return sole;
 }
 
-/** Decide what the CLI runner should do with raw argv: reject bare reserved management words, pass help/version through untouched, route a recognized */
 export function resolveCliArgv(argv: string[]): ResolvedCliArgv {
 	const first = argv[0];
 	const reservedMessage = reservedTopLevelWordMessage(first, argv.length);
@@ -301,14 +287,10 @@ export function resolveCliArgv(argv: string[]): ResolvedCliArgv {
 		return { argv };
 	}
 	if (isSubcommand(first)) return { argv };
-	// A subcommand can hide behind leading global option flags (`veyyon --approval-mode=yolo acp`). `run` dispatches strictly on argv[0], so
 	const subIndex = leadingSubcommandIndex(argv);
 	if (subIndex >= 0) {
 		return { argv: [argv[subIndex], ...argv.slice(0, subIndex), ...argv.slice(subIndex + 1)] };
 	}
-	// The near-miss guard covers any invocation whose only positional is the
-	// suspect token — `veyyon updte --print` is the same paid-prompt leak as a
-	// bare `veyyon updte`, just with a flag attached.
 	const sole = solePositional(argv);
 	const nearMissMessage = sole === undefined ? undefined : nearMissSubcommandMessage(sole, 1);
 	if (nearMissMessage) return { error: nearMissMessage };

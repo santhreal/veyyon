@@ -1,44 +1,29 @@
-/** Saying WHY a requested model could not be resolved. they used to collapse into one sentence: `Model "<id>" not found`, followed by */
-
-/** What was known at the moment resolution failed. Ids are `provider/id`. */
 export interface ModelResolutionContext {
-	/** The `--model` patterns the operator asked for, in order. */
 	readonly requested: readonly string[];
-	/** Every model the registry knows, with or without credentials. */
 	readonly allModelIds: readonly string[];
-	/** The subset that has configured auth. */
 	readonly availableModelIds: readonly string[];
-	/** A registry load/discovery error, when one was recorded. */
 	readonly registryError?: string;
 }
 
 export type ModelResolutionFailureKind =
-	/** The registry itself failed to load. Nothing about the id can be concluded. */
 	| "registry-error"
-	/** The registry is empty for a non-error reason. */
 	| "empty-registry"
-	/** Models exist, none has usable credentials. An AUTH failure, not an id failure. */
 	| "no-credentials"
-	/** The id names real models, but none of their providers is authenticated. */
 	| "provider-unauthenticated"
-	/** Models with credentials exist and none matches the request. A genuine id error. */
 	| "unknown-model";
 
 export interface ModelResolutionFailure {
 	readonly kind: ModelResolutionFailureKind;
 	readonly message: string;
-	/** Authenticated ids resembling the request; only for `unknown-model`. */
 	readonly nearMatches: readonly string[];
 }
 
-/** How the operator's patterns read back in a sentence. */
 function describeRequested(requested: readonly string[]): string {
 	if (requested.length === 0) return "a model";
 	if (requested.length === 1) return `"${requested[0]}"`;
 	return `one of ${requested.map(pattern => `"${pattern}"`).join(", ")}`;
 }
 
-/** Providers named by ids, in first-seen order. */
 function providersOf(ids: readonly string[]): string[] {
 	const seen: string[] = [];
 	for (const id of ids) {
@@ -48,14 +33,10 @@ function providersOf(ids: readonly string[]): string[] {
 	return seen;
 }
 
-/** Ids that loosely resemble a pattern, so an operator who mistyped or misremembered a version sees the real spelling rather than only being told no. */
 export function findNearMatches(pattern: string, ids: readonly string[], limit = 5): string[] {
 	const needle = pattern.toLowerCase();
 	const bare = needle.includes("/") ? (needle.split("/").pop() as string) : needle;
 	const scored: { id: string; score: number }[] = [];
-	// A fragment shorter than three characters is a substring of most of a real
-	// catalog, so it produces a suggestion list that suggests nothing. Only an
-	// exact hit counts below that length.
 	const tooShortToInfer = bare.length < 3;
 	for (const id of ids) {
 		const haystack = id.toLowerCase();
@@ -67,8 +48,6 @@ export function findNearMatches(pattern: string, ids: readonly string[], limit =
 		else if (haystack.includes(bare) || idPart.includes(bare)) score = 3;
 		else if (bare.includes(idPart) && idPart.length >= 3) score = 2;
 		else {
-			// A shared leading run of at least four characters is enough signal to
-			// suggest; shorter runs match far too much of a large catalog.
 			let shared = 0;
 			while (shared < bare.length && shared < idPart.length && bare[shared] === idPart[shared]) shared++;
 			if (shared >= 4) score = 1;
@@ -79,7 +58,6 @@ export function findNearMatches(pattern: string, ids: readonly string[], limit =
 	return scored.slice(0, limit).map(entry => entry.id);
 }
 
-/** Classify a resolution failure and produce the operator-facing sentence. The ordering of the checks is the contract. A registry error outranks */
 export function describeModelResolutionFailure(context: ModelResolutionContext): ModelResolutionFailure {
 	const requested = describeRequested(context.requested);
 
@@ -117,8 +95,6 @@ export function describeModelResolutionFailure(context: ModelResolutionContext):
 		};
 	}
 
-	// The id names real models, but every provider behind them is unauthenticated.
-	// Telling this operator the model does not exist would be plainly false.
 	const matchedUnauthenticated = context.requested.flatMap(pattern =>
 		findNearMatches(pattern, context.allModelIds, Number.MAX_SAFE_INTEGER).filter(
 			id => !context.availableModelIds.includes(id),
@@ -157,14 +133,12 @@ export function describeModelResolutionFailure(context: ModelResolutionContext):
 	};
 }
 
-/** The part of `ModelRegistry` this diagnosis needs. Structural rather than the concrete class so the module stays a leaf: it must */
 export interface ModelRegistryView {
 	getAll(): readonly { readonly provider: string; readonly id: string }[];
 	getAvailable(): readonly { readonly provider: string; readonly id: string }[];
 	getError?(): { readonly message: string } | undefined;
 }
 
-/** The operator-facing sentence for a resolution failure, read straight off a registry. */
 export function modelResolutionFailureMessage(requested: readonly string[], registry: ModelRegistryView): string {
 	const qualify = (entry: { provider: string; id: string }) => `${entry.provider}/${entry.id}`;
 	return describeModelResolutionFailure({

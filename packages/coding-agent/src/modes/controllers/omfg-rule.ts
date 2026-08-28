@@ -82,10 +82,7 @@ function normalizeConditionRegex(condition: string): { condition: string } | { e
 			try {
 				new RegExp(repaired);
 				return { condition: repaired };
-			} catch {
-				// The repair did not help; the original error is what gets reported
-				// to the operator below, which is the more useful message.
-			}
+			} catch {}
 		}
 		const message = errorMessage(originalError);
 		return { error: `Invalid condition regex ${JSON.stringify(condition)}: ${message}` };
@@ -379,7 +376,6 @@ interface HistorySurface {
 	text: string;
 	label: string;
 	context: TtsrMatchContext;
-	/** Raw arguments of the tool call this surface came from; absent on prose and thinking. */
 	args?: unknown;
 }
 
@@ -424,7 +420,6 @@ function collectAssistantSurfaces(messages: readonly AgentMessage[]): HistorySur
 	return surfaces;
 }
 
-/** Derive an ast-grep language alias from candidate paths (bare extension), the same inference the live `checkAstSnapshot` path applies. */
 function deriveHistoryLang(filePaths: readonly string[] | undefined): string | undefined {
 	for (const filePath of filePaths ?? []) {
 		const ext = path.extname(filePath.replaceAll("\\", "/"));
@@ -435,7 +430,6 @@ function deriveHistoryLang(filePaths: readonly string[] | undefined): string | u
 	return undefined;
 }
 
-/** Every string value inside tool arguments, depth-first: the code an edit or write call introduces. */
 function collectArgStrings(value: unknown, out: string[] = []): string[] {
 	if (typeof value === "string") {
 		if (value.length > 0 && !out.includes(value)) out.push(value);
@@ -456,8 +450,6 @@ export async function validateRuleAgainstAssistantHistory(
 	messages: readonly AgentMessage[],
 ): Promise<RuleHistoryValidation> {
 	const manager = new TtsrManager();
-	// Warm-up is noise policy, not match policy: whether the condition is right must not depend on
-	// how many streams history happens to hold, so the probe registers without it.
 	const probe = rule.warmupMatches === undefined ? rule : { ...rule, warmupMatches: undefined };
 	if (!manager.addRule(probe)) {
 		return {
@@ -474,8 +466,6 @@ export async function validateRuleAgainstAssistantHistory(
 			matches.push(surface);
 			continue;
 		}
-		// AST conditions go through the same `checkAstSnapshot` gate chain as a live stream —
-		// scope, path globs, language inference — so a rule that validates here fires there.
 		if ((rule.astCondition?.length ?? 0) === 0 || surface.context.source !== "tool") continue;
 		const lang = deriveHistoryLang(surface.context.filePaths);
 		if (!lang) continue;
@@ -532,8 +522,6 @@ function isValidRegexCondition(condition: string): boolean {
 		new RegExp(condition);
 		return true;
 	} catch {
-		// This asks whether the condition IS a valid regex, so a throw is the answer rather than an error:
-		// invalid means the rule is reported as invalid by the validator that called this.
 		return false;
 	}
 }
@@ -739,7 +727,6 @@ function excerptForSurface(text: string, hints: readonly string[]): string {
 	return `${prefix}${normalized.slice(start, end)}${suffix}`;
 }
 
-/** Whether an `AgentMessage` is an assistant message whose content is a block list. The block list is the point: the caller walks `content` looking for tool calls, so a */
 function isAssistantMessageWithBlocks(message: AgentMessage): message is AssistantMessage {
 	const candidate = message as { role?: unknown; content?: unknown };
 	return candidate.role === "assistant" && Array.isArray(candidate.content);
@@ -750,8 +737,6 @@ function stringifyToolArguments(args: unknown): string {
 		const text = JSON.stringify(args);
 		return typeof text === "string" ? text : "";
 	} catch {
-		// Arguments with a cycle have no text form to match a rule against, and an empty string matches no
-		// rule condition. Failing closed on purpose: a rule must not fire on arguments it could not read.
 		return "";
 	}
 }

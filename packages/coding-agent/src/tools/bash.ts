@@ -42,7 +42,6 @@ import {
 } from "../session/streaming-output";
 import { statementById } from "../system-prompt-builder/statement-registry";
 import { CachedOutputBlock, markFramedBlockComponent, outputBlockContentWidth } from "../tui/output-block";
-// The owner, not the local `../tui` barrel, which re-exports `./file-list` and through it the theme engine.
 import { renderStatusLine } from "../tui/status-line";
 import { getSixelLineMask } from "../utils/sixel";
 import type { ToolSession } from ".";
@@ -88,7 +87,6 @@ const BASH_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const DEFAULT_AUTO_BACKGROUND_THRESHOLD_MS = 300_000;
 const DEFAULT_STALL_DETECTION_MS = 30_000;
 
-/** Shape a shell command line for an ACP-conformant terminal/create request. */
 export function wrapShellLineForClientTerminal(
 	line: string,
 	shellConfig: { shell: string; args: string[]; prefix?: string | undefined },
@@ -99,7 +97,6 @@ export function wrapShellLineForClientTerminal(
 
 export { FLAGGED_BASH_PATTERNS } from "./bash-guard";
 
-/** The environment a bash call will run with (process.env merged with call env). */
 function bashJudgementEnv(args: unknown): NodeJS.ProcessEnv {
 	const rawEnv = (args as Partial<BashToolInput>).env;
 	const merged: NodeJS.ProcessEnv = { ...process.env };
@@ -111,7 +108,6 @@ function bashJudgementEnv(args: unknown): NodeJS.ProcessEnv {
 	return merged;
 }
 
-/** Extract leading `cd <path> && ...` into cwd when no explicit `cwd` was supplied. Constrained to a single line so a `&&` that sits on a later line of a multiline */
 export function extractEffectiveBashCommand(rawCommand: string, rawCwd?: string): { command: string; cwd?: string } {
 	let command = rawCommand;
 	let cwd = rawCwd;
@@ -215,21 +211,17 @@ export interface BashToolDetails {
 	requestedTimeoutSeconds?: number;
 	timeoutDisabled?: boolean;
 	wallTimeMs?: number;
-	/** Exit code of a command that ran to completion but failed (non-zero). */
 	exitCode?: number;
-	/** The signal that killed the command, when it died from one. */
 	signal?: number;
 	terminalId?: string;
 	async?: {
 		state: "running" | "completed" | "failed";
 		jobId: string;
 		type: "bash";
-		/** Why a still-running call was backgrounded. */
 		reason?: BackgroundReason;
 	};
 }
 
-/** Why a still-running bash call was moved to the background. */
 type BackgroundReason = "threshold" | "stall" | "manual";
 
 export interface BashToolOptions {}
@@ -248,12 +240,10 @@ interface ManagedBashJobHandle {
 	jobId: string;
 	completion: Promise<ManagedBashJobCompletion>;
 	getLatestText: () => string;
-	/** `performance.now()` timestamp of the most recent output chunk (job start if none yet). */
 	getLastOutputAt: () => number;
 	stopUpdates: () => void;
 }
 
-/** The output text for a bash result, with runner and build bookkeeping folded out. */
 function normalizeResultOutput(result: BashResult | BashInteractiveResult): string {
 	return foldToolOutputBookkeeping(result.output || "").text;
 }
@@ -262,7 +252,6 @@ function isInteractiveResult(result: BashResult | BashInteractiveResult): result
 	return "timedOut" in result;
 }
 
-/** Turn an ACP terminal/output reply into the size summary. */
 function summarizeBridgeOutput<T extends { exitCode: number | undefined; cancelled: boolean; timedOut?: boolean }>(
 	output: ClientBridgeTerminalOutput,
 	rest: T,
@@ -406,7 +395,6 @@ function formatWallTimeSeconds(wallTimeMs: number): string {
 	return (wallTimeMs / 1000).toFixed(2);
 }
 
-/** Format legacy wall-time notice for stripping from historical results. */
 function legacyWallTimeNotice(wallTimeMs: number): string {
 	return `Wall time: ${formatWallTimeSeconds(wallTimeMs)} seconds`;
 }
@@ -425,11 +413,9 @@ function formatBackgroundNotice(jobId: string, reason: BackgroundReason = "thres
 	return `Backgrounded as job ${jobId}; result will be delivered automatically.`;
 }
 
-/** Notice emitted when skill:// URL resolution falls back to process-wide skills. */
 export const SKILL_SCOPE_UNRESOLVED_NOTICE =
 	"(skill:// resolved against the process-wide skill set: this session never resolved its own skills, so a skill:// that did not resolve was left as a literal path)";
 
-/** Whether this bash call references a skill:// URL in command, cwd, or env. */
 function referencesSkillUrl(
 	command: string,
 	cwd: string | undefined,
@@ -443,7 +429,6 @@ function referencesSkillUrl(
 	return false;
 }
 
-/** Strip trailing notice line from text. */
 function stripTrailingNotice(text: string, notice: string): string {
 	const idx = text.lastIndexOf(notice);
 	if (idx === -1) return text;
@@ -469,16 +454,12 @@ function stripBackgroundNotice(text: string, async: BashToolDetails["async"] | u
 	return stripTrailingNotice(text, formatBackgroundNotice(async.jobId, async.reason));
 }
 
-/** The command text a stream rule should be matched against, with heredoc bodies stripped. */
 export function bashMatcherDigest(args: unknown): string {
 	const command = (args as Partial<BashToolInput> | undefined)?.command;
-	// Never `undefined`: that would hand the raw argument JSON back to the matcher, which
-	// is exactly the wire form no bash rule is written against.
 	if (typeof command !== "string") return "";
 	return stripHeredocBodies(command);
 }
 
-/** Match heredoc openers (<<MARK, <<-MARK, <<'MARK', <<"MARK"). */
 const HEREDOC_OPENER = /(?<!<)<<(?!<)(-?)\s*(["']?)([A-Za-z_][A-Za-z0-9_]*)\2/g;
 
 function stripHeredocBodies(command: string): string {
@@ -489,14 +470,12 @@ function stripHeredocBodies(command: string): string {
 		const bodyStart = command.indexOf("\n", HEREDOC_OPENER.lastIndex);
 		if (bodyStart === -1) break;
 		const marker = opener[3] as string;
-		// `<<-` lets the terminator be indented with tabs; a plain `<<` requires column zero.
 		const terminator = new RegExp(`^${opener[1] === "-" ? "\\t*" : ""}${marker}[ \\t]*$`, "m");
 		terminator.lastIndex = 0;
 		const rest = command.slice(bodyStart + 1);
 		const hit = terminator.exec(rest);
 		result += command.slice(copiedTo, bodyStart);
 		if (!hit) {
-			// Unterminated: the rest of the text is body, so nothing after it is a command.
 			copiedTo = command.length;
 			break;
 		}
@@ -506,7 +485,6 @@ function stripHeredocBodies(command: string): string {
 	return result + command.slice(copiedTo);
 }
 
-/** Bash tool: executes commands with optional timeout and working directory. */
 export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSchemaWithAsync, BashToolDetails> {
 	readonly name = "bash";
 	readonly approval = (args: unknown): ToolApprovalDecision =>
@@ -540,14 +518,9 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		});
 	}
 	readonly parameters: BashToolSchema;
-	// Non-pty calls run alongside each other (the executor isolates overlapping
-	// runs on the same shell session); pty takes over the terminal UI and must
-	// run alone.
 	readonly concurrency = (args: Partial<BashToolInput>): "shared" | "exclusive" =>
 		args.pty === true ? "exclusive" : "shared";
 	readonly strict = true;
-	// Stream rules match the COMMAND, never the argument JSON carrying it; see
-	// `bashMatcherDigest` for the two ways the wire form got the answer wrong.
 	readonly matcherDigest = (args: unknown): string => bashMatcherDigest(args);
 	readonly #asyncEnabled: boolean;
 	readonly #autoBackgroundEnabled: boolean;
@@ -576,7 +549,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		return normalizeResultOutput(result) || "(no output)";
 	}
 
-	/** Bound bash output through artifact-spill when exceeding inline budget. */
 	async #boundBashOutput(text: string, existingArtifactId?: string): Promise<string> {
 		const capped = await enforceInlineByteCap(text, {
 			...inlineOutputPricing(this.session),
@@ -638,7 +610,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		if (failedExit) outputLines.push("", formatExitCodeNotice(exitCode, signal));
 		const outputText = outputLines.join("\n");
 
-		// Aborts / timeouts / missing-status still propagate as thrown errors.
 		await this.#throwIfUnfinished(result, timeoutSec, outputText);
 
 		const details: BashToolDetails = {};
@@ -804,7 +775,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		};
 	}
 
-	/** Foreground-wait on a managed job until completion, timeout, stall, or abort. */
 	async #waitForManagedBashJob(
 		job: ManagedBashJobHandle,
 		opts: { thresholdMs: number; stallMs: number; signal?: AbortSignal },
@@ -865,7 +835,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			}
 			await Bun.sleep(Math.min(remainingMs, POLL_CAP_MS));
 		}
-		// The race is already settled; never resolve so this loser is discarded.
 		return await new Promise<never>(() => {});
 	}
 
@@ -904,9 +873,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			throw new ToolError("Async bash execution is disabled. Enable async.enabled to use async mode.");
 		}
 
-		// Check both the original command and the cwd-normalized command so
-		// leading `cd ... &&` wrappers do not hide either shell-navigation rules
-		// or the dedicated-tool command that follows the directory change.
 		if (this.session.settings.get("bashInterceptor.enabled")) {
 			const rules = this.session.settings.getBashInterceptorRules();
 			const commandsToCheck = rawCommand === command ? [command] : [rawCommand, command];
@@ -918,7 +884,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			}
 		}
 
-		// `skills: this.session.skills ?? []` used to sit here, and the `?? []` is a lie about scope: `[]` asserts this session HAS no skills, which `skill-protocol.ts` honors
 		const skillScopeUnresolved = this.session.skills === undefined && referencesSkillUrl(rawCommand, cwd, env);
 		if (skillScopeUnresolved) {
 			logger.warn("bash: session skills are unresolved, skill:// URLs resolve against the process-wide set", {
@@ -950,12 +915,10 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 				)
 			: undefined;
 
-		// Resolve protocol URLs (skill://, agent://, etc.) in extracted cwd.
 		if (cwd?.includes("://") || cwd?.includes("local:/")) {
 			cwd = await expandInternalUrls(cwd, { ...internalUrlOptions, noEscape: true });
 		}
 
-		// Best-effort cache invalidation: drop github-cache rows for any issue/PR number touched by a mutating `gh` subcommand inside this bash call so
 		invalidateGithubCacheForBashCommand(command);
 
 		const commandCwd = cwd ? resolveToCwd(cwd, this.session.cwd) : this.session.cwd;
@@ -972,8 +935,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			throw new ToolError(`Working directory is not a directory: ${shortenPath(commandCwd)}`);
 		}
 
-		// A timeout of 0 is an explicit long-running-command contract: the user
-		// must still cancel the call or job, but veyyon does not impose a deadline.
 		const requestedTimeoutSec = rawTimeout;
 		const timeoutDisabled = requestedTimeoutSec === 0;
 		const timeoutSec = timeoutDisabled
@@ -981,7 +942,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			: clampTimeout("bash", requestedTimeoutSec, this.session.settings.get("tools.maxTimeout"));
 		const timeoutMs = timeoutSec === undefined ? undefined : timeoutSec * 1000;
 		const pendingNotices: string[] = [];
-		// The session tree's budget group: pick up live settings for every limit, then refuse while any of them says so (CPU saturated, write budget
 		const cpuLimit = sessionCpuLimit(this.session.getSessionId?.() ?? null);
 		if (cpuLimit) {
 			await cpuLimit.update(
@@ -1021,30 +981,19 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			});
 		}
 
-		// The client-bridge terminal provides a live terminal card in the editor;
-		// when available it wins over auto-backgrounding (both are opt-in, and
-		// auto-background would otherwise silently disable the terminal route).
 		const clientBridge = this.session.getClientBridge?.();
 		const bridgeTerminalAvailable = Boolean(
 			clientBridge?.capabilities.terminal && clientBridge.createTerminal && !pty,
 		);
 
 		const autoBgManager = this.session.asyncJobManager;
-		// A per-call `backgroundAfter` is the model's own deadline. It overrides the
-		// configured threshold and arms the wall-clock timer even when the setting
-		// is off, because asking for it IS the opt-in.
 		const requestedBackgroundAfterMs =
 			rawBackgroundAfter === undefined ? undefined : Math.max(0, Math.floor(rawBackgroundAfter * 1000));
 		const autoBackgroundActive = requestedBackgroundAfterMs !== undefined || this.#autoBackgroundEnabled;
 		const configuredThresholdMs = requestedBackgroundAfterMs ?? this.#autoBackgroundThresholdMs;
-		// EVERY non-PTY, non-bridge call routes through the managed-job machinery, not only one with a timer armed. That registration is what gives the
 		if (!pty && !bridgeTerminalAvailable && autoBgManager && !autoBgManager.atCapacity) {
-			// Wall-clock timer only when auto-background is on, stall timer only
-			// when stall detection is on. With neither, the race still runs so the
-			// manual key and the completion path stay live, just without a timer.
 			const wallThresholdMs = autoBackgroundActive ? this.#resolveWaitMs(configuredThresholdMs, timeoutMs) : 0;
 			const stallMs = this.#stallDetectionEnabled ? this.#resolveStallWaitMs(timeoutMs) : 0;
-			// "Immediately" is a CONFIGURED zero, never a clamped one. `#resolveWaitMs` collapses the timer to 0 when the command's own timeout would fire
 			const startBackgrounded = autoBackgroundActive && configuredThresholdMs === 0;
 			const job = this.#startManagedBashJob({
 				command,
@@ -1065,9 +1014,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 					reason: "threshold",
 				});
 			}
-			// Suppress the completion delivery up front so a job finishing while we
-			// foreground-wait cannot also be injected by the delivery loop. Lifted
-			// via resumeDeliveries() if we end up backgrounding after all.
 			autoBgManager.acknowledgeDeliveries([job.jobId]);
 			const waitResult = await this.#waitForManagedBashJob(job, { thresholdMs: wallThresholdMs, stallMs, signal });
 			if (waitResult.kind === "completed") {
@@ -1092,8 +1038,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			});
 		}
 
-		// Route through the client terminal when the client advertises the terminal capability.
-		// Skip when pty=true (PTY needs the local terminal UI).
 		if (clientBridge?.capabilities.terminal && clientBridge.createTerminal && !pty) {
 			const bridgeWallTimeStart = performance.now();
 			const shellSpawn = wrapShellLineForClientTerminal(command, this.session.settings.getShellConfig());
@@ -1107,7 +1051,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 				outputByteLimit: DEFAULT_MAX_BYTES,
 			});
 
-			// Emit partial update so the editor can embed the live terminal card.
 			onUpdate?.({ content: [], details: { terminalId: handle.terminalId } });
 
 			const exitPromise = handle.waitForExit();
@@ -1119,7 +1062,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 				| { kind: "timeout" }
 				| { kind: "aborted" };
 
-			// Set up abort listener before entering the poll loop. The listener kicks off `handle.kill()` synchronously so a `session/cancel`
 			const { promise: abortedP, resolve: resolveAborted } = Promise.withResolvers<void>();
 			let killStarted = false;
 			const fireKill = (): Promise<void> => {
@@ -1145,7 +1087,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 					const timeoutPromise = timeoutMs
 						? Bun.sleep(timeoutMs).then(() => ({ kind: "timeout" as const }))
 						: undefined;
-					// Poll until the process exits, times out, or the caller aborts.
 					for (;;) {
 						const racers: Array<Promise<BridgeRaceResult>> = [
 							exitPromise.then(s => ({ kind: "exit" as const, status: s })),
@@ -1163,7 +1104,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 						}
 
 						if (raced.kind === "timeout") {
-							// Kill before reading final output so a slow `terminal/output` RPC cannot let a timed-out command keep running past the
 							await fireKill();
 							let current = { output: "", truncated: false };
 							try {
@@ -1192,16 +1132,11 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 							break;
 						}
 
-						// Poll tick: push current output so agent-loop transcript stays consistent.
-						// Race the read against abort so a stuck `terminal/output` RPC does not
-						// delay cancellation.
 						const pollOutput = await Promise.race([
 							handle.currentOutput(),
 							abortedP.then(() => undefined as ClientBridgeTerminalOutput | undefined),
 						]);
 						if (pollOutput === undefined) {
-							// Abort fired during the poll-tick read; let the next loop iteration
-							// observe `signal?.aborted` and exit via the abort branch.
 							continue;
 						}
 						onUpdate?.({
@@ -1213,16 +1148,11 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 					signal?.removeEventListener("abort", onAbortSignal);
 				}
 
-				// Fetch final output; the terminal is released in the outer finally.
 				const finalOutput = await handle.currentOutput();
 
-				// Map exit status. A null exitCode with a signal is a signalled death, so report the shell's 128+N for that specific signal and carry the raw
 				const rawExitCode = exitStatus.exitCode;
 				const bridgeSignal = exitStatus.signal ? signalNumber(exitStatus.signal) : undefined;
 				if (exitStatus.signal && bridgeSignal === undefined) {
-					// Guessing a number here would put a fabricated exit code in front of the
-					// agent. Refuse instead: an unresolvable status is a missing status, and
-					// the caller already treats that as an error rather than as success.
 					throw new Error(
 						`Terminal reported termination by signal "${exitStatus.signal}", which is not a signal this platform knows. No exit status can be derived from it.`,
 					);
@@ -1258,10 +1188,8 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			}
 		}
 
-		// Track output for streaming updates (tail only)
 		const tailBuffer = new TailBuffer(DEFAULT_MAX_BYTES);
 
-		// Allocate artifact for truncated output storage
 		const { path: artifactPath, id: artifactId } = (await this.session.allocateOutputArtifact?.("bash")) ?? {};
 
 		const interactiveUi = canUseInteractiveBashPty(pty, ctx) ? ctx?.ui : undefined;
@@ -1295,16 +1223,11 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 					onMinimizedSave: originalText => saveBashOriginalArtifact(this.session, originalText),
 				});
 		const wallTimeMs = performance.now() - wallTimeStart;
-		// A SIGTERM'd command might be the CPU budget's kill, not a crash: when
-		// the watcher fired one, say so on the result.
 		if (("signal" in result ? result.signal : undefined) === 15) {
 			const killReport = cpuLimit?.consumeKillReport();
 			if (killReport) pendingNotices.push(killReport);
 		}
 		if (result.cancelled) {
-			// PTY output carries no cancel/timeout notice of its own; annotate so
-			// the model can tell an abort from a plain failure. Cap first so a
-			// killed command's output cannot exceed the inline budget.
 			const out = await this.#boundBashOutput(normalizeResultOutput(result), result.artifactId);
 			const message = isInteractiveResult(result) && out ? `${out}\n\n[Command aborted]` : out || "Command aborted";
 			if (signal?.aborted) {
@@ -1336,15 +1259,10 @@ export interface BashRenderArgs {
 }
 
 export interface BashRenderContext {
-	/** Raw output text */
 	output?: string;
-	/** Whether output came from artifact storage */
 	isFullOutput?: boolean;
-	/** Whether output is expanded */
 	expanded?: boolean;
-	/** Number of preview lines when collapsed */
 	previewLines?: number;
-	/** Timeout in seconds */
 	timeout?: number;
 }
 
@@ -1368,7 +1286,6 @@ export function getBashEnvForDisplay(args: BashRenderArgs): Record<string, strin
 	return args.env ?? partialEnv;
 }
 
-/** Format bash command with prefix and syntax highlighting. */
 export function formatBashCommandLines(args: BashRenderArgs, uiTheme: Theme): string[] {
 	const command = replaceTabs(args.command || "…");
 	const cwd = getProjectDir();
@@ -1465,7 +1382,6 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 			const details = result.details;
 			const outputBlock = new CachedOutputBlock();
 
-			// Per-instance cache for the expensive inner lines computation. Mirrors the eval-renderer pattern (`eval-render.ts:709-752`): without this,
 			let cachedWidth: number | undefined;
 			let cachedPreviewLines: number | undefined;
 			let cachedExpanded: boolean | undefined;
@@ -1476,14 +1392,10 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 
 			return markFramedBlockComponent({
 				render: (width: number): readonly string[] => {
-					// REACTIVE: read mutable options at render time
 					const { renderContext } = options;
 					const expanded = renderContext?.expanded ?? options.expanded;
 					const previewLines = renderContext?.previewLines ?? BASH_DEFAULT_PREVIEW_LINES;
 
-					// Get output from context (preferred) or fall back to result content.
-					// Strip the LLM-facing notice appended by wrappedExecute so we don't
-					// double-print it alongside the styled warning line below.
 					const rawOutput = renderContext?.output ?? result.content?.find(c => c.type === "text")?.text ?? "";
 
 					const isPartial = options.isPartial === true;
@@ -1509,7 +1421,6 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 					const displayOutput = output.trimEnd();
 					const showingFullOutput = expanded && renderContext?.isFullOutput === true;
 
-					// Build truncation warning
 					const timeoutDisabled = details?.timeoutDisabled === true || renderContext?.timeout === 0;
 					const timeoutSeconds = timeoutDisabled ? undefined : (details?.timeoutSeconds ?? renderContext?.timeout);
 					const requestedTimeoutSeconds = details?.requestedTimeoutSeconds;
@@ -1535,8 +1446,6 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 						statsParts.push(`Artifact: ${rawOutputArtifact.artifactId}`);
 					}
 					if (isError && typeof details?.exitCode === "number") {
-						// Name the signal in the stats line too, so the difference is visible
-						// at a glance and not only in the notice appended to the output.
 						const killedBy =
 							details.signal === undefined
 								? undefined
@@ -1575,9 +1484,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 								outputLines.push(uiTheme.fg("toolOutput", replaceTabs(rawOutputLines[oi]!)));
 							}
 						} else {
-							// Progress runs collapse BEFORE the tail window is measured, so a build's `Compiling …` wall cannot spend the whole window and push
 							const textContent = renderCollapsedOutputLines(rawOutputLines, uiTheme).join("\n");
-							// Cap the collapsed/streaming output to a viewport-sized tail and measure it at the box's INNER width. Otherwise a growing tail
 							const previewBudget = Math.min(previewLines, previewWindow);
 							const result = truncateToVisualLines(textContent, previewBudget, outputBlockContentWidth(width));
 							if (result.skippedCount > 0) {
@@ -1589,12 +1496,8 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 								);
 							}
 							for (let oi = 0; oi < result.visualLines.length; oi++) outputLines.push(result.visualLines[oi]!);
-							// The follow, on tools: while output is still streaming, the newest visible line carries the hot trail (cooling into
 							if (isPartial && outputLines.length > 0) {
 								const last = outputLines.length - 1;
-								// Trim the visual-line padding first: the trail grades the
-								// newest CHARACTERS, and foreground color on trailing pad
-								// spaces is invisible (the live-frame defect this fixes).
 								outputLines[last] = paintHotTail(
 									outputLines[last]!.trimEnd(),
 									uiTheme,

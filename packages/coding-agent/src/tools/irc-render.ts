@@ -1,4 +1,3 @@
-/** TUI renderer for the irc tool — status lines, message cards, inbox and peer-list trees. */
 import type { Component } from "@veyyon/tui";
 import { formatAge, formatDuration } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -42,7 +41,6 @@ function outcomeColor(outcome: IrcDeliveryReceipt["outcome"]): ToolUIColor {
 	}
 }
 
-/** Glyph + status word, matching the agent-hub status conventions. */
 function peerStatusBadge(status: string, theme: Theme): string {
 	switch (status) {
 		case "running":
@@ -65,7 +63,6 @@ function textContent(result: { content: Array<{ type: string; text?: string }> }
 	return result.content.find(part => part.type === "text")?.text?.trim() ?? "";
 }
 
-/** Quote-bordered message body preview. `tone` separates outbound text (dim) from received text (toolOutput); a trailing dim counter marks elided lines. */
 function bodyLines(
 	body: string,
 	expanded: boolean,
@@ -76,9 +73,6 @@ function bodyLines(
 	const tone = options.tone ?? "toolOutput";
 	const max = expanded ? BODY_LINES_EXPANDED : (options.collapsedLines ?? BODY_LINES_COLLAPSED);
 	const total = body.split("\n").filter(line => line.trim()).length;
-	// A message body is indented text and carries no quote glyph of its own. The
-	// block already hangs from the house rail, and a second `▏` two cells inside
-	// it drew a second left edge for the same rows.
 	const previewParts = getPreviewLines(body, max, BODY_LINE_WIDTH, Ellipsis.Unicode);
 	const lines: string[] = new Array(previewParts.length);
 	for (let pi = 0; pi < previewParts.length; pi++) {
@@ -91,7 +85,6 @@ function bodyLines(
 	return lines;
 }
 
-/** Header title carrying the op direction: `IRC > peer` out, `IRC ⟵ peer` in. */
 function callTitle(args: IrcRenderArgs | undefined, theme: Theme): string {
 	switch (args?.op) {
 		case "send":
@@ -132,7 +125,6 @@ function renderErrorResult(
 	};
 }
 
-/** Display-only transcript card for live IRC traffic: `irc:incoming` DMs delivered to this session, `irc:autoreply` side-channel replies sent on */
 export function createIrcMessageCard(
 	card: {
 		kind: "incoming" | "autoreply" | "relay";
@@ -186,7 +178,6 @@ function renderSendResult(
 	const to = details.to ?? args?.to?.trim() ?? "?";
 	const title = `IRC ${theme.nav.selected} ${to}`;
 
-	// Pre-delivery failures (validation) and empty broadcasts carry no receipts.
 	if (receipts.length === 0) {
 		const text = textContent(result) || (result.isError ? "Send failed." : "Nothing to deliver.");
 		return {

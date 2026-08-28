@@ -31,7 +31,6 @@ export interface GitStatusSummary {
 	staged: number;
 	unstaged: number;
 	untracked: number;
-	/** True when git output was truncated at the byte limit. */
 	truncated: boolean;
 }
 
@@ -117,7 +116,6 @@ export interface RestoreOptions {
 
 export interface FetchOptions {
 	readonly signal?: AbortSignal;
-	/** Deadline for the network transfer. Defaults to {@link GIT_NETWORK_TIMEOUT_MS}. */
 	readonly timeoutMs?: number;
 }
 
@@ -125,7 +123,6 @@ export interface CloneOptions {
 	readonly ref?: string;
 	readonly sha?: string;
 	readonly signal?: AbortSignal;
-	/** Deadline for the network transfer. Defaults to {@link GIT_NETWORK_TIMEOUT_MS}. */
 	readonly timeoutMs?: number;
 }
 
@@ -147,12 +144,10 @@ export interface GitDetachedHead extends GitHeadBase {
 
 export type GitHeadState = GitRefHead | GitDetachedHead;
 
-/** Represents an in-progress multi-step git operation (merge, rebase, cherry-pick, etc.). */
 export type GitOperationKind = "am" | "bisect" | "cherry-pick" | "merge" | "rebase" | "revert";
 
 export interface GitInProgressOperation {
 	kind: GitOperationKind;
-	/** Branch the operation returns to when complete, or null if detached/unknown. */
 	branch: string | null;
 }
 
@@ -203,15 +198,11 @@ const GH_NON_INTERACTIVE_ENV = {
 	GH_PROMPT_DISABLED: "1",
 } satisfies Record<string, string>;
 
-/** Default deadline for git and gh subprocesses spawned by the coding agent. */
 export const GIT_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
-/** Default timeout for git network operations (clone/fetch). */
 export const GIT_NETWORK_TIMEOUT_MS = 30 * 60 * 1000;
-/** Maximum captured stdout or stderr bytes retained from git and gh subprocesses. */
 export const GIT_COMMAND_OUTPUT_LIMIT_BYTES = 8 * 1024 * 1024;
 
 const GIT_COMMAND_TIMEOUT_EXIT_CODE = 124;
-/** Truncation marker appended when output exceeds GIT_COMMAND_OUTPUT_LIMIT_BYTES. */
 const GIT_OUTPUT_TRUNCATED_NOTICE = "[git subprocess output truncated after 8 MiB]";
 const GIT_OUTPUT_TRUNCATED_MARKER = `\n${GIT_OUTPUT_TRUNCATED_NOTICE}\n`;
 const GIT_COMMAND_TERMINATE_GRACE_MS = 5_000;
@@ -318,9 +309,7 @@ async function readCappedText(stream: ReadableStream<Uint8Array>, maxBytes: numb
 async function cancelOutput(stream: ReadableStream<Uint8Array>): Promise<void> {
 	try {
 		await stream.cancel();
-	} catch {
-		// Best-effort cleanup after a timeout; the subprocess has already been signaled.
-	}
+	} catch {}
 }
 
 async function collectSubprocessResult(
@@ -343,7 +332,6 @@ async function collectSubprocessResult(
 		resolveTimeoutMs(options.timeoutMs),
 	);
 	if (exit.timedOut) {
-		// Mark stream errors as handled on timeout.
 		void stdoutPromise.catch(() => undefined);
 		void stderrPromise.catch(() => undefined);
 		await Promise.all([cancelOutput(stdoutStream), cancelOutput(stderrStream)]);
@@ -468,10 +456,8 @@ async function tryText(
 	return result.stdout;
 }
 
-// Per-repo mutation lock to serialize in-process git operations sharing a .git directory.
 const repoWriteChain = new Map<string, Promise<unknown>>();
 
-/** Serialize an async block mutating a git repository across in-process callers. */
 export async function withRepoLock<T>(cwd: string, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
 	const key = (await repo.primaryRoot(cwd, signal)) ?? cwd;
 	const prior = repoWriteChain.get(key);
@@ -479,9 +465,7 @@ export async function withRepoLock<T>(cwd: string, fn: () => Promise<T>, signal?
 		if (prior) {
 			try {
 				await prior;
-			} catch {
-				// A prior caller failing must not block us from running.
-			}
+			} catch {}
 		}
 		throwIfAborted(signal);
 		return fn();
@@ -494,7 +478,6 @@ export async function withRepoLock<T>(cwd: string, fn: () => Promise<T>, signal?
 	}
 }
 
-/** Split VCS stdout into trimmed, non-empty lines. Shared with jj.ts. */
 export function splitLines(text: string): string[] {
 	return text
 		.split("\n")
@@ -552,7 +535,6 @@ function shouldRetry(err: unknown, n: number) {
 	throw err;
 }
 
-/** Retry synchronous filesystem operations on EINTR. */
 const EINTR_MAX_RETRIES = 3;
 function retryOnEintrSync<T>(op: () => T): T | null {
 	for (let attempt = 0; attempt <= EINTR_MAX_RETRIES; attempt += 1) {
@@ -970,14 +952,12 @@ async function readRef(repository: GitRepository, targetRef: string, signal?: Ab
 	return null;
 }
 
-/** Read the branch recorded by an in-progress rebase or am. */
 function readOperationHeadName(directory: string): string | null {
 	const raw = readOptionalTextSync(path.join(directory, "head-name"))?.trim();
 	if (!raw?.startsWith(LOCAL_BRANCH_PREFIX)) return null;
 	return raw.slice(LOCAL_BRANCH_PREFIX.length) || null;
 }
 
-/** Detect any in-progress multi-step git operation from state files. */
 function resolveInProgressOperation(repository: GitRepository): GitInProgressOperation | null {
 	const gitDir = repository.gitDir;
 	const rebaseMerge = path.join(gitDir, "rebase-merge");
@@ -989,8 +969,6 @@ function resolveInProgressOperation(repository: GitRepository): GitInProgressOpe
 		const isAm = fs.existsSync(path.join(rebaseApply, "applying"));
 		return { branch: readOperationHeadName(rebaseApply), kind: isAm ? "am" : "rebase" };
 	}
-	// These leave HEAD alone, so the branch is whatever HEAD already says and
-	// there is nothing to recover.
 	if (fs.existsSync(path.join(gitDir, "MERGE_HEAD"))) return { branch: null, kind: "merge" };
 	if (fs.existsSync(path.join(gitDir, "CHERRY_PICK_HEAD"))) return { branch: null, kind: "cherry-pick" };
 	if (fs.existsSync(path.join(gitDir, "REVERT_HEAD"))) return { branch: null, kind: "revert" };
@@ -1075,7 +1053,6 @@ function extractFileHeader(diffText: string): string {
 	return headerLines.join("\n");
 }
 
-/** Filter a file's hunks to the requested 1-based indices. */
 export function selectHunksByIndices<H extends { index: number }>(
 	hunks: readonly H[],
 	indices: readonly number[],
@@ -1147,7 +1124,6 @@ function parseStatusPorcelain(text: string): GitStatusSummary {
 	let truncated = false;
 	for (const line of text.split("\n")) {
 		if (!line) continue;
-		// Skip truncation notice line in status parsing.
 		if (line === GIT_OUTPUT_TRUNCATED_NOTICE) {
 			truncated = true;
 			continue;
@@ -1164,7 +1140,6 @@ function parseStatusPorcelain(text: string): GitStatusSummary {
 	return { staged, truncated, unstaged, untracked };
 }
 
-/** Run `git diff` with the given options. Returns raw diff text. */
 export const diff = Object.assign(
 	async function diff(cwd: string, options: DiffOptions = {}): Promise<string> {
 		const args = buildDiffArgs(options);
@@ -1174,18 +1149,15 @@ export const diff = Object.assign(
 		return runText(cwd, args, { env: options.env, readOnly: true, signal: options.signal });
 	},
 	{
-		/** List changed file paths. */
 		async changedFiles(
 			cwd: string,
 			options: Pick<DiffOptions, "cached" | "files" | "signal"> = {},
 		): Promise<string[]> {
 			return splitLines(await diff(cwd, { ...options, nameOnly: true }));
 		},
-		/** Parsed per-file add/remove counts. */
 		async numstat(cwd: string, options: Pick<DiffOptions, "cached" | "signal"> = {}): Promise<NumstatEntry[]> {
 			return parseNumstat(await diff(cwd, { ...options, numstat: true }));
 		},
-		/** Parsed diff hunks for the given files. */
 		async hunks(
 			cwd: string,
 			files: readonly string[],
@@ -1193,7 +1165,6 @@ export const diff = Object.assign(
 		): Promise<FileHunks[]> {
 			return parseDiffFileHunks(await diff(cwd, { cached: options.cached ?? true, files, signal: options.signal }));
 		},
-		/** Check whether a diff exists (uses `--quiet` for efficiency). */
 		async has(cwd: string, options: Pick<DiffOptions, "cached" | "files" | "signal"> = {}): Promise<boolean> {
 			const args = ["diff"];
 			if (options.cached) args.push("--cached");
@@ -1204,7 +1175,6 @@ export const diff = Object.assign(
 			if (result.exitCode === 1) return true;
 			throw new GitCommandError(args, result);
 		},
-		/** Diff between two tree-ish objects (`git diff-tree`). */
 		async tree(
 			cwd: string,
 			base: string,
@@ -1219,18 +1189,15 @@ export const diff = Object.assign(
 			}
 			return runText(cwd, args, { readOnly: true, signal: options.signal });
 		},
-		/** Parse raw diff text into per-file diffs. */
 		parseFiles(text: string): FileDiff[] {
 			return parseFileDiffs(text);
 		},
-		/** Parse raw diff text into per-file hunks. */
 		parseHunks(text: string): FileHunks[] {
 			return parseDiffFileHunks(text);
 		},
 	},
 );
 
-/** Run `git status --porcelain`. Returns raw status text. */
 export const status = Object.assign(
 	async function status(cwd: string, options: StatusOptions = {}): Promise<string> {
 		const args = ["status"];
@@ -1241,25 +1208,21 @@ export const status = Object.assign(
 		return runText(cwd, args, { readOnly: true, signal: options.signal });
 	},
 	{
-		/** Parsed status counts (staged, unstaged, untracked). */
 		async summary(cwd: string, signal?: AbortSignal): Promise<GitStatusSummary | null> {
 			const result = await git(cwd, ["status", "--porcelain"], { readOnly: true, signal });
 			if (result.exitCode !== 0) return null;
 			return parseStatusPorcelain(result.stdout);
 		},
-		/** Parse porcelain status text into counts. */
 		parse: parseStatusPorcelain,
 	},
 );
 
 export const stage = {
-	/** Stage files. Empty array stages all (`git add -A`). */
 	async files(cwd: string, files: readonly string[] = [], signal?: AbortSignal): Promise<void> {
 		const args = files.length === 0 ? ["add", "-A"] : ["add", "--", ...files];
 		await runEffect(cwd, args, { signal });
 	},
 
-	/** Selectively stage hunks from the provided diff or the current working tree diff. */
 	async hunks(cwd: string, selections: HunkSelection[], options: StageHunksOptions = {}): Promise<void> {
 		if (selections.length === 0) return;
 		const rawDiff = options.rawDiff ?? (await diff(cwd, { cached: options.diffCached, signal: options.signal }));
@@ -1292,14 +1255,12 @@ export const stage = {
 		await patch.applyText(cwd, patchText, { cached: true, signal: options.signal });
 	},
 
-	/** Unstage files. Empty array unstages all (`git reset`). */
 	async reset(cwd: string, files: readonly string[] = [], signal?: AbortSignal): Promise<void> {
 		const args = files.length === 0 ? ["reset"] : ["reset", "--", ...files];
 		await runEffect(cwd, args, { signal });
 	},
 };
 
-/** Create a commit with the given message (passed via stdin). */
 export async function commit(cwd: string, message: string, options: CommitOptions = {}): Promise<GitCommandResult> {
 	const args = ["commit", "-F", "-"];
 	if (options.author) {
@@ -1311,9 +1272,7 @@ export async function commit(cwd: string, message: string, options: CommitOption
 	return runChecked(cwd, args, { signal: options.signal, stdin: message });
 }
 
-/** Push the current branch (branch-scoped: never follows tags). */
 export async function push(cwd: string, options: PushOptions = {}): Promise<void> {
-	// Do not push tags automatically to avoid permission failures on forks.
 	const args = ["push", "--no-follow-tags"];
 	if (options.forceWithLease) args.push("--force-with-lease");
 	if (options.remote) args.push(options.remote);
@@ -1321,12 +1280,10 @@ export async function push(cwd: string, options: PushOptions = {}): Promise<void
 	await runEffect(cwd, args, { signal: options.signal });
 }
 
-/** Checkout a ref. */
 export async function checkout(cwd: string, ref: string, signal?: AbortSignal): Promise<void> {
 	await runEffect(cwd, ["checkout", ref], { signal });
 }
 
-/** Fetch a specific refspec from a remote. Network transfer: defaults to the {@link GIT_NETWORK_TIMEOUT_MS} deadline. */
 export async function fetch(
 	cwd: string,
 	remote: string,
@@ -1340,7 +1297,6 @@ export async function fetch(
 	});
 }
 
-/** Read a tree-ish into the index. */
 export async function readTree(
 	cwd: string,
 	treeish: string,
@@ -1349,12 +1305,10 @@ export async function readTree(
 	await runEffect(cwd, ["read-tree", treeish], options);
 }
 
-/** Write the current index as a tree and return its object id. */
 export async function writeTree(cwd: string, options: Pick<CommandOptions, "env" | "signal"> = {}): Promise<string> {
 	return (await runText(cwd, ["write-tree"], options)).trim();
 }
 
-/** Run `git show` on a revision. */
 export const show = Object.assign(
 	async function show(
 		cwd: string,
@@ -1367,14 +1321,12 @@ export const show = Object.assign(
 		});
 	},
 	{
-		/** Get the path prefix of the current directory relative to the repo root. */
 		async prefix(cwd: string, signal?: AbortSignal): Promise<string> {
 			return (await runText(cwd, ["rev-parse", "--show-prefix"], { readOnly: true, signal })).trim();
 		},
 	},
 );
 
-/** Read commit message and author metadata for replay/rewrite flows. */
 export async function commitDetails(cwd: string, revision: string, signal?: AbortSignal): Promise<CommitDetails> {
 	const raw = await runText(cwd, ["show", "-s", "--format=%an%x00%ae%x00%aI%x00%B", revision], {
 		readOnly: true,
@@ -1388,11 +1340,9 @@ export async function commitDetails(cwd: string, revision: string, signal?: Abor
 }
 
 export const log = {
-	/** Recent commit subjects (one-line each). */
 	async subjects(cwd: string, count: number, signal?: AbortSignal): Promise<string[]> {
 		return splitLines(await runText(cwd, ["log", `-n${count}`, "--pretty=format:%s"], { readOnly: true, signal }));
 	},
-	/** Recent commits as `<short-sha> <subject>` onelines. */
 	async onelines(cwd: string, count: number, signal?: AbortSignal): Promise<string[]> {
 		return splitLines(
 			await runText(cwd, ["log", `-${count}`, "--oneline", "--no-decorate"], { readOnly: true, signal }),
@@ -1401,14 +1351,12 @@ export const log = {
 };
 
 export const revList = {
-	/** Commits in `base..head`, oldest first. */
 	async range(cwd: string, base: string, head: string, signal?: AbortSignal): Promise<string[]> {
 		return splitLines(await runText(cwd, ["rev-list", "--reverse", `${base}..${head}`], { readOnly: true, signal }));
 	},
 };
 
 export const branch = {
-	/** Current branch name, or null if detached/unavailable. */
 	async current(cwd: string, signal?: AbortSignal): Promise<string | null> {
 		const headState = await resolveHead(cwd);
 		if (headState?.kind === "ref") return headState.branchName ?? headState.ref;
@@ -1417,7 +1365,6 @@ export const branch = {
 		return result.stdout.trim() || null;
 	},
 
-	/** Current branch name, or "HEAD" when detached or uncommitted. */
 	async currentOrHead(cwd: string, signal?: AbortSignal): Promise<string> {
 		try {
 			return (await branch.current(cwd, signal)) ?? "HEAD";
@@ -1426,7 +1373,6 @@ export const branch = {
 		}
 	},
 
-	/** Default branch name (from remote HEAD refs). */
 	async default(cwd: string, signal?: AbortSignal): Promise<string | null> {
 		const repository = await resolveRepository(cwd);
 		if (repository) {
@@ -1445,22 +1391,18 @@ export const branch = {
 		return null;
 	},
 
-	/** Create a new branch at the given start point. */
 	async create(cwd: string, name: string, startPoint = "HEAD", signal?: AbortSignal): Promise<void> {
 		await runEffect(cwd, ["branch", name, startPoint], { signal });
 	},
 
-	/** Force-move a branch to a new start point. */
 	async force(cwd: string, name: string, startPoint: string, signal?: AbortSignal): Promise<void> {
 		await runEffect(cwd, ["branch", "--force", name, startPoint], { signal });
 	},
 
-	/** Delete a branch. Throws on failure. */
 	async delete(cwd: string, name: string, options: { force?: boolean; signal?: AbortSignal } = {}): Promise<void> {
 		await runEffect(cwd, ["branch", options.force === false ? "-d" : "-D", name], { signal: options.signal });
 	},
 
-	/** Delete a branch. Returns false on failure instead of throwing. */
 	async tryDelete(
 		cwd: string,
 		name: string,
@@ -1472,12 +1414,10 @@ export const branch = {
 		return result.exitCode === 0;
 	},
 
-	/** Create and checkout a new branch. */
 	async checkoutNew(cwd: string, name: string, signal?: AbortSignal): Promise<void> {
 		await runEffect(cwd, ["checkout", "-b", name], { signal });
 	},
 
-	/** List branches. Pass `{ all: true }` to include remotes. */
 	async list(cwd: string, options: { all?: boolean; signal?: AbortSignal } = {}): Promise<string[]> {
 		const args = ["branch"];
 		if (options.all) args.push("-a");
@@ -1487,17 +1427,14 @@ export const branch = {
 };
 
 export const remote = {
-	/** List remote names. */
 	async list(cwd: string, signal?: AbortSignal): Promise<string[]> {
 		return splitLines(await runText(cwd, ["remote"], { readOnly: true, signal }));
 	},
 
-	/** Get the URL for a remote. */
 	async url(cwd: string, name: string, signal?: AbortSignal): Promise<string | undefined> {
 		return trimScalar(await tryText(cwd, ["remote", "get-url", name], { readOnly: true, signal }));
 	},
 
-	/** Add a remote pointing at url, or succeed if it already matches. */
 	async add(cwd: string, name: string, url: string, signal?: AbortSignal): Promise<void> {
 		const result = await git(cwd, ["remote", "add", name, url], { signal });
 		if (result.exitCode === 0) return;
@@ -1511,7 +1448,6 @@ export const remote = {
 };
 
 export const ref = {
-	/** Check if a ref exists. */
 	async exists(cwd: string, refName: string, signal?: AbortSignal): Promise<boolean> {
 		if (refName === "HEAD") return (await head.sha(cwd, signal)) !== null;
 		const repository = await resolveRepository(cwd);
@@ -1520,7 +1456,6 @@ export const ref = {
 		return result.exitCode === 0;
 	},
 
-	/** Resolve a ref to its commit SHA. */
 	async resolve(cwd: string, refName: string, signal?: AbortSignal): Promise<string | null> {
 		if (refName === "HEAD") return head.sha(cwd, signal);
 		const repository = await resolveRepository(cwd);
@@ -1530,7 +1465,6 @@ export const ref = {
 		return result.stdout.trim() || null;
 	},
 
-	/** Tags pointing at a ref. */
 	async tags(cwd: string, refName = "HEAD", signal?: AbortSignal): Promise<string[]> {
 		return splitLines(
 			await runText(
@@ -1613,12 +1547,10 @@ export const worktree = {
 };
 
 export const patch = {
-	/** Apply a patch file. */
 	async apply(cwd: string, patchPath: string, options: PatchOptions = {}): Promise<void> {
 		await runEffect(cwd, buildApplyArgs(patchPath, options), { env: options.env, signal: options.signal });
 	},
 
-	/** Apply a patch from a string (writes to a temp file). */
 	async applyText(cwd: string, patchText: string, options: PatchOptions = {}): Promise<void> {
 		if (!patchText.trim()) return;
 		const tempPath = await writeTempPatch(patchText);
@@ -1629,7 +1561,6 @@ export const patch = {
 		}
 	},
 
-	/** Check if a patch file can be applied cleanly. */
 	async canApply(cwd: string, patchPath: string, options: Omit<PatchOptions, "check"> = {}): Promise<boolean> {
 		const result = await git(cwd, buildApplyArgs(patchPath, { ...options, check: true }), {
 			env: options.env,
@@ -1639,7 +1570,6 @@ export const patch = {
 		return result.exitCode === 0;
 	},
 
-	/** Check if a patch string can be applied cleanly. */
 	async canApplyText(cwd: string, patchText: string, options: Omit<PatchOptions, "check"> = {}): Promise<boolean> {
 		if (!patchText.trim()) return true;
 		const tempPath = await writeTempPatch(patchText);
@@ -1650,7 +1580,6 @@ export const patch = {
 		}
 	},
 
-	/** Join patch parts into a single patch string. */
 	join(parts: string[]): string {
 		return `${parts
 			.map(part => (part.endsWith("\n") ? part : `${part}\n`))
@@ -1667,11 +1596,9 @@ export const cherryPick = Object.assign(
 		async abort(cwd: string, signal?: AbortSignal): Promise<void> {
 			await runEffect(cwd, ["cherry-pick", "--abort"], { signal });
 		},
-		/** Skip current commit in cherry-pick sequence. */
 		async skip(cwd: string, signal?: AbortSignal): Promise<void> {
 			await runEffect(cwd, ["cherry-pick", "--skip"], { signal });
 		},
-		/** True when cherry-pick failed because the commit was empty against HEAD. */
 		isEmptyError(err: unknown): boolean {
 			return err instanceof GitCommandError && /the previous cherry-pick is now empty/i.test(err.result.stderr);
 		},
@@ -1679,7 +1606,6 @@ export const cherryPick = Object.assign(
 );
 
 export const stash = {
-	/** Stash working tree + index changes. Returns true when git created a new stash entry. */
 	async push(cwd: string, message?: string): Promise<boolean> {
 		ensureAvailable();
 		const previousStash = await ref.resolve(cwd, "refs/stash");
@@ -1689,24 +1615,19 @@ export const stash = {
 		const nextStash = await ref.resolve(cwd, "refs/stash");
 		return nextStash !== null && nextStash !== previousStash;
 	},
-	/** Pop the most recent stash entry, optionally restoring its staged state. */
 	async pop(cwd: string, options?: { index?: boolean }): Promise<void> {
 		const args = ["stash", "pop"];
 		if (options?.index) args.push("--index");
 		await runEffect(cwd, args);
 	},
-	/** Return working-tree patch for top stash entry. */
 	async showPatch(cwd: string): Promise<string> {
 		return (await tryText(cwd, ["stash", "show", "-p", "--binary", "stash@{0}"], { readOnly: true })) ?? "";
 	},
-	/** Return untracked paths stored in the top stash entry. */
 	async untrackedFiles(cwd: string): Promise<string[]> {
 		const output = await tryText(cwd, ["ls-tree", "-r", "-z", "--name-only", "stash@{0}^3"], { readOnly: true });
 		return output?.split("\0").filter(Boolean) ?? [];
 	},
-	/** Restore top stash entry with clean recovery on conflict. */
 	async tryPop(cwd: string, options?: { index?: boolean }): Promise<boolean> {
-		// Preflight with 3-way check to match stash pop merge semantics.
 		const workingPatch = await stash.showPatch(cwd);
 		if (workingPatch.trim() && !(await patch.canApplyText(cwd, workingPatch, { threeWay: true }))) {
 			return false;
@@ -1716,18 +1637,13 @@ export const stash = {
 			await stash.pop(cwd, options);
 			return true;
 		} catch {
-			// Clean up index and working tree on failed pop while preserving stash.
 			try {
 				await reset(cwd, { hard: true });
-			} catch {
-				/* best-effort cleanup — do not mask the primary conflict */
-			}
+			} catch {}
 			if (restoredUntracked.length > 0) {
 				try {
 					await clean(cwd, { includeIgnored: true, literalPathspecs: true, paths: restoredUntracked });
-				} catch {
-					/* best-effort cleanup — do not mask the primary conflict */
-				}
+				} catch {}
 			}
 			return false;
 		}
@@ -1739,7 +1655,6 @@ export async function clone(url: string, targetDir: string, options: CloneOption
 	const absoluteTarget = path.resolve(targetDir);
 	await fs.promises.mkdir(path.dirname(absoluteTarget), { recursive: true });
 
-	// Fall back to full clone when caller requested a specific SHA.
 	const shallow = !options.sha;
 	const args = ["clone"];
 	if (shallow) args.push("--depth", "1");
@@ -1775,7 +1690,6 @@ export async function restore(cwd: string, options: RestoreOptions = {}): Promis
 	await runEffect(cwd, args, { signal: options.signal });
 }
 
-/** Run git reset with options (soft by default, or hard). */
 export async function reset(
 	cwd: string,
 	options: { hard?: boolean; mixed?: boolean; soft?: boolean; target?: string; signal?: AbortSignal } = {},
@@ -1807,7 +1721,6 @@ export async function clean(
 }
 
 export const ls = {
-	/** List files tracked or untracked by git. */
 	async files(
 		cwd: string,
 		options: { others?: boolean; excludeStandard?: boolean; signal?: AbortSignal } = {},
@@ -1818,12 +1731,10 @@ export const ls = {
 		return splitLines(await runText(cwd, args, { readOnly: true, signal: options.signal }));
 	},
 
-	/** List untracked files (excludes ignored). */
 	async untracked(cwd: string, signal?: AbortSignal): Promise<string[]> {
 		return ls.files(cwd, { others: true, excludeStandard: true, signal });
 	},
 
-	/** List paths present in a ref, optionally filtered to specific paths. */
 	async tree(cwd: string, ref: string, files: readonly string[] = [], signal?: AbortSignal): Promise<string[]> {
 		const args = ["ls-tree", "--name-only", "-r", "-z", ref];
 		if (files.length > 0) args.push("--", ...files);
@@ -1831,7 +1742,6 @@ export const ls = {
 		return raw.split("\0").filter(entry => entry.length > 0);
 	},
 
-	/** List submodule paths (recursive). */
 	async submodules(cwd: string, signal?: AbortSignal): Promise<string[]> {
 		const output = await git(cwd, ["submodule", "--quiet", "foreach", "--recursive", "echo $sm_path"], {
 			readOnly: true,
@@ -1842,12 +1752,10 @@ export const ls = {
 };
 
 export const head = {
-	/** In-progress multi-step operation, if any. */
 	operation(repository: GitRepository): GitInProgressOperation | null {
 		return resolveInProgressOperation(repository);
 	},
 
-	/** Format a short display label for the current repository HEAD/operation. */
 	label(state: GitHeadState, operation: GitInProgressOperation | null): string {
 		const fromHead = state.kind === "ref" ? (state.branchName ?? state.ref) : null;
 
@@ -1855,14 +1763,12 @@ export const head = {
 		return operation ? `${branch}|${operation.kind.toUpperCase()}` : branch;
 	},
 
-	/** Target branch name for queries/lookups, or null if detached. */
 	branchForLookup(state: GitHeadState, operation: GitInProgressOperation | null): string | null {
 		if (operation) return null;
 		if (state.kind !== "ref") return null;
 		return state.branchName;
 	},
 
-	/** Full HEAD state (branch, commit, repo info). */
 	async resolve(cwd: string, signal?: AbortSignal): Promise<GitHeadState | null> {
 		const repository = await resolveRepository(cwd);
 		if (!repository) return null;
@@ -1874,7 +1780,6 @@ export const head = {
 		return parseHeadState(repository, content);
 	},
 
-	/** Full HEAD state (synchronous). */
 	resolveSync(cwd: string): GitHeadState | null {
 		const repository = resolveRepositorySync(cwd);
 		if (!repository) return null;
@@ -1886,7 +1791,6 @@ export const head = {
 		return parseHeadStateSync(repository, content);
 	},
 
-	/** Current HEAD commit SHA. */
 	async sha(cwd: string, signal?: AbortSignal): Promise<string | null> {
 		const headState = await head.resolve(cwd, signal);
 		if (headState?.commit) return headState.commit;
@@ -1895,7 +1799,6 @@ export const head = {
 		return result.stdout.trim() || null;
 	},
 
-	/** Abbreviated HEAD commit SHA. */
 	async short(cwd: string, length = 7, signal?: AbortSignal): Promise<string | null> {
 		const result = await git(cwd, ["rev-parse", `--short=${length}`, "HEAD"], { readOnly: true, signal });
 		if (result.exitCode !== 0) return null;
@@ -1904,7 +1807,6 @@ export const head = {
 };
 
 export const repo = {
-	/** Resolve the repository root (may be a worktree root). */
 	async root(cwd: string, signal?: AbortSignal): Promise<string | null> {
 		const repository = await resolveRepository(cwd);
 		if (repository) return repository.repoRoot;
@@ -1913,7 +1815,6 @@ export const repo = {
 		return result.stdout.trim() || null;
 	},
 
-	/** Check which paths are ignored by git in this repository. */
 	async ignored(root: string, paths: readonly string[], signal?: AbortSignal): Promise<Set<string> | null> {
 		if (paths.length === 0) return new Set();
 		const result = await git(root, ["check-ignore", "-z", "--stdin"], {
@@ -1925,7 +1826,6 @@ export const repo = {
 		return new Set(result.stdout.split("\0").filter(entry => entry.length > 0));
 	},
 
-	/** Resolve the primary checkout root, or the shared common dir for bare-repo worktrees. */
 	async primaryRoot(cwd: string, signal?: AbortSignal): Promise<string | null> {
 		const repository = await resolveRepository(cwd);
 		if (repository) return primaryRootFromRepository(repository);
@@ -1939,42 +1839,35 @@ export const repo = {
 		return repoRoot;
 	},
 
-	/** Resolve primary checkout root synchronously via filesystem inspection. */
 	primaryRootSync(cwd: string): string | null {
 		const repository = resolveRepositorySync(cwd);
 		if (!repository) return null;
 		return primaryRootFromRepositorySync(repository);
 	},
 
-	/** Linked worktree metadata for cwd, or null if primary checkout. */
 	linkedWorktreeSync(cwd: string): { root: string; primaryRoot: string } | null {
 		const repository = resolveRepositorySync(cwd);
 		if (!repository || !isLinkedWorktree(repository)) return null;
 		return { root: repository.repoRoot, primaryRoot: primaryRootFromRepositorySync(repository) };
 	},
 
-	/** Full GitRepository metadata (sync). */
 	resolveSync(cwd: string): GitRepository | null {
 		return resolveRepositorySync(cwd);
 	},
 
-	/** Full GitRepository metadata. */
 	resolve(cwd: string): Promise<GitRepository | null> {
 		return resolveRepository(cwd);
 	},
 
-	/** Check if the repository uses the reftable reference storage format (sync). */
 	isReftableSync(repository: GitRepository): boolean {
 		return isReftableRepoSync(repository);
 	},
 
-	/** Check if the repository uses the reftable reference storage format. */
 	isReftable(repository: GitRepository): Promise<boolean> {
 		return isReftableRepo(repository);
 	},
 };
 
-// Helper used during head resolution — defined here to reference `head` namespace.
 async function resolveHead(cwd: string, signal?: AbortSignal): Promise<GitHeadState | null> {
 	return head.resolve(cwd, signal);
 }
@@ -2008,12 +1901,10 @@ function formatGhFailure(args: readonly string[], stdout: string, stderr: string
 }
 
 export const github = {
-	/** Check if `gh` CLI is installed. */
 	available(): boolean {
 		return Boolean($which("gh"));
 	},
 
-	/** Run a raw `gh` CLI command. Does not throw on non-zero exit. */
 	async run(cwd: string, args: string[], signal?: AbortSignal, options?: GhCommandOptions): Promise<GhCommandResult> {
 		throwIfAborted(signal);
 		if (!$which("gh")) {
@@ -2047,7 +1938,6 @@ export const github = {
 		}
 	},
 
-	/** Run `gh` and parse stdout as JSON. Throws on non-zero exit or invalid JSON. */
 	async json<T>(cwd: string, args: string[], signal?: AbortSignal, options?: GhCommandOptions): Promise<T> {
 		const result = await github.run(cwd, args, signal, options);
 		if (result.exitCode !== 0) {
@@ -2063,7 +1953,6 @@ export const github = {
 		}
 	},
 
-	/** Run `gh` and return stdout as text. Throws on non-zero exit. */
 	async text(cwd: string, args: string[], signal?: AbortSignal, options?: GhCommandOptions): Promise<string> {
 		const result = await github.run(cwd, args, signal, options);
 		if (result.exitCode !== 0) {

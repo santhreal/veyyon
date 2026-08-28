@@ -21,7 +21,6 @@ interface AcpEventMapperOptions {
 	getMessageProgress?: (message: unknown) => MessageProgress | undefined;
 	getToolArgs?: (toolCallId: string) => unknown;
 	resolveImageData?: (data: string, mimeType: string | undefined) => string;
-	/** Session cwd. Tool call locations sent to ACP clients must be absolute (the editor host needs them to open or focus files). When provided, */
 	cwd?: string;
 }
 
@@ -279,8 +278,6 @@ function mapAssistantMessageUpdate(
 		case "error":
 			sessionUpdate = "agent_message_chunk";
 			text = event.assistantMessageEvent.error.errorMessage ?? "Unknown error";
-			// The surfaced error is the message's visible text: keeps the
-			// message_end / agent_end fallbacks from emitting again.
 			if (text.length > 0 && progress) {
 				progress.textEmitted = true;
 			}
@@ -545,7 +542,6 @@ function buildToolTitle(toolName: string, args: unknown, intent: string | undefi
 	return toolName;
 }
 
-/** Resolve a single raw path against cwd for an ACP location. When `cwd` is omitted we pass the value through unchanged (callers without session */
 function toAcpLocationPath(value: string, cwd?: string): string {
 	if (!cwd) return value;
 	try {
@@ -573,7 +569,6 @@ function extractToolLocations(args: unknown, cwd?: string): ToolCallLocation[] {
 	return locations;
 }
 
-/** Pull locations from a tool result's details (e.g. EditToolDetails.perFileResults[].path). */
 function extractToolLocationsFromResult(result: unknown, cwd?: string): ToolCallLocation[] {
 	if (typeof result !== "object" || result === null) return [];
 	const details = (result as { details?: unknown }).details;
@@ -596,7 +591,6 @@ function extractToolLocationsFromResult(result: unknown, cwd?: string): ToolCall
 	return locations;
 }
 
-/** Emit a `diff` ToolCallContent for each per-file edit result that carries oldText/newText. */
 function extractDiffToolCallContent(result: unknown): ToolCallContent[] {
 	if (typeof result !== "object" || result === null) return [];
 	const details = (result as { details?: unknown }).details;
@@ -970,7 +964,6 @@ function extractNumberProperty<T extends object>(value: unknown, key: keyof T): 
 	return typeof property === "number" && Number.isFinite(property) ? property : undefined;
 }
 
-/** Whether an arbitrary value is shaped like an assistant message. A STRUCTURAL check on `unknown`, which is why it is named for what it inspects rather */
 function looksLikeAssistantMessage(value: unknown): boolean {
 	return (
 		typeof value === "object" && value !== null && "role" in value && (value as TextMessageLike).role === "assistant"
@@ -993,8 +986,6 @@ function safeJsonStringify(value: unknown): string | undefined {
 	try {
 		return JSON.stringify(value);
 	} catch {
-		// A value with a cycle in it has no JSON form. Undefined means the optional field is omitted from
-		// the ACP event, which the protocol allows; the event itself still goes out.
 		return undefined;
 	}
 }

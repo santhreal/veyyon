@@ -19,40 +19,23 @@ import {
 } from "./path-utils";
 import { ToolError } from "./tool-errors";
 
-/** The shared path-input pipeline for the `search`, `ast_grep` and `ast_edit` tools: normalize the raw paths, resolve internal URLs to backing files, and */
-
-/** Local file materialized from a readable external URL for shared tool-scope resolution. */
 export interface ResolvedExternalSearchUrl {
-	/** Absolute or cwd-relative file path to search. */
 	sourcePath: string;
-	/** True when the materialized file must not mint editable anchors. */
 	immutable?: boolean;
 }
 
 export interface ToolScopeOptions {
 	rawPaths: string[];
 	cwd: string;
-	/** Verb used in the "Cannot {action} internal URL without a backing file: …" message. */
 	internalUrlAction: string;
-	/** Collect absolute paths flagged immutable by their internal-URL handler. */
 	trackImmutableSources?: boolean;
-	/** Honor `exactFilePaths` from {@link resolveExplicitSearchPaths} (search-only). */
 	surfaceExactFilePaths?: boolean;
-	/** Fan plain-file entries out into per-target scans instead of folding them
-	 * into a directory walk's glob union (search-only: the caller must dedupe
-	 * matches from overlapping targets). */
 	fanOutFileTargets?: boolean;
-	/** Extra hint appended to "Path not found" when stat fails and the user supplied multiple paths. */
 	multipathStatHint?: string;
-	/** Calling session's settings — forwarded to the internal-URL router so caller-aware handlers (issue://, pr://) honor it. */
 	settings?: unknown;
-	/** Caller's abort signal — forwarded to the internal-URL router. */
 	signal?: AbortSignal;
-	/** Calling session's `local://` root mapping — pins resolutions to the calling session. */
 	localProtocolOptions?: LocalProtocolOptions;
-	/** Calling session's loaded skills — lets skill:// resolve without process-global state. */
 	skills?: readonly Skill[];
-	/** Materialize readable external URLs to local text files before scope derivation. */
 	resolveExternalUrl?: (rawPath: string) => Promise<ResolvedExternalSearchUrl | undefined>;
 }
 
@@ -67,7 +50,6 @@ export interface ToolScopeResolution {
 	immutableSourcePaths: Set<string>;
 }
 
-/** Shared path-input pipeline for `search`, `ast_grep`, and `ast_edit`: 1. normalize + reject empty paths, */
 export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<ToolScopeResolution> {
 	const { rawPaths: inputs, cwd, internalUrlAction } = opts;
 	const normalizedRawPaths = inputs.map(normalizePathLikeInput);
@@ -78,9 +60,6 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 	if (rawPaths.some(rawPath => rawPath.length === 0)) {
 		throw new ToolError("Search scope entries must be non-empty paths or globs");
 	}
-	// Strict external-URL schemes. `file://` is intentionally absent: it has
-	// local-path semantics (expandPath strips it downstream), so it flows through
-	// the ordinary filesystem pipeline instead of the external-URL resolver.
 	const strictExternalUrlRe = /^(?:https?|ftp|ws|wss):\/\//i;
 	const internalRouter = InternalUrlRouter.instance();
 	const resolvedPathInputs: string[] = [];
@@ -88,7 +67,6 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 	for (const rawPath of rawPaths) {
 		let externalUrl = strictExternalUrlRe.test(rawPath);
 		if (!externalUrl && isReadableUrlPath(rawPath) && !hasGlobPathChars(rawPath)) {
-			// Fuzzy spelling the read parser accepts (`www.host/…`, collapsed `https:/host/…`). An existing local path wins over URL
 			try {
 				await fs.promises.stat(resolveToCwd(rawPath, cwd));
 			} catch (err) {
@@ -104,9 +82,6 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 				}
 				continue;
 			}
-			// Resolver missing or declined (e.g. ftp/ws/wss): fail explicitly
-			// instead of letting the local-path fallthrough surface a confusing
-			// "Path not found" for a URL-shaped input.
 			throw new ToolError(
 				`Cannot ${internalUrlAction} external URL: ${rawPath}. Use \`read\` to fetch web content, then search the returned text.`,
 			);
@@ -129,9 +104,6 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 			signal: opts.signal,
 			localProtocolOptions: opts.localProtocolOptions,
 			skills: opts.skills,
-			// Tool-scope resolution only needs `sourcePath`; skip content
-			// materialization so large artifacts (or any handler that separates
-			// path from content) stay searchable without OOM risk.
 			pathOnly: true,
 		});
 		if (!resource.sourcePath) {
@@ -190,7 +162,6 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 		const stat = await Bun.file(searchPath).stat();
 		isDirectory = stat.isDirectory();
 	} catch (err) {
-		// Only a genuinely-missing path is "Path not found". A permission error (EACCES on a parent dir without +x), EIO, ELOOP, etc. must propagate
 		if (!isMissingPath(err)) throw err;
 		const hint = opts.multipathStatHint && rawPaths.length > 1 ? opts.multipathStatHint : "";
 		throw new ToolError(`Path not found: ${scopePath}${hint}`);

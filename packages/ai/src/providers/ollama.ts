@@ -254,20 +254,9 @@ function convertMessages(model: Model<"ollama-chat">, context: Context): OllamaM
 	const isCloud = model.provider === "ollama-cloud";
 	const supportsImages = model.input.includes("image");
 	return transformMessages(messages, model).map((msg, index) => {
-		// Real `systemPrompt` entries (always emitted first) stay on Ollama's
-		// `system` role. After the static prefix, a developer turn keeps `system`
-		// when it's an agent-owned control instruction (empty/unexpected-stop
-		// retries, checkpoint rewind warning, todo reminders — all carry
-		// `attribution: "agent"`), but a user-attributed developer turn (auto-learn
-		// capture nudge, advisor cards, file-mention companions) drops to `user`.
-		// That keeps the in-conversation byte prefix stable for prefix caches
-		// (llama.cpp, #3456) without demoting mandatory agent reminders.
 		const developerRole =
 			msg.role === "developer" && (index < systemPrompts.length || msg.attribution !== "user") ? "system" : "user";
 		const converted = convertMessage(msg, supportsImages, developerRole);
-		// Ollama cloud rejects requests when assistant history messages contain the `thinking`
-		// field — it's valid in model responses but not accepted as a history input. Strip it
-		// to prevent HTTP 400 errors. Local Ollama instances are unaffected.
 		if (isCloud && converted.role === "assistant" && converted.thinking) {
 			const { thinking: _t, ...rest } = converted;
 			return rest;
@@ -424,17 +413,10 @@ const streamOllamaOnce = (
 		let activeThinkingIndex: number | undefined;
 		let activeTextIndex: number | undefined;
 		const activeToolIndices = new Set<number>();
-		// `getStreamMarkupHealingPattern` always names a pattern -- "thinking" is the
-		// floor, not an absence -- so the healer is always present here. Ollama heals
-		// inline rather than through the generic wrap because it alone knows whether
-		// the provider also streamed native reasoning (`suppressHealedThinking`).
 		const streamMarkupHealing = new StreamMarkupHealing({
 			pattern: getStreamMarkupHealingPattern(model.provider, model.id),
 		});
 		let healedToolCallEmitted = false;
-		// Once the provider streams native reasoning (`message.thinking`), drop any
-		// thinking the text-channel healer also recovers so a model that emits both
-		// does not double-count its reasoning.
 		let suppressHealedThinking = false;
 		const endActiveTextBlock = (): void => {
 			if (activeTextIndex === undefined) return;
@@ -540,16 +522,9 @@ const streamOllamaOnce = (
 				url: `${baseUrl}/api/chat`,
 			};
 			wireBodyJson = JSON.stringify(body);
-			// Direct callers that bypass `register-builtins` (which installs
-			// the iterator-level watchdog) need a pre-response timer alongside
-			// `timeout: false`; otherwise an Ollama server that accepts the
-			// POST and never streams headers would hang forever (issue #2422).
 			const idleTimeoutMs = options.streamIdleTimeoutMs ?? getOpenAIStreamIdleTimeoutMs();
 			const firstEventTimeoutMs =
 				options.streamFirstEventTimeoutMs ?? getOpenAIStreamFirstEventTimeoutMs(idleTimeoutMs);
-			// Cleared the instant headers arrive (below) so the pre-response timer
-			// never aborts the actively streaming body — an absolute
-			// `AbortSignal.timeout` would (issue #2422).
 			const watchdog = armPreResponseTimeout(options.signal, firstEventTimeoutMs);
 			let response: Response;
 			try {
@@ -676,11 +651,6 @@ const streamOllamaOnce = (
 			}
 			endActiveThinkingBlock();
 			endActiveTextBlock();
-			// No chunk ever carried `done`, so nothing in the response said the
-			// turn was over and `output.stopReason` is still the seed it was given
-			// before the first line arrived — an empty body reached the session as
-			// a finished answer. A tool call still open at EOF is a partial batch:
-			// its arguments never closed.
 			if (!sawDone) {
 				const stopReason = stopReasonForTerminallessEof(output.content, activeToolIndices.size === 0);
 				if (stopReason === undefined) {
@@ -695,10 +665,6 @@ const streamOllamaOnce = (
 				output.stopReason = "error";
 				output.errorMessage = EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE;
 			}
-			// Tool calls always mean "execute and continue" in the OpenAI/Ollama contract.
-			// If the turn produced tool-call blocks but reported a natural `stop`, promote
-			// to `toolUse` so the agent loop runs them (it gates execution on the stop
-			// reason). `length`/`aborted`/`error` are intentionally left untouched.
 			if (output.stopReason === "stop" && output.content.some(block => block.type === "toolCall")) {
 				output.stopReason = "toolUse";
 			}

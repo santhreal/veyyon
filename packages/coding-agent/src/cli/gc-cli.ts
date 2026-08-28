@@ -27,19 +27,14 @@ import { FileSessionStorage } from "../session/session-storage";
 
 const HASH_RE = /^[a-f0-9]{64}$/;
 const BLOB_FILE_RE = /^([a-f0-9]{64})(?:\.[A-Za-z0-9][A-Za-z0-9._-]{0,31})?$/;
-// Matches BOTH blob-ref namespaces so GC never deletes a blob a live session still points at: `blob:sha256:<hash>` (images) and `blobtext:sha256:<hash>`
 const BLOB_REF_RE = /\bblob(?:text)?:sha256:([a-f0-9]{64})\b/gi;
 const JSONL_GLOB = new Bun.Glob(`**/*${SESSION_FILE_EXTENSION}`);
 const JSONL_GZ_GLOB = new Bun.Glob(`**/*${SESSION_FILE_EXTENSION}.gz`);
 const JSONL_BACKUP_GLOB = new Bun.Glob(`**/*${SESSION_FILE_EXTENSION}.*${SESSION_BACKUP_EXTENSION}`);
 const ACTIVE_STATUSES: ReadonlySet<SessionStatus> = new Set(["pending", "interrupted", "unknown"]);
-/** Smallest write-grace window an operator may configure. The grace exists so GC never deletes a blob or archives a session that a running veyyon is still */
 const MIN_GC_WRITE_GRACE_MS = MINUTE_MS;
 
-/** How old a GC lock file must be before another run breaks it. Deliberately NOT the write-grace window, even though both were 5 minutes and shared one constant. */
 const GC_LOCK_STALE_MS = 5 * MINUTE_MS;
-// The extension comes from its owner, and the compressed form is that extension plus `.gz`, so moving
-// the transcript extension moves the archive form with it rather than leaving it behind.
 const SESSION_SUFFIX = SESSION_FILE_EXTENSION;
 const COMPRESSED_SESSION_SUFFIX = `${SESSION_FILE_EXTENSION}.gz`;
 const GC_LOCK_BREAKER_SUFFIX = ".break";
@@ -131,7 +126,6 @@ interface ResolvedGcOptions {
 	coldArchiveAfterDays: number;
 	retainNewestGlobal: number;
 	retainNewestPerCwd: number;
-	/** How recently a file may have been written and still be left alone, in milliseconds. */
 	writeGraceMs: number;
 }
 
@@ -164,7 +158,6 @@ function numberSetting(value: number | undefined, fallback: unknown, defaultValu
 	return normalizeNumberSetting(fallback, defaultValue);
 }
 
-/** Turn a configured grace in minutes into milliseconds, never below the floor. Clamped and REPORTED rather than accepted: `0` reads like "sweep everything", and what it would */
 function resolveWriteGraceMs(minutes: number): number {
 	const requested = minutes * MINUTE_MS;
 	if (requested >= MIN_GC_WRITE_GRACE_MS) return requested;
@@ -471,7 +464,6 @@ function sessionIdFromSessionText(text: string): string | undefined {
 				? record.id
 				: undefined;
 		} catch {
-			// The first record of a session file, which the writer appends to as the session runs, so a torn or partially flushed line is expected at the head of a file that was still being written.
 			return undefined;
 		}
 	}
@@ -488,9 +480,6 @@ async function gzipSessionFile(source: string, destination: string): Promise<voi
 	try {
 		await fs.unlink(source);
 	} catch (error) {
-		// The gzip is durable, but the move isn't complete until the source is
-		// gone. If the unlink fails, roll the archive back so source and
-		// destination don't both linger and a rerun starts clean.
 		await fs.rm(destination, { force: true });
 		throw error;
 	}
@@ -531,9 +520,7 @@ async function moveSessionWithArtifacts(candidate: ArchiveCandidate): Promise<vo
 				} else {
 					await movePath(move.destination, move.source);
 				}
-			} catch {
-				// Preserve the original failure; rollback failure is reported by the next scan.
-			}
+			} catch {}
 		}
 		throw error;
 	}
@@ -828,9 +815,7 @@ async function openNewGcLock(lockPath: string): Promise<fs.FileHandle | null> {
 async function releaseGcLockFile(lockPath: string, handle: fs.FileHandle): Promise<void> {
 	try {
 		await handle.close();
-	} catch {
-		// Best effort: stale sidecar locks are recoverable by PID/timestamp.
-	}
+	} catch {}
 	try {
 		await fs.unlink(lockPath);
 	} catch (error) {

@@ -30,10 +30,7 @@ import {
 import { SEARCH_PROVIDER_OPTIONS, SEARCH_PROVIDER_PREFERENCES, type SearchProviderId } from "../../web/search/types";
 import { unsetNumberOption } from "../optional-number";
 
-/** Providers domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const PROVIDERS_SETTINGS = {
-	// Providers
-	/** Whether hitting a quota or rate limit may move a provider to one of your other accounts. OFF. Which account spends money is the operator's decision and nobody else's, and the */
 	"accounts.loadBalancing": {
 		type: "boolean",
 		default: false,
@@ -46,7 +43,6 @@ export const PROVIDERS_SETTINGS = {
 		},
 	},
 
-	/** Whether secrets are replaced before anything is sent to a provider. OFF by default, but `/secret add` turns it on, because storing a credential for the agent to */
 	"secrets.enabled": {
 		type: "boolean",
 		default: false,
@@ -59,7 +55,6 @@ export const PROVIDERS_SETTINGS = {
 		},
 	},
 
-	/** Lifetime given to a `/secret` entry when the command does not say. A string rather than a number of milliseconds, because this is the same notation the */
 	"secrets.defaultTtl": {
 		type: "string",
 		default: "1d",
@@ -73,7 +68,6 @@ export const PROVIDERS_SETTINGS = {
 		},
 	},
 
-	/** Whether each use of a stored secret is recorded. ON by default. The record holds no values (it is written from the arguments as the model */
 	"secrets.auditLog": {
 		type: "boolean",
 		default: true,
@@ -86,7 +80,6 @@ export const PROVIDERS_SETTINGS = {
 		},
 	},
 
-	/** Whether a session says anything on its own about a secret approaching its expiry. ON by default, because the warning exists to stop a credential lapsing mid-task with nothing */
 	"secrets.expiryWarnings": {
 		type: "boolean",
 		default: true,
@@ -100,7 +93,6 @@ export const PROVIDERS_SETTINGS = {
 		},
 	},
 
-	// Foreign-tool config discovery
 	"discovery.importForeignConfig": {
 		type: "boolean",
 		default: false,
@@ -113,7 +105,6 @@ export const PROVIDERS_SETTINGS = {
 		},
 	},
 
-	// Provider selection
 	"providers.ollama-cloud.maxConcurrency": {
 		type: "number",
 		default: 3,
@@ -549,7 +540,6 @@ export const PROVIDERS_SETTINGS = {
 			],
 		},
 	},
-	// Codex saved rate-limit resets (auto-redeem)
 	"codexResets.autoRedeem": {
 		type: "enum",
 		values: ["unset", "yes", "no"] as const,
@@ -612,7 +602,6 @@ export const PROVIDERS_SETTINGS = {
 		},
 	},
 
-	// Exa
 	"exa.enabled": {
 		type: "boolean",
 		default: true,
@@ -664,7 +653,6 @@ export const PROVIDERS_SETTINGS = {
 		},
 	},
 
-	// SearXNG
 	"searxng.endpoint": {
 		type: "string",
 		default: undefined,

@@ -64,24 +64,19 @@ interface CancelOutcome {
 	message: string;
 }
 
-/** A live subagent from the AgentRegistry that has no backing job in the AsyncJobManager — e.g. an idle agent woken (or a parked agent revived) via */
 interface AgentActivitySnapshot {
 	id: string;
 	parentId?: string;
-	/** Latest activity gist recorded by the registry (display-only). */
 	activity?: string;
-	/** Time since the agent was registered. */
 	ageMs: number;
 }
 
 export interface JobToolDetails {
 	jobs: JobSnapshot[];
 	cancelled?: { id: string; status: CancelStatus }[];
-	/** Running subagents not represented by a job row in this result. */
 	agents?: AgentActivitySnapshot[];
 }
 
-/** A poll snapshot where every watched job is still running and nothing was cancelled — pure "still waiting" noise once a newer poll exists. The TUI */
 export function isWaitingPollDetails(details: unknown): boolean {
 	const d = details as JobToolDetails | undefined;
 	if (!d || !Array.isArray(d.jobs) || d.jobs.length === 0) return false;
@@ -97,7 +92,6 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 	readonly description: string;
 	readonly parameters = jobSchema;
 	readonly strict = true;
-	// Only a polling call blocks. A `list` snapshot and a cancel-only call return at once (see `execute`), so an interrupt must not be able to replace their
 	readonly interruptible = (args: Partial<JobParams>): boolean => {
 		if (args.list === true) return false;
 		return !(Array.isArray(args.cancel) && args.cancel.length > 0 && args.poll === undefined);
@@ -122,12 +116,9 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 			};
 		}
 
-		// Scope every visible operation to the calling agent. Tests / SDK
-		// consumers without an agent id see everything (legacy behavior).
 		const ownerId = this.session.getAgentId?.() ?? undefined;
 		const ownerFilter = ownerId ? { ownerId } : undefined;
 
-		// `list` is a read-only snapshot mode. Replaces the legacy `jobs://` URL.
 		if (params.list) {
 			if (params.cancel?.length || params.poll?.length) {
 				throw new ToolError("`list` cannot be combined with `poll` or `cancel`.");
@@ -142,7 +133,6 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		for (const id of cancelIds) {
 			const existing = manager.getJob(id);
 			if (!existing || (ownerId && existing.ownerId !== ownerId)) {
-				// Not a job of the caller's, so it may still be a running agent with no job entry: an irc-woken peer, or a spawn whose job row already
 				cancelOutcomes.push(await this.#cancelAgent(id, ownerId));
 				continue;
 			}
@@ -163,7 +153,6 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		}
 
 		const requestedPollIds = params.poll;
-		// If only `cancel` was provided (no `poll`), don't wait \u2014 return immediately.
 		const shouldPoll = requestedPollIds !== undefined || cancelIds.length === 0;
 
 		if (!shouldPoll) {
@@ -171,9 +160,6 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 			return this.#buildResult(manager, cancelledJobs, cancelOutcomes);
 		}
 
-		// Resolve which jobs to watch.
-		// - If `poll` was passed explicitly, watch exactly those (filtered to existing).
-		// - If `poll` was omitted (and so was `cancel`), default to all running jobs.
 		const jobsToWatch = requestedPollIds
 			? this.#visibleJobs(manager, requestedPollIds, ownerId)
 			: manager.getRunningJobs(ownerFilter);
@@ -183,7 +169,6 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 				const cancelledJobs = this.#visibleJobs(manager, cancelIds, ownerId);
 				return this.#buildResult(manager, cancelledJobs, cancelOutcomes);
 			}
-			// Zero pollable jobs is not necessarily "nothing running": agents woken via irc or owned by another agent run with no job entry.
 			const agents = this.#runningAgentsOutsideJobs();
 			const lines: string[] = [];
 			if (requestedPollIds?.length) {
@@ -207,21 +192,16 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 			return {
 				content: [{ type: "text", text: lines.join("\n") }],
 				details: { jobs: [], ...(agents.length ? { agents } : {}) },
-				// Nothing found / nothing to wait for is noise once consumed —
-				// the follow-up call has already corrected course. Running agents
-				// are real state the model may act on, so keep those results.
 				...(agents.length === 0 ? { useless: true } : {}),
 			};
 		}
 
-		// If all watched jobs are already done, build immediate result.
 		const runningJobs = jobsToWatch.filter(j => j.status === "running");
 		if (runningJobs.length === 0) {
 			const cancelledJobs = cancelIds.map(id => manager.getJob(id)).filter(j => j != null);
 			return this.#buildResult(manager, cancelledJobs.concat(jobsToWatch), cancelOutcomes);
 		}
 
-		// Wait until at least one running job finishes, the wait window elapses, or the call is aborted. With `async.pollWaitDuration` set to `smart`,
 		const racePromises: Promise<unknown>[] = runningJobs.map(j => j.promise);
 		const pollSetting = this.session.settings.get("async.pollWaitDuration");
 		const smartPoll = pollSetting === "smart";
@@ -271,13 +251,10 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 			clearTimeout(timeoutHandle);
 			clearInterval(progressTimer);
 			if (smartPoll) {
-				// Reset the idle-gap clock: escalate if the agent polls again soon,
-				// drop back to the floor once it goes quiet for a while.
 				manager.recordPollWaitEnd(ownerId);
 			}
 		}
 
-		// `#buildResult` acknowledges every settled job it reports, and `unwatchJobs` re-arms the async delivery of anything that settled inside the window and was
 		try {
 			return this.#buildResult(manager, allTrackedJobs, cancelOutcomes);
 		} finally {
@@ -285,7 +262,6 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		}
 	}
 
-	/** Resolve a list of job ids to job records visible to the calling agent. Drops missing ids and ids owned by other agents, so cross-agent inspection */
 	#visibleJobs(manager: AsyncJobManager, ids: string[], ownerId: string | undefined): AsyncJob[] {
 		const out: AsyncJob[] = [];
 		for (const id of ids) {
@@ -297,7 +273,6 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		return out;
 	}
 
-	/** Kill a running agent that has no job row, when `cancel` names one. A spawner could always SEE these agents (`job list` reports them under */
 	async #cancelAgent(id: string, ownerId: string | undefined): Promise<CancelOutcome> {
 		const registry = this.session.agentRegistry;
 		const ref = registry?.get(id);
@@ -313,8 +288,6 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		try {
 			await AgentLifecycleManager.global().terminate(id, `Killed by ${ownerId ?? "the operator"}`);
 		} catch (error) {
-			// The agent is still there: terminate leaves it registered when the
-			// abort fails, so reporting a kill would be a lie the spawner acts on.
 			return {
 				id,
 				status: "not_found",
@@ -328,11 +301,9 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		};
 	}
 
-	/** Whether `id` sits anywhere under `ancestorId` in the spawn tree. */
 	#isDescendant(registry: AgentRegistry, id: string, ancestorId: string): boolean {
 		const seen = new Set<string>();
 		let current = registry.get(id)?.parentId;
-		// Guarded against a cycle: a corrupted parent chain must not hang the tool.
 		while (current && !seen.has(current)) {
 			if (current === ancestorId) return true;
 			seen.add(current);
@@ -341,14 +312,10 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		return false;
 	}
 
-	/** Running subagents from the registry that are not covered by one of the caller's running jobs. Agents woken via `irc` (idle wake / park revival) */
 	#runningAgentsOutsideJobs(): AgentActivitySnapshot[] {
 		const registry = this.session.agentRegistry;
 		if (!registry) return [];
 		const selfId = this.session.getAgentId?.() ?? undefined;
-		// Cover = the caller's RUNNING jobs only. A settled job still sitting in
-		// delivery retention must not hide its agent if that agent was re-woken
-		// (e.g. via irc) and is running again without a job.
 		const covered = new Set<string>();
 		const manager = this.session.asyncJobManager;
 		if (manager) {
@@ -359,7 +326,6 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		}
 		const now = Date.now();
 		const out: AgentActivitySnapshot[] = [];
-		// The caller's conversation only, resolved through the same registry owner that decides what `irc list` shows. The comment above is right that
 		for (const ref of registry.listInScope(registry.scopeOf(selfId))) {
 			if (ref.kind !== "sub" || ref.status !== "running") continue;
 			if (ref.id === selfId || covered.has(ref.id)) continue;
@@ -373,7 +339,6 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		return out;
 	}
 
-	/** Model-facing lines for the running-agents section shared by `list` and empty-poll results. */
 	#describeAgents(agents: AgentActivitySnapshot[]): string[] {
 		const lines = [`## Running Agents (${agents.length}) — not job-backed\n`];
 		for (const agent of agents) {
@@ -429,7 +394,6 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		cancelOutcomes: CancelOutcome[],
 		agents: AgentActivitySnapshot[] = [],
 	): AgentToolResult<JobToolDetails> {
-		// Deduplicate by id (cancelled jobs may also appear in the watched set).
 		const seen = new Set<string>();
 		const uniqueJobs = jobs.filter(j => {
 			if (seen.has(j.id)) return false;
@@ -479,8 +443,6 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 			for (let li = 0; li < al.length; li++) lines.push(al[li]!);
 		}
 
-		// A tool result must never be empty text — the model cannot tell "no
-		// jobs" from a malfunction (reported exactly that way in QA).
 		if (lines.length === 0) {
 			lines.push("No background jobs.");
 		}
@@ -493,9 +455,6 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		return {
 			content: [{ type: "text", text: lines.join("\n").trimEnd() }],
 			details,
-			// A poll where everything is still running carries no new information
-			// once a later poll exists — same predicate the TUI uses to displace
-			// stale waiting frames.
 			...(isWaitingPollDetails(details) ? { useless: true } : {}),
 		};
 	}
@@ -541,7 +500,6 @@ function statusToColor(status: JobSnapshot["status"]): ToolUIColor {
 	}
 }
 
-/** Pretty-printed JSON output wastes the collapsed one-line preview on a lone "{" — flatten structured-looking bodies onto a single line. Slice first: */
 function flattenStructuredPreview(text: string): string {
 	const first = text[0];
 	if (first !== "{" && first !== "[") return text;
@@ -590,9 +548,6 @@ export const jobToolRenderer = {
 			? !args.list && (!args.cancel || args.cancel.length === 0 || args.poll !== undefined)
 			: true;
 
-		// Agent-carrying results (list / empty-poll roster) are real snapshots,
-		// not displaceable waiting frames — only agentless polls collapse their
-		// still-running rows once sealed.
 		if (!options.isPartial && isPollCall && agents.length === 0) {
 			const filteredJobs: JobSnapshot[] = [];
 			for (let ji = 0; ji < jobs.length; ji++) {
@@ -606,8 +561,6 @@ export const jobToolRenderer = {
 
 		const counts = { completed: 0, failed: 0, cancelled: 0, running: 0 };
 		for (let ji = 0; ji < jobs.length; ji++) counts[jobs[ji]!.status]++;
-		// The title already carries the running count, so meta lists only the
-		// settled categories — "waiting on 19 of 19 · 19 running" read awkward.
 		const meta: string[] = [];
 		if (counts.completed > 0) meta.push(uiTheme.fg("success", `${counts.completed} done`));
 		if (counts.failed > 0) meta.push(uiTheme.fg("error", `${counts.failed} failed`));
@@ -638,7 +591,6 @@ export const jobToolRenderer = {
 			uiTheme,
 		);
 
-		// Sort: running first (so user sees what's still pending), then failed, then completed/cancelled.
 		const statusOrder: Record<JobSnapshot["status"], number> = {
 			running: 0,
 			failed: 1,
@@ -656,7 +608,6 @@ export const jobToolRenderer = {
 			render(width: number): readonly string[] {
 				const expanded = options.expanded;
 				const spinnerFrame = options.spinnerFrame ?? 0;
-				// Running-job labels shimmer while the poll block is live; the band phase is Date.now()-sampled at render time, so serving cached bytes
 				const shimmerActive = counts.running > 0 && options.spinnerFrame !== undefined && shimmerEnabled();
 				const key = new Hasher().bool(expanded).u32(width).u32(spinnerFrame).bool(shimmerActive).digest();
 				if (!shimmerActive && cached?.key === key) return cached.lines;
@@ -675,8 +626,6 @@ export const jobToolRenderer = {
 								job.status === "running" ? options.spinnerFrame : undefined,
 							);
 							const typeBadge = formatBadge(job.type, statusToColor(job.status), uiTheme);
-							// Task jobs label themselves with their agent id, which is also
-							// the job id — drop the id column instead of stuttering it twice.
 							const idPart = job.label.trim() === job.id ? "" : ` ${uiTheme.fg("muted", job.id)}`;
 							const rawLabelLines = (job.label || "(no label)").split(/\r?\n/);
 							const maxLabelLines = expanded ? LABEL_LINES_EXPANDED : LABEL_LINES_COLLAPSED;
@@ -694,7 +643,6 @@ export const jobToolRenderer = {
 								visibleLabelLines[visibleLabelLines.length - 1] = `${last} …`;
 							}
 							const durationText = uiTheme.fg("dim", formatDuration(job.durationMs));
-							// Running rows in a live block shimmer their label; once the block stops animating (sealed, or a settled snapshot — spinnerFrame
 							const live = job.status === "running" && options.spinnerFrame !== undefined;
 							const headRaw = visibleLabelLines[0] ?? "";
 							const headLabel = live
@@ -724,8 +672,6 @@ export const jobToolRenderer = {
 					uiTheme,
 				);
 
-				// Agents run outside job control; render them as their own tree so
-				// they never skew the job counts or the "waiting on N jobs" title.
 				const agentLines =
 					agents.length === 0
 						? []

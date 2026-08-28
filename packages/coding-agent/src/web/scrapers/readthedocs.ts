@@ -1,6 +1,3 @@
-/**
- * Read the Docs handler for web-fetch
- */
 import { errorMessage, isCancellation } from "@veyyon/utils";
 import {
 	buildResult,
@@ -17,7 +14,6 @@ export const handleReadTheDocs: SpecialHandler = async (
 	timeout: number,
 	signal?: AbortSignal,
 ): Promise<RenderResult | null> => {
-	// Check if URL matches Read the Docs patterns
 	const urlObj = tryParseUrl(url);
 	if (!urlObj) return null;
 	const isReadTheDocs =
@@ -32,7 +28,6 @@ export const handleReadTheDocs: SpecialHandler = async (
 	const notes: string[] = [];
 	const fetchedAt = new Date().toISOString();
 
-	// Fetch the page
 	const result = await loadPage(url, { timeout, signal });
 	if (!result.ok) {
 		return {
@@ -47,11 +42,9 @@ export const handleReadTheDocs: SpecialHandler = async (
 		};
 	}
 
-	// Parse HTML
 	const { parseHTML } = await import("linkedom");
 	const root = parseHTML(result.content).document;
 
-	// Extract main content from common Read the Docs selectors
 	let mainContent =
 		root.querySelector(".document") ||
 		root.querySelector('[role="main"]') ||
@@ -60,12 +53,10 @@ export const handleReadTheDocs: SpecialHandler = async (
 		root.querySelector(".body");
 
 	if (!mainContent) {
-		// Fallback to body if no main content found
 		mainContent = root.querySelector("body");
 		notes.push("Using full body content (no main content div found)");
 	}
 
-	// Remove navigation, sidebar, footer elements
 	mainContent
 		?.querySelectorAll(
 			".headerlink, .viewcode-link, nav, .sidebar, footer, .related, .sphinxsidebar, .toctree-wrapper",
@@ -74,7 +65,6 @@ export const handleReadTheDocs: SpecialHandler = async (
 			el.remove();
 		});
 
-	// Try to find Edit on GitHub/GitLab links for raw source
 	const editLinks = root.querySelectorAll('a[href*="github.com"], a[href*="gitlab.com"]');
 	let sourceUrl: string | null = null;
 
@@ -83,7 +73,6 @@ export const handleReadTheDocs: SpecialHandler = async (
 		const text = link.textContent?.toLowerCase() || "";
 
 		if (href && (text.includes("edit") || text.includes("source"))) {
-			// Convert edit URL to raw URL
 			if (href.includes("github.com")) {
 				sourceUrl = href.replace("/blob/", "/raw/").replace("/edit/", "/raw/");
 			} else if (href.includes("gitlab.com")) {
@@ -95,7 +84,6 @@ export const handleReadTheDocs: SpecialHandler = async (
 
 	let content = "";
 
-	// Try to fetch raw source if available
 	if (sourceUrl) {
 		try {
 			const sourceResult = await loadPage(sourceUrl, { timeout: Math.min(timeout, 10), signal });
@@ -103,9 +91,6 @@ export const handleReadTheDocs: SpecialHandler = async (
 				content = sourceResult.content;
 				notes.push(`Fetched raw source from ${sourceUrl}`);
 			} else {
-				// The raw source is the better answer: it is the page's own markup rather than
-				// a markdown rendering of rendered HTML. Falling back keeps the content, so
-				// this is not a failure, but the reader has to know which of the two they got.
 				notes.push(
 					`Raw source at ${sourceUrl} was unusable (${loadFailure(sourceResult)}); converted the HTML instead`,
 				);
@@ -118,7 +103,6 @@ export const handleReadTheDocs: SpecialHandler = async (
 		}
 	}
 
-	// If no raw source, convert HTML to markdown
 	if (!content && mainContent) {
 		const html = mainContent.innerHTML;
 		content = await htmlToBasicMarkdown(html);

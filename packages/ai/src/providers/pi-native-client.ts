@@ -62,17 +62,11 @@ function buildWireOptions(options: SimpleStreamOptions | undefined): Record<stri
 
 async function decodeGatewayError(response: Response): Promise<AIError.AuthGatewayError> {
 	const status = response.status;
-	// One bounded read, then a parse of what it returned. `response.json()` decodes the
-	// whole body before anything can cap it, and the case that matters here is a gateway
-	// in front of the gateway answering an HTML page instead of an envelope. The STATUS is
-	// the failure; an unreadable body degrades to empty rather than replacing it.
 	const read = await AIError.readProviderErrorBody(response);
 	let body: unknown = read.text;
 	try {
 		body = JSON.parse(read.text);
-	} catch {
-		// Not an envelope. `body` stays the sanitized text.
-	}
+	} catch {}
 	if (typeof body === "object" && body !== null && "error" in body) {
 		const err = (body as { error: unknown }).error;
 		if (typeof err === "object" && err !== null) {
@@ -125,14 +119,9 @@ export function streamPiNative<TApi extends Api>(
 	void (async () => {
 		const callerSignal = options?.signal;
 		const abortTracker = createAbortSourceTracker(callerSignal);
-		// Abort propagation: cancel the response body when the caller's signal
-		// fires. Mirror `streamProxy`'s shape — explicit listener + finally
-		// cleanup — so we don't leak listeners on the long-running case.
 		let response: Response | null = null;
 		const onAbort = (): void => {
 			const body = response?.body;
-			// The caller aborted, so there is nobody left to tell. A stream that refuses to cancel -- normally
-			// because it has already ended -- changes nothing about the abort in progress.
 			if (body) body.cancel("Request aborted by caller").catch(() => {});
 		};
 		if (callerSignal) {
@@ -161,13 +150,6 @@ export function streamPiNative<TApi extends Api>(
 				stream: true,
 			};
 			const onPayload = options?.onPayload;
-			// The hook is a JSON seam: a host's secret redactor walks the payload
-			// rewriting every string and refuses any value JSON cannot express.
-			// `context` carries live arktype schemas in `tools[].parameters`,
-			// which are function objects, so the raw object is never that shape.
-			// Serialize once up front; the hook gets an isolated parse of those
-			// bytes, and when it leaves the payload alone the wire reuses them —
-			// a full-context body is never serialized twice.
 			let body = JSON.stringify(bodyPayload);
 			if (onPayload) {
 				const wirePayload: unknown = JSON.parse(body);
@@ -175,9 +157,6 @@ export function streamPiNative<TApi extends Api>(
 				try {
 					replacementPayload = await onPayload(wirePayload, model as Model<Api>);
 				} catch (error) {
-					// Payload sanitization is a local policy decision, not an upstream
-					// authentication failure. Keep the rejection out of the
-					// auth-retry classifier even when its original error resembles a 401.
 					throw new PiNativePayloadHookError(error);
 				}
 				if (replacementPayload !== undefined) {
@@ -221,17 +200,9 @@ export function streamPiNative<TApi extends Api>(
 			for await (const event of watchedSource) {
 				if (event.type === "done" || event.type === "error") sawTerminal = true;
 				stream.push(event);
-				// `stream.push` resolves `.result()` on `done`/`error`; subsequent
-				// pushes are silently dropped by the base class. We still iterate
-				// to drain any trailing bytes from the wire so the underlying TCP
-				// stream closes cleanly.
 			}
 
 			if (!sawTerminal) {
-				// SSE closed before a terminal event reached us — synthesize one
-				// so awaiters of `.result()` resolve instead of hanging forever.
-				// Matches the gateway's own defensive fallback in
-				// `pi-native-server.encodeStream`.
 				const aborted = abortTracker.wasCallerAbort();
 				const partial = makeSyntheticAssistant(model as Model<Api>);
 				if (aborted) {

@@ -1,28 +1,17 @@
-/** Subagents domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. Everything about spawned agents lives here: whether delegation happens at all, */
-
-/** One lane in {@link SUBAGENTS_SETTINGS}`["subagent.agents"]`, keyed at the top level by agent name (`deep`, `scout`, a user-authored agent, …). */
 export interface SubagentLaneSettings {
-	/** Whether this lane may run at all. At the top level: whether the model may choose this agent. Nested: whether the level above may spawn anything. */
 	enabled?: boolean;
-	/** What this lane runs. Unset inherits the lane above. */
 	model?: string | string[];
-	/** The effort this lane runs at. Unset inherits the lane above. */
 	thinkingLevel?: string;
-	/** What this lane may spawn, one level down. */
 	subagents?: SubagentLaneSettings;
-	/** The pre-tree numeric ceiling, as written by an earlier release. Read so that file keeps its meaning; superseded by the `subagents` chain, which is */
 	maxNestedSpawnDepth?: number;
 }
 
-/** The top level of a lane chain is a lane like any other. */
 export type SubagentAgentSettings = SubagentLaneSettings;
 
-/** A `subagent.modelByDepth` key is a positive integer spawn depth: "1" for a direct child, "2" for a grandchild, and so on. "0" is refused because no */
 export function isModelByDepthKey(key: string): boolean {
 	return /^[1-9]\d*$/.test(key);
 }
 
-/** Validate one `subagent.modelByDepth` entry: the key is a depth and the value is a chain in the same two spellings `subagent.model` accepts. Reported */
 function validateModelByDepthEntry(key: string, value: unknown): string | undefined {
 	if (!isModelByDepthKey(key)) {
 		return `subagent.modelByDepth.${key}: depth keys are positive integers ("1", "2", …), found "${key}"`;
@@ -37,21 +26,16 @@ function validateModelByDepthEntry(key: string, value: unknown): string | undefi
 	return `subagent.modelByDepth.${key}: expected a model pattern, or a list of them`;
 }
 
-/** The one bundled agent enabled out of the box: the end-to-end delegate. The other bundled agents (scout, reviewer, librarian, designer, sonic) stay */
 export const DEFAULT_ENABLED_BUNDLED_AGENT = "deep";
 
 export const DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH = 0;
 
-/** Default time a finished subagent remains live and immediately revivable. */
 export const DEFAULT_SUBAGENT_IDLE_TTL_MS = 5 * 60_000;
 
-/** Default time a PARKED subagent is kept in the roster before it is closed for good. Parking already released the session; this is how long the revivable ref */
 export const DEFAULT_SUBAGENT_PARKED_CLOSE_MS = 5 * 60_000;
 
-/** The same budget for an agent whose last words said it was waiting on another agent. It stopped on purpose to let a peer finish, so closing it on the ordinary */
 export const DEFAULT_SUBAGENT_WAITING_CLOSE_MS = 30 * 60_000;
 
-/** Shared recursion choices for the blanket setting and each per-agent override. */
 export const SUBAGENT_RECURSION_DEPTH_OPTIONS = [
 	{ value: "-1", label: "Unlimited" },
 	{ value: "0", label: "Parent only", description: "Direct subagents cannot spawn" },
@@ -61,7 +45,6 @@ export const SUBAGENT_RECURSION_DEPTH_OPTIONS = [
 ] as const;
 
 export const SUBAGENTS_SETTINGS = {
-	// Delegation
 	"subagent.enabled": {
 		type: "boolean",
 		default: true,
@@ -111,14 +94,10 @@ export const SUBAGENTS_SETTINGS = {
 			label: "Batch Task Calls",
 			description:
 				"Switch the task tool to its batch shape: one call carries { agent, context, tasks[] } — one subagent per item (with per-item isolation) and a required shared context prepended to every assignment. With async.enabled=true, each spawn runs as an independent background agent with the normal idle/parked lifecycle; otherwise the call blocks for merged results. Disable to restore the flat single-spawn schema.",
-			// Advanced: it changes the tool's SCHEMA rather than any policy, so it is
-			// a shape an integrator picks once, not a knob a session tunes.
 			advanced: true,
 		},
 	},
 
-	// Subagents — which ones this session offers, how deep they may go, and what they run. One section, because those are one decision: an operator turning
-	/** Per-agent settings keyed by agent name; see {@link SubagentAgentSettings}. Rendered as a table of discovered agents rather than one control, so the */
 	"subagent.agents": {
 		type: "record",
 		default: {} as Record<string, SubagentAgentSettings>,
@@ -180,7 +159,6 @@ export const SUBAGENTS_SETTINGS = {
 			description:
 				"Thinking level for every enabled subagent, applied when the model above names no effort of its own. Inherit follows the session's effort. An explicit `:level` suffix on a model pattern still wins. Editable from the roster as well, which is the same setting and not a copy.",
 			keywords: ["thinking", "reasoning", "effort"],
-			// Narrowed at render time to the levels the model these subagents will actually run accepts, exactly as `/effort` does — a fixed list here is
 			options: "runtime",
 		},
 	},
@@ -196,9 +174,6 @@ export const SUBAGENTS_SETTINGS = {
 			description:
 				"Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row outranks Subagent Model for a spawn at exactly that depth and leaves every other depth to Subagent Model. A row whose chain matches no model refuses the spawn and names the row, exactly like an unresolvable Subagent Model.",
 			keywords: ["subagent", "depth", "nested", "grandchild", "model", "chain"],
-			// Advanced: a depth-keyed chain is a rare shape, and it outranks the row
-			// above it, so it belongs behind the fold rather than beside the setting
-			// most sessions use.
 			advanced: true,
 		},
 	},
@@ -216,7 +191,6 @@ export const SUBAGENTS_SETTINGS = {
 		},
 	},
 
-	// Limits
 	"subagent.maxConcurrency": {
 		type: "number",
 		default: 32,
@@ -262,12 +236,10 @@ export const SUBAGENTS_SETTINGS = {
 		default: DEFAULT_SUBAGENT_IDLE_TTL_MS,
 		ui: {
 			tab: "subagents",
-			// Stage ONE of the same two-stage lifecycle the close budgets below finish, so it belongs in their group rather than under Limits: an operator reading "Close After"
 			group: "Auto Close",
 			label: "Park After",
 			description:
 				"How long a finished subagent stays live before parking (ms). The default is 5 minutes. Parking releases the live session and keeps the transcript, so a parked agent revives automatically when messaged or resumed. Set 'Until exit' to keep idle agents live for the whole session. Counted from the agent's last activity, so a revived agent starts this budget again from the revival.",
-			// A numeric setting with no option list is dropped by the UI adapter (`pathToSettingDef` treats optionless numbers as schema-only), so stage one
 			options: [
 				{ value: "0", label: "Until exit" },
 				{ value: "60000", label: "1 minute" },
@@ -355,9 +327,6 @@ export const SUBAGENTS_SETTINGS = {
 			label: "Soft Request Budget Notice",
 			description:
 				"Inject one steering notice when a subagent crosses its soft request budget, asking it to wrap up before the 1.5x forced-yield stop.",
-			// Only reachable behaviour while a budget exists: with the guard disabled
-			// there is no crossing to announce, so the row is hidden rather than
-			// shown doing nothing.
 			condition: "subagentSoftRequestBudgetEnabled",
 		},
 	},
@@ -374,7 +343,6 @@ export const SUBAGENTS_SETTINGS = {
 		},
 	},
 
-	// Isolation
 	"subagent.isolation.mode": {
 		type: "enum",
 		values: [
@@ -436,9 +404,6 @@ export const SUBAGENTS_SETTINGS = {
 				{ value: "patch", label: "Patch", description: "Combine diffs and git apply" },
 				{ value: "branch", label: "Branch", description: "Commit per task, merge with --no-ff" },
 			],
-			// Isolation is off by default, and these two decide only how an isolated
-			// run's changes come back. A knob for a mode nobody selected is a knob
-			// that reads as broken, so both hide until a backend is chosen.
 			condition: "subagentIsolationEnabled",
 		},
 	},

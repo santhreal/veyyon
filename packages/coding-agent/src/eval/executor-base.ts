@@ -12,16 +12,10 @@ import type { KernelEnvPatch, KernelExecutor } from "./kernel-base";
 import { registerKernelToolBridge } from "./kernel-tool-bridge";
 import type { KernelDisplayOutput } from "./py/display";
 
-/** Constructor for a language executor's cancellation error. Each backend subclasses {@link Error} and carries a `timedOut` flag distinguishing a */
 export type CancelledErrorClass = new (timedOut: boolean) => Error & { timedOut: boolean };
 
-// Managed-env patch values (`null` clears, `undefined` skips) are owned by kernel-base,
-// beside the execute options that carry them. Re-exported here because the language
-// executors import it alongside the rest of this module's surface.
 export type { KernelEnvPatch } from "./kernel-base";
 
-/** Options every kernel-backed language executor shares. Per-language option interfaces structurally extend this; the base executor only reads these. */
-/** Whether a language's kernel outlives one eval call. `session` keeps one kernel per session, so a later cell sees variables an earlier one defined, which */
 export type KernelMode = "session" | "per-call";
 
 export interface KernelExecutorBaseOptions {
@@ -39,7 +33,6 @@ export interface KernelExecutorBaseOptions {
 	artifactPath?: string;
 }
 
-/** Normalised execution result produced by {@link executeWithKernelBase}. */
 export interface KernelExecutionResult {
 	output: string;
 	exitCode: number | undefined;
@@ -54,25 +47,20 @@ export interface KernelExecutionResult {
 	stdinRequested: boolean;
 }
 
-/** The cwd a retained kernel session is keyed by. One owner for all three managed runtimes. Two callers that disagree about */
 export function normalizeSessionCwd(cwd: string): string {
 	return path.resolve(cwd);
 }
 
-/** The key a retained kernel session is stored under: session id, cwd, and the explicit interpreter, if the caller named one. */
 export function buildEvalSessionKey(options: {
 	sessionId: string;
 	cwd: string;
-	/** The interpreter the caller asked for, or undefined to let the runtime choose. */
 	interpreter: string | undefined;
-	/** The language's own explicit-runtime resolution, e.g. `resolveExplicitPythonRuntime`. */
 	resolveInterpreterPath: (interpreter: string, cwd: string) => string;
 }): string {
 	const cwd = normalizeSessionCwd(options.cwd);
 	let interpreter = "";
 	if (options.interpreter !== undefined) {
 		const resolved = options.resolveInterpreterPath(options.interpreter, cwd);
-		// A path that cannot be canonicalised is keyed as written. This is not a fallback to a different mechanism: the string is only ever a map key, and
 		try {
 			interpreter = fs.realpathSync.native(resolved);
 		} catch {
@@ -93,7 +81,6 @@ export function getRemainingTimeoutMs(deadlineMs?: number): number | undefined {
 	return deadlineMs - Date.now();
 }
 
-/** True when an error means the execution was cancelled or timed out, either through the kernel's own error class or through a standard abort/timeout. */
 export function isCancellationError(error: unknown, cancelledErrorClass: CancelledErrorClass): boolean {
 	return error instanceof cancelledErrorClass || isCancellation(error);
 }
@@ -104,8 +91,6 @@ export function isTimedOutCancellation(
 	signal?: AbortSignal,
 ): boolean {
 	if (error instanceof cancelledErrorClass) return error.timedOut;
-	// The error itself, or the reason the signal carries: `AbortSignal.timeout()` fires an
-	// abort whose reason is the TimeoutError, so the deadline is only visible there.
 	return isTimeoutError(error) || isTimeoutError(signal?.reason);
 }
 
@@ -240,18 +225,15 @@ export function createCancelledKernelResult(output: string): KernelExecutionResu
 	};
 }
 
-/** Whole seconds for a timeout label, floored at 1 so a sub-second budget never reads "0 seconds". */
 export function timeoutSeconds(timeoutMs: number): number {
 	return Math.max(1, Math.round(timeoutMs / 1000));
 }
 
-/** One-line "command timed out" annotation for a cancelled kernel cell. Always a string: with no known budget it states the bare timeout, otherwise it names */
 export function formatTimeoutAnnotation(timeoutMs?: number): string {
 	if (timeoutMs === undefined) return "Command timed out";
 	return `Command timed out after ${timeoutSeconds(timeoutMs)} seconds`;
 }
 
-/** Richer annotation for a kernel-level timeout that distinguishes a killed kernel (state gone, will be recreated) from an interrupted-but-alive kernel. */
 export function formatKernelTimeoutAnnotation(timeoutMs: number | undefined, kernelKilled: boolean): string {
 	if (kernelKilled) {
 		return "eval cell timed out and the kernel was unresponsive to interrupt; the kernel has been killed and will be recreated on the next call.";
@@ -273,7 +255,6 @@ export const MANAGED_KERNEL_ENV_KEYS = [
 interface ManagedKernelEnvOptions {
 	sessionFile?: string;
 	artifactsDir?: string;
-	/** The eval session's stable id; the `kv` store keys its file by it, bridge or no bridge. */
 	evalSessionId?: string;
 	bridgeSessionId?: string;
 	bridge?: { url: string; token: string };
@@ -333,17 +314,13 @@ export interface ExecuteWithKernelBaseParams<
 	kernel: KernelExecutor;
 	code: string;
 	options: TOptions | undefined;
-	/** Prefix for the per-execution run id (e.g. `"py"`, `"rb"`, `"jl"`). */
 	runIdPrefix: string;
-	/** Human-readable language label used in the failure log line. */
 	errorLogLabel: string;
-	/** Julia surfaces eval-timeout control events through its normal status path, so they must NOT be filtered out the way the JS-status backends do. */
 	isJulia?: boolean;
 	cancelledErrorClass: CancelledErrorClass;
 	buildKernelEnvPatch: (options: TOptions) => TEnv;
 	formatKernelTimeoutAnnotation: (executionTimeoutMs: number | undefined, kernelKilled: boolean) => string;
 	formatTimeoutAnnotation: (executionTimeoutMs: number | undefined) => string | undefined;
-	/** Override how the wall-clock deadline is derived from options. Defaults to {@link getExecutionDeadlineMs}; Julia passes the pre-computed `deadlineMs` */
 	resolveDeadlineMs?: (options: TOptions | undefined) => number | undefined;
 }
 
@@ -370,7 +347,6 @@ export async function executeWithKernelBase<
 		onChunk: options?.onChunk,
 		artifactPath: options?.artifactPath,
 		artifactId: options?.artifactId,
-		// Priced by how long the result will sit in context, through the same owner every other tool uses. Without this the sink keeps a flat 50KB
 		...(options?.toolSession ? { spillThreshold: inlineBudgetFor(options.toolSession) } : {}),
 		headBytes: resolveOutputSinkHeadBytes(settings),
 		maxColumns: resolveOutputMaxColumns(settings),

@@ -1,13 +1,9 @@
-/** Capability Registry Central registry for capabilities and providers. Provides the main API for: */
 import * as os from "node:os";
 import * as path from "node:path";
 import { getAgentDir, getProjectDir } from "@veyyon/utils/dirs";
 import * as logger from "@veyyon/utils/logger";
 
 import type { Settings } from "../config/settings";
-// The slot leaf, not the store: this reads the CANONICAL settings slot rather than the
-// copy `initializeWithSettings` captured below. The leaf imports nothing at runtime, and
-// `config/settings.ts` does not import this module, so there is no cycle.
 import { settingsOrNull } from "../config/settings-instance";
 import { clearCache as clearFsCache, findRepoRoot, cacheStats as fsCacheStats, invalidate as invalidateFs } from "./fs";
 import type {
@@ -21,19 +17,14 @@ import type {
 	SourceMeta,
 } from "./types";
 
-/** Registry of all capabilities */
 const capabilities = new Map<string, Capability<unknown>>();
 
-/** Reverse index: provider ID -> capability IDs it's registered for */
 const providerCapabilities = new Map<string, Set<string>>();
 
-/** Provider display metadata (shared across capabilities) */
 const providerMeta = new Map<string, { displayName: string; description: string }>();
 
-/** Disabled providers (by ID) */
 const disabledProviders = new Set<string>();
 
-/** Providers that discover configuration authored for *other* AI tools — skills, context files (CLAUDE.md/AGENTS.md), rules, and MCP servers found by scanning */
 export const FOREIGN_PROVIDER_IDS: ReadonlySet<string> = new Set([
 	"agents",
 	"agents-md",
@@ -47,15 +38,10 @@ export const FOREIGN_PROVIDER_IDS: ReadonlySet<string> = new Set([
 	"windsurf",
 ]);
 
-/** When false, FOREIGN_PROVIDER_IDS are treated as disabled. Matches the schema default (off). */
 let importForeignConfig = false;
 
-/** Settings manager for persistence (if set) */
 let settings: Settings | null = null;
 
-/**
- * Define a new capability.
- */
 export function defineCapability<T>(def: Omit<Capability<T>, "providers">): Capability<T> {
 	if (capabilities.has(def.id)) {
 		throw new Error(`Capability "${def.id}" is already defined`);
@@ -65,16 +51,12 @@ export function defineCapability<T>(def: Omit<Capability<T>, "providers">): Capa
 	return capability;
 }
 
-/**
- * Register a provider for a capability.
- */
 export function registerProvider<T>(capabilityId: string, provider: Provider<T>): void {
 	const capability = capabilities.get(capabilityId);
 	if (!capability) {
 		throw new Error(`Unknown capability: "${capabilityId}". Define it first with defineCapability().`);
 	}
 
-	// Store provider metadata (for cross-capability display)
 	if (!providerMeta.has(provider.id)) {
 		providerMeta.set(provider.id, {
 			displayName: provider.displayName,
@@ -82,13 +64,11 @@ export function registerProvider<T>(capabilityId: string, provider: Provider<T>)
 		});
 	}
 
-	// Track which capabilities this provider is registered for
 	if (!providerCapabilities.has(provider.id)) {
 		providerCapabilities.set(provider.id, new Set());
 	}
 	providerCapabilities.get(provider.id)!.add(capabilityId);
 
-	// Insert in priority order (highest first)
 	const providers = capability.providers as Provider<T>[];
 	const idx = providers.findIndex(p => p.priority < provider.priority);
 	if (idx === -1) {
@@ -98,9 +78,6 @@ export function registerProvider<T>(capabilityId: string, provider: Provider<T>)
 	}
 }
 
-/**
- * Async loading logic shared by loadCapability().
- */
 async function loadImpl<T>(
 	capability: Capability<T>,
 	providers: Provider<T>[],
@@ -110,7 +87,6 @@ async function loadImpl<T>(
 	const allItems: Array<T & { _source: SourceMeta; _shadowed?: boolean }> = [];
 	const allWarnings: string[] = [];
 	const contributingProviders: string[] = [];
-	// `settingsOrNull()`, NOT the module-global `settings` captured by `initializeWithSettings`. That capture is a SECOND reference to a store this module
 	const disabledExtensionIds = options.includeDisabled
 		? new Set<string>()
 		: new Set<string>(options.disabledExtensions ?? settingsOrNull()?.get("disabledExtensions") ?? []);
@@ -169,7 +145,6 @@ async function loadImpl<T>(
 		}
 	}
 
-	// Deduplicate by key (first wins = highest priority)
 	const seen = new Map<string, number>();
 	const deduped: Array<T & { _source: SourceMeta }> = [];
 
@@ -187,7 +162,6 @@ async function loadImpl<T>(
 		}
 	}
 
-	// Validate items (only non-shadowed items)
 	if (capability.validate && !options.includeInvalid) {
 		for (let i = deduped.length - 1; i >= 0; i--) {
 			const error = capability.validate(deduped[i]);
@@ -209,11 +183,7 @@ async function loadImpl<T>(
 	};
 }
 
-/**
- * Filter providers based on options and disabled state.
- */
 function filterProviders<T>(capability: Capability<T>, options: LoadOptions): Provider<T>[] {
-	// isProviderEnabled folds in BOTH the explicit disabled set and the foreign-config gate (FOREIGN_PROVIDER_IDS follow discovery.importForeignConfig).
 	if (options.providers) {
 		const allowed = new Set(options.providers);
 		let providers = (capability.providers as Provider<T>[]).filter(
@@ -235,9 +205,6 @@ function filterProviders<T>(capability: Capability<T>, options: LoadOptions): Pr
 	return providers;
 }
 
-/**
- * Load a capability by ID.
- */
 export async function loadCapability<T>(capabilityId: string, options: LoadOptions = {}): Promise<CapabilityResult<T>> {
 	const capability = capabilities.get(capabilityId) as Capability<T> | undefined;
 	if (!capability) {
@@ -247,80 +214,55 @@ export async function loadCapability<T>(capabilityId: string, options: LoadOptio
 	const cwd = options.cwd ?? getProjectDir();
 	const home = options.home ?? os.homedir();
 	const repoRoot = await findRepoRoot(cwd);
-	// Always populated so a provider never has to reach for the process-global agent dir.
 	const ctx: LoadContext = { cwd, home, repoRoot, agentDir: options.agentDir ?? getAgentDir() };
 	const providers = filterProviders(capability, options);
 
 	return await loadImpl(capability, providers, ctx, options);
 }
 
-/** Initialize capability system with settings manager for persistence. Call this once on startup to enable persistent provider state. */
 export function initializeWithSettings(activeSettings: Settings): void {
 	settings = activeSettings;
-	// Load disabled providers from settings.
 	const disabled = settings.get("disabledProviders");
 	disabledProviders.clear();
 	for (const id of disabled) {
 		disabledProviders.add(id);
 	}
-	// Foreign-config auto-import: on by default (schema), opt-out via settings.
 	importForeignConfig = settings.get("discovery.importForeignConfig") === true;
 }
 
-/**
- * Persist current disabled providers to settings.
- */
 function persistDisabledProviders(): void {
 	if (settings) {
 		settings.set("disabledProviders", Array.from(disabledProviders));
 	}
 }
 
-/**
- * Disable a provider globally (across all capabilities).
- */
 export function disableProvider(providerId: string): void {
 	disabledProviders.add(providerId);
 	persistDisabledProviders();
 }
 
-/**
- * Enable a previously disabled provider.
- */
 export function enableProvider(providerId: string): void {
 	disabledProviders.delete(providerId);
 	persistDisabledProviders();
 }
 
-/**
- * Check if a provider is enabled.
- */
 export function isProviderEnabled(providerId: string): boolean {
-	// Foreign-tool config providers are off unless the user opts in.
 	if (!importForeignConfig && FOREIGN_PROVIDER_IDS.has(providerId)) return false;
 	return !disabledProviders.has(providerId);
 }
 
-/** Whether foreign-tool config auto-import is currently enabled. */
 export function isForeignConfigImportEnabled(): boolean {
 	return importForeignConfig;
 }
 
-/** The provider IDs gated behind `discovery.importForeignConfig`. */
 export function getForeignProviderIds(): string[] {
 	return Array.from(FOREIGN_PROVIDER_IDS);
 }
 
-/**
- * Get list of all disabled provider IDs.
- */
 export function getDisabledProviders(): string[] {
 	return Array.from(disabledProviders);
 }
 
-/**
- * Set disabled providers from a list (replaces current set).
- */
 export function setDisabledProviders(providerIds: string[]): void {
 	disabledProviders.clear();
 	for (const id of providerIds) {
@@ -329,23 +271,14 @@ export function setDisabledProviders(providerIds: string[]): void {
 	persistDisabledProviders();
 }
 
-/**
- * Get a capability definition (for introspection).
- */
 export function getCapability<T>(id: string): Capability<T> | undefined {
 	return capabilities.get(id) as Capability<T> | undefined;
 }
 
-/**
- * List all registered capability IDs.
- */
 export function listCapabilities(): string[] {
 	return Array.from(capabilities.keys());
 }
 
-/**
- * Get capability info for UI display.
- */
 export function getCapabilityInfo(capabilityId: string): CapabilityInfo | undefined {
 	const capability = capabilities.get(capabilityId);
 	if (!capability) return undefined;
@@ -364,22 +297,15 @@ export function getCapabilityInfo(capabilityId: string): CapabilityInfo | undefi
 	};
 }
 
-/**
- * Get all capabilities info for UI display.
- */
 export function getAllCapabilitiesInfo(): CapabilityInfo[] {
 	return listCapabilities().map(id => getCapabilityInfo(id)!);
 }
 
-/**
- * Get provider info for UI display.
- */
 export function getProviderInfo(providerId: string): ProviderInfo | undefined {
 	const meta = providerMeta.get(providerId);
 	const caps = providerCapabilities.get(providerId);
 	if (!meta || !caps) return undefined;
 
-	// Find priority from first capability's provider list
 	let priority = 0;
 	for (const capId of caps) {
 		const cap = capabilities.get(capId);
@@ -400,9 +326,6 @@ export function getProviderInfo(providerId: string): ProviderInfo | undefined {
 	};
 }
 
-/**
- * Get all providers info for UI display (deduplicated across capabilities).
- */
 export function getAllProvidersInfo(): ProviderInfo[] {
 	const providers: ProviderInfo[] = [];
 
@@ -413,35 +336,25 @@ export function getAllProvidersInfo(): ProviderInfo[] {
 		}
 	}
 
-	// Sort by priority (highest first)
 	providers.sort((a, b) => b.priority - a.priority);
 
 	return providers;
 }
 
-/**
- * Reset all caches. Call after chdir or filesystem changes.
- */
 export function reset(): void {
 	clearFsCache();
 }
 
-/** Invalidate cache for a specific path. @param filePath - Absolute or relative path to invalidate */
 export function invalidate(filePath: string, cwd?: string): void {
 	const resolved = cwd ? path.resolve(cwd, filePath) : filePath;
 	invalidateFs(resolved);
 }
 
-/**
- * Get cache stats for diagnostics.
- */
 export function cacheStats(): { content: number; dir: number } {
 	return fsCacheStats();
 }
 
-/** Opaque snapshot of the module-level registry state. Produced by {@link captureRegistryForTests} and consumed by {@link restoreRegistryForTests}. */
 export interface RegistrySnapshot {
-	/** capability id -> a copy of that capability's providers array at capture time. */
 	readonly capabilityProviders: ReadonlyMap<string, readonly Provider<unknown>[]>;
 	readonly providerCapabilities: ReadonlyMap<string, ReadonlySet<string>>;
 	readonly providerMeta: ReadonlyMap<string, { displayName: string; description: string }>;
@@ -450,7 +363,6 @@ export interface RegistrySnapshot {
 	readonly settings: Settings | null;
 }
 
-/** Capture the entire module-level registry state so a test can restore it later. The registry keeps all state in module-level Maps/Sets that production code */
 export function captureRegistryForTests(): RegistrySnapshot {
 	return {
 		capabilityProviders: new Map(Array.from(capabilities, ([id, cap]) => [id, cap.providers.slice()])),
@@ -462,7 +374,6 @@ export function captureRegistryForTests(): RegistrySnapshot {
 	};
 }
 
-/** Restore the registry to a previously captured snapshot. Capabilities defined after the snapshot are removed; surviving capabilities keep their object */
 export function restoreRegistryForTests(snapshot: RegistrySnapshot): void {
 	for (const id of Array.from(capabilities.keys())) {
 		const captured = snapshot.capabilityProviders.get(id);

@@ -22,7 +22,6 @@ import { resolveExplicitJuliaRuntime } from "./runtime";
 
 export interface JuliaExecutorOptions {
 	cwd?: string;
-	/** Whether the kernel outlives this call (`julia.kernelMode`). Defaults to `session`, which is the behaviour every Julia eval had before the setting existed. */
 	kernelMode?: KernelMode;
 	sessionId?: string;
 	sessionFile?: string;
@@ -84,7 +83,6 @@ const sessions = new Map<string, JuliaSession>();
 const startingSessions = new Map<string, StartingJuliaSession>();
 const resettingSessions = new Map<string, Promise<void>>();
 
-// Cancellation classification is owned by executor-base; these bind the Julia cancelled-error class and delegate. The shared versions handle a DOMException
 function isCancellationError(error: unknown): boolean {
 	return isCancellationErrorBase(error, JuliaExecutionCancelledError);
 }
@@ -93,7 +91,6 @@ function isTimedOutCancellation(error: unknown, signal?: AbortSignal): boolean {
 	return isTimedOutCancellationBase(error, JuliaExecutionCancelledError, signal);
 }
 
-/** Julia's deadline rule: a timeout of zero means NO timeout. Named for the difference rather than sharing the shared owner's name. It used */
 export function deadlineForNonZeroTimeout(
 	options?: Pick<JuliaExecutorOptions, "deadlineMs" | "timeoutMs">,
 ): number | undefined {
@@ -159,7 +156,6 @@ function formatKernelTimeoutAnnotation(timeoutMs: number | undefined, kernelKill
 }
 
 export function createCancelledJuliaResult(timedOut: boolean, timeoutMs?: number): JuliaResult {
-	// Honor the `timedOut` flag so a timed-out cell is labeled as a timeout, not a generic cancellation. Previously this argument was ignored and the annotation
 	const output = timedOut ? (formatTimeoutAnnotation(timeoutMs) ?? "[cell timed out]\n") : "[execution cancelled]\n";
 	return createCancelledKernelResult(output);
 }
@@ -296,8 +292,6 @@ async function replaceSessionKernel(session: JuliaSession, cwd: string, options:
 }
 
 async function resetSession(sessionKey: string): Promise<void> {
-	// A session still starting whose start FAILED has nothing to reset, and its failure is reported to whoever
-	// awaits the start; `undefined` here means exactly "there is no session", same as an absent key.
 	const session = sessions.get(sessionKey) ?? (await startingSessions.get(sessionKey)?.promise.catch(() => undefined));
 	if (!session) return;
 	sessions.delete(sessionKey);
@@ -425,7 +419,6 @@ async function ensureToolBridge(options: JuliaExecutorOptions): Promise<void> {
 	}
 }
 
-/** Run one cell on a kernel that exists only for it. Nothing carries over: no binding an earlier cell made, no package it brought into scope. Julia pays */
 async function executePerCall(code: string, cwd: string, options: JuliaExecutorOptions): Promise<JuliaResult> {
 	const kernel = await startKernel(cwd, options);
 	try {
@@ -449,9 +442,6 @@ async function executeOnSession(code: string, cwd: string, options: JuliaExecuto
 	}
 	if (options.reset) {
 		const inFlight = resettingSessions.get(sessionKey);
-		// Another caller owns this reset and is awaiting `resetPromise` itself, so its failure is reported
-		// there. Here the only thing that matters is that the reset has SETTLED before running on the
-		// context: if it failed, `acquireSession` below starts a fresh one and fails with its own reason.
 		if (inFlight) await inFlight.catch(() => undefined);
 		else {
 			const resetPromise = resetSession(sessionKey);
@@ -467,9 +457,6 @@ async function executeOnSession(code: string, cwd: string, options: JuliaExecuto
 		}
 	} else {
 		const inFlight = resettingSessions.get(sessionKey);
-		// Another caller owns this reset and is awaiting `resetPromise` itself, so its failure is reported
-		// there. Here the only thing that matters is that the reset has SETTLED before running on the
-		// context: if it failed, `acquireSession` below starts a fresh one and fails with its own reason.
 		if (inFlight) await inFlight.catch(() => undefined);
 	}
 	const session = await acquireSession(sessionKey, sessionId, cwd, options);
@@ -541,7 +528,6 @@ export async function executeJulia(code: string, options?: JuliaExecutorOptions)
 	}
 }
 
-/** Wire this subsystem into the session's owner-scoped cleanup. Registered at module scope rather than called by name from `agent-session.dispose()`, which is */
 registerOwnedResourceDisposer({
 	name: "julia-kernels",
 	scope: "eval-kernel-owner",

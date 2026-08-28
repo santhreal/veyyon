@@ -16,9 +16,6 @@ function messageHasToolCall(message: AssistantMessage): boolean {
 	return false;
 }
 type DisplayThinkingContentBlock = Extract<AssistantContentBlock, { type: "thinking" }> & { rawThinking?: string };
-/** The concrete streaming-reveal target is an {@link AssistantMessageComponent}; the
- *  Component intersection is what lets the reveal request component-scoped renders
- *  through {@link TUI.requestComponentRender} instead of forcing a full-tree walk. */
 type StreamingRevealComponent = Pick<AssistantMessageComponent, "updateContent"> & Component;
 type GraphemeSlicer = (index: number, text: string, units: number) => string;
 
@@ -26,7 +23,6 @@ type StreamingRevealControllerOptions = {
 	getSmoothStreaming(): boolean;
 	getHideThinkingBlock(): boolean;
 	getProseOnlyThinking(): boolean;
-	/** Called after each reveal tick with the component whose subtree changed; callers scope the render to that subtree (a full tree walk here at 30fps */
 	requestRender(component: Component): void;
 };
 
@@ -44,8 +40,6 @@ function countGraphemes(text: string): number {
 	return count;
 }
 
-/** Count graphemes of `text` from code-unit offset `start`, also reporting the
- *  start offset of the final grapheme (where an append could extend a cluster). */
 function countGraphemesFrom(text: string, start: number): { count: number; tailStart: number } {
 	let count = 0;
 	let tailStart = start;
@@ -55,7 +49,6 @@ function countGraphemesFrom(text: string, start: number): { count: number; tailS
 	}
 	return { count, tailStart };
 }
-/** Segment `text` from code-unit offset `start`, walking up to `clusters` graphemes. Returns the code-unit END of the final cluster walked, its START */
 function segmentFrom(text: string, start: number, clusters: number): { end: number; lastStart: number; count: number } {
 	let count = 0;
 	let lastStart = start;
@@ -69,9 +62,6 @@ function segmentFrom(text: string, start: number, clusters: number): { end: numb
 	return { end, lastStart, count };
 }
 
-/** Memoizes per-block grapheme counts across reveal ticks. Streaming blocks only
- *  grow by appending, and an append can only alter the final grapheme cluster of
- *  the previous text, so only the suffix from that cluster needs re-segmenting. */
 export class BlockUnitCounter {
 	#entries = new Map<number, { text: string; count: number; tailStart: number }>();
 	#sliceEntries = new Map<number, { text: string; units: number; end: number; lastStart: number }>();
@@ -96,7 +86,6 @@ export class BlockUnitCounter {
 		this.#entries.clear();
 		this.#sliceEntries.clear();
 	}
-	/** Slice `text` to its first `units` graphemes. Memoized across reveal ticks: streaming blocks grow only by appending and the reveal target advances */
 	slice(index: number, text: string, units: number): string {
 		if (units <= 0 || text.length === 0) return "";
 		const entry = this.#sliceEntries.get(index);
@@ -259,7 +248,6 @@ export class StreamingRevealController {
 		}
 		const total = this.#visibleUnits(message);
 		if (messageHasToolCall(message)) {
-			// A tool call is a transcript-order boundary: finish any leading
 			this.#revealed = total;
 			component.updateContent(this.#build(message, this.#revealed), {
 				transient: true,
@@ -283,8 +271,6 @@ export class StreamingRevealController {
 		}
 		const total = this.#visibleUnits(message);
 		if (messageHasToolCall(message)) {
-			// A tool call is a transcript-order boundary: finish any leading
-			// assistant text before EventController renders the separate tool card.
 			this.#revealed = total;
 			this.#stopTimer();
 			this.#component.updateContent(this.#build(message, this.#revealed), {
@@ -307,20 +293,16 @@ export class StreamingRevealController {
 		this.#unitCounter.reset();
 	}
 
-	/** Re-read cached visibility flags (hideThinkingBlock, proseOnlyThinking) and re-render the current target. Called when the thinking level changes */
 	resyncVisibility(): void {
 		if (!this.#target || !this.#component) return;
 		this.#hideThinkingBlock = this.#getHideThinkingBlock();
 		this.#proseOnlyThinking = this.#getProseOnlyThinking();
-		// Recalculate visible units — hiding thinking blocks may reduce the total,
-		// and the reveal position may now exceed it.
 		const total = this.#visibleUnits(this.#target);
 		this.#revealed = Math.min(this.#revealed, total);
 		this.#renderCurrent();
 		this.#syncTimer(total);
 	}
 
-	/** Total reveal units of `message`, memoized per block across ticks. */
 	#visibleUnits(message: AssistantMessage): number {
 		let total = 0;
 		for (let i = 0; i < message.content.length; i++) {
@@ -339,9 +321,6 @@ export class StreamingRevealController {
 
 	#renderCurrent(): void {
 		if (!this.#target || !this.#component) return;
-		// Every controller render is an in-flight streaming snapshot, even when
-		// smooth reveal has temporarily caught up to the current target. The
-		// message_end handler performs the only stable non-transient render.
 		this.#component.updateContent(this.#build(this.#target, this.#revealed), { transient: true });
 	}
 

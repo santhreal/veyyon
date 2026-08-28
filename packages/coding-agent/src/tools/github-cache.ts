@@ -1,5 +1,3 @@
-/** SQLite-backed cache for rendered `github` issue/PR view output, plus a generic cache-aware wrapper that the tool ops and the `issue://`/`pr://` */
-
 import { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -76,15 +74,11 @@ export function openDb(): Database | null {
 		const dbPath = getGithubCacheDbPath();
 		ensureParentDir(dbPath);
 		const db = new Database(dbPath);
-		// Install the busy handler BEFORE any lock-taking statement. See #2421.
 		db.run("PRAGMA busy_timeout = 5000");
 		db.run(`
 			PRAGMA journal_mode=WAL;
 			PRAGMA synchronous=NORMAL;
 		`);
-		// Migrate any pre-existing table whose key/check constraint predates
-		// the current schema. The cache is regenerable, so we drop rows rather
-		// than running an in-place ALTER dance.
 		const userVersion = (db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)
 			?.user_version;
 		if (userVersion !== undefined && userVersion < 3) {
@@ -108,7 +102,6 @@ export function openDb(): Database | null {
 		`);
 		protectDbFiles(dbPath);
 		cachedDb = db;
-		// No eviction on open: the default `DEFAULT_HARD_TTL_SEC` is a coarse backstop that runs before user settings load, so applying it here
 		return db;
 	} catch (err) {
 		logger.warn("github cache: failed to open DB; cache disabled", { err: String(err) });
@@ -125,7 +118,6 @@ function evictExpired(db: Database, hardTtlMs: number): void {
 	}
 }
 
-/** Throttle for the per-lookup configured-TTL sweep. We don't want every cached read to issue a DELETE; once per `SWEEP_INTERVAL_MS` is enough to */
 const SWEEP_INTERVAL_MS = 60_000;
 let lastSweepAt = 0;
 
@@ -150,7 +142,6 @@ function hashCacheIdentity(parts: string[]): string {
 	return Bun.hash(parts.map(part => `${part.length}:${part}`).join("|")).toString(36);
 }
 
-/** Memo for {@link resolveGithubCacheAuthKey}. Recomputed only when the token env vars or the hosts.yml path/mtime change, so the per-lookup cost on the */
 interface AuthKeyMemoEntry {
 	envSig: string;
 	hostsPath: string;
@@ -160,7 +151,6 @@ interface AuthKeyMemoEntry {
 const AUTH_KEY_TOKEN_ENV_VARS = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"];
 const authKeyMemo = new Map<string, AuthKeyMemoEntry>();
 
-/** Best-effort local fingerprint for the active GitHub CLI credentials. Cache hits must not cross account/token boundaries, but doing a `gh api user` */
 export function resolveGithubCacheAuthKey(host: string = process.env.GH_HOST || "github.com"): string | undefined {
 	const hostsPath = path.join(getGhConfigDir(), "hosts.yml");
 	let envSig = "";
@@ -282,7 +272,6 @@ export function putCached<T = unknown>(input: PutCachedInput<T>): void {
 	}
 }
 
-/** Drop a specific cache entry. */
 export function invalidate(
 	repo: string,
 	kind: CacheKind,
@@ -310,7 +299,6 @@ export function invalidate(
 	}
 }
 
-/** Drop every cached row for a given issue/PR number, regardless of repo, auth key, include_comments flag, or row kind ({@link CacheKind}). Best-effort: */
 export function invalidateAllForNumber(number: number, repo?: string): void {
 	const db = openDb();
 	if (!db) return;
@@ -325,7 +313,6 @@ export function invalidateAllForNumber(number: number, repo?: string): void {
 	}
 }
 
-/** Drop every cached row. Test helper. */
 export function clearAll(): void {
 	const db = openDb();
 	if (!db) return;
@@ -336,7 +323,6 @@ export function clearAll(): void {
 	}
 }
 
-/** Drop every cached row for a repo, or all rows when the repo is unknown. Fallback for current-branch `gh pr merge`/`gh pr close`-style mutations */
 export function invalidateAllForRepo(repo?: string): void {
 	const db = openDb();
 	if (!db) return;
@@ -351,14 +337,11 @@ export function invalidateAllForRepo(repo?: string): void {
 	}
 }
 
-/** Test/maintenance helper. Closes and forgets the cached connection so the next access reopens against (possibly) a different DB path. */
 export function resetForTests(): void {
 	if (cachedDb) {
 		try {
 			cachedDb.close();
-		} catch {
-			// Closing failures are non-fatal.
-		}
+		} catch {}
 	}
 	cachedDb = null;
 	openAttempted = false;
@@ -377,7 +360,6 @@ export interface CacheLookupOptions<T> {
 	kind: CacheKind;
 	number: number;
 	includeComments: boolean;
-	/** Auth/credential namespace for cache rows. Omit only in storage-layer tests; pass `null` when production code cannot determine an identity and */
 	authKey?: string | null;
 	fetchFresh: () => Promise<FreshResult<T>>;
 	settings?: Settings | undefined;
@@ -394,7 +376,6 @@ export interface CacheLookupResult<T> {
 	fetchedAt: number;
 }
 
-/** Read one cache setting. Both failure paths are reported. They used to be silent: an exception was */
 function readCacheSetting<T extends number | boolean>(
 	settings: Settings | undefined,
 	key: string,
@@ -478,7 +459,6 @@ function storeResult<T>(
 	});
 }
 
-/** In-flight background refreshes keyed by row identity. N concurrent stale reads of the same row must spawn one `gh` subprocess, not N identical ones. */
 const inflightRefreshes = new Set<string>();
 
 function scheduleBackgroundRefresh<T>(
@@ -521,9 +501,6 @@ export async function getOrFetchView<T>(options: CacheLookupOptions<T>): Promise
 		return { ...fresh, status: "disabled", fetchedAt: now };
 	}
 
-	// Enforce the *configured* hard TTL against on-disk rows. This is what
-	// makes `github.cache.hardTtlSec` a real retention cap rather than a soft
-	// suggestion the next `openDb()` call eventually honors.
 	sweepIfDue(ttl.hardMs);
 
 	const cached: CachedView<T> | null = getCached<T>(
@@ -537,9 +514,6 @@ export async function getOrFetchView<T>(options: CacheLookupOptions<T>): Promise
 	if (cached) {
 		const age = now - cached.fetchedAt;
 		if (age > ttl.hardMs) {
-			// Past hard TTL: drop the row eagerly so the on-disk exposure window
-			// is bounded even if `fetchFresh()` then fails (network down, gh
-			// auth lapse, etc.) and we never get to overwrite it.
 			invalidate(options.repo, options.kind, options.number, options.includeComments, authKey);
 		} else if (age <= ttl.softMs) {
 			return {
@@ -596,9 +570,6 @@ export async function getOrFetchView<T>(options: CacheLookupOptions<T>): Promise
 	return { ...fresh, status: "miss", fetchedAt };
 }
 
-/**
- * Human-friendly freshness note for protocol-handler `notes[]` rendering.
- */
 export function formatFreshnessNote(status: CacheStatus, fetchedAtMs: number, now: number = Date.now()): string {
 	if (status === "miss" || status === "refreshed") return "Fetched live";
 	if (status === "disabled") return "Cache disabled; fetched live";

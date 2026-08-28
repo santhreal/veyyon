@@ -1,13 +1,9 @@
-/**
- * JSON tree rendering utilities shared across tool renderers.
- */
 import { formatMoreLines, isRecord } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import type { Theme } from "../modes/theme/theme";
 import { buildTreePrefix } from "../tui/utils";
 import { truncateToWidth } from "./render-utils";
 
-/** Max depth for JSON tree rendering */
 export const JSON_TREE_MAX_DEPTH_COLLAPSED = 2;
 export const JSON_TREE_MAX_DEPTH_EXPANDED = 6;
 export const JSON_TREE_MAX_LINES_COLLAPSED = 6;
@@ -21,12 +17,8 @@ const ARGS_INLINE_PAIR_SEP = ", ";
 const ARGS_INLINE_PAIR_SEP_WIDTH = Bun.stringWidth(ARGS_INLINE_PAIR_SEP);
 const ARGS_INLINE_MORE = "…";
 const ARGS_INLINE_MORE_WIDTH = Bun.stringWidth(ARGS_INLINE_MORE);
-/** Minimal value footprint (quotes + a couple chars) reserved for each not-yet-rendered key. */
 const ARGS_INLINE_TAIL_VALUE_RESERVE = 4;
 
-/**
- * Format a scalar value for inline display.
- */
 export function formatScalar(value: unknown, maxLen: number): string {
 	if (value === null) return "null";
 	if (value === undefined) return "undefined";
@@ -45,9 +37,6 @@ export function formatScalar(value: unknown, maxLen: number): string {
 	return String(value);
 }
 
-/**
- * Format args inline for collapsed view.
- */
 export function formatArgsInline(args: Record<string, unknown>, maxWidth: number): string {
 	const keys: string[] = [];
 	for (const key in args) {
@@ -66,15 +55,10 @@ export function formatArgsInline(args: Record<string, unknown>, maxWidth: number
 		if (cap <= 0) {
 			return `${result}${ARGS_INLINE_MORE}`;
 		}
-		// Reserve each still-pending key's minimal footprint (sep + name + `=` +
-		// a short value) so a long value can't starve the keys that follow it.
 		let tailReserve = 0;
 		for (let j = i + 1; j < keys.length; j++) {
 			tailReserve += ARGS_INLINE_PAIR_SEP_WIDTH + Bun.stringWidth(keys[j]) + 1 + ARGS_INLINE_TAIL_VALUE_RESERVE;
 		}
-		// Budget the whole `key=value` piece against the width left after the
-		// tail reserve, then back out the value's share. The last key reserves
-		// nothing and fills the line.
 		const pieceBudget = Math.min(cap, maxWidth - current - tailReserve);
 		const valueMaxLen = Math.max(1, pieceBudget - Bun.stringWidth(key) - 3);
 		const valueStr = formatScalar(value, valueMaxLen);
@@ -89,9 +73,6 @@ export function formatArgsInline(args: Record<string, unknown>, maxWidth: number
 	return result;
 }
 
-/**
- * Render a JSON value as tree lines.
- */
 export function renderJsonTreeLines(
 	value: unknown,
 	theme: Theme,
@@ -126,21 +107,17 @@ export function renderJsonTreeLines(
 
 		ancestors.push(!isLast);
 		try {
-			// Handle scalars
 			if (val === null || val === undefined || typeof val !== "object") {
 				const label = key ? theme.fg("muted", key) : theme.fg("muted", "value");
 
-				// Special handling for multiline strings
 				if (typeof val === "string" && val.includes("\n")) {
 					const strLines = val.split("\n");
 					const maxStrLines = Math.min(strLines.length, Math.max(1, maxLines - lines.length - 1));
 					const continuePrefix = buildTreePrefix(ancestors, theme);
 
-					// First line with label
 					const firstLine = truncateToWidth(strLines[0], maxScalarLen);
 					pushLine(`${prefix}${iconScalar} ${label}: ${theme.fg("dim", `"${firstLine}`)}`);
 
-					// Subsequent lines indented
 					for (let i = 1; i < maxStrLines; i++) {
 						if (lines.length >= maxLines) {
 							truncated = true;
@@ -150,14 +127,12 @@ export function renderJsonTreeLines(
 						pushLine(`${continuePrefix}   ${theme.fg("dim", ` ${line}`)}`);
 					}
 
-					// Show truncation and closing quote
 					if (strLines.length > maxStrLines) {
 						truncated = true;
 						pushLine(
 							`${continuePrefix}   ${theme.fg("dim", ` …(${formatMoreLines(strLines.length - maxStrLines)})"`)}`,
 						);
 					} else {
-						// Add closing quote to last line - need to modify the last pushed line
 						const lastIdx = lines.length - 1;
 						lines[lastIdx] = `${lines[lastIdx]}${theme.fg("dim", '"')}`;
 					}
@@ -169,7 +144,6 @@ export function renderJsonTreeLines(
 				return;
 			}
 
-			// Handle arrays
 			if (Array.isArray(val)) {
 				const header = key ? theme.fg("muted", key) : theme.fg("muted", "array");
 				pushLine(`${prefix}${iconArray} ${header}`);
@@ -195,7 +169,6 @@ export function renderJsonTreeLines(
 				return;
 			}
 
-			// Handle objects
 			if (!isRecord(val)) return;
 
 			const header = key ? theme.fg("muted", key) : theme.fg("muted", "object");
@@ -225,7 +198,6 @@ export function renderJsonTreeLines(
 		}
 	};
 
-	// Render root level
 	if (isRecord(value)) {
 		for (const key in value) {
 			if (key in HIDDEN_ARG_KEYS) continue;

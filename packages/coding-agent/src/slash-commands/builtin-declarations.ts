@@ -1,20 +1,15 @@
-/** Every builtin slash command's NAME, description and argument shape, with no handler in sight. the metadata AND the handler body, and a handler body reaches the whole application. Two modules */
-
 import { PRIORITY_TIER_LABEL } from "../config/service-tier";
 import { COMPACT_MODES } from "../session/compact-modes";
 
-/** One command's declared surface. The handler side is `SlashCommandSpec` in the registry. */
 export interface BuiltinSlashCommandDeclaration {
 	readonly name: string;
 	readonly description: string;
-	/** Whether this command can be driven from TEXT mode, meaning ACP and RPC clients and not only the TUI. It is declared rather than discovered, and the registry's handler table is typed against it: */
 	readonly textMode?: true;
 	readonly aliases?: readonly string[];
 	readonly allowArgs?: boolean;
 	readonly inlineHint?: string;
 	readonly acpDescription?: string;
 	readonly acpInputHint?: string;
-	/** What a BARE `/cmd` does when the command also declares `subcommands`. `"picker"` (the default) opens a modal list of the subcommands. `"distinct"` runs the command's */
 	readonly bareAction?: "picker" | "distinct";
 	readonly subcommands?: ReadonlyArray<{
 		readonly name: string;
@@ -36,9 +31,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 
 	{
 		name: "welcome",
-		// `help` must resolve to SOMETHING: it's the first command a new user
-		// types, and the welcome screen is the orientation hub (actions, recent
-		// sessions, tips). Without it the palette fuzzy-matched random skills.
 		aliases: ["help"],
 		description: "Show the full welcome screen (actions, recent sessions)",
 	},
@@ -52,13 +44,10 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		name: "setup",
 		description: "Open provider setup",
 		allowArgs: true,
-		// Bare /setup opens provider setup, which is what `providers` does. It is the only
-		// subcommand, so the list hides nothing. Adding a second one makes this a picker.
 		bareAction: "distinct",
 		subcommands: [{ name: "providers", description: "Configure sign-in and web search providers" }],
 	},
 
-	// `/providers` is its own command, NOT an alias of `/setup`. It used to be one, so typing it opened the onboarding wizard's provider scene: one row per provider with a bare "logged in"
 	{
 		name: "providers",
 		description: "Manage accounts for every provider",
@@ -110,8 +99,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	{
 		name: "goal",
 		description: "Toggle goal mode (persistent autonomous objective for this session)",
-		// Bare /goal enters goal mode (asks for an objective) or opens the goal menu when one is
-		// running. Neither is any of the subcommands below.
 		bareAction: "distinct",
 		subcommands: [
 			{ name: "set", description: "Set or replace the goal", usage: "<objective>" },
@@ -166,8 +153,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		aliases: ["thinking"],
 		description: "Set the effort for this session (saved defaults live in /settings)",
 		acpDescription: "Set thinking effort",
-		// Static fallback only: the advertised hint is derived per session from
-		// the active model's accepted levels (available-commands.ts).
 		acpInputHint: "[level]",
 		allowArgs: true,
 	},
@@ -178,7 +163,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "Toggle priority service tier (OpenAI service_tier=priority, Anthropic speed=fast)",
 		acpDescription: "Toggle fast mode",
 		acpInputHint: "[on|off|status]",
-		// Bare /fast flips the tier. A menu in front of a switch costs a keystroke on the common act.
 		bareAction: "distinct",
 		subcommands: [
 			{ name: "on", description: `Enable the ${PRIORITY_TIER_LABEL} tier` },
@@ -197,8 +181,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		acpDescription: "Set the tool approval mode for this session",
 		acpInputHint: "[status|ask|ask-command|auto|yolo|plan|reset]",
 		subcommands: [
-			// The handler always accepted `status`, and the bare form was it. Now that bare opens the
-			// picker, the verb has to be declared or the enforced-rung report becomes unreachable.
 			{ name: "status", description: "Show the approval rung this session enforces, and where it came from" },
 			{ name: "ask", description: "Ask about everything, reads included" },
 			{ name: "ask-command", description: "Reads and edits run; anything that executes asks" },
@@ -217,7 +199,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 			"Remove this session's permission prompts (a blatantly destructive command, an explicit deny, and plan mode still block)",
 		acpDescription: "Toggle full permission bypass",
 		acpInputHint: "[on|off|status]",
-		// Bare /yolo flips the bypass, behind a danger confirmation in the TUI.
 		bareAction: "distinct",
 		subcommands: [
 			{ name: "on", description: "Turn full bypass on (needs confirmation in the TUI)" },
@@ -280,12 +261,8 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "Store a credential the agent can use without ever seeing it",
 		acpDescription: "Manage credentials; new values are accepted only from environment variables",
 		allowArgs: true,
-		// A command comes first, and `add` leads because it is the one an operator arrives to run. The
-		// rest of the grammar is in the dropdown rather than the ghost text: one line cannot carry
-		// twelve commands.
 		inlineHint: "add <value> | from-env VAR | list | rm | rename | value | extend | log",
 		acpInputHint: "from-env <VAR> <name>",
-		// Bare /secret prints this command's own usage rather than the generic subcommand list, which is the same text `/secret help` prints and is not a hidden default: it runs no subcommand and
 		bareAction: "distinct",
 		subcommands: [
 			{
@@ -353,8 +330,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "Share this session live via a relay",
 		inlineHint: "[start|view|stop|status] [relayUrl]",
 		subcommands: [
-			// `start` is declared because bare /collab does it. Leaving it out did not make the
-			// bare form innocent, it made the declaration untrue.
 			{ name: "start", description: "Start sharing this session", usage: "[relayUrl]" },
 			{ name: "view", description: "Share a read-only link (guests can watch, not prompt)" },
 			{ name: "status", description: "Show link + participants" },
@@ -380,7 +355,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		textMode: true,
 		description: "Toggle browser headless vs visible mode",
 		acpInputHint: "[headless|visible]",
-		// Bare /browser flips headless vs visible.
 		bareAction: "distinct",
 		subcommands: [
 			{ name: "headless", description: "Switch to headless mode" },
@@ -401,8 +375,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "View or modify the agent's todo list",
 		acpDescription: "Manage todos",
 		acpInputHint: "<subcommand>",
-		// Bare /todo renders the current list. Every subcommand below mutates or exports it, so
-		// none of them is what bare does.
 		bareAction: "distinct",
 		subcommands: [
 			{ name: "edit", description: "Open todos in $EDITOR (Markdown round-trip)" },
@@ -488,13 +460,11 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	},
 
 	{
-		// `/cockpit` and `/hub` are ALIASES, not commands of their own. They opened a separate "Agent Hub" overlay that rendered the same registry a second way,
 		name: "agents",
 		aliases: ["cockpit", "hub"],
 		description: "Agent Control Center: live agent roster and comms stream",
 	},
 	{
-		// The SAME card `/agents` opens, at the widest scope, not a fifth roster. It is a separate command rather than an argument because it answers a
 		name: "process-manager",
 		description: "Agent Control Center across every conversation this process is running",
 	},
@@ -514,7 +484,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "Navigate session tree (switch branches)",
 	},
 
-	// `/login` is a permanent alias of `/account login`: both spellings reach ONE handler, so the paste path (`/login <redirect URL>`) and the provider path behave identically whichever is
 	{
 		name: "login",
 		description: "Log in and add an account for a provider (alias of /account login)",
@@ -589,8 +558,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		textMode: true,
 		description: "Open the usage dashboard in a browser",
 		acpDescription: "Open the usage statistics dashboard",
-		// The port is the only thing this command reads, so it is a plain integer
-		// rather than a keyword and a value.
 		inlineHint: "[<port>]",
 		allowArgs: true,
 	},
@@ -616,8 +583,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		textMode: true,
 		description: "Summarize session context in place",
 		acpDescription: "Summarize the conversation in place",
-		// Bare /compact compacts. COMPACT_MODES holds exactly one mode, and it is the bare
-		// behavior, so the list hides nothing. A second mode makes this a picker.
 		bareAction: "distinct",
 		subcommands: COMPACT_MODES.map(mode => ({
 			name: mode.name,
@@ -642,7 +607,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	},
 
 	{
-		// TEXT MODE, because the operation needs no terminal. `AgentSession.handoff` generates the document with a oneshot request and swaps the session manager onto a new transcript, and
 		name: "handoff",
 		textMode: true,
 		description: "Hand off session context to a new session",
@@ -763,7 +727,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "View installed npm/link plugins",
 		acpDescription: "Manage plugins",
 		acpInputHint: "[list]",
-		// Bare /plugins lists plugins, which is what `list` does. It is the only subcommand.
 		bareAction: "distinct",
 		subcommands: [{ name: "list", description: "List installed npm/link plugins" }],
 		allowArgs: true,
@@ -782,8 +745,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "Decide whether the code this project carries may run (plugins, extensions, hooks, MCP)",
 		acpDescription: "Decide whether project code may run",
 		acpInputHint: "[approve|deny|forget]",
-		// Bare /trust reports; it never approves. A decision that runs project code is not something
-		// a bare command should do on a keystroke.
 		subcommands: [
 			{ name: "approve", description: "Approve the project files exactly as they are now" },
 			{ name: "deny", description: "Refuse this project, and remember the refusal" },
@@ -808,9 +769,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		acpDescription: "Inspect and configure the advisor",
 		acpInputHint: "[status|configure|on|off|dump]",
 		allowArgs: true,
-		// Bare /advisor opens the picker. `status` is a declared subcommand, so a bare form
-		// that reported status would hide `configure` behind knowledge nobody is given: the
-		// roster editor has no other entry point.
 		subcommands: [
 			{ name: "status", description: "Show whether the advisor is running, on what model, and what it has spent" },
 			{ name: "configure", description: "Edit the WATCHDOG.yml advisor roster and apply it to this session" },
@@ -831,10 +789,8 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	},
 ] as const satisfies readonly BuiltinSlashCommandDeclaration[];
 
-/** The name of every builtin command, as a union, so a handler table cannot miss one or invent one. */
 export type BuiltinSlashCommandName = (typeof BUILTIN_SLASH_COMMAND_DECLARATIONS)[number]["name"];
 
-/** Every name a builtin answers to, aliases included. Used by the extension loader to refuse a command that would shadow a builtin. It is derived from */
 export const BUILTIN_SLASH_COMMAND_RESERVED_NAMES: ReadonlySet<string> = new Set(
 	BUILTIN_SLASH_COMMAND_DECLARATIONS.flatMap((command: BuiltinSlashCommandDeclaration) => [
 		command.name,

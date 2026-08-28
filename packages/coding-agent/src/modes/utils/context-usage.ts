@@ -1,5 +1,3 @@
-/** The `/context` panel: a 20x10 grid of the context window paired with a legend. The numbers come from `session/context-usage.ts`, which is where they belong, */
-
 import { formatBytes, formatNumber } from "@veyyon/utils/format";
 import type { CategoryId, ContextBreakdown } from "../../session/context-usage";
 import type { theme as Theme } from "../theme/theme";
@@ -16,7 +14,6 @@ const CELL_BUFFER = "⛝";
 
 type CellColor = "accent" | "warning" | "success" | "userMessageText" | "customMessageLabel" | "muted" | "dim";
 
-/** How each category is drawn. Keyed on the category id rather than carried on the breakdown, so the accounting module stays free of palette names: a category is a */
 const CATEGORY_STYLE: Record<CategoryId, { color: CellColor; glyph: string }> = {
 	systemPrompt: { color: "accent", glyph: CELL_FILLED },
 	systemTools: { color: "warning", glyph: CELL_FILLED },
@@ -60,12 +57,9 @@ function planCells(breakdown: ContextBreakdown): CellSpec[] {
 	let usedCount = 0;
 	for (let i = 0; i < categoryCounts.length; i++) usedCount += categoryCounts[i]!.count;
 
-	// Prevent the visualization from over-running the grid.
 	const maxUsable = GRID_CELLS - bufferCount;
 	if (usedCount > maxUsable) {
-		// Scale categories proportionally down to fit.
 		let overflow = usedCount - maxUsable;
-		// Trim from the largest categories first to preserve visibility for small ones.
 		const order = categoryCounts.slice().sort((a, b) => b.count - a.count);
 		for (let oi = 0; oi < order.length; oi++) {
 			const entry = order[oi]!;
@@ -97,7 +91,6 @@ function planCells(breakdown: ContextBreakdown): CellSpec[] {
 		cells.push({ glyph: CELL_BUFFER, color: "warning" });
 	}
 
-	// Pad to exactly GRID_CELLS in case rounding undershot.
 	while (cells.length < GRID_CELLS) {
 		cells.push({ glyph: CELL_FREE, color: "dim" });
 	}
@@ -142,9 +135,6 @@ function buildLegendLines(breakdown: ContextBreakdown, theme: typeof Theme): str
 		`${freeDot} Free space: ${theme.bold(formatNumber(freeTokens))} ${theme.fg("dim", `(${percentString(freeTokens, contextWindow)})`)}`,
 	);
 
-	// Bytes kept out of the request, which the grid above cannot show because they
-	// are not in the context. Rendered only when a mechanism actually elided
-	// something, so a session with both turned off reads exactly as it did before.
 	const { wirePaths, thoughtSignatures } = elidedBytes;
 	if (wirePaths > 0 || thoughtSignatures > 0) {
 		const parts: string[] = [];
@@ -166,7 +156,6 @@ function buildLegendLines(breakdown: ContextBreakdown, theme: typeof Theme): str
 	return lines;
 }
 
-/** Render a colorful context-usage panel as ANSI text. Output is a series of lines pairing the grid (left) with the legend (right). */
 export function renderContextUsage(breakdown: ContextBreakdown, theme: typeof Theme): string {
 	if (breakdown.contextWindow <= 0) {
 		return theme.fg("muted", "Context usage is unavailable: no model is selected for this session.");
@@ -188,8 +177,6 @@ export function renderContextUsage(breakdown: ContextBreakdown, theme: typeof Th
 			}
 			gridSegment = rowCells.join(" ");
 		} else {
-			// Pad with blanks the same visible width as a grid row so legend lines
-			// past the grid stay aligned with their column.
 			const blank = " ".repeat(GRID_COLS * 2 - 1);
 			gridSegment = blank;
 		}

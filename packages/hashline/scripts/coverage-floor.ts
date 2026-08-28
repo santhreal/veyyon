@@ -1,20 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Boundary coverage floor (TS-SUITE-9). Runs ONLY the black-box suites
- * (conformance corpus + generative properties) with coverage and enforces
- * per-file floors on the port-candidate sources. This measures what a port
- * must satisfy — how much of the module the language-neutral vectors drive
- * through its PUBLIC boundary — not how many internal branches white-box
- * unit tests can reach; the internal coverage loop continues separately.
- *
- * Floors (raise deliberately as the corpus grows, never lower):
- * - normalize.ts: 100/100 — the corpus fully drives all four functions.
- * - tokenizer.ts: 23 funcs / 25 lines — only splitHashlineLines + parseLid
- *   are contracted so far; the rest of the tokenizer joins the manifest,
- *   corpus, and this floor together when its contract is written.
- *
- * Usage: bun scripts/coverage-floor.ts   (exit 1 below floor)
- */
 const FLOORS: Record<string, { funcs: number; lines: number }> = {
 	"src/normalize.ts": { funcs: 100, lines: 100 },
 	"src/tokenizer.ts": { funcs: 23, lines: 25 },

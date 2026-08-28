@@ -29,7 +29,6 @@ interface SOAnswer {
 	creation_date: number;
 }
 
-// Standalone SE network sites (not *.stackexchange.com subdomains)
 const STANDALONE_SE_SITES: Record<string, string> = {
 	"stackoverflow.com": "stackoverflow",
 	"superuser.com": "superuser",
@@ -39,17 +38,13 @@ const STANDALONE_SE_SITES: Record<string, string> = {
 	"stackapps.com": "stackapps",
 };
 
-/** Extract the API site parameter from a Stack Exchange hostname Returns null if not a recognized SE site */
 function getSiteParam(hostname: string): string | null {
-	// Remove www. prefix if present
 	const host = hostname.replace(/^www\./, "");
 
-	// Check standalone sites first
 	if (STANDALONE_SE_SITES[host]) {
 		return STANDALONE_SE_SITES[host];
 	}
 
-	// Handle *.stackexchange.com subdomains (e.g., unix.stackexchange.com → unix)
 	const seMatch = host.match(/^([a-z0-9-]+)\.stackexchange\.com$/);
 	if (seMatch) {
 		return seMatch[1];
@@ -58,7 +53,6 @@ function getSiteParam(hostname: string): string | null {
 	return null;
 }
 
-/** Handle Stack Exchange network URLs via API Supports stackoverflow.com, *.stackexchange.com, superuser.com, serverfault.com, askubuntu.com, etc. */
 export const handleStackOverflow: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -70,14 +64,12 @@ export const handleStackOverflow: SpecialHandler = async (
 		const site = getSiteParam(parsed.hostname);
 		if (!site) return null;
 
-		// Extract question ID from URL patterns like /questions/12345/...
 		const match = parsed.pathname.match(/\/questions\/(\d+)/);
 		if (!match) return null;
 
 		const questionId = match[1];
 		const fetchedAt = new Date().toISOString();
 
-		// Fetch question with answers
 		const apiUrl = `https://api.stackexchange.com/2.3/questions/${questionId}?order=desc&sort=votes&site=${site}&filter=withbody`;
 		const qResult = await loadPage(apiUrl, { timeout, signal });
 
@@ -95,7 +87,6 @@ export const handleStackOverflow: SpecialHandler = async (
 		md += `**Asked by:** ${question.owner.display_name} · ${formatIsoDate(question.creation_date * 1000)}\n\n`;
 		md += `---\n\n## Question\n\n${await htmlToBasicMarkdown(question.body)}\n\n`;
 
-		// Fetch answers
 		const aUrl = `https://api.stackexchange.com/2.3/questions/${questionId}/answers?order=desc&sort=votes&site=${site}&filter=withbody`;
 		const aResult = await loadPage(aUrl, { timeout, signal });
 

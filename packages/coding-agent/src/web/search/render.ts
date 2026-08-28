@@ -1,5 +1,3 @@
-/** Web Search TUI Rendering Tree-based rendering with collapsed/expanded states for web search results. */
-
 import type { Component } from "@veyyon/tui";
 import { Markdown, Text } from "@veyyon/tui";
 import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
@@ -60,7 +58,6 @@ export interface SearchRenderDetails {
 	error?: string;
 }
 
-/** Render a web search failure as a framed error panel, matching the success layout. */
 function renderSearchErrorPanel(message: string, providerLabel: string | undefined, theme: Theme): Component {
 	const header = renderStatusLine({ icon: "error", title: "Web Search", description: providerLabel }, theme);
 	const body = theme.fg("error", `Error: ${replaceTabs(message)}`);
@@ -72,7 +69,6 @@ function renderSearchErrorPanel(message: string, providerLabel: string | undefin
 	}));
 }
 
-/** Render web search result with tree-based layout */
 export function renderSearchResult(
 	result: { content: Array<{ type: string; text?: string }>; details?: SearchRenderDetails },
 	options: RenderResultOptions,
@@ -84,7 +80,6 @@ export function renderSearchResult(
 ): Component {
 	const details = result.details;
 
-	// Handle error case as a framed panel, matching the success layout.
 	if (details?.error) {
 		const errorProvider = details.response?.provider;
 		const errorProviderLabel =
@@ -105,7 +100,6 @@ export function renderSearchResult(
 		: [];
 	const provider = response.provider;
 
-	// Get answer text
 	const answerText = typeof response.answer === "string" ? response.answer.trim() : "";
 	const contentText = answerText || rawText;
 
@@ -151,18 +145,14 @@ export function renderSearchResult(
 	const answerMarkdown = contentText ? new Markdown(contentText, 0, 0, getMarkdownTheme()) : undefined;
 
 	return framedBlock(theme, width => {
-		// Read mutable state at render time
 		const { expanded } = options;
 
-		// Answer lines: full markdown when expanded, capped markdown preview when collapsed.
 		const contentWidth = outputBlockContentWidth(width);
 		const renderedAnswer = answerMarkdown ? answerMarkdown.render(contentWidth) : [];
 		let answerLines: readonly string[];
 		if (renderedAnswer.length === 0) {
 			answerLines = [theme.fg("muted", "No answer text returned")];
 		} else if (args?.maxAnswerLines !== undefined && !expanded) {
-			// CLI compact mode (`veyyon q`) caps the answer; the TUI passes no cap and shows it in full.
-			// `renderedAnswer` is the Markdown component's shared cache — slice copies before appending.
 			const capped = renderedAnswer.slice(0, args.maxAnswerLines);
 			const remaining = renderedAnswer.length - capped.length;
 			if (remaining > 0) {
@@ -227,7 +217,6 @@ export function renderSearchResult(
 	});
 }
 
-/** Render web search call (query preview) */
 export function renderSearchCall(
 	args: { query?: string; [key: string]: unknown },
 	_options: RenderResultOptions,

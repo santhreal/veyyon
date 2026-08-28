@@ -1,10 +1,3 @@
-/**
- * Shared OAuth flow for Google-style providers (Gemini CLI, Antigravity).
- *
- * Both providers use the same authorization-code flow shape; only the client
- * credentials, scopes, endpoint constants, and project-discovery logic differ.
- */
-
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import * as AIError from "../../error";
@@ -13,17 +6,6 @@ import { OAuthCallbackFlow } from "./callback-server";
 import { credentialExpiryFromExpiresIn } from "./expiry";
 import type { OAuthController, OAuthCredentials } from "./types";
 
-/**
- * Google Code Assist tier ids, as the API spells them.
- *
- * ONE vocabulary for the two providers that speak this API. `legacy-tier` was
- * declared in BOTH `google-gemini-cli.ts` and `google-antigravity.ts`, and it is the
- * value each falls back to when the response names no tier, so a drift would have
- * put two providers on two different default tiers while both files read correctly
- * on their own. The other two ids live here with it rather than being left behind:
- * they are the same vocabulary, and splitting a vocabulary across modules is how the
- * duplicate appeared in the first place.
- */
 export const TIER_FREE = "free-tier";
 export const TIER_LEGACY = "legacy-tier";
 export const TIER_STANDARD = "standard-tier";
@@ -33,7 +15,6 @@ export interface GoogleOAuthFlowConfig {
 	clientSecret: string;
 	authUrl: string;
 	tokenUrl: string;
-	/** Read only to build the `scope` parameter, so a shared, frozen scope list is accepted as-is. */
 	scopes: readonly string[];
 	callbackPort: number;
 	callbackPath: string;
@@ -54,10 +35,6 @@ async function getUserEmail(accessToken: string): Promise<string | undefined> {
 			status: response.status,
 		});
 	} catch (error) {
-		// The login still succeeds without an email, which is why this is not
-		// fatal. But the email is how the account picker names this credential, so
-		// discarding the reason leaves an operator with two unlabelled Google
-		// accounts and no way to learn why either one lost its name.
 		logger.warn("Google account email lookup failed; the credential will be stored without an account label", {
 			error: errorMessage(error),
 		});

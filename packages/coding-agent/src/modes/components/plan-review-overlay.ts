@@ -1,4 +1,3 @@
-/** Fullscreen plan-review overlay. The overlay owns its entire content: the plan is split into sections (preamble + one per heading), each rendered through its */
 import {
 	type Component,
 	clampLow,
@@ -35,17 +34,12 @@ import { joinPlanSections, parsePlanSections, sectionDeletionSpan } from "./plan
 import { renderSliderLines } from "./segment-track";
 import { selectionBand } from "./selector-helpers";
 
-/** Title shown in the ModalShell chrome. */
 const OVERLAY_TITLE = "Plan Review";
-/** Minimum plan-body rows kept visible even on short terminals. */
 const MIN_BODY_ROWS = 3;
-/** Sidebar gates: enough headings, a wide content column, and a usable body column. */
 const SIDEBAR_MIN_HEADINGS = 2;
 const SIDEBAR_MIN_TOTAL_WIDTH = 64;
 const SIDEBAR_MIN_BODY_WIDTH = 40;
-/** Columns spent on the sidebar/body divider: one space, the glyph, one space. */
 const SIDEBAR_DIVIDER_COLS = 3;
-/** Rows ModalShell reserves outside the body budget. Asked of the shell rather than restated: the hand-rolled `3 + footerLines + vPad` this replaced went */
 const CHROME_ROWS = minModalChromeRows(MODAL_SIZING_LARGE);
 
 type Focus = "toc" | "body" | "actions";
@@ -58,8 +52,6 @@ interface OverlaySection {
 	annotations: string[];
 }
 
-/** Undo snapshot: joined plan text, annotations aligned by section, and the
- *  accumulated deleted-section feedback at the time of the snapshot. */
 interface UndoEntry {
 	text: string;
 	annotations: string[][];
@@ -67,41 +59,26 @@ interface UndoEntry {
 }
 
 export interface PlanReviewOverlayCallbacks {
-	/** Invoked with the chosen option label (never a disabled one). */
 	onPick: (label: string) => void;
-	/** Invoked on Esc / cancel. */
 	onCancel: () => void;
-	/** Invoked with the current full plan text when the copy hotkey is pressed. */
 	onCopyPlan?: (content: string) => void | Promise<void>;
-	/** Invoked when the external-editor key is pressed (overlay stays open). */
 	onExternalEditor?: () => void;
-	/** Invoked when the external-editor key edits the active annotation draft. */
 	onAnnotationExternalEditor?: (draft: string, commit: (text: string | null) => void) => void;
-	/** Invoked with the new full plan text after an in-overlay delete/undo. */
 	onPlanEdited?: (content: string) => void;
-	/** Invoked with the Refine feedback markdown whenever annotations change. */
 	onFeedbackChange?: (feedback: string) => void;
 }
 
 export interface PlanReviewOverlayOptions {
-	/** Prompt rendered above the options (e.g. "Plan mode - next step"). */
 	promptTitle?: string;
 	options: string[];
-	/** Indices into `options` that render dimmed and cannot be selected. */
 	disabledIndices?: number[];
-	/** Trailing footer hint (cancel hint); the overlay prepends dynamic help. */
 	helpText?: string;
-	/** Initially highlighted option index. */
 	initialIndex?: number;
-	/** Optional model-tier slider rendered between the plan body and options. */
 	slider?: HookSelectorSlider;
-	/** Display label for the external-editor key, surfaced in the footer help. */
 	externalEditorLabel?: string;
-	/** Repaint hook for the unfold ticks (the overlay is otherwise static). */
 	requestRender?: () => void;
 }
 
-/** Default trailing footer hint when the caller supplies none. */
 const DEFAULT_HELP_SUFFIX = "esc cancel";
 
 export class PlanReviewOverlay implements Component {
@@ -110,11 +87,9 @@ export class PlanReviewOverlay implements Component {
 
 	#sections: OverlaySection[] = [];
 	#toc: number[] = [];
-	/** Shallowest level among ToC entries, used to flatten indentation. */
 	#tocBaseLevel = 1;
 	#sectionOffsets: number[] = [];
 	#undo: UndoEntry[] = [];
-	/** Titles of sections deleted in the overlay, surfaced as Refine feedback. */
 	#deleted: string[] = [];
 
 	#options: string[];
@@ -131,19 +106,13 @@ export class PlanReviewOverlay implements Component {
 	#sidebarShown = false;
 	#pendingScrollToToc = false;
 
-	// Click hit-testing, rebuilt every render. Keys are 0-based rendered-line
-	// indices (== screen rows, since the fullscreen overlay paints from row 0).
 	#optionClickRows = new Map<number, number>();
 	#tocClickRows = new Map<number, number>();
 	#bodyClickRows = new Set<number>();
-	/** Exclusive absolute-screen-column bound below which a region-row click targets the sidebar. */
 	#sidebarClickMaxCol = 0;
-	/** Option index the pointer is currently hovering, or undefined. Updated from
-	 *  motion mouse reports and cleared when the pointer leaves the option rows. */
 	#hoveredOption: number | undefined;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
-	/** Screen row where the composed body content starts, from the last render's ModalShell geometry. */
 	#bodyRowOffset = 0;
 
 	#annotating = false;
@@ -186,14 +155,10 @@ export class PlanReviewOverlay implements Component {
 		for (let si = 0; si < this.#sections.length; si++) this.#sections[si]!.md.invalidate();
 	}
 
-	/** Swap the displayed plan (e.g. after an external-editor round-trip) and
-	 *  reset scroll/focus so the operator starts at the top. Does not emit
-	 *  `onPlanEdited` (the editor round-trip already persisted the file). */
 	setPlanContent(planContent: string): void {
 		this.#setSections(planContent);
 		this.#scrollView.scrollToTop();
 		this.#tocCursor = 0;
-		// A wholesale external-editor swap supersedes prior in-overlay deletions.
 		this.#deleted = [];
 		this.#undo = [];
 		this.#recomputeFeedback();
@@ -216,7 +181,6 @@ export class PlanReviewOverlay implements Component {
 		for (let i = 0; i < this.#sections.length; i++) {
 			if (this.#sections[i]!.level >= 1) headings.push(i);
 		}
-		// Drop the plan's title from the ToC: a single shallowest heading at the top of the document is the plan name itself ("we know it's the plan"),
 		let minLevel = Number.POSITIVE_INFINITY;
 		for (let hi = 0; hi < headings.length; hi++) {
 			const level = this.#sections[headings[hi]!]!.level;
@@ -240,8 +204,6 @@ export class PlanReviewOverlay implements Component {
 		this.#tocBaseLevel = toc.length > 0 ? tocBaseLevel : 1;
 	}
 
-	/** Clamp `index` to range, then walk to the nearest enabled option so the
-	 *  cursor never rests on a disabled row. */
 	#coerceIndex(index: number): number {
 		const max = this.#options.length - 1;
 		if (max < 0) return -1;
@@ -252,14 +214,11 @@ export class PlanReviewOverlay implements Component {
 		return clamped;
 	}
 
-	/** First enabled option index (or -1 when none), used to detect the "top". */
 	#firstEnabledIndex(): number {
 		for (let i = 0; i < this.#options.length; i++) if (!this.#disabled.has(i)) return i;
 		return -1;
 	}
 
-	/** Move the option cursor by `delta`, skipping disabled rows, stopping at the
-	 *  list edge. */
 	#moveSelection(delta: number): void {
 		const max = this.#options.length - 1;
 		if (max < 0) return;
@@ -275,7 +234,6 @@ export class PlanReviewOverlay implements Component {
 		}
 	}
 
-	/** Step the slider by `delta`, clamped to its edges (narrow-terminal mode). */
 	#moveSlider(delta: number): void {
 		const slider = this.#slider;
 		if (!slider) return;
@@ -337,8 +295,6 @@ export class PlanReviewOverlay implements Component {
 		}
 	}
 
-	/** Hit-test an SGR mouse report (`\x1b[<b;x;yM/m`) against the click maps the last render recorded. Returns true when consumed. The fullscreen overlay */
-	/** Hit-test an SGR mouse report against ModalShell chrome first (close glyph, click-outside, footer chips), then fall back to the click maps the last */
 	#handleMouse(data: string): boolean {
 		return routeSgrMouseInput(data, event => {
 			const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
@@ -351,8 +307,6 @@ export class PlanReviewOverlay implements Component {
 					this.#setHoveredOption(undefined);
 					return true;
 				}
-				// Motion inside the card but not over a chip: fall through so the
-				// per-row option hover below still runs.
 			} else if (
 				chrome.kind === "close" ||
 				chrome.kind === "outside" ||
@@ -367,7 +321,6 @@ export class PlanReviewOverlay implements Component {
 			}
 
 			if (event.wheel !== null) {
-				// Scroll wheel: three rows per notch.
 				this.#scrollView.scroll(event.wheel * 3);
 				return true;
 			}
@@ -375,9 +328,6 @@ export class PlanReviewOverlay implements Component {
 
 			const bodyRow = event.row - this.#bodyRowOffset;
 			if (event.motion) {
-				// Motion (hover or drag): light up the option row under the pointer so a
-				// mouse user gets the same affordance the keyboard cursor gives. Any
-				// non-option row clears the highlight.
 				this.#setHoveredOption(this.#optionClickRows.get(bodyRow));
 				return true;
 			}
@@ -405,14 +355,11 @@ export class PlanReviewOverlay implements Component {
 		});
 	}
 
-	/** Set the hovered option from a hit-tested row, ignoring disabled rows and
-	 *  non-option rows (both clear the highlight). */
 	#setHoveredOption(index: number | undefined): void {
 		this.#hoveredOption = index !== undefined && !this.#disabled.has(index) ? index : undefined;
 	}
 
 	#cycleRegion(direction: number): void {
-		// Sidebar is skipped from the cycle when it is not shown.
 		const regions: Focus[] = this.#sidebarShown ? ["toc", "body", "actions"] : ["body", "actions"];
 		const current = regions.indexOf(this.#focus);
 		const base = current < 0 ? regions.length - 1 : current;
@@ -425,9 +372,6 @@ export class PlanReviewOverlay implements Component {
 	}
 
 	#handleActions(data: string): void {
-		// Left/right always drive the slider. The sidebar sits beside the body
-		// (above this row), not the slider, so stealing left for it would strand
-		// the operator unable to step the model tier back — reach the ToC via Tab.
 		const isLeft = matchesKey(data, "left") || (this.#slider !== undefined && matchesKey(data, "h"));
 		const isRight = matchesKey(data, "right") || (this.#slider !== undefined && matchesKey(data, "l"));
 		if (isLeft) {
@@ -469,9 +413,6 @@ export class PlanReviewOverlay implements Component {
 			this.#setFocus("actions");
 			return;
 		}
-		// Vertical nav flows between regions at the edges: scrolling off the bottom
-		// drops into the actions ("next step"); scrolling off the top steps back up
-		// to the ToC.
 		if (matchesSelectUp(data) || matchesKey(data, "k")) {
 			if (this.#scrollView.getScrollOffset() <= 0 && this.#sidebarShown) this.#setFocus("toc");
 			else this.#scrollView.scroll(-1);
@@ -485,7 +426,6 @@ export class PlanReviewOverlay implements Component {
 		this.#handleBodyScroll(data);
 	}
 
-	/** Shared scroll dispatch for body + actions focus. Delegates standard keys (Arrows, Shift+Arrow fast-scroll, PgUp/PgDn, Home/End) to the ScrollView, */
 	#handleBodyScroll(data: string): void {
 		if (this.#scrollView.handleScrollKey(data)) return;
 		if (data === "g") this.#scrollView.scrollToTop();
@@ -498,7 +438,6 @@ export class PlanReviewOverlay implements Component {
 			return;
 		}
 		if (matchesSelectDown(data) || matchesKey(data, "j")) {
-			// Past the last section, fall through to the actions ("next step").
 			if (this.#tocCursor >= this.#toc.length - 1) this.#setFocus("actions");
 			else this.#moveTocCursor(1);
 			return;
@@ -535,7 +474,6 @@ export class PlanReviewOverlay implements Component {
 		this.#scrubBodyToToc();
 	}
 
-	/** Scroll the body so the selected ToC section's heading sits at the top. */
 	#scrubBodyToToc(): void {
 		const sectionIndex = this.#toc[this.#tocCursor];
 		if (sectionIndex === undefined) return;
@@ -543,7 +481,6 @@ export class PlanReviewOverlay implements Component {
 		if (offset !== undefined) this.#scrollView.setScrollOffset(offset);
 	}
 
-	/** Greatest ToC position whose section starts at or above the scroll offset. */
 	#deriveTocCursorFromScroll(): number {
 		if (this.#toc.length === 0) return 0;
 		const scrollOffset = this.#scrollView.getScrollOffset();
@@ -574,8 +511,6 @@ export class PlanReviewOverlay implements Component {
 		const span = sectionDeletionSpan(this.#sections, sectionIndex);
 		if (span.length === 0) return;
 		this.#pushUndo();
-		// Record the removed headings so the Refine feedback can ask the model to
-		// drop them, then splice from the bottom up so earlier indices stay valid.
 		for (let si = 0; si < span.length; si++) {
 			const section = this.#sections[span[si]!]!;
 			if (section.level >= 1 && section.title) this.#deleted.push(section.title);
@@ -676,25 +611,18 @@ export class PlanReviewOverlay implements Component {
 			const selected = i === this.#selectedIndex;
 			const isDisabled = this.#disabled.has(i);
 			const hovered = !isDisabled && i === this.#hoveredOption;
-			// The cursor marks the selected option; it dims when actions are not the
-			// focused region so the active region's highlight stays unambiguous.
 			const cursor = selected ? theme.fg(active ? "accent" : "dim", `${theme.nav.cursor} `) : "  ";
 			let text = isDisabled
 				? theme.fg("dim", label)
 				: selected && active
 					? theme.bold(theme.fg("accent", label))
 					: theme.fg("text", label);
-			// A pointer hovering an option paints a highlight band behind its label,
-			// distinct from the keyboard selection (cursor glyph + bold accent) which
-			// stays where it is. One space of padding gives the band a button shape.
 			if (hovered) text = theme.bg("selectedBg", ` ${text} `);
 			result[i] = cursor + text;
 		}
 		return result;
 	}
 
-	/** Footer chips for the current focus region, or the annotate mini-editor's
-	 *  chips while an annotation draft is active. */
 	#buildShortcuts(): ModalShortcut[] {
 		if (this.#annotating) {
 			const chips: ModalShortcut[] = [{ label: "enter save", clickable: true, id: "confirm" }];
@@ -729,7 +657,6 @@ export class PlanReviewOverlay implements Component {
 		return chips;
 	}
 
-	/** Build the concatenated body lines and record each section's start row. */
 	#buildBody(bodyContentWidth: number): string[] {
 		const lines: string[] = [];
 		const offsets: number[] = new Array(this.#sections.length);
@@ -762,8 +689,6 @@ export class PlanReviewOverlay implements Component {
 		return clampLow(Math.round(width * 0.24), 18, 30);
 	}
 
-	/** Body-content width left over for a sidebar of `sidebarWidth` columns
-	 *  inside a `contentWidth`-wide ModalShell body. */
 	#sidebarBodyWidth(contentWidth: number, sidebarWidth: number): number {
 		return Math.max(1, contentWidth - sidebarWidth - SIDEBAR_DIVIDER_COLS);
 	}
@@ -774,14 +699,10 @@ export class PlanReviewOverlay implements Component {
 		return this.#sidebarBodyWidth(contentWidth, this.#sidebarWidthFor(contentWidth)) >= SIDEBAR_MIN_BODY_WIDTH;
 	}
 
-	/** Sidebar lines plus, per row, the ToC position shown there (for clicks). */
 	#renderSidebarLines(
 		regionRows: number,
 		sidebarWidth: number,
 	): { lines: string[]; posForRow: (number | undefined)[] } {
-		// No "Contents" label and no plan-title entry: the box title already says
-		// "Plan Review", so the sidebar is just the bare list of sections, VS
-		// Code-style. Window the entries around the cursor.
 		const lines: string[] = [];
 		const posForRow: (number | undefined)[] = [];
 		const slots = Math.max(0, regionRows);
@@ -803,14 +724,11 @@ export class PlanReviewOverlay implements Component {
 		const highlighted = p === this.#tocCursor;
 		const selected = highlighted && this.#focus === "toc";
 		const glow = highlighted && this.#focus !== "toc";
-		// Compact, VS Code-like rows: a single-column gutter, one space of indent
-		// per nesting level, then the title and an annotation marker.
 		const indent = " ".repeat(Math.max(0, section.level - this.#tocBaseLevel));
 		const ann = section.annotations.length > 0 ? " ✎" : "";
 		const avail = Math.max(0, width - 1 - indent.length - visibleWidth(ann));
 		const title = truncateToWidth(section.title || "(untitled)", avail, Ellipsis.Unicode);
 		const body = indent + title + ann;
-		// Single-column gutter glyph: a cursor `›` on the focused selection, an accent bar `▎` on the current scrolled section, otherwise blank. The
 		const gutter = selected ? theme.nav.cursor : glow ? "▎" : " ";
 		const line = gutter + body;
 		if (selected) return selectionBand(theme.bold(line), width);
@@ -818,8 +736,6 @@ export class PlanReviewOverlay implements Component {
 		return theme.fg("muted", line);
 	}
 
-	/** The annotate mini-editor's caption + input line, or nothing when not
-	 *  annotating (the shortcut chips carry its hints instead of a footer line). */
 	#renderAnnotateLines(contentWidth: number): string[] {
 		if (!this.#annotating) return [];
 		const section = this.#sections[this.#toc[this.#tocCursor]!];
@@ -828,13 +744,10 @@ export class PlanReviewOverlay implements Component {
 		return [caption, this.#input.render(contentWidth)[0] ?? ""];
 	}
 
-	/** Plain horizontal rule (no outer box glyphs — ModalShell owns those)
-	 *  separating the sidebar/body region from the prompt/slider/options below. */
 	#renderRegionRule(contentWidth: number): string {
 		return theme.fg("borderAccent", theme.boxSharp.horizontal.repeat(Math.max(0, contentWidth)));
 	}
 
-	/** Compose one `sidebar │ body` row inside a `contentWidth`-wide slot. */
 	#composeSplitLine(sidebar: string, body: string, sidebarWidth: number, bodyWidth: number): string {
 		const divider = theme.fg("borderAccent", theme.boxSharp.vertical);
 		return `${fit(sidebar, sidebarWidth)} ${divider} ${fit(body, bodyWidth)}`;
@@ -856,9 +769,6 @@ export class PlanReviewOverlay implements Component {
 		const promptLines = this.#promptTitle ? [theme.bold(theme.fg("accent", this.#promptTitle))] : [];
 		const annotateLines = this.#renderAnnotateLines(contentWidth);
 
-		// Region rows: everything below the sidebar/body block (the region rule,
-		// prompt, slider, options, and the annotate mini-editor) plus ModalShell's
-		// own fixed chrome (see CHROME_ROWS).
 		const belowRegionRows = 1 + promptLines.length + sliderLines.length + optionLines.length + annotateLines.length;
 		const regionRows = Math.max(MIN_BODY_ROWS, (dims?.modalHeight ?? termHeight) - CHROME_ROWS - belowRegionRows);
 

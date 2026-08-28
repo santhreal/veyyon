@@ -1,4 +1,3 @@
-// Adapted from markit-ai (MIT). See ../NOTICE.
 import * as path from "node:path";
 import { XMLParser } from "fast-xml-parser";
 import { renderMarkdownTable } from "../../utils/markdown-table";
@@ -9,7 +8,6 @@ import { xmlNodeText } from "./xml-text";
 const EXTENSIONS = [".pptx"];
 const MIMETYPES = ["application/vnd.openxmlformats-officedocument.presentationml.presentation"];
 
-/** A text value: bare string/number, or a `{ "#text" }` node when the element carries attributes. */
 type XmlText = string | number | { "#text"?: string };
 
 interface TextRun {
@@ -115,13 +113,11 @@ export class PptxConverter implements Converter {
 			textNodeName: "#text",
 			processEntities: { maxTotalExpansions: 1_000_000 },
 		});
-		// Get slide order from presentation.xml
 		const presXml = unzipText(entries, "ppt/presentation.xml");
 		if (!presXml) throw new Error("Invalid PPTX: missing presentation.xml");
 		const pres = parser.parse(presXml) as PresentationDoc;
 		const sldIdList = pres["p:presentation"]?.["p:sldIdLst"]?.["p:sldId"];
 		const sldIds = Array.isArray(sldIdList) ? sldIdList : sldIdList ? [sldIdList] : [];
-		// Get relationship mappings
 		const relsXml = unzipText(entries, "ppt/_rels/presentation.xml.rels");
 		const rels = relsXml ? (parser.parse(relsXml) as RelationshipsDoc) : null;
 		const relList = rels?.Relationships?.Relationship;
@@ -130,14 +126,12 @@ export class PptxConverter implements Converter {
 		for (const r of relArray) {
 			relMap.set(r["@_Id"], r["@_Target"]);
 		}
-		// Map slide IDs to file paths in order
 		const slidePaths: string[] = [];
 		for (const sld of sldIds) {
 			const rId = sld["@_r:id"];
 			const target = relMap.get(rId);
 			if (target) slidePaths.push(`ppt/${target}`);
 		}
-		// If we couldn't resolve from rels, fall back to finding slide files
 		if (slidePaths.length === 0) {
 			const slideFiles = Object.keys(entries)
 				.filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f))
@@ -157,7 +151,6 @@ export class PptxConverter implements Converter {
 			const slide = parser.parse(slideXml) as SlideDoc;
 			const spTree = slide["p:sld"]?.["p:cSld"]?.["p:spTree"];
 			if (!spTree) continue;
-			// Parse slide-level rels for image references
 			const slideRelsPath = `${slidePaths[i].replace("slides/slide", "slides/_rels/slide")}.rels`;
 			const slideRelsXml = unzipText(entries, slideRelsPath);
 			const slideRelMap = new Map<string, string>();
@@ -182,7 +175,6 @@ export class PptxConverter implements Converter {
 					slideLines.push(text);
 				}
 			}
-			// Extract embedded images
 			const pics = toList(spTree["p:pic"]);
 			for (const pic of pics) {
 				const blipFill = pic["p:blipFill"];
@@ -190,9 +182,6 @@ export class PptxConverter implements Converter {
 				if (!rEmbed) continue;
 				const target = slideRelMap.get(rEmbed);
 				if (!target) continue;
-				// Resolve the rel Target against the slide directory (e.g.
-				// ../media/image1.png → ppt/media/image1.png), decoding and normalizing
-				// through the shared archive-member resolver.
 				const normalizedPath = resolveArchiveMemberPath("ppt/slides", target);
 				const buf = entries[normalizedPath];
 				if (!buf) continue;
@@ -215,14 +204,12 @@ export class PptxConverter implements Converter {
 					slideLines.push(`<!-- image: ${name} (slide ${i + 1}) -->`);
 				}
 			}
-			// Tables
 			const graphicFrames = spTree["p:graphicFrame"];
 			const gfList = Array.isArray(graphicFrames) ? graphicFrames : graphicFrames ? [graphicFrames] : [];
 			for (const gf of gfList) {
 				const table = this.extractTable(gf);
 				if (table) slideLines.push(table);
 			}
-			// Slide notes
 			const noteFile = slidePaths[i].replace("slides/slide", "notesSlides/notesSlide");
 			const noteXml = unzipText(entries, noteFile);
 			if (noteXml) {
@@ -233,7 +220,6 @@ export class PptxConverter implements Converter {
 					const noteList = Array.isArray(noteShapes) ? noteShapes : noteShapes ? [noteShapes] : [];
 					const noteTexts: string[] = [];
 					for (const ns of noteList) {
-						// Skip slide image placeholder
 						const phType = ns["p:nvSpPr"]?.["p:nvPr"]?.["p:ph"]?.["@_type"];
 						if (phType === "sldImg") continue;
 						const t = this.extractText(ns);
@@ -282,7 +268,6 @@ function toList<T>(val: T | T[] | undefined): T[] {
 	return Array.isArray(val) ? val : [val];
 }
 
-/** Concatenate every run of every paragraph in a PPTX text body. Runs inside a paragraph join with the empty string: an `<a:r>` boundary marks */
 function textFromBody(txBody: TextBody): string {
 	const lines: string[] = [];
 	for (const p of toList(txBody["a:p"])) {

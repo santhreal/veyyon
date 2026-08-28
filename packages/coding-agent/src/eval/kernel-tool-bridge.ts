@@ -1,4 +1,3 @@
-/** HTTP loopback bridge that lets a kernel-based executor (python, ruby, julia) synchronously invoke host-side tools by name, mirroring the JS worker's */
 import { errorMessage, logger } from "@veyyon/utils";
 import type { ToolSession } from "../tools";
 import { callSessionTool, type JsStatusEvent } from "./js/tool-bridge";
@@ -23,7 +22,6 @@ interface BridgeServer {
 const registrations = new Map<string, KernelToolBridgeEntry>();
 let serverPromise: Promise<BridgeServer> | null = null;
 
-/** Forward a bridge call to {@link callSessionTool} while respecting eval abort shielding. */
 async function callSessionToolPromptOnAbort(
 	name: string,
 	args: unknown,
@@ -40,8 +38,6 @@ async function callSessionToolPromptOnAbort(
 	const signal = entry.signal;
 	if (!signal) return await call;
 	if (signal.aborted) {
-		// The cell was interrupted before this call could be awaited, and the abort error thrown on the next
-		// line is what the cell reports; the in-flight call's own failure has nowhere left to go.
 		void call.catch(() => {});
 		throw new Error(`bridge call ${JSON.stringify(name)} aborted: eval cell was interrupted`);
 	}
@@ -52,8 +48,6 @@ async function callSessionToolPromptOnAbort(
 		return await Promise.race([call, aborted]);
 	} finally {
 		signal.removeEventListener("abort", onAbort);
-		// `call` may still be settling (subagent teardown after its own abort);
-		// swallow its outcome so an abort-won race can't surface as unhandled.
 		void call.catch(() => {});
 	}
 }
@@ -119,7 +113,6 @@ async function startServer(): Promise<BridgeServer> {
 	};
 }
 
-/** Starts the bridge server lazily and returns its connection info. */
 export async function ensureKernelToolBridge(): Promise<KernelToolBridgeInfo> {
 	if (!serverPromise) {
 		serverPromise = startServer();
@@ -133,7 +126,6 @@ export async function ensureKernelToolBridge(): Promise<KernelToolBridgeInfo> {
 	}
 }
 
-/** Register a tool session for the duration of one execution. The returned function MUST be called to remove the entry once execution finishes. */
 function bridgeRegistrationKey(sessionId: string, runId: string): string {
 	return `${sessionId}:${runId}`;
 }
@@ -148,7 +140,6 @@ export function registerKernelToolBridge(sessionId: string, runId: string, entry
 	};
 }
 
-/** Stop the bridge and clear registrations. Test-only / shutdown helper. */
 export async function disposeKernelToolBridge(): Promise<void> {
 	registrations.clear();
 	const pending = serverPromise;

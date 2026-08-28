@@ -1,26 +1,18 @@
-/** How many tokens a message costs, and the cache that keeps the answer. */
-
 import type { AssistantMessage } from "@veyyon/ai";
 import { stringifyJson } from "@veyyon/utils/json";
 import { countTokens } from "../tokenizer";
 import type { AgentMessage } from "../types";
 import { LEGACY_FRAME_TOKEN_ESTIMATE } from "./legacy-snapcompact-archive";
 
-/** Image content has no tokenizer representation; charge a fixed estimate */
 const IMAGE_TOKEN_ESTIMATE = 1200;
 
-/** Per-message token estimate cache, keyed by message object identity plus a */
 const tokenEstimateCache = new WeakMap<
 	AgentMessage,
 	{ default?: { value: number; shape: number }; noReasoning?: { value: number; shape: number } }
 >();
 
-/** Estimate token count for a message using cl100k_base via the native */
 export function estimateTokens(message: AgentMessage, options?: { excludeEncryptedReasoning?: boolean }): number {
 	const slotKey = options?.excludeEncryptedReasoning ? "noReasoning" : "default";
-	// One walk answers "is the cached number still about this content?" without
-	// tokenizing anything: the sink folds fragment lengths instead of keeping the
-	// strings.
 	let shape = 0;
 	const shapeExtra = walkCountedFragments(message, options, text => {
 		shape = (shape * 31 + text.length) | 0;
@@ -44,13 +36,11 @@ function estimateTokensUncached(message: AgentMessage, options?: { excludeEncryp
 	return extra + countTokens(fragments);
 }
 
-/** Roles a host application contributes through the `CustomAgentMessages` */
 const HOST_ROLE_TEXT_FIELDS: Record<string, readonly string[]> = {
 	bashExecution: ["command", "output"],
 	pythonExecution: ["code", "output"],
 };
 
-/** The one walk over everything a message's estimate counts: every counted text */
 function walkCountedFragments(
 	message: AgentMessage,
 	options: { excludeEncryptedReasoning?: boolean } | undefined,
@@ -73,8 +63,6 @@ function walkCountedFragments(
 			const file = entry as { path?: unknown; content?: unknown; image?: unknown };
 			if (typeof file.path === "string") sink(file.path);
 			if (typeof file.content === "string") sink(file.content);
-			// A mentioned image rides as an `ImageContent` beside a placeholder body,
-			// and is billed like any other inline image.
 			if (file.image) extra += IMAGE_TOKEN_ESTIMATE;
 		}
 		return extra;
@@ -90,13 +78,6 @@ function walkCountedFragments(
 					if (block.type === "text" && block.text) {
 						sink(block.text);
 					} else if (block.type === "image") {
-						// A user message is the MOST common way an image enters a session
-						// (paste, drag, `/image`), and its images counted as zero here while
-						// every other content-bearing role counted them. A screenshot-heavy
-						// session therefore under-reported its own context to the compaction
-						// trigger, the pruning budgets, and the operator's context meter — the
-						// same defect the `developer` case below records having been fixed,
-						// left in place on the role it matters most for.
 						extra += IMAGE_TOKEN_ESTIMATE;
 					}
 				}
@@ -110,13 +91,6 @@ function walkCountedFragments(
 					sink(block.text);
 				} else if (block.type === "thinking") {
 					sink(block.thinking);
-					// Providers charge for the opaque signature/reasoning payload that
-					// rides alongside the thinking text (OpenAI Responses encrypted
-					// reasoning items, Anthropic signed thinking blocks, etc.). Without
-					// counting it, this estimator can read ~half of the provider-reported
-					// usage on thinking-heavy turns — see #2275 for the resulting
-					// compaction-trigger / post-check metric divergence. The compaction
-					// floor excludes it (its local byte size diverges from provider billing).
 					if (block.thinkingSignature && !options?.excludeEncryptedReasoning) {
 						sink(block.thinkingSignature);
 					}
@@ -124,21 +98,11 @@ function walkCountedFragments(
 					sink(block.name);
 					sink(stringifyJson(block.arguments) ?? "null");
 				} else if (block.type === "redactedThinking") {
-					// Encrypted reasoning blob the provider still bills for on replay;
-					// excluded from the compaction floor for the same reason as above.
 					if (!options?.excludeEncryptedReasoning) sink(block.data);
 				}
 			}
 			break;
 		}
-		// `developer` shares the user-message content shape (string | text/image
-		// blocks) and carries real content: synthetic auto-continue prompts are
-		// stored as full developer messages, some with normalized images. It was
-		// missing from this switch, so every developer message hit `default: return
-		// 0` and counted as ZERO tokens — silently under-reporting context usage to
-		// the compaction trigger, pruning budgets, and the operator context meter,
-		// which could let a session exceed the provider window unnoticed. Counted
-		// here with images, exactly like the other content-bearing roles.
 		case "developer":
 		case "custom":
 		case "hookMessage":
@@ -166,8 +130,6 @@ function walkCountedFragments(
 						else extra += LEGACY_FRAME_TOKEN_ESTIMATE;
 					}
 				} else if (message.images) {
-					// Legacy snapcompact frames rendered at large sizes; providers bill the
-					// downscaled cap. Only old persisted summaries still carry these.
 					extra += message.images.length * LEGACY_FRAME_TOKEN_ESTIMATE;
 				}
 			}

@@ -1,27 +1,19 @@
-/** Installed plugin registry read/write (Claude Code-compatible shape). This is the single owner of the installed-plugins registry: the type, the */
-
 import * as path from "node:path";
 
 import { atomicWriteJson, getPluginsDir, isEnoent, logger, tryParseJson } from "@veyyon/utils";
 
 export interface InstalledPluginsRegistry {
-	/** MUST be 2 — parseClaudePluginsRegistry rejects non-numeric version. */
 	version: 2;
 	plugins: Record<string, InstalledPluginEntry[]>;
 }
 
 export interface InstalledPluginEntry {
 	scope: "user" | "project";
-	/** Absolute path to cached plugin directory. */
 	installPath: string;
 	version: string;
-	/** ISO 8601 date string. */
 	installedAt: string;
-	/** ISO 8601 date string. */
 	lastUpdated: string;
-	/** For git-sourced plugins. */
 	gitCommitSha?: string;
-	/** Veyyon extension — not in Claude Code's type. CLI/UI concern only in v1. */
 	enabled?: boolean;
 }
 
@@ -52,7 +44,6 @@ export async function readInstalledPluginsRegistry(filePath: string): Promise<In
 			logger.warn("Invalid installed plugins registry, returning empty", { path: filePath });
 			return emptyInstalledPluginsRegistry();
 		}
-		// Accept any numeric version — forward compatible reads
 		return { ...data, version: 2 };
 	} catch (err) {
 		if (isEnoent(err)) return emptyInstalledPluginsRegistry();
@@ -63,10 +54,6 @@ export async function readInstalledPluginsRegistry(filePath: string): Promise<In
 export async function writeInstalledPluginsRegistry(filePath: string, reg: InstalledPluginsRegistry): Promise<void> {
 	await atomicWriteJson(filePath, reg);
 }
-
-// ── Installed plugin CRUD ────────────────────────────────────────────
-// Pure functions that transform registry state. Caller is responsible for
-// reading, mutating, and writing back.
 
 export function addInstalledPlugin(
 	reg: InstalledPluginsRegistry,
@@ -92,7 +79,6 @@ export function getInstalledPlugin(reg: InstalledPluginsRegistry, id: string): I
 	return reg.plugins[id];
 }
 
-/** Collect all installPath values referenced by any of the provided registries. Use this before deleting a cached plugin directory to verify it is not still */
 export function collectReferencedPaths(...registries: InstalledPluginsRegistry[]): Set<string> {
 	return new Set(
 		registries.flatMap(r =>

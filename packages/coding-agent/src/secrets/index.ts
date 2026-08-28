@@ -11,7 +11,6 @@ import {
 } from "./policy";
 import { compileSecretRegex } from "./regex";
 
-/** Fields the human-authored `secrets.yml` schema understands. */
 const SECRET_FILE_FIELDS: Readonly<Record<string, true>> = {
 	type: true,
 	content: true,
@@ -21,12 +20,10 @@ const SECRET_FILE_FIELDS: Readonly<Record<string, true>> = {
 	minLength: true,
 };
 
-/** The ceiling on a refusal about this file, and the reason there is one. Every refusal below collects EVERY problem before throwing, which is deliberate: an operator with */
 const MAX_ECHOED_PATTERN_CHARS = 120;
 const MAX_PROBLEM_CHARS = 400;
 const MAX_REPORTED_PROBLEMS = 20;
 
-/** Quote at most `maxChars` of `value`, marking the cut so a truncated pattern cannot be mistaken for the whole one. Never splits a surrogate pair, so the result is always well-formed UTF-16. */
 function boundedQuote(value: string, maxChars: number): string {
 	if (value.length <= maxChars) return value;
 	const end = maxChars - 1;
@@ -35,12 +32,9 @@ function boundedQuote(value: string, maxChars: number): string {
 	return `${value.slice(0, cut)}…`;
 }
 
-/** The indented complaint block, bounded in both directions, with the withheld count STATED. Printing the first twenty silently would tell an operator with 5,000 malformed entries that they */
 function formatProblems(problems: readonly string[]): string {
 	const shown = problems.slice(0, MAX_REPORTED_PROBLEMS).map(line => `  - ${boundedQuote(line, MAX_PROBLEM_CHARS)}`);
 	const withheld = problems.length - shown.length;
-	// NOT the `  - ` complaint prefix: this line is a count of what was withheld, and reading as a
-	// twenty-first complaint would put a fabricated entry in a list of the operator's real ones.
 	if (withheld > 0) shown.push(`  …and ${withheld} more entries not listed here.`);
 	return shown.join("\n");
 }
@@ -77,7 +71,6 @@ export {
 	secretCharacterLength,
 } from "./policy";
 
-/** Load secrets from the project's and the active profile's secrets.yml files. Project entries override profile entries with matching content. */
 export async function loadSecrets(cwd: string, agentDir: string): Promise<SecretEntry[]> {
 	const projectPath = path.join(cwd, CONFIG_DIR_NAME, "secrets.yml");
 	const profilePath = path.join(agentDir, "secrets.yml");
@@ -90,7 +83,6 @@ export async function loadSecrets(cwd: string, agentDir: string): Promise<Secret
 	return merged;
 }
 
-/** Project entries override profile ones with matching content. */
 function mergeSecretEntries(profileEntries: SecretEntry[], projectEntries: SecretEntry[]): SecretEntry[] {
 	if (profileEntries.length === 0) return projectEntries;
 	if (projectEntries.length === 0) return profileEntries;
@@ -99,7 +91,6 @@ function mergeSecretEntries(profileEntries: SecretEntry[], projectEntries: Secre
 	return profileEntries.filter(e => !projectContents.has(e.content)).concat(projectEntries);
 }
 
-/** Refuse to start with a declared secret that cannot be obfuscated. Fail closed, because the alternative is worse than not having the feature: the */
 function refuseUnprotectableEntries(entries: SecretEntry[], paths: { profilePath: string; projectPath: string }): void {
 	const unprotectable = entries
 		.map((entry, index) => ({ entry, index }))
@@ -126,7 +117,6 @@ function refuseUnprotectableEntries(entries: SecretEntry[], paths: { profilePath
 	);
 }
 
-/** Collect environment variable values that look like secrets. Nothing here is declared, so nothing here can be refused: the length floor is part of */
 export function collectEnvSecrets(pattern: RegExp = BUNDLED_ENV_SECRET_PATTERN): SecretEntry[] {
 	const entries: SecretEntry[] = [];
 	const seen = new Set<string>();
@@ -138,9 +128,6 @@ export function collectEnvSecrets(pattern: RegExp = BUNDLED_ENV_SECRET_PATTERN):
 		if (!nameMatches) continue;
 		if (seen.has(value)) continue;
 		seen.add(value);
-		// NO `name`, and that is deliberate: nothing declared this value, so nothing may spend it as
-		// `#NAME#`. `source` is the label a person needs to find it, which is the half that was
-		// missing — the footer counted these and no command could say what they were.
 		entries.push({ type: "plain", content: value, mode: "obfuscate", origin: "environment", source: name });
 	}
 	return entries;
@@ -148,7 +135,6 @@ export function collectEnvSecrets(pattern: RegExp = BUNDLED_ENV_SECRET_PATTERN):
 
 const BUNDLED_ENV_SECRET_PATTERN = buildEnvSecretPattern(BUNDLED_ENV_KEYWORDS);
 
-/** Read one `secrets.yml`. A MISSING FILE IS EMPTY; AN UNREADABLE ONE IS AN ERROR. Nothing was declared when the */
 async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
 	let text: string;
 	try {
@@ -190,17 +176,11 @@ async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
 			replacement: entry.replacement,
 			flags: entry.flags,
 			minLength: entry.minLength,
-			// Supplied here, never read from the file. See `validateEntry`.
 			origin: "config",
-			// The file it was declared in, so a masked value with no name is still findable. A
-			// declared entry carries no name either (the schema has no such field), so without this
-			// the only report a person could get was a count.
 			source: filePath,
 		});
 	}
 	if (problems.length > 0) {
-		// EVERY problem in the file, not the first one. An operator with three typos should fix
-		// three typos and restart once, rather than discovering them one restart at a time.
 		throw new Error(
 			`Refusing to start: ${problems.length} entr${problems.length === 1 ? "y" : "ies"} in ${filePath} ` +
 				`${problems.length === 1 ? "is" : "are"} not a valid secret declaration, and skipping ` +
@@ -212,10 +192,8 @@ async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
 	return entries;
 }
 
-/** Check one declared entry, collecting what is wrong with it rather than deciding what to do. REFUSES, AND DOES NOT SKIP. Every branch here used to be `logger.warn` followed by */
 function validateEntry(entry: unknown, index: number, problems: string[]): entry is Omit<SecretEntry, "origin"> {
 	const at = `entry ${index}`;
-	// `isRecord` from the shared owner rather than the same three clauses written out again. Its definition rejects null, non-objects and arrays alike, so this is a rename and not a behaviour
 	if (!isRecord(entry)) {
 		problems.push(
 			`${at} is ${entry === null ? "null" : Array.isArray(entry) ? "an array" : typeof entry}, and must be a mapping with "type" and "content".`,
@@ -242,8 +220,6 @@ function validateEntry(entry: unknown, index: number, problems: string[]): entry
 		return false;
 	}
 	if (typeof e.content !== "string" || e.content.length === 0) {
-		// The offending content is NOT quoted back: on a plain entry it is the credential, and an
-		// error message is the one place a secret must never appear even when it is malformed.
 		problems.push(`${at} needs a non-empty "content", the value or pattern to protect.`);
 		return false;
 	}
@@ -277,7 +253,6 @@ function validateEntry(entry: unknown, index: number, problems: string[]): entry
 			);
 			return false;
 		}
-		// A floor on a plain entry would be read as "protect this even though it is short", which is not what it does: plain entries are matched literally, so the only rule
 		if (e.type === "plain") {
 			problems.push(
 				`${at} sets minLength, which applies to regex entries only. A short plain secret needs ` +
@@ -296,9 +271,6 @@ function validateEntry(entry: unknown, index: number, problems: string[]): entry
 		try {
 			compileSecretRegex(e.content, e.flags as string | undefined);
 		} catch (error) {
-			// A pattern that cannot be scanned safely protects nothing, so the operator declared a
-			// class of secret and got no coverage for it. Patterns are not secret, so the message
-			// quotes it; plain secret values still never reach this branch.
 			problems.push(
 				`${at} is a regex that does not compile or cannot be scanned safely ` +
 					`(${boundedQuote(errorMessage(error), MAX_ECHOED_PATTERN_CHARS)}). ` +

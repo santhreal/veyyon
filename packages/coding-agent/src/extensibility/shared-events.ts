@@ -1,4 +1,3 @@
-/** Event payload and result shapes shared between the extensions and hooks subsystems. */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { CompactionPreparation, CompactionResult } from "@veyyon/agent-core/compaction";
 import type { AssistantRetryRecovery, ImageContent, TextContent, ToolResultMessage } from "@veyyon/ai";
@@ -8,76 +7,56 @@ import type { Goal, GoalModeState } from "../goals/state";
 import type { BranchSummaryEntry, CompactionEntry, SessionEntry } from "../session/session-entries";
 import type { TodoItem } from "../tools/todo";
 
-/** Fired on initial session load */
 export interface SessionStartEvent {
 	type: "session_start";
 }
 
-/** Fired before switching to another session (can be cancelled) */
 export interface SessionBeforeSwitchEvent {
 	type: "session_before_switch";
-	/** Reason for the switch */
 	reason: "new" | "resume" | "fork" | "handoff";
-	/** Session file we're switching to (only for "resume") */
 	targetSessionFile?: string;
 }
 
-/** Fired after switching to another session */
 export interface SessionSwitchEvent {
 	type: "session_switch";
-	/** Reason for the switch */
 	reason: "new" | "resume" | "fork" | "handoff";
-	/** Session file we came from */
 	previousSessionFile: string | undefined;
 }
 
-/** Fired before branching a session (can be cancelled) */
 export interface SessionBeforeBranchEvent {
 	type: "session_before_branch";
-	/** ID of the entry to branch from */
 	entryId: string;
 }
 
-/** Fired after branching a session */
 export interface SessionBranchEvent {
 	type: "session_branch";
 	previousSessionFile: string | undefined;
 }
 
-/** Fired before context compaction (can be cancelled or customized) */
 export interface SessionBeforeCompactEvent {
 	type: "session_before_compact";
-	/** Compaction preparation with messages to summarize, file ops, previous summary, etc. */
 	preparation: CompactionPreparation;
-	/** Branch entries (root to current leaf). Use to inspect custom state or previous compactions. */
 	branchEntries: SessionEntry[];
-	/** Optional user-provided instructions for the summary */
 	customInstructions?: string;
-	/** Abort signal - handlers should pass this to LLM calls and check it periodically */
 	signal: AbortSignal;
 }
 
-/** Fired before compaction summarization to customize prompts/context */
 export interface SessionCompactingEvent {
 	type: "session_compacting";
 	sessionId: string;
 	messages: AgentMessage[];
 }
 
-/** Fired after context compaction */
 export interface SessionCompactEvent {
 	type: "session_compact";
 	compactionEntry: CompactionEntry;
-	/** Whether the compaction entry was provided by an extension/hook */
 	fromExtension: boolean;
 }
 
-/** Fired on process exit (SIGINT/SIGTERM) */
 export interface SessionShutdownEvent {
 	type: "session_shutdown";
 }
 
-/** Fired when a main-agent turn is about to settle; handlers may request one continuation turn. */
 export interface SessionStopEvent {
 	type: "session_stop";
 	messages: AgentMessage[];
@@ -88,43 +67,28 @@ export interface SessionStopEvent {
 	stop_hook_active: boolean;
 }
 
-/** Preparation data for tree navigation (used by session_before_tree event) */
 export interface TreePreparation {
-	/** Node being switched to */
 	targetId: string;
-	/** Current active leaf (being abandoned), null if no current position */
 	oldLeafId: string | null;
-	/** Common ancestor of target and old leaf, null if no common ancestor */
 	commonAncestorId: string | null;
-	/** Entries to summarize (old leaf back to common ancestor or compaction) */
 	entriesToSummarize: SessionEntry[];
-	/** Whether user chose to summarize */
 	userWantsSummary: boolean;
 }
 
-/** Fired before navigating to a different node in the session tree (can be cancelled) */
 export interface SessionBeforeTreeEvent {
 	type: "session_before_tree";
-	/** Preparation data for the navigation */
 	preparation: TreePreparation;
-	/** Abort signal - honors Escape during summarization (model available via ctx.model) */
 	signal: AbortSignal;
 }
 
-/** Fired after navigating to a different node in the session tree */
 export interface SessionTreeEvent {
 	type: "session_tree";
-	/** The new active leaf, null if navigated to before first entry */
 	newLeafId: string | null;
-	/** Previous active leaf, null if there was no position */
 	oldLeafId: string | null;
-	/** Branch summary entry if one was created */
 	summaryEntry?: BranchSummaryEntry;
-	/** Whether summary came from extension/hook */
 	fromExtension?: boolean;
 }
 
-/** Union of all session event types */
 export interface GoalUpdatedEvent {
 	type: "goal_updated";
 	goal: Goal | null;
@@ -146,34 +110,26 @@ export type SessionEvent =
 	| SessionTreeEvent
 	| GoalUpdatedEvent;
 
-/** Fired before each LLM call. Original session messages are NOT modified - only the messages sent to the */
 export interface ContextEvent {
 	type: "context";
-	/** Messages about to be sent to the LLM (deep copy, safe to modify) */
 	messages: AgentMessage[];
 }
 
-/**
- * Fired when an agent loop starts (once per user prompt).
- */
 export interface AgentStartEvent {
 	type: "agent_start";
 }
 
-/** Fired when an agent loop ends */
 export interface AgentEndEvent {
 	type: "agent_end";
 	messages: AgentMessage[];
 }
 
-/** Fired at the start of each turn */
 export interface TurnStartEvent {
 	type: "turn_start";
 	turnIndex: number;
 	timestamp: number;
 }
 
-/** Fired at the end of each turn */
 export interface TurnEndEvent {
 	type: "turn_end";
 	turnIndex: number;
@@ -181,14 +137,12 @@ export interface TurnEndEvent {
 	toolResults: ToolResultMessage[];
 }
 
-/** Fired when auto-compaction starts */
 export interface AutoCompactionStartEvent {
 	type: "auto_compaction_start";
 	reason: "threshold" | "overflow" | "idle" | "incomplete";
 	action: CompactionEngineAction;
 }
 
-/** Fired when auto-compaction ends */
 export interface AutoCompactionEndEvent {
 	type: "auto_compaction_end";
 	action: CompactionEngineAction;
@@ -196,11 +150,9 @@ export interface AutoCompactionEndEvent {
 	aborted: boolean;
 	willRetry: boolean;
 	errorMessage?: string;
-	/** True when compaction was skipped for a benign reason (no model, no candidates, nothing to compact). */
 	skipped?: boolean;
 }
 
-/** Fired when a recovery starts waiting: an auto-retry, or a continuation. */
 export interface AutoRetryStartEvent {
 	type: "auto_retry_start";
 	attempt: number;
@@ -208,7 +160,6 @@ export interface AutoRetryStartEvent {
 	delayMs: number;
 	errorMessage: string;
 	errorId?: number;
-	/** Which recovery is waiting. Absent means a retry, which resends the turn; `continue` is a tool batch that cannot be resent being carried forward, so */
 	mode?: "continue" | "retry";
 }
 
@@ -219,7 +170,6 @@ export interface RecoveredRetryError {
 	retryRecovery: AssistantRetryRecovery;
 }
 
-/** Fired when auto-retry ends */
 export interface AutoRetryEndEvent {
 	type: "auto_retry_end";
 	success: boolean;
@@ -229,13 +179,11 @@ export interface AutoRetryEndEvent {
 	recoveredErrors?: RecoveredRetryError[];
 }
 
-/** Fired when TTSR rule matching interrupts generation */
 export interface TtsrTriggeredEvent {
 	type: "ttsr_triggered";
 	rules: Rule[];
 }
 
-/** Fired when todo reminder logic detects unfinished todos */
 export interface TodoReminderEvent {
 	type: "todo_reminder";
 	todos: TodoItem[];
@@ -243,73 +191,46 @@ export interface TodoReminderEvent {
 	maxAttempts: number;
 }
 
-/** Return type for `tool_call` handlers. Allows handlers to block tool execution. */
 export interface ToolCallEventResult {
-	/** If true, block the tool from executing */
 	block?: boolean;
-	/** Reason for blocking (returned to LLM as error) */
 	reason?: string;
 }
 
-/** Return type for `tool_result` handlers. Allows handlers to modify tool results. */
 export interface ToolResultEventResult {
-	/** Replacement content array (text and images) */
 	content?: (TextContent | ImageContent)[];
-	/** Replacement details */
 	details?: unknown;
-	/** Override isError flag */
 	isError?: boolean;
 }
 
-/** Return type for `session_before_switch` handlers */
 export interface SessionBeforeSwitchResult {
-	/** If true, cancel the switch */
 	cancel?: boolean;
 }
 
-/** Return type for `session_before_branch` handlers */
 export interface SessionBeforeBranchResult {
-	/** If true, abort the branch entirely. No new session file is created, conversation stays unchanged. */
 	cancel?: boolean;
-	/** If true, the branch proceeds (new session file created, session state updated) but the in-memory conversation is NOT rewound to the branch point. */
 	skipConversationRestore?: boolean;
 }
 
-/** Return type for `session_before_compact` handlers */
 export interface SessionBeforeCompactResult {
-	/** If true, cancel the compaction */
 	cancel?: boolean;
-	/** Custom compaction result - SessionManager adds id/parentId */
 	compaction?: CompactionResult;
 }
 
-/** Return type for `session_compacting` handlers */
 export interface SessionCompactingResult {
-	/** Additional context lines to include in summary */
 	context?: string[];
-	/** Override the default compaction prompt */
 	prompt?: string;
-	/** Custom data to store in compaction entry */
 	preserveData?: Record<string, unknown>;
 }
 
-/** Return type for `session_stop` handlers */
 export interface SessionStopEventResult {
-	/** Continue the main session with additional context before settling */
 	continue?: boolean;
-	/** Veyyon-native model-visible context for the continuation */
 	additionalContext?: string;
-	/** Claude/Codex-compatible block decision; maps to a continuation */
 	decision?: "block";
-	/** Claude/Codex-compatible model-visible continuation reason */
 	reason?: string;
 }
 
-/** Return type for `session_before_tree` handlers */
 export interface SessionBeforeTreeResult {
-	/** If true, cancel the navigation entirely */
 	cancel?: boolean;
-	/** Custom summary (skips default summarizer). Only used if preparation.userWantsSummary is true. */
 	summary?: {
 		summary: string;
 		details?: unknown;

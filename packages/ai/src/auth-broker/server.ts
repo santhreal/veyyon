@@ -1,14 +1,3 @@
-/**
- * Auth broker HTTP server.
- *
- * Wraps an {@link AuthStorage} (backed by a SQLite store on the broker host)
- * and exposes a minimal REST API for snapshot pulls and explicit refresh /
- * disable operations. Background refresh of expiring credentials lives in
- * {@link AuthBrokerRefresher}.
- *
- * Transport security is delegated to the operator (Tailscale / Wireguard);
- * the server only checks a bearer token against an allow-list per request.
- */
 import * as logger from "@veyyon/utils/logger";
 import { clampLow } from "@veyyon/utils/math";
 import { errorMessage } from "@veyyon/utils/type-guards";
@@ -42,30 +31,17 @@ import {
 import { wireSchemas } from "./wire-schemas";
 
 export interface AuthBrokerServerOptions {
-	/** Underlying credential storage (wraps the local SQLite store on the broker). */
 	storage: AuthStorage;
-	/** Listen address; accepts `host:port` or just `port`. */
 	bind?: string;
-	/** Accept any of these bearer tokens. Empty disables auth (loopback only). */
 	bearerTokens: string[];
-	/** Broker version string surfaced on `/v1/healthz`. */
 	version?: string;
-	/** Refresh credentials expiring within this window. Default 5 min. */
 	refreshSkewMs?: number;
-	/** Background refresh cadence. Default 60s. */
 	refreshIntervalMs?: number;
-	/** Disable the background refresher (e.g. for tests). */
 	disableRefresher?: boolean;
-	/**
-	 * Override SSE keepalive cadence in milliseconds for `/v1/snapshot/stream`.
-	 * Internal-only — tests use a short interval so they can assert heartbeats
-	 * without long sleeps. Default {@link DEFAULT_STREAM_KEEPALIVE_MS}.
-	 */
 	streamKeepaliveMs?: number;
 }
 
 export interface AuthBrokerServerHandle {
-	/** Bound URL (`http://host:port`). */
 	url: string;
 	port: number;
 	hostname: string;
@@ -92,11 +68,6 @@ function isAuthorized(req: Request, tokens: ReadonlySet<string>): boolean {
 	return tokens.has(match[1].trim());
 }
 
-/**
- * Parse + validate a JSON request body against an ArkType schema. Returns a
- * `Response` (400) on parse/validation failure so handlers can early-return.
- * When `allowEmpty` is set, an empty request body is validated against `{}`.
- */
 async function parseBody<t>(
 	req: Request,
 	schema: Type<t>,
@@ -357,15 +328,6 @@ async function serveSnapshot(
 	return empty(304, snapshotHeaders(currentGeneration));
 }
 
-/**
- * Stable per-credential fingerprint for SSE delta detection. Field order is
- * fixed by this serializer (NOT by entry insertion order) so a credential
- * built by two different paths still produces the same fingerprint.
- *
- * `rotatesInMs` is intentionally part of the fingerprint: when it shifts we
- * want the client to recompute its `prepareForRequest` deadline rather than
- * keep the stale projection.
- */
 function fingerprintEntry(entry: SnapshotEntry): string {
 	return JSON.stringify([
 		entry.id,
@@ -417,9 +379,7 @@ function serveSnapshotStream(
 		}
 		try {
 			controller?.close();
-		} catch {
-			// Already closed by Bun on client disconnect; harmless.
-		}
+		} catch {}
 		logger.info("auth-broker stream closed", { peer, durationMs: Date.now() - openedAt });
 	};
 
@@ -448,8 +408,6 @@ function serveSnapshotStream(
 				await storage.reload();
 				if (closed) return;
 				const snapshot = buildSnapshot(storage, refresher);
-				// Generation must move forward; a duplicate listener firing without a
-				// real bump is a no-op below (fingerprints unchanged).
 				if (snapshot.generation < lastGeneration) {
 					logger.warn("auth-broker stream generation went backwards", {
 						peer,
@@ -534,7 +492,6 @@ function serveSnapshotStream(
 	});
 }
 
-/** Boot the broker. Caller owns lifecycle; `handle.close()` to stop. */
 export function startAuthBroker(opts: AuthBrokerServerOptions): AuthBrokerServerHandle {
 	const bind = parseBind(opts.bind ?? DEFAULT_AUTH_BROKER_BIND);
 	const tokens = new Set<string>(opts.bearerTokens);
@@ -577,15 +534,7 @@ export function startAuthBroker(opts: AuthBrokerServerOptions): AuthBrokerServer
 				}
 				if (req.method === "GET" && pathname === "/v1/usage") {
 					try {
-						// AuthStorage caches usage reports internally with a 5-minute per-credential
-						// TTL (USAGE_REPORT_TTL_MS) so back-to-back widget polls re-use the
-						// last fetch instead of hitting provider endpoints repeatedly.
-						// `req.signal` propagates HTTP-client disconnects all the way to the
-						// per-caller cancel without touching the shared upstream fetch.
 						const reports = (await opts.storage.fetchUsageReports?.({ signal: req.signal })) ?? [];
-						// Drop the `raw` field — it's the provider-specific upstream body,
-						// large and unstable. Everything UI-relevant lives in `limits` and
-						// `metadata`.
 						const trimmed = reports.map(({ raw: _raw, ...rest }) => rest);
 						logger.info("auth-broker usage served", { peer, reports: trimmed.length });
 						return json(200, { generatedAt: Date.now(), reports: trimmed });

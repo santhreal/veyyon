@@ -1,4 +1,3 @@
-/** Abstract base class for OAuth flows with local callback servers. */
 import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import * as AIError from "../../error";
 import { renderOAuthResultHtml } from "./success-page";
@@ -6,9 +5,7 @@ import type { OAuthController, OAuthCredentials } from "./types";
 
 const DEFAULT_TIMEOUT = 300_000;
 const DEFAULT_HOSTNAME = "localhost";
-/** Default loopback path for OAuth callback redirect (/callback). */
 export const DEFAULT_CALLBACK_PATH = "/callback";
-/** Path served by OAuthCallbackFlow that 302-redirects to the pending authorization URL. */
 const LAUNCH_PATH = "/launch";
 
 export type CallbackResult = { code: string; state: string };
@@ -17,11 +14,8 @@ export interface OAuthCallbackFlowOptions {
 	preferredPort: number;
 	callbackPath?: string;
 	callbackHostname?: string;
-	/** Exact redirect URI advertised to the provider; disables port fallback. */
 	redirectUri?: string;
-	/** Whether flow may bind to random port if preferredPort is in use (default true). */
 	allowPortFallback?: boolean;
-	/** Skip the local callback server entirely; the user pastes the code or redirect URL back. */
 	manualInputOnly?: boolean;
 }
 
@@ -35,7 +29,6 @@ export abstract class OAuthCallbackFlow {
 	#manualInputOnly: boolean;
 	#callbackResolve?: (result: CallbackResult) => void;
 	#callbackReject?: (error: string) => void;
-	/** Authorization URL the /launch route currently redirects to. */
 	#pendingAuthUrl?: string;
 
 	constructor(
@@ -61,13 +54,10 @@ export abstract class OAuthCallbackFlow {
 		this.#manualInputOnly = preferredPortOrOptions.manualInputOnly ?? false;
 	}
 
-	/** Generate provider-specific authorization URL. */
 	abstract generateAuthUrl(state: string, redirectUri: string): Promise<{ url: string; instructions?: string }>;
 
-	/** Exchange authorization code for OAuth tokens. */
 	abstract exchangeToken(code: string, state: string, redirectUri: string): Promise<OAuthCredentials>;
 
-	/** Generate CSRF state token. */
 	generateState(): string {
 		const bytes = new Uint8Array(16);
 		crypto.getRandomValues(bytes);
@@ -84,7 +74,6 @@ export abstract class OAuthCallbackFlow {
 		if (this.ctrl.signal?.aborted) throw this.#loginCancelledError();
 	}
 
-	/** Execute the OAuth login flow. */
 	async login(): Promise<OAuthCredentials> {
 		const state = this.generateState();
 		this.#throwIfCancelled();
@@ -123,7 +112,6 @@ export abstract class OAuthCallbackFlow {
 		return this.redirectUri ?? `http://${this.callbackHostname}:${this.preferredPort}${this.callbackPath}`;
 	}
 
-	/** Start callback server on preferred port, falling back to random port if allowed. */
 	async #startCallbackServer(
 		expectedState: string,
 	): Promise<{ server: Bun.Server<unknown>; redirectUri: string; launchUrl: string | undefined }> {
@@ -158,7 +146,6 @@ export abstract class OAuthCallbackFlow {
 		}
 	}
 
-	/** Read numeric port from bound server. */
 	#resolveServerPort(server: Bun.Server<unknown>): number {
 		const port = server.port;
 		if (typeof port !== "number") {
@@ -169,7 +156,6 @@ export abstract class OAuthCallbackFlow {
 		return port;
 	}
 
-	/** Build viewport-safe /launch redirect URL. */
 	#launchUrlIfSafe(port: number): string | undefined {
 		if (this.callbackPath === LAUNCH_PATH) return undefined;
 		if (this.redirectUri) {
@@ -197,7 +183,6 @@ export abstract class OAuthCallbackFlow {
 		});
 	}
 
-	/** Handle OAuth callback HTTP request. */
 	#handleCallback(req: Request, expectedState: string): Response {
 		const url = new URL(req.url);
 
@@ -231,7 +216,6 @@ export abstract class OAuthCallbackFlow {
 			resultState = { ok: true, code, state };
 		}
 
-		// Signal to waitForCallback - capture refs before they could be cleared
 		const resolve = this.#callbackResolve;
 		const reject = this.#callbackReject;
 		queueMicrotask(() => {
@@ -248,7 +232,6 @@ export abstract class OAuthCallbackFlow {
 		});
 	}
 
-	/** Wait for OAuth callback or manual code input. */
 	#waitForCallback(expectedState: string): Promise<CallbackResult> {
 		const waitTimeout = scopedTimeoutSignal(DEFAULT_TIMEOUT, this.ctrl.signal);
 		const signal = waitTimeout.signal;
@@ -295,7 +278,6 @@ export abstract class OAuthCallbackFlow {
 	}
 }
 
-/** Parse redirect URL or query string to extract authorization code and state. */
 export function parseCallbackInput(input: string): { code?: string; state?: string } {
 	const value = input.trim();
 	if (!value) return {};

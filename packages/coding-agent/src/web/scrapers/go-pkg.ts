@@ -7,9 +7,6 @@ interface GoModuleInfo {
 	Time: string;
 }
 
-/**
- * Handle pkg.go.dev URLs via proxy API and page parsing
- */
 export const handleGoPkg: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -20,21 +17,17 @@ export const handleGoPkg: SpecialHandler = async (
 		if (!parsed) return null;
 		if (parsed.hostname !== "pkg.go.dev") return null;
 
-		// Extract module path and version from URL
-		// Patterns: /module, /module@version, /module/subpackage
 		const pathname = parsed.pathname.slice(1); // remove leading /
 		if (!pathname) return null;
 
 		let modulePath: string;
 		let version = "latest";
 
-		// Parse @version if present
 		const atIndex = pathname.indexOf("@");
 		if (atIndex !== -1) {
 			const beforeAt = pathname.slice(0, atIndex);
 			const afterAt = pathname.slice(atIndex + 1);
 
-			// Check if there's a subpackage after version
 			const slashIndex = afterAt.indexOf("/");
 			if (slashIndex !== -1) {
 				version = afterAt.slice(0, slashIndex);
@@ -44,16 +37,12 @@ export const handleGoPkg: SpecialHandler = async (
 				modulePath = beforeAt;
 			}
 		} else {
-			// No version specified, check for subpackage
-			// Need to determine where module ends and subpackage begins
-			// For now, treat the whole path as module path (we'll refine from proxy response)
 			modulePath = pathname;
 		}
 
 		const notes: string[] = [];
 		const sections: string[] = [];
 
-		// Fetch module info from proxy
 		let moduleInfo: GoModuleInfo | null = null;
 		let actualModulePath = modulePath;
 
@@ -68,9 +57,7 @@ export const handleGoPkg: SpecialHandler = async (
 						version = moduleInfo.Version;
 					}
 				}
-			} catch {
-				// If @latest fails, might be a subpackage - will extract from page
-			}
+			} catch {}
 		} else {
 			try {
 				const proxyUrl = `https://proxy.golang.org/${encodeURIComponent(modulePath)}/@v/${encodeURIComponent(version)}.info`;
@@ -79,12 +66,9 @@ export const handleGoPkg: SpecialHandler = async (
 				if (proxyResult.ok) {
 					moduleInfo = tryParseJson<GoModuleInfo>(proxyResult.content);
 				}
-			} catch {
-				// Proxy lookup failed, will rely on page data
-			}
+			} catch {}
 		}
 
-		// Fetch the pkg.go.dev page
 		const pageResult = await loadPage(url, { timeout, signal });
 		if (!pageResult.ok) {
 			return buildResult(`Failed to fetch pkg.go.dev page (status: ${pageResult.status ?? "unknown"})`, {
@@ -100,7 +84,6 @@ export const handleGoPkg: SpecialHandler = async (
 		const { parseHTML } = await import("linkedom");
 		const doc = parseHTML(pageResult.content).document;
 
-		// Extract actual module path from breadcrumb or header
 		const breadcrumb = doc.querySelector(".go-Breadcrumb");
 		if (breadcrumb) {
 			const moduleLink = breadcrumb.querySelector("a[href^='/']");
@@ -112,7 +95,6 @@ export const handleGoPkg: SpecialHandler = async (
 			}
 		}
 
-		// Extract version if not from proxy
 		if (!moduleInfo) {
 			const versionBadge = doc.querySelector(".go-Chip");
 			if (versionBadge) {
@@ -123,15 +105,12 @@ export const handleGoPkg: SpecialHandler = async (
 			}
 		}
 
-		// Extract license
 		const licenseLink = doc.querySelector("a[data-test-id='UnitHeader-license']");
 		const license = licenseLink?.textContent?.trim() || "Unknown";
 
-		// Extract import path
 		const importPathInput = doc.querySelector("input[data-test-id='UnitHeader-importPath']");
 		const importPath = importPathInput?.getAttribute("value") || actualModulePath;
 
-		// Build header
 		sections.push(`# ${importPath}`);
 		sections.push("");
 		sections.push(`**Module:** ${actualModulePath}`);
@@ -139,7 +118,6 @@ export const handleGoPkg: SpecialHandler = async (
 		sections.push(`**License:** ${license}`);
 		sections.push("");
 
-		// Extract package synopsis
 		const synopsis = doc.querySelector(".go-Main-headerContent p");
 		if (synopsis) {
 			const synopsisText = synopsis.textContent?.trim();
@@ -151,13 +129,11 @@ export const handleGoPkg: SpecialHandler = async (
 			}
 		}
 
-		// Extract documentation overview
 		const docSection = doc.querySelector("#section-documentation");
 		if (docSection) {
 			sections.push("## Documentation");
 			sections.push("");
 
-			// Get overview paragraph
 			const overview = docSection.querySelector(".go-Message");
 			if (overview) {
 				const overviewMd = await htmlToBasicMarkdown(overview.innerHTML);
@@ -165,10 +141,8 @@ export const handleGoPkg: SpecialHandler = async (
 				sections.push("");
 			}
 
-			// Get package-level documentation
 			const docContent = docSection.querySelector(".Documentation-content");
 			if (docContent) {
-				// Extract first few paragraphs
 				const paragraphs = docContent.querySelectorAll("p");
 				const docParts: string[] = [];
 				for (let i = 0; i < Math.min(3, paragraphs.length); i++) {
@@ -186,7 +160,6 @@ export const handleGoPkg: SpecialHandler = async (
 			}
 		}
 
-		// Extract index of exported identifiers
 		const indexSection = doc.querySelector("#section-index");
 		if (indexSection) {
 			const indexList = indexSection.querySelector(".Documentation-indexList");
@@ -208,7 +181,6 @@ export const handleGoPkg: SpecialHandler = async (
 				}
 
 				if (exported.length > 0) {
-					// Limit to first 50 exports
 					sections.push(exported.slice(0, 50).join("\n"));
 					if (exported.length > 50) {
 						notes.push(`showing 50 of ${exported.length} exports`);
@@ -219,7 +191,6 @@ export const handleGoPkg: SpecialHandler = async (
 			}
 		}
 
-		// Extract dependencies/imports
 		const importsSection = doc.querySelector("#section-imports");
 		if (importsSection) {
 			const importsList = importsSection.querySelector(".go-Message");

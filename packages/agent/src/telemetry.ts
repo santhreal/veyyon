@@ -800,7 +800,6 @@ function safeOnSpanEnd(telemetry: AgentTelemetry | undefined, ctx: TelemetryHook
 	}
 }
 
-/** Start the outer `invoke_agent` span that wraps a full `runLoop` invocation. */
 export function startInvokeAgentSpan(telemetry: AgentTelemetry | undefined, model: Model): Span | undefined {
 	const agentName = telemetry?.agent ? normalizeAgentIdentity(telemetry, telemetry.agent).name : undefined;
 	const name = agentName ? `invoke_agent ${agentName}` : "invoke_agent";
@@ -812,7 +811,6 @@ export function applyInvokeAgentFinish(span: Span | undefined, stepCount: number
 	span.setAttribute(PiGenAIAttr.AgentStepCount, stepCount);
 }
 
-/** Start a `chat` span representing one provider call. */
 export function startChatSpan(
 	telemetry: AgentTelemetry | undefined,
 	model: Model,
@@ -1252,7 +1250,6 @@ function serializeToolCallResultForTelemetry(telemetry: AgentTelemetry, result: 
 			: stringifyJsonAttribute(summarizeTelemetryValue(result));
 }
 
-/** Stamp the final response onto a chat span and fire telemetry hooks. */
 export async function finishChatSpan(
 	telemetry: AgentTelemetry | undefined,
 	span: Span | undefined,
@@ -1302,7 +1299,6 @@ export async function finishChatSpan(
 	span.end();
 }
 
-/** Record a chat that failed before producing a final AssistantMessage. */
 export function failChatSpan(
 	telemetry: AgentTelemetry | undefined,
 	span: Span | undefined,
@@ -1375,7 +1371,6 @@ export interface GatewayHeaderDetection {
 	readonly routedTo: string | undefined;
 }
 
-/** Identify a known LLM gateway / proxy from response headers. */
 export function detectGatewayFromHeaders(
 	headers: Readonly<Record<string, string>> | undefined,
 ): GatewayHeaderDetection | undefined {
@@ -1407,7 +1402,6 @@ export function detectGatewayFromHeaders(
 	}
 	const openRouterGenerationId = normalizedHeaders["x-generation-id"];
 	if (openRouterGenerationId?.startsWith("gen-")) {
-		// OpenRouter uses gen- prefix on x-generation-id; routedTo is in response body.
 		return { name: "openrouter", callId: openRouterGenerationId, routedTo: undefined };
 	}
 	return undefined;
@@ -1739,7 +1733,6 @@ export async function recordManualChatTelemetry(
 	return span;
 }
 
-/** Start an `execute_tool` span representing one tool invocation. */
 export function startExecuteToolSpan(
 	telemetry: AgentTelemetry | undefined,
 	options: {
@@ -1773,7 +1766,6 @@ export function startExecuteToolSpan(
 	return span;
 }
 
-/** End an `execute_tool` span. */
 export function finishExecuteToolSpan(
 	telemetry: AgentTelemetry | undefined,
 	span: Span | undefined,
@@ -1803,7 +1795,6 @@ export function finishExecuteToolSpan(
 	});
 	const status: ToolStatus = options.status ?? (options.isError ? "error" : "ok");
 	let errorType: string | undefined;
-	// Map status to wire error.type so dashboards can group by category.
 	if (status !== "ok") {
 		errorType =
 			status === "error" && options.errorObject instanceof Error
@@ -1845,7 +1836,6 @@ export function recordSkippedTool(
 	telemetry?.collector.recordOrphanTool(options);
 }
 
-/** End an `invoke_agent` span. */
 export function finishInvokeAgentSpan(
 	telemetry: AgentTelemetry | undefined,
 	span: Span | undefined,
@@ -1951,13 +1941,11 @@ function applyAggregateAttributes(span: Span, summary: AgentRunSummary, coverage
 	span.setAttribute(PiGenAIAggregateAttr.ErrorsCount, summary.errors.total);
 }
 
-/** Run `fn` with `span` activated on the OTEL context. */
 export function runInActiveSpan<T>(span: Span | undefined, fn: () => Promise<T>): Promise<T> {
 	if (!span) return fn();
 	return context.with(trace.setSpan(context.active(), span), fn);
 }
 
-/** Emit a one-shot `handoff` span describing a transition between two named agents. */
 export function recordHandoff(
 	telemetry: AgentTelemetry | undefined,
 	options: {

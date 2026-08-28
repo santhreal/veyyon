@@ -283,9 +283,6 @@ function mergeDynamicModels<TApi extends Api>(
 	baseModels: readonly Model<TApi>[],
 	dynamicModels: readonly Model<TApi>[],
 ): Model<TApi>[] {
-	// Empty-side fast paths: `mergeDynamicModels(base, [])` is the common shape
-	// after we've already merged the first pair, and `(...)` with no base
-	// happens for providers without static catalogs.
 	if (dynamicModels.length === 0) return baseModels.length === 0 ? [] : baseModels.slice();
 	if (baseModels.length === 0) return dynamicModels.slice();
 	const merged = new Map<string, Model<TApi>>(baseModels.map(model => [model.id, model]));
@@ -325,36 +322,21 @@ function fingerprintStatic<TApi extends Api>(
 	const tagged = models as ModelArrayWithFingerprint;
 	const cached = tagged[kStaticFingerprint];
 	if (cached !== undefined) return cached;
-	// `Bun.hash` returns a `bigint`; base36 keeps the string short for the
-	// SQLite column without sacrificing distinguishability.
 	const fingerprint = `${MODEL_CACHE_FINGERPRINT_VERSION}:${Bun.hash(JSON.stringify(models)).toString(36)}`;
 	tagged[kStaticFingerprint] = fingerprint;
 	return fingerprint;
 }
 
 function mergeDynamicModel<TApi extends Api>(existingModel: Model<TApi>, dynamicModel: Model<TApi>): Model<TApi> {
-	// When discovery resolves the same model id to a different endpoint (e.g.
-	// a GitHub Copilot business/enterprise host), the bundled reference's
-	// capabilities are pinned to another endpoint and no longer apply. Copilot
-	// dynamic discovery also pre-applies the correct image fallback for omitted
-	// `supports.vision`, so its explicit `false` must not be OR-upgraded by the
-	// canonical bundled model.
 	const endpointChanged = existingModel.baseUrl !== dynamicModel.baseUrl;
 	const dynamicInputAuthoritative =
 		endpointChanged || (existingModel.provider === "github-copilot" && dynamicModel.provider === "github-copilot");
 	const supportsImage = dynamicInputAuthoritative
 		? dynamicModel.input.includes("image")
 		: existingModel.input.includes("image") || dynamicModel.input.includes("image");
-	// Re-build from spec stage: sparse compat comes from `compatConfig` (the
-	// verbatim override vocabulary), never the resolved `compat` record.
 	return buildModel({
 		...existingModel,
 		...dynamicModel,
-		// A collapsed row's effort routing is owned by its collapse table:
-		// neither discovery nor the overlay may re-derive it (the same rule
-		// resolveModelThinking implements). buildModel always emits the
-		// `thinking` key, so an overlay row declaring no surface would
-		// otherwise overwrite the routing with undefined.
 		thinking:
 			existingModel.thinking?.effortRouting !== undefined
 				? existingModel.thinking
@@ -467,7 +449,6 @@ function modelSpecRejection(value: unknown): string | null {
 	if (costField !== null) {
 		return costField;
 	}
-	// Finite positive: NaN > 0 is false, +Infinity < Infinity is false.
 	const cw = v.contextWindow;
 	if (cw !== null && (typeof cw !== "number" || !(cw > 0 && cw < Infinity))) {
 		return "contextWindow";
@@ -502,8 +483,6 @@ function modelCostRejection(value: unknown): string | null {
 		cacheRead?: unknown;
 		cacheWrite?: unknown;
 	};
-	// Finite (NaN-safe): -Infinity < x < Infinity rejects NaN and both infinities.
-	// Preserves original behavior: 0 and negatives remain valid.
 	const ci = c.input;
 	if (typeof ci !== "number" || !(ci > -Infinity && ci < Infinity)) {
 		return "cost.input";

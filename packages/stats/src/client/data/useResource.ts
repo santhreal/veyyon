@@ -14,10 +14,6 @@ export interface ResourceOptions {
 	enabled?: boolean;
 }
 
-// Session-scoped cache keyed by the resource key. Lets navigation between
-// screens (and back to an already-visited range) render instantly from the
-// last value and refresh in the background, instead of unmounting to a
-// skeleton on every visit. Cleared only on full page reload.
 const resourceCache = new Map<string, { data: unknown; updatedAt: number }>();
 const RESOURCE_CACHE_LIMIT = 64;
 
@@ -44,9 +40,6 @@ export function useResource<T>(
 
 	const controllerRef = useRef<AbortController | null>(null);
 
-	// Track whether we already hold data so a key change refreshes in the
-	// background — keeping the prior view mounted so charts animate to the new
-	// data instead of flashing a skeleton.
 	const hasDataRef = useRef(false);
 	hasDataRef.current = data !== null;
 
@@ -104,13 +97,11 @@ export function useResource<T>(
 
 		const cached = resourceCache.get(keyString);
 		if (cached) {
-			// Show the cached value immediately, then revalidate in the background.
 			setData(cached.data as T);
 			setUpdatedAt(cached.updatedAt);
 			setLoading(false);
 			executeFetch(true);
 		} else {
-			// No cache: keep any stale data (range morph) or show a skeleton (first load).
 			executeFetch(hasDataRef.current);
 		}
 

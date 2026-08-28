@@ -1,9 +1,3 @@
-/**
- * CLI argument parsing and help display
- */
-// Subpath imports, never the `@veyyon/utils` barrel: the barrel re-exports `env.ts`, which parses the agent
-// `.env` AT IMPORT TIME. This module is in `cli.ts`'s static graph, so pulling the barrel here would load the
-// DEFAULT profile's `.env` before `--profile` has even been parsed (pinned by profile-cli.test.ts).
 import { renderHelpParagraph, renderHelpTable } from "@veyyon/utils/cli";
 import { APP_NAME, CONFIG_DIR_NAME } from "@veyyon/utils/dirs";
 import { pluralize } from "@veyyon/utils/format";
@@ -59,7 +53,6 @@ export interface Args {
 	providerSessionId?: string;
 	providerPromptCacheKey?: string;
 	fork?: string;
-	/** Collab link to join at startup (set by the `join` subcommand; no CLI flag). */
 	join?: string;
 	models?: string[];
 	tools?: string[];
@@ -78,18 +71,14 @@ export interface Args {
 	noRules?: boolean;
 	noTitle?: boolean;
 	autoApprove?: boolean;
-	/** `--dangerously-skip-permissions`: start with the full `/yolo` bypass on. */
 	dangerouslySkipPermissions?: boolean;
 	approvalMode?: "plan" | "ask" | "ask-command" | "auto" | "yolo" | "always-ask" | "write" | "auto-edit";
 	messages: string[];
 	fileArgs: string[];
-	/** Extension-registered flags this parse recognized — name to value. */
 	unknownFlags: Map<string, boolean | string>;
-	/** `--`/`-` prefixed tokens this parse could not match against any built-in or {@link extensionFlags} entry. The startup parse runs *before* */
 	unrecognizedFlags: string[];
 }
 
-/** Runtime dependencies the data-driven setters need. Constructed once at module load and passed to every {@link STRING_SETTERS} call so the */
 const PARSE_DEPS: ParseDeps = {
 	parseThinking: parseCliThinkingLevel,
 	builtinToolNames: BUILTIN_TOOL_NAMES,
@@ -127,7 +116,6 @@ function consumeBuiltInStringValue(flag: string, args: string[], valueIndex: num
 }
 
 export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { type: "boolean" | "string" }>): Args {
-	// Work on a copy: the `--option=value` handling below splices the value into the array, and callers reuse the same argv (the post-extension
 	const args = inputArgs.slice();
 	const result: Args = {
 		messages: [],
@@ -136,8 +124,6 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 		unrecognizedFlags: [],
 	};
 
-	// `--` ends option parsing (POSIX end-of-options). Everything after it is
-	// literal positional text, so flag-shaped messages are not parsed or rejected.
 	let sawSeparator = false;
 	for (let i = 0; i < args.length; i++) {
 		let arg = args[i];
@@ -150,7 +136,6 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 		}
 		const flagIndex = i;
 
-		// Support --flag=value syntax (e.g. --tools=ask,read). The value is spliced in as the next token so value-consuming flags pick it up via
 		let equalsValueIndex = -1;
 		if (arg.startsWith("--") && arg.includes("=")) {
 			const eqIdx = arg.indexOf("=");
@@ -160,16 +145,12 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 			equalsValueIndex = i + 1;
 		}
 
-		// Extension-registered flags take precedence over built-ins: a flag an extension owns (e.g. plan-mode's boolean `--plan`) is parsed with the
 		const extFlag = arg.startsWith("--") ? extensionFlags?.get(arg.slice(2)) : undefined;
 		if (extFlag) {
 			const flagName = arg.slice(2);
 			if (extFlag.type === "boolean") {
 				result.unknownFlags.set(flagName, true);
 			} else if (extFlag.type === "string" && i + 1 < args.length) {
-				// Consume the value in `--flag=value` form or when the next token is not
-				// flag-looking. A standalone `--` remains the end-of-options marker; use
-				// `--flag=--` when an extension needs a literal "--" string value.
 				if (equalsValueIndex !== -1 || !args[i + 1].startsWith("-")) {
 					result.unknownFlags.set(flagName, args[++i]);
 				}
@@ -179,9 +160,7 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 			if (next === undefined) {
 				throw new CliUsageError(`${arg} needs a value. Write \`${arg} <value>\` or \`${arg}=<value>\`.`);
 			}
-			// The boundary sentinel is NOT folded into that refusal, deliberately. It means the user wrote `--plan --profile work "message"` without the plan-mode extension loaded, where
 			if (next === PROFILE_BOOTSTRAP_BOUNDARY_ARG) continue;
-			// Built-in string flags consume the next token even when it is flag-looking (`--system-prompt --profile foo` ⇒ the prompt is the literal "--profile").
 			const consumed = consumeBuiltInStringValue(arg, args, i + 1);
 			i = consumed.index;
 			STRING_SETTERS[arg](result, consumed.value, PARSE_DEPS);
@@ -198,7 +177,6 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 		} else if (arg === "--allow-home") {
 			result.allowHome = true;
 		} else if (arg === "--profile") {
-			// Normally stripped by `extractProfileFlags` before parseArgs sees it; kept here as a fallback for direct parseArgs callers.
 			if (i + 1 >= args.length) throw new CliUsageError("--profile needs a value. Write `--profile <name>`.");
 			result.profile = args[++i];
 		} else if (arg === "--alias") {
@@ -239,9 +217,6 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 		} else if (arg === "--auto-approve" || arg === "--yolo") {
 			result.autoApprove = true;
 		} else if (arg === "--dangerously-skip-permissions") {
-			// Stronger than --yolo: start with the full permission bypass on
-			// (removes per-tool prompt overrides too). Explicit deny and plan mode
-			// still block. Runtime-toggleable with /yolo.
 			result.dangerouslySkipPermissions = true;
 		} else if (arg.startsWith("@")) {
 			let filePath = arg.slice(1);
@@ -252,21 +227,12 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 			}
 			result.fileArgs.push(filePath);
 		} else if (!arg.startsWith("-") || arg === "-") {
-			// Plain positional or lone `-` (stdin marker) — pass through as a
-			// message rather than flagging it.
 			result.messages.push(arg);
 		} else if (arg === "--") {
-			// POSIX positional separator: drop the token and switch the loop
-			// into "everything from here is a positional" mode. The guard at
-			// the top of the loop body handles the remaining tokens.
 			sawSeparator = true;
 		} else {
-			// Flag-shaped (`-x`, `--name`) but unrecognized at this parse. Record it so the post-extension reparse can decide whether to surface it
 			result.unrecognizedFlags.push(arg);
 		}
-		// Drop an unconsumed `--flag=value` value (e.g. a boolean flag): when no
-		// branch advanced past the spliced token, remove it so it does not fall
-		// through to a later iteration and become a positional message.
 		if (equalsValueIndex !== -1 && i === flagIndex) {
 			args.splice(equalsValueIndex, 1);
 		}
@@ -275,12 +241,10 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 	return result;
 }
 
-/** Every flag name the launch parser knows, for typo suggestion. The three tables are the parser's own source of truth, so a suggestion can never name a flag that */
 function knownFlagNames(): string[] {
 	return Array.from(new Set([...STRING_VALUE_FLAGS, ...OPTIONAL_VALUE_FLAGS, ...VALUELESS_FLAGS]));
 }
 
-/** Emit a stderr error listing the unrecognized flags and return `true` when there were any. Caller is expected to exit with a non-zero status. Splitting */
 export function reportUnrecognizedFlags(
 	args: Pick<Args, "unrecognizedFlags">,
 	write: (text: string) => void = text => process.stderr.write(text),
@@ -290,8 +254,6 @@ export function reportUnrecognizedFlags(
 	write(`${chalk.red(`Error: unknown ${pluralize("flag", flags.length)}: ${flags.join(", ")}`)}\n`);
 	const known = knownFlagNames();
 	for (const flag of flags) {
-		// Compared without the dashes: every candidate starts with them, so leaving them on adds a
-		// constant two characters to every distance and pushes a real typo outside the budget.
 		const suggestions = nearestNames(
 			flag.replace(/^-+/, ""),
 			known.map(name => name.replace(/^-+/, "")),
@@ -305,7 +267,6 @@ export function reportUnrecognizedFlags(
 	return true;
 }
 
-/** Emit a clean CLI usage error without an internal stack trace. */
 export function reportCliUsageError(
 	error: unknown,
 	write: (text: string) => void = text => process.stderr.write(text),
@@ -316,12 +277,10 @@ export function reportCliUsageError(
 	return true;
 }
 
-/** The extra help block: environment variables, tools, and a few commands. ROWS, NOT A PADDED STRING. This was eighty-five lines of literal text whose gutter was typed into */
 function envSection(title: string, rows: ReadonlyArray<readonly [string, string]>): string[] {
 	return [`  ${chalk.dim(`# ${title}`)}`, ...renderHelpTable(rows, { indent: "  " }), ""];
 }
 
-/** One line per built-in tool, for the AVAILABLE TOOLS block in `--help`. The list it replaces was fifteen literal rows that had stopped describing this */
 const BUILTIN_TOOL_HELP: Record<BuiltinToolName, string> = {
 	argot_load: "Load a folder's Argot shorthand so its paths can be written as short handles",
 	argot_unload: "Stop being taught a folder's Argot shorthand",

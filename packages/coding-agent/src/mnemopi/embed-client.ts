@@ -16,16 +16,12 @@ import {
 import { MNEMOPI_EMBED_WORKER_ARG } from "../worker-args";
 import type { MnemopiEmbedModelId, MnemopiEmbedWorkerInbound, MnemopiEmbedWorkerOutbound } from "./embed-protocol";
 
-/** Parent-side handle for the mnemopi embeddings subprocess. The runtime implementation is a Bun child process so `onnxruntime-node`'s NAPI */
 export type MnemopiEmbedWorkerHandle = WorkerHandle<MnemopiEmbedWorkerInbound, MnemopiEmbedWorkerOutbound>;
 
 type PendingRequest =
 	| { kind: "init"; model: MnemopiEmbedModelId; resolve: (ok: boolean) => void }
 	| { kind: "embed"; model: MnemopiEmbedModelId; resolve: (vectors: number[][] | Error) => void };
 
-/** Hidden subcommand on the main CLI that boots the mnemopi embeddings worker in the spawned subprocess. Kept in sync with the dispatch in `cli.ts`. */
-
-/** Spawn the mnemopi embeddings worker as a subprocess. Exported for tests and the smoke probe; production callers go through {@link spawnMnemopiEmbedWorker}. */
 export function createMnemopiEmbedSubprocess(): SpawnedSubprocess<MnemopiEmbedWorkerOutbound> {
 	return createWorkerSubprocess<MnemopiEmbedWorkerOutbound>({
 		spawnCommand: resolveWorkerSpawnCmd(MNEMOPI_EMBED_WORKER_ARG),
@@ -36,7 +32,6 @@ export function createMnemopiEmbedSubprocess(): SpawnedSubprocess<MnemopiEmbedWo
 
 function wrapSubprocess(spawned: SpawnedSubprocess<MnemopiEmbedWorkerOutbound>): MnemopiEmbedWorkerHandle {
 	const { proc } = spawned;
-	// `proc.send` throws synchronously when the child's IPC pipe is already closed. That throw MUST propagate: the caller registers a pending
 	return createWorkerHandle<MnemopiEmbedWorkerInbound, MnemopiEmbedWorkerOutbound>(spawned, message => {
 		proc.send(message);
 	});
@@ -50,7 +45,6 @@ function spawnMnemopiEmbedWorker(): MnemopiEmbedWorkerHandle {
 	);
 }
 
-/** Per-model wrapper produced by {@link MnemopiEmbedClient.initialize}. `embed()` round-trips one batch of texts through the worker subprocess and */
 export interface MnemopiSubprocessEmbeddingModel {
 	embed(texts: string[], batchSize?: number): AsyncIterable<number[][]>;
 }
@@ -67,7 +61,6 @@ export class MnemopiEmbedClient {
 		this.#spawnWorker = spawnWorker;
 	}
 
-	/** Load the named fastembed model inside the subprocess. Resolves to a thin wrapper whose `embed()` round-trips through the same worker, or */
 	async initialize(
 		model: MnemopiEmbedModelId,
 		cacheDir: string | undefined,
@@ -108,9 +101,7 @@ export class MnemopiEmbedClient {
 		this.#pending.clear();
 		try {
 			await worker?.terminate();
-		} catch {
-			// Already gone.
-		}
+		} catch {}
 	}
 
 	async #embed(
@@ -124,7 +115,6 @@ export class MnemopiEmbedClient {
 		const { promise, resolve } = Promise.withResolvers<number[][] | Error>();
 		this.#pending.set(id, { kind: "embed", model, resolve });
 		try {
-			// Carry the (model, cacheDir) the wrapper was bound to in every embed message: dispose + respawn between two embeds on the same
 			worker.send({ type: "embed", id, model, cacheDir, texts, batchSize });
 			const result = await promise;
 			if (result instanceof Error) throw result;
@@ -141,7 +131,6 @@ export class MnemopiEmbedClient {
 		batchSize: number | undefined,
 	): AsyncIterable<number[][]> {
 		const vectors = await this.#embed(model, cacheDir, texts, batchSize);
-		// Mnemopi's `collectMatrix` re-batches via async iteration anyway; yield a single batch carrying the full result so the caller's drain loop
 		yield vectors;
 	}
 

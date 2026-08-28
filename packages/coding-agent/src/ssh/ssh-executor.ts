@@ -8,41 +8,25 @@ import { hasSshfs, mountRemote } from "./sshfs-mount";
 import { wrapInPosixShell } from "./utils";
 
 export interface SSHExecutorOptions {
-	/** Timeout in milliseconds */
 	timeout?: number;
-	/** Callback for streaming output chunks (already sanitized) */
 	onChunk?: (chunk: string) => void;
-	/** AbortSignal for cancellation */
 	signal?: AbortSignal;
-	/** Remote path to mount when sshfs is available */
 	remotePath?: string;
-	/** Wrap commands in a POSIX shell for compat mode */
 	compatEnabled?: boolean;
-	/** Artifact path/id for full output storage */
 	artifactPath?: string;
 	artifactId?: string;
-	/** How many bytes of output may stay inline, from the caller's session. See the same field on `BashExecutorOptions`: the executor has no session, so */
 	spillThreshold?: number;
 }
 
 export interface SSHResult {
-	/** Combined stdout + stderr output (sanitized, possibly truncated) */
 	output: string;
-	/** Process exit code (undefined if killed/cancelled) */
 	exitCode: number | undefined;
-	/** Whether the command was cancelled via signal */
 	cancelled: boolean;
-	/** Whether the output was truncated */
 	truncated: boolean;
-	/** Total number of lines in the output stream */
 	totalLines: number;
-	/** Total number of bytes in the output stream */
 	totalBytes: number;
-	/** Number of lines included in the output text */
 	outputLines: number;
-	/** Number of bytes included in the output text */
 	outputBytes: number;
-	/** Artifact ID if full output was saved to artifact storage */
 	artifactId?: string;
 }
 

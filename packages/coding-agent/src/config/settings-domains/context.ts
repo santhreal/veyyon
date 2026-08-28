@@ -1,16 +1,10 @@
-// The owner of the trigger sentinel, not the `@veyyon/agent-core` barrel: one string against 406 modules.
-// This is a settings DOMAIN, reached from `config/settings-schema.ts`, so the barrel arrived on the graph of
-// the most imported module in this package.
 import { AUTO_COMPACTION_THRESHOLD } from "@veyyon/agent-core/compaction/threshold";
 import { INSTRUMENTATION_LEVELS } from "@veyyon/ai/instrumentation";
 import { DEFAULT_TOKEN_BUDGET } from "argot";
 import { unsetNumberOption } from "../optional-number";
 import { EMPTY_STRING_ARRAY, HINDSIGHT_RECALL_TYPES_DEFAULT } from "./shared";
 
-/** Context domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const CONTEXT_SETTINGS = {
-	// Context
-	// Context promotion
 	"contextPromotion.enabled": {
 		type: "boolean",
 		default: false,
@@ -22,13 +16,11 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Compaction
 	"compaction.enabled": {
 		type: "boolean",
 		default: true,
 	},
 
-	// Server-side (remote) compaction: OpenAI compacting the history on its own side. Unrelated to `compaction.remoteEndpoint`, which is an
 	"compaction.remote": {
 		type: "boolean",
 		default: true,
@@ -66,7 +58,6 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// The ONE compaction-trigger setting. Its unit is part of its value, so there is a single row to read and a single row to change:
 	"compaction.threshold": {
 		type: "string",
 		default: AUTO_COMPACTION_THRESHOLD,
@@ -105,24 +96,18 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Retired: superseded by `compaction.threshold` (an absolute amount is now
-	// written there as a bare token count). Kept valid so an existing config keeps
-	// compacting at the same point, read ONLY by withLegacyCompactionThreshold.
 	"compaction.thresholdTokens": {
 		type: "number",
 		default: -1,
 		retiredBy: "compaction.threshold",
 	},
 
-	// Retired: superseded by `compaction.threshold` (a percent is now written
-	// there as `85%`). Read ONLY by withLegacyCompactionThreshold.
 	"compaction.thresholdPercent": {
 		type: "number",
 		default: -1,
 		retiredBy: "compaction.threshold",
 	},
 
-	// An ORDERED CHAIN, not one model: the value goes through normalizeModelPatternList, so a comma-separated string and a string array
 	"compaction.model": {
 		type: "modelChain",
 		default: undefined,
@@ -135,7 +120,6 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// What happens once the configured chain is exhausted. Every tier `auto` reaches is a model the operator NAMED: the chain, the sibling the model's
 	"compaction.modelFallbackStrategy": {
 		type: "enum",
 		values: ["auto", "any-model", "configured-only"] as const,
@@ -169,8 +153,6 @@ export const CONTEXT_SETTINGS = {
 
 	"compaction.modelContextWindow": {
 		type: "number",
-		// Unset is an ABSENT key: see `unset` in config/settings.ts. A sentinel
-		// value here would be indistinguishable from a configured window.
 		default: undefined,
 		ui: {
 			tab: "model",
@@ -196,17 +178,14 @@ export const CONTEXT_SETTINGS = {
 		default: false,
 	},
 
-	// No default: an unset reserve tells the compaction layer the user never chose one, so small-window recovery may swap in the proportional reserve
 	"compaction.reserveTokens": { type: "number", default: undefined },
 
 	"compaction.keepRecentTokens": { type: "number", default: 10000 },
 
 	"compaction.autoContinue": { type: "boolean", default: true },
 
-	// Optional summarizer endpoint for the `summary` strategy. Whatever it points at must return summary TEXT, which is stored exactly like a locally
 	"compaction.remoteEndpoint": { type: "string", default: undefined },
 
-	// Idle compaction
 	"compaction.idleEnabled": {
 		type: "boolean",
 		default: false,
@@ -232,7 +211,6 @@ export const CONTEXT_SETTINGS = {
 		default: true,
 	},
 
-	// Argot: per-project shorthand codec. The dictionary is generated from the repository and kept in a local cache (never committed), regenerated as the
 	"argot.enabled": {
 		type: "boolean",
 		default: false,
@@ -245,7 +223,6 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Whether the launch project is loaded for the session, or every load is left to the agent. On (the default) the folder the session started in is armed in
 	"argot.autoload": {
 		type: "boolean",
 		default: true,
@@ -259,7 +236,6 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Which models may WRITE shorthand. Expansion (decode) is unconditional once a dictionary loads and stays lossless whatever this list holds; this gates only
 	"argot.encode.models": {
 		type: "array",
 		default: EMPTY_STRING_ARRAY,
@@ -273,7 +249,6 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// How many tokens the generated dictionary itself may spend. A larger budget teaches more handles (more chances to save tokens in the transcript) at the
 	"argot.tokenBudget": {
 		type: "number",
 		default: DEFAULT_TOKEN_BUDGET,
@@ -293,7 +268,6 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Stop teaching shorthand once context passes this many tokens, so a large, recall-degraded context writes in full and cannot garble a handle. Handles
 	"argot.encode.disableAboveTokens": {
 		type: "number",
 		default: -1,
@@ -315,7 +289,6 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// How a subagent starts out with Argot shorthand. Correctness never depends on this: every agent expands its own output at every boundary (a spawned child's
 	"argot.subagents": {
 		type: "enum",
 		values: ["off", "fresh", "inherit"] as const,
@@ -391,7 +364,6 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Branch summaries
 	"branchSummary.enabled": {
 		type: "boolean",
 		default: false,
@@ -403,7 +375,6 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Prompt-cache enforcement. The check itself always runs and always records its verdict; these two decide how loudly a failure is treated. Blocking is a
 	"cache.reportRejection": {
 		type: "boolean",
 		default: true,
@@ -431,9 +402,6 @@ export const CONTEXT_SETTINGS = {
 
 	"branchSummary.reserveTokens": { type: "number", default: 16384 },
 
-	// Memories
-	// Legacy local-memory enable flag kept only for back-compat migration.
-	// Hidden from UI — users should use `memory.backend` instead.
 	"memories.enabled": {
 		type: "boolean",
 		default: false,
@@ -469,7 +437,6 @@ export const CONTEXT_SETTINGS = {
 
 	"memories.summaryInjectionTokenLimit": { type: "number", default: 5000 },
 
-	// Memory backend selector — picks between local memories pipeline, Mnemopi local SQLite, Hindsight remote memory, or off. Legacy
 	"memory.backend": {
 		type: "enum",
 		values: ["off", "local", "hindsight", "mnemopi"] as const,
@@ -492,7 +459,6 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Session telemetry uses the closed category policy in @veyyon/ai/instrumentation. `off` preserves the historical record unchanged; higher levels permit
 	"session.instrumentation": {
 		type: "enum",
 		values: INSTRUMENTATION_LEVELS,
@@ -531,7 +497,6 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Auto-Learn (experimental): post-stop nudge to capture lessons to memory and mint/enhance isolated managed skills under the active profile's
 	"autolearn.enabled": {
 		type: "boolean",
 		default: false,
@@ -555,10 +520,8 @@ export const CONTEXT_SETTINGS = {
 			condition: "autolearnActive",
 		},
 	},
-	// Config-file-only knob (numbers without `options` are hidden from the UI).
 	"autolearn.minToolCalls": { type: "number", default: 5 },
 
-	// Mnemopi local SQLite memory backend.
 	"mnemopi.dbPath": {
 		type: "string",
 		default: undefined,
@@ -799,7 +762,6 @@ export const CONTEXT_SETTINGS = {
 	"mnemopi.injectionTokenLimit": { type: "number", default: 5000 },
 	"mnemopi.debug": { type: "boolean", default: false },
 
-	// Hindsight (https://hindsight.vectorize.io)
 	"hindsight.apiUrl": {
 		type: "string",
 		default: "http://localhost:8888",
@@ -952,7 +914,6 @@ export const CONTEXT_SETTINGS = {
 	"hindsight.mentalModelRefreshIntervalMs": { type: "number", default: 5 * 60 * 1000 },
 	"hindsight.mentalModelMaxRenderChars": { type: "number", default: 16_000 },
 
-	// TTSR
 	"ttsr.enabled": {
 		type: "boolean",
 		default: true,
@@ -1048,13 +1009,11 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Named by the rule list, never by a row of its own: the operator turns an experimental rule on where every other rule is turned on and off, and a
 	"ttsr.experimentalRules": {
 		type: "array",
 		default: [] as string[],
 	},
 
-	// Google only. Gemini attaches an opaque `thoughtSignature` to every function call, and until this setting existed every historical one was re-uploaded on
 	"context.thinkingRetention": {
 		type: "number",
 		default: -1,

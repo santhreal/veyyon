@@ -59,7 +59,6 @@ function resolveDeploymentName(model: Model<"azure-openai-responses">, options?:
 	return mappedDeployment ?? model.id;
 }
 
-// Azure OpenAI Responses-specific options
 export interface AzureOpenAIResponsesOptions extends StreamOptions {
 	reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 	reasoningSummary?: "auto" | "detailed" | "concise" | null;
@@ -86,7 +85,6 @@ const streamAzureOpenAIResponsesOnce = (
 ): AssistantMessageEventStream => {
 	const stream = new AssistantMessageEventStream();
 
-	// Start async processing
 	(async () => {
 		const startTime = performance.now();
 		let firstTokenTime: number | undefined;
@@ -136,10 +134,6 @@ const streamAzureOpenAIResponsesOnce = (
 				typeof params.model === "string" ? params.model : model.id,
 			);
 			const prepareRequest = async (): Promise<RequestInit> => {
-				// Serialize once; the hook gets an isolated parse of exactly those
-				// bytes, and when no extension handles the event the wire reuses
-				// `bodyJson` instead of re-serializing (structuredClone + stringify
-				// measured 82ms on a 32MiB context where serialize-once costs 9ms).
 				const bodyJson = JSON.stringify(params);
 				let wireParams = params;
 				if (options?.onPayload) {
@@ -175,8 +169,6 @@ const streamAzureOpenAIResponsesOnce = (
 					if (requestTimeoutMs !== undefined) {
 						headersWithTimeout["X-Stainless-Timeout"] = Math.floor(requestTimeoutMs / 1000).toString();
 					}
-					// Preserve payload capture for callers that intentionally use an
-					// already-aborted signal without issuing a physical request.
 					if (requestSignal.aborted) await prepareRequest();
 					openaiHandle = await postOpenAIStream<ResponseStreamEvent>({
 						url,
@@ -186,9 +178,6 @@ const streamAzureOpenAIResponsesOnce = (
 						fetch: options?.fetch,
 						prepareInit: prepareRequest,
 						maxRetryDelayMs: options?.maxRetryDelayMs,
-						// Transient 408/429/5xx get Retry-After-aware transport retries;
-						// the first-event watchdog aborts `requestSignal`, so retries
-						// cannot extend the caller's deadline.
 						onSseEvent: rawSseObserver,
 					});
 					break;
@@ -201,8 +190,6 @@ const streamAzureOpenAIResponsesOnce = (
 					const retryMarker = `${activeReasoningEffortFallbackKey}:${String(reasoningEffortFallback)}`;
 					if (attemptedReasoningEffortFallbacks.has(retryMarker)) throw error;
 					attemptedReasoningEffortFallbacks.add(retryMarker);
-					// The fallback-applied params reach `wireBodyJson` when the retried
-					// attempt's prepareRequest serializes them; no eager copy needed.
 					applyOpenAIReasoningEffortFallback(params, reasoningEffortFallback);
 				} finally {
 					clearTimeout(requestTimeout);
@@ -355,10 +342,6 @@ function buildParams(
 		strictResponsesPairing: true,
 		supportsImageDetailOriginal: model.compat.supportsImageDetailOriginal,
 		supportsDeveloperRole: model.compat.supportsDeveloperRole,
-		// replay stays off (Azure assistant payloads are not spliced today), but
-		// declaring the policy opens the compaction-window seam: a stored
-		// server-side compaction window on a summary message replays in place of
-		// its summary text, exactly as on the official OpenAI host.
 		nativeHistory: { replay: false, filterReasoning: model.compat.filterReasoningHistory },
 		systemRole,
 		includeThinkingSignatures: true,
@@ -371,8 +354,6 @@ function buildParams(
 		input: messages,
 		stream: true,
 		prompt_cache_key: getOpenAIPromptCacheKey(options),
-		// Encrypted reasoning replay (applyResponsesReasoningParams) requires
-		// stateless responses, matching the openai provider.
 		store: false,
 	};
 

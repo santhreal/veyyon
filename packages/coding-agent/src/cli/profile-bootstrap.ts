@@ -1,5 +1,3 @@
-/** Bootstrap-time argv preparser for the global `--profile` / `--alias` flags. Profile selection MUST happen before any module reads `getAgentDir()` (notably */
-
 import { isSubcommand } from "../cli-commands";
 import {
 	EXTENSION_SHADOWABLE_STRING_FLAGS,
@@ -31,7 +29,6 @@ export interface ProfileBootstrapResult {
 	aliasName?: string;
 }
 
-/** Strip `--profile` / `--alias` from argv while preserving the surrounding argument structure, returning the residual argv to hand to the launch parser */
 export function extractProfileFlags(argv: readonly string[]): ProfileBootstrapResult {
 	const stripped: string[] = [];
 	let profile: string | undefined;
@@ -55,9 +52,6 @@ export function extractProfileFlags(argv: readonly string[]): ProfileBootstrapRe
 			insertBoundaryBeforeNextValue = false;
 		}
 
-		// `--` ends option processing. Anything that follows is forwarded verbatim
-		// so users can pass arbitrary tokens (including a literal `--profile`) to
-		// downstream tools without the bootstrap stealing them.
 		if (arg === "--") {
 			passThrough = true;
 			stripped.push(arg);
@@ -103,7 +97,6 @@ export function extractProfileFlags(argv: readonly string[]): ProfileBootstrapRe
 			continue;
 		}
 
-		// Known string flags normally consume flag-looking values (for example `--system-prompt --profile foo` means the system prompt is literally
 		if (EXTENSION_SHADOWABLE_STRING_FLAGS.has(arg)) {
 			canDispatchSubcommand = false;
 			stripped.push(arg);
@@ -115,7 +108,6 @@ export function extractProfileFlags(argv: readonly string[]): ProfileBootstrapRe
 			continue;
 		}
 
-		// Forward both the flag and its value untouched so the downstream parser gets exactly what the user typed. Critical for `--system-prompt
 		if (STRING_VALUE_FLAGS.has(arg)) {
 			canDispatchSubcommand = false;
 			stripped.push(arg);
@@ -138,7 +130,6 @@ export function extractProfileFlags(argv: readonly string[]): ProfileBootstrapRe
 			continue;
 		}
 
-		// An unclassified bare long option (`--xxx` with no `=`) may be an extension string flag that consumes the next token as its value. The bootstrap runs
 		if (isUnknownLongValueCandidate(arg)) {
 			canDispatchSubcommand = false;
 			stripped.push(arg);
@@ -150,7 +141,6 @@ export function extractProfileFlags(argv: readonly string[]): ProfileBootstrapRe
 			continue;
 		}
 
-		// Only the first residual argv token can be the dispatched subcommand. Once any other token has been forwarded, later subcommand names are launch text.
 		if (canDispatchSubcommand && isSubcommand(arg) && !isProfileBootstrapSubcommand(arg)) {
 			sawSubcommand = true;
 		}

@@ -1,22 +1,17 @@
-/** Storage seam for hashline patcher. */
 import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as pathModule from "node:path";
 
-/** Result returned by Filesystem.writeText. */
 export interface WriteResult {
-	/** Final text that was persisted. May differ from the input if the FS transformed it. */
 	text: string;
 }
 
 import type { FileOp } from "./types";
 
-/** Optional hints for {@link Filesystem.preflightWrite}. */
 export interface PreflightWriteOptions {
 	fileOp?: FileOp;
 }
 
-/** ENOENT-like error thrown by Filesystem.readText when path is missing. */
 export class NotFoundError extends Error {
 	readonly code = "ENOENT";
 
@@ -27,14 +22,12 @@ export class NotFoundError extends Error {
 	}
 }
 
-/** Type guard for {@link NotFoundError} and structurally-compatible errors. */
 export function isNotFound(error: unknown): boolean {
 	if (error instanceof NotFoundError) return true;
 	if (error instanceof Error && (error as Error & { code?: string }).code === "ENOENT") return true;
 	return false;
 }
 
-/** Compare two paths by device + inode identity. */
 export async function sameExistingFile(a: string, b: string): Promise<boolean> {
 	try {
 		const [sa, sb] = await Promise.all([fs.stat(a), fs.stat(b)]);
@@ -44,10 +37,8 @@ export async function sameExistingFile(a: string, b: string): Promise<boolean> {
 	}
 }
 
-/** Monotonic counter for atomic temp names. */
 let atomicTempCounter = 0;
 
-/** Resolve file target for atomic write, following symlinks. */
 async function resolveAtomicWriteTarget(filePath: string): Promise<{ target: string; viaSymlink: boolean }> {
 	try {
 		const stats = await fs.lstat(filePath);
@@ -56,7 +47,6 @@ async function resolveAtomicWriteTarget(filePath: string): Promise<{ target: str
 			return { target: filePath, viaSymlink: false };
 		}
 	} catch (error) {
-		// A path that does not exist yet is the normal create case.
 		if (!isNotFound(error)) throw error;
 		return { target: filePath, viaSymlink: false };
 	}
@@ -65,8 +55,6 @@ async function resolveAtomicWriteTarget(filePath: string): Promise<{ target: str
 		assertRegularFileTarget(await fs.lstat(target), target);
 		return { target, viaSymlink: true };
 	} catch (error) {
-		// A chain ending in a dangling link has no real path. Fall back to the
-		// single hop so the failure names the missing file rather than the link.
 		if (!isNotFound(error)) throw error;
 		return {
 			target: pathModule.resolve(pathModule.dirname(filePath), await fs.readlink(filePath)),
@@ -75,7 +63,6 @@ async function resolveAtomicWriteTarget(filePath: string): Promise<{ target: str
 	}
 }
 
-/** Refuse to replace non-regular file targets during atomic write. */
 function assertRegularFileTarget(stats: Stats, target: string): void {
 	if (stats.isFile()) return;
 	const kind = stats.isDirectory()
@@ -93,7 +80,6 @@ function assertRegularFileTarget(stats: Stats, target: string): void {
 	);
 }
 
-/** Rewrite error message replacing temp file name with target path. */
 function withTargetInMessage(error: unknown, target: string, tempPath: string): unknown {
 	if (!(error instanceof Error) || !error.message.includes(tempPath)) return error;
 	const restated = new Error(
@@ -106,7 +92,6 @@ function withTargetInMessage(error: unknown, target: string, tempPath: string): 
 	return restated;
 }
 
-/** Write content to targetPath atomically via temp file and rename. */
 export async function writeFileAtomic(targetPath: string, content: string): Promise<void> {
 	const { target, viaSymlink } = await resolveAtomicWriteTarget(targetPath);
 
@@ -152,8 +137,6 @@ export async function writeFileAtomic(targetPath: string, content: string): Prom
 		}
 	}
 
-	// Persist the rename itself by flushing the directory entry. Some platforms
-	// refuse to open a directory for fsync; the rename stands there regardless.
 	try {
 		const dirHandle = await fs.open(dir, "r");
 		try {
@@ -161,40 +144,27 @@ export async function writeFileAtomic(targetPath: string, content: string): Prom
 		} finally {
 			await dirHandle.close();
 		}
-	} catch {
-		// Directory fsync unsupported on this platform.
-	}
+	} catch {}
 }
 
-/** Abstract filesystem backend for hashline patcher. */
 export abstract class Filesystem {
-	/** Read the file's full text content. Throw on missing file. */
 	abstract readText(path: string): Promise<string>;
 
-	/** Read raw bytes for backends whose text is a direct decode of persisted bytes. */
 	readBinary?(path: string): Promise<Uint8Array | undefined>;
 
-	/** Validate that `path` is writable before a prepared batch starts committing. */
 	async preflightWrite(_path: string, _options?: PreflightWriteOptions): Promise<void> {}
 
-	/** Persist `content` at `path`. Returns the actual final text that was written. */
 	abstract writeText(path: string, content: string): Promise<WriteResult>;
 
-	/** Delete the file at `path`. Default: not supported. */
 	async delete(path: string): Promise<void> {
 		throw new Error(`Filesystem does not support delete: ${path}`);
 	}
 
-	/**
-	 * Move/rename `from` to `to`. When `content` is provided the destination
-	 * receives that text; otherwise implementations may preserve the source bytes.
-	 */
 	async move(from: string, to: string, content?: string): Promise<void> {
 		void content;
 		throw new Error(`Filesystem does not support move: ${from} -> ${to}`);
 	}
 
-	/** Return true when the path exists and can be read. Default: probe via {@link readText}. */
 	async exists(path: string): Promise<boolean> {
 		try {
 			await this.readText(path);
@@ -205,28 +175,19 @@ export abstract class Filesystem {
 		}
 	}
 
-	/** Check if two paths name the same underlying file. */
 	async isSameExistingFile(a: string, b: string): Promise<boolean> {
 		return this.canonicalPath(a) === this.canonicalPath(b);
 	}
 
-	/**
-	 * Canonical path used as a key by external caches (e.g. snapshot
-	 * stores). The default is identity; override to return an absolute or
-	 * otherwise canonicalised path so producers and consumers of cached
-	 * snapshots agree on the key without each having to redo the resolution.
-	 */
 	canonicalPath(path: string): string {
 		return path;
 	}
 
-	/** Allow tag-based path recovery for missing authored paths. */
 	allowTagPathRecovery(_authoredPath: string, _resolvedPath: string): boolean {
 		return true;
 	}
 }
 
-/** In-memory filesystem implementation for testing. */
 export class InMemoryFilesystem extends Filesystem {
 	#files = new Map<string, string>();
 
@@ -264,28 +225,23 @@ export class InMemoryFilesystem extends Filesystem {
 		return this.#files.has(path);
 	}
 
-	/** Synchronous helper for setting up fixtures without awaiting. */
 	set(path: string, content: string): void {
 		this.#files.set(path, content);
 	}
 
-	/** Synchronous helper for inspecting state without awaiting. */
 	get(path: string): string | undefined {
 		return this.#files.get(path);
 	}
 
-	/** Wipe all entries. */
 	clear(): void {
 		this.#files.clear();
 	}
 
-	/** Iterate `[path, content]` pairs. */
 	entries(): IterableIterator<[string, string]> {
 		return this.#files.entries();
 	}
 }
 
-/** Disk-backed filesystem implementation. */
 export class NodeFilesystem extends Filesystem {
 	async readText(path: string): Promise<string> {
 		const file = Bun.file(path);
@@ -340,7 +296,6 @@ export class NodeFilesystem extends Filesystem {
 		return Bun.file(path).exists();
 	}
 
-	/** Compare paths by device + inode identity. */
 	override async isSameExistingFile(a: string, b: string): Promise<boolean> {
 		return sameExistingFile(a, b);
 	}

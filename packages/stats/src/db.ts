@@ -56,25 +56,17 @@ const TOOL_CALLS_BACKFILL_KEY = "tool_calls_v1";
 function shouldResetBackfill(value: string | undefined): boolean {
 	return value !== BACKFILL_COMPLETE && value !== BACKFILL_PENDING;
 }
-/**
- * Initialize the database and create tables.
- */
 export async function initDb(): Promise<Database> {
 	if (db) return db;
 
-	// Ensure directory exists
 	await fs.mkdir(getConfigRootDir(), { recursive: true });
 
 	db = new Database(getStatsDbPath());
-	// Install the busy handler BEFORE any lock-taking statement.
 	db.run("PRAGMA busy_timeout = 5000");
 	db.run("PRAGMA journal_mode = WAL");
 
-	// Whether `messages` predates this init — drives the one-time agent_type
-	// backfill below, so it must be sampled before CREATE TABLE adds the table.
 	const messagesTableExisted = tableExists(db, "messages");
 
-	// Create tables
 	db.run(`
 		CREATE TABLE IF NOT EXISTS messages (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -181,7 +173,6 @@ export async function initDb(): Promise<Database> {
 		messagesTableExisted ? BACKFILL_PENDING : BACKFILL_COMPLETE,
 	);
 	db.run("CREATE INDEX IF NOT EXISTS idx_messages_timestamp_agent_type ON messages(timestamp, agent_type)");
-	// Behavior-metric schema version check: drop stale tables to trigger re-ingest.
 	const userMessageColumns = db.prepare("PRAGMA table_info(user_messages)").all() as {
 		name: string;
 	}[];
@@ -267,8 +258,6 @@ function calculateCatalogCost(provider: string, modelId: string, tokens: CostTok
 }
 
 function resolveStoredCost(stats: MessageStats): UsageCost {
-	// `usage.cost` was optional in older session files. Although current
-	// MessageStats requires it, parsed JSONL can still carry that legacy shape.
 	const storedCost: UsageCost | undefined = stats.usage.cost;
 	if (storedCost && storedCost.total !== 0) {
 		return storedCost;
@@ -312,9 +301,6 @@ function backfillMissingCatalogCosts(database: Database): void {
 	applyBackfill();
 }
 
-/**
- * Get the stored offset for a session file.
- */
 export function getFileOffset(sessionFile: string): { offset: number; lastModified: number } | null {
 	if (!db) return null;
 
@@ -324,9 +310,6 @@ export function getFileOffset(sessionFile: string): { offset: number; lastModifi
 	return row ? { offset: row.offset, lastModified: row.last_modified } : null;
 }
 
-/**
- * Update the stored offset for a session file.
- */
 export function setFileOffset(sessionFile: string, offset: number, lastModified: number): void {
 	if (!db) return;
 
@@ -337,7 +320,6 @@ export function setFileOffset(sessionFile: string, offset: number, lastModified:
 	stmt.run(sessionFile, offset, lastModified);
 }
 
-/** Insert message stats into the database. */
 export function insertMessageStats(stats: MessageStats[]): number {
 	if (!db || stats.length === 0) return 0;
 
@@ -386,8 +368,6 @@ export function insertMessageStats(stats: MessageStats[]): number {
 				cost.cacheWrite,
 				cost.total,
 				s.agentType,
-				// `WHERE NOT EXISTS` binds: skip when a different session_file
-				// already holds this (entry_id, timestamp).
 				s.entryId,
 				s.timestamp,
 				s.sessionFile,
@@ -400,7 +380,6 @@ export function insertMessageStats(stats: MessageStats[]): number {
 	return inserted;
 }
 
-/** Raw row shapes for the SQL queries below. sqlite results cannot be */
 interface AggregateRow {
 	total_requests: number | null;
 	failed_requests: number | null;
@@ -447,7 +426,6 @@ interface CostSeriesRow {
 	requests: number;
 }
 
-/** Raw `messages` table row (SELECT *). */
 interface MessageRow {
 	id: number;
 	session_file: string;
@@ -475,9 +453,6 @@ interface MessageRow {
 	agent_type: string | null;
 }
 
-/**
- * Build aggregated stats from query results.
- */
 function buildAggregatedStats(rows: AggregateRow[]): AggregatedStats {
 	if (rows.length === 0) {
 		return {
@@ -531,9 +506,6 @@ function buildAggregatedStats(rows: AggregateRow[]): AggregatedStats {
 	};
 }
 
-/**
- * Get overall aggregated stats.
- */
 export function getOverallStats(cutoff?: number): AggregatedStats {
 	if (!db) return buildAggregatedStats([]);
 
@@ -560,9 +532,6 @@ export function getOverallStats(cutoff?: number): AggregatedStats {
 	const rows = hasCutoff ? stmt.all(cutoff) : stmt.all();
 	return buildAggregatedStats(rows as AggregateRow[]);
 }
-/**
- * Get stats grouped by model.
- */
 export function getStatsByModel(cutoff?: number): ModelStats[] {
 	if (!db) return [];
 
@@ -598,9 +567,6 @@ export function getStatsByModel(cutoff?: number): ModelStats[] {
 	}));
 }
 
-/**
- * Get stats grouped by folder.
- */
 export function getStatsByFolder(cutoff?: number): FolderStats[] {
 	if (!db) return [];
 
@@ -634,7 +600,6 @@ export function getStatsByFolder(cutoff?: number): FolderStats[] {
 	}));
 }
 
-/** Get token usage grouped by agent type (main agent, task subagents, advisor). */
 export function getStatsByAgentType(cutoff?: number): AgentTypeStats[] {
 	if (!db) return [];
 
@@ -665,9 +630,6 @@ export function getStatsByAgentType(cutoff?: number): AgentTypeStats[] {
 	}));
 }
 
-/**
- * Get time series data.
- */
 export function getTimeSeries(hours = 24, cutoff?: number | null, bucketMs = 60 * 60 * 1000): TimeSeriesPoint[] {
 	if (!db) return [];
 
@@ -699,12 +661,6 @@ export function getTimeSeries(hours = 24, cutoff?: number | null, bucketMs = 60 
 	}));
 }
 
-/**
- * Get daily performance time series data for the last N days.
- */
-/**
- * Get daily model usage time series data for the last N days.
- */
 export function getModelTimeSeries(days = 14, cutoff?: number | null, bucketMs = DAY_MS): ModelTimeSeriesPoint[] {
 	if (!db) return [];
 
@@ -733,9 +689,6 @@ export function getModelTimeSeries(days = 14, cutoff?: number | null, bucketMs =
 	}));
 }
 
-/**
- * Get daily model performance time series data for the last N days.
- */
 export function getModelPerformanceSeries(
 	days = 14,
 	cutoff?: number | null,
@@ -779,9 +732,6 @@ export function getModelPerformanceSeries(
 	}));
 }
 
-/**
- * Get total message count.
- */
 export function getMessageCount(): number {
 	if (!db) return 0;
 	const stmt = db.prepare("SELECT COUNT(*) as count FROM messages");
@@ -789,9 +739,6 @@ export function getMessageCount(): number {
 	return row.count;
 }
 
-/**
- * Close the database connection.
- */
 export function closeDb(): void {
 	if (db) {
 		db.close();
@@ -860,9 +807,6 @@ export function getMessageById(id: number): MessageStats | null {
 	return row ? rowToMessageStats(row) : null;
 }
 
-/**
- * Get daily cost time series data for the last N days, broken down by model.
- */
 export function getCostTimeSeries(days = 90, cutoff?: number | null): CostTimeSeriesPoint[] {
 	if (!db) return [];
 
@@ -900,7 +844,6 @@ export function getCostTimeSeries(days = 90, cutoff?: number | null): CostTimeSe
 	}));
 }
 
-/** Reset `file_offsets` (and any existing `user_messages` rows) so the next */
 function backfillUserMessages(database: Database): void {
 	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(USER_MESSAGES_BACKFILL_KEY) as
 		| { value: string }
@@ -914,7 +857,6 @@ function backfillUserMessages(database: Database): void {
 		.run(USER_MESSAGES_BACKFILL_KEY, BACKFILL_PENDING);
 }
 
-/** One-shot wipe of `tool_calls` + `file_offsets` when the `tool_calls` table */
 function backfillToolCalls(database: Database): void {
 	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(TOOL_CALLS_BACKFILL_KEY) as
 		| { value: string }
@@ -928,7 +870,6 @@ function backfillToolCalls(database: Database): void {
 		.run(TOOL_CALLS_BACKFILL_KEY, BACKFILL_PENDING);
 }
 
-/** Reclassify pre-existing `messages` rows by agent type once, after the */
 function backfillAgentType(database: Database): void {
 	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(AGENT_TYPE_BACKFILL_KEY) as
 		| { value: string }
@@ -943,7 +884,6 @@ function backfillAgentType(database: Database): void {
 	const apply = database.transaction(() => {
 		for (const { session_file } of sessionFiles) {
 			const agentType = classifyAgentType(session_file);
-			// Rows already default to 'main'; only the nested transcripts move.
 			if (agentType !== "main") update.run(agentType, session_file);
 		}
 		markComplete.run(AGENT_TYPE_BACKFILL_KEY, BACKFILL_COMPLETE);
@@ -951,7 +891,6 @@ function backfillAgentType(database: Database): void {
 	apply();
 }
 
-/** One-shot collapse of forked-session duplicates that landed under the old */
 function backfillForkDuplicates(database: Database): void {
 	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(FORK_DEDUPE_KEY) as
 		| { value: string }
@@ -977,7 +916,6 @@ function backfillForkDuplicates(database: Database): void {
 	apply();
 }
 
-/** One-shot wipe of `file_offsets` to force `parseSessionFile` to re-parse */
 function repairUserMessageLinks(database: Database): void {
 	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(USER_MESSAGE_LINKS_REPAIR_KEY) as
 		| { value: string }
@@ -990,7 +928,6 @@ function repairUserMessageLinks(database: Database): void {
 		.run(USER_MESSAGE_LINKS_REPAIR_KEY, BACKFILL_PENDING);
 }
 
-/** One-shot wipe of `file_offsets` so the next sync re-parses every session */
 function backfillPriorityPremiumRequests(database: Database): void {
 	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(PRIORITY_PREMIUM_REQUESTS_BACKFILL_KEY) as
 		| { value: string }
@@ -1027,7 +964,6 @@ export function markUserMessageLinksRepairComplete(): void {
 	);
 }
 
-/** Insert user-message stats. Idempotent via UNIQUE(session_file, entry_id). */
 export function insertUserMessageStats(stats: UserMessageStats[]): number {
 	if (!db || stats.length === 0) return 0;
 
@@ -1062,8 +998,6 @@ export function insertUserMessageStats(stats: UserMessageStats[]): number {
 				s.negation,
 				s.repetition,
 				s.blame,
-				// `WHERE NOT EXISTS` binds: skip when a different session_file
-				// already holds this (entry_id, timestamp).
 				s.entryId,
 				s.timestamp,
 				s.sessionFile,
@@ -1075,7 +1009,6 @@ export function insertUserMessageStats(stats: UserMessageStats[]): number {
 	return inserted;
 }
 
-/** Backfill the responding `model`/`provider` on user-message rows that were */
 export function updateUserMessageLinks(links: UserMessageLink[]): number {
 	if (!db || links.length === 0) return 0;
 
@@ -1112,9 +1045,6 @@ interface BehaviorSeriesRow {
 	chars: number | null;
 }
 
-/**
- * Daily behavioral time series, grouped by responding model+provider.
- */
 export function getBehaviorTimeSeries(cutoff?: number | null): BehaviorTimeSeriesPoint[] {
 	if (!db) return [];
 	const hasCutoff = cutoff !== null && cutoff !== undefined && cutoff > 0;
@@ -1167,9 +1097,6 @@ interface BehaviorOverallRow {
 	last_timestamp: number | null;
 }
 
-/**
- * Overall behavioral totals across the cutoff window.
- */
 export function getBehaviorOverall(cutoff?: number | null): BehaviorOverallStats {
 	const empty: BehaviorOverallStats = {
 		totalMessages: 0,
@@ -1230,10 +1157,6 @@ interface BehaviorByModelRow {
 	last_timestamp: number | null;
 }
 
-/**
- * Per-model behavioral totals over the cutoff window. "Unknown" represents
- * user messages that never received an assistant reply.
- */
 export function getBehaviorByModel(cutoff?: number | null): BehaviorModelStats[] {
 	if (!db) return [];
 	const hasCutoff = cutoff !== null && cutoff !== undefined && cutoff > 0;
@@ -1273,7 +1196,6 @@ export function getBehaviorByModel(cutoff?: number | null): BehaviorModelStats[]
 	}));
 }
 
-/** Insert tool-call rows. Idempotent via UNIQUE(session_file, tool_call_id); */
 export function insertToolCalls(calls: ToolCallStats[]): number {
 	if (!db || calls.length === 0) return 0;
 
@@ -1304,8 +1226,6 @@ export function insertToolCalls(calls: ToolCallStats[]): number {
 				c.agentType,
 				c.callsInTurn,
 				c.argsChars,
-				// `WHERE NOT EXISTS` binds: skip when a different session_file
-				// already holds this (entry_id, timestamp, tool_call_id).
 				c.entryId,
 				c.timestamp,
 				c.toolCallId,
@@ -1318,7 +1238,6 @@ export function insertToolCalls(calls: ToolCallStats[]): number {
 	return inserted;
 }
 
-/** Attach result size / error flag to persisted tool-call rows. Results can */
 export function updateToolResults(links: ToolResultLink[]): number {
 	if (!db || links.length === 0) return 0;
 
@@ -1339,7 +1258,6 @@ export function updateToolResults(links: ToolResultLink[]): number {
 	return updated;
 }
 
-/** Shared SELECT list for tool aggregates. Real provider usage comes from the */
 const TOOL_AGGREGATE_COLUMNS = `
 	COUNT(*) as calls,
 	SUM(CASE WHEN t.is_error = 1 THEN 1 ELSE 0 END) as errors,
@@ -1379,9 +1297,6 @@ function rowToToolUsage(row: ToolAggregateRow): ToolUsageStats {
 	};
 }
 
-/**
- * Get tool usage aggregated by tool name.
- */
 export function getToolStats(cutoff?: number): ToolUsageStats[] {
 	if (!db) return [];
 
@@ -1399,9 +1314,6 @@ export function getToolStats(cutoff?: number): ToolUsageStats[] {
 	return rows.map(rowToToolUsage);
 }
 
-/**
- * Get tool usage aggregated by (tool, model, provider).
- */
 export function getToolStatsByModel(cutoff?: number): ToolModelStats[] {
 	if (!db) return [];
 
@@ -1423,9 +1335,6 @@ export function getToolStatsByModel(cutoff?: number): ToolModelStats[] {
 	}));
 }
 
-/**
- * Get tool-call time series (one point per bucket per tool).
- */
 export function getToolTimeSeries(days = 14, cutoff?: number | null, bucketMs = DAY_MS): ToolTimeSeriesPoint[] {
 	if (!db) return [];
 

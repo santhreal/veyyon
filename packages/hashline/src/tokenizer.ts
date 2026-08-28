@@ -1,13 +1,3 @@
-/**
- * Stateful, line-oriented classifier for hashline diff text.
- *
- * Format shape:
- * ```
- * [path/to/file.ts#1A2B]
- * replace 5.=7:
- * +literal new line
- * ```
- */
 import {
 	describeAnchorExamples,
 	HL_DELETE_BLOCK_KEYWORD,
@@ -136,7 +126,6 @@ function scanLineNumber(line: string, index: number, end: number): NumberScan | 
 	return { line: lineNumber, nextIndex };
 }
 
-/** Parse a bare line-number anchor. Throws on malformed input. */
 export function parseLid(raw: string, lineNum: number): Anchor {
 	const end = trimEndIndex(raw);
 	const numberStart = skipWhitespace(raw, 0, end);
@@ -234,11 +223,6 @@ function scanKeyword(line: string, index: number, end: number, keyword: string):
 	return next;
 }
 
-/**
- * GLM 5.2 inserts a stray `.` between the line number/range and the trailing
- * `:` (e.g. `SWAP 2.=3.:`, `INS.POST 2.:`). A `.` is never valid syntax at
- * this position, so skip it when it precedes an optional `:` or end-of-line.
- */
 function skipStrayDot(line: string, index: number, end: number): number {
 	if (index < end && line.charCodeAt(index) === CHAR_DOT) {
 		const after = skipWhitespace(line, index + 1, end);
@@ -325,7 +309,6 @@ function scanHunkAnchor(line: string, start: number, end: number): TargetScan | 
 		return { target: { kind: "move", dest }, nextIndex: end };
 	}
 
-	// `replace_block N:` — resolve N to a tree-sitter block range at apply time.
 	const replaceBlockEnd = scanKeyword(line, cursor, end, HL_REPLACE_BLOCK_KEYWORD);
 	if (replaceBlockEnd !== null) {
 		const anchor = scanLineNumber(line, skipWhitespace(line, replaceBlockEnd, end), end);
@@ -344,9 +327,6 @@ function scanHunkAnchor(line: string, start: number, end: number): TargetScan | 
 			nextIndex: consumeOptionalColon(line, range.nextIndex, end),
 		};
 	}
-	// `delete_block N` — resolve N to a tree-sitter block range at apply time
-	// and delete its whole span. Like `delete N.=M`, it takes no body and no
-	// trailing colon.
 	const deleteBlockEnd = scanKeyword(line, cursor, end, HL_DELETE_BLOCK_KEYWORD);
 	if (deleteBlockEnd !== null) {
 		const anchor = scanLineNumber(line, skipWhitespace(line, deleteBlockEnd, end), end);
@@ -365,8 +345,6 @@ function scanHunkAnchor(line: string, start: number, end: number): TargetScan | 
 		if (next < end && line.charCodeAt(next) === CHAR_COLON) return null;
 		return { target: { kind: "delete", range: range.range }, nextIndex: next };
 	}
-	// `insert_after_block N:` — insert after the last line of the tree-sitter
-	// block at N.
 	const insertAfterBlockEnd = scanKeyword(line, cursor, end, HL_INSERT_AFTER_BLOCK_KEYWORD);
 	if (insertAfterBlockEnd !== null) {
 		const anchor = scanLineNumber(line, skipWhitespace(line, insertAfterBlockEnd, end), end);
@@ -403,9 +381,6 @@ function tryParseHeader(line: string): { path: string; fileHash?: string } | nul
 	const bodyEnd = end - FILE_SUFFIX_LENGTH;
 	if (FILE_PREFIX_LENGTH >= bodyEnd) return null;
 
-	// The snapshot tag, when present, is the trailing `#XXXX` block inside the
-	// bracketed header. We detect it from the suffix so the path may
-	// legitimately contain whitespace (e.g. `OneDrive - Company/file.ts`).
 	let pathEnd = bodyEnd;
 	let fileHash: string | undefined;
 	const trailingHashStart = bodyEnd - HL_FILE_HASH_LENGTH - 1;
@@ -423,13 +398,6 @@ function tryParseHeader(line: string): { path: string; fileHash?: string } | nul
 		}
 	}
 
-	// The hashline header grammar uses `#` as the path/tag separator and
-	// does not allow `#` inside filenames. Anything `#` left in the path
-	// body — short tags (`#1A2`), non-hex tags (`#1A2G`), over-long tags
-	// (`#1A2B5`), stale-tag copy-paste (`#1A2B copied from read`), or
-	// line-suffixed tags (`#1A2B:42`) — means the header is malformed.
-	// Surface the focused diagnostic instead of silently mis-routing the
-	// edit or reporting a missing tag downstream.
 	for (let i = FILE_PREFIX_LENGTH; i < pathEnd; i++) {
 		if (line.charCodeAt(i) === CHAR_HASH) return null;
 	}

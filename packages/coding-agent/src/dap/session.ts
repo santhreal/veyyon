@@ -77,13 +77,9 @@ interface DapSession {
 	functionBreakpoints: DapFunctionBreakpointRecord[];
 	instructionBreakpoints: DapInstructionBreakpoint[];
 	dataBreakpoints: DapDataBreakpoint[];
-	/** Serializes breakpoint mutations — see #serializeBreakpointMutation. */
 	breakpointMutationQueue: Promise<void>;
-	/** Recent output chunks; trimmed from the front when over MAX_BUFFERED_OUTPUT_BYTES. */
 	outputChunks: string[];
-	/** Cumulative bytes of output ever received (reported in summaries). */
 	outputBytes: number;
-	/** Bytes currently buffered in outputChunks. */
 	outputBufferedBytes: number;
 	outputTruncated: boolean;
 	stop: DapStopLocation;
@@ -104,16 +100,12 @@ export interface DapOutputSnapshot {
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 30 * 1000;
 const HEARTBEAT_INTERVAL_MS = 5 * 1000;
-// Cap on the debug session's in-memory output ring. Unrelated to the task tool's
-// MAX_OUTPUT_BYTES, which bounds what a subagent may return and is user-tunable
-// via VEYYON_TASK_MAX_OUTPUT_BYTES.
 const MAX_BUFFERED_OUTPUT_BYTES = 128 * 1024;
 const STOP_CAPTURE_TIMEOUT_MS = 5_000;
 
 interface DapStartRequestFailure {
 	rejected: boolean;
 	error?: unknown;
-	/** Resolves (never rejects) when the underlying launch/attach request settles either way. Set by {@link trackDapStartRequest} on each call, */
 	settled?: Promise<void>;
 }
 
@@ -155,7 +147,6 @@ async function throwPreferredDapStartError(
 
 const DEBUGPY_MISSING_MODULE_RE = /No module named ['"]?debugpy['"]?/;
 
-/** Map a generic adapter-side failure into the targeted `pip install debugpy` hint when the adapter is debugpy and stderr/the wrapping error mentions */
 function mapDebugpyMissingModule(adapterName: string, error: unknown): Error | null {
 	if (adapterName !== "debugpy") return null;
 	if (!DEBUGPY_MISSING_MODULE_RE.test(errorMessage(error))) return null;
@@ -172,7 +163,6 @@ function truncateOutput(session: DapSession, output: string): void {
 	session.outputChunks.push(output);
 	session.outputBytes += bytes;
 	session.outputBufferedBytes += bytes;
-	// Trim whole chunks from the front, but only while the remainder still holds a full MAX_BUFFERED_OUTPUT_BYTES tail — dropping the front chunk whenever
 	while (session.outputChunks.length > 1) {
 		const frontBytes = Buffer.byteLength(session.outputChunks[0], "utf-8");
 		if (session.outputBufferedBytes - frontBytes < MAX_BUFFERED_OUTPUT_BYTES) break;
@@ -181,8 +171,6 @@ function truncateOutput(session: DapSession, output: string): void {
 		session.outputTruncated = true;
 	}
 	if (session.outputBufferedBytes > MAX_BUFFERED_OUTPUT_BYTES) {
-		// Byte-slice the front chunk's head so exactly the cap remains (a torn
-		// code point at the cut decodes as U+FFFD, acceptable for log output).
 		const front = session.outputChunks[0];
 		const frontBytes = Buffer.byteLength(front, "utf-8");
 		const excess = session.outputBufferedBytes - MAX_BUFFERED_OUTPUT_BYTES;
@@ -229,7 +217,6 @@ function buildSummary(session: DapSession): DapSessionSummary {
 	};
 }
 
-/** Report a teardown request that the debug adapter refused or never answered. `terminate()` cannot rethrow these (see the call site), and silence here is how a debuggee outlives the */
 function reportTerminateFailure(session: DapSession, request: "terminate" | "disconnect", error: unknown): void {
 	logger.warn("DAP teardown request failed; the debuggee may still be running", {
 		session: session.id,
@@ -283,24 +270,16 @@ export class DapSessionManager {
 				cwd: options.cwd,
 				...(options.args !== undefined ? { args: options.args } : {}),
 			};
-			// Subscribe to stop events BEFORE launching so we don't miss
-			// stopOnEntry events that arrive before we start listening.
 			const initialStopPromise = this.#prepareStopOutcome(
 				session,
 				signal,
 				Math.min(timeoutMs, STOP_CAPTURE_TIMEOUT_MS),
 			);
-			// DAP spec: many adapters do not respond to launch until after
-			// configurationDone. Fire launch, complete the config handshake,
-			// then await the launch response.
 			const launchFailure: DapStartRequestFailure = { rejected: false };
 			const launchPromise = trackDapStartRequest(
 				client.sendRequest("launch", launchArguments, signal, timeoutMs),
 				launchFailure,
 			);
-			// Mark handled so a fast error response doesn't become an unhandled
-			// rejection while we await the config handshake. The actual error
-			// still propagates when we await launchPromise below.
 			launchPromise.catch(() => {});
 			try {
 				await this.#completeConfigurationHandshake(session, signal, timeoutMs);
@@ -308,8 +287,6 @@ export class DapSessionManager {
 				await throwPreferredDapStartError("launch", launchFailure, error);
 			}
 			await launchPromise;
-			// Try to capture initial stopped state (e.g. stopOnEntry).
-			// Timeout is acceptable — the program may simply be running.
 			try {
 				await untilAborted(signal, initialStopPromise);
 				if (session.status === "stopped") {
@@ -361,9 +338,6 @@ export class DapSessionManager {
 				client.sendRequest("attach", attachArguments, signal, timeoutMs),
 				attachFailure,
 			);
-			// Passive guard only: `attachFailure` captures the rejection for `throwPreferredDapStartError`
-			// below, which chooses between the attach failure and the handshake failure. Without this, a
-			// rejection arriving before that code awaits would surface as an unhandled rejection.
 			attachPromise.catch(() => {});
 			try {
 				await this.#completeConfigurationHandshake(session, signal, timeoutMs);
@@ -390,11 +364,8 @@ export class DapSessionManager {
 		}
 	}
 
-	/** Serialize breakpoint mutations per session: every mutator does a read-modify-write of session state around an await, and the adapter-side */
 	#serializeBreakpointMutation<T>(session: DapSession, mutate: () => Promise<T>, signal?: AbortSignal): Promise<T> {
 		const run = session.breakpointMutationQueue.then(() => {
-			// A mutation can sit behind several queued 30s predecessors; honor a
-			// caller abort at dequeue instead of running a request nobody awaits.
 			if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Aborted");
 			return mutate();
 		});
@@ -823,8 +794,6 @@ export class DapSessionManager {
 	async continue(signal?: AbortSignal, timeoutMs: number = 30_000): Promise<DapContinueOutcome> {
 		const session = this.#touchActiveSession();
 		const threadId = await this.#resolveThreadId(session, signal, timeoutMs);
-		// Reset state and subscribe BEFORE sending continue to avoid missing
-		// events that arrive in the same buffer as the response.
 		session.stop = {};
 		session.lastStackFrames = [];
 		session.status = "running";
@@ -841,28 +810,18 @@ export class DapSessionManager {
 
 	async pause(signal?: AbortSignal, timeoutMs: number = 30_000): Promise<DapSessionSummary> {
 		const session = this.#touchActiveSession();
-		// status is mutated by the event reader between awaits; check through a
-		// closure so TS does not carry stale narrowing from the early return.
 		const isStopped = () => session.status === "stopped";
 		if (isStopped()) {
 			return buildSummary(session);
 		}
 		const threadId = await this.#resolveThreadId(session, signal, timeoutMs);
-		// Subscribe BEFORE sending pause: the stopped event can arrive in the
-		// same chunk as the response and would otherwise be dispatched before
-		// the waiter subscribes, burning the whole timeout.
 		const stoppedPromise = session.client.waitForEvent<DapStoppedEventBody>("stopped", undefined, signal, timeoutMs);
-		// Subscribed early on purpose (see above), so nothing awaits it yet; the guard keeps an early timeout
-		// or abort from becoming an unhandled rejection. `untilAborted(signal, stoppedPromise)` below still
-		// receives the real failure.
 		stoppedPromise.catch(() => {});
 		await this.#sendRequestWithConfig(session, "pause", { threadId } satisfies DapPauseArguments, signal, timeoutMs);
 		if (!isStopped()) {
 			try {
 				await untilAborted(signal, stoppedPromise);
-			} catch {
-				// Timeout or abort — report current state regardless
-			}
+			} catch {}
 		}
 		return buildSummary(session);
 	}
@@ -957,8 +916,6 @@ export class DapSessionManager {
 		timeoutMs: number = 30_000,
 	) {
 		const session = this.#touchActiveSession();
-		// Default to the top stopped frame so callers don't need to pass
-		// frame_id explicitly for the common case.
 		const effectiveFrameId = frameId ?? session.stop.frameId;
 		const response = await this.#sendRequestWithConfig<DapEvaluateResponse>(
 			session,
@@ -980,7 +937,6 @@ export class DapSessionManager {
 		if (!limitBytes || limitBytes <= 0 || session.outputBufferedBytes <= limitBytes) {
 			return { snapshot: buildSummary(session), output };
 		}
-		// Byte-slice the tail once; a torn code point at the cut decodes as U+FFFD.
 		const buffer = Buffer.from(output, "utf-8");
 		if (buffer.length <= limitBytes) {
 			return { snapshot: buildSummary(session), output };
@@ -993,7 +949,6 @@ export class DapSessionManager {
 		if (!session) return null;
 		session.lastUsedAt = Date.now();
 		if (session.status !== "terminated") {
-			// Neither request may throw out of `terminate()`: the session is being torn down either way, and the caller gets the summary. But a failure here is not nothing -- `disconnect` carries
 			if (session.capabilities?.supportsTerminateRequest) {
 				await untilAborted(
 					signal,
@@ -1165,7 +1120,6 @@ export class DapSessionManager {
 		};
 	}
 
-	/** Wait for the adapter's `initialized` event (if not already received), then send `configurationDone`. Many adapters block the `launch`/`attach` */
 	async #completeConfigurationHandshake(
 		session: DapSession,
 		signal?: AbortSignal,
@@ -1174,13 +1128,10 @@ export class DapSessionManager {
 		if (!session.needsConfigurationDone || session.configurationDoneSent) {
 			return;
 		}
-		// Wait for the initialized event if we haven't seen it yet.
 		if (!session.initializedSeen) {
 			try {
 				await untilAborted(signal, session.client.waitForEvent("initialized", undefined, signal, timeoutMs));
 			} catch {
-				// Adapter may not send initialized (e.g. it already terminated).
-				// Proceed anyway — the launch/attach response will surface any real error.
 				return;
 			}
 		}
@@ -1212,7 +1163,6 @@ export class DapSessionManager {
 		session.stop.column = frame.column;
 	}
 
-	/** Fetch the top stack frame from the adapter and apply it to the session's stop location. Called outside the event dispatch loop to avoid deadlocking */
 	async #fetchTopFrame(session: DapSession, signal?: AbortSignal, timeoutMs: number = 5_000): Promise<void> {
 		if (session.stop.threadId === undefined) return;
 		try {
@@ -1235,8 +1185,6 @@ export class DapSessionManager {
 	async #step(command: "stepIn" | "stepOut" | "next", signal?: AbortSignal, timeoutMs: number = 30_000) {
 		const session = this.#touchActiveSession();
 		const threadId = await this.#resolveThreadId(session, signal, timeoutMs);
-		// Reset state and subscribe BEFORE sending the step command to avoid
-		// missing events that arrive in the same buffer as the response.
 		session.stop = {};
 		session.lastStackFrames = [];
 		session.status = "running";
@@ -1245,15 +1193,12 @@ export class DapSessionManager {
 		return this.#awaitStopOutcome(session, outcomePromise, signal, timeoutMs);
 	}
 
-	/** Create a promise that resolves when the session stops, terminates, or exits. MUST be called before the command that triggers the event. */
 	#prepareStopOutcome(session: DapSession, signal?: AbortSignal, timeoutMs: number = 30_000): Promise<unknown> {
 		const promises = [
 			session.client.waitForEvent("stopped", undefined, signal, timeoutMs),
 			session.client.waitForEvent("terminated", undefined, signal, timeoutMs),
 			session.client.waitForEvent("exited", undefined, signal, timeoutMs),
 		];
-		// Promise.race leaves the losing waiters pending; their timeouts would
-		// otherwise surface as unhandled rejections once they fire.
 		for (const p of promises) {
 			p.catch(() => {});
 		}
@@ -1262,9 +1207,6 @@ export class DapSessionManager {
 		return outcome;
 	}
 
-	/**
-	 * Await a pre-subscribed stop outcome, then fetch the top frame if stopped.
-	 */
 	async #awaitStopOutcome(
 		session: DapSession,
 		outcomePromise: Promise<unknown>,
@@ -1420,8 +1362,6 @@ export class DapSessionManager {
 			this.#activeSessionId = null;
 		}
 		this.#sessions.delete(session.id);
-		// The session is already removed and no caller is waiting, but a client that will not dispose leaves the
-		// debug adapter process running for the rest of the session, so the reason is logged.
 		void session.client.dispose().catch((error: unknown) => {
 			logger.warn("DAP client did not dispose; the adapter process may be left running", {
 				session: session.id,

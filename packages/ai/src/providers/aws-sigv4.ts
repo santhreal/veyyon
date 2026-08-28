@@ -21,7 +21,6 @@ export interface SignParams {
 
 const ALGORITHM = "AWS4-HMAC-SHA256";
 const KEY_TYPE = "aws4_request";
-// Headers the SDK never includes in the signature. Lowercased.
 const UNSIGNABLE: Record<string, true> = {
 	authorization: true,
 	"cache-control": true,
@@ -85,7 +84,6 @@ export async function getSigningKey(
 
 export function formatAmzDate(d: Date): { longDate: string; shortDate: string } {
 	const iso = d.toISOString();
-	// `2025-05-17T12:34:56.789Z` -> `20250517T123456Z`
 	const longDate = `${iso.slice(0, 4)}${iso.slice(5, 7)}${iso.slice(8, 10)}T${iso.slice(11, 13)}${iso.slice(14, 16)}${iso.slice(17, 19)}Z`;
 	return { longDate, shortDate: longDate.slice(0, 8) };
 }
@@ -128,9 +126,6 @@ export async function signRequest(params: SignParams): Promise<SignedHeaders> {
 	const { longDate, shortDate } = formatAmzDate(date);
 	const payloadHash = await sha256Hex(body);
 
-	// Assemble the headers that will be signed. Always include host, x-amz-date,
-	// x-amz-content-sha256, plus x-amz-security-token when present, plus
-	// caller-provided signable headers (e.g. content-type, accept).
 	const signed: Record<string, string> = {
 		host,
 		"x-amz-date": longDate,
@@ -141,10 +136,6 @@ export async function signRequest(params: SignParams): Promise<SignedHeaders> {
 	if (extraHeaders) {
 		for (const k in extraHeaders) {
 			const lk = k.toLowerCase();
-			// Object.hasOwn, not `UNSIGNABLE[lk]`: a bare index read resolves
-			// Object.prototype members, so a header literally named `constructor`
-			// (lowercase-stable) would read the inherited constructor (truthy) and be
-			// wrongly skipped from the signed set instead of being signed.
 			if (Object.hasOwn(UNSIGNABLE, lk)) continue;
 			if (lk.startsWith("proxy-") || lk.startsWith("sec-")) continue;
 			signed[lk] = extraHeaders[k].trim().replace(/\s+/g, " ");

@@ -5,16 +5,8 @@ import { getHeadersFromError, getRetryAfterMsFromHeaders } from "./retry-after";
 
 const COPILOT_MODEL_RETRY_MAX_ATTEMPTS = 3;
 const COPILOT_MODEL_RETRY_BASE_DELAY_MS = 400;
-/** Longest server-requested backoff we are willing to sit out before giving up. */
 const COPILOT_RETRY_AFTER_MAX_WAIT_MS = 30_000;
 
-/**
- * Wrap an initial Copilot request so transient `model_not_supported` 400s are
- * retried a small number of times. No-op for non-Copilot providers.
- *
- * The callback **MUST** create a fresh in-flight request each invocation — a
- * once-consumed AsyncIterable cannot be re-iterated.
- */
 export async function callWithCopilotModelRetry<T>(
 	fn: () => Promise<T>,
 	options: { provider: string; signal?: AbortSignal; retryBaseDelayMs?: number },
@@ -33,12 +25,6 @@ export async function callWithCopilotModelRetry<T>(
 			lastError = error;
 			if (options.signal?.aborted) throw options.signal.reason ?? error;
 			const transientModelError = isCopilotTransientModelError(error);
-			// ONE PREDICATE DECIDES. This asked `@veyyon/utils/fetch-retry`'s `isRetryableError`, a
-			// second classifier with its own transient vocabulary, so this ladder retried failures the
-			// provider ladders refused and refused ones they retried. `isProviderRetryableError` also
-			// brings the vetoes this loop never had: an account-level cap belongs to credential
-			// rotation rather than to a 30-second backoff, and a refused HTTP/2 code or an
-			// undelimited frame reproduces on every attempt.
 			if (!transientModelError && !isProviderRetryableError(error)) throw error;
 			if (attempt === COPILOT_MODEL_RETRY_MAX_ATTEMPTS - 1) break;
 			let delayMs = retryBaseDelayMs * (attempt + 1);
@@ -46,9 +32,6 @@ export async function callWithCopilotModelRetry<T>(
 				const errorStatus = status(error);
 				if (errorStatus !== undefined) {
 					const retryAfterMs = getRetryAfterMsFromHeaders(getHeadersFromError(error));
-					// An unguided rate limit is not useful to blind-retry. Other
-					// transient statuses (408/5xx) retain the normal backoff, while
-					// any supplied server delay still governs the retry.
 					if (errorStatus === 429 && retryAfterMs === undefined) throw error;
 					if (retryAfterMs !== undefined) {
 						if (retryAfterMs > COPILOT_RETRY_AFTER_MAX_WAIT_MS) throw error;

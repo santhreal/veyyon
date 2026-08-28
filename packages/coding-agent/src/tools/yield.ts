@@ -1,5 +1,3 @@
-/** Result submission tool for subagent output. Subagents can call this tool incrementally or terminally depending on `type`. */
-
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { TSchema } from "@veyyon/ai/types";
 import {
@@ -15,15 +13,11 @@ import type { ToolSession } from ".";
 import { buildOutputValidator, formatAllValidationIssues } from "./output-schema-validator";
 
 export interface YieldDetails {
-	/** Successful result payload, or omitted when `useLastTurn` requests last-turn extraction. */
 	data?: unknown;
 	status: "success" | "aborted";
 	error?: string;
-	/** Optional result section/classification supplied by the yield caller. */
 	type?: string | string[];
-	/** True when the caller intentionally omitted success data so the executor uses the last assistant turn. */
 	useLastTurn?: boolean;
-	/** Set when the yield tool exhausted its in-tool schema-retry budget (MAX_SCHEMA_RETRIES) and accepted the data anyway. Surfaced so the */
 	schemaOverridden?: boolean;
 }
 
@@ -83,20 +77,16 @@ function isYieldType(value: unknown): value is string | string[] {
 }
 
 function parseYieldType(value: unknown): string | string[] | undefined {
-	// Strict-mode providers (OpenAI/Codex) make the optional `type` property
-	// required+nullable, so an untyped final yield arrives as `type: null`.
 	if (value === undefined || value === null) return undefined;
 	if (isYieldType(value)) return value;
 	throw new Error("type must be a string or non-empty array of strings");
 }
 
-/** Render an incremental yield's `type: [...]` labels as a quoted, comma-separated list for model-facing retry messages — keeps the failed section labelled even when the yield carried */
 function formatYieldLabels(labels: readonly string[]): string {
 	if (labels.length === 0) return '""';
 	return labels.map(label => `"${label}"`).join(", ");
 }
 
-/** Expand a plain-object `data` schema into a strict union that ALSO accepts each top-level section value (and array element) on its own. Agents that yield */
 function withSectionVariants(dataSchema: Record<string, unknown>): Record<string, unknown> {
 	if (dataSchema.type !== "object") return dataSchema;
 	const props = dataSchema.properties;
@@ -148,7 +138,6 @@ function wrapYieldParameters(dataSchema: Record<string, unknown>): Record<string
 		properties: {},
 		required: [],
 	};
-	// The "an empty `result` (last-turn) requires a `type`" invariant is enforced in `execute()` at runtime, NOT in this schema: a top-level combinator
 	return {
 		type: "object",
 		additionalProperties: false,
@@ -163,17 +152,13 @@ function wrapYieldParameters(dataSchema: Record<string, unknown>): Record<string
 	};
 }
 
-/** Max consecutive schema-validation failures before the yield tool overrides validation and lets non-conforming data through. The override is a safety net for schemas the */
 const MAX_SCHEMA_RETRIES = 3;
 
-/** Max consecutive untyped empty-result submissions before the yield tool fails the child explicitly. Some weak tool callers can acknowledge the required */
 const MAX_EMPTY_RESULT_RETRIES = 3;
 
-/** Both shapes the tool accepts, in the words its description uses. */
 const RESULT_SHAPES =
 	'Send success as `{ "result": { "data": <your output> } }` or failure as `{ "result": { "error": "message" } }`.';
 
-/** The `result` a caller meant, when it can be recovered. A weak tool caller sends the whole wrapper as a JSON string — */
 function coerceResultObject(value: unknown): unknown {
 	if (typeof value !== "string") return value;
 	const text = value.trim();
@@ -185,7 +170,6 @@ function coerceResultObject(value: unknown): unknown {
 	}
 }
 
-/** What arrived instead of a result object, for a message the caller can act on. */
 function describeResultShape(value: unknown): string {
 	if (value === undefined) return "nothing";
 	if (value === null) return "null";
@@ -327,9 +311,6 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 		const yieldType = parseYieldType(raw.type);
 		const useLastTurn =
 			errorMessage === undefined && data === undefined && yieldType !== undefined && !("error" in resultRecord);
-		// Incremental array-typed sections carry partial data (one finding, one
-		// field) that cannot satisfy the full output schema; the assembled result
-		// is validated as a whole at finalization (executor finalizeSubprocessOutput).
 		const isIncremental = Array.isArray(yieldType) && yieldType.length > 0;
 
 		if (errorMessage !== undefined && data !== undefined) {
@@ -361,7 +342,6 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 
 		const status = errorMessage !== undefined ? "aborted" : "success";
 		let schemaValidationOverridden = false;
-		// Unknown incremental labels are a hard contract mismatch with the closed caller schema. Reject before the last-turn short-circuit too: `type: ["findings"], result: {}`
 		if (status === "success" && isIncremental) {
 			const unknownLabels = this.#unknownIncrementalLabels(yieldType as string[]);
 			if (unknownLabels.length > 0) {
@@ -418,7 +398,6 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 		};
 	}
 
-	/** Return incremental yield labels the closed caller schema does not accept. Closure covers the root, `allOf` conjuncts, and `oneOf`/`anyOf` unions whose every variant is closed (e.g. JTD */
 	#unknownIncrementalLabels(labels: string[]): string[] {
 		if (!this.#rejectUnknownSections) return [];
 		const isKnown = this.#isKnownSection;
@@ -426,7 +405,6 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 		return labels.filter(label => !isKnown(label));
 	}
 
-	/** Validate the `data` payload of an incremental yield (`type: ["<label>", …]`) against the matching property's sub-validator. Returns the first failure across all known labels, */
 	#validateIncrementalSection(labels: string[], data: unknown): JsonSchemaValidationResult | undefined {
 		const subValidators = this.#validateSection;
 		if (!subValidators || subValidators.size === 0) return undefined;
@@ -440,7 +418,6 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 	}
 }
 
-// Register subprocess tool handler for extraction + termination.
 subprocessToolRegistry.register<YieldDetails>(YIELD_TOOL_NAME, {
 	extractData: event => {
 		const details = event.result?.details;

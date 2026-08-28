@@ -158,7 +158,6 @@ function getWinstonLogger(): winston.Logger {
 	return winstonLogger;
 }
 
-/** Replace the active log transports. */
 export function setTransports(opts: { console?: boolean; file?: boolean | string }): void {
 	transportOpts = opts;
 	if (!winstonLogger) return;
@@ -168,28 +167,24 @@ export function setTransports(opts: { console?: boolean; file?: boolean | string
 	winstonLogger.silent = transports.length === 0;
 }
 
-/** Log an error message. */
 export function error(message: string, context?: Record<string, unknown>): void {
 	try {
 		getWinstonLogger().error(message, context);
 	} catch {}
 }
 
-/** Log a warning message. */
 export function warn(message: string, context?: Record<string, unknown>): void {
 	try {
 		getWinstonLogger().warn(message, context);
 	} catch {}
 }
 
-/** Log an informational message. */
 export function info(message: string, context?: Record<string, unknown>): void {
 	try {
 		getWinstonLogger().info(message, context);
 	} catch {}
 }
 
-/** Log a debug message. */
 export function debug(message: string, context?: Record<string, unknown>): void {
 	try {
 		getWinstonLogger().debug(message, context);
@@ -237,7 +232,6 @@ export function shouldExitAfterTimings(): boolean {
 	return timingModeIncludes("x") || timingModeIncludes("full");
 }
 
-/** Print collected startup timings as an indented tree. */
 export function printTimings(): void {
 	if (!gRootSpan) return;
 	spliceModuleLoadBuffer();
@@ -249,7 +243,6 @@ export function printTimings(): void {
 	process.stdout.write(lines.join("\n"));
 }
 
-/** Begin recording startup timings. */
 export function startTiming(): void {
 	if (gRecordTimings) return;
 	gRecordTimings = true;
@@ -257,7 +250,6 @@ export function startTiming(): void {
 	gRootSpan = { op: "total", start: now, children: [] };
 }
 
-/** Record an externally-measured module load span. */
 export function recordModuleLoadSpan(
 	path: string,
 	start: number,
@@ -299,13 +291,11 @@ function shortenLoadPath(p: string): string {
 	return p;
 }
 
-/** End timing window and clear buffers. */
 export function endTiming(): void {
 	if (gRootSpan) gRootSpan.end = performance.now();
 	gRecordTimings = false;
 }
 
-/** Ops of the currently-open span chain. */
 export function openSpanPath(): string[] {
 	const ops: string[] = [];
 	let node = gRootSpan;
@@ -526,7 +516,6 @@ function isParallel(span: Span): boolean {
 	return false;
 }
 
-/** Time a span. */
 export function time(op: string): void;
 export function time<T, A extends unknown[]>(op: string, fn: (...args: A) => T, ...args: A): T;
 export function time<T, A extends unknown[]>(op: string, fn?: (...args: A) => T, ...args: A): T | undefined {

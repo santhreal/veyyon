@@ -1,4 +1,3 @@
-/** MCP HTTP transport (Streamable HTTP). Implements JSON-RPC 2.0 over HTTP POST with optional SSE streaming. */
 import * as AIError from "@veyyon/ai/error";
 import { isAbortError, logger, readSseJson, Snowflake } from "@veyyon/utils";
 import { isRecord } from "@veyyon/utils/type-guards";
@@ -33,7 +32,6 @@ type MCPToolArgsWithAttemptFactory = Record<string, unknown> & {
 	[mcpToolArgsAttemptFactory]?: MCPToolArgsAttemptFactory;
 };
 
-/** Keep the raw tool arguments reachable without making them part of the JSON payload. HTTP auth retries and legacy-SSE POST retries use the factory only */
 export function retainMCPToolArgsAttemptFactory(
 	args: Record<string, unknown>,
 	attemptFactory: MCPToolArgsAttemptFactory,
@@ -47,7 +45,6 @@ export function retainMCPToolArgsAttemptFactory(
 	return args;
 }
 
-/** Rebuild only provider-bound tools/call arguments; all other RPC params stay exact. */
 export async function rebuildMCPToolCallParamsForAttempt(
 	params: Record<string, unknown> | undefined,
 ): Promise<Record<string, unknown> | undefined> {
@@ -57,14 +54,12 @@ export async function rebuildMCPToolCallParamsForAttempt(
 	if (!attemptFactory) return params;
 	return { ...params, arguments: await attemptFactory() };
 }
-/** Best-effort startup deadline for the optional Streamable HTTP GET SSE listener. Returns `0` (disabled) when the operator has explicitly disabled MCP client-side */
 export function resolveSSEConnectTimeoutMs(configTimeout?: number): number {
 	const requestTimeout = resolveMCPTimeoutMs(configTimeout);
 	if (!isMCPTimeoutEnabled(requestTimeout)) return 0;
 	const boundedTimeout = Math.min(HTTP_SSE_CONNECT_TIMEOUT_MS, Math.floor(requestTimeout / 4));
 	return Math.max(1, boundedTimeout);
 }
-/** HTTP transport for MCP servers. Uses POST for requests, supports SSE responses. */
 export class HttpTransport implements MCPTransport {
 	#connected = false;
 	#sessionId: string | null = null;
@@ -74,7 +69,6 @@ export class HttpTransport implements MCPTransport {
 	onError?: (error: Error) => void;
 	onNotification?: (method: string, params: unknown) => void;
 	onRequest?: (method: string, params: unknown) => Promise<unknown>;
-	/** Called on 401/403 to attempt token refresh. Returns updated headers or null. */
 	onAuthError?: () => Promise<Record<string, string> | null>;
 
 	constructor(private config: MCPHttpServerConfig | MCPSseServerConfig) {}
@@ -87,13 +81,11 @@ export class HttpTransport implements MCPTransport {
 		return this.config.url;
 	}
 
-	/** Mark transport as connected. HTTP doesn't need persistent connection, but we track state. */
 	async connect(): Promise<void> {
 		if (this.#connected) return;
 		this.#connected = true;
 	}
 
-	/** Start SSE listener for server-initiated messages. Resolves once the SSE connection is established (or fails/unsupported). */
 	async startSSEListener(): Promise<void> {
 		if (!this.#connected) return;
 		if (this.#sseConnection) return;
@@ -143,8 +135,6 @@ export class HttpTransport implements MCPTransport {
 		}
 		if (response === null) {
 			if (this.#sseConnection === connection) this.#sseConnection = null;
-			// The startup race already gave up on this connection and reported through `onError`. This only drains
-			// a response that arrives late so its socket is released; there is no longer anyone to tell.
 			void fetchPromise.then(lateResponse => lateResponse.body?.cancel()).catch(() => {});
 			return;
 		}
@@ -159,9 +149,6 @@ export class HttpTransport implements MCPTransport {
 			return;
 		}
 
-		// Connection established — read messages in background.
-		// If the stream ends unexpectedly (server restart, network drop),
-		// fire onClose so the manager can trigger reconnection.
 		const signal = connection.signal;
 		void this.#readSSEStream(response.body!, signal).finally(() => {
 			const wasConnected = this.#connected;
@@ -183,18 +170,15 @@ export class HttpTransport implements MCPTransport {
 		}
 	}
 
-	/** Route an SSE message (or batch) to the appropriate handler. */
 	#dispatchSSEMessage(message: JsonRpcMessage | JsonRpcMessage[]): void {
 		if (Array.isArray(message)) {
 			for (const m of message) this.#dispatchSSEMessage(m);
 			return;
 		}
-		// Server-to-client request: has both method and id
 		if ("method" in message && "id" in message && message.id != null) {
 			void this.#handleServerRequest(message as JsonRpcRequest);
 			return;
 		}
-		// Notification: has method but no id
 		if ("method" in message && !("id" in message)) {
 			this.onNotification?.(message.method, message.params);
 		}
@@ -208,12 +192,10 @@ export class HttpTransport implements MCPTransport {
 		try {
 			return await this.#executeRequest<T>(method, params, options);
 		} catch (error) {
-			// Retry once on auth failure if onAuthError is wired
 			const status = error instanceof Error ? AIError.status(error) : undefined;
 			if (this.onAuthError && (status === 401 || status === 403)) {
 				const newHeaders = await this.onAuthError();
 				if (newHeaders) {
-					// Persist refreshed headers so subsequent requests use them directly
 					this.config = { ...this.config, headers: newHeaders };
 					const retryParams = await rebuildMCPToolCallParamsForAttempt(params);
 					return this.#executeRequest<T>(method, retryParams, options);
@@ -261,7 +243,6 @@ export class HttpTransport implements MCPTransport {
 				signal: operation.signal,
 			});
 
-			// Check for session ID in response
 			const newSessionId = response.headers.get("Mcp-Session-Id");
 			if (newSessionId) {
 				this.#sessionId = newSessionId;
@@ -282,12 +263,10 @@ export class HttpTransport implements MCPTransport {
 
 			const contentType = response.headers.get("Content-Type") ?? "";
 
-			// Handle SSE response
 			if (contentType.includes("text/event-stream")) {
 				return this.#parseSSEResponse<T>(response, id, options);
 			}
 
-			// Handle JSON response
 			const result = (await response.json()) as JsonRpcResponse;
 
 			if (result.error) {
@@ -317,7 +296,6 @@ export class HttpTransport implements MCPTransport {
 		const { promise, resolve, reject } = Promise.withResolvers<T>();
 		let captured = false;
 
-		// Drain the SSE stream from a single iterator. We resolve the deferred promise as soon as the matching response arrives, then keep iterating
 		const drain = async (): Promise<void> => {
 			try {
 				for await (const raw of readSseJson<JsonRpcMessage | JsonRpcMessage[]>(response.body!, signal)) {
@@ -378,7 +356,6 @@ export class HttpTransport implements MCPTransport {
 		}
 	}
 
-	/** POST a JSON-RPC response back to the server (for server-to-client requests received via SSE). */
 	async #sendServerResponse(id: string | number, result?: unknown, error?: JsonRpcError): Promise<void> {
 		if (!this.#connected) return;
 		const body = error
@@ -401,7 +378,6 @@ export class HttpTransport implements MCPTransport {
 				body: JSON.stringify(body),
 				signal: operation.signal,
 			});
-			// Retry once on auth failure if onAuthError is wired
 			if (this.onAuthError && (resp.status === 401 || resp.status === 403)) {
 				await resp.body?.cancel();
 				const newHeaders = await this.onAuthError();
@@ -470,17 +446,13 @@ export class HttpTransport implements MCPTransport {
 				signal: operation.signal,
 			});
 
-			// 202 Accepted is success for notifications
 			if (!response.ok && response.status !== 202) {
 				const text = await response.text();
 				throw new Error(mcpHttpFailureMessage(this.config.url, response.status, text));
 			}
 
-			// The server may piggyback server-to-client requests or notifications
-			// on the notification response (MCP Streamable HTTP spec). Read them.
 			const contentType = response.headers.get("Content-Type") ?? "";
 			if (contentType.includes("text/event-stream") && response.body) {
-				// Use the SSE connection's signal if available; otherwise keep the existing finite read timeout.
 				if (this.#sseConnection) {
 					void this.#readSSEStream(response.body, this.#sseConnection.signal);
 				} else {
@@ -505,13 +477,11 @@ export class HttpTransport implements MCPTransport {
 		if (!this.#connected) return;
 		this.#connected = false;
 
-		// Abort SSE listener
 		if (this.#sseConnection) {
 			this.#sseConnection.abort();
 			this.#sseConnection = null;
 		}
 
-		// Send session termination if we have a session
 		if (this.#sessionId) {
 			const timeout = resolveMCPTimeoutMs(this.config.timeout);
 			const operation = createMCPTimeout(timeout);
@@ -529,7 +499,6 @@ export class HttpTransport implements MCPTransport {
 				operation.clear();
 			} catch {
 				operation.clear();
-				// Ignore termination errors
 			}
 			this.#sessionId = null;
 		}
@@ -539,9 +508,6 @@ export class HttpTransport implements MCPTransport {
 	}
 }
 
-/**
- * Create and connect an HTTP transport.
- */
 export async function createHttpTransport(config: MCPHttpServerConfig | MCPSseServerConfig): Promise<HttpTransport> {
 	const transport = new HttpTransport(config);
 	await transport.connect();

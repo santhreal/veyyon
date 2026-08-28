@@ -1,11 +1,3 @@
-// The one place the runtime-cache lifecycle lives: resolve a folder to its
-// project, read the immutable cache entry for the current repository state, or
-// generate it once when missing. A harness calls this and does no orchestration
-// of its own — it supplies only the two things Argot cannot do itself (run git)
-// and the machine path where entries are stored. Everything that decides which
-// dictionary a repository state gets — how the corpus is gathered, how the cache
-// is keyed, when it regenerates — lives here so every harness behaves identically.
-
 import { createHash } from "node:crypto";
 import { cacheDictPath, listingSignature, type ResolvedCache, readDictFile, resolveProjectCache } from "./cache.js";
 import { DEFAULT_TOKEN_BUDGET, GENERATOR_REVISION } from "./constants.js";
@@ -13,20 +5,11 @@ import { type CorpusNotice, gatherRepoFiles, walkProjectTree } from "./corpus.js
 import { projectCacheId, resolveProjectRoot } from "./project.js";
 import type { Vocabulary } from "./types.js";
 
-/**
- * The git access a harness provides, the only capability Argot cannot supply
- * itself: `git rev-parse HEAD` and `git ls-files` (which respects `.gitignore`).
- * Both return `null` for a folder that is not a git repository; Argot then treats
- * it as a non-git project and walks the tree itself.
- */
 export interface ProjectVocabIO {
-	/** The current commit sha for a repo root, or `null` when it is not a git repo. */
 	gitHead(root: string, signal?: AbortSignal): Promise<string | null>;
-	/** Tracked repo-relative paths (`git ls-files`) for a root, or `null` when not a git repo. */
 	listTrackedFiles(root: string, signal?: AbortSignal): Promise<string[] | null>;
 }
 
-/** A recall-preserving degrade or a misconfiguration Argot surfaced for the harness to log. */
 export type ProjectVocabNotice =
 	| CorpusNotice
 	| {
@@ -41,38 +24,19 @@ export type ProjectVocabNotice =
 	  };
 
 export interface ResolveProjectVocabOptions {
-	/** The folder the agent is working in; resolved up to its nearest project root. */
 	folder: string;
-	/** Where cache entries live on this machine (a harness-owned path). */
 	cacheDir: string;
-	/** Git access the harness provides; Argot cannot run git itself. */
 	io: ProjectVocabIO;
-	/** Dictionary token budget. Omitted or invalid uses {@link DEFAULT_TOKEN_BUDGET}. */
 	tokenBudget?: number;
-	/**
-	 * Sink for notices Argot must not swallow: a reached content budget, a
-	 * truncated or partially-unreadable non-git project tree (see
-	 * {@link CorpusNotice}), or an invalid budget. A harness should wire this to its
-	 * logger so no degrade is silent.
-	 */
 	onNotice?: (notice: ProjectVocabNotice) => void;
 	signal?: AbortSignal;
 }
 
 export interface ResolvedProjectVocab {
-	/** The resolved project root the vocabulary is scoped to. */
 	root: string;
-	/** The vocabulary to arm (possibly zero handles for a project that yields none). */
 	vocab: Vocabulary;
 }
 
-/**
- * Validate an operator-supplied token budget. A finite positive number is used
- * verbatim (floored). Anything else (0, negative, NaN, a non-number from a
- * hand-edited config) is a misconfiguration, not a silent no-op: it is surfaced
- * through `onNotice` and the default is used, so a bad value never quietly yields
- * an empty dictionary.
- */
 export function resolveTokenBudget(raw: number | undefined, onNotice?: (n: ProjectVocabNotice) => void): number {
 	if (raw === undefined) return DEFAULT_TOKEN_BUDGET;
 	if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
@@ -84,15 +48,6 @@ export function resolveTokenBudget(raw: number | undefined, onNotice?: (n: Proje
 	return DEFAULT_TOKEN_BUDGET;
 }
 
-/**
- * Turn a cache entry that could not be saved into a notice, so a state directory
- * that has stopped being writable is loud instead of showing up only as a
- * mysteriously slow start. Both cache paths (git and non-git) funnel through
- * here, so there is one message and one code rather than two that drift.
- *
- * Nothing is reported on success, and nothing is reported for a read failure:
- * that one throws instead, deliberately.
- */
 function reportCacheWriteFailure(result: ResolvedCache, onNotice?: (n: ProjectVocabNotice) => void): void {
 	if (result.writeError === undefined) return;
 	onNotice?.({
@@ -102,24 +57,6 @@ function reportCacheWriteFailure(result: ResolvedCache, onNotice?: (n: ProjectVo
 	});
 }
 
-/**
- * Fold the generation inputs into the cache signature. A cache entry is a pure
- * function of the repository state AND of everything that shapes the dictionary
- * built from it, so both belong in the key.
- *
- * Two things are folded in. The effective token budget, because two budgets over
- * one repo state are two different dictionaries and must not alias to one entry.
- * And {@link GENERATOR_REVISION}, because the repository state alone is only a
- * sufficient key while the generator itself holds still: after a change to the
- * ranking or to a default, an unchanged HEAD would otherwise go on serving a
- * dictionary the current generator would never produce, so an upgrade would
- * silently do nothing until the project's next commit.
- *
- * Revision 1 at the default budget maps to the bare signature, which is what
- * every entry written before this keying existed is named, so those entries are
- * addressable rather than orphaned. Anything else derives a distinct signature
- * and regenerates once.
- */
 export function budgetKeyedSignature(rawSig: string, tokenBudget: number): string {
 	if (tokenBudget === DEFAULT_TOKEN_BUDGET && GENERATOR_REVISION === 1) return rawSig;
 	return createHash("sha256")
@@ -128,23 +65,6 @@ export function budgetKeyedSignature(rawSig: string, tokenBudget: number): strin
 		.slice(0, 32);
 }
 
-/**
- * Resolve a folder to its project root and produce that root's vocabulary,
- * reading the immutable cache entry when present and generating it (once, keyed
- * by content signature) when not.
- *
- * - **Git project** (`io.gitHead` returns a sha): the HEAD is the content
- *   signature. The immutable entry is tried before any listing, so an unchanged
- *   repo at an unchanged budget arms with no `git ls-files` at all. On a miss the
- *   tracked listing is gathered with bounded content and generated.
- * - **Non-git project** (`io.gitHead` returns `null`, folder has a `.argot`
- *   marker): Argot walks the tree itself and keys on a signature of the listing
- *   and its content.
- *
- * Returns the resolved root and its vocabulary, or `undefined` when `folder` has
- * no `.git`/`.argot` marker and so is not a project the cache is scoped to (a
- * normal "nothing to arm" answer, not an error).
- */
 export async function resolveProjectVocab(
 	options: ResolveProjectVocabOptions,
 ): Promise<ResolvedProjectVocab | undefined> {

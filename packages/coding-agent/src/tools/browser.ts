@@ -56,10 +56,8 @@ const browserSchema = type({
 	"kill?": type("boolean").describe("also kill spawned-app browsers"),
 });
 
-/** Input schema for the browser tool. */
 export type BrowserParams = typeof browserSchema.infer;
 
-/** Details describing a browser tool execution result (for renderers + transcript). */
 export interface BrowserToolDetails {
 	action: BrowserParams["action"];
 	name?: string;
@@ -91,7 +89,6 @@ function resolveBrowserKind(params: BrowserParams, session: ToolSession): Browse
 	return { kind: "headless", headless };
 }
 
-/** Browser tool: stateful, multi-tab. Three actions: - `open` → acquire/create a named tab on a browser kind (headless | spawned | connected) and optionally goto a url. */
 export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolDetails> {
 	readonly name = "browser";
 	readonly approval = "exec" as const;
@@ -172,7 +169,6 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		return this.#description;
 	}
 
-	/** Restart browser to apply mode changes (e.g. headless toggle). Drops only headless browsers. */
 	async restartForModeChange(): Promise<void> {
 		await dropHeadlessTabs();
 	}
@@ -188,9 +184,6 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 			throwIfAborted(signal);
 			const timeoutSeconds = clampTimeout("browser", params.timeout, this.session.settings.get("tools.maxTimeout"));
 			const timeoutMs = timeoutSeconds * 1000;
-			// A clamp changes the budget the agent asked for; surface it on the
-			// result rather than applying it silently (Law 10). Each action builds
-			// its own result, so prepend the notice once around the dispatch.
 			const clampNotice = formatTimeoutClampNotice("browser", params.timeout, timeoutSeconds);
 			const name = params.name ?? DEFAULT_TAB_NAME;
 			const details: BrowserToolDetails = { action: params.action, name };
@@ -212,7 +205,6 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 			return clampNotice ? prependResultNotice(result, clampNotice) : result;
 		} catch (error) {
 			if (error instanceof ToolAbortError) throw error;
-			// `isCancellation`, not `isAbortError`: a deadline now reaches here wearing its own `TimeoutError` name, and it stops the browser action
 			if (isCancellation(error)) throw toolAbort(error, "browser");
 			throw error;
 		}
@@ -228,7 +220,6 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		const kind = resolveBrowserKind(params, this.session);
 		details.browser = kind.kind;
 
-		// If a tab with this name already exists on a different browser kind, fail fast — caller must close first.
 		const existing = getTab(name);
 		if (existing && !sameBrowserKind(existing.browser.kind, kind)) {
 			throw new ToolError(
@@ -326,7 +317,6 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 				session: this.session,
 			});
 		} catch (error) {
-			// A failed run still reports what it managed to produce. The displayed lines are folded into the error text because that is the only channel a thrown tool error has, and the
 			const partial = error instanceof ToolAbortError ? undefined : (error as BrowserRunError).partialRunOutput;
 			if (partial !== undefined && error instanceof Error) {
 				if (partial.screenshots.length) details.screenshots = partial.screenshots;
@@ -355,7 +345,6 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 			if (c.type === "text") textParts.push(c.text);
 		}
 		const textOnly = textParts.join("\n");
-		// Final defense at the tool-result boundary: a single run can display tens of KB (large JSON returns, dumped observations). Cap the combined
 		const cappedText = await enforceInlineByteCap(textOnly, {
 			...inlineOutputPricing(this.session),
 			saveArtifact: full => saveBrowserOutputArtifact(this.session, full),
@@ -371,7 +360,6 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 	}
 }
 
-/** Persist over-cap browser run output as a session artifact; mirrors the bash minimizer's save path. */
 function saveBrowserOutputArtifact(session: ToolSession, fullText: string): Promise<string | undefined> {
 	return saveOutputArtifact(session, "browser-original", fullText);
 }

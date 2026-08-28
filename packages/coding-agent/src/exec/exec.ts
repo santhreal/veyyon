@@ -1,27 +1,13 @@
-/**
- * Shared command execution utilities for hooks and custom tools.
- */
 import { ptree } from "@veyyon/utils";
 
-/**
- * Options for executing shell commands.
- */
 export interface ExecOptions {
-	/** AbortSignal to cancel the command */
 	signal?: AbortSignal;
-	/** Timeout in milliseconds */
 	timeout?: number;
-	/** Working directory */
 	cwd?: string;
-	/** Session CPU budget hook: the spawned process joins the session's budget group. */
 	adoptPid?: (pid: number) => void;
-	/** Called before the process is created. Spawn sites that join a session CPU budget pass the session gate here so a saturated or uncreated group */
 	beforeSpawn?: () => Promise<void>;
 }
 
-/**
- * Result of executing a shell command.
- */
 export interface ExecResult {
 	stdout: string;
 	stderr: string;
@@ -29,7 +15,6 @@ export interface ExecResult {
 	killed: boolean;
 }
 
-/** Execute a shell command and return stdout/stderr/code. Supports timeout and abort signal. */
 export async function execCommand(
 	command: string,
 	args: string[],
@@ -55,7 +40,6 @@ export async function execCommand(
 	};
 }
 
-/** Merge session CPU budget hooks onto an `exec` options object. `gate` runs as `beforeSpawn` so a saturated group refuses the command before the */
 export function withSessionCpuExec(
 	options: ExecOptions | undefined,
 	adoptPid: ((pid: number) => void) | undefined,

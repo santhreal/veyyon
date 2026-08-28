@@ -1,4 +1,3 @@
-/** Top-level patch parser and section splitter. */
 import * as path from "node:path";
 import { applyEdits, collectEditAnchorLines } from "./apply";
 import { resolveBlockEdits } from "./block";
@@ -7,7 +6,6 @@ import { parsePatch, parsePatchStreaming } from "./parser";
 import { Tokenizer } from "./tokenizer";
 import type { ApplyResult, BlockResolver, Edit, FileOp, SplitOptions } from "./types";
 
-// Pure classification — single shared tokenizer is safe.
 const TOKENIZER = new Tokenizer();
 
 function unquoteHashlinePath(pathText: string): string {
@@ -18,7 +16,6 @@ function unquoteHashlinePath(pathText: string): string {
 	return pathText;
 }
 
-/** Strip noise prefixes from path. */
 const APPLY_PATCH_PATH_NOISE_RE =
 	/^\*{0,3}\s*(?:(?:update|add|delete|move)[^A-Za-z0-9]*(?:file|to)?[^A-Za-z0-9]*:)?\s*\*{0,3}\s*/i;
 
@@ -26,7 +23,6 @@ function stripApplyPatchPathNoise(pathText: string): string {
 	return pathText.replace(APPLY_PATCH_PATH_NOISE_RE, "");
 }
 
-/** Best-effort recovery for malformed bracketed header lines. */
 function tryParseRecoveryHeader(line: string, cwd?: string): RawSection | null {
 	if (!line.startsWith(HL_FILE_PREFIX) || !line.endsWith(HL_FILE_SUFFIX)) return null;
 	const body = stripApplyPatchPathNoise(line.slice(HL_FILE_PREFIX.length, line.length - HL_FILE_SUFFIX.length).trim());
@@ -64,7 +60,6 @@ interface RawSection {
 	diff: string;
 }
 
-/** Parse a header line. Returns null if not a header. */
 function parseHashlineHeaderLine(line: string, cwd?: string): RawSection | null {
 	const trimmed = line.trimEnd();
 	if (!trimmed.startsWith(HL_FILE_PREFIX)) return null;
@@ -101,7 +96,6 @@ function stripLeadingBlankLines(input: string): string {
 	return lines.join("\n");
 }
 
-/** Check if input contains at least one recognized hashline op. */
 export function containsRecognizableHashlineOperations(input: string): boolean {
 	for (const line of input.split(/\r?\n/)) {
 		if (TOKENIZER.isOp(line)) return true;
@@ -174,7 +168,6 @@ function splitRawSections(input: string, options: SplitOptions = {}): RawSection
 	return sections;
 }
 
-/** Section in a parsed Patch. */
 export class PatchSection {
 	readonly path: string;
 	readonly fileHash: string | undefined;
@@ -187,7 +180,6 @@ export class PatchSection {
 		this.diff = raw.diff;
 	}
 
-	/** Parse this section's diff body. */
 	parse(): { edits: Edit[]; fileOp?: FileOp; warnings: readonly string[] } {
 		this.#parsed ??= parsePatch(this.diff);
 		const parsed = this.#parsed;
@@ -202,22 +194,18 @@ export class PatchSection {
 			: { edits: parsed.edits, ...(fileOp === undefined ? {} : { fileOp }), warnings: parsed.warnings };
 	}
 
-	/** Parsed edits for this section. */
 	get edits(): readonly Edit[] {
 		return this.parse().edits;
 	}
 
-	/** Optional whole-file operation (`REM` / `MV`). */
 	get fileOp(): FileOp | undefined {
 		return this.parse().fileOp;
 	}
 
-	/** Anchor lines touched by this section, sorted ascending and deduplicated. */
 	collectAnchorLines(): readonly number[] {
 		return Array.from(new Set(collectEditAnchorLines(this.edits))).sort((a, b) => a - b);
 	}
 
-	/** Apply this section's edits to text. */
 	applyTo(text: string, blockResolver?: BlockResolver): ApplyResult {
 		const { edits, warnings } = this.parse();
 		const resolveWarnings: string[] = [];
@@ -232,7 +220,6 @@ export class PatchSection {
 			: { text: result.text, firstChangedLine: result.firstChangedLine };
 	}
 
-	/** Streaming-tolerant counterpart to applyTo. */
 	applyPartialTo(text: string, blockResolver?: BlockResolver): ApplyResult {
 		const { edits, warnings } = parsePatchStreaming(this.diff);
 		const resolveWarnings: string[] = [];
@@ -247,7 +234,6 @@ export class PatchSection {
 			: { text: result.text, firstChangedLine: result.firstChangedLine };
 	}
 
-	/** Rebind section to a different target path. */
 	withPath(path: string): PatchSection {
 		const next = new PatchSection({
 			path,
@@ -259,7 +245,6 @@ export class PatchSection {
 	}
 }
 
-/** Parsed hashline patch containing sections. */
 export class Patch {
 	readonly sections: readonly PatchSection[];
 
@@ -267,13 +252,11 @@ export class Patch {
 		this.sections = sections;
 	}
 
-	/** Parse input into Patch. */
 	static parse(input: string, options: SplitOptions = {}): Patch {
 		const raw = mergeSamePathSections(splitRawSections(input, options));
 		return new Patch(raw.map(section => new PatchSection(section)));
 	}
 
-	/** Parse single section from input. */
 	static parseSingle(input: string, options: SplitOptions = {}): PatchSection {
 		const patch = Patch.parse(input, options);
 		const first = patch.sections[0];
@@ -282,7 +265,6 @@ export class Patch {
 	}
 }
 
-/** Merge sections targeting the same path. */
 function mergeSamePathSections(sections: RawSection[]): RawSection[] {
 	const byPath = new Map<string, { fileHash?: string; diffs: string[] }>();
 	for (const section of sections) {

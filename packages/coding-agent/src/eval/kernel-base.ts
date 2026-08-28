@@ -5,15 +5,11 @@ import { type KernelDisplayOutput, renderKernelDisplay } from "./py/display";
 
 export type KernelRuntimeEnv = Record<string, string | null>;
 
-/** A per-execution environment patch: a string sets the variable, `null` CLEARS it, and `undefined` leaves it alone. The runner honours exactly that (`os.environ.pop` on null), */
 export type KernelEnvPatch = Record<string, string | null | undefined>;
 
-/** One request to a language kernel, shared by every kernel in `eval/`. THE one declaration. Ruby and Julia each carried their own copy and the three had */
 export interface KernelExecuteOptions {
 	id?: string;
-	/** Runtime working directory applied immediately before this request executes. */
 	cwd?: string;
-	/** Managed runtime environment variables applied immediately before this request executes. */
 	env?: KernelEnvPatch;
 	signal?: AbortSignal;
 	onChunk?: (text: string) => Promise<void> | void;
@@ -30,7 +26,6 @@ export interface KernelExecuteResult {
 	cancelled: boolean;
 	timedOut: boolean;
 	stdinRequested: boolean;
-	/** True when the kernel subprocess was killed as part of settling this execution (e.g. SIGINT was ignored and we escalated to shutdown, or the */
 	kernelKilled?: boolean;
 }
 
@@ -38,9 +33,7 @@ export interface KernelShutdownResult {
 	confirmed: boolean;
 }
 
-/** A completed subprocess exit, as distinct from "not exited yet". Presence of the object (not the value of `code`) is what signals the exit: a clean exit reports */
 interface KernelExitObservation {
-	/** Exit code, or `null` when the process was terminated by a signal. */
 	code: number | null;
 }
 
@@ -49,31 +42,21 @@ export interface KernelShutdownOptions {
 	timeoutMs?: number;
 }
 
-/** Per-language lifecycle configuration consumed by each kernel's `start()`. */
 export interface KernelStartOptions {
 	cwd: string;
 	env?: Record<string, string | undefined>;
-	/** Explicit interpreter path; skips discovery when set. */
 	interpreter?: string;
 	signal?: AbortSignal;
 	deadlineMs?: number;
-	/** Session CPU budget hook: the kernel subprocess joins the session's budget group. */
 	adoptPid?: (pid: number) => void;
 }
 
-/** Per-language configuration handed to {@link BaseKernel} by each subclass. */
 export interface BaseKernelOptions<TExecuteOptions extends KernelExecuteOptions = KernelExecuteOptions> {
-	/** Human-readable language label used in log messages and errors. */
 	languageName: string;
-	/** When true, every IPC frame is logged at debug level. */
 	traceIpc: boolean;
-	/** Wire payload asking the runner to exit cleanly. */
 	exitPayload: string;
-	/** How long to wait after SIGINT before escalating to subprocess termination. */
 	interruptEscalationMs: number;
-	/** Default grace period applied by {@link BaseKernel.shutdown}. */
 	shutdownGraceMs: number;
-	/** Serializes an execution request into the runner's wire protocol. */
 	buildPayload: (code: string, msgId: string, options?: TExecuteOptions) => string;
 }
 
@@ -107,21 +90,16 @@ interface PendingExecution {
 	finalize?: () => void;
 }
 
-/** How long a kernel subprocess gets to report `started` before start-up aborts. Unlike the MCP startup grace window, this one really does give up: the */
 export const DEFAULT_KERNEL_STARTUP_TIMEOUT_MS = 10_000;
 
-/** How long a kernel subprocess gets to exit on its own after being asked to shut down, before it is killed. One second is the whole budget an interpreter gets to flush and unwind. It was declared four times, once */
 export const KERNEL_SHUTDOWN_GRACE_MS = 1_000;
 
-/** How long an interrupt is given to land before the kernel is terminated instead. This is the budget behind Ctrl-C in an eval cell: send the interrupt, and if the interpreter is still */
 export const KERNEL_INTERRUPT_ESCALATION_MS = 5_000;
 
-/** The environment variable that turns on IPC tracing for one language's kernel, `VEYYON_<LANG>_IPC_TRACE`. A user types this name, so the convention is part of the product and not an implementation detail. Each */
 export function kernelIpcTraceEnvVar(language: string): string {
 	return `VEYYON_${language}_IPC_TRACE`;
 }
 
-/** Where one language's kernel caches its generated runner script, `<tmpdir>/veyyon-<language>-runner`. Same reasoning as {@link kernelIpcTraceEnvVar}: three kernels each joined this path themselves, so the */
 export function kernelRunnerCacheDir(tmpDir: string, language: string): string {
 	return path.join(tmpDir, `veyyon-${language}-runner`);
 }
@@ -137,7 +115,6 @@ export function createAbortError(name: "AbortError" | "TimeoutError", message: s
 	return err;
 }
 
-/** Throw because a kernel operation's signal is already aborted, PRESERVING the identity of the reason. */
 export function throwIfKernelAborted(signal: AbortSignal | undefined, fallbackReason: string): void {
 	if (!signal?.aborted) return;
 	const reason = signal.reason;
@@ -145,22 +122,16 @@ export function throwIfKernelAborted(signal: AbortSignal | undefined, fallbackRe
 	throw createAbortError("AbortError", typeof reason === "string" ? reason : fallbackReason);
 }
 
-/** Run code and settle. The one execute-only kernel contract in the codebase. There used to be three overlapping spellings of "something I can hand code to": */
 export interface KernelExecutor<TExecuteOptions extends KernelExecuteOptions = KernelExecuteOptions> {
 	execute(code: string, options?: TExecuteOptions): Promise<KernelExecuteResult>;
 }
 
-/** The kernel surface a SESSION executor depends on: run a cell, ask whether the process is still there, and shut it down. */
 export interface SessionKernel<TExecuteOptions extends KernelExecuteOptions = KernelExecuteOptions>
 	extends KernelExecutor<TExecuteOptions> {
-	// No `id` here on purpose: `BaseKernel` has one, but no session code reads it, and a
-	// contract that demands members its consumers never touch pushes busywork into every
-	// implementation (including every fake) without checking anything.
 	isAlive(): boolean;
 	shutdown(options?: KernelShutdownOptions): Promise<KernelShutdownResult>;
 }
 
-/** Shut a kernel down while tearing a session down, in one place. Every teardown path reaches this: a session being replaced, a session evicted for idleness, a startup */
 export async function releaseKernel(
 	kernel: Pick<SessionKernel, "shutdown">,
 	context: string,
@@ -176,7 +147,6 @@ export async function releaseKernel(
 	}
 }
 
-/** Shared subprocess-backed kernel machinery for the language runners. Each language subclasses this, supplying its binary/runner via a static `start()` */
 export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = KernelExecuteOptions>
 	implements SessionKernel<TExecuteOptions>
 {
@@ -354,38 +324,27 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 
 		try {
 			await this.#writeLine(this.#options.exitPayload).catch(() => {});
-		} catch {
-			/* writer may already be closed */
-		}
+		} catch {}
 
 		try {
 			this.#stdin?.end();
-		} catch {
-			/* ignore */
-		}
+		} catch {}
 
-		// `result === null` means the wait TIMED OUT (process still running) and we escalate. A truthy result means the process actually exited — including a
 		const exited = this.#waitForExitWithTimeout(timeoutMs);
 		let result = await exited;
 		if (!result) {
 			try {
 				proc.kill("SIGTERM");
-			} catch {
-				/* ignore */
-			}
+			} catch {}
 			result = await this.#waitForExitWithTimeout(timeoutMs);
 		}
 		if (!result) {
 			try {
 				proc.kill("SIGKILL");
-			} catch {
-				/* ignore */
-			}
+			} catch {}
 			result = await this.#waitForExitWithTimeout(timeoutMs);
 		}
 
-		// Confirmed whenever the process exited by any means; only a persistent
-		// timeout (still null after SIGKILL + grace) leaves this false.
 		const confirmed = !!result;
 		this.#shutdownConfirmed = confirmed;
 		this.#disposed = true;
@@ -444,9 +403,7 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 			} finally {
 				try {
 					reader.releaseLock();
-				} catch {
-					/* ignore */
-				}
+				} catch {}
 			}
 		};
 		void loop();
@@ -466,13 +423,10 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 					}
 				}
 			} catch {
-				/* ignore */
 			} finally {
 				try {
 					reader.releaseLock();
-				} catch {
-					/* ignore */
-				}
+				} catch {}
 			}
 		};
 		void loop();
@@ -605,7 +559,6 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 		}
 	}
 
-	/** Wait for the subprocess to exit, or resolve `null` if `timeoutMs` elapses first. The exit result is an OBJECT ({@link KernelExitObservation}) so it is */
 	#waitForExitWithTimeout(timeoutMs: number): Promise<KernelExitObservation | null> {
 		if (!this.#exitedPromise) return Promise.resolve({ code: 0 });
 		const exitedPromise = this.#exitedPromise;

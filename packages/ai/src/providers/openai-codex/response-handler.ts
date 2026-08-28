@@ -15,14 +15,12 @@ export type CodexRateLimits = {
 export type CodexErrorInfo = {
 	message: string;
 	status: number;
-	/** Machine-readable error code (`error.code` or `error.type` from the response body), when present. */
 	code?: string;
 	friendlyMessage?: string;
 	rateLimits?: CodexRateLimits;
 	raw?: string;
 };
 
-/** Non-2xx response from the Codex backend, with the parsed body retained. */
 export class CodexApiError extends ProviderHttpError {
 	readonly info: CodexErrorInfo;
 
@@ -40,9 +38,6 @@ export class CodexApiError extends ProviderHttpError {
 export async function parseCodexError(response: Response): Promise<CodexErrorInfo> {
 	const body = await readProviderErrorBody(response);
 	const raw = body.text;
-	// Until a Codex envelope supplies a better one, the body IS the message — which is
-	// the proxy-HTML case, so the operator-facing form is what is kept: capped, control
-	// bytes stripped, credentials redacted, and carrying the note when the read stopped.
 	let message = raw ? body.detail : response.statusText || "Request failed";
 	let friendlyMessage: string | undefined;
 	let rateLimits: CodexRateLimits | undefined;
@@ -85,15 +80,9 @@ export async function parseCodexError(response: Response): Promise<CodexErrorInf
 
 		const errMessage = (err as { message?: string }).message;
 		message = errMessage ? boundProviderErrorDetail(errMessage) : friendlyMessage || message;
-	} catch {
-		// raw body not JSON
-	}
+	} catch {}
 
 	return {
-		// Both routes above are already bounded: the envelope's own message through
-		// `boundProviderErrorDetail`, and a non-envelope body through the bounded read.
-		// `raw` is the sanitized body, which feeds classification rather than a rendered
-		// message.
 		message,
 		status: response.status,
 		code: errorCode,

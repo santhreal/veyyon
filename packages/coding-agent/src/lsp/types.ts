@@ -267,19 +267,14 @@ export interface Hover {
 	range?: Range;
 }
 
-/** Interface for linter/formatter clients. Can be implemented using LSP protocol or CLI tools. */
 export interface LinterClient {
-	/** Format file content. Returns formatted content. */
 	format(filePath: string, content: string): Promise<string>;
 
-	/** Get diagnostics for a file. Content should already be written to disk. */
 	lint(filePath: string): Promise<Diagnostic[]>;
 
-	/** Dispose of any resources (e.g., LSP connection) */
 	dispose?(): void;
 }
 
-/** Factory function to create a LinterClient */
 export type LinterClientFactory = (config: ServerConfig, cwd: string) => LinterClient;
 
 export interface ServerCapabilities {
@@ -298,9 +293,7 @@ export interface ServerConfig {
 	initOptions?: Record<string, unknown>;
 	settings?: Record<string, unknown>;
 	disabled?: boolean;
-	/** Per-server warmup timeout in milliseconds. Overrides the global WARMUP_TIMEOUT_MS for this server during startup. */
 	warmupTimeoutMs?: number;
-	/** Per-server overrides for rust-analyzer workspace-ready polling. When omitted, the module defaults are used. Primarily a tuning/test seam to bound the multi-second settle window. */
 	workspaceReadyTimings?: {
 		timeoutMs?: number;
 		pollMs?: number;
@@ -308,11 +301,8 @@ export interface ServerConfig {
 		statusRequestTimeoutMs?: number;
 	};
 	capabilities?: ServerCapabilities;
-	/** If true, this is a linter/formatter server (e.g., Biome) - used only for diagnostics/actions, not type intelligence */
 	isLinter?: boolean;
-	/** Resolved absolute path to the command binary (set during config loading) */
 	resolvedCommand?: string;
-	/** Custom linter client factory. If provided, creates a custom client instead of using LSP. The client handles format/lint operations. Useful for tools with buggy LSP implementations. */
 	createClient?: LinterClientFactory;
 }
 
@@ -350,21 +340,15 @@ export interface LspClient {
 	pendingRequests: Map<number | string, PendingRequest>;
 	messageBuffer: Uint8Array;
 	isReading: boolean;
-	/** Lifecycle state: "connecting" until initialize completes, then "ready"; "error" on init failure or reader death. */
 	status: "connecting" | "ready" | "error";
 	serverCapabilities?: LspServerCapabilities;
 	lastActivity: number;
-	/** Serializes outbound JSON-RPC writes to the server process. */
 	writeQueue: Promise<void>;
-	/** Tracks active work-done progress tokens from the server */
 	activeProgressTokens: Set<string | number>;
-	/** Resolves when the server's initial project loading completes (or after timeout) */
 	projectLoaded: Promise<void>;
-	/** Call to signal that project loading has completed */
 	resolveProjectLoaded: () => void;
 }
 
-/** JSON-RPC request/response identifier accepted by LSP peers. */
 export type LspJsonRpcId = number | string;
 
 export interface LspJsonRpcRequest {

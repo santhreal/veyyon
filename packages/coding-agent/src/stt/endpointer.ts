@@ -1,28 +1,15 @@
-/** Energy-based speech endpointer for live transcription. The on-device ASR models we ship are non-streaming: the sherpa-onnx Parakeet */
-
 import { clampLow } from "@veyyon/utils";
 
-/** Tunable thresholds for {@link StreamEndpointer}. All durations in ms. */
 export interface EndpointerConfig {
-	/** Input sample rate (the recorder always delivers 16 kHz mono). */
 	sampleRate: number;
-	/** Short-time analysis frame size. */
 	frameMs: number;
-	/** Trailing silence inside a segment that finalizes (commits) it. */
 	endSilenceMs: number;
-	/** Shortest speech run that is committed; shorter runs are discarded as noise. */
 	minSpeechMs: number;
-	/** Hard cap on segment length so long pause-free speech still commits periodically. */
 	maxSegmentMs: number;
-	/** Audio retained before onset so the first phoneme of a segment is never clipped. */
 	preRollMs: number;
-	/** Cadence of volatile partial emissions for the in-progress segment. */
 	partialIntervalMs: number;
-	/** Speech threshold is `max(minThreshold, noiseFloor * energyRatio)`. */
 	energyRatio: number;
-	/** EMA weight tracking the ambient noise floor on non-speech frames. */
 	floorAttack: number;
-	/** Absolute RMS floor so a near-silent room never trips speech detection. */
 	minThreshold: number;
 }
 
@@ -39,10 +26,8 @@ export const DEFAULT_ENDPOINTER_CONFIG: EndpointerConfig = {
 	minThreshold: 0.008,
 };
 
-/** Emitted by {@link StreamEndpointer.push} / {@link StreamEndpointer.flush}. `partial` is the volatile in-progress segment (decode and show as preview, */
 export type EndpointerEvent = { kind: "partial"; audio: Float32Array } | { kind: "segment"; audio: Float32Array };
 
-/** Append-growable Float32 buffer (amortized O(1) push, no per-frame realloc). */
 class FloatBuffer {
 	#data = new Float32Array(0);
 	#len = 0;
@@ -62,7 +47,6 @@ class FloatBuffer {
 		this.#len += samples.length;
 	}
 
-	/** Copy `[0, end)` into a fresh array the caller can retain. */
 	take(end = this.#len): Float32Array {
 		return this.#data.slice(0, clampLow(end, 0, this.#len));
 	}
@@ -92,7 +76,6 @@ export class StreamEndpointer {
 	#partialDirty = false;
 
 	readonly #segment = new FloatBuffer();
-	/** Ring of the most recent pre-onset frames, used as segment pre-roll. */
 	readonly #preRoll = new FloatBuffer();
 
 	constructor(config: Partial<EndpointerConfig> = {}) {
@@ -102,10 +85,8 @@ export class StreamEndpointer {
 		this.#noiseFloor = this.#cfg.minThreshold;
 	}
 
-	/** Feed newly-captured samples; returns ordered partial/segment events. */
 	push(samples: Float32Array): EndpointerEvent[] {
 		const events: EndpointerEvent[] = [];
-		// Prepend the carried-over tail, then consume whole frames.
 		let buf: Float32Array;
 		if (this.#leftover.length === 0) {
 			buf = samples;
@@ -122,7 +103,6 @@ export class StreamEndpointer {
 		return events;
 	}
 
-	/** End the stream; returns a trailing committed segment if one is pending. */
 	flush(): EndpointerEvent[] {
 		const events: EndpointerEvent[] = [];
 		if (this.#inSpeech && this.#leftover.length > 0) {
@@ -144,16 +124,12 @@ export class StreamEndpointer {
 		const energy = rms(frame);
 		const threshold = Math.max(this.#cfg.minThreshold, this.#noiseFloor * this.#cfg.energyRatio);
 		const voiced = energy > threshold;
-		// Track ambient noise on non-speech frames only, so loud speech never
-		// inflates the floor (which would make the tail of an utterance read as
-		// silence and clip the segment short).
 		if (!voiced) {
 			this.#noiseFloor = this.#noiseFloor * (1 - this.#cfg.floorAttack) + energy * this.#cfg.floorAttack;
 		}
 
 		if (!this.#inSpeech) {
 			this.#preRoll.push(frame);
-			// Keep only the most recent pre-roll window.
 			if (this.#preRoll.length > this.#preRollSamples) {
 				const tail = this.#preRoll.take().slice(this.#preRoll.length - this.#preRollSamples);
 				this.#preRoll.reset();
@@ -178,8 +154,6 @@ export class StreamEndpointer {
 			return;
 		}
 		if (this.#segmentMs >= this.#cfg.maxSegmentMs) {
-			// Pause-free long speech: commit what we have and continue a fresh
-			// segment so output keeps flowing.
 			events.push({ kind: "segment", audio: this.#segment.take() });
 			this.#segment.reset();
 			this.#segmentMs = 0;
@@ -221,8 +195,6 @@ export class StreamEndpointer {
 		this.#partialDirty = false;
 	}
 
-	/** Samples to keep when committing on silence: drop most of the trailing
-	 *  silence but leave a short tail so the final word is not cut. */
 	#endpointKeep(): number {
 		const tailMs = Math.min(this.#silenceMs, 120);
 		const dropMs = Math.max(0, this.#silenceMs - tailMs);

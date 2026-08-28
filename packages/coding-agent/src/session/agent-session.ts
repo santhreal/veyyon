@@ -1,5 +1,3 @@
-/** Core abstraction for agent lifecycle and session management. */
-
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -628,7 +626,6 @@ function sanitizeAssistantForReparentedHistory(message: AssistantMessage): Assis
 	return { ...message, content, providerPayload: undefined };
 }
 
-/** Session-specific events that extend the core AgentEvent */
 export type AgentSessionEvent =
 	| AgentEvent
 	| {
@@ -683,13 +680,11 @@ export type AgentSessionEvent =
 	  }
 	| { type: "goal_updated"; goal: Goal | null; state?: GoalModeState }
 	| { type: "cwd_changed"; previous: string; cwd: string };
-/** Listener function for agent session events */
 export type AgentSessionEventListener = (event: AgentSessionEvent) => void;
 
 const UNEXPECTED_STOP_MAX_RETRIES = 3;
 const UNEXPECTED_STOP_TIMEOUT_MS = 4000;
 const EMPTY_STOP_MAX_RETRIES = 3;
-/** Budget for callers on the user-visible `/quit` / `/exit` shutdown path that */
 export const SHUTDOWN_CONSOLIDATE_BUDGET_MS = 1_500;
 
 export interface AgentSessionDisposeOptions {
@@ -741,7 +736,6 @@ function createCodexCompactionContext(options: {
 	};
 }
 
-/** Settings that change the SHAPE OF THE TOOLS the model is handed, rather than */
 export const TOOL_SHAPE_SETTING_PATHS: Readonly<Record<string, true>> = {
 	"async.enabled": true,
 	"subagent.isolation.mode": true,
@@ -775,7 +769,6 @@ export interface AsyncJobSnapshot {
 	delivery: AsyncJobDeliveryState;
 }
 
-/** One finished background job queued for the async-result follow-up. */
 export interface AsyncResultEntry {
 	jobId: string;
 	result: string;
@@ -784,19 +777,16 @@ export interface AsyncResultEntry {
 }
 
 export type { ShakeMode, ShakeResult };
-/** Prewalk: switches an active session one-way from its starting model to */
 export interface Prewalk {
 	target: Model;
 	thinkingLevel?: ConfiguredThinkingLevel;
 }
 
-/** PlanYolo: forces the session into read-only plan mode at start, then */
 export interface PlanYolo {
 	target: Model;
 	thinkingLevel?: ConfiguredThinkingLevel;
 }
 
-/** Immutable authority admitted for one provider request. */
 export interface SecretRuntimeLease {
 	readonly revision: number;
 	readonly cwd: string;
@@ -968,7 +958,6 @@ export interface AgentSessionConfig {
 	titleSystemPrompt?: string;
 }
 
-/** Options for AgentSession.prompt() */
 export interface PromptOptions {
 	expandPromptTemplates?: boolean;
 
@@ -987,7 +976,6 @@ export interface PromptOptions {
 	skipCompactionCheck?: boolean;
 }
 
-/** Options for AgentSession.followUp() */
 export interface FollowUpOptions {
 	synthetic?: boolean;
 
@@ -996,7 +984,6 @@ export interface FollowUpOptions {
 	attribution?: MessageAttribution;
 }
 
-/** Result from a handoff operation. */
 export interface HandoffResult {
 	document: string;
 	savedPath?: string;
@@ -1008,7 +995,6 @@ export interface SessionHandoffOptions {
 	onSwitchCancelled?: () => void;
 }
 
-/** Result from cycleModel() */
 export interface ModelCycleResult {
 	model: Model;
 	thinkingLevel: ThinkingLevel | undefined;
@@ -1016,14 +1002,12 @@ export interface ModelCycleResult {
 	isScoped: boolean;
 }
 
-/** Result from cycleRoleModels() */
 export interface RoleModelCycleResult {
 	model: Model;
 	thinkingLevel: ThinkingLevel | undefined;
 	role: string;
 }
 
-/** A configured role resolved to a concrete model, used by role cycling and */
 export interface ResolvedRoleModel {
 	role: string;
 	model: Model;
@@ -1031,7 +1015,6 @@ export interface ResolvedRoleModel {
 	explicitThinkingLevel: boolean;
 }
 
-/** The set of resolvable role models plus the index of the currently active */
 export interface RoleModelCycle {
 	models: ResolvedRoleModel[];
 	currentIndex: number;
@@ -1049,7 +1032,6 @@ export interface ContextUsageBreakdown {
 	pendingMessagesTokens: number;
 }
 
-/** Session statistics for /session command */
 export interface SessionStats {
 	sessionFile: string | undefined;
 	sessionId: string;
@@ -1071,7 +1053,6 @@ export interface SessionStats {
 	contextUsage?: ContextUsage;
 }
 
-/** Advisor statistics for /advisor status command. */
 export interface AdvisorStats {
 	configured: boolean;
 	active: boolean;
@@ -1096,7 +1077,6 @@ export interface AdvisorStats {
 	advisors: PerAdvisorStat[];
 }
 
-/** One advisor's slice of {@link AdvisorStats}, surfaced for the multi-advisor status panel. */
 export interface PerAdvisorStat {
 	name: string;
 	model: Model;
@@ -1451,7 +1431,6 @@ function extractPermissionLocations(
 	return out;
 }
 
-/** Entry returned by {@link AgentSession.clearQueue} / {@link AgentSession.popLastQueuedMessage}. */
 export type RestoredQueuedMessage = { text: string; images?: ImageContent[] };
 
 function queuedTextContent(message: AgentMessage): string | undefined {
@@ -1536,7 +1515,6 @@ function mergeLlmCompactionPreserveData(
 	return stripLegacyArchive(Object.keys(preserveData).length > 0 ? preserveData : undefined);
 }
 
-/** Redact every string in a provider payload, object keys included, after */
 export function obfuscateProviderPayload(value: unknown, obfuscator: SecretObfuscator | undefined): unknown {
 	if (!obfuscator?.hasSecrets()) return value;
 	return transformProviderPayload(value, text => obfuscator.obfuscate(text), "AgentSession provider payload", {

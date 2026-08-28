@@ -1,7 +1,3 @@
-/**
- * Kimi Code OAuth flow (device authorization grant)
- */
-
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -74,7 +70,6 @@ let getDeviceId = (): string => {
 	}
 
 	const deviceId = crypto.randomUUID().replace(/-/g, "");
-	// Ensure parent directory exists before writing device-id.
 	fs.mkdirSync(path.dirname(deviceIdPath), { recursive: true });
 	fs.writeFileSync(deviceIdPath, `${deviceId}\n`, { mode: 0o600 });
 	getDeviceId = () => deviceId;
@@ -249,9 +244,6 @@ async function pollForToken(
 	});
 }
 
-/**
- * Login with Kimi Code OAuth (device code flow).
- */
 export async function loginKimi(options: OAuthController): Promise<OAuthCredentials> {
 	const device = await requestDeviceAuthorization();
 	options.onAuth?.({
@@ -260,14 +252,10 @@ export async function loginKimi(options: OAuthController): Promise<OAuthCredenti
 	});
 
 	const credentials = await pollForToken(device.deviceCode, device.intervalMs, device.expiresInMs, options.signal);
-	// Device-code flow has no browser redirect; show the branded success page.
 	emitOAuthSuccessPage(options);
 	return credentials;
 }
 
-/**
- * Refresh Kimi OAuth token.
- */
 export async function refreshKimiToken(refreshToken: string): Promise<OAuthCredentials> {
 	const response = await fetch(`${resolveOAuthHost()}/api/oauth/token`, {
 		method: "POST",
@@ -284,18 +272,6 @@ export async function refreshKimiToken(refreshToken: string): Promise<OAuthCrede
 
 	if (!response.ok) {
 		const payload = (await response.json().catch(() => undefined)) as TokenResponse | undefined;
-		// Carry the machine-readable `error` code, not only the prose
-		// `error_description`. `isDefinitiveOAuthFailure` keys on codes such as
-		// `invalid_grant` to decide whether a refresh failure means the grant is
-		// dead (disable the credential, tell the user to log in again) or merely
-		// transient (retry). Kimi returns 400 with `error: "invalid_grant"` and
-		// `error_description: "The provided authorization grant is invalid"`, and
-		// dropping the code left only prose that matched neither the definitive
-		// pattern nor the 401 fallback. Every dead kimi grant was therefore
-		// classified transient: the row was blocked for five minutes, never
-		// disabled, and the session reported "signed in, but could not get a
-		// usable token right now (for example a lapsed subscription)" on a loop
-		// instead of "your login expired, run /login".
 		const detail = [payload?.error, payload?.error_description].filter(Boolean).join(": ");
 		throw new AIError.OAuthError(`Kimi token refresh failed: ${response.status}${detail ? `: ${detail}` : ""}`, {
 			kind: "token-refresh",

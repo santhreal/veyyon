@@ -1,13 +1,9 @@
-/**
- * Utilities for launching an external text editor ($VISUAL / $EDITOR).
- */
 import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { $env, Snowflake } from "@veyyon/utils";
 
-/** Returns the user's preferred editor command, or a platform default. Resolution order: */
 export function getEditorCommand(): string | undefined {
 	const configured = $env.VISUAL?.trim() || $env.EDITOR?.trim();
 	if (configured) return configured;
@@ -15,7 +11,6 @@ export function getEditorCommand(): string | undefined {
 	return undefined;
 }
 
-/** Editors that fork and return before the file has been edited. Launched without their wait flag the child exits at once, the temp file is read back */
 export const EDITOR_WAIT_FLAGS: ReadonlyMap<string, readonly string[]> = new Map<string, readonly string[]>([
 	["code", ["--wait"]],
 	["code-insiders", ["--wait"]],
@@ -36,13 +31,11 @@ export const EDITOR_WAIT_FLAGS: ReadonlyMap<string, readonly string[]> = new Map
 	["notepad++", ["-multiInst", "-nosession"]],
 ]);
 
-/** The binary a command line starts with, without directory or `.exe`. */
 function editorBinaryName(command: string): string {
 	const base = command.replace(/\\/g, "/").split("/").pop() ?? command;
 	return base.replace(/\.exe$/i, "").toLowerCase();
 }
 
-/** Split `editorCmd` into a command and its arguments, adding the wait flag a GUI editor needs when the command line does not already carry one. */
 export function resolveEditorInvocation(editorCmd: string): { command: string; args: string[] } {
 	const [command = editorCmd, ...args] = editorCmd.trim().split(/\s+/);
 	const waitFlags = EDITOR_WAIT_FLAGS.get(editorBinaryName(command));
@@ -52,15 +45,11 @@ export function resolveEditorInvocation(editorCmd: string): { command: string; a
 }
 
 export interface OpenInEditorOptions {
-	/** File extension for the temp file (default: ".md"). */
 	extension?: string;
-	/** Custom stdio configuration (default: all "inherit"). */
 	stdio?: [number | "inherit", number | "inherit", number | "inherit"];
-	/** Keep the file's trailing newline instead of trimming it from the returned text. */
 	trimTrailingNewline?: boolean;
 }
 
-/** Opens `content` in the user's external editor and returns the edited text. Returns `null` if the editor exits with a non-zero code. */
 export async function openInEditor(
 	editorCmd: string,
 	content: string,
@@ -92,8 +81,6 @@ export async function openInEditor(
 	} finally {
 		try {
 			await fs.rm(tmpFile, { force: true });
-		} catch {
-			// Ignore cleanup errors
-		}
+		} catch {}
 	}
 }

@@ -1,11 +1,7 @@
-/** Kitty graphics Unicode placeholder placement utilities. */
-
 import { wrapTmuxPassthroughIfNeeded } from "./tmux";
 
-/** Kitty Unicode placeholder base character (U+10EEEE, Plane 16 PUA). */
 export const KITTY_PLACEHOLDER = "\u{10eeee}";
 
-/** Row/column diacritics table for naming placeholder cells. */
 const ROWCOLUMN_DIACRITICS: readonly number[] = [
 	0x305, 0x30d, 0x30e, 0x310, 0x312, 0x33d, 0x33e, 0x33f, 0x346, 0x34a, 0x34b, 0x34c, 0x350, 0x351, 0x352, 0x357,
 	0x35b, 0x363, 0x364, 0x365, 0x366, 0x367, 0x368, 0x369, 0x36a, 0x36b, 0x36c, 0x36d, 0x36e, 0x36f, 0x483, 0x484,
@@ -30,15 +26,12 @@ const ROWCOLUMN_DIACRITICS: readonly number[] = [
 	0x1d244,
 ];
 
-/** Largest row/column index expressible with the diacritic table (one cell each). */
 export const KITTY_PLACEHOLDER_MAX_CELLS = ROWCOLUMN_DIACRITICS.length;
 
 export interface KittyGraphicsFeatures {
-	/** Display images via Unicode placeholders instead of direct `a=p` placement. */
 	unicodePlaceholders: boolean;
 }
 
-/** Whether terminal supports Kitty Unicode placeholder graphics. */
 export function detectKittyUnicodePlaceholdersSupport(terminalId: string, env: NodeJS.ProcessEnv = Bun.env): boolean {
 	const offRaw = env.VEYYON_NO_KITTY_PLACEHOLDERS?.trim().toLowerCase();
 	if (offRaw === "1" || offRaw === "true" || offRaw === "on" || offRaw === "yes" || offRaw === "y") return false;
@@ -50,8 +43,6 @@ export function detectKittyUnicodePlaceholdersSupport(terminalId: string, env: N
 }
 
 let features: KittyGraphicsFeatures = {
-	// Off until `terminal-capabilities` seeds it from the detected terminal id —
-	// the default-on path corrupts wezterm and tmux-passthrough sessions.
 	unicodePlaceholders: false,
 };
 
@@ -63,7 +54,6 @@ export function setKittyGraphics(partial: Partial<KittyGraphicsFeatures>): void 
 	features = { ...features, ...partial };
 }
 
-/** Whether a `columns`×`rows` placeholder grid fits within the diacritic table. */
 export function kittyPlaceholdersFit(columns: number, rows: number): boolean {
 	return columns >= 1 && rows >= 1 && columns <= KITTY_PLACEHOLDER_MAX_CELLS && rows <= KITTY_PLACEHOLDER_MAX_CELLS;
 }
@@ -73,11 +63,6 @@ function diacritic(index: number): string {
 	return cp === undefined ? "" : String.fromCodePoint(cp);
 }
 
-/**
- * Virtual placement APC (`a=p,U=1`): tells the terminal that placeholder cells
- * carrying image id `i` should display the transmitted image, scaled to fit the
- * `c`×`r` cell box. Re-emitting with a stable `placementId` replaces in place.
- */
 export function encodeKittyVirtualPlacement(opts: {
 	imageId: number;
 	placementId?: number;
@@ -90,12 +75,6 @@ export function encodeKittyVirtualPlacement(opts: {
 	return wrapTmuxPassthroughIfNeeded(`\x1b_G${params.join(",")}\x1b\\`);
 }
 
-/**
- * Build the placeholder cell grid as one string per row. The image id is carried
- * in each row's foreground color and the placement id (if any) in its underline
- * color; every cell names its explicit row+column diacritic (robust to slicing,
- * unlike left-inheritance). Returns exactly `rows` strings.
- */
 export function encodeKittyPlaceholderGrid(opts: {
 	imageId: number;
 	placementId?: number;
@@ -120,10 +99,6 @@ export function encodeKittyPlaceholderGrid(opts: {
 	return out;
 }
 
-/**
- * Full placeholder render: the virtual-placement APC prefixes line 0, and every
- * line carries placeholder cells. Returns exactly `rows` lines (no cursor moves).
- */
 export function renderKittyPlaceholderLines(opts: {
 	imageId: number;
 	placementId?: number;

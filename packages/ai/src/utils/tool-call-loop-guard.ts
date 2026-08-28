@@ -7,22 +7,15 @@ const LEGACY_INTENT_FIELD = "__intent";
 const RESULT_SUMMARY_LIMIT = 200;
 const ARGUMENT_SUMMARY_LIMIT = 400;
 
-/** Runtime settings for cross-turn tool-call repetition detection. */
 export interface ToolCallLoopGuardOptions {
 	readonly threshold: number;
 	readonly exemptTools: readonly string[];
-	/** Threshold of consecutive fully-subsumed / redundant read calls before steering (default 2). */
 	readonly readSubsumptionThreshold?: number;
 }
 
 interface ReadTargetSpec {
 	readonly basePath: string;
 	readonly isRange: boolean;
-	/**
-	 * Every chunk of the selector, so `:5-16,960-973` is two ranges rather than
-	 * one. Carrying only the first chunk judged the whole target subsumed on the
-	 * strength of the first range alone, and recorded only that range in history.
-	 */
 	readonly ranges?: readonly { readonly start: number; readonly end: number }[];
 }
 
@@ -85,8 +78,6 @@ function parseReadTarget(target: string): ReadTargetSpec {
 		return { basePath: trimmed, isRange: false };
 	}
 
-	// If the only colon is part of a Windows drive prefix (e.g. C:\path or C:/path)
-	// or a URI scheme prefix with no other colon (e.g. skill://alpha), there is no selector.
 	if (lastColon === 1 && WINDOWS_DRIVE_RE.test(trimmed)) {
 		return { basePath: trimmed, isRange: false };
 	}
@@ -110,7 +101,6 @@ function parseReadTarget(target: string): ReadTargetSpec {
 
 	let basePath = trimmed.slice(0, lastColon);
 
-	// Check for compound selector (e.g. `path:raw:2-4` or `path:2-4:raw`)
 	const innerColon = basePath.lastIndexOf(":");
 	if (innerColon > 0) {
 		const innerCandidate = basePath.slice(innerColon + 1);
@@ -157,8 +147,6 @@ function parseReadTargets(pathArg: unknown): ReadTargetSpec[] {
 function isTargetSubsumed(target: ReadTargetSpec, history: FileReadHistory | undefined): boolean {
 	if (!history) return false;
 	if (target.isRange && target.ranges !== undefined && target.ranges.length > 0) {
-		// Every chunk has to be covered. One uncovered chunk is new content, so the
-		// read is not a repeat however well the rest of it was already read.
 		return target.ranges.every(tr => history.ranges.some(r => r.start <= tr.start && r.end >= tr.end));
 	}
 	return !target.isRange && history.hasSelectorFree;
@@ -169,13 +157,11 @@ function extractSnapshotTag(text: string): string | undefined {
 	return tagMatch ? tagMatch[1] : undefined;
 }
 
-/** A completed assistant turn plus the tool results it produced. */
 export interface ToolCallLoopTurn {
 	readonly message: AssistantMessage;
 	readonly toolResults: readonly ToolResultMessage[];
 }
 
-/** Details needed to steer the model away from a repeated tool call. */
 export interface RepeatedToolCallDetection {
 	readonly kind: "repeated_tool_call";
 	readonly toolName: string;
@@ -196,10 +182,6 @@ function canonicalizeToolCallValue(value: unknown): unknown {
 	const output: Record<string, unknown> = {};
 	for (const key of Object.keys(input).sort()) {
 		if (key === INTENT_FIELD || key === LEGACY_INTENT_FIELD) continue;
-		// A model-supplied `__proto__`/`constructor`/`prototype` key must land as an
-		// own property, else a bare assignment would drop or prototype-mutate it and
-		// distinct argument sets would collide into the same canonical hash (a false
-		// repeated-tool-call detection).
 		setSafeProperty(output, key, canonicalizeToolCallValue(input[key]));
 	}
 	return output;
@@ -226,7 +208,6 @@ function summarizeToolResult(toolResults: readonly ToolResultMessage[], toolCall
 	return summarizeText(textParts.join("\n"), RESULT_SUMMARY_LIMIT);
 }
 
-/** Detects consecutive identical assistant tool calls across model turns. */
 export class ToolCallLoopGuard {
 	#threshold: number;
 	#readSubsumptionThreshold: number;
@@ -242,7 +223,6 @@ export class ToolCallLoopGuard {
 		this.#exemptTools = new Set(options.exemptTools);
 	}
 
-	/** Records one completed turn and returns the threshold hit, if any. */
 	recordTurn(turn: ToolCallLoopTurn): RepeatedToolCallDetection | null {
 		const toolCalls = turn.message.content.filter((part): part is ToolCall => part.type === "toolCall");
 		if (toolCalls.length !== 1 || this.#exemptTools.has(toolCalls[0]!.name)) {
@@ -262,7 +242,6 @@ export class ToolCallLoopGuard {
 			this.#subsumedReadCount = 0;
 		}
 
-		// 1. Check verbatim identical tool-call argument hash
 		const canonicalArgs = JSON.stringify(canonicalizeToolCallValue(toolCall.arguments));
 		const hash = `${toolCall.name}:${canonicalArgs}`;
 		if (hash === this.#lastHash) {
@@ -272,9 +251,6 @@ export class ToolCallLoopGuard {
 			this.#count = 1;
 		}
 
-		// Exactly the threshold turn, not every turn past it: the redirect is
-		// steering, and a steer repeated on every subsequent call is noise the
-		// model pays for on each request.
 		if (this.#count === this.#threshold) {
 			return {
 				kind: "repeated_tool_call",
@@ -285,12 +261,10 @@ export class ToolCallLoopGuard {
 			};
 		}
 
-		// 2. Check read tool subsumption / redundant read loops
 		if (toolCall.name === "read") {
 			const targets = parseReadTargets((toolCall.arguments as Record<string, unknown>)?.path);
 			const resultText = summarizeToolResult(turn.toolResults, toolCall.id);
 			const currentTag = extractSnapshotTag(resultText);
-			// Are all requested targets already subsumed by earlier reads?
 			const allSubsumed =
 				targets.length > 0 &&
 				targets.every(t => {
@@ -304,7 +278,6 @@ export class ToolCallLoopGuard {
 				this.#subsumedReadCount = 0;
 			}
 
-			// Update read history for each target
 			for (const target of targets) {
 				let history = this.#fileReadHistories.get(target.basePath);
 				if (!history || (currentTag && history.snapshotTag && currentTag !== history.snapshotTag)) {

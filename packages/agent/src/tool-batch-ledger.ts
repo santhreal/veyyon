@@ -1,43 +1,28 @@
-/** Partial-completion ledger for a batch of tool calls that was cut short. */
-
-// The owner, not the `@veyyon/utils` barrel. `truncate` cuts by CODE POINT; the private `clip`
-// this replaced sliced by UTF-16 code unit, so a ledger field ending mid-surrogate-pair emitted a
-// lone surrogate that `JSON.stringify` writes to the wire as a bare `\udXXX` escape.
 import { truncate } from "@veyyon/utils/format";
 
-/** What happened to one call in a cut-short batch. */
 export type ToolBatchCallOutcome = "ok" | "failed" | "interrupted" | "dropped";
 
 export interface ToolBatchCallEntry {
 	toolCallId: string;
 	toolName: string;
 	outcome: ToolBatchCallOutcome;
-	/** The call's arguments were still streaming when the batch was cut short, so */
 	argumentsIncomplete?: boolean;
 }
 
-/** Why the batch stopped, which decides the cause line and the retry advice. */
 export type ToolBatchLedgerCause = "stream_error" | "aborted" | "interrupted";
 
 export interface ToolBatchLedger {
 	cause: ToolBatchLedgerCause;
 	entries: ToolBatchCallEntry[];
-	/** Calls that executed to completion, successfully or not. */
 	completed: number;
-	/** Calls whose execution began and was cut off. */
 	interrupted: number;
-	/** Calls that were never dispatched. */
 	dropped: number;
-	/** Entries beyond {@link TOOL_BATCH_LEDGER_MAX_ENTRIES}, counted but not listed. */
 	omitted: number;
 }
 
-/** Listed entries. Beyond this the ledger reports a count instead of more lines. */
 export const TOOL_BATCH_LEDGER_MAX_ENTRIES = 24;
-/** Per-field character budget, so one hostile id or tool name cannot unbound a line. */
 export const TOOL_BATCH_LEDGER_MAX_FIELD_WIDTH = 48;
 
-/** Build a ledger from the batch's per-call outcomes. Order is preserved: the */
 export function buildToolBatchLedger(
 	cause: ToolBatchLedgerCause,
 	calls: ReadonlyArray<ToolBatchCallEntry>,
@@ -80,10 +65,8 @@ const CAUSE_LINE: Record<ToolBatchLedgerCause, string> = {
 	interrupted: "Cause: the batch was interrupted before the remaining calls were dispatched.",
 };
 
-/** The opening of the ledger's headline, exported so a reader can recognize a */
 export const TOOL_BATCH_LEDGER_HEADLINE_PREFIX = "Partial completion ledger for this tool batch (";
 
-/** Render the ledger as the bounded text block attached to one placeholder */
 export function renderToolBatchLedger(ledger: ToolBatchLedger): string {
 	const total = ledger.completed + ledger.interrupted + ledger.dropped;
 	const counts = [`${ledger.completed} ran`];

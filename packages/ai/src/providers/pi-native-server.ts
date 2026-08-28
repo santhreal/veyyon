@@ -41,8 +41,6 @@ const ALLOWED_OPTION_KEYS: ReadonlySet<keyof SimpleStreamOptions> = new Set([
 	"loopGuard",
 ] as const satisfies readonly (keyof SimpleStreamOptions)[]);
 
-// parseRequest
-
 export function parseRequest(body: unknown, _headers?: Headers): PiNativeParsedRequest {
 	if (!isRecord(body)) {
 		throw new AIError.ValidationError("Request body must be a JSON object");
@@ -86,8 +84,6 @@ export function parseRequest(body: unknown, _headers?: Headers): PiNativeParsedR
 		}
 	}
 
-	// `stream` defaults to true — pi-native clients overwhelmingly stream, and
-	// matching `streamProxy`'s implicit-stream behavior avoids a one-flag papercut.
 	const stream = typeof obj.stream === "boolean" ? obj.stream : true;
 
 	return {
@@ -97,7 +93,6 @@ export function parseRequest(body: unknown, _headers?: Headers): PiNativeParsedR
 		stream,
 	};
 }
-// encodeStream (SSE)
 
 const SSE_ENCODER = new TextEncoder();
 const SSE_DONE = SSE_ENCODER.encode("data: [DONE]\n\n");
@@ -131,10 +126,6 @@ export function encodeStream(
 				}
 			} catch (err) {
 				if (!cancelled) {
-					// Best-effort error envelope so the client iterator resolves
-					// instead of hanging on the dropped connection. Shape matches the
-					// canonical `error` event minus the unrecoverable `error:
-					// AssistantMessage` payload (we don't have a usable one here).
 					const message = errorMessage(err);
 					controller.enqueue(
 						SSE_ENCODER.encode(
@@ -155,8 +146,6 @@ export function encodeStream(
 		},
 	});
 }
-
-// formatError
 
 export function formatError(status: number, type: string, message: string): Response {
 	return new Response(JSON.stringify({ error: { type, message } }), {

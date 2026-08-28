@@ -1,59 +1,6 @@
-/**
- * Module-load timing preload.
- *
- * `bun --preload .../module-timer.ts <entry>` installs Bun plugin hooks (only
- * when `VEYYON_TIMING` is set) that record an inclusive module window plus resolved
- * static child edges:
- *
- *   onLoad start → appended end marker after the module's top-level body
- *
- * Events are pushed into a process-global buffer that {@link logger.printTimings}
- * drains and renders as a module DAG/tree. Each module row can therefore show
- * both total time and `self` time after subtracting child module intervals.
- *
- * Why a preload (and not a normal import): Bun reads the *entire* statically
- * reachable graph before evaluating any module, so hooks installed from inside
- * that graph cannot observe its own loading — they only catch later dynamically
- * loaded modules. A preload runs first, so it sees the static-import phase that
- * dominates startup.
- *
- * Kept dependency-free on purpose: the sole import is Bun's `plugin`, so this is
- * cheap to preload before pi-utils (and winston) exist. The buffer is shared with
- * the logger via a registry Symbol so neither side needs to import the other.
- *
- * **What is measured:** an inclusive per-module window. `onLoad` stamps the
- * start before reading source; the returned source has a tiny marker appended at
- * the end of the module. That marker runs after Bun parses/transpiles the module
- * and after any top-level await in that module completes, so the duration
- * includes read + parse/transpile + dependency wait + top-level execution/TLA.
- * If a module throws before its final statement, no end marker is recorded.
- *
- * **Tree shape:** `onResolve` observes importer → specifier edges and resolves
- * them with `Bun.resolveSync` without taking over Bun's real resolution. The
- * logger renders these edges as a DAG/tree and computes module `self` time by
- * subtracting the union of child intervals, avoiding misleading flat inclusive
- * totals.
- *
- * **Coverage limits:**
- * - TS/TSX only — intercepting `node_modules` CJS `.js`/`.cjs` and forcing ESM
- *   breaks their default-export detection, so they are left to Bun's default path.
- * - **Dev runs only.** In the compiled `veyyon` binary every module is pre-bundled
- *   into bunfs, so `onLoad` never fires; profile with a `bun --preload` dev run.
- */
 import { plugin } from "bun";
 import { moduleLoadBuffer } from "./timing-buffer";
 
-// Restrict to TS/TSX only. node_modules ships CommonJS `.js`/`.cjs` that Bun
-// auto-detects when loaded via its default path; if we intercept and return
-// `{ contents, loader: "js" }`, Bun forces ESM and CJS modules fail to load
-// (e.g. `Missing 'default' export`). Our own source tree (where the interesting
-// timing lives) is uniformly TypeScript, so a TS-only filter is both safe and
-// sufficient.
-// Exported for unit testing: these are the module's pure, side-effect-free
-// building blocks (source instrumentation, path splitting, the file/import
-// patterns). The timing machinery below wires them into Bun's plugin hooks,
-// which only run under `VEYYON_TIMING`; the pure pieces stay independently
-// verifiable.
 export const MODULE_LOADER_FILTER = /\.[mc]?tsx?$/;
 const MODULE_COMPLETE_KEY: symbol = Symbol.for("veyyon.moduleLoadComplete");
 const MODULE_BODY_START_KEY: symbol = Symbol.for("veyyon.moduleBodyStart");
@@ -103,9 +50,7 @@ export function addImportEdges(importsByPath: Map<string, Set<string>>, importer
 			if (MODULE_LOADER_FILTER.test(resolved) && resolved !== importer) {
 				childSetFor(importsByPath, importer).add(resolved);
 			}
-		} catch {
-			// Leave Bun's real resolver/runtime to surface any error. This scanner is only an observer.
-		}
+		} catch {}
 	}
 }
 

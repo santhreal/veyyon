@@ -11,22 +11,15 @@ import { parseUnreleasedSection } from "./parse";
 
 const CHANGELOG_SECTIONS = CHANGELOG_CATEGORIES;
 
-/** Lower-cased section header -> its Keep-a-Changelog canonical casing. Item text is already matched case-insensitively (the `.toLowerCase()` compares in */
 const CANONICAL_SECTION_BY_LOWER = new Map<string, string>(
 	CHANGELOG_SECTIONS.map(section => [section.toLowerCase(), section]),
 );
 
-/** Map any-case section header to its canonical Keep-a-Changelog casing. An
- *  unknown name is trimmed but otherwise preserved (the renderer's fixed section
- *  list already governs which sections surface). */
 function canonicalizeSectionName(name: string): string {
 	const trimmed = name.trim();
 	return CANONICAL_SECTION_BY_LOWER.get(trimmed.toLowerCase()) ?? trimmed;
 }
 
-/** Rebuild a section-keyed record under canonical section names, concatenating
- *  the items of any keys that collapse to the same canonical section (e.g. a file
- *  that carries both "Fixed" and "fixed"). Order within a section is preserved. */
 function canonicalizeSectionKeys(entries: Record<string, string[]>): Record<string, string[]> {
 	const result: Record<string, string[]> = {};
 	for (const [section, items] of Object.entries(entries)) {
@@ -61,9 +54,6 @@ export interface ChangelogProposalInput {
 	onProgress?: (message: string) => void;
 }
 
-/**
- * Update CHANGELOG.md entries for staged changes.
- */
 export async function runChangelogFlow({
 	cwd,
 	model,
@@ -93,8 +83,6 @@ export async function runChangelogFlow({
 		let providerUnreleased: { startLine: number; endLine: number; entries: Record<string, string[]> };
 		try {
 			unreleased = parseUnreleasedSection(changelogContent);
-			// The provider projection is derived only after the whole raw
-			// changelog has crossed the confidentiality boundary.
 			providerUnreleased = parseUnreleasedSection(sanitizeProviderText(changelogContent));
 		} catch (error) {
 			logger.warn("commit changelog parse skipped", {
@@ -130,9 +118,6 @@ export async function runChangelogFlow({
 	return updated;
 }
 
-/**
- * Apply changelog entries provided by the commit agent.
- */
 export async function applyChangelogProposals({
 	cwd,
 	proposals,
@@ -187,7 +172,6 @@ function formatExistingEntries(entries: Record<string, string[]>): string {
 	return lines.join("\n");
 }
 
-/** @internal Exported for testing. */
 export function applyChangelogEntries(
 	content: string,
 	unreleased: { startLine: number; endLine: number; entries: Record<string, string[]> },
@@ -198,7 +182,6 @@ export function applyChangelogEntries(
 	const before = lines.slice(0, unreleased.startLine + 1);
 	const after = lines.slice(unreleased.endLine);
 
-	// Canonicalize every section key up front — the parsed base, the incoming entries, and the deletions — so all three agree on case. Both callers
 	let base = canonicalizeSectionKeys(unreleased.entries);
 	const canonicalEntries = canonicalizeSectionKeys(entries);
 	if (deletions) {
@@ -206,7 +189,6 @@ export function applyChangelogEntries(
 	}
 	const merged = mergeEntries(base, canonicalEntries);
 	const sectionLines = renderUnreleasedSections(merged);
-	// `after` begins at the next `## [x.y.z]` release heading (parse's endLine points AT it, so there is no leading blank). Keep-a-Changelog requires a blank line
 	const separator = after.length > 0 ? [""] : [];
 	return before.concat(sectionLines, separator, after).join("\n");
 }
@@ -238,9 +220,6 @@ function mergeEntries(
 			const key = item.toLowerCase();
 			if (!lower.has(key)) {
 				current.push(item);
-				// Track the just-added item so duplicates LATER in the same incoming
-				// batch are also deduped — without this the membership set was stale and
-				// every repeat within one batch slipped through.
 				lower.add(key);
 			}
 		}
@@ -249,9 +228,6 @@ function mergeEntries(
 	return merged;
 }
 
-// Render the Unreleased body: one leading blank line after the `## [Unreleased]`
-// header, then each non-empty category. It deliberately returns NO trailing blank
-// line; the caller (applyChangelogEntries) owns spacing to whatever follows.
 function renderUnreleasedSections(entries: Record<string, string[]>): string[] {
 	const lines: string[] = [""];
 	for (const section of CHANGELOG_SECTIONS) {

@@ -6,25 +6,21 @@ import type { GitStatusSummary } from "../../../utils/git";
 
 export type { StatusLinePreset, StatusLineSegmentId, StatusLineSeparatorStyle };
 
-/** Collab session indicator + (guest-only) host-state override for segments. */
 export interface CollabStatus {
 	role: "host" | "guest";
 	participantCount: number;
-	/** Guest only: host footer snapshot that overrides locally computed values. */
 	stateOverride?: CollabSessionState | null;
 }
 
 export interface StatusLineSegmentOptions {
 	model?: {
 		showThinkingLevel?: boolean;
-		/** Quiet zones: a wide gap between the model name and the effort tail. */
 		roomy?: boolean;
 	};
 	path?: {
 		abbreviate?: boolean;
 		maxLength?: number;
 		stripWorkPrefix?: boolean;
-		/** Workspace roots the working directory is shown relative to, most specific first, with `~` accepted for the home directory. Absent means the two conventions this segment has */
 		displayRoots?: string[];
 	};
 	git?: { showBranch?: boolean };
@@ -35,15 +31,11 @@ export interface StatusLineSettings {
 	preset?: StatusLinePreset;
 	leftSegments?: StatusLineSegmentId[];
 	rightSegments?: StatusLineSegmentId[];
-	/** DEAD as of the top-border removal: nothing renders a separator any more. The composer footline joins segments with its own fixed ` · `. The field */
 	separator?: StatusLineSeparatorStyle;
 	segmentOptions?: StatusLineSegmentOptions;
 	showHookStatus?: boolean;
 	sessionAccent?: boolean;
-	/** DEAD as of the top-border removal: there is no filled bar to make transparent. Same blocker as `separator` above. */
 	transparent?: boolean;
-	/** Replace the model-segment icon with the thinking-level glyph and drop the
-	 *  " · <level>" suffix, so the thinking level reads as a single compact icon. */
 	compactThinkingLevel?: boolean;
 }
 
@@ -56,12 +48,10 @@ export type RGB = readonly [number, number, number];
 
 export interface SegmentContext {
 	session: AgentSession;
-	/** Focused subagent id while the view is proxied at its session, undefined otherwise. */
 	focusedAgentId?: string | undefined;
 	activeRepo: ActiveRepoContext | null;
 	width: number;
 	options: StatusLineSegmentOptions;
-	/** Render the model segment's thinking level as a compact leading glyph. */
 	compactThinkingLevel: boolean;
 	planMode: {
 		enabled: boolean;
@@ -81,7 +71,6 @@ export interface SegmentContext {
 		enabled: boolean;
 	} | null;
 	collab: CollabStatus | null;
-	// Cached values for performance (computed once per render)
 	usageStats: {
 		input: number;
 		output: number;
@@ -95,27 +84,20 @@ export interface SegmentContext {
 		cost: number;
 		tokensPerSecond: number | null;
 	};
-	/** Percent of {@link contextLimit} used, or null when unknown (e.g. right after compaction). Percent of the LIMIT, not of the window — with */
 	contextPercent: number | null;
-	/** The model's real context window. Always the window, never the trigger. */
 	contextWindow: number;
-	/** Where the context actually runs out: the auto-compaction fire point when auto-compaction is on, otherwise {@link contextWindow}. This is what the */
 	contextLimit: number;
 	contextLimitKind: "window" | "compaction";
 	autoCompactEnabled: boolean;
 	subagentCount: number;
-	/** Conversations this process is still running that no screen is showing — `/new` handoffs that have not settled. */
 	backgroundSessionCount: number;
-	/** Active processing time accumulated this session, in ms — the union of every `agent_start`→`agent_end` window plus the currently-streaming */
 	activeMs: number;
 	git: {
 		branch: string | null;
 		status: GitStatusSummary | null;
 		pr: { number: number; url: string } | null;
 	};
-	/** Set when the path cwd is a *linked* git worktree, naming the shared primary checkout (the project). Lets the path segment collapse the */
 	worktree: { projectName: string; worktreeName: string } | null;
-	/** The credential serving the active provider, and how many that provider stores. Null when no provider is resolved or it stores nothing. `storedCount` is carried rather than */
 	account: { label: string; storedCount: number; isPrediction: boolean } | null;
 	usage: {
 		tier?: string;
@@ -127,7 +109,6 @@ export interface SegmentContext {
 export interface RenderedSegment {
 	content: string; // The segment text (may include ANSI color codes)
 	visible: boolean; // Whether to render (e.g., git hidden when not in repo)
-	/** Cells at the FRONT of `content` a width clip must keep, in the location zone which clips from the front. Zero or absent means the whole segment is expendable head. */
 	pin?: number;
 }
 

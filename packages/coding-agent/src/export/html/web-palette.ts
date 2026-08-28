@@ -1,10 +1,6 @@
-/** Web/export palette — the veyyon brand identity shared by the collab-web live client (`share.veyyon.dev/`) and every public HTML export / share viewer (`/s/<id>`). */
-/** Base background an export derives `--body-bg`/`--container-bg`/`--info-bg` from when the selected theme does not define `userMessageBg`. Every shipped theme */
 export const EXPORT_FALLBACK_BASE_BG = "#000000";
 
 export const WEB_EXPORT_PALETTE = {
-	// Pitch-black ground everywhere; hierarchy comes from silver hairlines,
-	// text weight, and the ember accent — never tinted/raised fills.
 	"--bg": "#000000",
 	"--bg-raised": "#000000",
 	"--bg-inset": "#000000",
@@ -20,38 +16,30 @@ export const WEB_EXPORT_PALETTE = {
 	"--ring": "oklch(0.705 0.163 52 / 70%)", // ember focus ring
 	"--font-mono": 'ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace',
 
-	// surfaces — all pitch black, matching the collab-web tokens
 	"--body-bg": "#000000", // = --bg
 	"--container-bg": "#000000", // = --bg-raised
 	"--info-bg": "#000000", // = --bg-inset (recessed wells: code blocks, tool output)
-	// text
 	"--text": "#f6f7f9", // = --fg
 	"--muted": "#b4bac4", // = --fg-muted
 	"--dim": "#7c828d", // = --fg-faint
 	"--thinkingText": "#b4bac4",
-	// hairlines — silver-alpha, matching collab-web's --border/--border-strong
 	"--border": "rgba(198, 203, 212, 0.12)",
 	"--borderMuted": "rgba(198, 203, 212, 0.08)",
-	// accent border + the one permitted tinted surface (ember glow selection)
 	"--borderAccent": "#f0862e", // ember
 	"--selectedBg": "#241510", // ember glow
-	// status — semantic, used sparingly (cancelled / exit-code / success dots)
 	"--success": "#7fb98a", // = --ok
 	"--error": "#c96f6e", // = --err
 	"--warning": "#c9a24b", // = --warn
-	// message bubbles
 	"--userMessageBg": "oklch(0.705 0.163 52 / 6%)", // faint ember tint distinguishes user turns
 	"--userMessageText": "#f6f7f9",
 	"--customMessageBg": "#000000", // = --bg-overlay
 	"--customMessageText": "#b4bac4", // = --fg-muted
 	"--customMessageLabel": "#c6cbd4", // silver — labels are structure
-	// tool surfaces
 	"--toolPendingBg": "#000000",
 	"--toolSuccessBg": "#000000",
 	"--toolErrorBg": "oklch(0.62 0.12 25 / 14%)", // faint red error well
 	"--toolTitle": "#f6f7f9",
 	"--toolOutput": "#b4bac4", // = --fg-muted
-	// markdown
 	"--mdHeading": "#e6e9ee", // silver-hi — headings are structure
 	"--mdLink": "#f0862e", // ember — links carry the accent
 	"--mdLinkUrl": "#7c828d", // = --fg-faint
@@ -62,11 +50,9 @@ export const WEB_EXPORT_PALETTE = {
 	"--mdQuoteBorder": "rgba(198, 203, 212, 0.21)",
 	"--mdHr": "rgba(198, 203, 212, 0.12)",
 	"--mdListBullet": "#f0862e", // ember — bullets carry the accent
-	// diff
 	"--toolDiffAdded": "#7fb98a",
 	"--toolDiffRemoved": "#c96f6e",
 	"--toolDiffContext": "#7c828d",
-	// syntax — silver-neutral base with ember/amber/green accents (no cyan/purple)
 	"--syntaxComment": "#7c828d", // = --fg-faint
 	"--syntaxKeyword": "#f0862e", // ember
 	"--syntaxFunction": "#c9a24b", // amber
@@ -76,19 +62,14 @@ export const WEB_EXPORT_PALETTE = {
 	"--syntaxType": "#e6e9ee", // silver-hi
 	"--syntaxOperator": "#f6f7f9",
 	"--syntaxPunctuation": "#b4bac4",
-	// thinking-level ramp — escalates dim → silver → amber → ember → ember-hi
 	"--thinkingOff": "#7c828d",
 	"--thinkingMinimal": "#7c828d",
 	"--thinkingLow": "#b4bac4",
 	"--thinkingMedium": "#c9a24b",
 	"--thinkingHigh": "#f0862e",
 	"--thinkingXhigh": "#fb9e44",
-	// mode tints (sidebar/role tags) — not surfaced in the export tree but
-	// emitted for completeness so template.js role classes resolve cleanly
 	"--bashMode": "#7fb98a", // green
 	"--pythonMode": "#c9a24b", // amber
-	// status-line tokens are TUI-only; not consumed by the export template, but
-	// emitted so any future surface that reads them inherits the brand.
 	"--statusLineBg": "#000000",
 	"--statusLineSep": "#7c828d",
 	"--statusLineModel": "#f0862e", // ember
@@ -105,7 +86,6 @@ export const WEB_EXPORT_PALETTE = {
 	"--statusLineSubagents": "#f0862e", // ember
 } as const satisfies Record<string, string>;
 
-/** Serialize the palette as `--key: value;` declarations for `:root { … }`. */
 export function webExportThemeVars(): string {
 	let out = "";
 	for (const k in WEB_EXPORT_PALETTE) {

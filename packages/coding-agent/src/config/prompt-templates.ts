@@ -12,9 +12,6 @@ import {
 import { jtdToTypeScript, jtdToTypeScriptParts } from "../tools/jtd-to-typescript";
 import { parseCommandArgs, substituteArgs } from "../utils/command-args";
 
-/**
- * Represents a prompt template loaded from a markdown file
- */
 export interface PromptTemplate {
 	name: string;
 	description: string;
@@ -22,7 +19,6 @@ export interface PromptTemplate {
 	source: string; // e.g., "(user)", "(project)", "(project:frontend)"
 }
 
-/** Report an output schema that could not be rendered into a prompt. Substituting `unknown` is not a graceful degrade, which is why this exists */
 function reportUnrenderableSchema(error: unknown): void {
 	logger.warn("A subagent output schema could not be rendered, so the model is not being told what shape to return", {
 		error: errorMessage(error),
@@ -39,7 +35,6 @@ prompt.registerHelper("jtdToTypeScript", (schema: unknown): string => {
 	}
 });
 
-/** Render a subagent output schema wrapped in the `yield` tool's `result: { data: … }` envelope so the model sees the shape it must */
 prompt.registerHelper("renderYieldSchema", (schema: unknown): string => {
 	let rendered: { definitions: string; type: string };
 	try {
@@ -52,14 +47,12 @@ prompt.registerHelper("renderYieldSchema", (schema: unknown): string => {
 	const [first, ...rest] = lines;
 	const body = rest.length === 0 ? first : `${first}\n${rest.map(l => `  ${l}`).join("\n")}`;
 	const envelope = `result: {\n  data: ${body};\n}`;
-	// Interface declarations go BEFORE the envelope, never inside it: a self-referential schema renders as a named interface plus a reference, and
 	return rendered.definitions ? `${rendered.definitions}\n\n${envelope}` : envelope;
 });
 
 const INLINE_ARG_SHELL_PATTERN = /\$(?:ARGUMENTS|@(?:\[\d+(?::\d*)?\])?|\d+)/;
 const INLINE_ARG_TEMPLATE_PATTERN = /\{\{[\s\S]*?(?:\b(?:arguments|ARGUMENTS|args)\b|\barg\s+[^}]+)[\s\S]*?\}\}/;
 
-/** Keep the check source-level and cheap: if the template text contains any explicit inline-arg placeholder syntax, do not append the fallback text again. */
 export function templateUsesInlineArgPlaceholders(templateSource: string): boolean {
 	return INLINE_ARG_SHELL_PATTERN.test(templateSource) || INLINE_ARG_TEMPLATE_PATTERN.test(templateSource);
 }
@@ -75,9 +68,6 @@ export function appendInlineArgsFallback(
 	return `${rendered}\n\n${argsText}`;
 }
 
-/**
- * Recursively scan a directory for .md files (and symlinks to .md files) and load them as prompt templates
- */
 async function loadTemplatesFromDir(
 	dir: string,
 	source: "user" | "project",
@@ -91,7 +81,6 @@ async function loadTemplatesFromDir(
 			entries.push(entry);
 		}
 
-		// Group by path depth to process directories before deeply nested files
 		entries.sort((a, b) => a.split("/").length - b.split("/").length);
 
 		for (const entry of entries) {
@@ -108,7 +97,6 @@ async function loadTemplatesFromDir(
 
 					const name = entry.split("/").pop()!.slice(0, -3); // Remove .md extension
 
-					// Build source string based on subdirectory structure
 					const entryDir = entry.includes("/") ? entry.split("/").slice(0, -1).join(":") : "";
 					const fullSubdir = subdir && entryDir ? `${subdir}:${entryDir}` : entryDir || subdir;
 
@@ -119,18 +107,15 @@ async function loadTemplatesFromDir(
 						sourceStr = fullSubdir ? `(project:${fullSubdir})` : "(project)";
 					}
 
-					// Get description from frontmatter or first non-empty line
 					let description = String(frontmatter.description || "");
 					if (!description) {
 						const firstLine = body.split("\n").find(line => line.trim());
 						if (firstLine) {
-							// Truncate if too long
 							description = firstLine.slice(0, 60);
 							if (firstLine.length > 60) description += "...";
 						}
 					}
 
-					// Append source to description
 					description = description ? `${description} ${sourceStr}` : sourceStr;
 
 					templates.push({
@@ -155,26 +140,20 @@ async function loadTemplatesFromDir(
 }
 
 export interface LoadPromptTemplatesOptions {
-	/** Working directory for project-local templates. Default: getProjectDir() */
 	cwd?: string;
-	/** Agent config directory for global templates. Default: from getPromptsDir() */
 	agentDir?: string;
 }
 
-/** Load all prompt templates from: 1. Global: agentDir/prompts/ */
 export async function loadPromptTemplates(options: LoadPromptTemplatesOptions = {}): Promise<PromptTemplate[]> {
 	const resolvedCwd = options.cwd ?? getProjectDir();
 	const resolvedAgentDir = options.agentDir ?? getPromptsDir();
 
 	const templates: PromptTemplate[] = [];
 
-	// 1. Load global templates from agentDir/prompts/
-	// Note: if agentDir is provided, it should be the agent dir, not the prompts dir
 	const globalPromptsDir = options.agentDir ? path.join(options.agentDir, "prompts") : resolvedAgentDir;
 	const globalTemplates = await loadTemplatesFromDir(globalPromptsDir, "user");
 	for (let ti = 0; ti < globalTemplates.length; ti++) templates.push(globalTemplates[ti]!);
 
-	// 2. Load project templates from cwd/.veyyon/prompts/
 	const projectPromptsDir = getProjectPromptsDir(resolvedCwd);
 	const projectTemplates = await loadTemplatesFromDir(projectPromptsDir, "project");
 	for (let ti = 0; ti < projectTemplates.length; ti++) templates.push(projectTemplates[ti]!);
@@ -182,7 +161,6 @@ export async function loadPromptTemplates(options: LoadPromptTemplatesOptions = 
 	return templates;
 }
 
-/** Expand a prompt template if it matches a template name. Returns the expanded content or the original text if not a template. */
 export function expandPromptTemplate(text: string, templates: PromptTemplate[]): string {
 	if (!text.startsWith("/")) return text;
 

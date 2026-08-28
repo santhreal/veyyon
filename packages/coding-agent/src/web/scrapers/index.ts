@@ -1,4 +1,3 @@
-/** Web Fetch Special Handlers Index Exports all special handlers for site-specific content extraction. */
 import { handleArtifactHub } from "./artifacthub";
 import { handleArxiv } from "./arxiv";
 import { handleAur } from "./aur";
@@ -158,19 +157,15 @@ export {
 };
 
 export const specialHandlers: SpecialHandler[] = [
-	// Git hosting
 	handleGitHubGist,
 	handleGitHub,
 	handleGitLab,
-	// Video/Media
 	handleYouTube,
 	handleVimeo,
 	handleSpotify,
 	handleDiscogs,
 	handleMusicBrainz,
-	// Games
 	handleRawg,
-	// Social/News
 	handleTwitter,
 	handleBluesky,
 	handleMastodon,
@@ -179,7 +174,6 @@ export const specialHandlers: SpecialHandler[] = [
 	handleLobsters,
 	handleReddit,
 	handleDiscourse,
-	// Developer content
 	handleStackOverflow,
 	handleDevTo,
 	handleMDN,
@@ -189,7 +183,6 @@ export const specialHandlers: SpecialHandler[] = [
 	handleSourcegraph,
 	handleTldr,
 	handleCheatSh,
-	// Package registries
 	handleNpm,
 	handleFirefoxAddons,
 	handleVscodeMarketplace,
@@ -217,10 +210,8 @@ export const specialHandlers: SpecialHandler[] = [
 	handleMetaCPAN,
 	handleRepology,
 	handleSnapcraft,
-	// ML/AI
 	handleHuggingFace,
 	handleOllama,
-	// Academic
 	handleArxiv,
 	handleBiorxiv,
 	handleCrossref,
@@ -229,16 +220,12 @@ export const specialHandlers: SpecialHandler[] = [
 	handleSemanticScholar,
 	handlePubMed,
 	handleRfc,
-	// Security
 	handleCisaKev,
 	handleNvd,
 	handleOsv,
-	// Crypto
 	handleCoinGecko,
-	// Business
 	handleOpenCorporates,
 	handleSecEdgar,
-	// Reference
 	handleOpenLibrary,
 	handleChooseALicense,
 	handleW3c,

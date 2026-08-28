@@ -58,9 +58,6 @@ interface MastodonStatus {
 	};
 }
 
-/**
- * Check if a domain is a Mastodon instance by probing the API
- */
 async function isMastodonInstance(hostname: string, timeout: number, signal?: AbortSignal): Promise<boolean> {
 	try {
 		const result = await loadPage(`https://${hostname}/api/v1/instance`, {
@@ -70,17 +67,12 @@ async function isMastodonInstance(hostname: string, timeout: number, signal?: Ab
 		});
 		if (!result.ok) return false;
 		const data = JSON.parse(result.content);
-		// Mastodon instances return uri/domain field
 		return !!(data.uri || data.domain || data.title);
 	} catch {
-		// This is a probe against an ARBITRARY host, so "not a Mastodon instance" arrives as a refused connection, a timeout, an HTML error page that will not parse as JSON, or a 404 -- every one of
 		return false;
 	}
 }
 
-/**
- * Format a date string to readable format
- */
 function formatDate(isoDate: string): string {
 	try {
 		const date = new Date(isoDate);
@@ -96,11 +88,7 @@ function formatDate(isoDate: string): string {
 	}
 }
 
-/**
- * Format a status/post as markdown
- */
 async function formatStatus(status: MastodonStatus, isReblog = false): Promise<string> {
-	// Handle reblogs (boosts)
 	if (status.reblog && !isReblog) {
 		let md = `🔁 **${status.account.display_name || status.account.username}** boosted:\n\n`;
 		md += await formatStatus(status.reblog, true);
@@ -120,16 +108,13 @@ async function formatStatus(status: MastodonStatus, isReblog = false): Promise<s
 	if (status.visibility !== "public") md += ` · ${status.visibility}`;
 	md += "\n\n";
 
-	// Content warning / spoiler
 	if (status.spoiler_text) {
 		md += `> ⚠️ **CW:** ${status.spoiler_text}\n\n`;
 	}
 
-	// Main content (convert HTML to markdown)
 	const content = await htmlToBasicMarkdown(status.content);
 	md += `${content}\n\n`;
 
-	// Poll
 	if (status.poll) {
 		md += "**Poll:**\n";
 		for (const option of status.poll.options) {
@@ -140,7 +125,6 @@ async function formatStatus(status: MastodonStatus, isReblog = false): Promise<s
 		md += `Total: ${status.poll.votes_count} votes${status.poll.expired ? " (closed)" : ""}\n\n`;
 	}
 
-	// Media attachments
 	if (status.media_attachments.length > 0) {
 		md += "**Attachments:**\n";
 		for (const media of status.media_attachments) {
@@ -150,7 +134,6 @@ async function formatStatus(status: MastodonStatus, isReblog = false): Promise<s
 		md += "\n";
 	}
 
-	// Stats
 	md += `---\n`;
 	md += `💬 ${formatNumber(status.replies_count)} replies · `;
 	md += `🔁 ${formatNumber(status.reblogs_count)} boosts · `;
@@ -159,9 +142,6 @@ async function formatStatus(status: MastodonStatus, isReblog = false): Promise<s
 	return md;
 }
 
-/**
- * Format an account/profile as markdown
- */
 async function formatAccount(account: MastodonAccount): Promise<string> {
 	let md = `# ${account.display_name || account.username}\n\n`;
 
@@ -169,7 +149,6 @@ async function formatAccount(account: MastodonAccount): Promise<string> {
 	if (account.bot) md += " 🤖 Bot";
 	md += "\n\n";
 
-	// Bio
 	if (account.note) {
 		const bio = await htmlToBasicMarkdown(account.note);
 		if (bio && bio !== account.display_name) {
@@ -177,7 +156,6 @@ async function formatAccount(account: MastodonAccount): Promise<string> {
 		}
 	}
 
-	// Stats
 	md += `**Followers:** ${formatNumber(account.followers_count)} · `;
 	md += `**Following:** ${formatNumber(account.following_count)} · `;
 	md += `**Posts:** ${formatNumber(account.statuses_count)}\n\n`;
@@ -185,7 +163,6 @@ async function formatAccount(account: MastodonAccount): Promise<string> {
 	md += `**Joined:** ${formatDate(account.created_at)}\n`;
 	md += `**Profile:** ${account.url}\n`;
 
-	// Profile fields (links, pronouns, etc.)
 	if (account.fields && account.fields.length > 0) {
 		md += "\n**Profile Fields:**\n";
 		for (const field of account.fields) {
@@ -197,9 +174,6 @@ async function formatAccount(account: MastodonAccount): Promise<string> {
 	return md;
 }
 
-/**
- * Handle Mastodon/Fediverse URLs
- */
 export const handleMastodon: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -209,13 +183,11 @@ export const handleMastodon: SpecialHandler = async (
 		const parsed = tryParseUrl(url);
 		if (!parsed) return null;
 
-		// Check for @user/postid or @user pattern
 		const postMatch = parsed.pathname.match(/^\/@([^/]+)\/(\d+)$/);
 		const profileMatch = parsed.pathname.match(/^\/@([^/]+)$/);
 
 		if (!postMatch && !profileMatch) return null;
 
-		// Verify this is a Mastodon instance
 		if (!(await isMastodonInstance(parsed.hostname, timeout, signal))) {
 			return null;
 		}
@@ -224,7 +196,6 @@ export const handleMastodon: SpecialHandler = async (
 		const instance = parsed.hostname;
 
 		if (postMatch) {
-			// Fetch status/post
 			const [, , statusId] = postMatch;
 			const apiUrl = `https://${instance}/api/v1/statuses/${statusId}`;
 
@@ -251,7 +222,6 @@ export const handleMastodon: SpecialHandler = async (
 		}
 
 		if (profileMatch) {
-			// Fetch account by username lookup
 			const [, username] = profileMatch;
 			const lookupUrl = `https://${instance}/api/v1/accounts/lookup?acct=${encodeURIComponent(username)}`;
 
@@ -266,7 +236,6 @@ export const handleMastodon: SpecialHandler = async (
 			const account = tryParseJson<MastodonAccount>(result.content);
 			if (!account) return scraperDegrade("mastodon", "unexpected account response shape");
 
-			// Fetch recent statuses
 			const statusesUrl = `https://${instance}/api/v1/accounts/${account.id}/statuses?limit=5&exclude_replies=true`;
 			const statusesResult = await loadPage(statusesUrl, {
 				timeout,
@@ -298,8 +267,6 @@ export const handleMastodon: SpecialHandler = async (
 			});
 		}
 	} catch (error) {
-		// Reached only after the instance probe confirmed a Mastodon server, so
-		// a throw here is a real scrape failure, not a non-match.
 		return scraperDegrade("mastodon", error);
 	}
 

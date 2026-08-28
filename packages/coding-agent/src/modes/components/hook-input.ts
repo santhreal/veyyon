@@ -1,6 +1,3 @@
-/**
- * Single-field text prompt for hooks, drawn as a floating ModalShell card.
- */
 import {
 	Container,
 	Ellipsis,
@@ -37,13 +34,9 @@ export interface HookInputOptions {
 	tui?: TUI;
 	timeout?: number;
 	onTimeout?: () => void;
-	/** Render each character typed as this one instead of itself, for a credential. The value still submits verbatim; only the painted glyphs change, so a key */
 	mask?: string;
-	/** Preserve pasted credential payload code units exactly. Masked hooks enable this automatically; the explicit flag keeps the mode named and testable. */
 	credentialMode?: boolean;
-	/** Mechanical facts about the field, shown as the first footer chip rather than in the title: what the field accepts, or where its value ends up. */
 	hint?: string;
-	/** Repaint request for hover paints and the countdown tick. */
 	onRequestRender?: () => void;
 }
 
@@ -74,8 +67,6 @@ export class HookInputComponent extends Container {
 		this.#hint = opts?.hint;
 		this.#onRequestRender = opts?.onRequestRender;
 
-		// The card's title bar takes the title's first line; anything under it is
-		// context the caller wrote for the field and stays in the body.
 		const [firstTitleLine = "", ...restTitleLines] = title.split("\n");
 		this.#cardTitle = firstTitleLine;
 		const bodyTitle = restTitleLines.join("\n");
@@ -116,8 +107,6 @@ export class HookInputComponent extends Container {
 		this.#onRequestRender = callback;
 	}
 
-	/** The field's own hint leads, because it describes THIS field; the keys are
-	 *  the same two bindings every dialog in the app carries. */
 	#shortcuts(): readonly ModalShortcut[] {
 		const shortcuts: ModalShortcut[] = [];
 		if (this.#hint !== undefined) shortcuts.push({ label: this.#hint });
@@ -131,9 +120,6 @@ export class HookInputComponent extends Container {
 			routeSgrMouseInput(keyData, event => this.#routeMouse(event));
 			return;
 		}
-		// Input owns paste framing as well as submit/cancel recognition. Routing
-		// every chunk through it means a newline or interrupt byte in a
-		// bracketed paste cannot be mistaken for a physical key by this wrapper.
 		this.#countdown?.reset();
 		this.#input.handleInput(keyData);
 	}
@@ -161,7 +147,6 @@ export class HookInputComponent extends Container {
 			return true;
 		}
 		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
-			// The submit chip answers with what is typed, exactly as Enter does.
 			this.#countdown?.reset();
 			this.#onSubmitCallback(this.#input.getValue());
 			return true;
@@ -169,19 +154,13 @@ export class HookInputComponent extends Container {
 		return true;
 	}
 
-	/** Route non-bracketed paste transports (e.g. kitty's OSC 5522 enhanced clipboard)
-	 *  into the inner input, mirroring bracketed-paste semantics. Pasting counts as
-	 *  interaction, so the timeout countdown resets like any keystroke. */
 	pasteText(text: string): void {
 		this.#countdown?.reset();
 		this.#input.pasteText(text);
 	}
 
-	/** The card is at least as wide as the two sentences it exists to say. A medium card takes 60% of the terminal, and the title and the hint are both cut to the */
 	#sizing(height: number): ModalSizing {
 		const base = sizingForArea(MODAL_SIZING_MEDIUM, height);
-		// The title row and the footer row charge different chrome, so each sentence asks the
-		// layout owner what it costs rather than restating the arithmetic here.
 		const needed = Math.max(
 			modalWidthForTitle(visibleWidth(this.#cardTitle + this.#countdownSuffix)),
 			this.#hint === undefined ? 0 : modalWidthForContent(visibleWidth(this.#hint), base),

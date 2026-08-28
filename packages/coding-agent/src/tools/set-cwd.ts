@@ -1,5 +1,3 @@
-/** Session-scoped working-directory re-root. Mutates the live session cwd only — never writes profile `session.workdir`. */
-
 import * as path from "node:path";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
@@ -22,7 +20,6 @@ const setCwdSchema = type({
 
 export type SetCwdToolInput = typeof setCwdSchema.infer;
 
-/** The directory this call would re-root the session to, so the cwd boundary applies to `set_cwd` itself. */
 export function setCwdFilesystemTargets(args: unknown): string[] {
 	const raw = (args as Partial<SetCwdToolInput> | null)?.path;
 	return typeof raw === "string" && raw.trim().length > 0 ? [raw.trim()] : [];
@@ -31,25 +28,19 @@ export function setCwdFilesystemTargets(args: unknown): string[] {
 export interface SetCwdToolDetails {
 	previous: string;
 	cwd: string;
-	/** The path string as it arrived, so the transcript can show what was asked for. */
 	requested: string;
-	/** Rule files that apply here and did not apply at `previous`. */
 	rulesApplied?: string[];
-	/** Rule files that applied at `previous` and do not apply here. */
 	rulesDropped?: string[];
-	/** Rule files that apply in both directories. */
 	rulesUnchanged?: number;
 }
 
 interface RuleChange {
-	/** Short lines appended to the tool result. Never rule file CONTENT. */
 	lines: string[];
 	applied: string[];
 	dropped: string[];
 	unchanged: number;
 }
 
-/** Describe how the rule files in effect changed across a re-root. NAMES ONLY, NEVER CONTENT. An earlier version of this inlined the text of every */
 async function describeRuleChange(previous: string, cwd: string): Promise<RuleChange> {
 	const { loadProjectContextFiles } = await import("../system-prompt");
 	const [before, after] = await Promise.all([
@@ -84,12 +75,10 @@ async function describeRuleChange(previous: string, cwd: string): Promise<RuleCh
 export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDetails> {
 	readonly name = SET_CWD_TOOL_NAME;
 	readonly label = "SetCwd";
-	// Gate the Argot paragraph on `argot.enabled`: the `argot_load` tool is only registered when Argot is on (off by default), so an unconditional mention
 	readonly description: string;
 	readonly parameters = setCwdSchema;
 	readonly strict = true;
 	readonly approval = "write" as const;
-	// Discoverable, not essential: most sessions never re-root, and an unannotated built-in falls through `filterInitialToolsForDiscoveryAll`'s "not a built-in"
 	readonly loadMode = "discoverable";
 	readonly summary = "Change the session's working directory for the rest of the session";
 	readonly filesystemTargets = (args: unknown): string[] => setCwdFilesystemTargets(args);
@@ -125,7 +114,6 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 			throw new ToolError("Session does not support setCwd.");
 		}
 
-		// Resolved before it is used OR shown. `previous` is echoed back to the model in every branch below, and a relative one made a successful re-root read as `Session cwd is now .
 		const previous = path.resolve(this.#session.cwd);
 		const resolved = resolveToCwd(raw, previous);
 		let cwd: string;
@@ -135,7 +123,6 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 			throw toolFailure(err);
 		}
 
-		// Both branches state the END STATE as an explicit pair of absolute paths, and both echo the path that was actually received. Two earlier wordings each lost half of that. "Session cwd
 		const noop = cwd === previous;
 		const lines = noop
 			? [
@@ -149,14 +136,12 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 		);
 		const details: SetCwdToolDetails = { previous, cwd, requested: raw };
 		try {
-			// A no-op goes through the SAME description, rather than asserting an empty rule state of its own. It used to report `rulesUnchanged: 0`, which is simply false: user-level rule files apply from any
 			const change = await describeRuleChange(previous, cwd);
 			lines.push("", ...change.lines);
 			details.rulesApplied = change.applied;
 			details.rulesDropped = change.dropped;
 			details.rulesUnchanged = change.unchanged;
 		} catch (err) {
-			// The re-root itself SUCCEEDED, so throwing here would tell the model the opposite of what happened and invite a retry that changes nothing. Report
 			lines.push(
 				"",
 				noop
@@ -186,15 +171,11 @@ export const setCwdToolRenderer = {
 		theme: Theme,
 	): Component | undefined {
 		const details = result.details;
-		// A no-op used to render exactly like a real move: the same green frame
-		// naming the same directory. Reading back a run of retries, there was no
-		// way to tell a change from a repeat of the same no-op.
 		const line = !details
 			? "cwd"
 			: details.previous !== details.cwd
 				? `${details.previous} → ${details.cwd}`
 				: `${details.cwd} (already here)`;
-		// The rule delta is the part of a re-root that changes how the agent behaves, so it belongs on the status line rather than only in the model's copy of the
 		const applied = details?.rulesApplied?.length ?? 0;
 		const dropped = details?.rulesDropped?.length ?? 0;
 		const meta = [line];

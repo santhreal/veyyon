@@ -1,9 +1,3 @@
-/**
- * Swarm agent execution via Veyyon's subagent infrastructure.
- *
- * Wraps `runSubprocess` to spawn individual swarm agents with full tool access.
- * Each agent runs in the swarm workspace with its task instructions as the user prompt.
- */
 import * as path from "node:path";
 import type {
 	AgentDefinition,
@@ -30,15 +24,6 @@ export interface SwarmExecutorOptions {
 	stateTracker: StateTracker;
 }
 
-/**
- * Execute a single swarm agent as a Veyyon subagent.
- *
- * The agent receives:
- * - System prompt: built from role + extra_context
- * - User prompt (task): the full task instructions from the YAML
- * - Working directory: the swarm workspace
- * - Full tool access (bash, python, read, write, edit, grep, find, fetch, web_search, browser)
- */
 export async function executeSwarmAgent(
 	agent: SwarmAgent,
 	index: number,

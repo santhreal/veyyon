@@ -1,5 +1,3 @@
-/** Web Search Types Unified types for web search responses across supported providers. */
-
 export const SEARCH_PROVIDER_OPTIONS = [
 	{
 		value: "auto",
@@ -71,17 +69,14 @@ export const SEARCH_PROVIDER_OPTIONS = [
 	},
 ] as const;
 
-/** Supported web search providers (every option except `auto`). */
 export type SearchProviderId = Exclude<(typeof SEARCH_PROVIDER_OPTIONS)[number]["value"], "auto">;
 
-/** Auto-resolution priority order. Derived from {@link SEARCH_PROVIDER_OPTIONS} (minus `auto`) so the settings/setup dropdown and `resolveProviderChain()` */
 export const SEARCH_PROVIDER_ORDER: readonly SearchProviderId[] = SEARCH_PROVIDER_OPTIONS.flatMap(option =>
 	option.value === "auto" ? [] : [option.value],
 );
 
 export const SEARCH_PROVIDER_PREFERENCES = ["auto", ...SEARCH_PROVIDER_ORDER] as const;
 
-/** Display labels, derived from {@link SEARCH_PROVIDER_OPTIONS}. */
 export const SEARCH_PROVIDER_LABELS = Object.fromEntries(
 	SEARCH_PROVIDER_OPTIONS.flatMap(option => (option.value === "auto" ? [] : [[option.value, option.label] as const])),
 ) as Record<SearchProviderId, string>;
@@ -94,59 +89,41 @@ export function isSearchProviderPreference(value: string): value is SearchProvid
 	return SEARCH_PROVIDER_PREFERENCES.includes(value as SearchProviderId | "auto");
 }
 
-/** Source returned by search (all providers) */
 export interface SearchSource {
 	title: string;
 	url: string;
 	snippet?: string;
-	/** ISO date string or relative ("2d ago") */
 	publishedDate?: string;
-	/** Age in seconds for consistent formatting */
 	ageSeconds?: number;
 	author?: string;
 }
 
-/** Citation with text reference (LLM-mediated providers) */
 export interface SearchCitation {
 	url: string;
 	title: string;
 	citedText?: string;
 }
 
-/** Usage metrics */
 export interface SearchUsage {
 	inputTokens?: number;
 	outputTokens?: number;
-	/** Anthropic: number of web search requests made */
 	searchRequests?: number;
-	/** Perplexity: combined token count */
 	totalTokens?: number;
 }
 
-/** Unified response across providers */
 export interface SearchResponse {
 	provider: SearchProviderId | "none";
-	/** Synthesized answer text (LLM-mediated providers) */
 	answer?: string;
-	/** Search result sources */
 	sources: SearchSource[];
-	/** Text citations with context */
 	citations?: SearchCitation[];
-	/** Intermediate search queries (anthropic) */
 	searchQueries?: string[];
-	/** Follow-up question suggestions (provider-dependent) */
 	relatedQuestions?: string[];
-	/** Token usage metrics */
 	usage?: SearchUsage;
-	/** Model used */
 	model?: string;
-	/** Request ID for debugging */
 	requestId?: string;
-	/** Authentication mode used by the provider (e.g. oauth, api-key) */
 	authMode?: string;
 }
 
-/** Provider-specific error with optional HTTP status */
 export class SearchProviderError extends Error {
 	constructor(
 		public readonly provider: SearchProviderId,
@@ -158,7 +135,6 @@ export class SearchProviderError extends Error {
 	}
 }
 
-/** Anthropic API response types */
 export interface AnthropicSearchResult {
 	type: "web_search_result";
 	title: string;
@@ -177,15 +153,10 @@ export interface AnthropicCitation {
 
 export interface AnthropicContentBlock {
 	type: string;
-	/** Text content (for type="text") */
 	text?: string;
-	/** Citations in text block */
 	citations?: AnthropicCitation[];
-	/** Tool name (for type="server_tool_use") */
 	name?: string;
-	/** Tool input (for type="server_tool_use") */
 	input?: { query: string };
-	/** Search results (for type="web_search_tool_result") */
 	content?: AnthropicSearchResult[];
 }
 
@@ -202,7 +173,6 @@ export interface AnthropicApiResponse {
 	};
 }
 
-/** Perplexity API types */
 export type PerplexityChatMessageRole = "system" | "user" | "assistant" | "tool";
 
 export interface PerplexityUrl {

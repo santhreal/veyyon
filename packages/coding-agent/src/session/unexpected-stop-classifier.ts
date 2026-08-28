@@ -12,23 +12,18 @@ import { tinyModelClient } from "../tiny/title-client";
 import { REASONING_SAFE_MAX_TOKENS } from "./classifier-tokens";
 import type { SideCompleteImpl } from "./side-complete";
 
-/** The instruction half only: the online path sends the message as its own user turn (see {@link classifyOnline}), so the template's `Message:` slot is left */
 const CLASSIFIER_SYSTEM_PROMPT = prompt.render(turnControlPrompts["turn-control/unexpected-stop-classifier"].text, {});
 
-/** The answer is a single word. OpenAI-compatible endpoints reject values below 16, so 16 is the smallest portable budget for this classifier. */
 const ANSWER_MAX_TOKENS = 16;
 
 export interface ClassifyUnexpectedStopDeps {
 	settings: Settings;
 	registry: ModelRegistry;
-	/** Live main model — inherited when tiny/smol roles are unset. */
 	model?: Model;
 	sessionId: string;
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined;
 	signal?: AbortSignal;
-	/** Live final boundary for text sent to the online classifier. */
 	obfuscateProviderText: (text: string) => string;
-	/** Transport for the online classification. Absent means a bare `completeSimple`: no watchdog and outside every cap, on a request that runs */
 	completeImpl?: SideCompleteImpl;
 }
 
@@ -72,8 +67,6 @@ function sanitizeClassifierText(text: string, deps: ClassifyUnexpectedStopDeps):
 		if (typeof sanitized !== "string") throw new TypeError("invalid transform result");
 		return sanitized;
 	} catch {
-		// The transform can inspect secret-bearing text; never reflect its error
-		// (which may quote that text) into logs.
 		throw new Error("unexpected-stop: provider payload sanitization failed");
 	}
 }
@@ -108,9 +101,6 @@ async function classifyOnline(text: string, deps: ClassifyUnexpectedStopDeps): P
 	const response = await withAuth(
 		seedApiKeyResolver(apiKey, deps.registry.resolver(model, deps.sessionId)),
 		async key => {
-			// withAuth enters this closure after every initial/refresh/rotation
-			// credential resolution. Resolve the live confidentiality runtime now,
-			// immediately before this physical provider attempt.
 			const providerText = sanitizeClassifierText(text, deps);
 			const attemptResponse = await complete(
 				model,

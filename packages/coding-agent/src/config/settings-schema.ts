@@ -15,8 +15,6 @@ import { TOOLS_SETTINGS } from "./settings-domains/tools";
 
 export { type BashInterceptorRule, DEFAULT_BASH_INTERCEPTOR_RULES } from "./bash-interceptor-rules";
 
-/** Unified settings schema - single source of truth for all settings. Each setting is defined once here with: */
-
 export type SettingTab =
 	| "global"
 	| "appearance"
@@ -34,10 +32,8 @@ export type SettingTab =
 	| "providers"
 	| "experimental";
 
-/** Tab display metadata - icon is resolved via theme.symbol() */
 export type TabMetadata = { label: string; icon: `tab.${string}` };
 
-/** Ordered list of tabs for UI rendering. The everyday per-profile tabs come first (Appearance is the landing category); "global" is the machine-wide, */
 export const SETTING_TABS: SettingTab[] = [
 	"appearance",
 	"model",
@@ -56,7 +52,6 @@ export const SETTING_TABS: SettingTab[] = [
 	"global",
 ];
 
-/** Tab display metadata - icon is a symbol key from theme.ts (tab.*) */
 export const TAB_METADATA: Record<SettingTab, { label: string; icon: `tab.${string}` }> = {
 	global: { label: "Global", icon: "tab.global" },
 	appearance: { label: "Appearance", icon: "tab.appearance" },
@@ -75,7 +70,6 @@ export const TAB_METADATA: Record<SettingTab, { label: string; icon: `tab.${stri
 	experimental: { label: "Experimental", icon: "tab.experimental" },
 };
 
-/** Ordered section groups per tab. Settings declare their section via `ui.group`; the settings UI renders groups in this order with a heading row between them. */
 export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 	global: ["Profiles", "Credentials", "Auth Broker"],
 	appearance: ["Theme", "Status Line", "Display"],
@@ -128,7 +122,6 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 	experimental: ["Argot", "Tool Calling", "Auto-Learn"],
 };
 
-/** Status line segment identifiers */
 export type StatusLineSegmentId =
 	| "pi"
 	| "model"
@@ -159,7 +152,6 @@ export type StatusLineSegmentId =
 	| "usage"
 	| "collab";
 
-/** Submenu choice metadata. */
 export type SubmenuOption<V extends string = string> = {
 	value: V;
 	label: string;
@@ -168,54 +160,39 @@ export type SubmenuOption<V extends string = string> = {
 
 interface UiBase {
 	tab: SettingTab;
-	/** Section within the tab; must be listed in TAB_GROUPS[tab]. Ungrouped settings render at the top. */
 	group?: string;
 	label: string;
 	description: string;
-	/** Condition function name - setting only shown when true */
 	condition?: string;
-	/** When true, the setting renders inside the tab's collapsed "Advanced" fold instead of its normal group. */
 	advanced?: boolean;
-	/** Machine-written state that must NOT be a row, even though it declares a `ui` block for its label, description and generated-reference entry. */
 	hidden?: boolean;
-	/** Words a user would type looking for this setting that its label does not contain: "reasoning" for effort, "clipboard" for copy, "wrap" for soft */
 	keywords?: readonly string[];
-	/** Persistence scope. Omitted or "profile": the value lives in the active profile's `agent/config.yml`. "global": the value is cross-profile and lives */
 	scope?: "global";
 }
 
 interface UiBoolean extends UiBase {}
 
 interface UiEnum<T extends readonly string[]> extends UiBase {
-	/** Submenu options. When omitted, the enum renders as an inline toggle derived from `values`. */
 	options?: ReadonlyArray<SubmenuOption<T[number]>>;
 }
 
 interface UiNumber extends UiBase {
-	/** Submenu options. Without options the setting renders as a free text box, the same control `string`, `record` and `array` already fall back to. It used to */
 	options?: ReadonlyArray<SubmenuOption>;
-	/** Inclusive bounds, enforced when the value is typed into the text box. Declared here rather than assumed at the input, so the constraint lives with */
 	min?: number;
 	max?: number;
 }
 
 interface UiString extends UiBase {
-	/** Submenu options. - Array → submenu with these choices. */
 	options?: ReadonlyArray<SubmenuOption> | "runtime";
 }
 
-/** Wide ui shape exposed to consumers that walk the schema generically. */
 export type AnyUiMetadata = UiBase & {
 	options?: ReadonlyArray<SubmenuOption> | "runtime";
 	min?: number;
 	max?: number;
 };
 
-/**
- * Fields every setting definition shares, whatever its type.
- */
 interface SettingDefBase {
-	/** The key it was replaced by, when this setting is superseded. A retired key stays in the schema so an existing config keeps working and a */
 	retiredBy?: string;
 }
 
@@ -231,7 +208,6 @@ interface StringDef extends SettingDefBase {
 	ui?: UiString;
 }
 
-/** An ORDERED CHAIN of model patterns, written either way. `"opus,sonnet"` and `["opus", "sonnet"]` are the same chain, and every reader */
 interface ModelChainDef extends SettingDefBase {
 	type: "modelChain";
 	default: string | string[] | undefined;
@@ -260,7 +236,6 @@ interface ArrayDef<T> extends SettingDefBase {
 interface RecordDef<T> extends SettingDefBase {
 	type: "record";
 	default: Record<string, T>;
-	/** Per-entry validation for a map whose keys or values carry a shape the bare `record` type cannot express. Declared by the owning domain and run */
 	validateEntry?: (key: string, value: unknown) => string | undefined;
 	ui?: UiBase;
 }
@@ -274,10 +249,8 @@ type SettingDef =
 	| ArrayDef<unknown>
 	| RecordDef<unknown>;
 
-/** The `type` tag a setting definition carries. */
 export type SettingType = SettingDef["type"];
 
-/** The same tags as data, with one row per kind. A corpus test walks the schema at runtime and has to know which tags are real, */
 const SETTING_TYPE_ROWS: Readonly<Record<SettingType, true>> = {
 	boolean: true,
 	string: true,
@@ -288,10 +261,8 @@ const SETTING_TYPE_ROWS: Readonly<Record<SettingType, true>> = {
 	record: true,
 };
 
-/** Every type tag a setting can carry, in declaration order. */
 export const SETTING_TYPES = Object.keys(SETTING_TYPE_ROWS) as readonly SettingType[];
 
-/** True when `value` is a type tag the schema actually uses. */
 export function isSettingType(value: string): value is SettingType {
 	return Object.hasOwn(SETTING_TYPE_ROWS, value);
 }
@@ -299,7 +270,6 @@ export function isSettingType(value: string): value is SettingType {
 export interface ModelTagDef {
 	name: string;
 	color?: string;
-	/** If true, the role is functional but not shown in the model selector UI. */
 	hidden?: boolean;
 }
 
@@ -307,7 +277,6 @@ export interface ModelTagsSettings {
 	[key: string]: ModelTagDef;
 }
 
-/** Every domain slice, keyed by its file, in the order they are composed below. The spread that builds {@link SETTINGS_SCHEMA} has to stay a literal for the */
 export const SETTINGS_DOMAIN_SLICES: Record<string, Record<string, unknown>> = {
 	global: GLOBAL_SETTINGS,
 	general: GENERAL_SETTINGS,
@@ -340,11 +309,8 @@ export const SETTINGS_SCHEMA = {
 
 type Schema = typeof SETTINGS_SCHEMA;
 
-/** All valid setting paths */
 export type SettingPath = keyof Schema;
 
-/** Infer the value type for a setting path */
-/** The value type behind a settings path. The outer `P extends SettingPath` is what makes this DISTRIBUTE. Without it, */
 export type SettingValue<P extends SettingPath> = P extends SettingPath ? SettingValueFor<P> : never;
 
 type SettingValueFor<P extends SettingPath> = Schema[P] extends { type: "boolean"; default: undefined }
@@ -369,23 +335,19 @@ type SettingValueFor<P extends SettingPath> = Schema[P] extends { type: "boolean
 									? D
 									: never;
 
-/** Get the default value for a setting path */
 export function getDefault<P extends SettingPath>(path: P): SettingValue<P> {
 	return SETTINGS_SCHEMA[path].default as SettingValue<P>;
 }
 
-/** Check if a path has UI metadata (should appear in settings panel) */
 export function hasUi(path: SettingPath): boolean {
 	return "ui" in SETTINGS_SCHEMA[path];
 }
 
-/** Get UI metadata for a path (undefined if no UI) */
 export function getUi(path: SettingPath): AnyUiMetadata | undefined {
 	const def = SETTINGS_SCHEMA[path];
 	return "ui" in def ? (def.ui as AnyUiMetadata) : undefined;
 }
 
-/** Get all paths for a specific tab */
 export function getPathsForTab(tab: SettingTab): SettingPath[] {
 	return (Object.keys(SETTINGS_SCHEMA) as SettingPath[]).filter(path => {
 		const ui = getUi(path);
@@ -393,33 +355,27 @@ export function getPathsForTab(tab: SettingTab): SettingPath[] {
 	});
 }
 
-/** The key that replaced `path`, or `undefined` when the setting is current. One place answers "is this key still something to choose?", so the CLI listing, */
 export function retiredBy(path: SettingPath): string | undefined {
 	if (!(path in SETTINGS_SCHEMA)) return undefined;
 	const def = SETTINGS_SCHEMA[path] as { retiredBy?: string };
 	return def.retiredBy;
 }
 
-/** Whether an arbitrary string names a real setting. The one place that answers "does veyyon know this key?", and the type guard */
 export function isSettingPath(path: string): path is SettingPath {
 	return path in SETTINGS_SCHEMA;
 }
 
-/** Get the type of a setting */
 export function getType(path: SettingPath): SettingType {
 	return SETTINGS_SCHEMA[path].type;
 }
 
-/** What a value actually is, in the vocabulary the schema uses for types. */
 function describeValueType(value: unknown): string {
 	if (value === null) return "null";
 	if (Array.isArray(value)) return "array";
 	return typeof value;
 }
 
-/** Explain why `value` cannot be the value of `path`, or `undefined` when it can. A settings file is hand-editable, so a wrong type is an ordinary mistake: */
 export function describeSettingTypeMismatch(path: string, value: unknown): string | undefined {
-	// Read structurally rather than as `SettingDef`: the schema's literal entries carry readonly defaults (`readonly ["interactive"]`), which are not
 	const def = (
 		SETTINGS_SCHEMA as unknown as Record<
 			string,
@@ -441,13 +397,10 @@ export function describeSettingTypeMismatch(path: string, value: unknown): strin
 		case "boolean":
 			return typeof value === "boolean" ? undefined : mismatch("a boolean (true or false)");
 		case "number":
-			// NaN and the infinities are numbers to `typeof` and poison every
-			// comparison they reach, so they are rejected with the non-numbers.
 			return typeof value === "number" && Number.isFinite(value) ? undefined : mismatch("a finite number");
 		case "string":
 			return typeof value === "string" ? undefined : mismatch("a string");
 		case "modelChain":
-			// Both encodings of one chain. A list of models is the readable way to write one and the way the handbook shows it, and a comma string is what
 			if (typeof value === "string") return undefined;
 			if (Array.isArray(value)) {
 				const bad = value.findIndex(entry => typeof entry !== "string");
@@ -465,9 +418,6 @@ export function describeSettingTypeMismatch(path: string, value: unknown): strin
 			return Array.isArray(value) ? undefined : mismatch("an array");
 		case "record": {
 			if (!isRecord(value)) return mismatch("an object");
-			// A map whose entries carry a shape of their own (e.g. the
-			// depth-keyed model chains of `subagent.modelByDepth`) names the
-			// offending entry; the entries that are fine keep working.
 			if (def.validateEntry === undefined) return undefined;
 			for (const [key, entry] of Object.entries(value)) {
 				const reason = def.validateEntry(key, entry);
@@ -480,11 +430,7 @@ export function describeSettingTypeMismatch(path: string, value: unknown): strin
 	}
 }
 
-/** Get enum values for an enum setting */
-/** True when `path` is a numeric setting whose submenu offers the shared unset row, so the UI shows `Default` and stores {@link UNSET_NUMBER}. */
 export function isUnsetNumberPath(path: SettingPath): boolean {
-	// Synthetic UI ids (e.g. the default-model row) are not schema paths; asking
-	// about one is legitimate from the selector, so answer instead of throwing.
 	if (!(path in SETTINGS_SCHEMA)) return false;
 	if (getType(path) !== "number") return false;
 	const options = getUi(path)?.options;
@@ -497,26 +443,19 @@ export function getEnumValues(path: SettingPath): readonly string[] | undefined 
 	return "values" in def ? (def.values as readonly string[]) : undefined;
 }
 
-/** Status line preset - derived from schema */
 export type StatusLinePreset = SettingValue<"statusLine.preset">;
 
-/** Status line separator style - derived from schema */
 export type StatusLineSeparatorStyle = SettingValue<"statusLine.separator">;
 
-/** Tree selector filter mode - derived from schema */
 export type TreeFilterMode = SettingValue<"treeFilterMode">;
 
-/** Personality preset - derived from schema */
 export type Personality = SettingValue<"personality">;
 
 export interface CompactionSettings {
 	enabled: boolean;
 	strategy: "summary";
-	/** The one compaction-trigger value, unit included: `auto`, `85%`, or `170000`. */
 	threshold: string;
-	/** Retired; read only by `withLegacyCompactionThreshold`. */
 	thresholdPercent: number;
-	/** Retired; read only by `withLegacyCompactionThreshold`. */
 	thresholdTokens: number;
 	model?: string;
 	reserveTokens: number | undefined;
@@ -524,7 +463,6 @@ export interface CompactionSettings {
 	midTurnEnabled: boolean;
 	handoffSaveToDisk: boolean;
 	autoContinue: boolean;
-	/** Optional summarizer endpoint for the `summary` strategy — returns summary text. */
 	remoteEndpoint: string | undefined;
 	idleEnabled: boolean;
 	idleThresholdTokens: number;
@@ -582,11 +520,8 @@ export interface BranchSummarySettings {
 }
 
 export interface SkillsSettings {
-	/** Master switch. When false, no skills load at all. */
 	enabled?: boolean;
-	/** Expose loaded skills as `/skill:<name>` slash commands. */
 	enableSkillCommands?: boolean;
-	/** Skills load only from the active profile's Veyyon agent dir (`~/.veyyon/profiles/<name>/agent/skills`), its managed auto-learn skills, */
 	ignoredSkills?: string[];
 	includeSkills?: string[];
 	disabledExtensions?: string[];
@@ -607,11 +542,8 @@ export interface TtsrSettings {
 	interruptMode: "never" | "prose-only" | "tool-only" | "always";
 	repeatMode: "once" | "after-gap";
 	repeatGap: number;
-	/** Bucketing-only (read by bucketRules, not the TtsrManager). */
 	builtinRules?: boolean;
-	/** Bucketing-only (read by bucketRules, not the TtsrManager). */
 	disabledRules?: string[];
-	/** Bucketing-only: experimental rule names the operator opted into. */
 	experimentalRules?: string[];
 }
 
@@ -623,7 +555,6 @@ export interface ExaSettings {
 	enableWebsets: boolean;
 }
 
-/** Every `statusLine.*` setting, derived from the schema rather than restated. `getGroup("statusLine")` returns every key with that prefix at run time, and the */
 export type StatusLineSettings = {
 	[P in SettingPath as P extends `statusLine.${infer Key}` ? Key : never]: SettingValue<P>;
 };
@@ -668,11 +599,9 @@ export interface GcSettings {
 	coldArchiveAfterDays: number;
 	retainNewestGlobal: number;
 	retainNewestPerCwd: number;
-	/** Minutes a file must have gone unwritten before GC may delete or archive it. Floored at 1. */
 	writeGraceMinutes: number;
 }
 
-/** Map group prefix -> typed settings interface */
 export interface GroupTypeMap {
 	compaction: CompactionSettings;
 	recap: RecapSettings;

@@ -46,9 +46,6 @@ interface OsvVulnerability {
 	database_specific?: Record<string, unknown>;
 }
 
-/**
- * Handle OSV (Open Source Vulnerabilities) URLs
- */
 export const handleOsv: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -59,14 +56,12 @@ export const handleOsv: SpecialHandler = async (
 		if (!parsed) return null;
 		if (parsed.hostname !== "osv.dev") return null;
 
-		// Extract vulnerability ID from /vulnerability/{id}
 		const match = parsed.pathname.match(/^\/vulnerability\/([A-Za-z0-9-]+)$/);
 		if (!match) return null;
 
 		const vulnId = match[1];
 		const fetchedAt = new Date().toISOString();
 
-		// Fetch from OSV API
 		const apiUrl = `https://api.osv.dev/v1/vulns/${vulnId}`;
 		const result = await loadPage(apiUrl, {
 			timeout,
@@ -81,12 +76,10 @@ export const handleOsv: SpecialHandler = async (
 
 		let md = `# ${vuln.id}\n\n`;
 
-		// Summary
 		if (vuln.summary) {
 			md += `${vuln.summary}\n\n`;
 		}
 
-		// Metadata section
 		md += "## Metadata\n\n";
 		if (vuln.aliases?.length) {
 			md += `**Aliases:** ${vuln.aliases.join(", ")}\n`;
@@ -101,7 +94,6 @@ export const handleOsv: SpecialHandler = async (
 			md += `**Withdrawn:** ${formatIsoDate(vuln.withdrawn)}\n`;
 		}
 
-		// Severity
 		const severities = vuln.severity || vuln.affected?.flatMap(a => a.severity || []) || [];
 		if (severities.length) {
 			const formatted = severities.map(s => `${s.type}: ${s.score}`).join(", ");
@@ -109,12 +101,10 @@ export const handleOsv: SpecialHandler = async (
 		}
 		md += "\n";
 
-		// Details
 		if (vuln.details) {
 			md += `## Details\n\n${vuln.details}\n\n`;
 		}
 
-		// Affected packages
 		if (vuln.affected?.length) {
 			md += "## Affected Packages\n\n";
 			for (const affected of vuln.affected) {
@@ -123,7 +113,6 @@ export const handleOsv: SpecialHandler = async (
 
 				md += `### ${pkg.ecosystem}: ${pkg.name}\n\n`;
 
-				// Version ranges
 				if (affected.ranges?.length) {
 					for (const range of affected.ranges) {
 						if (!range.events?.length) continue;
@@ -140,7 +129,6 @@ export const handleOsv: SpecialHandler = async (
 					}
 				}
 
-				// Specific versions
 				if (affected.versions?.length) {
 					const versions =
 						affected.versions.length > 10
@@ -153,7 +141,6 @@ export const handleOsv: SpecialHandler = async (
 			}
 		}
 
-		// References
 		if (vuln.references?.length) {
 			md += "## References\n\n";
 			for (const ref of vuln.references) {
@@ -162,7 +149,6 @@ export const handleOsv: SpecialHandler = async (
 			md += "\n";
 		}
 
-		// Credits
 		if (vuln.credits?.length) {
 			md += "## Credits\n\n";
 			for (const credit of vuln.credits) {

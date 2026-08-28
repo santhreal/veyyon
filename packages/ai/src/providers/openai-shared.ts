@@ -162,10 +162,6 @@ export function resolveOpenAIRequestSetup(
 	let copilotPremiumRequests: number | undefined;
 	let baseUrl = model.baseUrl;
 	if (model.provider === "moonshot") {
-		// Bundled `moonshot` catalog models hardcode the international endpoint
-		// (`api.moonshot.ai`). MOONSHOT_BASE_URL lets users redirect the provider
-		// at the China platform (`api.moonshot.cn`), which only accepts China keys
-		// and rejects the international host. (#2883)
 		const moonshotBaseUrl = $env.MOONSHOT_BASE_URL?.trim();
 		if (moonshotBaseUrl) {
 			baseUrl = moonshotBaseUrl;
@@ -200,9 +196,7 @@ export function resolveOpenAIRequestSetup(
 			if (typeof parsed?.enterpriseUrl === "string") {
 				baseUrl = parsed.enterpriseUrl;
 			}
-		} catch {
-			// Not JSON — use raw apiKey and catalog baseUrl.
-		}
+		} catch {}
 	}
 
 	let query: Record<string, string> | undefined;
@@ -258,7 +252,6 @@ export function applyOpenAIResponsesServiceTierCost(
 	requestServiceTier: ServiceTier | null | undefined,
 ): void {
 	if (model.provider !== "openai") return;
-	// The response echo is authoritative; fall back to requested tier when omitted.
 	const served = typeof responseServiceTier === "string" ? responseServiceTier : (requestServiceTier ?? undefined);
 	const multiplier = getOpenAIResponsesServiceTierCostMultiplier(served);
 	scaleUsageCost(usage, multiplier);
@@ -652,7 +645,6 @@ export function resolveOpenAICompatPolicy<TApi extends Api>(
 		compat.supportsReasoningEffort &&
 		!omitReasoningEffort
 	) {
-		// Use lowest effort tier when model cannot disable reasoning directly.
 		const minEffort = getSupportedEfforts(model)[0];
 		wireEffort = minEffort === undefined ? undefined : mapOpenAIReasoningEffort(model, compat, minEffort);
 	}
@@ -728,9 +720,7 @@ function encodeChatCompletionsDisabledReasoning(
 }
 
 export function applyChatCompletionsCompatPolicy(params: OpenAICompletionsParams, policy: OpenAICompatPolicy): void {
-	// Emit preserve_thinking for Qwen models to preserve thinking in older turns.
 	if (policy.compat.qwenPreserveThinking) {
-		// Dialect split: top-level field for qwen, chat_template_kwargs for qwen-chat-template.
 		if (policy.compat.thinkingFormat === "qwen") {
 			params.preserve_thinking = true;
 		}
@@ -756,9 +746,6 @@ export function applyChatCompletionsCompatPolicy(params: OpenAICompletionsParams
 				params.enable_thinking = true;
 				break;
 			case "qwen-template-false":
-				// Spread so the `preserve_thinking` kwarg hoisted above
-				// survives the merge — a bare `{ enable_thinking: true }`
-				// would clobber it.
 				params.chat_template_kwargs = { ...params.chat_template_kwargs, enable_thinking: true };
 				break;
 			case "openrouter-enabled-false":

@@ -1,4 +1,3 @@
-/** Auto-read file mentions from user prompts. When users reference files with @path syntax (e.g., "@src/foo.ts"), */
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
@@ -17,15 +16,12 @@ import {
 import { resolveReadPath } from "../tools/path-utils";
 import { formatDimensionNote, resizeImage } from "./image-resize";
 
-/** Regex to match @filepath patterns in text */
 const FILE_MENTION_REGEX = /@(?:"([^"]+)"|'([^']+)'|([^\s@]+))/g;
 const LEADING_PUNCTUATION_REGEX = /^[`"'([{<]+/;
 const TRAILING_PUNCTUATION_REGEX = /[)\]}>.,;:!?"'`]+$/;
 const MENTION_BOUNDARY_REGEX = /[\s([{<"'`]/;
 const DEFAULT_DIR_LIMIT = 500;
 
-// Avoid OOM when users @mention very large files. Above these limits we skip
-// auto-reading and only include the path in the message.
 const MAX_AUTO_READ_TEXT_BYTES = 5 * 1024 * 1024; // 5MB
 const MAX_AUTO_READ_IMAGE_BYTES = 25 * 1024 * 1024; // 25MB
 
@@ -42,13 +38,10 @@ function sanitizeMentionPath(rawPath: string): string | null {
 	return cleaned.length > 0 ? cleaned : null;
 }
 
-/** Whether an `@mention` names a file that is really there. The throw is how "absent" arrives, and absent is the ordinary answer: this runs against every candidate */
-/** Why this probe is silent about a fault. A half-typed `@`-mention is resolved against several candidates, so a miss is the ordinary answer */
 const MENTION_PROBE_IS_A_GUESS =
 	"an @-mention resolves against several candidate paths, so most probes are misses by design";
 
 async function resolveMentionPath(filePath: string, cwd: string): Promise<string | null> {
-	// Exact resolution only. The TUI @-selector inserts the real, complete path, so a mention that does not resolve to an existing file or directory is prose, not a file
 	const absolutePath = resolveReadPath(filePath, cwd);
 	return (await pathExistsQuietly(absolutePath, MENTION_PROBE_IS_A_GUESS)) ? filePath : null;
 }
@@ -150,7 +143,6 @@ async function buildDirectoryListing(absolutePath: string): Promise<{ output: st
 	return { output, lineCount: lc };
 }
 
-/** Extract all @filepath mentions from text */
 export function extractFileMentions(text: string): string[] {
 	const matches = Array.from(text.matchAll(FILE_MENTION_REGEX));
 	const mentions: string[] = [];
@@ -171,7 +163,6 @@ export function extractFileMentions(text: string): string[] {
 	return Array.from(new Set(mentions));
 }
 
-/** Generate a FileMentionMessage containing the contents of mentioned files. Returns empty array if no files could be read. */
 export async function generateFileMentionMessages(
 	filePaths: string[],
 	cwd: string,
@@ -264,9 +255,7 @@ export async function generateFileMentionMessages(
 				output = `${formatHashlineHeader(resolvedPath, tag)}\n${formatNumberedLines(output)}`;
 			}
 			files.push({ path: resolvedPath, content: output, lineCount });
-		} catch {
-			// File doesn't exist or isn't readable - skip silently
-		}
+		} catch {}
 	}
 
 	if (files.length === 0) return [];

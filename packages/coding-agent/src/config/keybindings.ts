@@ -15,17 +15,12 @@ import { quarantineUnparseableFileSync } from "@veyyon/utils/quarantine-file";
 import { syncYamlTextToSettings } from "@veyyon/utils/yaml-sync";
 import { JSONC, YAML } from "bun";
 
-/** The table itself lives in `keybinding-defs.ts`, a leaf that imports only the TUI types. This module owns the manager, the `keybindings.yml` loader and the */
 export { type AppKeybinding, getDefaultPasteImageKeys, KEYBINDINGS } from "./keybinding-defs";
 
 import type { AppKeybinding } from "./keybinding-defs";
 import { KEYBINDINGS } from "./keybinding-defs";
 
-/**
- * Migration map from old keybinding names to new namespaced IDs.
- */
 const KEYBINDING_NAME_MIGRATIONS = {
-	// App-specific (old names)
 	interrupt: "app.interrupt",
 	clear: "app.clear",
 	exit: "app.exit",
@@ -54,7 +49,6 @@ const KEYBINDING_NAME_MIGRATIONS = {
 	resume: "app.session.resume",
 	observeSessions: "app.session.observe",
 	toggleSTT: "app.stt.toggle",
-	// TUI editor (old names for backward compatibility)
 	cursorUp: "tui.editor.cursorUp",
 	cursorDown: "tui.editor.cursorDown",
 	cursorLeft: "tui.editor.cursorLeft",
@@ -76,11 +70,9 @@ const KEYBINDING_NAME_MIGRATIONS = {
 	yank: "tui.editor.yank",
 	yankPop: "tui.editor.yankPop",
 	undo: "tui.editor.undo",
-	// TUI input (old names for backward compatibility)
 	newLine: "tui.input.newLine",
 	submit: "tui.input.submit",
 	tab: "tui.input.tab",
-	// TUI select (old names for backward compatibility)
 	selectUp: "tui.select.up",
 	selectDown: "tui.select.down",
 	selectPageUp: "tui.select.pageUp",
@@ -89,9 +81,6 @@ const KEYBINDING_NAME_MIGRATIONS = {
 	selectCancel: "tui.select.cancel",
 } as const satisfies Record<string, Keybinding>;
 
-/**
- * Check if a key is a legacy keybinding name.
- */
 function isLegacyKeybindingName(key: string): key is keyof typeof KEYBINDING_NAME_MIGRATIONS {
 	return key in KEYBINDING_NAME_MIGRATIONS;
 }
@@ -114,7 +103,6 @@ function toKeybindingsConfig(value: unknown): KeybindingsConfig {
 	return config;
 }
 
-/** Migrate old keybinding names to new namespaced IDs. Returns both the migrated config and a flag indicating if migration occurred. */
 function migrateKeybindingNames(rawConfig: unknown): {
 	config: KeybindingsConfig;
 	migrated: boolean;
@@ -129,7 +117,6 @@ function migrateKeybindingNames(rawConfig: unknown): {
 			migrated[newKey] = value;
 			didMigrate = true;
 		} else {
-			// Already a new-style key
 			migrated[key] = value;
 		}
 	}
@@ -137,9 +124,6 @@ function migrateKeybindingNames(rawConfig: unknown): {
 	return { config: migrated, migrated: didMigrate };
 }
 
-/**
- * Order keybindings config to match KEYBINDINGS key order.
- */
 function orderKeybindingsConfig(config: KeybindingsConfig): KeybindingsConfig {
 	const ordered: KeybindingsConfig = {};
 	for (const key of Object.keys(KEYBINDINGS)) {
@@ -148,7 +132,6 @@ function orderKeybindingsConfig(config: KeybindingsConfig): KeybindingsConfig {
 			ordered[key] = value;
 		}
 	}
-	// Add any remaining keys that aren't in KEYBINDINGS
 	for (const key of Object.keys(config)) {
 		if (!(key in ordered)) {
 			ordered[key] = config[key];
@@ -166,15 +149,11 @@ interface KeybindingsConfigPaths {
 	writeBackPath: string;
 }
 
-/** Controls inherited keybinding lookup when creating a manager for a named profile. */
 export interface KeybindingsCreateOptions {
-	/** @deprecated Live merge removed; seed keybindings at profile creation instead. */
 	inheritedAgentDir?: string;
-	/** When false, skip the one-time default-profile keybindings seed (tests). */
 	seedFromDefault?: boolean;
 }
 
-/** Load raw config from a file synchronously. Returns parsed JSON/YAML or null if file doesn't exist or is invalid. */
 function loadRawConfig(filePath: string): unknown {
 	let content: string;
 	try {
@@ -195,18 +174,13 @@ function loadRawConfig(filePath: string): unknown {
 			throw new Error(`Unsupported keybindings config extension: ${filePath}`);
 		}
 	} catch (error) {
-		// Preserve the bytes before anything writes over them. A parse failure drops the user's whole custom map, and the migration writer would then
 		quarantineUnparseableFileSync(filePath, content, error);
 		return null;
 	}
 
-	// A blank or comments-only file parses to null/undefined: the user has no
-	// custom keybindings, which is normal. Return null so the caller uses defaults
-	// without treating it as a corruption.
 	if (parsed === null || parsed === undefined) {
 		return null;
 	}
-	// A file that parses cleanly but to a NON-mapping (a bare scalar, a YAML sequence) is malformed exactly like an unparseable one. Left alone,
 	if (typeof parsed !== "object" || Array.isArray(parsed)) {
 		quarantineUnparseableFileSync(
 			filePath,
@@ -220,18 +194,14 @@ function loadRawConfig(filePath: string): unknown {
 
 function writeKeybindingsConfig(filePath: string, config: KeybindingsConfig): boolean {
 	try {
-		// The file's own bytes, so the write EDITS it instead of re-serializing it. `keybindings.yml` is a file people write by hand — the docs tell them to — and a
 		let existingText = "";
 		try {
 			existingText = fs.readFileSync(filePath, "utf8");
 		} catch (error) {
 			if (!isEnoent(error)) throw error;
 		}
-		// Atomic write (temp + fsync + rename) so a crash or power loss mid-write never tears keybindings.yml. A torn file would fail YAML.parse in
 		atomicWriteFileSync(
 			filePath,
-			// The rename map goes with the write, so a migrated binding is relabelled where
-			// the user put it instead of being deleted and re-appended at the end of the file.
 			syncYamlTextToSettings(existingText, config as Record<string, unknown>, {
 				renamedKeys: KEYBINDING_NAME_MIGRATIONS,
 			}),
@@ -270,7 +240,6 @@ export function profileHasKeybindingsFile(agentDir: string): boolean {
 	return false;
 }
 
-/** Copy keybindings from `sourceAgentDir` into `targetAgentDir` when the target has none. Returns true when a file was materialized (seed-once semantics). */
 export function seedKeybindingsFromAgentDir(targetAgentDir: string, sourceAgentDir: string): boolean {
 	if (profileHasKeybindingsFile(targetAgentDir)) return false;
 	const sourcePaths = resolveKeybindingsConfigPaths(sourceAgentDir);
@@ -309,7 +278,6 @@ function loadProfileKeybindingsConfig(agentDir: string): {
 	return { config: profile.config, profilePath: profile.persistedPath };
 }
 
-/** Load and migrate keybindings config. Legacy JSON is read for compatibility, but successful write-back goes to YAML. */
 function loadKeybindingsConfig(
 	filePath: string,
 	writeBackPath: string | undefined,
@@ -371,7 +339,6 @@ function keyConfigValue(keys: KeyId[]): KeyId | KeyId[] {
 	return keys.slice();
 }
 
-/** Manages all keybindings (app + TUI). Extends the TUI KeybindingsManager with app-specific functionality. */
 export class KeybindingsManager extends TuiKeybindingsManager {
 	#configPath: string | undefined;
 	#userBindings: KeybindingsConfig;
@@ -382,26 +349,18 @@ export class KeybindingsManager extends TuiKeybindingsManager {
 		this.#userBindings = userBindings;
 	}
 
-	/** Create from config files at agentDir/keybindings.yml. Legacy keybindings.json is migrated to keybindings.yml on load. */
 	static create(agentDir: string = getAgentDir(), options: KeybindingsCreateOptions = {}): KeybindingsManager {
 		maybeSeedProfileKeybindings(agentDir, options);
 		const { config: userBindings, profilePath } = loadProfileKeybindingsConfig(agentDir);
 		const manager = new KeybindingsManager(userBindings, profilePath);
-		// Set globally so getKeybindings() returns this manager
 		setKeybindings(manager);
 		return manager;
 	}
 
-	/**
-	 * Create an in-memory keybindings manager without file persistence.
-	 */
 	static inMemory(userBindings: KeybindingsConfig = {}): KeybindingsManager {
 		return new KeybindingsManager(userBindings);
 	}
 
-	/**
-	 * Reload keybindings from the config files.
-	 */
 	reload(): void {
 		if (!this.#configPath) return;
 		const { config: profileConfig } = KeybindingsManager.#loadFromFile(this.#configPath);
@@ -431,24 +390,15 @@ export class KeybindingsManager extends TuiKeybindingsManager {
 		return resolved;
 	}
 
-	/**
-	 * Get the effective resolved bindings (defaults + user overrides).
-	 */
 	getEffectiveConfig(): KeybindingsConfig {
 		return this.getResolvedBindings();
 	}
 
-	/**
-	 * Get display string for a keybinding (e.g., "ctrl+c/escape").
-	 */
 	getDisplayString(keybinding: Keybinding): string {
 		const keys = this.getKeys(keybinding);
 		return formatKeyHints(keys.length === 0 ? [] : keys);
 	}
 
-	/**
-	 * Load user bindings from a file, migrating old names if needed.
-	 */
 	static #loadFromFile(
 		filePath: string,
 		writeBackPath?: string,
@@ -457,9 +407,6 @@ export class KeybindingsManager extends TuiKeybindingsManager {
 	}
 }
 
-/**
- * Key hint formatting utilities for UI labels.
- */
 const MODIFIER_LABELS: Record<string, string> = {
 	ctrl: "Ctrl",
 	shift: "Shift",

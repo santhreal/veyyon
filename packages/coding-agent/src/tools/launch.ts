@@ -97,22 +97,16 @@ const KEY_INPUT: Record<string, string> = {
 	LEFT: "\u001b[D",
 };
 
-/** Structured launch state retained for compact TUI rendering. */
 export interface LaunchToolDetails {
 	op: LaunchParams["op"];
 	daemon?: DaemonSnapshot;
 	daemons?: DaemonSnapshot[];
-	/** list: retained completion records alongside the active daemons. */
 	completions?: DaemonCompletionRecord[];
 	cursor?: number;
 	timedOut?: boolean;
-	/** logs: daemon lifecycle state at read time. */
 	state?: DaemonState;
-	/** logs: virtual terminal rows for display; model-facing content remains sanitized text. */
 	terminalRows?: string[];
-	/** wait: output line that satisfied the pattern. */
 	matched?: string;
-	/** describe: immutable launch spec backing the command/cwd detail lines. */
 	spec?: DaemonSpec;
 }
 
@@ -211,14 +205,11 @@ function operationFor(params: LaunchParams, session: ToolSession): DaemonOperati
 
 export function daemonLabel(daemon: DaemonSnapshot): string {
 	const pid = daemon.pid === undefined ? "" : ` pid=${daemon.pid}`;
-	// A signal-terminated process reports its signal (e.g. SIGTERM), not a numeric
-	// exit code that would mislead (DOG-2).
 	const exit = daemon.signal
 		? ` signal=${daemon.signal}`
 		: daemon.exitCode === undefined
 			? ""
 			: ` exit=${daemon.exitCode}`;
-	// Who ended it and why, so a killed process is never an unexplained death.
 	const termination =
 		daemon.terminatedBy === undefined
 			? ""
@@ -228,14 +219,12 @@ export function daemonLabel(daemon: DaemonSnapshot): string {
 	)} restarts=${daemon.restartCount} lifetime=${daemonLifetime(daemon)}${termination}`;
 }
 
-/** The owning condition that ends a daemon: `last-client-exit` (the default — the broker stops it once the last veyyon in this directory exits), */
 export function daemonLifetime(daemon: DaemonSnapshot): "detached" | "broker-shutdown" | "last-client-exit" {
 	if (daemon.detached) return "detached";
 	if (daemon.persist) return "broker-shutdown";
 	return "last-client-exit";
 }
 
-/** One retained completion record as a list line, with a bounded tail snippet. */
 function completionLabel(record: DaemonCompletionRecord): string {
 	const outcome = record.signal
 		? `signal=${record.signal}`
@@ -250,7 +239,6 @@ function completionLabel(record: DaemonCompletionRecord): string {
 	)}${reason}${tail}`;
 }
 
-/** Human sentences for the readiness conditions still unmet, e.g. `port 5173 on 127.0.0.1 never accepted connections`. `ready` (from the start */
 function readyPendingSummary(daemon: DaemonSnapshot, ready?: LaunchParams["ready"]): string[] {
 	const parts: string[] = [];
 	for (const condition of daemon.readyPending ?? []) {
@@ -288,9 +276,6 @@ export function toolContent(result: DaemonRpcResult, params: LaunchParams): stri
 		}
 		case "list": {
 			if (!result.daemons.length && !result.completions.length) return "No daemons.";
-			// Show every live daemon, but cap the terminal (exited/failed) tail so
-			// the list does not grow unbounded and waste tokens on every call when
-			// old jobs pile up (DOG-1). The most recently exited are the useful ones.
 			const TERMINAL_SHOWN = 10;
 			const isTerminal = (daemon: DaemonSnapshot): boolean => daemon.state === "exited" || daemon.state === "failed";
 			const live = result.daemons.filter(daemon => !isTerminal(daemon));
@@ -307,9 +292,6 @@ export function toolContent(result: DaemonRpcResult, params: LaunchParams): stri
 					`… and ${hidden} more exited daemon${hidden === 1 ? "" : "s"} not shown (showing the ${TERMINAL_SHOWN} most recent).`,
 				);
 			}
-			// Retained completion records whose terminal event is NOT already a row
-			// above: a daemon replaced by a same-name start, or one a dead broker
-			// never settled. Keyed by id+exitedAt so a restarted daemon's earlier
 			const settled = new Set<string>();
 			for (let di = 0; di < result.daemons.length; di++) {
 				const daemon = result.daemons[di]!;
@@ -411,7 +393,6 @@ function approvalFor(params: unknown): ToolApprovalDecision {
 	}
 }
 
-/** Project-scoped launch tool for supervising processes in every coding-agent session. */
 export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDetails, Theme> {
 	readonly name = "launch";
 	readonly label = "Launch";
@@ -447,7 +428,6 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 		_onUpdate?: AgentToolUpdateCallback<LaunchToolDetails, typeof launchSchema>,
 		_context?: AgentToolContext,
 	): Promise<AgentToolResult<LaunchToolDetails>> {
-		// Session CPU budget: keep the group in sync on every op, but refuse only the ops that create a process. A saturated budget that also refused
 		const getSessionId = () => this.session.getSessionId?.() ?? null;
 		const cpuLimit = sessionCpuLimit(getSessionId());
 		if (cpuLimit) {
@@ -465,8 +445,6 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 			cleanupWaitMs: this.session.settings.get("launch.cleanupWaitMs"),
 		});
 		if (params.op === "stop" || params.op === "restart") {
-			// The end of a process the caller asked to end is not news. Drop the
-			// watch before the request, so the exit it causes reports nothing.
 			releaseLaunchExitWatch(this.session, client.projectDir, requiredName(params));
 		}
 		const result = await client.request(operationFor(params, this.session), signal);
@@ -474,14 +452,12 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 			watchLaunchedProcessExit({ session: this.session, client, daemon: result.daemon });
 		}
 		return {
-			// Folded for the same reason bash and eval are: a test suite streamed through a launched process lands in context identically, and its
 			content: [{ type: "text", text: replaceTabs(foldToolOutputBookkeeping(toolContent(result, params)).text) }],
 			details: await toolDetails(result, params),
 		};
 	}
 }
 
-/** Args shape visible to the renderer, possibly mid-stream (every field optional). */
 type LaunchRenderArgs = Partial<LaunchParams>;
 
 function stateColor(state: DaemonState): ThemeColor {
@@ -498,7 +474,6 @@ function stateColor(state: DaemonState): ThemeColor {
 	}
 }
 
-/** Compact `state · pid · uptime` fragments for the status-line meta slot. */
 function daemonMeta(daemon: DaemonSnapshot, theme: Theme): string[] {
 	const meta = [theme.fg(stateColor(daemon.state), daemon.state)];
 	if (daemon.readyPending?.length) meta.push(theme.fg("warning", `waiting on ${daemon.readyPending.join("+")}`));
@@ -512,9 +487,6 @@ function daemonMeta(daemon: DaemonSnapshot, theme: Theme): string[] {
 	const lifespan = formatDuration((daemon.exitedAt ?? Date.now()) - daemon.startedAt);
 	meta.push(daemon.exitedAt === undefined ? `up ${lifespan}` : `ran ${lifespan}`);
 	if (daemon.restartCount > 0) meta.push(`restarts ${daemon.restartCount}`);
-	// The owning condition that ends this daemon, visible BEFORE it bites:
-	// the default dies with the last client, persist dies with the broker,
-	// detached survives both.
 	if (daemon.detached) meta.push("detached");
 	else if (daemon.persist) meta.push("dies with broker");
 	else meta.push("dies with last client");
@@ -522,14 +494,12 @@ function daemonMeta(daemon: DaemonSnapshot, theme: Theme): string[] {
 	return meta;
 }
 
-/** The command line a start names, before or after `op` decodes. A streamed call carries `application` several deltas before `op`, so a renderer keyed on */
 function startCommand(args: LaunchRenderArgs): string | undefined {
 	if (!args.application) return undefined;
 	if (args.op !== undefined && args.op !== "start") return undefined;
 	return [args.application, ...(args.args ?? [])].join(" ");
 }
 
-/** Op-specific call context (log filters, wait condition, send payload). */
 function callMeta(args: LaunchRenderArgs): string[] {
 	const meta: string[] = [];
 	switch (args.op) {
@@ -549,20 +519,15 @@ function callMeta(args: LaunchRenderArgs): string[] {
 	return meta.map(entry => previewLine(replaceTabs(entry), TRUNCATE_LENGTHS.SHORT));
 }
 
-/** Append a result's plain text as body lines. Every op reaches this when the structured detail it renders from is absent: an error the broker answered */
 function pushTextLines(body: string[], text: string, theme: Theme): void {
 	if (!text.trim()) return;
 	for (const line of replaceTabs(text.trimEnd()).split("\n")) body.push(theme.fg("toolOutput", line));
 }
 
-/** TUI renderer: one status header per op, meta from structured details, capped body lines. */
 export const launchToolRenderer = {
 	inline: true,
 	mergeCallAndResult: true,
 	animatedPendingPreview: true,
-	// Only an op that can sit produces a partial result worth animating. list,
-	// describe, stop, restart and send answer in one round trip, and a spinner
-	// over those is motion with nothing behind it.
 	animatedPartialResult: (args: unknown) => {
 		const op = (args as LaunchRenderArgs).op;
 		return op === "start" || op === "logs" || op === "wait";
@@ -571,7 +536,6 @@ export const launchToolRenderer = {
 	renderCall(args: LaunchRenderArgs, options: RenderResultOptions, theme: Theme): Component {
 		const op = args.op;
 		const command = startCommand(args);
-		// The command line is the description when nothing named the process, and context beside the name when something did. Placing it here rather than
 		const target = args.name ?? command;
 		const meta = callMeta(args);
 		if (args.name && command) meta.unshift(previewLine(replaceTabs(command), TRUNCATE_LENGTHS.SHORT));
@@ -690,9 +654,6 @@ export const launchToolRenderer = {
 					} else {
 						description = "no processes";
 					}
-					// `daemons` is absent on the fallback path above, which is the case
-					// this branch exists to render: treat it as no live processes so the
-					// completion rows below still print.
 					const settled = new Set(
 						(daemons ?? []).filter(item => item.exitedAt !== undefined).map(item => `${item.id}${item.exitedAt}`),
 					);
@@ -709,7 +670,6 @@ export const launchToolRenderer = {
 					if (details?.state) meta.push(theme.fg(stateColor(details.state), details.state));
 					if (details?.cursor !== undefined) meta.push(`cursor ${details.cursor}`);
 					if (details?.timedOut) meta.push(theme.fg("warning", "follow timed out"));
-					// Strip the trailing `[name: state; cursor=N]` status suffix `toolContent` appends.
 					const logText = text.replace(/\n?\[[^\n]*\]$/, "").trimEnd();
 					const terminalRows = details?.terminalRows;
 					if (terminalRows) {
@@ -781,8 +741,6 @@ export const launchToolRenderer = {
 		return createCachedComponent(
 			() => options.expanded,
 			(width, expanded) => {
-				// A failure prints whatever the process said and `list` prints a row per
-				// daemon; neither has a ceiling, so both collapse until asked to expand.
 				const collapsedLimit = isError
 					? PREVIEW_LIMITS.OUTPUT_COLLAPSED
 					: op === "list"

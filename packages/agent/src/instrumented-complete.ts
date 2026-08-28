@@ -1,5 +1,3 @@
-/** Telemetry helper for instrumented completeSimple calls. */
-
 import type { Attributes, Span } from "@opentelemetry/api";
 import type { Api, AssistantMessage, Context, Model, SimpleStreamOptions } from "@veyyon/ai";
 import { completeSimple } from "@veyyon/ai/stream";
@@ -13,7 +11,6 @@ import {
 } from "./telemetry";
 import { EventLoopKeepalive } from "./utils/yield";
 
-/** Enumeration of canonical oneshot kinds across the agent and its tools. */
 export const ONESHOT_KINDS = [
 	"compaction_summary",
 	"compaction_turn_prefix",
@@ -26,18 +23,12 @@ export const ONESHOT_KINDS = [
 
 export type OneshotKind = (typeof ONESHOT_KINDS)[number] | (string & {});
 
-/** Options accepted by {@link instrumentedCompleteSimple}. Mirrors the */
 export interface InstrumentedChatSpanOptions {
 	readonly telemetry: AgentTelemetry | undefined;
-	/** Optional explicit parent span. Defaults to `context.active()`. */
 	readonly parent?: Span;
-	/** Step index recorded on the span; defaults to `-1` for non-loop calls. */
 	readonly stepNumber?: number;
-	/** Tag stamped onto `pi.gen_ai.oneshot.kind`. Values used by the agent: */
 	readonly oneshotKind?: OneshotKind;
-	/** Extra span attributes applied verbatim. */
 	readonly attributes?: Attributes;
-	/** Override for the underlying {@link completeSimple} call. Defaults to */
 	readonly completeImpl?: <TApi extends Api>(
 		model: Model<TApi>,
 		ctx: Context,
@@ -45,7 +36,6 @@ export interface InstrumentedChatSpanOptions {
 	) => Promise<AssistantMessage>;
 }
 
-/** Conversation identity for one oneshot, derived from the live session id and */
 function sideConversationId(options: SimpleStreamOptions, oneshotKind: string | undefined): string | undefined {
 	if (options.conversationId !== undefined) return options.conversationId;
 	if (options.sessionId === undefined) return undefined;
@@ -53,7 +43,6 @@ function sideConversationId(options: SimpleStreamOptions, oneshotKind: string | 
 	return `${options.sessionId}#${kind}`;
 }
 
-/** Wrap a {@link completeSimple} round-trip with the same chat-span lifecycle */
 export async function instrumentedCompleteSimple<TApi extends Api>(
 	model: Model<TApi>,
 	ctx: Context,
@@ -86,8 +75,6 @@ export async function instrumentedCompleteSimple<TApi extends Api>(
 		if (span.attributes) chatSpan.setAttributes(span.attributes);
 	}
 
-	// Wrap the user-supplied onResponse so we always capture response headers
-	// for the cost / gateway hooks without stealing them from the caller.
 	let capturedHeaders: Readonly<Record<string, string>> | undefined;
 	const userOnResponse = options.onResponse;
 	const captureOnResponse: NonNullable<SimpleStreamOptions["onResponse"]> = (response, modelInfo) => {

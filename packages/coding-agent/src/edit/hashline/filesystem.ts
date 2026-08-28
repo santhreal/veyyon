@@ -1,4 +1,3 @@
-/** Coding-agent specific {@link Filesystem} adapter for the hashline patcher. Wires hashline's storage abstraction to the agent runtime: */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -27,7 +26,6 @@ export interface HashlineFilesystemOptions {
 	writethrough: WritethroughCallback;
 	beginDeferredDiagnosticsForPath: (path: string) => WritethroughDeferredHandle;
 	signal?: AbortSignal;
-	/** Outer LSP batch request inherited from the tool-call context. The orchestrator narrows this per-section (flush only on the final write) */
 	batchRequest?: LspBatchRequest;
 }
 
@@ -48,12 +46,10 @@ export class HashlineFilesystem extends Filesystem {
 		this.#batchRequest = options.batchRequest;
 	}
 
-	/** Set the LSP batch request used for the next {@link writeText} call. Multi-section orchestrators flip the `flush` flag to true before the */
 	setBatchRequest(batchRequest: LspBatchRequest | undefined): void {
 		this.#batchRequest = batchRequest;
 	}
 
-	/** Look up (and clear) the diagnostics captured by the most-recent {@link writeText} call for `path`. Returns `undefined` if no write */
 	consumeDiagnostics(path: string): FileDiagnosticsResult | undefined {
 		const value = this.#diagnosticsByPath.get(path);
 		this.#diagnosticsByPath.delete(path);
@@ -69,10 +65,7 @@ export class HashlineFilesystem extends Filesystem {
 	}
 
 	allowTagPathRecovery(authoredPath: string, resolvedPath: string): boolean {
-		// Internal-URL authored targets (`local://`, `vault://`, …) are approved
-		// at the lower "read" privilege; never let one redirect onto a "write".
 		if (isInternalUrlPath(authoredPath)) return false;
-		// Recovery rebinds a bare/mis-typed authored path onto the file its snapshot tag uniquely names. Confine the redirect to locations a plain
 		const root = canonicalSnapshotKey(this.session.cwd);
 		if (resolvedPath === root || resolvedPath.startsWith(`${root}${path.sep}`)) return true;
 		return targetsLocalSandbox(this.session, resolvedPath);
@@ -90,7 +83,6 @@ export class HashlineFilesystem extends Filesystem {
 			}
 			throw error;
 		}
-		// Refuse edits against generated files (lockfiles, models.json, …).
 		assertEditableFileContent(content, relativePath);
 		return content;
 	}
@@ -143,7 +135,6 @@ export class HashlineFilesystem extends Filesystem {
 		const fromAbsolute = this.resolveAbsolute(fromRelative);
 		const toAbsolute = this.resolveAbsolute(toRelative);
 		if (content !== undefined) {
-			// A content-move writes the destination then removes the source. When `from` and `to` are the SAME underlying file — a case-only rename on a
 			await atomicWriteFilePreservingMode(toAbsolute, content);
 			if (!(await sameExistingFile(fromAbsolute, toAbsolute))) {
 				await fs.rm(fromAbsolute);
@@ -170,7 +161,6 @@ export class HashlineFilesystem extends Filesystem {
 		const absolutePath = this.resolveAbsolute(relativePath);
 		const finalContent = await serializeEditFileText(absolutePath, relativePath, content);
 
-		// Route through ACP bridge when available; skips internal artifacts.
 		if (await routeWriteThroughBridge(this.session, relativePath, absolutePath, finalContent, this.#signal)) {
 			this.#diagnosticsByPath.set(relativePath, undefined);
 			return { text: finalContent };

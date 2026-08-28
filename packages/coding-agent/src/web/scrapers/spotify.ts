@@ -1,5 +1,4 @@
 import { errorMessage, isCancellation } from "@veyyon/utils";
-/** Spotify URL handler for podcasts, tracks, albums, and playlists Uses oEmbed API and Open Graph metadata to extract information */
 import type { SpecialHandler } from "./types";
 import { buildResult, formatMediaDuration, loadPage } from "./types";
 
@@ -25,9 +24,6 @@ interface OpenGraphData {
 	releaseDate?: string;
 }
 
-/**
- * Parse Open Graph meta tags from HTML
- */
 function parseOpenGraph(html: string): OpenGraphData {
 	const og: OpenGraphData = {};
 
@@ -54,9 +50,6 @@ function parseOpenGraph(html: string): OpenGraphData {
 	return og;
 }
 
-/**
- * Determine content type from URL path
- */
 function getContentType(url: string): string | null {
 	if (url.includes("/episode/")) return "podcast-episode";
 	if (url.includes("/show/")) return "podcast-show";
@@ -66,7 +59,6 @@ function getContentType(url: string): string | null {
 	return null;
 }
 
-/** Parse a seconds string and render it via the shared media-duration formatter. */
 function formatDurationSeconds(seconds: string | undefined): string | null {
 	if (!seconds) return null;
 	const num = parseInt(seconds, 10);
@@ -74,25 +66,18 @@ function formatDurationSeconds(seconds: string | undefined): string | null {
 	return formatMediaDuration(num);
 }
 
-/**
- * Format output based on content type and available metadata
- */
 function formatOutput(contentType: string, oEmbed: SpotifyOEmbedResponse, og: OpenGraphData, url: string): string {
 	const sections: string[] = [];
 
-	// Title
 	const title = og.title || oEmbed.title || "Unknown";
 	sections.push(`# ${title}\n`);
 
-	// Type
 	sections.push(`**Type**: ${contentType}\n`);
 
-	// Description
 	if (og.description) {
 		sections.push(`**Description**: ${og.description}\n`);
 	}
 
-	// Content-specific metadata
 	if (contentType === "track" || contentType === "podcast-episode") {
 		if (og.artist || og.musician) {
 			sections.push(`**Artist**: ${og.artist || og.musician}\n`);
@@ -112,7 +97,6 @@ function formatOutput(contentType: string, oEmbed: SpotifyOEmbedResponse, og: Op
 		sections.push(`**Release Date**: ${og.releaseDate}\n`);
 	}
 
-	// Note about limited information
 	sections.push("\n---\n");
 	if (contentType === "playlist") {
 		sections.push(
@@ -143,7 +127,6 @@ function formatOutput(contentType: string, oEmbed: SpotifyOEmbedResponse, og: Op
 }
 
 export const handleSpotify: SpecialHandler = async (url: string, timeout: number, signal?: AbortSignal) => {
-	// Check if this is a Spotify URL
 	if (!url.includes("open.spotify.com/")) {
 		return null;
 	}
@@ -157,7 +140,6 @@ export const handleSpotify: SpecialHandler = async (url: string, timeout: number
 	let oEmbedData: SpotifyOEmbedResponse = {};
 	let ogData: OpenGraphData = {};
 
-	// Fetch oEmbed data
 	try {
 		const oEmbedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`;
 		const response = await loadPage(oEmbedUrl, { timeout, signal });
@@ -169,13 +151,10 @@ export const handleSpotify: SpecialHandler = async (url: string, timeout: number
 			notes.push(`oEmbed API returned status ${response.status || "error"}`);
 		}
 	} catch (err) {
-		// A cancelled request is the user leaving, not a Spotify failure: recording it as a
-		// note and carrying on would make the SECOND request below after they asked to stop.
 		if (isCancellation(err)) throw err;
 		notes.push(`Failed to fetch oEmbed data: ${errorMessage(err)}`);
 	}
 
-	// Fetch page HTML for Open Graph metadata
 	try {
 		const pageResponse = await loadPage(url, { timeout, signal });
 
@@ -190,7 +169,6 @@ export const handleSpotify: SpecialHandler = async (url: string, timeout: number
 		notes.push(`Failed to fetch page HTML: ${errorMessage(err)}`);
 	}
 
-	// Format output
 	const output = formatOutput(contentType, oEmbedData, ogData, url);
 	return buildResult(output, { url, method: "spotify", fetchedAt: new Date().toISOString(), notes });
 };

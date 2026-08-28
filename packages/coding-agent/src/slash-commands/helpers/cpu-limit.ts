@@ -1,27 +1,21 @@
-/** Shared logic for `/cpu-limit`, so the text and TUI surfaces accept exactly the same words and report the same sentence. */
 import type { Settings } from "../../config/settings";
 import { sessionCpuLimit } from "../../session/cpu-limit";
 
-/** What a `/cpu-limit` invocation did, and the sentence to show for it. */
 export interface CpuLimitCommandResult {
 	ok: boolean;
 	message: string;
 }
 
-/** The words that lift the cap for this session without touching the profile. */
 const REMOVE_WORDS = new Set(["remove", "off", "none", "0"]);
 
-/** The words that drop the session override and return to the profile value. */
 const RESET_WORDS = new Set(["reset", "default", "inherit"]);
 
 export const CPU_LIMIT_USAGE = "Usage: /cpu-limit [status|<cores>|remove|reset|kill on|kill off]";
 
-/** Where the effective value comes from, in the operator's words. `getSource` reports the layer, and the two that matter here read very */
 function describeSource(from: Settings): string {
 	return from.getSource("session.cpuLimitCores") === "runtime" ? "this session" : "the saved profile setting";
 }
 
-/** The one-line report: the budget, where it came from, and what it is doing. */
 export async function describeCpuLimit(from: Settings, sessionId: string | null | undefined): Promise<string> {
 	const cores = from.get("session.cpuLimitCores");
 	const kill = from.get("session.cpuLimitKill");
@@ -30,12 +24,10 @@ export async function describeCpuLimit(from: Settings, sessionId: string | null 
 		cores > 0
 			? `Session CPU limit: ${cores} core(s), from ${scope}. Over-budget commands are ${kill ? "killed" : "refused, and running ones keep running"}.`
 			: `Session CPU limit: off, from ${scope}.`;
-	// The limiter knows things the setting cannot: which backend the host actually offers, whether the group exists yet, and whether the watcher is
 	const live = await sessionCpuLimit(sessionId)?.statusLine();
 	return live ? `${head} Enforcement: ${live}.` : head;
 }
 
-/** Apply one `/cpu-limit` invocation against `from`. The write is an override in every branch that changes something, so nothing */
 export async function applyCpuLimitCommand(
 	rawArgs: string,
 	from: Settings,
@@ -69,9 +61,6 @@ export async function applyCpuLimitCommand(
 		};
 	}
 	const cores = Number(arg);
-	// `Number("")` is 0 and `Number("2cores")` is NaN; the empty string is
-	// already handled above, so this rejects exactly the unparseable words
-	// rather than silently reading them as "off".
 	if (!Number.isFinite(cores) || cores < 0) return { ok: false, message: CPU_LIMIT_USAGE };
 	from.override("session.cpuLimitCores", cores);
 	return {

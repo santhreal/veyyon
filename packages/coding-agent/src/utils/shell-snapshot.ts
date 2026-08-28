@@ -1,4 +1,3 @@
-/** Shell environment snapshot for preserving user aliases, functions, and options. Creates a snapshot file that captures the user's shell environment from their */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -8,13 +7,10 @@ import fnEnvHelper from "./shell-snapshot-fn-env.sh" with { type: "text" };
 const cachedSnapshotPaths = new Map<string, string>();
 const SNAPSHOT_TIMEOUT_MS = 2_000;
 
-/** Characters that force brush's primitive alias expander down a path it does not implement. brush-core resolves aliases via `value.split_ascii_whitespace()` */
 const BRUSH_INCOMPATIBLE_ALIAS_BODY = /[()|&;<>`]/;
 
-/** Matches `alias -- NAME='VALUE'` lines emitted by `generateSnapshotScript`. */
 const SNAPSHOT_ALIAS_LINE = /^alias -- ([^\s=]+)='(.*)'\s*$/;
 
-/** Strip alias definitions brush's whitespace-only expander cannot execute. Returns the rewritten snapshot plus the list of dropped alias names so the */
 export function sanitizeSnapshotForBrush(content: string): { content: string; dropped: string[] } {
 	const dropped: string[] = [];
 	const lines = content.split("\n");
@@ -22,7 +18,6 @@ export function sanitizeSnapshotForBrush(content: string): { content: string; dr
 	for (const line of lines) {
 		const m = line.match(SNAPSHOT_ALIAS_LINE);
 		if (m) {
-			// Decode the bash-quoting escape `'\''` → `'` so we test the real value.
 			const value = m[2].replace(/'\\''/g, "'");
 			if (BRUSH_INCOMPATIBLE_ALIAS_BODY.test(value)) {
 				dropped.push(m[1]);
@@ -34,7 +29,6 @@ export function sanitizeSnapshotForBrush(content: string): { content: string; dr
 	return { content: out.join("\n"), dropped };
 }
 
-/** Apply {@link sanitizeSnapshotForBrush} to the freshly generated snapshot file. Best-effort: I/O failures here must not poison `getOrCreateSnapshot`. */
 function scrubSnapshotInPlace(snapshotPath: string): void {
 	try {
 		const raw = fs.readFileSync(snapshotPath, "utf8");
@@ -54,7 +48,6 @@ function sanitizeSnapshotEnv(env: Record<string, string | undefined>): Record<st
 	return sanitized;
 }
 
-/** Get the user's shell config file path. Honours `env.HOME` when present so a caller can target a sandboxed/test */
 function getShellConfigFile(shell: string, env: Record<string, string | undefined>): string {
 	const home = env.HOME || os.homedir();
 	if (shell.includes("zsh")) return path.join(home, ".zshrc");
@@ -62,19 +55,14 @@ function getShellConfigFile(shell: string, env: Record<string, string | undefine
 	return path.join(home, ".profile");
 }
 
-/** Generate the snapshot creation script. This script sources the user's rc file and extracts functions, aliases, and options. */
 function generateSnapshotScript(shell: string, snapshotPath: string, rcFile: string): string {
 	const hasRcFile = fs.existsSync(rcFile);
 	const isZsh = shell.includes("zsh");
 	const commonToolsRegex =
 		"^(ls|dir|vdir|cat|head|tail|less|more|grep|egrep|fgrep|rg|find|fd|locate|sed|awk|perl|cp|mv|rm|mkdir|rmdir|touch|chmod|chown|ln|pwd|readlink|stat|cut|sort|uniq|xargs|tee|tr|basename|dirname)$";
 
-	// Escape the snapshot path for shell
 	const escapedPath = snapshotPath.replace(/'/g, "'\\''");
 
-	// Function extraction differs between bash and zsh. Each form prints function
-	// bodies on stdout so we can both persist them AND scan their bodies for
-	// referenced env vars (issue #3470).
 	const functionExtractor = isZsh
 		? `# Force autoload all functions first
 typeset -f > /dev/null 2>&1
@@ -89,7 +77,6 @@ declare -F 2>/dev/null | cut -d' ' -f3 | grep -vE '^(_|__)' | grep -vE '${common
    declare -f "$func" 2>/dev/null
 done`;
 
-	// Shell options extraction
 	const optionsScript = isZsh
 		? `
 echo "# Shell Options" >> "$SNAPSHOT_FILE"
@@ -167,13 +154,11 @@ fi
 `.trim();
 }
 
-/** Create a shell snapshot, caching the result. Returns the path to the snapshot file, or null if creation failed. */
 export async function getOrCreateSnapshot(
 	shell: string,
 	env: Record<string, string | undefined>,
 ): Promise<string | null> {
 	const cacheKey = shell;
-	// Return cached snapshot if valid
 	const cached = cachedSnapshotPaths.get(cacheKey);
 	if (cached && fs.existsSync(cached)) {
 		return cached;
@@ -182,30 +167,23 @@ export async function getOrCreateSnapshot(
 		cachedSnapshotPaths.delete(cacheKey);
 	}
 
-	// Skip on Windows (no .bashrc in standard location)
 	if (process.platform === "win32") {
 		return null;
 	}
 
 	const rcFile = getShellConfigFile(shell, env);
 
-	// Create snapshot directory with owner-only perms — the script may inline env vars referenced by captured functions (#3470) and `os.tmpdir()` is
 	const snapshotDir = path.join(os.tmpdir(), "veyyon-shell-snapshots");
 	fs.mkdirSync(snapshotDir, { recursive: true, mode: 0o700 });
 	try {
 		fs.chmodSync(snapshotDir, 0o700);
-	} catch {
-		// best-effort
-	}
+	} catch {}
 
-	// Generate unique snapshot path
 	const shellName = shell.includes("zsh") ? "zsh" : shell.includes("bash") ? "bash" : "sh";
 	const snapshotPath = path.join(snapshotDir, `snapshot-${shellName}-${crypto.randomUUID()}.sh`);
 
-	// Pre-create the snapshot file at 0600 so the shell's `>|` (truncate) and `>>` (append) redirections inside `generateSnapshotScript` operate on an
 	fs.writeFileSync(snapshotPath, "", { mode: 0o600 });
 
-	// Generate and execute snapshot script
 	const script = generateSnapshotScript(shell, snapshotPath, rcFile);
 
 	let succeeded = false;
@@ -228,28 +206,20 @@ export async function getOrCreateSnapshot(
 
 		await child.exited;
 		if (child.exitCode === 0 && fs.existsSync(snapshotPath)) {
-			// Defence-in-depth: the script's `umask 077` already locks the file at
-			// first write, but chmod again in case the umask didn't take (exotic
-			// shells) or a postmortem-restored file ended up looser.
 			try {
 				fs.chmodSync(snapshotPath, 0o600);
-			} catch {
-				// best-effort
-			}
+			} catch {}
 			scrubSnapshotInPlace(snapshotPath);
 			cachedSnapshotPaths.set(cacheKey, snapshotPath);
 			succeeded = true;
 			return snapshotPath;
 		}
 	} catch {
-		// Snapshot creation failed, proceed without it
 	} finally {
 		if (!succeeded) {
 			try {
 				fs.rmSync(snapshotPath, { force: true });
-			} catch {
-				// best-effort cleanup; force: true ignores ENOENT
-			}
+			} catch {}
 		}
 	}
 

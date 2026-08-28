@@ -1,13 +1,3 @@
-/**
- * Collab link + wire-envelope handling (browser-safe vendored mirror of the
- * link/envelope half of `@veyyon/coding-agent/src/collab/protocol.ts`;
- * base64url goes through atob/btoa instead of Buffer).
- *
- * Link format: `wss://<host[:port]>/r/<roomId>.<base64url-32-byte-key>`
- * Wire envelope: `[4B uint32 BE peerId][sealed payload]` — the guest always
- * sends peerId 0; the relay rewrites it to the sender's id.
- */
-
 import type { ParsedCollabLink } from "@veyyon/wire";
 import {
 	DEFAULT_RELAY_URL,
@@ -26,10 +16,6 @@ const BARE_LINK_RE = /^([A-Za-z0-9_-]{10,64})[#.]([A-Za-z0-9_-]+)$/;
 const B64URL_RE = /^[A-Za-z0-9_-]+$/;
 const LOCAL_HOSTNAMES: Record<string, true> = { localhost: true, "127.0.0.1": true, "::1": true, "[::1]": true };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// base64url (no Buffer in the browser)
-// ═══════════════════════════════════════════════════════════════════════════
-
 export function encodeBase64Url(bytes: Uint8Array): string {
 	let binary = "";
 	for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -44,8 +30,6 @@ export function decodeBase64Url(text: string): Uint8Array | null {
 	try {
 		binary = atob(padded);
 	} catch {
-		// Null means "this is not a share link payload", the same answer the charset check above gives. The
-		// caller shows the invalid-link message either way, so there is nothing extra to surface here.
 		return null;
 	}
 	const out = new Uint8Array(binary.length);
@@ -53,21 +37,7 @@ export function decodeBase64Url(text: string): Uint8Array | null {
 	return out;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Wire envelope
-//
-// The codec is `@veyyon/wire`'s, next to the header length it reads, because the
-// host writes the envelopes this client reads: two copies of the byte order is
-// two chances to disagree, and a disagreement here delivers frames to the wrong
-// peer rather than failing. Re-exported so the rest of the client keeps
-// importing its link helpers from one module.
-// ═══════════════════════════════════════════════════════════════════════════
-
 export { packEnvelope, rewriteEnvelopePeer, unpackEnvelope } from "@veyyon/wire";
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Link format
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function generateRoomId(): string {
 	const bytes = new Uint8Array(ROOM_ID_BYTES);
@@ -75,7 +45,6 @@ export function generateRoomId(): string {
 	return encodeBase64Url(bytes);
 }
 
-/** Normalize a relay base URL (ws/wss/http/https) into a ws/wss origin, or an error. */
 function normalizeRelayOrigin(relayUrl: string): { origin: string } | { error: string } {
 	let url: URL;
 	try {
@@ -103,27 +72,6 @@ function normalizeRelayOrigin(relayUrl: string): { origin: string } | { error: s
 	return { origin: `${scheme}//${url.hostname}${port}` };
 }
 
-/**
- * Render the shareable link. Compact forms: the default relay collapses to a
- * hostless `<roomId>.<key>`; custom wss relays drop the scheme
- * (`host[:port]/r/<roomId>#<key>`); plain-ws localhost relays keep the full
- * `ws://` URL.
- *
- * When the link names a relay host the secret rides in the fragment, never in
- * the path. Terminals linkify `host/r/…` and open it as `https://…`; with the
- * secret in the path, one click on your own link puts the room key and the
- * write token in the relay's HTTP request line, and from there into its access
- * log. A fragment is never sent to the server, so a click discloses only
- * `/r/<roomId>`, which the WebSocket handshake reveals anyway. The default
- * relay form has no authority for a terminal to linkify, so its dot join is
- * safe, and it is the form the browser deep link nests inside its own
- * fragment, where a second raw `#` would be mangled to `%23`.
- *
- * Parsers accept the dot form, the `#` form, and the mangled `%23` form.
- *
- * Full links append the write token to the key
- * (`base64url(key ∥ writeToken)`); read-only (view) links carry the bare key.
- */
 export function formatCollabLink(relayUrl: string, roomId: string, key: Uint8Array, writeToken?: Uint8Array): string {
 	const normalized = normalizeRelayOrigin(relayUrl);
 	if ("error" in normalized) throw new Error(normalized.error);
@@ -142,13 +90,9 @@ export function formatCollabLink(relayUrl: string, roomId: string, key: Uint8Arr
 }
 
 export function parseCollabLink(link: string): ParsedCollabLink | { error: string } {
-	// Lenient input: terminals that open OSC 8 links through strict URL stacks
-	// (macOS Foundation) percent-encode the legacy second `#` to `%23`.
 	let text = link.trim().replace(/%23/gi, "#");
-	// Bare `<roomId>.<key>` (legacy `<roomId>#<key>`) → default relay.
 	const bare = BARE_LINK_RE.exec(text);
 	if (bare) text = `${DEFAULT_RELAY_URL}/r/${bare[1]}.${bare[2]}`;
-	// Scheme-less `host[:port]/r/…` → wss.
 	else if (!text.includes("://")) text = `wss://${text}`;
 	let url: URL;
 	try {
@@ -165,16 +109,11 @@ export function parseCollabLink(link: string): ParsedCollabLink | { error: strin
 	if ("error" in normalized) return normalized;
 	const match = ROOM_PATH_RE.exec(url.pathname);
 	if (!match) {
-		// Non-http(s) deep links may also carry a complete collab link in the
-		// fragment. http(s) links are handled once above so invalid fragments
-		// fall through to direct relay validation instead of double-recursing.
 		const inner = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
 		if (inner && url.protocol !== "http:" && url.protocol !== "https:") return parseCollabLink(inner);
 		return { error: "Collab link must contain a /r/<roomId> path" };
 	}
 	const roomId = match[1] as string;
-	// Key rides dot-joined in the path (`/r/<roomId>.<key>`); legacy links
-	// carry it in the fragment (`/r/<roomId>#<key>`).
 	const fragment = match[2] ?? (url.hash.startsWith("#") ? url.hash.slice(1) : url.hash);
 	if (!fragment) {
 		return { error: "Collab link is missing the <key> part" };

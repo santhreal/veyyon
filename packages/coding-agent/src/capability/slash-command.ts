@@ -1,20 +1,11 @@
-/** Slash Commands Capability File-based slash commands defined as markdown files. */
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 
-/**
- * A file-based slash command.
- */
 export interface SlashCommand {
-	/** Command name (without leading slash) */
 	name: string;
-	/** Absolute path to command file */
 	path: string;
-	/** Command content (markdown template) */
 	content: string;
-	/** Source level */
 	level: "user" | "project" | "native";
-	/** Source metadata */
 	_source: SourceMeta;
 }
 

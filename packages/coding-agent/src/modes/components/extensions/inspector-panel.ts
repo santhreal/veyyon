@@ -1,4 +1,3 @@
-/** InspectorPanel - Detail view for selected extension. Shows name, description, origin, status, and kind-specific preview. */
 import * as os from "node:os";
 import { isZodSchema, zodToWireSchema } from "@veyyon/ai/utils/schema";
 import { type Component, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
@@ -8,7 +7,6 @@ import { theme } from "../../../modes/theme/theme";
 import { replaceTabs, shortenPath } from "../../../tools/render-utils";
 import type { ExtensionRow, ExtensionState } from "./types";
 
-/** Structural views over extension payloads whose concrete shape varies by source (zod tool, wire tool, MCP config, skill). Each renderer narrows `unknown` once to the optional fields it reads. */
 interface ToolDefView {
 	parameters?: unknown;
 	inputSchema?: unknown;
@@ -36,7 +34,6 @@ interface McpConfigView {
 	env?: Record<string, unknown>;
 }
 
-/** The row an inspector section shows when it cannot read what it was given. These three sections used to print a dim `(unable to parse …)` with no reason */
 function unreadableRows(subject: string, error: unknown): string[] {
 	logger.warn("Extension inspector could not read a definition", { subject, error: String(error) });
 	return [theme.fg("warning", `  (unable to read the ${subject}: ${collapseWhitespace(errorMessage(error))})`)];
@@ -59,15 +56,12 @@ export class InspectorPanel implements Component {
 		const ext = this.#extension;
 		const lines: string[] = [];
 
-		// Name header
 		lines.push(theme.bold(theme.fg("accent", ext.displayName)));
 		lines.push("");
 
-		// Kind badge
 		lines.push(theme.fg("muted", "Type: ") + this.#getKindBadge(ext.kind));
 		lines.push("");
 
-		// Description (wrapped)
 		const desc = ext.description;
 		const isValidDescription = typeof desc === "string" && desc.length > 0;
 		if (isValidDescription && width > 2) {
@@ -77,29 +71,24 @@ export class InspectorPanel implements Component {
 			}
 			lines.push("");
 		} else if (isValidDescription) {
-			// Width too small for wrapping, show truncated single line
 			lines.push(truncateToWidth(desc, width));
 			lines.push("");
 		}
 
-		// Origin
 		lines.push(theme.fg("muted", "Origin:"));
 		const levelLabel = ext.source.level === "user" ? "User" : ext.source.level === "project" ? "Project" : "Native";
 		lines.push(`  ${theme.italic(`via ${ext.source.providerName} (${levelLabel})`)}`);
 		const shortened = replaceTabs(shortenPath(ext.path, os.homedir()));
-		// If path is very long, show just the last parts
 		const segments = shortened.split("/");
 		const displayPath =
 			shortened.length > 40 && segments.length > 3 ? `.../${segments.slice(-3).join("/")}` : shortened;
 		lines.push(`  ${theme.fg("dim", displayPath)}`);
 		lines.push("");
 
-		// Status badge
 		lines.push(theme.fg("muted", "Status:"));
 		lines.push(`  ${this.#getStatusBadge(ext.state, ext.disabledReason, ext.shadowedBy)}`);
 		lines.push("");
 
-		// Preview section (routed based on kind)
 		const previewLines = this.#renderPreview(ext, width);
 		const pl = previewLines;
 		for (let li = 0; li < pl.length; li++) lines.push(pl[li]!);
@@ -173,23 +162,15 @@ export class InspectorPanel implements Component {
 	}
 
 	#highlightMarkdown(line: string): string {
-		// Basic markdown syntax highlighting
 		let highlighted = line;
 
-		// Headers
 		if (/^#{1,6}\s/.test(highlighted)) {
 			highlighted = theme.bold(theme.fg("accent", highlighted));
-		}
-		// Code blocks
-		else if (/^```/.test(highlighted)) {
+		} else if (/^```/.test(highlighted)) {
 			highlighted = theme.fg("dim", highlighted);
-		}
-		// Lists
-		else if (/^[\s]*[-*+]\s/.test(highlighted)) {
+		} else if (/^[\s]*[-*+]\s/.test(highlighted)) {
 			highlighted = highlighted.replace(/^([\s]*[-*+]\s)/, theme.fg("accent", "$1"));
-		}
-		// Numbered lists
-		else if (/^[\s]*\d+\.\s/.test(highlighted)) {
+		} else if (/^[\s]*\d+\.\s/.test(highlighted)) {
 			highlighted = highlighted.replace(/^([\s]*\d+\.\s)/, theme.fg("accent", "$1"));
 		}
 
@@ -291,7 +272,6 @@ export class InspectorPanel implements Component {
 				lines.push(`  ${theme.fg("muted", "Args:")}       ${theme.fg("dim", args.join(" "))}`);
 			}
 
-			// Environment variables if present
 			if (mcp.env && typeof mcp.env === "object") {
 				const envCount = Object.keys(mcp.env).length;
 				if (envCount > 0) {
@@ -310,7 +290,6 @@ export class InspectorPanel implements Component {
 	#renderDefaultPreview(ext: ExtensionRow, width: number): string[] {
 		const lines: string[] = [];
 
-		// Show trigger pattern if present
 		if (ext.trigger) {
 			lines.push(theme.fg("muted", "Trigger:"));
 			lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));

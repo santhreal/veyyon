@@ -1,5 +1,3 @@
-// Lazy registry of web search providers. Each provider is loaded on first use; importing this module loads zero
-
 import type { AuthStorage } from "@veyyon/ai";
 import type { SearchProvider } from "./providers/base";
 import { SEARCH_PROVIDER_LABELS, SEARCH_PROVIDER_ORDER, SearchProviderError, type SearchProviderId } from "./types";
@@ -14,7 +12,6 @@ interface ProviderMeta {
 	load: () => Promise<SearchProvider>;
 }
 
-/** Lazy factories. Each `load()` dynamic-imports its provider module on first call. */
 const PROVIDER_META: Record<SearchProviderId, ProviderMeta> = {
 	perplexity: {
 		id: "perplexity",
@@ -135,12 +132,10 @@ const PROVIDER_META: Record<SearchProviderId, ProviderMeta> = {
 
 const instanceCache = new Map<SearchProviderId, SearchProvider>();
 
-/** Cheap, sync metadata accessor — never triggers a provider load. */
 export function getSearchProviderLabel(id: SearchProviderId): string {
 	return PROVIDER_META[id]?.label ?? id;
 }
 
-/** Format one provider failure for the user-facing fallback summary. */
 export function formatSearchProviderFailure(error: unknown, provider: Pick<SearchProvider, "id" | "label">): string {
 	if (error instanceof SearchProviderError) {
 		if (error.provider === "anthropic" && error.status === 404) {
@@ -158,14 +153,12 @@ export function formatSearchProviderFailure(error: unknown, provider: Pick<Searc
 	return `Unknown error from ${provider.label}`;
 }
 
-/** Format the ordered provider fallback failures for terminal/tool output. */
 export function formatSearchProviderFailures(
 	failures: readonly { provider: Pick<SearchProvider, "id" | "label">; error: unknown }[],
 ): string {
 	return failures.map(f => `${f.provider.id}: ${formatSearchProviderFailure(f.error, f.provider)}`).join("; ");
 }
 
-/** Resolve and cache a provider instance. First call for a given id loads the underlying module; subsequent calls return the cached singleton. */
 export async function getSearchProvider(id: SearchProviderId): Promise<SearchProvider> {
 	const cached = instanceCache.get(id);
 	if (cached) return cached;
@@ -178,23 +171,18 @@ export async function getSearchProvider(id: SearchProviderId): Promise<SearchPro
 	return provider;
 }
 
-/** Preferred provider set via settings (default: auto) */
 let preferredProvId: SearchProviderId | "auto" = "auto";
 
-/** Set the preferred web search provider from settings */
 export function setPreferredSearchProvider(provider: SearchProviderId | "auto"): void {
 	preferredProvId = provider;
 }
 
-/** Providers excluded from web search resolution via settings. */
 let excludedProvIds = new Set<SearchProviderId>();
 
-/** Set providers that web search should never use, including fallbacks. */
 export function setExcludedSearchProviders(providers: readonly SearchProviderId[]): void {
 	excludedProvIds = new Set(providers);
 }
 
-/** `true` when settings exclude `id` from web search (auto chain and the Public Web fan-out). */
 export function isSearchProviderExcluded(id: SearchProviderId): boolean {
 	return excludedProvIds.has(id);
 }
@@ -204,7 +192,6 @@ export interface SearchProviderCandidate {
 	explicit: boolean;
 }
 
-/** The providers a search may use, in the order it may try them. A CHOSEN provider is the only provider. `auto` is what ranges over the chain, and */
 export function resolveProviderCandidates(
 	preferredProvider: SearchProviderId | "auto" = preferredProvId,
 ): SearchProviderCandidate[] {
@@ -221,12 +208,10 @@ export function resolveProviderCandidates(
 	return candidates;
 }
 
-/** What a search may use, or why it may use nothing. */
 export type SearchProviderSelection =
 	| { readonly candidates: readonly SearchProviderCandidate[] }
 	| { readonly refusal: string };
 
-/** The providers one call may use, given what the call asked for and what settings allow. One owner for the whole decision, because it used to be split: the setting was read */
 export function selectSearchProviders(
 	requested?: SearchProviderId | "auto",
 	preferred: SearchProviderId | "auto" = preferredProvId,
@@ -251,7 +236,6 @@ export function selectSearchProviders(
 	};
 }
 
-/** Resolve the complete available provider chain. This compatibility helper loads every candidate. Search execution should use */
 export async function resolveProviderChain(
 	authStorage: AuthStorage,
 	preferredProvider: SearchProviderId | "auto" = preferredProvId,

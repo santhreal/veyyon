@@ -1,8 +1,3 @@
-/**
- * Gemini CLI OAuth flow (Google Cloud Code Assist)
- * Standard Gemini models only (gemini-2.0-flash, gemini-2.5-*)
- */
-
 import { CLOUD_CODE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { getGeminiCliHeaders } from "@veyyon/catalog/wire/gemini-headers";
 import {
@@ -23,8 +18,6 @@ const CLIENT_ID = decode(
 const CLIENT_SECRET = decode("R09DU1BYLTR1SGdNUG0tMW83U2stZ2VWNkN1NWNsWEZzeGw=");
 const CALLBACK_PORT = 8085;
 const CALLBACK_PATH = "/oauth2callback";
-// Exactly the trio every Google sign-in here requests, so it is read rather than restated: the scope string
-// is part of what identifies a grant, and a reordering can re-prompt for consent already given.
 const SCOPES = GOOGLE_BASE_OAUTH_SCOPES;
 const AUTH_URL = GOOGLE_OAUTH_AUTH_ENDPOINT;
 const TOKEN_URL = GOOGLE_OAUTH_TOKEN_ENDPOINT;
@@ -235,9 +228,6 @@ export async function loginGeminiCli(ctrl: OAuthController): Promise<OAuthCreden
 	});
 }
 
-/**
- * Refresh Google Cloud Code Assist token
- */
 export async function refreshGoogleCloudToken(refreshToken: string, projectId: string): Promise<OAuthCredentials> {
 	const response = await fetch(TOKEN_URL, {
 		method: "POST",

@@ -1366,7 +1366,6 @@ function createRequestSetup(
 		promptCacheSessionId,
 		messages: context.messages,
 		defaultBaseUrl: "https://api.openai.com/v1",
-		// Provider auth/header overlay: Kimi-code hosts require shared client
 		prependHeaders: model.provider === "kimi-code" ? getKimiCommonHeaders : undefined,
 		alibabaCodingPlanAuth: true,
 		azureChatCompletions: { apiVersion, deploymentName },
@@ -1467,8 +1466,6 @@ function buildParams(
 		toolStrictMode = builtTools.toolStrictMode;
 		strictToolsApplied = builtTools.strictToolsApplied;
 	} else if (context.tools === undefined && hasToolHistory(context.messages)) {
-		// Anthropic (via LiteLLM/proxy) requires the `tools` param when the conversation
-		// so LiteLLM → Bedrock never sees an empty `toolConfig` block.
 		params.tools = [];
 	}
 
@@ -1483,14 +1480,10 @@ function buildParams(
 		params.tool_choice = "required";
 	}
 	if (isForcedToolChoice(params.tool_choice) && !initialCompat.supportsForcedToolChoice) {
-		// `tool_choice` while still accepting tools with the default auto
 		params.tool_choice = "auto";
 	}
 
 	if (params.tool_choice === "none" && (!Array.isArray(params.tools) || params.tools.length === 0)) {
-		// `tool_choice: "none"` with no tools to gate is redundant and also
-		// trips LiteLLM → Bedrock: the proxy serializes the directive into a
-		// `toolConfig` block, and Bedrock requires `toolConfig.tools` to be
 		delete params.tool_choice;
 	}
 
@@ -1503,7 +1496,6 @@ function buildParams(
 		(!Array.isArray(params.tools) ||
 			!params.tools.some(tool => tool.type === "function" && tool.function.name === forcedToolName))
 	) {
-		// A forced named tool_choice is only valid when the same request offers
 		delete params.tool_choice;
 	}
 
@@ -1615,7 +1607,6 @@ function maybeAddAnthropicCacheControl(
 
 		if (!Array.isArray(content)) continue;
 
-		// content is valid for tool-call replay, but Anthropic/OpenRouter reject
 		for (let j = content.length - 1; j >= 0; j--) {
 			const part = content[j];
 			if (part?.type === "text" && part.text.trim().length > 0) {
@@ -2128,7 +2119,6 @@ function convertTools(
 				function: {
 					name: tool.name,
 					description: tool.description || "",
-					// Moonshot/Kimi native hosts validate against the stricter MFJS subset
 					parameters:
 						compat.toolSchemaFlavor === "moonshot-mfjs"
 							? (normalizeSchemaForMoonshot(wireParameters) as Record<string, unknown>)
@@ -2163,7 +2153,6 @@ function mapStopReason(reason: ChatCompletionChunk.Choice["finish_reason"] | str
 		case "network_error":
 			return { stopReason: "error", errorMessage: AIError.providerFinishErrorMessage("network_error") };
 		default:
-			// Gateways (OpenRouter, Vercel AI Gateway, …) report upstream model
 			return {
 				stopReason: "error",
 				errorMessage: AIError.providerFinishErrorMessage(typeof reason === "string" ? reason : undefined),

@@ -1,12 +1,9 @@
-/** Whether the veyyon on this machine is actually installed correctly. `install.sh` runs a doctor at the end of every install: the binary runs, it */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { $which, APP_NAME, VERSION } from "@veyyon/utils";
 import { completionEnvFrom, completionTargets } from "./completion-refresh";
 import { probeSearchWorks, resolveUpdateMethod, verifyBinaryVersion, windowsCompletionTargets } from "./update-cli";
 
-/** One answer about the install. Same shape as the plugin manager's `DoctorCheck` and deliberately a separate */
-/** One completion script the installer could have written, and the shell it is for. */
 export interface CompletionFile {
 	shell: string;
 	filePath: string;
@@ -18,10 +15,8 @@ export interface InstallHealthCheck {
 	message: string;
 }
 
-/** The alias `install.sh` links beside the binary. */
 const ALIAS_NAME = "vey";
 
-/** Every directory on PATH that holds a `veyyon`, in PATH order. The first one is what the shell runs. A second one is the shadowing failure */
 export function veyyonPathEntries(
 	pathValue: string | undefined,
 	exists: (filePath: string) => boolean = filePath => fs.existsSync(filePath),
@@ -42,29 +37,18 @@ export function veyyonPathEntries(
 	return found;
 }
 
-/** Injectable seams, so every case below is reachable without a real install. */
 export interface InstallHealthDeps {
-	/** What PATH resolves `veyyon` to right now. */
 	resolveBinary?: () => string | undefined;
-	/** What PATH resolves the `vey` alias to. Separate seam, separate question. */
 	resolveAlias?: () => string | undefined;
-	/** The raw PATH, split to find copies that shadow each other. */
 	pathValue?: string | undefined;
-	/** Whether a file is on disk; the same seam `veyyonPathEntries` takes. */
 	exists?: (filePath: string) => boolean;
-	/** The version this build reports about itself. */
 	version?: string;
-	/** Runs the binary and reads back the version it prints. */
 	verifyVersion?: typeof verifyBinaryVersion;
-	/** Runs a real search through the binary to prove the native addon loaded. */
 	probeSearch?: typeof probeSearchWorks;
-	/** The environment that decides where completion files live. */
 	env?: Record<string, string | undefined>;
-	/** Every completion file the installer could have written on THIS platform. Windows has no directory a shell autoloads completions from, so the */
 	completionFiles?: () => Promise<CompletionFile[]> | CompletionFile[];
 }
 
-/** Ask the install every question the installer's doctor asks, plus the two it cannot: is anything shadowing this binary, and do the completion files on disk */
 export async function runInstallHealthChecks(deps: InstallHealthDeps = {}): Promise<InstallHealthCheck[]> {
 	const resolveBinary = deps.resolveBinary ?? (() => $which(APP_NAME) ?? undefined);
 	const resolveAlias = deps.resolveAlias ?? (() => $which(ALIAS_NAME) ?? undefined);
@@ -79,8 +63,6 @@ export async function runInstallHealthChecks(deps: InstallHealthDeps = {}): Prom
 	const binaryPath = resolveBinary();
 
 	if (!binaryPath) {
-		// Everything below is a question about a specific file. Without one there is
-		// nothing to ask, and inventing an answer would be worse than saying so.
 		checks.push({
 			name: `${APP_NAME} on PATH`,
 			status: "error",
@@ -93,8 +75,6 @@ export async function runInstallHealthChecks(deps: InstallHealthDeps = {}): Prom
 
 	checks.push({ name: `${APP_NAME} on PATH`, status: "ok", message: `Resolves to ${binaryPath}` });
 
-	// Shadowing. Reported against the path PATH actually picked, because "there are
-	// two" only matters when the one being run is not the one being updated.
 	const entries = veyyonPathEntries(pathValue, exists);
 	if (entries.length > 1) {
 		checks.push({
@@ -109,9 +89,6 @@ export async function runInstallHealthChecks(deps: InstallHealthDeps = {}): Prom
 		checks.push({ name: "PATH copies", status: "ok", message: `One copy on PATH` });
 	}
 
-	// Does it run, and is it this build? A mismatch here is the shadowing case
-	// above seen from the other side, so it is a warning rather than an error: the
-	// file is fine, the PATH order is not.
 	const verified = await verifyVersion(binaryPath, version);
 	if (verified.reason) {
 		checks.push({ name: `${APP_NAME} runs`, status: "error", message: verified.reason });
@@ -127,8 +104,6 @@ export async function runInstallHealthChecks(deps: InstallHealthDeps = {}): Prom
 		checks.push({ name: `${APP_NAME} runs`, status: "ok", message: `Reports ${version}` });
 	}
 
-	// The check that catches a release built for the wrong platform: `--version` is
-	// answered by the entry point alone and passes with no native addon at all.
 	const searchFailure = await probeSearch(binaryPath, `${APP_NAME} at ${binaryPath}`);
 	checks.push(
 		searchFailure === undefined
@@ -145,8 +120,6 @@ export async function runInstallHealthChecks(deps: InstallHealthDeps = {}): Prom
 				: `Release binary — \`${APP_NAME} update\` swaps the binary`,
 	});
 
-	// The alias is the name the docs tell people to type, so an alias that is
-	// missing or points somewhere else is a real failure of the documented flow.
 	const aliasPath = resolveAlias();
 	if (!aliasPath) {
 		checks.push({
@@ -158,8 +131,6 @@ export async function runInstallHealthChecks(deps: InstallHealthDeps = {}): Prom
 		checks.push({ name: `${ALIAS_NAME} alias`, status: "ok", message: `Resolves to ${aliasPath}` });
 	}
 
-	// Completions are the one part of an install that fails silently: nothing goes
-	// wrong, Tab just stops offering anything, and there is no message anywhere.
 	const completionFiles =
 		deps.completionFiles ??
 		(async () =>

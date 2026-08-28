@@ -1,6 +1,4 @@
 import { type Component, padding, Text, visibleWidth } from "@veyyon/tui";
-// The owning leaf, not the `@veyyon/utils` barrel: this is the only vocabulary the renderer
-// needs, and the React renderer of the same tool output reads the same one.
 import { classifyGithubCheckRun, githubIssueRefNumber } from "@veyyon/utils/github-check-run";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
@@ -334,8 +332,6 @@ function renderFallbackComponent(
 	while (allLines.length > 0 && allLines[0].trim() === "") allLines.shift();
 	while (allLines.length > 0 && allLines[allLines.length - 1].trim() === "") allLines.pop();
 
-	// Trivial one-line *success* result: a clean status line beats an almost-empty box.
-	// Errors always frame so the message reads as a structured block, never a raw red wrap.
 	if (allLines.length <= 1 && !isError) {
 		const body = allLines[0];
 		if (!body) return new Text(header, 0, 0);
@@ -346,8 +342,6 @@ function renderFallbackComponent(
 	return framedBlock(theme, width => {
 		const lineWidth = Math.max(1, (width || FALLBACK_WIDTH) - 3);
 		const expanded = options.expanded;
-		// Line 257 above already pairs these correctly. This site had them swapped: the COLLAPSED arm
-		// was given OUTPUT_EXPANDED and the expanded arm no ceiling at all.
 		const limit = Math.min(
 			allLines.length,
 			expanded ? PREVIEW_LIMITS.OUTPUT_EXPANDED : PREVIEW_LIMITS.OUTPUT_COLLAPSED,
@@ -401,9 +395,6 @@ function renderWatchCall(args: GithubToolRenderArgs, options: RenderResultOption
 }
 
 export const githubToolRenderer = {
-	// No animatedPendingPreview: renderCall materializes plain Text components
-	// once per display rebuild (no render closure), so a live spinner interval
-	// would request 30fps repaints while the visible glyph stays frozen.
 	renderCall(args: GithubToolRenderArgs, options: RenderResultOptions, uiTheme: Theme): Component {
 		const op = typeof args.op === "string" && args.op.trim().length > 0 ? args.op.trim() : undefined;
 		if (op === "run_watch") {

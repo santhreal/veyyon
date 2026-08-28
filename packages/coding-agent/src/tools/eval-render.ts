@@ -1,8 +1,6 @@
-/** TUI rendering for the eval tool. Split out from `eval.ts` so the renderer can be imported by `renderers.ts` */
 import type { Component } from "@veyyon/tui";
 import { Markdown, Text } from "@veyyon/tui";
 import { formatCount, formatMoreLines, formatNumber } from "@veyyon/utils";
-// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
 import type { EvalCellResult, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "../eval/types";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -95,7 +93,6 @@ function getRenderCells(args: EvalRenderArgs | undefined): EvalRenderCell[] {
 
 type AgentEventStatus = "pending" | "running" | "completed" | "failed" | "aborted";
 
-/** Append or replace a status event. `agent` events are progress snapshots keyed by `id`, so they coalesce in place (preserving first-seen order); every other */
 function eventString(value: unknown): string | undefined {
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
@@ -117,7 +114,6 @@ function agentEventStatus(value: unknown): AgentEventStatus {
 	}
 }
 
-/** Append the toolCount · context · cost · model stat run, mirroring the task tool. */
 function formatAgentStats(event: EvalStatusEvent, theme: Theme): string {
 	let line = "";
 	const toolCount = eventNumber(event.toolCount);
@@ -140,7 +136,6 @@ function formatAgentStats(event: EvalStatusEvent, theme: Theme): string {
 	return line;
 }
 
-/** Render coalesced `agent()` progress as a Task-tool-style tree, one entry per subagent: a status line (icon · id · stats) plus, while running, the current */
 function renderAgentProgressEvents(events: EvalStatusEvent[], theme: Theme, spinnerFrame?: number): string[] {
 	const lines: string[] = [];
 	for (let i = 0; i < events.length; i++) {
@@ -202,7 +197,6 @@ function renderAgentProgressEvents(events: EvalStatusEvent[], theme: Theme, spin
 	return lines;
 }
 
-/** Format a status event as a single line for display. */
 function formatStatusEvent(event: EvalStatusEvent, theme: Theme): string {
 	const { op, ...data } = event;
 
@@ -321,7 +315,6 @@ function formatStatusEvent(event: EvalStatusEvent, theme: Theme): string {
 	return `${icon} ${theme.fg("muted", op)}${desc ? ` ${theme.fg("dim", desc)}` : ""}`;
 }
 
-/** Format status event with expanded detail lines. */
 function formatStatusEventExpanded(event: EvalStatusEvent, theme: Theme): string[] {
 	const lines: string[] = [];
 	const { op, ...data } = event;
@@ -382,7 +375,6 @@ function formatStatusEventExpanded(event: EvalStatusEvent, theme: Theme): string
 	return lines;
 }
 
-/** Render status events as tree lines. Shows a tail window (newest events are the live edge for `log()` progress loops) behind an "… N earlier" marker, */
 function renderStatusEvents(events: EvalStatusEvent[], theme: Theme, expanded: boolean): string[] {
 	if (events.length === 0) return [];
 
@@ -424,7 +416,6 @@ function formatCellOutputLines(
 		return { lines: [], hiddenCount: 0 };
 	}
 
-	// Cell output lands in renderCodeCell → renderOutputBlock, which re-wraps it at the block's inner content width. Bound the collapsed tail by VISUAL rows
 	const innerWidth = outputBlockContentWidth(width);
 
 	if (cell.hasMarkdown && cell.status !== "error") {
@@ -445,9 +436,6 @@ function formatCellOutputLines(
 		for (let li = 0; li < outputLines.length; li++) expandedLines[li] = styleLine(outputLines[li]!);
 		return { lines: expandedLines, hiddenCount: 0 };
 	}
-	// Progress runs collapse before the window is measured, so a wall of
-	// same-shape lines cannot spend the whole tail and push the interesting line
-	// out of the cell.
 	const styledOutput = renderCollapsedOutputLines(outputLines, theme, styleLine).join("\n");
 	const { visualLines, skippedCount } = truncateToVisualLines(styledOutput, previewLines, innerWidth);
 	return { lines: visualLines, hiddenCount: skippedCount };
@@ -494,9 +482,6 @@ export const evalToolRenderer = {
 							status: options.spinnerFrame !== undefined ? "running" : "pending",
 							spinnerFrame: options.spinnerFrame,
 							width,
-							// Viewport-sized tail window following the newest streamed code
-							// line; renderResult keeps the same cap so the cell never snaps
-							// open on completion. Only ctrl+o uncaps.
 							codeTail: true,
 							codeMaxLines: previewWindowRows(),
 							expanded: options.expanded,
@@ -527,8 +512,6 @@ export const evalToolRenderer = {
 
 		const rawOutput =
 			options.renderContext?.output ?? (result.content?.find(c => c.type === "text")?.text ?? "").trimEnd();
-		// Strip the LLM-facing notice (appended by wrappedExecute) before display;
-		// the styled `warningLine` below carries the same text in ⟨…⟩ form.
 		const output = stripOutputNotice(rawOutput, details?.meta).trimEnd();
 
 		const jsonOutputs = details?.jsonOutputs ?? [];
@@ -610,9 +593,6 @@ export const evalToolRenderer = {
 								duration: cell.durationMs,
 								output: outputLines.length > 0 ? outputLines.join("\n") : undefined,
 								outputMaxLines: outputLines.length,
-								// Same viewport-sized tail window as the pending preview so the
-								// cell never snaps open on completion; only ctrl+o uncaps.
-								// `output` keeps its own preview cap from above.
 								codeTail: true,
 								codeMaxLines: previewWindowRows(),
 								expanded,
@@ -629,9 +609,6 @@ export const evalToolRenderer = {
 							lines.push("");
 						}
 					}
-					// The cells drew themselves as railed cards. What follows them belongs
-					// to the same call, so it takes the same rail instead of sitting at the
-					// rail's column with nothing in it.
 					const extras = [timeoutLine, noticeLine, warningLine].filter(
 						(line): line is string => line !== undefined,
 					);
@@ -700,9 +677,6 @@ export const evalToolRenderer = {
 			return new Text(lines.join("\n"), 0, 0);
 		}
 
-		// Same tail window as the bash card, same reason to condense before it is
-		// measured: a run of progress lines must not push the interesting line out
-		// of the collapsed preview. `expanded` above keeps every line.
 		const textContent = `\n${renderCollapsedOutputLines(combinedOutput.split("\n"), uiTheme).join("\n")}`;
 
 		let cachedWidth: number | undefined;

@@ -1,5 +1,3 @@
-/** Parser for the Codex `apply_patch` envelope format. *** Begin Patch */
-
 import { ParseError } from "../diff";
 import type { PatchInput } from "../modes/patch";
 
@@ -17,12 +15,10 @@ interface ParseApplyPatchOptions {
 	streaming?: boolean;
 }
 
-/** Extract the path that follows a file-op marker (`*** Add File: ` etc.), trimmed. */
 function markerPath(line: string, markerLength: number): string {
 	return line.slice(markerLength).trim();
 }
 
-/** The path a file-op marker names, refusing a marker that names nothing. `*** Delete File: ` trims to the empty string, and an empty path is not a harmless empty value: */
 function requireMarkerPath(line: string, markerLength: number, lineNumber: number, streaming: boolean): string {
 	const path = markerPath(line, markerLength);
 	if (path.length === 0 && !streaming) {
@@ -31,17 +27,14 @@ function requireMarkerPath(line: string, markerLength: number, lineNumber: numbe
 	return path;
 }
 
-/** The one wording for "this line is not a file-op marker I recognise". */
 function invalidHunkHeaderMessage(line: string): string {
 	return `'${line}' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'`;
 }
 
-/** Parse a Codex `*** Begin Patch` envelope into a list of single-file patch inputs. */
 export function parseApplyPatch(patchText: string): PatchInput[] {
 	return parseApplyPatchWithOptions(patchText, {});
 }
 
-/** Best-effort parser for in-progress TUI previews. It tolerates missing envelope markers and incomplete trailing hunks; do not use it to apply edits. */
 export function parseApplyPatchStreaming(patchText: string): PatchInput[] {
 	return parseApplyPatchWithOptions(patchText, { streaming: true });
 }
@@ -50,7 +43,6 @@ function parseApplyPatchWithOptions(patchText: string, options: ParseApplyPatchO
 	const streaming = options.streaming === true;
 	let lines = patchText.trim().split("\n");
 
-	// Lenient heredoc strip: <<EOF / <<'EOF' / <<"EOF" ... EOF
 	if (lines.length >= 2) {
 		const first = lines[0];
 		const last = lines[lines.length - 1].trim();
@@ -71,11 +63,9 @@ function parseApplyPatchWithOptions(patchText: string, options: ParseApplyPatchO
 
 	const hunks: PatchInput[] = [];
 	let remaining = hasEndMarker ? lines.slice(1, lines.length - 1) : lines.slice(1);
-	// Line numbers are 1-based and include the `*** Begin Patch` line (= 1).
 	let lineNumber = 2;
 
 	while (remaining.length > 0) {
-		// Blank separator lines between hunks are ignored (spec §3.3).
 		if (remaining[0].trim() === "") {
 			remaining = remaining.slice(1);
 			lineNumber++;
@@ -128,9 +118,6 @@ function parseApplyPatchWithOptions(patchText: string, options: ParseApplyPatchO
 				lineNumber++;
 			}
 
-			// The body runs until the next file-op marker or end of input.
-			// `*** End of File` is a chunk-terminator and stays inside the body —
-			// the downstream unified-diff parser handles it.
 			const diffLines: string[] = [];
 			while (remaining.length > 0) {
 				const line = remaining[0];

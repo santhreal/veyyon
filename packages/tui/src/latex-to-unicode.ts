@@ -2,9 +2,6 @@ import { clamp01 } from "@veyyon/utils/math";
 import { SGR_BG_RESET, SGR_FG_RESET } from "./ansi";
 import { TERMINAL } from "./terminal-capabilities";
 
-// Unicode superscript forms. Letters are incomplete in Unicode (q, and several
-// capitals have no superscript), so the converter falls back to `^(…)` when any
-// character in a script group is unmappable.
 const SUPERSCRIPT: Record<string, string> = {
 	"0": "⁰",
 	"1": "¹",
@@ -79,7 +76,6 @@ const SUPERSCRIPT: Record<string, string> = {
 	χ: "ᵡ",
 };
 
-// Unicode subscript forms (even sparser than superscripts).
 const SUBSCRIPT: Record<string, string> = {
 	"0": "₀",
 	"1": "₁",
@@ -122,10 +118,8 @@ const SUBSCRIPT: Record<string, string> = {
 	χ: "ᵪ",
 };
 
-// Prime runs: f' f'' f''' f''''.
 const PRIMES = ["", "′", "″", "‴", "⁗"] as const;
 
-// Common vulgar fractions, keyed by `${num}/${den}` of the rendered parts.
 const VULGAR: Record<string, string> = {
 	"1/2": "½",
 	"1/3": "⅓",
@@ -148,8 +142,6 @@ const VULGAR: Record<string, string> = {
 	"0/3": "↉",
 };
 
-// `\not<rel>` negations that have a dedicated Unicode glyph (cleaner than the
-// combining-solidus fallback).
 const NOT_MAP: Record<string, string> = {
 	"=": "≠",
 	"<": "≮",
@@ -176,7 +168,6 @@ const NOT_MAP: Record<string, string> = {
 	"⊒": "⋣",
 };
 
-// Combining diacritics for accent commands (applied after each base glyph).
 const ACCENTS: Record<string, string> = {
 	hat: "\u0302",
 	widehat: "\u0302",
@@ -201,7 +192,6 @@ const ACCENTS: Record<string, string> = {
 	underbar: "\u0332",
 };
 
-// Math functions rendered as their literal upright name (sin, cos, lim, …).
 const FUNCTIONS: Record<string, true> = {
 	sin: true,
 	cos: true,
@@ -253,7 +243,6 @@ const FUNCTIONS: Record<string, true> = {
 	mod: true,
 };
 
-// Math-mode font commands → Mathematical Alphanumeric Symbols style.
 type FontStyle =
 	| "bold"
 	| "italic"
@@ -299,10 +288,8 @@ const FONTS: Record<string, FontStyle> = {
 	texttt: "mono",
 	textsf: "sans",
 };
-/** Math font command names whose single brace argument restyles glyphs. */
 export const MATH_FONT_COMMANDS: ReadonlySet<string> = new Set(Object.keys(FONTS));
 
-// Text-mode commands whose argument is passed through literally (no math).
 const TEXT_COMMANDS: Record<string, true> = {
 	text: true,
 	textrm: true,
@@ -318,8 +305,6 @@ const TEXT_COMMANDS: Record<string, true> = {
 	hbox: true,
 };
 
-// Base code points for each style's A, a, and (where it exists) 0 in the
-// Mathematical Alphanumeric Symbols block (U+1D400–U+1D7FF).
 interface Plane {
 	upper: number;
 	lower: number;
@@ -341,8 +326,6 @@ const PLANES: Record<FontStyle, Plane> = {
 	mono: { upper: 0x1d670, lower: 0x1d68a, digit: 0x1d7f6 },
 };
 
-// Reserved code points in the math alphabets that Unicode places in the
-// Letterlike Symbols block instead (the famous "holes").
 const ALPHA_HOLES: Record<string, string> = {
 	"italic:h": "ℎ",
 	"script:B": "ℬ",
@@ -370,7 +353,6 @@ const ALPHA_HOLES: Record<string, string> = {
 	"doublestruck:Z": "ℤ",
 };
 
-// Matrix/cases environment delimiters: [open, close].
 const ENV_DELIMS: Record<string, readonly [string, string]> = {
 	matrix: ["", ""],
 	smallmatrix: ["", ""],
@@ -401,7 +383,6 @@ const ENV_DELIMS: Record<string, readonly [string, string]> = {
 	"equation*": ["", ""],
 };
 
-// Greek, operators, relations, arrows, delimiters, and assorted symbols.
 const SYMBOLS: Record<string, string> = {
 	alpha: "α",
 	beta: "β",
@@ -1091,7 +1072,6 @@ function ansiColor(model: string | null, spec: string): AnsiColor | null {
 	return { foreground, background: foreground.replace("\x1b[38;", "\x1b[48;") };
 }
 
-/** Painter for a LaTeX color scope. */
 export function latexColorScope(model: string | null, spec: string): ((text: string) => string) | null {
 	const color = ansiColor(model, spec);
 	if (color === null) return null;
@@ -1158,12 +1138,10 @@ class LatexParser {
 	#foreground: string | null = null;
 	#background: string | null = null;
 	#depth = 0;
-	/** Nesting cap to prevent stack overflow on deeply nested math payloads. */
 	static readonly #MAX_DEPTH = 500;
 
 	constructor(src: string, startDepth = 0) {
 		this.#s = src;
-		// Seed child parser with cumulative depth to avoid unbounded recursion.
 		this.#depth = startDepth;
 	}
 
@@ -1289,7 +1267,6 @@ class LatexParser {
 	}
 
 	#applyCommand(name: string, style: FontStyle | null): string {
-		// Fonts: reparse the argument under the requested style.
 		const font = FONTS[name];
 		if (font) return this.#argument(font).text;
 
@@ -1300,7 +1277,6 @@ class LatexParser {
 			return fn + this.#spaceBeforeArg();
 		}
 
-		// Accents → combining marks over each glyph.
 		const accent = ACCENTS[name];
 		if (accent) return applyCombining(this.#argument(style).text, accent);
 
@@ -1399,7 +1375,6 @@ class LatexParser {
 		const symbol = SYMBOLS[name];
 		if (symbol !== undefined) return symbol;
 
-		// Layout-only commands that carry no visible glyph.
 		switch (name) {
 			case "displaystyle":
 			case "textstyle":
@@ -1425,7 +1400,6 @@ class LatexParser {
 				return "";
 		}
 
-		// Unknown command: surface the bare name rather than dropping it silently.
 		return name;
 	}
 
@@ -1488,7 +1462,6 @@ class LatexParser {
 		while (this.#s[this.#i] === " ") this.#i++;
 		const c = this.#s[this.#i];
 		if (c === undefined) return { text: "", group: false };
-		// Bound recursion depth when reading arguments.
 		if (this.#depth >= LatexParser.#MAX_DEPTH) {
 			if (c === "{") {
 				this.#i++;
@@ -1509,7 +1482,6 @@ class LatexParser {
 			}
 			if (c === "\\") return { text: this.#command(style), group: false };
 			if (c === "^" || c === "_") {
-				// Bare script with no base (e.g. `{}^{n}`): treat the script as the arg.
 				this.#i++;
 				return { text: this.#script(style, c === "^"), group: false };
 			}
@@ -1738,11 +1710,6 @@ class LatexParser {
 	}
 }
 
-/**
- * Convert a bare LaTeX math fragment (no surrounding `$`/`\(` delimiters) to its
- * best-effort Unicode rendering. Unknown commands degrade to their bare name;
- * `\\` becomes a newline. Always returns a string (never throws).
- */
 export function latexToUnicode(src: string): string {
 	if (typeof src !== "string" || src.length === 0) return src;
 	return new LatexParser(src).render();
@@ -1752,7 +1719,6 @@ const NEWLINES = /\n+/g;
 const BARE_MATH_LINE_COMMAND =
 	/\\(?:operatorname|frac|dfrac|tfrac|cfrac|genfrac|sqrt|sum|prod|coprod|int|iint|iiint|lim|alpha|beta|gamma|delta|epsilon|varepsilon|theta|lambda|mu|sigma|phi|varphi|pi|omega|infty|partial|nabla|forall|exists|mathbb|mathcal|mathscr|mathbf|mathrm|left|right|begin|phantom|hphantom|vphantom|cdots|ldots|dots|to|rightarrow|leftarrow|leq|geq|neq|times|cdot|overline|underline|vec|hat|bar|textcolor|color|normalcolor|colorbox|fcolorbox)\b/;
 
-// Math environments eligible for delimiter-less rendering in prose.
 const BARE_MATH_ENVIRONMENTS = new Set([
 	"matrix",
 	"smallmatrix",
@@ -1780,16 +1746,10 @@ const BARE_MATH_ENVIRONMENTS = new Set([
 	"subarray",
 ]);
 
-/**
- * True when `env` is a math environment safe to auto-render without `$`/`\[`
- * delimiters. The trailing `*` of starred variants (`align*`, `equation*`) is
- * ignored; text-mode environments (`tabular`, `itemize`, …) return false.
- */
 export function isBareMathEnvironment(env: string): boolean {
 	return BARE_MATH_ENVIRONMENTS.has(env.endsWith("*") ? env.slice(0, -1) : env);
 }
 
-// Convert delimiter-less math in prose.
 function renderBareMathInText(text: string): string {
 	let out = "";
 	let i = 0;
@@ -1803,14 +1763,12 @@ function renderBareMathInText(text: string): string {
 		const closeToken = `\\end{${env}}`;
 		const close = text.indexOf(closeToken, envEnd + 1);
 		if (close === -1) {
-			// Unterminated `\begin`: convert lines up to it, then rescan past it.
 			out += renderBareMathLines(text.slice(i, envEnd + 1));
 			i = envEnd + 1;
 			continue;
 		}
 		const blockEnd = close + closeToken.length;
 		if (!isBareMathEnvironment(env)) {
-			// Non-math env: convert preceding lines, emit the whole block verbatim.
 			out += renderBareMathLines(text.slice(i, begin)) + text.slice(begin, blockEnd);
 			i = blockEnd;
 			continue;
@@ -1846,14 +1804,12 @@ function renderBareMathLines(text: string): string {
 function shouldRenderBareMathLine(line: string): boolean {
 	const trimmed = line.trim();
 	if (trimmed === "" || !trimmed.includes("\\")) return false;
-	// A lone `\begin{X}`/`\end{X}` line for a non-math environment never converts.
 	const env = /\\(?:begin|end)\{([^}]*)\}/.exec(trimmed);
 	if (env && !isBareMathEnvironment(env[1])) return false;
 	if (!BARE_MATH_LINE_COMMAND.test(trimmed)) return false;
 	return trimmed.startsWith("\\") || /[=<>^_{}&]/.test(trimmed);
 }
 
-/** Scan prose for math spans and replace each with its Unicode rendering. */
 export function renderMathInText(text: string): string {
 	if (typeof text !== "string" || text.length === 0) return text;
 	if (
@@ -1875,7 +1831,6 @@ export function renderMathInText(text: string): string {
 		if (c === "\\") {
 			const d = text[i + 1];
 			if (d === "\\") {
-				// Escaped backslash: emit verbatim so a following `(`/`[` is plain text.
 				out += "\\\\";
 				i += 2;
 				continue;
@@ -1931,7 +1886,6 @@ export function renderMathInText(text: string): string {
 	return renderBareMathInText(out);
 }
 
-/** Index of the `$` closing an inline math span, or -1 if not inline math. */
 export function inlineMathSpanEnd(text: string, open: number): number {
 	const after = text[open + 1];
 	if (after === undefined || after === " " || after === "\t" || after === "\n" || after === "$") {

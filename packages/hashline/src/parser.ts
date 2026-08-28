@@ -1,8 +1,3 @@
-/**
- * Token-driven state machine that turns a stream of {@link Token}s into a
- * flat list of {@link Edit}s. Sits between the {@link Tokenizer} and the
- * applier.
- */
 import { HL_PAYLOAD_REPLACE, HL_RANGE_SEP } from "./format";
 import {
 	BARE_BODY_AUTO_PIPED_WARNING,
@@ -37,16 +32,6 @@ function isSkippableCommentLine(line: string): boolean {
 	return line.trimStart().startsWith("#");
 }
 
-/**
- * Stripped remainder of a bare `N: <value>` row that is a lone literal — a quoted string, a number,
- * or one of the JSON keywords `true`/`false`/`null` — optionally comma-terminated. That is the shape
- * of a numeric-keyed dict/JSON/YAML body rather than read-output paste.
- *
- * Exported because the write tool asks the same question of a whole-file payload. Two copies of this
- * shape disagreed: the copy here rejected `true`/`false`/`null`, so a numeric-keyed JSON body of
- * keywords had its `N:` keys stripped as if it were a read paste, while the write tool accepted the
- * identical body.
- */
 export const BARE_LITERAL_VALUE_RE = /^\s*(?:"[^"]*"|'[^']*'|[-+]?\d+(?:\.\d+)?|true|false|null)\s*,?\s*$/;
 
 function detectApplyPatchContamination(text: string, _hasPending: boolean): string | null {
@@ -105,11 +90,6 @@ interface Pending {
 	target: BlockTarget;
 	lineNum: number;
 	payloads: PayloadRow[];
-	/**
-	 * Blank rows seen after the body started. Interior blanks are committed to
-	 * the payload when the next non-blank row arrives; trailing blanks before
-	 * the next header/op are layout separators and are discarded on flush.
-	 */
 	deferredBlanks: PayloadRow[];
 }
 
@@ -293,13 +273,6 @@ export class Executor {
 			if (text.trimStart().charCodeAt(0) === 45 /* - */) throw new Error(`line ${lineNum}: ${MINUS_ROW_REJECTED}`);
 			if (!this.#warnings.includes(BARE_BODY_AUTO_PIPED_WARNING)) this.#warnings.push(BARE_BODY_AUTO_PIPED_WARNING);
 			this.#commitDeferredBlanks(this.#pending);
-			// Defer read-output line-number stripping to #flushPending: a bare
-			// "N:text" row is only a copy-paste artifact from snapshot output
-			// when *every* bare row in the hunk carries that prefix. Stripping a
-			// row in isolation would corrupt a genuine body that merely starts
-			// with "digits:" (YAML ports "42:hello", timestamps "12:30") when it
-			// sits next to an unprefixed sibling. Rows with an explicit "+" go
-			// through #handleLiteralPayload and are never bare, never stripped.
 			this.#pending.payloads.push({ kind: "literal", text, lineNum, bare: true });
 			return;
 		}
@@ -310,13 +283,6 @@ export class Executor {
 		);
 	}
 
-	/**
-	 * A blank row inside a hunk body is ambiguous: interior blanks are body
-	 * content (a bare-pasted body legitimately contains empty lines), while
-	 * blanks before the body starts or trailing into the next op are layout.
-	 * Defer them; {@link #commitDeferredBlanks} folds them in only when a later
-	 * non-blank row proves they were interior.
-	 */
 	#handleBlank(text: string, lineNum: number): void {
 		const pending = this.#pending;
 		if (!pending) return;
@@ -332,13 +298,6 @@ export class Executor {
 		pending.deferredBlanks = [];
 	}
 
-	/**
-	 * Strip a single read-output line-number prefix (`N:`) from every bare body
-	 * row, but only when *all* bare rows carry one. A uniform set of prefixes is
-	 * the signature of content pasted straight from `read`/`search` output; a
-	 * mixed set means the `N:` is genuine payload content and must stay. Rows
-	 * authored with an explicit `+` are not bare and are never touched.
-	 */
 	#stripBarePrefixesIfUniform(payloads: PayloadRow[]): void {
 		let sawBare = false;
 		let allLiteralValues = true;
@@ -350,10 +309,6 @@ export class Executor {
 			allLiteralValues &&= BARE_LITERAL_VALUE_RE.test(stripped);
 		}
 		if (!sawBare) return;
-		// A body where every stripped remainder is a lone quoted/numeric literal
-		// (optionally comma-terminated) is the shape of a numeric-keyed dict or
-		// YAML mapping (`1: "one",`), not read-output paste; stripping the "N:"
-		// keys would mangle every line. Leave such bodies untouched.
 		if (allLiteralValues) return;
 		for (const row of payloads) {
 			if (row.bare && row.text.trim().length > 0) row.text = stripOneLeadingHashlinePrefix(row.text);
@@ -401,7 +356,6 @@ export class Executor {
 			return;
 		}
 		if (target.kind === "delete_block") {
-			// A block edit with no payloads resolves to a pure block deletion.
 			this.#pushBlock(target.anchor, [], lineNum);
 			return;
 		}
@@ -416,9 +370,6 @@ export class Executor {
 			return;
 		}
 		if (payloads.length === 0) {
-			// A bodyless SWAP is rejected, never treated as a delete: the body is
-			// the final content, so its absence usually means a truncated stream,
-			// and silently deleting the range would be silent data loss.
 			if (target.kind === "replace") throw new Error(`line ${lineNum}: ${EMPTY_REPLACE}`);
 			throw new Error(`line ${lineNum}: ${EMPTY_INSERT}`);
 		}

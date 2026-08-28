@@ -1,4 +1,3 @@
-// (Refresh is the sole responsibility of AuthStorage; no provider-direct refresh here.)
 import { toNumber } from "@veyyon/catalog/utils";
 import { $env } from "@veyyon/utils/env";
 import { clamp01 } from "@veyyon/utils/math";
@@ -34,9 +33,6 @@ type KimiUsageRow = {
 	window?: UsageWindow;
 };
 
-// Kimi's own env/default resolution: prefer the explicit arg, then the
-// KIMI_CODE_BASE_URL override, then the built-in default. Slash/whitespace
-// normalization is delegated to the shared @veyyon/utils owner.
 function resolveKimiBaseUrl(baseUrl?: string): string {
 	const candidate = baseUrl?.trim() || $env.KIMI_CODE_BASE_URL?.trim() || DEFAULT_BASE_URL;
 	return normalizeBaseUrl(candidate, DEFAULT_BASE_URL);
@@ -216,10 +212,6 @@ export const kimiUsageProvider: UsageProvider = {
 		if (!accessToken) return null;
 
 		const nowMs = Date.now();
-		// AuthStorage refreshes OAuth credentials pre-emptively (60s skew). If the
-		// usage probe lands with an expired token, short-circuit rather than POST
-		// the broker sentinel back to Kimi — the next cycle will carry a freshly
-		// refreshed credential.
 		if (credential.expiresAt !== undefined && credential.expiresAt <= nowMs) {
 			ctx.logger?.debug("Kimi usage token expired; skipping probe", { provider: params.provider });
 			return null;
@@ -227,12 +219,6 @@ export const kimiUsageProvider: UsageProvider = {
 
 		const baseUrl = resolveKimiBaseUrl(params.baseUrl);
 		const url = buildUsageUrl(baseUrl);
-		// Build the request headers OUTSIDE the network try. Header construction
-		// is deterministic and non-network; if it ever fails it is a real local
-		// error (a filesystem or config fault), not a "usage unavailable" signal.
-		// Keeping it inside the try would swallow such an error as a silent null
-		// (Law 10) — the exact failure mode that once masked getDeviceId's
-		// ENOENT on a fresh host. Let it surface.
 		const commonHeaders = getKimiCommonHeaders();
 		let payload: unknown;
 		try {

@@ -22,14 +22,9 @@ import type { MnemopiBackendConfig, MnemopiScoping } from "./config";
 import { mnemopiEmbedClient } from "./embed-client";
 import type { MnemopiMemoryEditOperation } from "./verbs";
 
-// The mnemopi package pulls the embeddings stack; keep it off the CLI startup
-// module graph by loading it lazily at the async boundaries that need it.
 let mnemopiMod: typeof MnemopiNs | undefined;
 let mnemopiCoreMod: typeof MnemopiCoreNs | undefined;
 
-// `setLocalModelInitializer` writes a single module-level slot shared by
-// both the root and `/core` re-exports, so install at most once across both
-// loaders. Either entry point is enough to wire up the override.
 let localModelInitializerInstalled = false;
 
 function installLocalModelInitializer(setInitializer: (initializer: LocalModelInitializer) => void): void {
@@ -43,7 +38,6 @@ function installLocalModelInitializer(setInitializer: (initializer: LocalModelIn
 	);
 }
 
-/** Lazily load `@veyyon/mnemopi` (memoized) and route fastembed loads through the dedicated embeddings subprocess. The override is installed once */
 export async function loadMnemopi(): Promise<typeof MnemopiNs> {
 	if (!mnemopiMod) {
 		mnemopiMod = await import("@veyyon/mnemopi");
@@ -52,7 +46,6 @@ export async function loadMnemopi(): Promise<typeof MnemopiNs> {
 	return mnemopiMod;
 }
 
-/** Lazily load `@veyyon/mnemopi/core` (memoized). */
 export async function loadMnemopiCore(): Promise<typeof MnemopiCoreNs> {
 	if (!mnemopiCoreMod) {
 		mnemopiCoreMod = await import("@veyyon/mnemopi/core");
@@ -61,13 +54,11 @@ export async function loadMnemopiCore(): Promise<typeof MnemopiCoreNs> {
 	return mnemopiCoreMod;
 }
 
-/** Sync access for code below an async boundary that already awaited {@link loadMnemopi}. */
 export function requireMnemopi(): typeof MnemopiNs {
 	if (!mnemopiMod) throw new Error("Mnemopi module not loaded; await loadMnemopi() first.");
 	return mnemopiMod;
 }
 
-/** Sync access for code below an async boundary that already awaited {@link loadMnemopiCore}. */
 export function requireMnemopiCore(): typeof MnemopiCoreNs {
 	if (!mnemopiCoreMod) throw new Error("Mnemopi core module not loaded; await loadMnemopiCore() first.");
 	return mnemopiCoreMod;
@@ -108,9 +99,6 @@ export interface MnemopiMemoryEditResult {
 	store?: MnemopiMemoryStore;
 }
 
-/** Which mnemopi table a resolved memory id lives in. `fact` rows are
- * read-only projections of fact extraction (issue #4725): resolvable for
- * reads, never editable. */
 export type MnemopiMemoryStore = "working" | "episodic" | "fact";
 
 interface MnemopiStoredMemoryRow {
@@ -128,7 +116,6 @@ interface MnemopiStoredMemoryRow {
 	metadata_json?: unknown;
 }
 
-/** Full-row lookup result produced by {@link MnemopiSessionState.getScopedMemory}. Mirrors the shape stored in mnemopi's working/episodic tables, tagged with */
 export interface MnemopiScopedMemoryHit {
 	bank: string;
 	store: MnemopiMemoryStore;
@@ -184,7 +171,6 @@ export interface MnemopiSessionStateOptions {
 	aliasOf?: MnemopiSessionState;
 	lastRetainedTurn?: number;
 	hasRecalledForFirstTurn?: boolean;
-	/** The banks to use, instead of opening them from `config`. The seam a test needs to drive recall against banks that fail on demand. */
 	scoped?: MnemopiScopedResources;
 }
 
@@ -208,9 +194,6 @@ export class MnemopiSessionState {
 		this.aliasOf = options.aliasOf;
 		this.lastRetainedTurn = options.lastRetainedTurn ?? 0;
 		this.hasRecalledForFirstTurn = options.hasRecalledForFirstTurn ?? false;
-		// An alias shares the primary's banks rather than opening its own, and reads
-		// the sibling's field directly. Written as conditionals because an optional
-		// chain cannot carry a private name.
 		if (options.scoped) {
 			this.#scoped = options.scoped;
 		} else if (options.aliasOf) {
@@ -240,7 +223,6 @@ export class MnemopiSessionState {
 		return this.#scoped.retain;
 	}
 
-	/** Read counterpart to {@link editScopedMemory}: fetch a memory row by id from any bank this session recalls from (retain, recall, global). First */
 	getScopedMemory(id: string): MnemopiScopedMemoryHit | null {
 		const targets = dedupeScopedTargets([
 			this.#scoped.retain,
@@ -290,9 +272,6 @@ export class MnemopiSessionState {
 				row.memory_store === "episodic" || row.memory_store === "fact" ? row.memory_store : "working";
 			const resultContext: Pick<MnemopiMemoryEditResult, "bank" | "store"> = { bank: target.bank, store };
 			if (store === "fact") {
-				// Facts are read-only: no memory_edit op mutates the facts
-				// table, so report that precisely instead of `not_found`
-				// (the id DID resolve — issue #4725).
 				ineligible ??= { status: "not_editable", ...resultContext };
 				continue;
 			}
@@ -357,7 +336,6 @@ export class MnemopiSessionState {
 					}
 				}
 			} catch (error) {
-				// A bank that throws contributes nothing to the merge, so its memories vanish from the result and the caller cannot tell a broken bank from
 				failed.push({ bank: target.bank, error });
 				logger.warn("Memory recall skipped a bank that failed to read", {
 					bank: target.bank,
@@ -368,9 +346,6 @@ export class MnemopiSessionState {
 			}
 		}
 
-		// Every bank failing is not an empty result, it is a broken recall. Returning
-		// `[]` here makes the memory tools answer "No relevant memories found", which
-		// tells the model the search ran and came back clean. It did not run.
 		if (failed.length > 0 && failed.length === this.#scoped.recall.length) {
 			const banks = failed.map(f => f.bank).join(", ");
 			throw new Error(
@@ -500,7 +475,6 @@ export class MnemopiSessionState {
 		});
 	}
 
-	/** Run background memory work started from a session event without letting it reject into nowhere. */
 	#runDetached(what: string, work: () => Promise<void>): void {
 		const report = (error: unknown): void => {
 			logger.warn(`Mnemopi: background ${what} failed`, {
@@ -527,8 +501,6 @@ export class MnemopiSessionState {
 		if (!context) return;
 		this.lastRecallSnippet = context;
 		try {
-			// The tail, not the system prompt: a recall that rewrote the prompt made the
-			// next request re-read the entire conversation as uncached input.
 			await this.session.publishVolatileMemoryContext("mnemopi:recall");
 		} catch (error) {
 			if (this.config.debug) {
@@ -537,7 +509,6 @@ export class MnemopiSessionState {
 		}
 	}
 
-	/** Drain in-flight fact extraction and run beam consolidation on every owned bank, after capturing the current transcript. Mirrors the manual */
 	async consolidate(): Promise<void> {
 		await this.forceRetainCurrentSession();
 		for (const memory of this.#scoped.owned) {
@@ -546,7 +517,6 @@ export class MnemopiSessionState {
 		}
 	}
 
-	/** Release the per-session resources. Defaults to running {@link consolidate} before closing handles so normal session shutdown promotes working memory */
 	async dispose(options: { consolidate?: boolean; timeoutMs?: number } = {}): Promise<void> {
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
@@ -572,7 +542,6 @@ export class MnemopiSessionState {
 				logger.warn("Mnemopi: consolidate-on-dispose exceeded shutdown budget; detaching to background.", {
 					timeoutMs,
 				});
-				// Defer close until the in-flight consolidate settles so SQLite writes don't race a closed handle. The process is on the way
 				void consolidatePromise.finally(closeOwned);
 				return;
 			}
@@ -583,12 +552,7 @@ export class MnemopiSessionState {
 	}
 }
 
-// `per-project-tagged` is implemented by opening both the project bank and the
-// shared bank, then merging recall results while keeping writes project-local.
 function createScopedResources(config: MnemopiBackendConfig): MnemopiScopedResources {
-	// Env vars (MNEMOPI_POLYPHONIC_RECALL / MNEMOPI_ENHANCED_RECALL) still override
-	// these config-driven defaults inside the core gates. Proactive linking is
-	// per-memory instance below so concurrent sessions cannot clobber each other.
 	requireMnemopi().configureRecallFeatures({
 		polyphonicRecall: config.polyphonicRecall,
 		enhancedRecall: config.enhancedRecall,
@@ -651,7 +615,6 @@ function uniqueBanks(banks: readonly string[]): readonly string[] {
 	return Array.from(new Set(banks));
 }
 
-/** In `per-project-tagged`, shared-bank lexical recall can miss global facts when the query is packed with project-bank tokens. Strip those literal bank */
 function deriveSharedRecallFallbackQuery(
 	query: string,
 	projectBank: string,
@@ -779,5 +742,3 @@ function userText(content: unknown): string {
 	}
 	return parts.join("\n");
 }
-
-// Deliberate loose-`unknown` sibling of userText: it defensively flattens possibly-untyped persisted message content (raw JSON off disk), so it cannot

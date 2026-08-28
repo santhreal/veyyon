@@ -60,9 +60,6 @@ interface HfUserData {
 	numSpaces?: number;
 }
 
-/**
- * Parse Hugging Face URL and determine type
- */
 function parseHuggingFaceUrl(url: string): {
 	type: "model" | "dataset" | "space" | "model_or_user";
 	id: string; // Full ID (org/name or just name)
@@ -74,29 +71,24 @@ function parseHuggingFaceUrl(url: string): {
 	const parts = parsed.pathname.split("/").filter(Boolean);
 	if (parts.length === 0) return null;
 
-	// huggingface.co/datasets/{org}/{dataset} or huggingface.co/datasets/{dataset}
 	if (parts[0] === "datasets" && parts.length >= 2) {
 		const id = parts.slice(1).join("/");
 		return { type: "dataset", id };
 	}
 
-	// huggingface.co/spaces/{org}/{space}
 	if (parts[0] === "spaces" && parts.length >= 3) {
 		return { type: "space", id: `${parts[1]}/${parts[2]}` };
 	}
 
-	// Skip non-resource paths
 	const reservedPaths = ["docs", "blog", "pricing", "enterprise", "join", "login", "settings"];
 	if (reservedPaths.includes(parts[0])) {
 		return null;
 	}
 
-	// huggingface.co/{org}/{model} (two parts = definitely a model)
 	if (parts.length >= 2) {
 		return { type: "model", id: `${parts[0]}/${parts[1]}` };
 	}
 
-	// huggingface.co/{id} (single part = could be model or user, try model first)
 	if (parts.length === 1) {
 		return { type: "model_or_user", id: parts[0] };
 	}
@@ -257,7 +249,6 @@ export const handleHuggingFace: SpecialHandler = async (url: string, timeout: nu
 			}
 
 			case "model_or_user": {
-				// Try model API first
 				const modelApiUrl = `https://huggingface.co/api/models/${parsed.id}`;
 				const modelResult = await loadPage(modelApiUrl, { timeout, signal });
 
@@ -288,7 +279,6 @@ export const handleHuggingFace: SpecialHandler = async (url: string, timeout: nu
 					}
 				}
 
-				// Fall back to user API
 				const userApiUrl = `https://huggingface.co/api/users/${parsed.id}`;
 				const userResult = await loadPage(userApiUrl, { timeout, signal });
 				if (!userResult.ok) return scraperDegrade("huggingface", loadFailure(userResult));

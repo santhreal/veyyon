@@ -1,9 +1,7 @@
-/** Unified Web Search Tool Single tool supporting Anthropic, Perplexity, Exa, Brave, Jina, Kimi, Gemini, Codex, Tavily, Kagi, Z.AI, SearXNG, and Synthetic */
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { AuthStorage } from "@veyyon/ai";
 import { formatCount, prompt, truncate } from "@veyyon/utils";
 import { type } from "arktype";
-// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
 import type { CustomTool, CustomToolContext, RenderResultOptions } from "../../extensibility/custom-tools/types";
 import type { Theme } from "../../modes/theme/theme";
@@ -24,13 +22,11 @@ import { renderSearchCall, renderSearchResult, type SearchRenderDetails } from "
 import type { SearchProviderId, SearchResponse } from "./types";
 import { SearchProviderError } from "./types";
 
-/** Open the credential store, loading the module that knows how ON DEMAND. `session/auth-broker-config.ts` reaches 347 modules: the broker client, the remote store, the snapshot */
 async function discoverAuthStorage(): Promise<AuthStorage> {
 	const { discoverAuthStorage: discover } = await import("../../session/auth-broker-config");
 	return discover();
 }
 
-/** Web search tool parameters schema */
 export const webSearchSchema = type({
 	query: "string",
 	recency: "'day' | 'week' | 'month' | 'year'?",
@@ -46,7 +42,6 @@ export interface SearchQueryParams extends SearchToolParams {
 	provider?: SearchProviderId | "auto";
 }
 
-/** Format response for LLM consumption */
 function formatForLLM(response: SearchResponse): string {
 	const parts: string[] = [];
 
@@ -97,7 +92,6 @@ function formatForLLM(response: SearchResponse): string {
 	return parts.join("\n");
 }
 
-/** Whether a response carries something that answers the query. An answer, a source and a citation do. Intermediate search queries and follow-up suggestions do not: they describe a search rather */
 function hasRenderableSearchContent(response: SearchResponse): boolean {
 	if (response.answer?.trim()) return true;
 	if (response.sources.length > 0) return true;
@@ -112,7 +106,6 @@ interface ExecuteSearchOptions {
 	resolveProviderTextTransform?: ProviderTextTransformResolver;
 }
 
-/** Execute web search */
 async function executeSearch(
 	_toolCallId: string,
 	params: SearchQueryParams,
@@ -128,9 +121,6 @@ async function executeSearch(
 	}
 	const candidates = selection.candidates;
 
-	// Invariant across providers; read once and tolerate an uninitialized
-	// Settings singleton (e.g. `veyyon q ...` CLI path, unit tests) so the
-	// provider-fallback loop never aborts before any provider runs.
 	let antigravityEndpointMode: "auto" | "production" | "sandbox" | undefined;
 	try {
 		antigravityEndpointMode = settings.get("providers.antigravityEndpoint");
@@ -178,8 +168,6 @@ async function executeSearch(
 			});
 
 			if (!hasRenderableSearchContent(response)) {
-				// "No renderable search content" is this file's vocabulary, and it reads as a rendering
-				// problem. After the check above it means one thing, so it says that thing.
 				throw new SearchProviderError(provider.id, `${provider.label} found no results for this query.`, 204);
 			}
 
@@ -190,16 +178,12 @@ async function executeSearch(
 				details: { response },
 			};
 		} catch (error) {
-			// Surface user-initiated cancellation immediately so the session sees a clean abort instead of a generic "all providers failed" message.
 			throwIfAborted(signal);
 			failures.push({ provider: provider ?? providerMeta, error });
 		}
 	}
 
 	if (availableProviderCount === 0 && failures.length === 0) {
-		// A chosen provider with no credential is a different fact from "nothing is
-		// configured", and it is the one an operator can act on: the search did not quietly
-		// use something else, so the message has to name what was chosen and found unusable.
 		const chosen = candidates.length === 1 && candidates[0]?.explicit ? candidates[0].id : undefined;
 		const message =
 			chosen === undefined
@@ -228,7 +212,6 @@ async function executeSearch(
 	};
 }
 
-/** Execute a web search query for CLI/testing workflows. `authStorage` may be omitted; in that case we discover one via the standard */
 export async function runSearchQuery(
 	params: SearchQueryParams,
 	options: {
@@ -255,7 +238,6 @@ export async function runSearchQuery(
 	}
 }
 
-/** Web search tool implementation. Supports the configured web-search provider chain with automatic fallback. */
 export class WebSearchTool implements AgentTool<typeof webSearchSchema, SearchRenderDetails> {
 	readonly name = "web_search";
 	readonly approval = "read" as const;
@@ -291,7 +273,6 @@ export class WebSearchTool implements AgentTool<typeof webSearchSchema, SearchRe
 	}
 }
 
-/** Web search tool as CustomTool (for TUI rendering support) */
 export const webSearchCustomTool: CustomTool<typeof webSearchSchema, SearchRenderDetails> = {
 	name: "web_search",
 	label: "Web Search",

@@ -7,7 +7,6 @@ import type { Settings } from "../config/settings";
 
 export type MnemopiLlmMode = "none" | "smol" | "remote";
 
-/** What the operator asked for, as the settings state it: the mode and the three remote fields. This is the REQUEST, not the LLM. The live client is built in one place -- */
 export interface MnemopiLlmRequest {
 	mode: MnemopiLlmMode;
 	baseUrl?: string;
@@ -42,7 +41,6 @@ export interface MnemopiBackendConfig {
 	injectionTokenLimit: number;
 	debug: boolean;
 	providerOptions: MnemopiProviderOptions;
-	/** What the operator asked for. The client itself is resolved elsewhere; see {@link MnemopiLlmRequest}. */
 	llm: MnemopiLlmRequest;
 }
 
@@ -57,14 +55,8 @@ export function loadMnemopiConfig(settings: Settings, agentDir: string): Mnemopi
 	const llmMode = settings.get("mnemopi.llmMode");
 	const embeddingOverride = settings.get("mnemopi.embeddingModel");
 	const embeddingVariant = settings.get("mnemopi.embeddingVariant");
-	// Map the variant explicitly rather than indexing an object with the raw config
-	// value (which could resolve an inherited property like `__proto__`); any value
-	// other than the multilingual variant falls back to the English default.
 	const variantModel =
 		embeddingVariant === "multilingual" ? "intfloat/multilingual-e5-large" : "BAAI/bge-base-en-v1.5";
-	// Precedence: explicit `mnemopi.embeddingModel` setting > `MNEMOPI_EMBEDDING_MODEL`
-	// env (documented model-level override) > variant-derived default. Without the env
-	// term a variant default would silently shadow a user's configured env model.
 	const embeddingModel = embeddingOverride?.trim() || Bun.env.MNEMOPI_EMBEDDING_MODEL?.trim() || variantModel;
 	return {
 		dbPath,
@@ -91,7 +83,6 @@ export function loadMnemopiConfig(settings: Settings, agentDir: string): Mnemopi
 			embeddingModel,
 			embeddingApiUrl: settings.get("mnemopi.embeddingApiUrl"),
 			embeddingApiKey: settings.get("mnemopi.embeddingApiKey"),
-			// NO LLM UNTIL ONE IS RESOLVED. A config carries the request, and `resolveMnemopiProviderOptions` turns it into a client. The paths that load a config without resolving it -- dispose,
 			llm: false,
 		},
 		llm: {
@@ -105,8 +96,6 @@ export function loadMnemopiConfig(settings: Settings, agentDir: string): Mnemopi
 
 const DEFAULT_SHARED_BANK = "default";
 
-// Cap legacy-bank scanning at session start so a pathological banks/
-// directory cannot dominate startup latency.
 const LEGACY_BANK_SCAN_LIMIT = 64;
 
 export interface MnemopiBankScope {
@@ -117,7 +106,6 @@ export interface MnemopiBankScope {
 	recallBanks: readonly string[];
 }
 
-/** Resolve write/recall banks for a session. Mnemopi has no tag-filtered recall, so `per-project-tagged` maps to a */
 export function computeMnemopiBankScope(
 	configured: string | undefined,
 	cwd: string,
@@ -157,7 +145,6 @@ function sharedBank(configured: string | undefined): string {
 	return sanitizeBankName(configured) ?? DEFAULT_SHARED_BANK;
 }
 
-/** Derive the per-project bank id from `cwd` alone. Earlier versions resolved the enclosing git root before hashing, which */
 function projectBank(configured: string | undefined, cwd: string): string {
 	const projectRoot = path.resolve(cwd || ".");
 	const project = projectBankSegment(projectRoot);
@@ -170,7 +157,6 @@ function projectBankSegment(projectRoot: string): string {
 	return limitBankName(`${project}-${Bun.hash(projectRoot).toString(36)}`);
 }
 
-/** Discover sibling banks under `<dbDir>/banks/` whose `working_memory` rows all carry the active `cwd` in `metadata_json.$.cwd`, and add those safe */
 export function extendRecallWithLegacyBanks(
 	resolved: readonly string[],
 	dbPath: string,
@@ -216,9 +202,7 @@ function bankOnlyHasCwd(dbPath: string, cwd: string): boolean {
 	} finally {
 		try {
 			db?.close();
-		} catch {
-			// nothing to do — read-only handle.
-		}
+		} catch {}
 	}
 }
 

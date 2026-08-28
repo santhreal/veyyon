@@ -69,7 +69,6 @@ export function renderTrustedObjective(objective: string): string {
 }
 
 export function goalTokenDelta(current: GoalTokenUsage, baseline: GoalTokenUsage): number {
-	// Diverges from codex-rs: codex omits cache creation because its target providers do not bill cache writes distinctly through the token-usage stream. Pi receives
 	return (
 		Math.max(0, current.input - baseline.input) +
 		Math.max(0, current.cacheWrite - baseline.cacheWrite) +
@@ -154,8 +153,6 @@ export class GoalRuntime {
 			() => promise,
 			() => promise,
 		);
-		// Waiting for the previous accounting turn to SETTLE, not for it to succeed: its failure belongs to the
-		// caller that started it, and this turn's own accounting is independent of whether that one worked.
 		await previous.catch(() => {});
 		try {
 			return await fn();
@@ -237,7 +234,6 @@ export class GoalRuntime {
 		this.#turnSnapshot = undefined;
 	}
 
-	/** Bump the goal's completed-turn counter once for the agent turn that just ended, but only when that turn was actually accounted to the active goal */
 	async #recordCompletedTurn(): Promise<void> {
 		const accountedGoalId = this.#turnSnapshot?.activeGoalId;
 		if (accountedGoalId === undefined) return;
@@ -252,9 +248,6 @@ export class GoalRuntime {
 
 	async onTaskAborted(options?: { reason?: GoalAbortReason }): Promise<void> {
 		const state = this.#host.getState();
-		// An active goal is always an accounting goal (`isAccountingStatus` covers active and
-		// budget-limited), so this one question gates both the usage flush and the pause. Which
-		// reason actually pauses is decided in one place, below.
 		if (!state?.enabled || !isAccountingStatus(state.goal)) {
 			this.#turnSnapshot = undefined;
 			return;
@@ -368,9 +361,6 @@ export class GoalRuntime {
 		if (this.#wallClock.activeGoalId === state.goal.id && wallSeconds > 0) {
 			this.#wallClock.lastAccountedAt += wallSeconds * 1000;
 		}
-		// Persisting wall-clock-only accounting on every tool event bloats /goal sessions with full
-		// objective snapshots. Keep normal tool flushes in memory/UI only, but make wall-clock
-		// usage durable before internal session switches because the active runtime is leaving.
 		const shouldPersistUsage = tokenDelta > 0 || flippedToBudgetLimited || (persistWallClock && wallSeconds > 0);
 		await this.#commitState(state, { persist: shouldPersistUsage ? "goal" : undefined });
 

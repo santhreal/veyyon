@@ -1,4 +1,3 @@
-/** Generic selector component for hooks. Displays a list of string options with keyboard navigation. */
 import {
 	type Component,
 	Container,
@@ -46,21 +45,15 @@ import {
 import { renderSliderLines } from "./segment-track";
 import { hoverBandAt } from "./selector-helpers";
 
-/** One segment of a {@link HookSelectorSlider} — a label and an optional detail line (e.g. the resolved model name) shown beneath the track while */
 export interface HookSelectorSliderSegment {
 	label: string;
-	/** Secondary line rendered under the track when this segment is selected. */
 	detail?: string;
 }
 
-/** A horizontal left/right selector rendered above the option list. Unlike the up/down option cursor, the slider is moved with the left/right arrows from */
 export interface HookSelectorSlider {
-	/** Dim caption rendered before the slider track (e.g. "continue with"). */
 	caption?: string;
 	segments: HookSelectorSliderSegment[];
-	/** Initially highlighted segment index. */
 	index: number;
-	/** Invoked with the new index whenever the slider moves. */
 	onChange?: (index: number) => void;
 }
 
@@ -77,19 +70,11 @@ export interface HookSelectorOptions {
 	onExternalEditor?: () => void;
 	helpText?: string;
 	slider?: HookSelectorSlider;
-	/** Indices into the original options that cannot be selected: they render
-	 *  dimmed, are skipped during navigation, and reject enter/timeout. */
 	disabledIndices?: readonly number[];
-	/** Render a leading radio/checkbox marker before each markable option, matching the ask transcript. "radio" fills the marker on the cursor row */
 	selectionMarker?: "radio" | "checkbox";
-	/** For `selectionMarker: "checkbox"`: original-indices currently checked. */
 	checkedIndices?: readonly number[];
-	/** Number of leading options (original order) that receive a selection
-	 *  marker. Defaults to every option when {@link selectionMarker} is set. */
 	markableCount?: number;
-	/** `"card"` (default) is the standalone surface: a floating ModalShell over the transcript, with house footer chips and pointer support. `"embedded"` */
 	presentation?: "card" | "embedded";
-	/** Card presentation only: repaint request for hover and countdown paints. */
 	onRequestRender?: () => void;
 }
 
@@ -108,17 +93,12 @@ function normalizeHookSelectorOption(option: HookSelectorOptionInput): HookSelec
 	return { label: option.label };
 }
 
-/** One row of the option list. `highlight` causes the row (and its wrapped continuations, plus trailing padding) to be painted with the theme's */
 type SelectorRow = { text: string; highlight: boolean; option?: number };
 
-/** Paint `content` with the `selectedBg` background, applied AFTER any inner
- *  ANSI styling so the band spans padding as well as content. */
 function paintSelectedRow(content: string): string {
 	return theme.bg("selectedBg", content);
 }
 
-/** A filtered option paired with its index into the original options array, so
- *  disabled-index lookups survive fuzzy filtering and reordering. */
 type FilteredOption = { option: HookSelectorOption; index: number };
 
 export class HookSelectorComponent extends Container {
@@ -145,20 +125,14 @@ export class HookSelectorComponent extends Container {
 	#sliderIndex: number = 0;
 	#sliderComponent: Text | undefined;
 	#lastRenderWidth: number | undefined;
-	/** Floating card (default) versus bare rows inside a host's own card. */
 	readonly #card: boolean;
 	#helpText: string | undefined;
 	#onRequestRender: (() => void) | undefined;
-	/** Card title bar text: the title's first line, plus the countdown suffix. */
 	#cardTitle: string;
 	#countdownSuffix = "";
-	/** List children that are option rows, and the filtered index each stands for. */
 	#optionRows = new Map<Component, number>();
-	/** Per-render map of 0-based body line → filtered option index. */
 	#hitRows: (number | undefined)[] = [];
-	/** Pointer-highlighted option (never the selected one; selection owns its row). */
 	#hoveredIndex: number | null = null;
-	/** The cross-fade between the option the pointer left and the one it arrived at, once a host lends this card a repaint. Absent, the band is switched. */
 	#hoverFade: HoverFade | undefined;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
@@ -206,9 +180,6 @@ export class HookSelectorComponent extends Container {
 			this.#sliderIndex = clampLow(opts.slider.index, 0, opts.slider.segments.length - 1);
 		}
 
-		// The card's title bar carries the title's first line, so the body opens
-		// on whatever the caller put under it (the session name a delete
-		// confirmation is about) rather than repeating the heading.
 		const bodyTitle = this.#card ? restTitleLines.join("\n") : title;
 		if (bodyTitle.length > 0) {
 			this.#titleComponent = new Markdown(bodyTitle, 1, 0, getMarkdownTheme(), {
@@ -233,7 +204,6 @@ export class HookSelectorComponent extends Container {
 				s => this.#showCountdown(s),
 				() => {
 					opts?.onTimeout?.();
-					// Auto-select current option on timeout (typically the first/recommended option)
 					const selected = this.#filteredOptions[this.#selectedIndex];
 					if (selected && !this.#isDisabled(selected.index)) {
 						this.#onSelectCallback(selected.option.label);
@@ -252,8 +222,6 @@ export class HookSelectorComponent extends Container {
 		return this.#disabledIndices.has(index);
 	}
 
-	/** Clamp `index` into range, then walk forward (and finally backward) to the
-	 *  nearest enabled option so the cursor never lands on a disabled row. */
 	#coerceSelectedIndex(index: number): number {
 		if (this.#filteredOptions.length === 0) return -1;
 		const maxIndex = this.#filteredOptions.length - 1;
@@ -271,8 +239,6 @@ export class HookSelectorComponent extends Container {
 		return clamped;
 	}
 
-	/** Move the cursor by `delta`, skipping disabled rows, stopping at the first
-	 *  enabled option reached or at the list edge. */
 	#moveSelection(delta: number): void {
 		if (this.#filteredOptions.length === 0) return;
 		const maxIndex = this.#filteredOptions.length - 1;
@@ -319,7 +285,6 @@ export class HookSelectorComponent extends Container {
 		return lines;
 	}
 
-	/** Styled leading marker (`"<glyph> "`) for a markable option row, or `undefined` when no marker applies (control rows beyond `markableCount`, */
 	#renderMarkerPrefix(index: number, isSelected: boolean, isDisabled: boolean): string | undefined {
 		if (this.#selectionMarker === undefined || index >= this.#markableCount) return undefined;
 		if (this.#selectionMarker === "radio") {
@@ -333,7 +298,6 @@ export class HookSelectorComponent extends Container {
 		return theme.fg(color, `${glyph} `);
 	}
 
-	/** Wrap an option description into indented rows, truncating to `maxRows` with an ellipsis. Pre-wrapping (rather than emitting one long line that the */
 	#wrapDescriptionRows(
 		description: string,
 		maxRows: number,
@@ -398,7 +362,6 @@ export class HookSelectorComponent extends Container {
 	): { startIndex: number; endIndex: number } {
 		if (total === 0) return { startIndex: 0, endIndex: 0 };
 
-		// In compact mode every option contributes only its label rows; the highlighted option's description is layered on afterwards (see
 		const descMode: number | "full" = compact ? 0 : "full";
 		const rowBudget = Math.max(1, this.#maxVisible);
 		const selectedIndex = clampLow(this.#selectedIndex, 0, total - 1);
@@ -461,7 +424,6 @@ export class HookSelectorComponent extends Container {
 		const rows: SelectorRow[] = [];
 		const total = this.#filteredOptions.length;
 		const mdTheme = getMarkdownTheme();
-		// Compact mode kicks in exactly when the fully-expanded list (all descriptions) would overflow the row budget — the same condition that
 		const compact = this.#isSearchEnabled(renderWidth, mdTheme);
 		const { startIndex, endIndex } = this.#getVisibleOptionRange(total, renderWidth, mdTheme, compact);
 
@@ -473,8 +435,6 @@ export class HookSelectorComponent extends Container {
 				if (filtered === undefined) continue;
 				labelRows += this.#optionRowCount(filtered.option, renderWidth, i === this.#selectedIndex, mdTheme, 0);
 			}
-			// Reserve one row for the status line; give the remainder to the
-			// highlighted option's description.
 			selectedDescRows = Math.max(0, Math.max(1, this.#maxVisible) - labelRows - 1);
 		}
 
@@ -484,7 +444,6 @@ export class HookSelectorComponent extends Container {
 			const isSelected = i === this.#selectedIndex;
 			const isDisabled = this.#isDisabled(filtered.index);
 			const descMode: number | "full" = compact ? (isSelected ? selectedDescRows : 0) : "full";
-			// Highlight the whole option block (label + wrapped description rows) so the focus band reads as one continuous bar rather than a stripe
 			const highlight = isSelected && !isDisabled;
 			const optionLines = this.#renderOptionLines(
 				filtered.option,
@@ -517,8 +476,6 @@ export class HookSelectorComponent extends Container {
 		}
 	}
 
-	/** Countdown tick: the card shows it in the title bar, an embedded selector
-	 *  in its own title row, because that is the heading each one draws. */
 	#showCountdown(seconds: number): void {
 		if (!this.#card) {
 			this.#titleComponent?.setText(`${this.#baseTitle} (${seconds}s)`);
@@ -532,33 +489,24 @@ export class HookSelectorComponent extends Container {
 		this.#useRequestRender(callback);
 	}
 
-	/** Take a repaint seam and rebuild the hover fade on it. Both the constructor option and the
-	 *  later setter land here, because a host that hands the callback in at construction time is
-	 *  just as entitled to the fade as one that lends it afterwards. */
 	#useRequestRender(callback: () => void): void {
 		this.#onRequestRender = callback;
-		// The band fades only once the card has a repaint to lend it: the frames between two mouse
-		// reports have no input to hang off. Same ambient gate as the open unfold.
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade({ requestRender: callback, enabled: pointerMotionEnabled() });
 		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
 	}
 
-	/** Band strength for an option row; without a fade the hovered row is at 1 and the rest at 0. */
 	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
-	/** Render the slider block in the style of the status line: each option is a distinctly colored segment, the active one filled as a powerline chip */
 	#renderSliderLine(): string {
 		const slider = this.#slider;
 		if (!slider) return "";
 		return renderSliderLines(slider.segments, this.#sliderIndex, slider.caption).join("\n");
 	}
 
-	/** Move the slider by `delta`, clamped to the segment range, refresh the
-	 *  rendered track, and notify the caller only when the index actually moves. */
 	#moveSlider(delta: number): void {
 		const slider = this.#slider;
 		if (!slider) return;
@@ -618,9 +566,6 @@ export class HookSelectorComponent extends Container {
 
 	handleInput(keyData: string): void {
 		if (keyData.startsWith("\x1b[<")) {
-			// Only a card reads its own reports. Embedded, the host's card offsets
-			// these rows, so a report read in this component's coordinates would
-			// answer the wrong option: the host routes it through hitTestOption.
 			if (this.#card) routeSgrMouseInput(keyData, event => this.#routeMouse(event));
 			return;
 		}
@@ -666,7 +611,6 @@ export class HookSelectorComponent extends Container {
 		if (selected && !this.#isDisabled(selected.index)) this.#onSelectCallback(selected.option.label);
 	}
 
-	/** Footer chips. A caller that passed `helpText` already wrote the keys its dialog takes — an ask question toggles where a menu selects — so those */
 	#shortcuts(): readonly ModalShortcut[] {
 		if (this.#helpText !== undefined) {
 			const segments = this.#helpText.split(/\s{2,}/);
@@ -684,15 +628,12 @@ export class HookSelectorComponent extends Container {
 			}
 			return result;
 		}
-		// Every other list surface names these keys the same way, and the labels
-		// carry the live keybinding rather than a hardcoded "enter"/"esc".
 		const extras: ModalShortcut[] = [];
 		if (this.#slider) extras.push({ label: "←/→ tier" });
 		if (this.#onExternalEditorCallback) {
 			extras.push({ label: "external editor", keybindings: ["app.editor.external"] });
 		}
 		if (extras.length === 0) return SELECT_LIST_SHORTCUTS;
-		// The close chip stays last; the surface's own keys sit in front of it.
 		const shortcuts = SELECT_LIST_SHORTCUTS.slice();
 		shortcuts.splice(shortcuts.length - 1, 0, ...extras);
 		return shortcuts;
@@ -741,9 +682,6 @@ export class HookSelectorComponent extends Container {
 		if (event.leftClick) {
 			const index = this.#hitRows[line];
 			const filtered = index === undefined ? undefined : this.#filteredOptions[index];
-			// A click mirrors Enter: move onto the option, then take it. A
-			// disabled row is inert under the pointer exactly as it is under the
-			// cursor keys, rather than moving the selection onto it.
 			if (index !== undefined && filtered && !this.#isDisabled(filtered.index)) {
 				this.#selectedIndex = index;
 				this.#updateList();
@@ -754,7 +692,6 @@ export class HookSelectorComponent extends Container {
 		return true;
 	}
 
-	/** Rows this selector draws, with `#hitRows` filled in as they are produced. Assembled child by child rather than through the container so each */
 	#assembleBody(contentWidth: number): string[] {
 		const body: string[] = [];
 		this.#hitRows = [];
@@ -785,13 +722,10 @@ export class HookSelectorComponent extends Container {
 		return body;
 	}
 
-	/** Embedded presentation: the option index drawn on `line` (0-based within this selector's own rows), or undefined for a heading, gap or the status */
 	hitTestOption(line: number): number | undefined {
 		return this.#hitRows[line];
 	}
 
-	/** Embedded presentation: hover `index` (or clear it with null). Returns
-	 *  true when the paint changed. */
 	setHoveredOption(index: number | null): boolean {
 		if (index === this.#hoveredIndex) return false;
 		this.#hoveredIndex = index;
@@ -799,8 +733,6 @@ export class HookSelectorComponent extends Container {
 		return true;
 	}
 
-	/** Embedded presentation: take the option on `line`, exactly as Enter
-	 *  would. A gap, heading or disabled row is inert. */
 	selectOptionAt(line: number): boolean {
 		const index = this.#hitRows[line];
 		const filtered = index === undefined ? undefined : this.#filteredOptions[index];
@@ -811,7 +743,6 @@ export class HookSelectorComponent extends Container {
 		return true;
 	}
 
-	/** Embedded presentation: a wheel notch steps the cursor like an arrow. */
 	handleWheel(delta: number): void {
 		this.#moveSelection(delta < 0 ? -1 : 1);
 	}

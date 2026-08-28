@@ -9,7 +9,6 @@ type Cache = {
 	result: string[];
 };
 
-/** Box-drawing glyphs plus an optional colorizer for an outline drawn around a {@link Box}. */
 export interface BoxBorder {
 	chars: {
 		topLeft: string;
@@ -22,9 +21,6 @@ export interface BoxBorder {
 	color?: (text: string) => string;
 }
 
-/**
- * Box component - a container that applies padding and background to all children
- */
 export class Box implements Component {
 	children: Component[] = [];
 	#paddingX: number;
@@ -40,7 +36,6 @@ export class Box implements Component {
 		return this;
 	}
 
-	// Cache for rendered output
 	#cached?: Cache;
 
 	constructor(paddingX = 1, paddingY = 1, bgFn?: (text: string) => string, border?: BoxBorder) {
@@ -85,7 +80,6 @@ export class Box implements Component {
 
 	setBgFn(bgFn?: (text: string) => string): void {
 		this.#bgFn = bgFn;
-		// Don't invalidate here - we'll detect bgFn changes by sampling output
 	}
 
 	setBorder(border?: BoxBorder): void {
@@ -95,7 +89,6 @@ export class Box implements Component {
 
 	#hugContent = false;
 
-	/** When set, shrink box width to its widest child line instead of full available width. */
 	setHugContent(hug: boolean): this {
 		if (this.#hugContent !== hug) {
 			this.#hugContent = hug;
@@ -119,23 +112,14 @@ export class Box implements Component {
 		const children = this.children;
 		const count = children.length;
 		const paddingX = this.#ignoreTight ? this.#paddingX : getPaddingX(this.#paddingX);
-		// A border eats one column on each side; skip it unless the interior can still
-		// hold the horizontal padding plus at least one content column, so a bordered
-		// Box never overflows the width it was given.
 		const border = this.#border && width - 2 >= paddingX * 2 + 1 ? this.#border : undefined;
 		const innerWidth = border ? width - 2 : width;
 		const contentWidth = Math.max(1, innerWidth - paddingX * 2);
-		// bgFn / border output can change without the function reference changing
-		// (theme mutation); sample both so a silent palette swap still misses the cache.
 		const bgSample = this.#bgFn ? this.#bgFn("test") : undefined;
 		const borderSample = border
 			? `${border.color ? border.color("|") : "|"}${border.chars.topLeft}${border.chars.vertical}`
 			: undefined;
 
-		// Render every child every frame (renders may carry side effects); the
-		// memo only skips re-deriving the padded/background rows. Per the
-		// Component render contract, identical child array references prove the
-		// content is unchanged.
 		const cached = this.#cached;
 		let unchanged =
 			cached !== undefined &&
@@ -155,15 +139,8 @@ export class Box implements Component {
 
 		const result: string[] = [];
 		if (contentRows > 0) {
-			// Hugging: emit rows at the widest child line, not the full width.
-			// The children already wrapped at contentWidth, so this only trims
-			// the padding (and the border rule) down to the real ink.
 			let emitWidth = innerWidth;
 			if (this.#hugContent) {
-				// Children like Markdown right-pad their rows with raw spaces;
-				// measure past that padding or every card measures full-width.
-				// Only bare trailing spaces are trimmed — bg-painted padding ends
-				// in escape bytes and is preserved as part of the visual design.
 				let maxChildWidth = 0;
 				for (let ci = 0; ci < childLines.length; ci++) {
 					const lines = childLines[ci]!;
@@ -176,11 +153,9 @@ export class Box implements Component {
 			}
 			const leftPad = padding(paddingX);
 			const interior: string[] = [];
-			// Top padding
 			for (let i = 0; i < this.#paddingY; i++) {
 				interior.push(this.#applyBg("", emitWidth));
 			}
-			// Content
 			for (let ci = 0; ci < childLines.length; ci++) {
 				const lines = childLines[ci]!;
 				for (let li = 0; li < lines.length; li++) {
@@ -190,7 +165,6 @@ export class Box implements Component {
 					);
 				}
 			}
-			// Bottom padding
 			for (let i = 0; i < this.#paddingY; i++) {
 				interior.push(this.#applyBg("", emitWidth));
 			}

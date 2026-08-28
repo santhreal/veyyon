@@ -1,23 +1,3 @@
-/**
- * OpenAI Codex "saved rate limit reset" redemption client.
- *
- * OpenAI lets paid Codex accounts bank a usage-window reset and spend it on
- * demand (announced 2026-06-11). The count is surfaced on `/wham/usage` as
- * `rate_limit_reset_credits.available_count` (see `./openai-codex.ts`), but the
- * actual credit objects and the redeem action live on two dedicated routes:
- *
- *   GET  /wham/rate-limit-reset-credits           → list redeemable credits
- *   POST /wham/rate-limit-reset-credits/consume   → spend one credit
- *        body: { credit_id, redeem_request_id, account_id? }
- *
- * `redeem_request_id` is a client-generated idempotency key (UUID). The consume
- * response carries a `code`: `"reset"` on success, otherwise a business reason
- * (`already_redeemed`, `no_credit`, `nothing_to_reset`).
- *
- * These are thin, dependency-light functions so both the interactive session
- * (the `/usage reset` command + auto-redeem) and any out-of-band tooling can
- * share one wire contract.
- */
 import { toNumber } from "@veyyon/catalog/utils";
 import type { FetchImpl } from "../types";
 import { isRecord } from "../utils";
@@ -26,47 +6,28 @@ import { normalizeCodexBaseUrl } from "./openai-codex-base-url";
 const RESET_CREDITS_PATH = "wham/rate-limit-reset-credits";
 const RESET_CREDITS_CONSUME_PATH = "wham/rate-limit-reset-credits/consume";
 
-/** A single redeemable (or already-spent) saved reset. */
 export interface CodexResetCredit {
-	/** Opaque credit id, e.g. `RateLimitResetCredit_…`. Pass to {@link consumeCodexResetCredit}. */
 	id: string;
-	/** Backend reset family, e.g. `codex_rate_limits`. */
 	resetType?: string;
-	/** `available`, `redeemed`, … */
 	status?: string;
 	grantedAt?: string;
 	expiresAt?: string;
 	redeemStartedAt?: string | null;
 	redeemedAt?: string | null;
-	/** Human-facing card title, e.g. "One free rate limit reset". */
 	title?: string;
 	description?: string;
 }
 
-/** Result of listing an account's saved resets. */
 export interface CodexResetCreditList {
 	credits: CodexResetCredit[];
-	/** Backend-reported count of credits redeemable right now. */
 	availableCount: number;
 }
 
-/**
- * Consume outcome `code`. `reset` means a window was actually reset; the others
- * are no-op business outcomes the caller should surface verbatim-ish to the user.
- */
-export type CodexResetConsumeCode =
-	| "reset"
-	| "already_redeemed"
-	| "no_credit"
-	| "nothing_to_reset"
-	// Forward-compatible: unknown future codes pass through.
-	| (string & {});
+export type CodexResetConsumeCode = "reset" | "already_redeemed" | "no_credit" | "nothing_to_reset" | (string & {});
 
 export interface CodexResetConsumeResult {
-	/** `true` only when `code === "reset"` (a reset was applied). */
 	ok: boolean;
 	code: CodexResetConsumeCode;
-	/** HTTP status of the consume call (for diagnostics). */
 	status: number;
 	raw?: unknown;
 }
@@ -74,7 +35,6 @@ export interface CodexResetConsumeResult {
 interface CodexResetAuth {
 	accessToken: string;
 	accountId?: string;
-	/** Provider base URL override; defaults to the Codex backend. */
 	baseUrl?: string;
 	fetch: FetchImpl;
 	signal?: AbortSignal;
@@ -120,10 +80,6 @@ function parseCredit(value: unknown): CodexResetCredit | null {
 	};
 }
 
-/**
- * List the account's saved rate-limit resets. Returns `null` on transport/auth
- * failure (non-2xx or thrown), letting callers treat it the same as "no data".
- */
 export async function listCodexResetCredits(auth: CodexResetAuth): Promise<CodexResetCreditList | null> {
 	const url = buildUrl(auth.baseUrl, RESET_CREDITS_PATH);
 	let payload: unknown;
@@ -146,11 +102,6 @@ export async function listCodexResetCredits(auth: CodexResetAuth): Promise<Codex
 	return { credits, availableCount };
 }
 
-/**
- * Spend one saved reset. `redeemRequestId` is the idempotency key; one is
- * generated when omitted, so retrying with the SAME id is safe and won't
- * double-spend. The returned `code` is `"reset"` on success.
- */
 export async function consumeCodexResetCredit(
 	auth: CodexResetAuth & { creditId: string; redeemRequestId?: string },
 ): Promise<CodexResetConsumeResult> {

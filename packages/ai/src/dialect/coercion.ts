@@ -133,37 +133,14 @@ export function normalizeKimiFunctionName(rawId: string): string {
 	return parts[parts.length - 1]?.trim() ?? beforeIndex.trim();
 }
 
-/**
- * Coerce a parsed tool-argument value to a record, defaulting to an empty
- * object when it is not one. Tool-call `arguments` must always be a record, so
- * this never returns null. That is the opposite of the shared `asRecord` in
- * @veyyon/utils, which returns null for non-records; the distinct name keeps
- * the two contracts from being confused at a call site.
- */
 export function recordOrEmpty(value: unknown): Record<string, unknown> {
 	return isRecord(value) ? value : {};
 }
 
-/** Enough of a tool payload to recognize its shape in a log, without putting the whole thing there. */
 function excerptArgs(text: string): string {
 	return text.length > 200 ? `${text.slice(0, 200)}…` : text;
 }
 
-/**
- * Parse a tool call's raw `arguments` text into a record, reporting text that will not parse.
- *
- * Three streaming dialects (DeepSeek, Harmony, Kimi) and the GitLab Duo provider each had their own copy
- * of this, and each copy
- * caught the parse failure and returned `{}`. Empty is also what a call that legitimately takes no
- * arguments produces, so a model that emitted arguments the repair pass could not salvage had them
- * SILENTLY DROPPED: the tool then ran with no arguments at all, which is a different call from the one
- * the model made, and nothing in the transcript said so.
- *
- * Empty is still returned, because a dialect parser cannot abort a stream mid-tool-call and the tool's
- * own argument validation is the right place to refuse. What is new is that the loss is reported with
- * the source, the tool name, and a bounded excerpt of the text that would not parse, so the dropped
- * arguments can be told apart from a call that never had any.
- */
 export function parseToolArgsText(raw: string, context: { source: string; tool?: string }): Record<string, unknown> {
 	const trimmed = raw.trim();
 	if (trimmed.length === 0) return {};
@@ -180,8 +157,6 @@ export function parseToolArgsText(raw: string, context: { source: string; tool?:
 		return {};
 	}
 	if (!isRecord(parsed)) {
-		// Valid JSON that is not an object is the same silent loss by another route: a model that emitted a
-		// bare string or an array had it turned into `{}` by `recordOrEmpty` with nothing said.
 		logger.warn("Tool call arguments were not an object; the tool is being called with none", {
 			source: context.source,
 			tool: context.tool,
@@ -193,24 +168,10 @@ export function parseToolArgsText(raw: string, context: { source: string; tool?:
 	return parsed;
 }
 
-/**
- * Assign a model-supplied tool-argument key/value safely. The JSON-body dialects
- * get their arguments from `JSON.parse`, which stores `__proto__` as an own data
- * property; the kv / streaming dialects build arguments key-by-key from model
- * output, so they route every model-controlled write through here to match that
- * behavior rather than diverging into prototype mutation. Thin tool-arg-named
- * wrapper over the shared {@link setSafeProperty}; see it for the hazard details.
- */
 export function setToolArg(args: Record<string, unknown>, key: string, value: unknown): void {
 	setSafeProperty(args, key, value);
 }
 
-/**
- * Read the OWN tool-argument stored under `key`, or `undefined` when there is
- * none, so accumulate-in-place parsers (array-valued keys, streaming value
- * growth) test their own prior write rather than an inherited built-in like
- * `Object.prototype`. Thin wrapper over the shared {@link getOwnProperty}.
- */
 export function getOwnArg(args: Record<string, unknown>, key: string): unknown {
 	return getOwnProperty(args, key);
 }

@@ -1,4 +1,3 @@
-/** Read-only hashline diff preview helpers used by the streaming edit renderer. Reads the target file, parses + applies the section's edits in */
 import * as path from "node:path";
 import {
 	type ApplyResult,
@@ -28,13 +27,10 @@ import { readPreviewText } from "../preview-text-cache";
 import { nativeBlockResolver } from "./block-resolver";
 
 export interface HashlineDiffOptions {
-	/** Use the streaming-tolerant applier ({@link PatchSection.applyPartialTo}) so trailing in-flight ops do not throw or emit phantom edits. Streaming */
 	streaming?: boolean;
-	/** Skip snapshot-tag validation. Streaming previews use this so transient stale/missing tags do not flash re-read errors while the model is still */
 	skipHashValidation?: boolean;
 }
 
-/** Resolve a missing authored path to a file read this session by matching its basename and snapshot tag, mirroring {@link Patcher}'s apply-time recovery so */
 function recoverSectionPathFromTag(
 	section: PatchSection,
 	authoredAbsolutePath: string,
@@ -54,7 +50,6 @@ function recoverSectionPathFromTag(
 	return candidates.length === 1 ? candidates[0] : undefined;
 }
 
-/** Read the section's target file for a preview, recovering a bare/mis-typed `[basename#tag]` path onto the file its tag uniquely names. Recovery fires */
 async function readSectionForPreview(
 	section: PatchSection,
 	authoredAbsolutePath: string,
@@ -119,8 +114,6 @@ function applyPreviewEdits(args: {
 	if (!options.skipHashValidation && expected === undefined) {
 		throw new Error(missingSnapshotTagMessage(section.path));
 	}
-	// The 4-hex tag is content-derived: when the live text hashes to it, trust
-	// the match and preview directly (mirrors Patcher's apply-time behavior).
 	const liveMatches = expected !== undefined && computeFileHash(normalized) === expected;
 	const edits = parsePreviewEdits(section, options.streaming);
 	const resolved = resolvePreviewEdits({ section, absolutePath, normalized, snapshots, expected, liveMatches, edits });
@@ -137,7 +130,6 @@ function applyPreviewEdits(args: {
 	throw createMismatchError(section, absolutePath, normalized, snapshots, expected);
 }
 
-/** Map an insert cursor to the 1-indexed line where its payload lands, used to number the `+` rows of a streaming preview. Deliberately approximate: it */
 function insertCursorLine(cursor: Cursor, fileLineCount: number): number {
 	switch (cursor.kind) {
 		case "bof":
@@ -151,7 +143,6 @@ function insertCursorLine(cursor: Cursor, fileLineCount: number): number {
 	}
 }
 
-/** Build a streaming diff preview by emitting, per op in patch order, the removed file lines followed by the op's `+` payload rows — never a whole-file */
 function buildStreamingSectionDiff(
 	section: PatchSection,
 	normalized: string,
@@ -159,9 +150,6 @@ function buildStreamingSectionDiff(
 	const { edits, fileOp } = parsePatchStreaming(section.diff);
 	const resolved = resolveBlockEdits(edits, normalized, section.path, nativeBlockResolver, { onUnresolved: "drop" });
 	if (resolved.length === 0) {
-		// A whole-file op (REM / MV) carries no line edits: the change is the
-		// delete/move itself, conveyed by the result header, so emit an empty
-		// diff rather than a misleading "No changes" error.
 		if (fileOp) return { diff: "", firstChangedLine: undefined };
 		return { error: `No changes would be made to ${section.path}.` };
 	}
@@ -170,7 +158,6 @@ function buildStreamingSectionDiff(
 	const rows: string[] = [];
 	let firstChangedLine: number | undefined;
 
-	// Every edit emitted from one op header carries that header's patch line number and the edits sit contiguously (a replace lays down its replacement
 	for (let i = 0; i < resolved.length; ) {
 		const opLine = resolved[i].lineNum;
 		const deletes: number[] = [];
@@ -185,8 +172,6 @@ function buildStreamingSectionDiff(
 			}
 			i++;
 		}
-		// Removed lines first (a fixed block), payload second (grows at the
-		// bottom = the streamed cursor).
 		deletes.sort((a, b) => a - b);
 		for (const line of deletes) {
 			firstChangedLine ??= line;
@@ -221,12 +206,9 @@ export async function computeHashlineSectionDiff(
 		);
 		const { text: content } = stripBom(rawContent);
 		const normalized = normalizeToLF(content);
-		// Streaming favors a stable, monotonic preview over an exact unified diff: feed the in-flight ops through the natural-order builder so the
 		if (options.streaming) return buildStreamingSectionDiff(section, normalized);
 		const result = applyPreviewEdits({ section, absolutePath, normalized, snapshots, options });
 		if (normalized === result.text) {
-			// REM/MV-only sections change no text; the header conveys the
-			// delete/move, so don't surface a "No changes" error.
 			if (section.fileOp) return { diff: "", firstChangedLine: undefined };
 			return { error: `No changes would be made to ${section.path}.` };
 		}

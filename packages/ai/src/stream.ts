@@ -96,14 +96,11 @@ function isGoogleVertexAuthenticatedModel(model: Model<Api>): boolean {
 	);
 }
 
-/** Whether model is an official first-party endpoint exempt from leaked-thinking healing. */
 function isLeakedThinkingHealExempt(model: Model<Api>): boolean {
 	switch (model.provider) {
 		case "anthropic":
-			// Foundry redirects empty baseUrl to FOUNDRY_BASE_URL.
 			return isOfficialAnthropicApiUrl((isFoundryEnabled() && $env.FOUNDRY_BASE_URL?.trim()) || model.baseUrl);
 		case "openai":
-			// Official OpenAI endpoint check from catalog.
 			return isOfficialOpenAIEndpoint("openai", model.baseUrl ?? "");
 		case "openai-codex":
 			return isOfficialCodexApiUrl(model.baseUrl);
@@ -112,18 +109,12 @@ function isLeakedThinkingHealExempt(model: Model<Api>): boolean {
 	}
 }
 
-/** Strict official-Codex endpoint check; exact origin or a path boundary after {@link CODEX_BASE_URL}. */
 function isOfficialCodexApiUrl(baseUrl: string | undefined): boolean {
 	if (!baseUrl) return true;
 	const lower = trimTrailingSlashes(baseUrl.toLowerCase());
 	return lower === CODEX_BASE_URL || lower.startsWith(`${CODEX_BASE_URL}/`);
 }
 
-/**
- * Apply live leaked-thinking healing unless {@link model} is an official
- * first-party endpoint ({@link isLeakedThinkingHealExempt}), which emits
- * structured thinking and needs no healing.
- */
 function healLeakedThinking(model: Model<Api>, inner: AssistantMessageEventStream): AssistantMessageEventStream {
 	return isLeakedThinkingHealExempt(model) ? inner : wrapLeakedThinkingStream(inner);
 }
@@ -132,7 +123,6 @@ type ProviderInFlightLease = {
 	path: string;
 	heartbeat: NodeJS.Timeout;
 	flushHeartbeat: () => Promise<void>;
-	/** Run one heartbeat now and wait for it, so a test does not have to wait for the interval. */
 	touchHeartbeat: () => Promise<void>;
 };
 
@@ -148,14 +138,12 @@ const PROVIDER_INFLIGHT_LOCK_STALE_MS = 10_000;
 const PROVIDER_INFLIGHT_LEASE_STALE_MS = 30_000;
 const PROVIDER_INFLIGHT_HEARTBEAT_MS = 5_000;
 const PROVIDER_INFLIGHT_SIGNAL_FALLBACK_MS = 250;
-/** Consecutive heartbeat write failures before lease is treated as dead. */
 const PROVIDER_INFLIGHT_HEARTBEAT_FAILURES_BEFORE_STALE = Math.ceil(
 	PROVIDER_INFLIGHT_LEASE_STALE_MS / PROVIDER_INFLIGHT_HEARTBEAT_MS,
 );
 
 let providerInFlightRootOverride: string | undefined;
 
-/** In-flight concurrency limits configuration. */
 export { configureProviderMaxInFlightRequests } from "./provider-inflight-limits";
 
 function providerInFlightRoot(): string {
@@ -188,9 +176,6 @@ async function readProviderInFlightInfo(infoPath: string): Promise<ProviderInFli
 		}
 		return { pid: parsed.pid, timestamp: parsed.timestamp, token: parsed.token };
 	} catch {
-		// Null means "no valid lease here", the same answer the shape checks above give and the same answer
-		// an absent file gives. The lease protocol then treats the slot as free, which is correct: a lease
-		// we cannot read cannot be honoured, and a stale one is exactly what this file is for.
 		return null;
 	}
 }
@@ -251,7 +236,6 @@ function isSameProviderInFlightLock(
 	return current.birthtimeMs === expected.birthtimeMs;
 }
 
-/** Report a lock directory that could not be released. */
 function reportProviderInFlightLockLeak(lockDir: string, what: string, error: unknown): void {
 	if (isEnoent(error)) return;
 	logger.warn("Provider in-flight lock could not be released; the next request for this provider will wait", {
@@ -262,7 +246,6 @@ function reportProviderInFlightLockLeak(lockDir: string, what: string, error: un
 	});
 }
 
-/** Report a lease directory that could not be removed. */
 function reportProviderInFlightLeaseLeak(leasePath: string, what: string, error: unknown): void {
 	if (isEnoent(error)) return;
 	logger.warn("Provider in-flight lease could not be removed; it will hold a slot for this provider", {
@@ -290,8 +273,6 @@ async function releaseProviderInFlightStaleLock(lockDir: string, stale: Provider
 	}
 }
 
-// Best-effort token-checked release. A token mismatch means another process has
-// already replaced the lock, so the fresh lock must be left intact.
 async function releaseProviderInFlightLock(lockDir: string, token: string): Promise<void> {
 	try {
 		const info = await readProviderInFlightInfo(path.join(lockDir, "info.json"));
@@ -372,7 +353,6 @@ async function cleanupProviderInFlightLeases(providerDir: string): Promise<numbe
 		}
 		if (!isDirectory) continue;
 		if (await isProviderInFlightDirStale(leaseDir, PROVIDER_INFLIGHT_LEASE_STALE_MS)) {
-			// The lease is dead; removing the directory is best-effort housekeeping that must not fail the request.
 			try {
 				await fs.rm(leaseDir, { recursive: true, force: true });
 			} catch (error) {
@@ -403,12 +383,10 @@ async function tryAcquireProviderInFlightLease(
 			await fs.mkdir(leaseDir);
 			await writeProviderInFlightInfo(leaseDir, token);
 		} catch (error) {
-			// Best-effort cleanup on lease-creation failure.
 			await removeProviderInFlightLeaseDir(leaseDir).catch(() => {});
 			throw error;
 		}
 		let heartbeatFlush = Promise.resolve();
-		// Count consecutive heartbeat failures before reporting stale risk.
 		let consecutiveFailures = 0;
 		let reportedStaleRisk = false;
 		const touchHeartbeat = (): Promise<void> => {
@@ -467,10 +445,6 @@ async function signalProviderInFlightWaitersInDir(dir: string): Promise<void> {
 		await fs.mkdir(dir, { recursive: true });
 		await Bun.write(path.join(dir, ".wakeup"), String(Date.now()));
 	} catch (error) {
-		// Waiters have a fallback timer, so a dropped wakeup is not fatal, but it is
-		// not free either: every queued request for this provider then waits out
-		// PROVIDER_INFLIGHT_SIGNAL_FALLBACK_MS. A directory that is unwritable stays
-		// unwritable, so the stall repeats forever with no other trace.
 		logger.warn("Provider in-flight wakeup could not be written; queued requests will wait for the fallback timer", {
 			dir,
 			error: errorMessage(error),
@@ -517,10 +491,7 @@ function waitForProviderInFlightSignal(provider: string, signal?: AbortSignal): 
 				if (!isEnoent(error)) finish(resolve);
 			},
 		);
-	} catch {
-		// Filesystem notifications are best-effort across platforms; the fallback
-		// timer keeps stale-lock/lease cleanup progressing if an event is dropped.
-	}
+	} catch {}
 	return promise;
 }
 
@@ -541,17 +512,14 @@ async function removeProviderInFlightLeaseDir(leasePath: string): Promise<void> 
 	}
 }
 
-/** Release lease and signal waiting requests. */
 async function releaseProviderInFlightLease(lease: ProviderInFlightLease): Promise<void> {
 	clearInterval(lease.heartbeat);
 	await lease.flushHeartbeat();
 	try {
 		await removeProviderInFlightLeaseDir(lease.path);
 	} catch (error) {
-		// Best effort cleanup in finally handler; never rethrow.
 		reportProviderInFlightLeaseLeak(lease.path, "own lease", error);
 	}
-	// Signal waiters even if lease removal failed.
 	await signalProviderInFlightWaitersInDir(path.dirname(lease.path));
 }
 
@@ -591,10 +559,6 @@ export const __providerInFlightForTesting = {
 		if (!stale) return null;
 		return () => releaseProviderInFlightStaleLock(lockDir, stale);
 	},
-	/**
-	 * Take a real lease and expose one heartbeat, so a test can make the write fail and drive beats itself
-	 * instead of waiting out PROVIDER_INFLIGHT_HEARTBEAT_MS several times.
-	 */
 	async acquireLease(
 		provider: string,
 		limit: number,
@@ -613,7 +577,6 @@ export const __providerInFlightForTesting = {
 			const identity = await readProviderInFlightLockIdentity(lockDir);
 			return () => releaseProviderInFlightLockDirIfSame(lockDir, identity);
 		} catch {
-			// Return null if identity cannot be verified.
 			return null;
 		}
 	},
@@ -624,7 +587,6 @@ function withProviderInFlightLimit<TOptions extends Pick<StreamOptions, "signal"
 	options: TOptions | undefined,
 	dispatch: () => AssistantMessageEventStream,
 ): AssistantMessageEventStream {
-	// Leaked-thinking healing wraps provider dispatch for non-exempt endpoints.
 	const limit = resolveProviderInFlightLimit(model.provider, options?.maxInFlightRequests);
 	if (limit === undefined) return healLeakedThinking(model, dispatch());
 
@@ -696,9 +658,6 @@ async function readVertexRequestBody(input: string | URL | Request, init: Reques
 	return "";
 }
 
-// Vertex Claude rejects the standard Anthropic body shape: the `model` field
-// is encoded in the URL path and `anthropic_version: "vertex-2023-10-16"` is
-// required in the JSON body instead of the `anthropic-version` HTTP header.
 function transformVertexAnthropicBody(bodyText: string): string {
 	if (!bodyText) return bodyText;
 	try {
@@ -746,10 +705,6 @@ function resolveVertexRequest(input: string | URL | Request): string | URL | Req
 	return rewriteUrl(input);
 }
 
-// The env-key table moved to `./env-api-key`, a leaf that imports the catalog and the registry and
-// nothing else. It was here only because it was written here, and it made every caller that wanted
-// "which variable holds this key" instantiate the whole streaming engine. Re-exported rather than
-// dropped so the specifier a caller already uses keeps working.
 export { getEnvApiKey, getEnvApiKeyName, listProvidersWithEnvKey } from "./env-api-key";
 
 export function stream<TApi extends Api>(
@@ -774,7 +729,6 @@ function streamDispatch<TApi extends Api>(
 		fetch: wrapFetchForProxy(debugOptions.fetch ?? (globalThis.fetch as FetchImpl), model.provider),
 	} as OptionsForApi<TApi>;
 
-	// Check custom API registry first (extension-provided APIs like "vertex-claude-api")
 	const customApiProvider = getCustomApi(model.api);
 	if (customApiProvider) {
 		return customApiProvider.stream(model, context, requestOptions as StreamOptions);
@@ -802,11 +756,9 @@ function streamDispatch<TApi extends Api>(
 		} as GitLabDuoWorkflowOptions);
 	}
 
-	// Vertex AI uses Application Default Credentials, not API keys
 	if (model.api === "google-vertex") {
 		return streamGoogleVertex(model as Model<"google-vertex">, context, requestOptions as GoogleVertexOptions);
 	} else if (model.api === "bedrock-converse-stream") {
-		// Bedrock doesn't have any API keys instead it sources credentials from standard AWS env variables or from given AWS profile.
 		return streamBedrock(model as Model<"bedrock-converse-stream">, context, requestOptions as BedrockOptions);
 	}
 
@@ -900,12 +852,10 @@ function streamDispatch<TApi extends Api>(
 	}
 }
 
-/** Thinking-loop re-samples spent before {@link resolveWithThinkingLoopCook} cooks. */
 const THINKING_LOOP_MAX_ABORTS = 3;
 const THINKING_LOOP_RETRY_BASE_DELAY_MS = 500;
 const THINKING_LOOP_RETRY_MAX_DELAY_MS = 8_000;
 
-/** Resolve completion with automatic retry for thinking loops up to retry budget. */
 async function resolveWithThinkingLoopCook<TApi extends Api>(
 	model: Model<TApi>,
 	signal: AbortSignal | undefined,
@@ -915,16 +865,11 @@ async function resolveWithThinkingLoopCook<TApi extends Api>(
 	let message = await dispatch().result();
 	let thinkingLoopRetry = AIError.is(message.errorId, AIError.Flag.ThinkingLoop);
 	for (let attempt = 0; thinkingLoopRetry && attempt < THINKING_LOOP_MAX_ABORTS - 1; attempt += 1) {
-		// A caller abort surfaces as a thrown abort (never the stall, which would
-		// misclassify as a 502): throwIfAborted before backoff, and scheduler.wait
-		// rejects if the abort lands mid-delay.
 		signal?.throwIfAborted();
 		const delay = Math.min(THINKING_LOOP_RETRY_BASE_DELAY_MS * 2 ** attempt, THINKING_LOOP_RETRY_MAX_DELAY_MS);
 		await scheduler.wait(delay, { signal });
 		const stalled = message;
 		message = await dispatch().result();
-		// A loop is sampled tokens the provider bills and this re-sample throws
-		// away, which is the most expensive discard in the system: carry it.
 		discardAttemptUsage(model, stalled.usage, message.usage);
 		thinkingLoopRetry =
 			message.stopReason === "error" &&
@@ -933,7 +878,6 @@ async function resolveWithThinkingLoopCook<TApi extends Api>(
 	}
 	if (!thinkingLoopRetry) return message;
 	signal?.throwIfAborted();
-	// Abort budget spent and still looping: let it cook with the guard disabled.
 	const cooked = await cook().result();
 	discardAttemptUsage(model, message.usage, cooked.usage);
 	return cooked;
@@ -964,7 +908,6 @@ function extractStatusFromAssistantError(message: AssistantMessage): number | un
 	return AIError.status({ message: message.errorMessage });
 }
 
-/** Extract failure details from assistant message for classifier. */
 function assistantFailure(message: AssistantMessage): { status?: number; message?: string; errorId?: number } {
 	return {
 		status: extractStatusFromAssistantError(message),
@@ -1004,7 +947,6 @@ export function streamSimple<TApi extends Api>(
 	if (apiKeyResolver) {
 		const outer = new AssistantMessageEventStream();
 		const signal = requestOptions?.signal;
-		// Inner attempt buffering replay-unsafe events for auth retry.
 		const runAttempt = async (apiKey: string): Promise<AuthRetryFailure | undefined> => {
 			const bufferedEvents: AssistantMessageEvent[] = [];
 			let emittedReplayUnsafeEvent = false;
@@ -1057,7 +999,6 @@ export function streamSimple<TApi extends Api>(
 			try {
 				lastKey = (await apiKeyResolver({ lastChance: false, error: undefined, signal })) || undefined;
 			} catch (error) {
-				// Surface resolver error as ConfigurationError.
 				outer.fail(
 					new AIError.ConfigurationError(
 						`Failed to resolve API key for provider ${model.provider}: ${errorMessage(error)}`,
@@ -1074,7 +1015,6 @@ export function streamSimple<TApi extends Api>(
 			let failure = await runAttempt(lastKey);
 			if (!failure) return;
 			while (true) {
-				// Stop retrying if request was aborted.
 				if (signal?.aborted) break;
 				const nextKey = await resolveNextAuthRetryKey(retryState, apiKeyResolver, failure.error, signal);
 				if (nextKey === undefined) break;
@@ -1087,14 +1027,12 @@ export function streamSimple<TApi extends Api>(
 		return outer;
 	}
 
-	// Pi-native transport dispatches directly without local API key resolution.
 	if (model.transport === "pi-native") {
 		return withGeminiThinkingLoopGuard(model, requestOptions, opts =>
 			withProviderInFlightLimit(model, opts, () => streamPiNative(model, context, opts)),
 		);
 	}
 
-	// Check custom API registry (extension-provided APIs)
 	const customApiProvider = getCustomApi(model.api);
 	if (customApiProvider) {
 		return withGeminiThinkingLoopGuard(model, requestOptions, opts =>
@@ -1102,25 +1040,20 @@ export function streamSimple<TApi extends Api>(
 		);
 	}
 
-	// Vertex AI uses Application Default Credentials, not API keys
 	if (model.api === "google-vertex") {
 		const providerOptions = mapOptionsForApi(model, requestOptions, undefined);
 		return stream(model, context, providerOptions);
 	} else if (model.api === "bedrock-converse-stream") {
-		// Bedrock doesn't have any API keys instead it sources credentials from standard AWS env variables or from given AWS profile.
 		const providerOptions = mapOptionsForApi(model, requestOptions, undefined);
 		return stream(model, context, providerOptions);
 	}
 
-	// The resolver form is handled by the wrapper above; only a static string
-	// key reaches this point.
 	const apiKey =
 		(typeof requestOptions?.apiKey === "string" ? requestOptions.apiKey : undefined) || getEnvApiKey(model.provider);
 	if (!apiKey) {
 		throw new AIError.MissingApiKeyError(model.provider);
 	}
 
-	// GitLab Duo - wraps Anthropic/OpenAI behind GitLab AI Gateway direct access tokens
 	if (isGitLabDuoModel(model)) {
 		return withProviderInFlightLimit(model, requestOptions, () =>
 			streamGitLabDuo(model, context, {
@@ -1130,9 +1063,7 @@ export function streamSimple<TApi extends Api>(
 		);
 	}
 
-	// GitLab Duo Workflow - IDE workflow protocol + WebSocket action bridge
 	if (model.api === "gitlab-duo-agent") {
-		// Does not route through withProviderInFlightLimit, so heal explicitly.
 		return healLeakedThinking(
 			model,
 			streamGitLabDuoWorkflow(model as Model<"gitlab-duo-agent">, context, {
@@ -1142,9 +1073,7 @@ export function streamSimple<TApi extends Api>(
 		);
 	}
 
-	// Kimi Code - route to dedicated handler that wraps OpenAI or Anthropic API
 	if (isKimiModel(model)) {
-		// Pass raw SimpleStreamOptions - streamKimi handles mapping internally
 		return withProviderInFlightLimit(model, requestOptions, () =>
 			streamKimi(model as Model<"openai-completions">, context, {
 				...requestOptions,
@@ -1154,9 +1083,7 @@ export function streamSimple<TApi extends Api>(
 		);
 	}
 
-	// Synthetic - route to dedicated handler that wraps OpenAI or Anthropic API
 	if (isSyntheticModel(model)) {
-		// Pass raw SimpleStreamOptions - streamSynthetic handles mapping internally
 		return withProviderInFlightLimit(model, requestOptions, () =>
 			streamSynthetic(model as Model<"openai-completions">, context, {
 				...requestOptions,
@@ -1183,7 +1110,6 @@ export async function completeSimple<TApi extends Api>(
 }
 
 const MIN_OUTPUT_TOKENS = 1024;
-// Fallback total output cap for models whose catalog entry has no maxTokens.
 const OUTPUT_CAP_WHEN_UNKNOWN = 64_000;
 function maxTokensWithThinkingBudget(
 	baseMaxTokens: number | undefined,
@@ -1222,8 +1148,6 @@ export function mapGoogleToolChoice(
 		if (choice === "auto" || choice === "none" || choice === "any") return choice;
 		return undefined;
 	}
-	// Named-tool routing on Google: emit an `ANY`-mode allow-list of one entry,
-	// mirroring the Anthropic mapper that returns `{type: "tool", name}`.
 	if (choice.type === "tool") {
 		return choice.name ? { mode: "ANY", allowedFunctionNames: [choice.name] } : undefined;
 	}
@@ -1264,8 +1188,6 @@ function applyReasoningSelection(
 
 const castApi = <TApi extends Api>(api: OptionsForApi<TApi>): OptionsForApi<Api> => api as OptionsForApi<Api>;
 
-/** Exported for tests: effort-to-wire-id routing (devin/cursor) is invisible
- *  from outside the request, so its mapping is locked at this seam. */
 export function mapOptionsForApi<TApi extends Api>(
 	model: Model<TApi>,
 	rawOptions?: SimpleStreamOptions,
@@ -1309,7 +1231,6 @@ export function mapOptionsForApi<TApi extends Api>(
 
 	switch (model.api) {
 		case "anthropic-messages": {
-			// Explicitly disable thinking when reasoning is not specified or model doesn't support it
 			const reasoning = reasoningSelection.effort;
 			if (!reasoningSelection.enabled || !reasoning) {
 				return castApi<"anthropic-messages">({
@@ -1340,8 +1261,6 @@ export function mapOptionsForApi<TApi extends Api>(
 					? mapEffortToAnthropicAdaptiveEffort(model, reasoning)
 					: undefined;
 
-			// For Opus 4.6+ and Sonnet 4.6+: use adaptive thinking with effort level
-			// For older models: use budget-based thinking
 			if (thinkingMode === "anthropic-adaptive") {
 				return castApi<"anthropic-messages">({
 					...base,
@@ -1367,15 +1286,12 @@ export function mapOptionsForApi<TApi extends Api>(
 				});
 			}
 
-			// Caller's maxTokens is desired output, so add thinking budget on top. With no caller/model cap, use a finite total fallback.
 			const maxTokens = maxTokensWithThinkingBudget(base.maxTokens, model.maxTokens, thinkingBudget);
 
-			// If not enough room for thinking + output, reduce thinking budget
 			if (maxTokens <= thinkingBudget) {
 				thinkingBudget = maxTokens - MIN_OUTPUT_TOKENS;
 			}
 
-			// If thinking budget is too low, disable thinking
 			if (thinkingBudget <= 0) {
 				return castApi<"anthropic-messages">({
 					...base,
@@ -1408,7 +1324,6 @@ export function mapOptionsForApi<TApi extends Api>(
 				toolChoice: mapAnthropicToolChoice(options?.toolChoice),
 				thinkingDisplay: options?.hideThinkingSummary ? "omitted" : undefined,
 			};
-			// Adaptive mode sends effort directly, no budget_tokens — skip budget inflation.
 			if (model.thinking?.mode === "anthropic-adaptive") {
 				return castApi<"bedrock-converse-stream">(bedrockBase);
 			}
@@ -1502,8 +1417,6 @@ export function mapOptionsForApi<TApi extends Api>(
 			});
 
 		case "google-generative-ai": {
-			// Explicitly disable thinking when reasoning is not specified or model doesn't support it
-			// This is needed because Gemini has "dynamic thinking" enabled by default
 			const reasoning = reasoningSelection.effort;
 			if (!reasoningSelection.enabled || !reasoning) {
 				return castApi<"google-generative-ai">({
@@ -1517,8 +1430,6 @@ export function mapOptionsForApi<TApi extends Api>(
 			const googleModel = model as Model<"google-generative-ai">;
 			const effort = requireSupportedEffort(googleModel, reasoning);
 
-			// Gemini 3+ models use thinkingLevel exclusively instead of thinkingBudget.
-			// https://ai.google.dev/gemini-api/docs/thinking#set-budget
 			if (googleModel.thinking?.mode === "google-level") {
 				return castApi<"google-generative-ai">({
 					...base,
@@ -1549,7 +1460,6 @@ export function mapOptionsForApi<TApi extends Api>(
 			if (reasoningSelection.enabled && reasoning) {
 				const effort = requireSupportedEffort(model, reasoning);
 
-				// Gemini 3+ models use thinkingLevel instead of thinkingBudget
 				if (model.thinking?.mode === "google-level") {
 					return castApi<"google-gemini-cli">({
 						...base,
@@ -1571,10 +1481,8 @@ export function mapOptionsForApi<TApi extends Api>(
 					model.thinking?.effortBudgets,
 				);
 
-				// Caller's maxTokens is desired output, so add thinking budget on top. With no caller/model cap, use a finite total fallback.
 				const maxTokens = maxTokensWithThinkingBudget(base.maxTokens, model.maxTokens, thinkingBudget);
 
-				// If not enough room for thinking + output, reduce thinking budget
 				if (maxTokens <= thinkingBudget) {
 					thinkingBudget = Math.max(0, maxTokens - MIN_OUTPUT_TOKENS);
 				}
@@ -1590,13 +1498,10 @@ export function mapOptionsForApi<TApi extends Api>(
 						antigravityEndpointMode: options?.antigravityEndpointMode,
 					});
 				}
-				// Budget clamped to zero — fall through to the thinking-off path.
 			}
 
 			const thinking: GoogleGeminiCliOptions["thinking"] = { enabled: false };
 			if (model.reasoning && model.thinking?.suppressWhenOff) {
-				// CCA re-applies the per-id baked server default when the config
-				// is omitted; suppression must be explicit on the wire.
 				thinking.suppress = model.thinking.mode === "google-level" ? { level: "MINIMAL" } : { budget: 0 };
 			}
 			return castApi<"google-gemini-cli">({
@@ -1609,7 +1514,6 @@ export function mapOptionsForApi<TApi extends Api>(
 		}
 
 		case "google-vertex": {
-			// Explicitly disable thinking when reasoning is not specified or model doesn't support it
 			const reasoning = reasoningSelection.effort;
 			if (!reasoningSelection.enabled || !reasoning) {
 				return castApi<"google-vertex">({
@@ -1660,8 +1564,6 @@ export function mapOptionsForApi<TApi extends Api>(
 		case "cursor-agent": {
 			const execHandlers = options?.cursorExecHandlers ?? options?.execHandlers;
 			const onToolResult = options?.cursorOnToolResult ?? execHandlers?.onToolResult;
-			// Cursor carries no wire effort param: effort selects a tier-suffixed
-			// sibling model id via `thinking.effortRouting` (mirrors devin-agent).
 			return castApi<"cursor-agent">({
 				...base,
 				execHandlers,
@@ -1694,12 +1596,10 @@ function getGoogleBudget(
 ): number {
 	requireSupportedEffort(model, effort);
 
-	// Custom budgets take precedence if provided for this level
 	if (customBudgets?.[effort] !== undefined) {
 		return customBudgets[effort]!;
 	}
 
-	// See https://ai.google.dev/gemini-api/docs/thinking#set-budget
 	if (model.id.includes("2.5-")) {
 		switch (effort) {
 			case "minimal":
@@ -1709,9 +1609,6 @@ function getGoogleBudget(
 			case "medium":
 				return 8192;
 			case "high":
-				// The 2.5 rows declare a budget range and no levels, so the ladder is the
-				// budget mode's own minimal..xhigh; high must sit below xhigh or the two
-				// top tiers are the same request.
 				return 16_384;
 			case "xhigh":
 			case "max":
@@ -1719,7 +1616,6 @@ function getGoogleBudget(
 		}
 	}
 
-	// Refuse unknown thinking model rows rather than inventing a thinking budget.
 	throw new AIError.ConfigurationError(
 		`${model.provider}/${model.id} does not accept a thinking budget, so the requested effort "${effort}" would change nothing about the request. ` +
 			`Choose a model that supports budgeted thinking (the Gemini 2.5 family on this API), pass an explicit thinkingBudgets entry for "${effort}", or turn thinking off for this model.`,

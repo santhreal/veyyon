@@ -24,18 +24,15 @@ import type {
 
 export { detectLanguageId } from "../utils/lang-from-path";
 
-/** Convert a file path to a file:// URI. Uses the URL machinery so special characters (`%`, `#`, `?`, spaces) are */
 export function fileToUri(filePath: string): string {
 	return Bun.pathToFileURL(path.resolve(filePath)).href;
 }
 
-/** Convert a file:// URI to a file path. Tolerates both percent-encoded URIs and lax servers that send raw paths. */
 export function uriToFile(uri: string): string {
 	if (!uri.startsWith("file://")) {
 		return uri;
 	}
 
-	// A raw `#`/`?` parses *successfully* as fragment/query and silently truncates the path — it never reaches the catch below. LSP servers do
 	if (uri.includes("#") || uri.includes("?")) {
 		return laxUriToFile(uri);
 	}
@@ -43,8 +40,6 @@ export function uriToFile(uri: string): string {
 	try {
 		return Bun.fileURLToPath(uri);
 	} catch {
-		// Not a well-formed file URL (unencoded characters, stray `%`, host
-		// component). Fall back to a lenient manual conversion.
 		return laxUriToFile(uri);
 	}
 }
@@ -53,11 +48,8 @@ function laxUriToFile(uri: string): string {
 	let filePath = uri.slice(7);
 	try {
 		filePath = decodeURIComponent(filePath);
-	} catch {
-		// Invalid percent-encoding — treat as a literal path.
-	}
+	} catch {}
 
-	// Windows: file:///C:/path → C:/path (strip leading slash before drive letter)
 	if (process.platform === "win32" && filePath.startsWith("/") && /^[A-Za-z]:/.test(filePath.slice(1))) {
 		filePath = filePath.slice(1);
 	}
@@ -72,16 +64,10 @@ const SEVERITY_NAMES: Record<DiagnosticSeverity, string> = {
 	4: "hint",
 };
 
-/**
- * Convert diagnostic severity number to string name.
- */
 export function severityToString(severity?: DiagnosticSeverity): string {
 	return SEVERITY_NAMES[severity ?? 1] ?? "unknown";
 }
 
-/**
- * Sort diagnostics by severity, then by location and message.
- */
 export function sortDiagnostics(diagnostics: Diagnostic[]): Diagnostic[] {
 	return diagnostics.sort((a, b) => {
 		const aSeverity = a.severity ?? 1;
@@ -97,9 +83,6 @@ export function sortDiagnostics(diagnostics: Diagnostic[]): Diagnostic[] {
 	});
 }
 
-/**
- * Get icon for diagnostic severity.
- */
 export function severityToIcon(severity?: DiagnosticSeverity): string {
 	const currentTheme = theme as Theme | undefined;
 	const fallback = currentTheme?.format?.bullet ?? "*";
@@ -118,17 +101,12 @@ export function severityToIcon(severity?: DiagnosticSeverity): string {
 	}
 }
 
-/**
- * Strip noise from diagnostic messages (clippy URLs, override hints).
- */
 function stripDiagnosticNoise(message: string): string {
 	return message
 		.split("\n")
 		.filter(line => {
 			const trimmed = line.trim();
-			// Skip "for further information visit <url>" lines
 			if (trimmed.startsWith("for further information visit")) return false;
-			// Skip bare URLs
 			if (/^https?:\/\//.test(trimmed)) return false;
 			return true;
 		})
@@ -136,9 +114,6 @@ function stripDiagnosticNoise(message: string): string {
 		.trim();
 }
 
-/**
- * Format a diagnostic as a human-readable string.
- */
 export function formatDiagnostic(diagnostic: Diagnostic, filePath: string): string {
 	const severity = severityToString(diagnostic.severity);
 	const line = diagnostic.range.start.line + 1;
@@ -150,10 +125,8 @@ export function formatDiagnostic(diagnostic: Diagnostic, filePath: string): stri
 	return `${filePath}:${line}:${col} [${severity}] ${source}${message}${code}`;
 }
 
-// Regex: split on the first `:digits:digits` boundary to separate path from the rest
 const DIAG_PATH_RE = /^(.+?):(\d+:\d+\s+.*)$/;
 
-/** Reformat pre-formatted diagnostic messages into a multi-level, prefix-folded directory/file grouping (see `formatGroupedFiles`). */
 export function formatGroupedDiagnosticMessages(messages: string[]): string {
 	const diagnosticsByFile = new Map<string, string[]>();
 	const fileOrder: string[] = [];
@@ -194,9 +167,6 @@ export function formatGroupedDiagnosticMessages(messages: string[]): string {
 	return lines.join("\n");
 }
 
-/**
- * Format diagnostics grouped by severity.
- */
 export function formatDiagnosticsSummary(diagnostics: Diagnostic[]): string {
 	const counts = { error: 0, warning: 0, info: 0, hint: 0 };
 
@@ -237,9 +207,6 @@ export function summarizeDiagnosticMessages(messages: string[]): { summary: stri
 	};
 }
 
-/**
- * Format a location as file:line:col relative to cwd.
- */
 export function formatLocation(location: Location, cwd: string): string {
 	const file = formatPathRelativeToCwd(uriToFile(location.uri), cwd);
 	const line = location.range.start.line + 1;
@@ -247,40 +214,29 @@ export function formatLocation(location: Location, cwd: string): string {
 	return `${file}:${line}:${col}`;
 }
 
-/**
- * Format a position as line:col.
- */
 export function formatPosition(line: number, col: number): string {
 	return `${line}:${col}`;
 }
 
-/** Compare two positions in document order. Returns a negative number when `a` precedes `b`, zero when they are the same position, and a positive number */
 export function comparePosition(a: Position, b: Position): number {
 	return a.line === b.line ? a.character - b.character : a.line - b.line;
 }
 
-/** True when two positions point at the same line and character. */
 export function positionsEqual(a: Position, b: Position): boolean {
 	return a.line === b.line && a.character === b.character;
 }
 
-/** True when two ranges have identical start and end positions. */
 export function rangesEqual(a: Range, b: Range): boolean {
 	return positionsEqual(a.start, b.start) && positionsEqual(a.end, b.end);
 }
 
-/** True when `position` falls within `range`, inclusive of both endpoints. */
 export function rangeContainsPosition(range: Range, position: Position): boolean {
 	return comparePosition(range.start, position) <= 0 && comparePosition(position, range.end) <= 0;
 }
 
-/**
- * Format a workspace edit as a summary of changes.
- */
 export function formatWorkspaceEdit(edit: WorkspaceEdit, cwd: string): string[] {
 	const results: string[] = [];
 
-	// Handle changes map (legacy format)
 	if (edit.changes) {
 		for (const [uri, textEdits] of Object.entries(edit.changes)) {
 			const file = formatPathRelativeToCwd(uriToFile(uri), cwd);
@@ -288,7 +244,6 @@ export function formatWorkspaceEdit(edit: WorkspaceEdit, cwd: string): string[] 
 		}
 	}
 
-	// Handle documentChanges array (modern format)
 	if (edit.documentChanges) {
 		for (const change of edit.documentChanges) {
 			if ("edits" in change && change.textDocument) {
@@ -315,9 +270,6 @@ export function formatWorkspaceEdit(edit: WorkspaceEdit, cwd: string): string[] 
 	return results;
 }
 
-/**
- * Format a text edit as a preview.
- */
 export function formatTextEdit(edit: TextEdit, maxLength = 50): string {
 	const range = `${edit.range.start.line + 1}:${edit.range.start.character + 1}`;
 	const preview =
@@ -369,18 +321,12 @@ function getSymbolKindIcons(): Record<SymbolKind, string> {
 	};
 }
 
-/**
- * Get icon for symbol kind.
- */
 export function symbolKindToIcon(kind: SymbolKind): string {
 	const currentTheme = theme as Theme | undefined;
 	const bullet = currentTheme?.format?.bullet ?? "*";
 	return getSymbolKindIcons()[kind] ?? bullet;
 }
 
-/**
- * Get name for symbol kind.
- */
 export function symbolKindToName(kind: SymbolKind): string {
 	const names: Record<number, string> = {
 		1: "File",
@@ -413,9 +359,6 @@ export function symbolKindToName(kind: SymbolKind): string {
 	return names[kind] ?? "Unknown";
 }
 
-/**
- * Format a document symbol with optional hierarchy.
- */
 export function formatDocumentSymbol(symbol: DocumentSymbol, indent = 0): string[] {
 	const prefix = "  ".repeat(indent);
 	const icon = symbolKindToIcon(symbol.kind);
@@ -433,9 +376,6 @@ export function formatDocumentSymbol(symbol: DocumentSymbol, indent = 0): string
 	return results;
 }
 
-/**
- * Format a symbol information (flat format).
- */
 export function formatSymbolInformation(symbol: SymbolInformation, cwd: string): string {
 	const icon = symbolKindToIcon(symbol.kind);
 	const location = formatLocation(symbol.location, cwd);
@@ -507,9 +447,7 @@ export async function applyCodeAction(
 	if (!resolvedAction.edit && dependencies.resolveCodeAction) {
 		try {
 			resolvedAction = await dependencies.resolveCodeAction(resolvedAction);
-		} catch {
-			// Resolve is optional; continue with unresolved action.
-		}
+		} catch {}
 	}
 
 	const edits = resolvedAction.edit ? await dependencies.applyWorkspaceEdit(resolvedAction.edit) : [];
@@ -571,9 +509,6 @@ export async function resolveDiagnosticTargets(
 
 	return collectGlobMatches(file, cwd, maxMatches);
 }
-/**
- * Extract plain text from hover contents.
- */
 export function extractHoverText(
 	contents: string | { kind: string; value: string } | { language: string; value: string } | unknown[],
 ): string {
@@ -593,8 +528,6 @@ export function extractHoverText(
 
 	return String(contents);
 }
-
-// General Utilities
 
 function firstNonWhitespaceColumn(lineText: string): number {
 	const match = lineText.match(/\S/);
@@ -629,7 +562,6 @@ function findSymbolMatchIndexes(lineText: string, symbol: string, caseInsensitiv
 	return indexes;
 }
 
-/** Parses a symbol spec of the form `name` or `name#N` where N is the 1-indexed occurrence on the target line. Returns `name` and `occurrence` (default 1). */
 function parseSymbolSpec(spec: string): { symbol: string; occurrence: number } {
 	const match = spec.match(/^(.+)#(\d+)$/);
 	if (!match) return { symbol: spec, occurrence: 1 };

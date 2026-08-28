@@ -54,29 +54,21 @@ import {
 
 const DEFAULT_IDLE_GRACE_MS = 3_000;
 const MAX_REQUEST_BYTES = 1024 * 1024;
-// Rotate a broker log once it reaches this size. Not a cap on total log bytes
-// kept: rotation preserves the previous file, so the on-disk total is a multiple
-// of this. Distinct from the bug-report bundler's much smaller read budget.
 const LOG_ROTATE_BYTES = 25 * 1024 * 1024;
 const LOG_READ_BYTES = 2 * 1024 * 1024;
 const READINESS_BUFFER_CHARS = 64 * 1024;
 const RESTART_MAX_DELAY_MS = 30_000;
-/** Output carried in a retained completion record, in lines and in bytes. */
 const COMPLETION_TAIL_LINES = 40;
 const COMPLETION_TAIL_BYTES = 4_000;
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
-/** Attribution for a termination a broker component is about to cause: which component, and the triggering condition as a human sentence. Set on the */
 interface DaemonTerminationSource {
 	owner: DaemonTerminationOwner;
 	reason: string;
-	/** The signal sent, when the path sent one, so a PTY daemon (which reports no signalCode) still names it. */
 	signal?: DaemonSignal;
-	/** When the attribution was set; an operator-signal attribution expires (see #settle). */
 	at: number;
 }
 
-/** How long a `launch send signal=...` attribution stays valid. A handled signal (a SIGHUP a daemon traps) does not kill, and attributing a natural */
 const SIGNAL_ATTRIBUTION_WINDOW_MS = 10_000;
 
 const SIGNAL_NUMBER: Record<DaemonSignal, number> = {
@@ -90,7 +82,6 @@ const SIGNAL_NUMBER: Record<DaemonSignal, number> = {
 interface ManagedProcess {
 	pid: number;
 	exited: Promise<number>;
-	/** The signal that terminated the process, if any (Bun.Subprocess.signalCode: the signal NAME, e.g. "SIGTERM", or null). Read on settle so a signal-killed */
 	signalCode?: string | null;
 	unref(): void;
 	kill(signal?: number): void;
@@ -114,7 +105,6 @@ interface ManagedDaemon {
 	restartTimer?: NodeJS.Timeout;
 	consecutiveFailures: number;
 	persistQueue: Promise<void>;
-	/** Attribution for the death of the CURRENT generation, set before the signal goes out. */
 	termination?: DaemonTerminationSource;
 }
 
@@ -136,7 +126,6 @@ function terminalState(state: DaemonSnapshot["state"]): boolean {
 	return state === "exited" || state === "failed";
 }
 
-/** Mirror per-condition readiness progress into the snapshot so clients can see which condition is unmet. */
 function syncReadyPending(record: ManagedDaemon): void {
 	if (record.snapshot.state !== "starting") {
 		record.snapshot.readyPending = undefined;
@@ -275,13 +264,9 @@ async function acquireBrokerLease(runtimeDir: string): Promise<BrokerLease | nul
 			try {
 				const raw: unknown = await Bun.file(pidPath).json();
 				if (typeof raw === "object" && raw !== null && "pid" in raw && typeof raw.pid === "number") {
-					// A live owner keeps its claim. Anything else leaves a stale PID
-					// file that the next loop iteration claims.
 					if (isProcessAlive(raw.pid)) return null;
 				}
-			} catch {
-				// Malformed or partially-written PID files are stale.
-			}
+			} catch {}
 			await fs.rm(pidPath, { force: true });
 		}
 	}
@@ -327,7 +312,6 @@ class DaemonBroker {
 	readonly #clients = new Set<net.Socket>();
 	readonly #finished = Promise.withResolvers<void>();
 	readonly #sockets = new Set<net.Socket>();
-	/** Serializes read-modify-write passes over the completion store. */
 	#completionsQueue: Promise<void> = Promise.resolve();
 	#server: net.Server | undefined;
 	#idleTimer: NodeJS.Timeout | undefined;
@@ -386,8 +370,6 @@ class DaemonBroker {
 		}
 		for (const timer of this.#cleanupTimers.values()) clearTimeout(timer);
 		this.#cleanupTimers.clear();
-		// Settles queue completion records asynchronously; the store write must
-		// land before the socket closes or a shutdown loses the deaths it caused.
 		await this.#completionsQueue;
 		for (const socket of this.#sockets) socket.destroy();
 		this.#sockets.clear();
@@ -427,9 +409,7 @@ class DaemonBroker {
 				});
 			}
 		});
-		socket.on("error", () => {
-			// Socket closure performs client accounting.
-		});
+		socket.on("error", () => {});
 		socket.on("close", () => {
 			this.#sockets.delete(socket);
 			if (!authenticated) return;
@@ -811,7 +791,6 @@ class DaemonBroker {
 	async #settle(record: ManagedDaemon, generation: number, exitCode?: number, error?: string): Promise<void> {
 		if (generation !== record.generation || terminalState(record.snapshot.state)) return;
 		await this.#readDetachedOutput(record, generation);
-		// Capture the terminating signal BEFORE clearing record.process below, so a signal-killed process reports the signal (e.g. SIGTERM) rather than a
 		let attribution = record.termination;
 		if (attribution?.owner === "operator-signal" && Date.now() - attribution.at > SIGNAL_ATTRIBUTION_WINDOW_MS) {
 			attribution = undefined;
@@ -861,7 +840,6 @@ class DaemonBroker {
 			}, delay);
 			return;
 		}
-		// Close the log and queue the retained completion record BEFORE the terminal state becomes visible. `#stopRecord` returns as soon as a
 		await record.log?.close();
 		record.log = undefined;
 		this.#queueCompletion(record);
@@ -887,7 +865,6 @@ class DaemonBroker {
 			this.#cleanupTimers.delete(name);
 			void this.#purgeRecord(name);
 		}, delayMs);
-		// A retained record is not a reason to keep the broker alive; the socket is.
 		timer.unref();
 		this.#cleanupTimers.set(name, timer);
 	}
@@ -896,7 +873,6 @@ class DaemonBroker {
 		const record = this.#records.get(name);
 		if (!record || !terminalState(record.snapshot.state)) return;
 		this.#cancelCleanup(name);
-		// Nothing is torn down until the purge is committed. `persistQueue` yields, and a start under the same name during that yield replaces the record: an
 		await record.persistQueue;
 		if (this.#records.get(name) !== record || !terminalState(record.snapshot.state)) return;
 		this.#records.delete(name);
@@ -985,8 +961,6 @@ class DaemonBroker {
 			} else throw new Error(`Daemon ${operation.name} stdin is unavailable`);
 		}
 		if (operation.signal) {
-			// Attribute before signalling: the settle that observes this death
-			// reports WHO sent the signal rather than an unexplained termination.
 			record.termination = {
 				owner: "operator-signal",
 				reason: `${operation.signal} delivered by launch send`,
@@ -1029,7 +1003,6 @@ class DaemonBroker {
 			this.#persist(record);
 			await record.log?.close();
 			record.log = undefined;
-			// No completion is queued here. `#settle` already queued one for this execution generation when the process crashed and armed the restart, so
 			this.#scheduleCleanup(record);
 			return;
 		}
@@ -1038,11 +1011,9 @@ class DaemonBroker {
 		const processRef = record.snapshot.pid === undefined ? null : processHandle(record.snapshot.pid);
 		if (processRef) await processRef.terminate({ group: true, gracefulMs: timeoutMs, timeoutMs: timeoutMs + 1_000 });
 		else record.pty?.kill();
-		// Process.terminate kills the OS PID and its group, but for pipe-spawned daemons Bun's Subprocess streams may not close immediately, blocking the
 		record.process?.kill();
 		const settled = await this.#waitUntil(record, () => terminalState(record.snapshot.state), timeoutMs + 1_000);
 		if (!settled) {
-			// The process is confirmed dead (Process.terminate awaited above) but the settle callback has not fired yet — the PTY or Bun Subprocess exit
 			record.pty?.kill();
 			record.process?.kill();
 			await this.#settle(record, record.generation);
@@ -1057,9 +1028,6 @@ class DaemonBroker {
 			signal: "SIGTERM",
 			at: Date.now(),
 		});
-		// Stopping a live record settles it, and settling arms a purge timer. The
-		// cancel has to follow the stop, or the new generation runs with a timer
-		// armed against the corpse of the old one.
 		this.#cancelCleanup(name);
 		await record.log?.close();
 		record.log = await DaemonLog.open(record.dir);
@@ -1100,7 +1068,6 @@ class DaemonBroker {
 			});
 	}
 
-	/** Retain the completion record of one terminal generation: exit code or signal, WHO ended it and WHY, timestamps, and the tail of its output. */
 	#queueCompletion(record: ManagedDaemon): void {
 		const snapshot = record.snapshot;
 		const completion: DaemonCompletionRecord = {
@@ -1138,7 +1105,6 @@ class DaemonBroker {
 			});
 	}
 
-	/** The retained completion records for the `list` result. A store that cannot be read — corrupt, or written by another schema version — is */
 	async #completionRecords(): Promise<DaemonCompletionRecord[]> {
 		await this.#completionsQueue;
 		try {
@@ -1177,7 +1143,6 @@ class DaemonBroker {
 					snapshot.state = "exited";
 					snapshot.exitedAt = Date.now();
 					if (spec.detached) {
-						// A detached daemon outlives its broker by design, so one that is already gone was not terminated by this replacement. Recording
 						snapshot.terminatedBy = "process-exit";
 						snapshot.exitReason = "exited while no broker was supervising it";
 					} else {
@@ -1216,7 +1181,6 @@ class DaemonBroker {
 				if (detached && spec.ready?.port !== undefined && snapshot.state !== "ready") {
 					void this.#pollPort(record, record.generation, spec.ready);
 				}
-				// A daemon the dead broker never settled never got a completion record; the recovery kill above IS its terminal transition, so
 				if (!detached && !wasTerminal) this.#queueCompletion(record);
 				if (terminalState(snapshot.state)) {
 					this.#scheduleCleanup(record);
@@ -1258,7 +1222,6 @@ class DaemonBroker {
 	}
 }
 
-/** Start the detached per-project daemon broker selected by the CLI worker host. */
 export async function startDaemonBrokerFromEnvironment(): Promise<void> {
 	const projectDir = process.env[DAEMON_PROJECT_DIR_ENV];
 	const runtimeDir = process.env[DAEMON_RUNTIME_DIR_ENV];

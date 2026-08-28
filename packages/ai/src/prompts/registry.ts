@@ -1,24 +1,3 @@
-/**
- * Every prompt `@veyyon/ai` sends a model, owned in ONE place.
- *
- * WHAT THESE PROMPTS ARE. A dialect's format guide is the text that teaches a model
- * how to write a tool call when the provider has no native tool-calling channel, so
- * it is the difference between a call the scanner can read and prose the scanner
- * drops. Fourteen of them shipped as `.md` files sitting next to the fourteen dialect
- * modules that imported them by relative path, which meant this package had no answer
- * to "what does veyyon put in a model's system prompt from here" other than a glob,
- * and `veyyon prompt --prompts` listed none of them.
- *
- * This file states the same contract `@veyyon/coding-agent`'s registry states, at
- * this package's boundary: the import IS the registration, the id is the path under
- * `src/prompts/` without its extension, and nothing outside this file imports a `.md`
- * from that tree. `prompt-registry-coverage` pins both directions, so a new format
- * guide is unreachable until it is registered rather than quietly unlisted.
- *
- * DIRECTORIES. `dialect/` is one guide per tool-call syntax, plus the catalog
- * template that carries them; `provider/` is text a single provider needs for a
- * reason that is not about syntax.
- */
 import { definePromptRegistry, type PromptEntry } from "@veyyon/utils/prompt-registry";
 import dialectAnthropic from "./dialect/anthropic.md" with { type: "text" };
 import dialectDeepseek from "./dialect/deepseek.md" with { type: "text" };
@@ -96,11 +75,4 @@ export const aiPrompts = definePromptRegistry("packages/ai/src/prompts", {
 	},
 });
 
-/**
- * Every prompt this package sends, by id. The id is the file's path under
- * `src/prompts/` without its extension, so a row and its file are found from each other
- * by reading.
- */
 export const AI_PROMPTS = aiPrompts.prompts;
-
-/** Package prompt registry descriptor providing prompt lookup and validation. */

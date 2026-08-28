@@ -15,11 +15,8 @@ let nextSessionId = 1;
 type DebugFetch = FetchImpl & { [DEBUG_FETCH_MARKER]?: true };
 type RequestBodyInit = NonNullable<RequestInit["body"]>;
 
-/** What was recorded, when the ceiling stopped the capture short of the whole body. */
 export interface RequestDebugCapture {
-	/** Bytes of the body written to the dump. */
 	readonly capturedBytes: number;
-	/** Bytes not recorded, or null when unknown. */
 	readonly omittedBytes: number | null;
 }
 
@@ -82,12 +79,10 @@ function reportRequestDebugFailure(message: string, error: unknown, path?: strin
 	} catch {}
 }
 
-/** Default ceiling on bytes one debug capture may hold (32 MiB). */
 export const DEFAULT_REQUEST_DEBUG_MAX_CAPTURE_BYTES = 32 * 1024 * 1024;
 
 let reportedInvalidCeiling = false;
 
-/** Resolved capture ceiling in bytes per file. */
 export function requestDebugCaptureCeiling(): number {
 	const raw = Bun.env[REQUEST_DEBUG_MAX_BYTES_ENV];
 	if (raw === undefined || raw.trim() === "") return DEFAULT_REQUEST_DEBUG_MAX_CAPTURE_BYTES;
@@ -101,14 +96,11 @@ export function requestDebugCaptureCeiling(): number {
 				value: raw,
 				ceiling: DEFAULT_REQUEST_DEBUG_MAX_CAPTURE_BYTES,
 			});
-		} catch {
-			// Same best-effort contract as every other diagnostic on this path.
-		}
+		} catch {}
 	}
 	return DEFAULT_REQUEST_DEBUG_MAX_CAPTURE_BYTES;
 }
 
-/** Report that a capture reached its size ceiling. */
 function reportRequestDebugCeiling(path: string, capturedBytes: number, ceiling: number): void {
 	try {
 		logger.warn("Request debug capture reached its ceiling; the rest was not recorded", {
@@ -271,7 +263,6 @@ class FileRequestDebugSession implements RequestDebugSession {
 		return wrapped;
 	}
 
-	/** Open response log handle, returning undefined on failure. */
 	async #openResponseLogOrNull(response: Response): Promise<RequestDebugResponseLog | undefined> {
 		try {
 			return await this.openResponseLog(`HTTP ${response.status} ${response.statusText}`.trim(), response.headers);
@@ -286,9 +277,6 @@ class FileRequestDebugSession implements RequestDebugSession {
 	}
 }
 
-/**
- * Writes the response body to the debug log bounded by size limits.
- */
 class FileRequestDebugResponseLog implements RequestDebugResponseLog {
 	#handle: fs.FileHandle | undefined;
 	#pending: Promise<void> = Promise.resolve();
@@ -311,7 +299,6 @@ class FileRequestDebugResponseLog implements RequestDebugResponseLog {
 		if (!handle || this.#failed) return;
 		const bytes = typeof chunk === "string" ? textEncoder.encode(chunk) : chunk.slice();
 		if (this.#stopped) {
-			// Counted, not written: the tally at close is what makes the omission durable.
 			this.#omitted += bytes.byteLength;
 			return;
 		}
@@ -360,12 +347,10 @@ class FileRequestDebugResponseLog implements RequestDebugResponseLog {
 		});
 	}
 
-	/** Header marker written when capture ceiling is reached. */
 	#ceilingMarker(): string {
 		return `\n[veyyon request debug] capture ceiling reached: recorded ${this.#written} bytes of this response; the rest was not written (${REQUEST_DEBUG_MAX_BYTES_ENV}=${this.#ceiling})\n`;
 	}
 
-	/** The count the ceiling marker cannot know yet: how much went unrecorded in total. */
 	#tallyMarker(): string {
 		return `[veyyon request debug] captured ${this.#written} bytes, omitted ${this.#omitted} bytes\n`;
 	}
@@ -386,14 +371,9 @@ function copyResponseMetadata(target: Response, source: Response): void {
 	if (!sourceUrl) return;
 	try {
 		Object.defineProperty(target, "url", { value: sourceUrl, configurable: true });
-	} catch {
-		// Some runtimes may expose Response.url as non-configurable. The body
-		// capture remains correct; callers that need url already tolerate the
-		// platform default on other response wrappers in this package.
-	}
+	} catch {}
 }
 
-/** Open private debug dump file exclusively with 0o600 permissions. */
 async function openPrivateDebugFile(filePath: string): Promise<fs.FileHandle> {
 	const DEBUG_FILE_MODE = 0o600;
 	return fs.open(filePath, "wx", DEBUG_FILE_MODE);
@@ -457,7 +437,6 @@ async function snapshotBodyInit(
 	return snapshotText(String(body), contentType, ceiling);
 }
 
-/** Minimal reader interface for bounded stream reads. */
 interface BoundedBodyReader {
 	read(): Promise<{ done: boolean; value?: Uint8Array }>;
 	cancel(reason?: unknown): Promise<void>;
@@ -465,11 +444,9 @@ interface BoundedBodyReader {
 
 interface BoundedBody {
 	readonly bytes: Uint8Array;
-	/** True if stream has more bytes beyond the ceiling. */
 	readonly more: boolean;
 }
 
-/** Read at most ceiling bytes, then cancel remaining stream. */
 async function readBoundedBody(
 	stream: { getReader(): BoundedBodyReader } | null,
 	ceiling: number,
@@ -497,20 +474,17 @@ async function readBoundedBody(
 		}
 		if (read >= ceiling) more = true;
 	} catch {
-		// Keep the prefix. The status of the capture, not of the request.
 	} finally {
 		void reader.cancel().catch(() => {});
 	}
 	return { bytes: concatChunks(chunks, read), more };
 }
 
-/** Read at most ceiling bytes from a cloned request body stream. */
 async function snapshotRequestStream(
 	request: Request,
 	contentType: string | null,
 	ceiling: number,
 ): Promise<RequestDebugBody> {
-	// The clone, so the request the caller is about to send keeps its own body.
 	const clone = request.clone();
 	const declared = declaredContentLength(request.headers);
 	const head = await readBoundedBody(clone.body, ceiling);
@@ -534,7 +508,6 @@ function declaredContentLength(headers: Headers): number | undefined {
 	return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
-/** Capture note when body is known to exceed recorded length. */
 function captureNote(capturedBytes: number, totalBytes: number | null | undefined): RequestDebugCapture | undefined {
 	if (totalBytes === undefined) return undefined;
 	if (totalBytes === null) return { capturedBytes, omittedBytes: null };
@@ -577,9 +550,7 @@ function snapshotText(text: string, contentType: string | null, ceiling: number)
 	if (isJsonContentType(contentType) || looksLikeJson(text)) {
 		try {
 			return { body: JSON.parse(text) };
-		} catch {
-			// Fall through to bodyText: malformed JSON is still useful as raw text.
-		}
+		} catch {}
 	}
 	return { bodyText: text };
 }
@@ -611,7 +582,6 @@ function formatResponseHeaderBlock(statusLine: string, headers?: RequestDebugHea
 	return `${lines.join("\r\n")}\r\n\r\n`;
 }
 
-/** Header names whose values are sensitive credentials. */
 const REDACTED_HEADER_NAMES: Record<string, true> = {
 	authorization: true,
 	"proxy-authorization": true,
@@ -628,7 +598,6 @@ export function isCredentialHeaderName(name: string): boolean {
 	return REDACTED_HEADER_SUBSTRINGS.some(fragment => lower.includes(fragment));
 }
 
-/** Canonical list of credential header names for testing. */
 export const CREDENTIAL_HEADER_SPELLINGS: readonly string[] = [
 	...Object.keys(REDACTED_HEADER_NAMES),
 	"x-api-key",
@@ -640,7 +609,6 @@ export const CREDENTIAL_HEADER_SPELLINGS: readonly string[] = [
 	"x-client-secret",
 ];
 
-/** Redact credentials from header pairs for diagnostic logging. */
 export function redactDiagnosticHeaders(
 	headers: Iterable<[string, string]>,
 	alsoSensitive?: (lowercasedName: string) => boolean,

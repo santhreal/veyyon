@@ -1,4 +1,3 @@
-/** `/move` overlay: a path input with live directory autocomplete. Rendered as a floating ModalShell card, hosted fullscreen so the transcript */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -33,9 +32,7 @@ export interface MoveOverlayResult {
 }
 
 interface DirEntry {
-	/** Full absolute path. */
 	value: string;
-	/** Display label (basename + trailing slash). */
 	label: string;
 }
 
@@ -48,7 +45,6 @@ const MOVE_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "esc cancel", clickable: true, id: "close" },
 ];
 
-/** TTL for the directory listing cache (ms). */
 const DIR_CACHE_TTL = 500;
 const dirCache = new Map<string, { time: number; entries: fs.Dirent[] }>();
 
@@ -61,19 +57,15 @@ function readDirCached(dir: string): fs.Dirent[] {
 		dirCache.set(dir, { time: now, entries });
 		return entries;
 	} catch {
-		// An unreadable directory browses as an empty one. Deliberately silent: this runs on every keystroke of the path input, where most failures are ENOENT on a half-typed path, and the
 		return [];
 	}
 }
 
-/** `Dirent.isDirectory()` reports the entry type, not the link target, so a `statSync` fallback is still needed for symlinks that point at a directory. */
 function entryIsDirectory(dir: string, entry: fs.Dirent): boolean {
 	if (entry.isDirectory()) return true;
-	// Fast reject only for entry types we can confidently identify as non-directory.
 	if (entry.isFile() || entry.isBlockDevice() || entry.isCharacterDevice() || entry.isFIFO() || entry.isSocket()) {
 		return false;
 	}
-	// Symlink (need target type) or unknown (filesystem didn't provide a type) — stat to find out.
 	try {
 		return fs.statSync(path.join(dir, entry.name)).isDirectory();
 	} catch {
@@ -92,7 +84,6 @@ function printableInput(data: string): string {
 	return result;
 }
 
-/** Resolve a user-typed path (`~`, absolute, or relative to `cwd`) to an absolute path. */
 export function resolveMovePath(input: string, cwd: string): string {
 	const trimmed = input.trim();
 	if (trimmed === "~") return os.homedir();
@@ -101,14 +92,11 @@ export function resolveMovePath(input: string, cwd: string): string {
 	return path.resolve(cwd, trimmed);
 }
 
-/** If `input` resolves to an existing directory, return it; otherwise `null`. */
 export function resolveExistingDirectory(input: string, cwd: string): string | null {
 	const resolved = resolveMovePath(input, cwd);
 	try {
 		return fs.statSync(resolved).isDirectory() ? resolved : null;
 	} catch {
-		// A path we cannot stat is not a directory we can move to, which is the same answer a file gives.
-		// The move itself reports what went wrong with the path the user confirmed.
 		return null;
 	}
 }
@@ -130,7 +118,6 @@ function listChildDirectories(dirPath: string, max: number, includeHidden = fals
 function searchDirectories(prefix: string, cwd: string, max: number): DirEntry[] {
 	if (!prefix) return listChildDirectories(cwd, max);
 
-	// Split into base dir + query so dot-prefixed segments can reveal hidden directories.
 	const norm = prefix.replace(/\\/g, "/");
 	const slashIdx = norm.lastIndexOf("/");
 	let baseDir: string;
@@ -146,8 +133,6 @@ function searchDirectories(prefix: string, cwd: string, max: number): DirEntry[]
 
 	const includeHidden = query.startsWith(".");
 
-	// If the prefix already resolves to an existing directory, list its children.
-	// A dot-prefixed query is treated as a filter so hidden directories become reachable.
 	const resolved = includeHidden ? null : resolveExistingDirectory(prefix, cwd);
 	if (resolved) return listChildDirectories(resolved, max);
 
@@ -165,7 +150,6 @@ function searchDirectories(prefix: string, cwd: string, max: number): DirEntry[]
 	return results;
 }
 
-/** Overlay component for `/move`: a single-line path input with a live-filtered list of matching directories. Tab accepts the highlighted suggestion; Enter */
 export class MoveOverlay implements Component, Focusable {
 	#focused = false;
 	#input = "";
@@ -176,39 +160,31 @@ export class MoveOverlay implements Component, Focusable {
 	#done: (result: MoveOverlayResult | undefined) => void;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
-	/** Frame row where the suggestion rows begin (shell body start + input + blank). */
 	#listRowStart = 0;
-	/** Pointer-highlighted suggestion (never the selected one; selection owns its row). */
 	#hoveredIndex: number | null = null;
 	#onRequestRender?: () => void;
-	/** The cross-fade between the suggestion the pointer left and the one it arrived at, once a host lends this card a repaint. Absent, the band is switched. */
 	#hoverFade: HoverFade | undefined;
 
 	constructor(cwd: string, done: (result: MoveOverlayResult | undefined) => void) {
 		this.#cwd = cwd;
 		this.#done = done;
-		// Warm the cache for the current directory so the first keystroke is instant.
 		readDirCached(cwd);
 		this.#updateResults();
 	}
 
 	setOnRequestRender(cb: () => void): void {
 		this.#onRequestRender = cb;
-		// The band fades only once the card has a repaint to lend it: the frames between two mouse
-		// reports have no input to hang off. Same ambient gate as the open unfold.
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: pointerMotionEnabled() });
 		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
 	}
 
-	/** Settle the pointer band so no timer outlives a dismissed card. */
 	dispose(): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = undefined;
 		this.#hoveredIndex = null;
 	}
 
-	/** Band strength for a suggestion row; without a fade the hovered row is at 1 and the rest at 0. */
 	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;
@@ -314,7 +290,6 @@ export class MoveOverlay implements Component, Focusable {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		// The body leads with the input line and a blank before the suggestion rows.
 		this.#listRowStart = (shell.geometry?.bodyRowStart ?? 0) + 2;
 		return shell.lines;
 	}
@@ -365,7 +340,6 @@ export class MoveOverlay implements Component, Focusable {
 			return true;
 		}
 		if (event.leftClick) {
-			// Click mirrors Enter: confirm the suggestion under the pointer.
 			if (index >= 0 && index < shown) {
 				this.#selectedIndex = index;
 				this.#confirm();

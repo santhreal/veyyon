@@ -1,10 +1,7 @@
-/** Bun JavaScriptCore remote inspector control. Wraps `bun:jsc`'s `startRemoteDebugger`, which exposes JavaScriptCore's */
-
 import { startRemoteDebugger } from "bun:jsc";
 import * as net from "node:net";
 
 const DEFAULT_HOST = "127.0.0.1";
-/** How long to keep probing for the inspector socket before giving up. */
 const PROBE_DEADLINE_MS = 1000;
 const PROBE_INTERVAL_MS = 50;
 
@@ -14,25 +11,19 @@ export interface RemoteDebuggerInfo {
 }
 
 let active: RemoteDebuggerInfo | null = null;
-/** In-flight start, shared so concurrent callers coalesce onto one launch. */
 let starting: Promise<RemoteDebuggerInfo> | null = null;
 
-/** Underlying starter signature; tests inject a disposable listener in its place. */
 export type RemoteDebuggerStarter = (host: string, port: number) => void;
 
 export interface StartRemoteDebuggerOptions {
-	/** Explicit port; when omitted a free port is reserved automatically. */
 	port?: number;
-	/** Override the JSC starter. Defaults to `bun:jsc`'s `startRemoteDebugger`. */
 	start?: RemoteDebuggerStarter;
 }
 
-/** The live inspector endpoint for this process, or `null` if not started. */
 export function getRemoteDebugger(): RemoteDebuggerInfo | null {
 	return active;
 }
 
-/** Reserve a free TCP port on `host` by binding to `0`, then releasing it. */
 async function reserveFreePort(host: string): Promise<number> {
 	const server = net.createServer();
 	const listening = Promise.withResolvers<number>();
@@ -51,7 +42,6 @@ async function reserveFreePort(host: string): Promise<number> {
 	}
 }
 
-/** Resolve once `host:port` accepts a TCP connection (within one attempt). */
 function tryConnect(host: string, port: number, timeoutMs: number): Promise<boolean> {
 	const { promise, resolve } = Promise.withResolvers<boolean>();
 	const socket = net.createConnection({ host, port });
@@ -69,7 +59,6 @@ function tryConnect(host: string, port: number, timeoutMs: number): Promise<bool
 	return promise;
 }
 
-/** Poll the inspector socket until it accepts a connection or the deadline passes. */
 async function waitForListening(host: string, port: number): Promise<boolean> {
 	const deadline = Date.now() + PROBE_DEADLINE_MS;
 	do {
@@ -79,7 +68,6 @@ async function waitForListening(host: string, port: number): Promise<boolean> {
 	return false;
 }
 
-/** Start the JavaScriptCore remote inspector for this process and return its endpoint. Idempotent: the underlying API cannot be stopped or rebound, so a */
 export async function startRemoteDebuggerServer(options: StartRemoteDebuggerOptions = {}): Promise<RemoteDebuggerInfo> {
 	if (active) return active;
 	starting ??= launch(options);
@@ -94,9 +82,6 @@ async function launch({ port, start = startRemoteDebugger }: StartRemoteDebugger
 	const host = DEFAULT_HOST;
 	const chosen = port ?? (await reserveFreePort(host));
 
-	// Something already on this port? Refuse up front: otherwise Bun throws a
-	// real bind error and our success probe would connect to that unrelated
-	// service, marking a bogus endpoint as the debugger.
 	if (await tryConnect(host, chosen, PROBE_INTERVAL_MS)) {
 		throw new Error(`Port ${host}:${chosen} is already in use; cannot start remote debugger there.`);
 	}
@@ -105,8 +90,6 @@ async function launch({ port, start = startRemoteDebugger }: StartRemoteDebugger
 	try {
 		start(host, chosen);
 	} catch (err) {
-		// Bun's startRemoteDebugger throws a spurious bind error even on success,
-		// so defer the verdict to the loopback probe below.
 		thrown = err;
 	}
 
@@ -118,7 +101,6 @@ async function launch({ port, start = startRemoteDebugger }: StartRemoteDebugger
 	throw thrown instanceof Error ? thrown : new Error(`Remote debugger socket never came up on ${host}:${chosen}`);
 }
 
-/** Test-only: forget the tracked endpoint so a fresh start can be exercised. Does not (and cannot) stop a real JSC inspector — callers in tests own the */
 export function __resetRemoteDebuggerForTests(): void {
 	active = null;
 	starting = null;

@@ -1,4 +1,3 @@
-/** Harness documentation index for the `veyyon://` protocol. Compiled binaries and the prepacked npm bundle inline a compressed index of the */
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
@@ -10,13 +9,10 @@ const docsEmbed = process.env.VEYYON_DOCS_EMBED ?? "";
 const gunzipAsync = promisify(gunzip);
 
 export interface DocsIndex {
-	/** Sorted documentation file names, relative to `docs/`. */
 	readonly filenames: readonly string[];
-	/** Resolve a doc body by path; inflates the embedded bodies off-thread, lazily, on first call. */
 	getBody(relativePath: string): Promise<string | undefined>;
 }
 
-/** Decode a populated two-line embed (`<filenames JSON>\n<base64 gzip of bodies>`) into a lazily-inflating index, or `null` when there is no newline separator */
 export function decodeDocsIndex(embed: string): DocsIndex | null {
 	const newline = embed.indexOf("\n");
 	if (newline === -1) return null;
@@ -37,7 +33,6 @@ export function decodeDocsIndex(embed: string): DocsIndex | null {
 	};
 }
 
-/** Dev tree / source checkout: build the index from the repo `docs/` directory. */
 function readDocsFromDisk(): DocsIndex {
 	const docsDir = path.resolve(import.meta.dir, "../../../../docs");
 	const filenames: string[] = [];
@@ -54,13 +49,10 @@ function readDocsFromDisk(): DocsIndex {
 let index: DocsIndex | undefined;
 function getIndex(): DocsIndex {
 	if (index !== undefined) return index;
-	// Empty placeholder → dev tree / source checkout: read docs from disk.
 	if (docsEmbed.length === 0) {
 		index = readDocsFromDisk();
 		return index;
 	}
-	// Populated embed in compiled binaries / npm bundle. A non-empty payload with
-	// no newline is a broken build (truncated/corrupt embed), not a placeholder.
 	const decoded = decodeDocsIndex(docsEmbed);
 	if (decoded === null) {
 		throw new Error(
@@ -72,12 +64,10 @@ function getIndex(): DocsIndex {
 	return index;
 }
 
-/** Sorted list of available documentation file names (relative to `docs/`). */
 export function getDocFilenames(): readonly string[] {
 	return getIndex().filenames;
 }
 
-/** Resolve a documentation file's content, or `undefined` when not found. */
 export function getEmbeddedDoc(relativePath: string): Promise<string | undefined> {
 	return getIndex().getBody(relativePath);
 }

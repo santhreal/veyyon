@@ -1,5 +1,3 @@
-/** Diff generation and replace-mode utilities for the edit tool. Provides diff string generation and the replace-mode edit logic */
-
 import { errorMessage } from "@veyyon/utils";
 import * as Diff from "diff";
 import { resolveToCwd } from "../tools/path-utils";
@@ -69,16 +67,13 @@ function isDiffChangeRow(row: string | undefined): boolean {
 	return row !== undefined && (row.startsWith("+") || row.startsWith("-"));
 }
 
-/** Blank row separating non-contiguous regions of a numbered diff. */
 const DIFF_GAP_ROW = "";
 
-/** Old-file line number of a source-visible row (`-` or context); `+`/gap/other rows yield undefined. */
 function parseSourceRowLineNumber(row: string): number | undefined {
 	const parsed = parseNumberedDiffRow(row);
 	return parsed === undefined || parsed.prefix === "+" ? undefined : parsed.lineNumber;
 }
 
-/** Drop gap rows that no longer separate anything. Context rows are inserted one at a time, each adding its own gap rows from a snapshot of the diff, so */
 function normalizeDiffGapRows(rows: string[]): void {
 	const kept: string[] = [];
 	for (let i = 0; i < rows.length; i++) {
@@ -147,24 +142,18 @@ function insertBracketContextRows(
 	}
 }
 
-/** Insert off-window block-boundary rows (enclosing header, matching closing bracket, …) into a numbered diff. Context rows carry pre-edit line numbers — */
 function addMatchingBracketContextRows(
 	rows: string[],
 	oldText: string,
 	newText: string,
 	source: BlockContextSource,
 ): void {
-	// Ask before splitting: each side of a large pair is a whole-file array, and
-	// on a source over the boundary-scan ceiling the lookup below returns
-	// nothing regardless.
 	if (exceedsBlockContextScanCeiling(oldText) || exceedsBlockContextScanCeiling(newText)) return;
 	const oldLines = oldText.split("\n");
 	const newLines = newText.split("\n");
 	const oldVisible: number[] = [];
 	const newVisible: number[] = [];
 	const seenRows = new Set(rows);
-	// Change positions in new-file coordinates, used to translate an unchanged
-	// new-file line number back to its pre-edit equivalent.
 	const changes: { newPos: number; delta: 1 | -1 }[] = [];
 	let offset = 0;
 
@@ -183,8 +172,6 @@ function addMatchingBracketContextRows(
 				offset++;
 				break;
 			default:
-				// Context rows are visible in BOTH files: pre-edit number as
-				// written, post-edit number shifted by the net change so far.
 				oldVisible.push(parsed.lineNumber);
 				newVisible.push(parsed.lineNumber + offset);
 				break;
@@ -199,9 +186,6 @@ function addMatchingBracketContextRows(
 		return newLineNumber - shift;
 	};
 
-	// Each side hands its own text down: the lookup joins the line array back
-	// into a source when it is not given one, which is a copy of the whole file
-	// per side per call, and this caller is holding both strings already.
 	const contextRows = findBlockContextLines(oldLines, oldVisible, { ...source, text: oldText });
 	for (const [lineNumber, text] of findBlockContextLines(newLines, newVisible, { ...source, text: newText })) {
 		const oldLineNumber = toOldLineNumber(lineNumber);
@@ -211,7 +195,6 @@ function addMatchingBracketContextRows(
 	normalizeDiffGapRows(rows);
 }
 
-/** Generate a unified diff string with line numbers and context. Returns both the diff string and the first changed line number (in the new file). */
 export function generateDiffString(
 	oldContent: string,
 	newContent: string,
@@ -234,12 +217,10 @@ export function generateDiffString(
 		}
 
 		if (part.added || part.removed) {
-			// Capture the first changed line (in the new file)
 			if (firstChangedLine === undefined) {
 				firstChangedLine = newLineNum;
 			}
 
-			// Show the change
 			for (const line of raw) {
 				if (part.added) {
 					output.push(formatNumberedDiffLine("+", newLineNum, line));
@@ -251,7 +232,6 @@ export function generateDiffString(
 			}
 			lastWasChange = true;
 		} else {
-			// Context lines - only show a few before/after changes
 			const nextPartIsChange = i < parts.length - 1 && (parts[i + 1].added || parts[i + 1].removed);
 
 			if (lastWasChange || nextPartIsChange) {
@@ -278,8 +258,6 @@ export function generateDiffString(
 					linesToShow = raw.slice(0, contextLimit);
 				}
 
-				// Leading-skip placeholder is omitted: the first emitted line's
-				// number already conveys that earlier lines were trimmed.
 				if (leadingSkip > 0) {
 					oldLineNum += leadingSkip;
 					newLineNum += leadingSkip;
@@ -292,9 +270,6 @@ export function generateDiffString(
 					newLineNum++;
 				}
 
-				// Mid-skip placeholder is omitted too: the jump between the trailing
-				// number of the leading context and the leading number of the
-				// trailing context conveys the gap, just like leading/trailing skips.
 				if (middleSkip > 0) {
 					oldLineNum += middleSkip;
 					newLineNum += middleSkip;
@@ -305,14 +280,11 @@ export function generateDiffString(
 					}
 				}
 
-				// Trailing-skip placeholder is omitted for the same reason: the
-				// final emitted line's number tells the reader the file continues.
 				if (trailingSkip > 0) {
 					oldLineNum += trailingSkip;
 					newLineNum += trailingSkip;
 				}
 			} else {
-				// Skip these context lines entirely
 				oldLineNum += raw.length;
 				newLineNum += raw.length;
 			}
@@ -327,22 +299,16 @@ export function generateDiffString(
 }
 
 export interface ReplaceOptions {
-	/** Allow fuzzy matching */
 	fuzzy: boolean;
-	/** Replace all occurrences */
 	all: boolean;
-	/** Similarity threshold for fuzzy matching */
 	threshold?: number;
 }
 
 export interface ReplaceResult {
-	/** The new content after replacements */
 	content: string;
-	/** Number of replacements made */
 	count: number;
 }
 
-/** Generate a unified diff string without file headers. Returns both the diff string and the first changed line number (in the new file). */
 export function generateUnifiedDiffString(
 	oldContent: string,
 	newContent: string,
@@ -388,8 +354,6 @@ const CHANGE_CONTEXT_MARKER = "@@ ";
 const EMPTY_CHANGE_CONTEXT_MARKER = "@@";
 const LINE_HINT_REGEX = /^lines?\s+(\d+)(?:\s*-\s*(\d+))?(?:\s*@@)?$/i;
 const TOP_OF_FILE_REGEX = /^(top|start|beginning)\s+of\s+file$/i;
-// `diff --git ` is git's own marker, not part of the apply-patch envelope, so it is
-// added here rather than kept in the shared marker list.
 const MULTI_FILE_MARKERS = [...FILE_OP_MARKERS, "diff --git "];
 const DIFF_METADATA_PREFIXES = [
 	...FILE_OP_MARKERS,
@@ -421,8 +385,6 @@ function isDiffContentLine(line: string): boolean {
 	return false;
 }
 
-// `readonly` because this only reads: the shared marker lists are frozen tuples, and a
-// mutable parameter type would have forced a copy at every call site to satisfy it.
 function matchesTrimmedPrefix(line: string, prefixes: readonly string[]): boolean {
 	return prefixes.some(prefix => line.startsWith(prefix));
 }
@@ -787,9 +749,6 @@ export function parseDiffHunks(diff: string): DiffHunk[] {
 	return hunks;
 }
 
-/**
- * Find and replace text in content using fuzzy matching.
- */
 export function replaceText(content: string, oldText: string, newText: string, options: ReplaceOptions): ReplaceResult {
 	if (oldText.length === 0) {
 		throw new Error("oldText must not be empty.");
@@ -801,7 +760,6 @@ export function replaceText(content: string, oldText: string, newText: string, o
 	let count = 0;
 
 	if (options.all) {
-		// Check for exact matches first
 		const exactCount = normalizedContent.split(normalizedOldText).length - 1;
 		if (exactCount > 0) {
 			return {
@@ -810,7 +768,6 @@ export function replaceText(content: string, oldText: string, newText: string, o
 			};
 		}
 
-		// No exact matches - try fuzzy matching iteratively
 		while (true) {
 			const matchOutcome = findMatch(normalizedContent, normalizedOldText, {
 				allowFuzzy: options.fuzzy,
@@ -841,7 +798,6 @@ export function replaceText(content: string, oldText: string, newText: string, o
 		return { content: normalizedContent, count };
 	}
 
-	// Single replacement mode
 	const matchOutcome = findMatch(normalizedContent, normalizedOldText, {
 		allowFuzzy: options.fuzzy,
 		threshold,
@@ -865,7 +821,6 @@ export function replaceText(content: string, oldText: string, newText: string, o
 	return { content: normalizedContent, count: 1 };
 }
 
-/** Compute the diff for an edit operation without applying it. Used for preview rendering in the TUI before the tool executes. */
 export async function computeEditDiff(
 	path: string,
 	oldText: string,
@@ -899,7 +854,6 @@ export async function computeEditDiff(
 		});
 
 		if (result.count === 0) {
-			// Get closest match for error message
 			const matchOutcome = findMatch(normalizedContent, normalizedOldText, {
 				allowFuzzy: fuzzy,
 				threshold: threshold ?? DEFAULT_FUZZY_THRESHOLD,

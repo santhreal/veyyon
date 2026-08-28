@@ -10,9 +10,6 @@ const outDir = path.join(packageDir, "dist");
 const cliPath = path.join(outDir, "cli.js");
 const shebang = "#!/usr/bin/env bun\n";
 
-// Native / optional / platform-specific deps are loaded from installed files.
-// `veyyon-legacy-pi-modules` exists only in compiled binaries via the build plugin;
-// the npm bundle never executes that `isCompiledBinary()` branch.
 const ALWAYS_EXTERNAL = [
 	"mupdf",
 	"@veyyon/natives",
@@ -22,13 +19,6 @@ const ALWAYS_EXTERNAL = [
 	"veyyon-legacy-pi-modules",
 ];
 
-// Heavy, lazily-used third-party leaf deps. Each is a declared `dependency`, so the
-// published package resolves it from node_modules at runtime; bundling only embeds a
-// redundant copy that bloats dist/cli.js. NEVER add a patched dependency here — the
-// bundle is where a root `patchedDependencies` patch is baked in, so an externalized
-// import would load the unpatched npm package in users' installs (currently
-// @ark/schema is patched, so it — and arktype, which pulls @ark/schema — stay
-// bundled).
 const RUNTIME_EXTERNAL = [
 	"puppeteer-core",
 	"@puppeteer/browsers",
@@ -59,8 +49,6 @@ async function ensureShebang(): Promise<void> {
 }
 
 async function cleanBundleOutputs(): Promise<void> {
-	// dist/ is shared with the dev binary (dist/vey); only remove this
-	// script's own outputs (entry bundle + copied native assets).
 	let entries: string[];
 	try {
 		entries = await fs.readdir(outDir);
@@ -78,14 +66,8 @@ async function cleanBundleOutputs(): Promise<void> {
 async function main(): Promise<void> {
 	const start = Bun.nanoseconds();
 	await cleanBundleOutputs();
-	// The npm bundle ships no stats dashboard sources, so embed the dashboard
-	// archive the same way compiled binaries do (scripts/build-binary.ts). Reset
-	// afterwards to keep the checked-in placeholder empty.
 	await runCommand(["bun", "--cwd=../stats", "run", "gen:stats"]);
 	try {
-		// Build in-process: the docs embed payload is far larger than Linux's
-		// 128KiB per-argv-string cap, so it can never be passed as a CLI
-		// `--define` (posix_spawn fails with E2BIG).
 		const output = await Bun.build({
 			entrypoints: [path.join(packageDir, "src/cli.ts")],
 			outdir: outDir,

@@ -1,19 +1,14 @@
 import type { Api, ApiKeyResolver, AuthStorage, Model } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
 
-/** Model slice accepted by the model-form `resolver(model, sessionId)` overload. */
 export type ApiKeyResolverModel = Pick<Model<Api>, "provider" | "baseUrl" | "id">;
 
 export interface ApiKeyResolverOptions {
-	/** Session id for credential stickiness; read at resolve time by the caller. */
 	sessionId?: string;
-	/** Provider base URL hint forwarded to the auth-storage cascade. */
 	baseUrl?: string;
-	/** Provider model id forwarded to model-scoped usage ranking/backoff. */
 	modelId?: string;
 }
 
-/** Minimal slice of `ModelRegistry` the resolver needs. Typed structurally so narrower registry shells (e.g. the commit pipeline's `CommitModelRegistry`) */
 export interface ApiKeyResolverRegistry {
 	getApiKeyForProvider(
 		provider: string,
@@ -21,12 +16,10 @@ export interface ApiKeyResolverRegistry {
 		options?: { baseUrl?: string; modelId?: string; forceRefresh?: boolean; signal?: AbortSignal },
 	): Promise<string | undefined>;
 	authStorage: Pick<AuthStorage, "rotateSessionCredential">;
-	/** Build an {@link ApiKeyResolver} implementing the central a/b/c auth-retry policy: initial → resolve; step (b) → force-refresh same account; step (c) */
 	resolver(provider: string, options?: ApiKeyResolverOptions): ApiKeyResolver;
 	resolver(model: ApiKeyResolverModel, sessionId?: string): ApiKeyResolver;
 }
 
-/** Default implementation of {@link ApiKeyResolverRegistry.resolver}. Also usable standalone for structural registries that don't carry the method. */
 export function createApiKeyResolver(
 	registry: Pick<ApiKeyResolverRegistry, "getApiKeyForProvider" | "authStorage">,
 	provider: string,
@@ -38,7 +31,6 @@ export function createApiKeyResolver(
 			return registry.getApiKeyForProvider(provider, sessionId, { baseUrl, modelId });
 		}
 		if (lastChance) {
-			// Account constraint (401 / usage / account-rate-limit): rotate to a sibling credential. We do NOT honor any retry-after here — if a
 			const switched = await registry.authStorage.rotateSessionCredential(provider, sessionId, {
 				error,
 				modelId,
@@ -46,9 +38,6 @@ export function createApiKeyResolver(
 				apiKey: previousKey,
 			});
 			if (!switched) {
-				// No sibling for an account-quota failure: stop so the outer
-				// whole-turn retry layer can honor the recorded backoff. A hard
-				// auth decline can instead mean a peer refreshed the bearer.
 				if (AIError.isUsageLimit(error)) return undefined;
 			}
 			return registry.getApiKeyForProvider(provider, sessionId, { baseUrl, modelId });

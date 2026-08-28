@@ -1,16 +1,12 @@
-/** Bounded reader for failed HTTP response bodies. */
 import { sanitizeText } from "@veyyon/utils/sanitize-text";
 import { boundProviderErrorDetail, MAX_PROVIDER_ERROR_DETAIL_CHARS } from "./detail-bounds";
 
-/** Ceiling on bytes pulled off a failed response (64 KiB). */
 export const MAX_PROVIDER_ERROR_BODY_BYTES = 64 * 1024;
 
-/** How a redacted run is spelled, matching the request-debug dumps. */
 function redacted(length: number): string {
 	return `<redacted ${length} chars>`;
 }
 
-/** A family of credential-shaped text redacted out of a provider error body. */
 export interface ProviderSecretFamily {
 	readonly name: string;
 	readonly redact: (text: string) => string;
@@ -24,7 +20,6 @@ const JWT = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}/g;
 const PREFIXED_KEY =
 	/\b(?:sk-ant-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{16,}|AIza[A-Za-z0-9_-]{20,}|ya29\.[A-Za-z0-9_-]{20,}|xox[baprse]-[A-Za-z0-9-]{10,}|(?:AKIA|ASIA)[0-9A-Z]{12,})/g;
 
-/** Credential families stripped from error bodies in order of application. */
 export const PROVIDER_SECRET_FAMILIES: readonly ProviderSecretFamily[] = [
 	{
 		name: "labelled-credential",
@@ -48,31 +43,23 @@ export const PROVIDER_SECRET_FAMILIES: readonly ProviderSecretFamily[] = [
 	{ name: "prefixed-key", redact: text => text.replace(PREFIXED_KEY, match => redacted(match.length)) },
 ];
 
-/** Remove credential-shaped runs from wire text. */
 export function redactProviderSecrets(text: string): string {
 	let redactedText = text;
 	for (const family of PROVIDER_SECRET_FAMILIES) redactedText = family.redact(redactedText);
 	return redactedText;
 }
 
-/** Minimal response interface for bounded error-body reads. */
 export interface ReadableErrorResponse {
 	body: ReadableStream<Uint8Array> | null;
 	headers: { get(name: string): string | null };
 	text(): Promise<string>;
 }
 
-/** Produced result of a bounded error response read. */
 export interface ProviderErrorBody {
-	/** Sanitized, redacted body text capped by byte ceiling. */
 	readonly text: string;
-	/** Character-capped detail for Error.message with truncation notes. */
 	readonly detail: string;
-	/** Bytes actually pulled off the stream. */
 	readonly bytesRead: number;
-	/** Whether bytes were left unread on the wire. */
 	readonly truncated: boolean;
-	/** The server's `content-length`, when it sent one and it parsed. */
 	readonly declaredBytes: number | undefined;
 }
 
@@ -83,7 +70,6 @@ function declaredLength(response: ReadableErrorResponse): number | undefined {
 	return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
-/** Generate truncation note bracket showing bytes and characters read. */
 function truncationNote(
 	shownChars: number,
 	readChars: number,
@@ -153,7 +139,6 @@ async function readBoundedText(
 	return { text, bytesRead, truncated };
 }
 
-/** Read a failed response body under a byte ceiling, sanitized and redacted. */
 export async function readProviderErrorBody(
 	response: ReadableErrorResponse,
 	options?: { maxBytes?: number },
@@ -166,7 +151,6 @@ export async function readProviderErrorBody(
 	return { text, detail, bytesRead, truncated, declaredBytes };
 }
 
-/** Format error detail for a truncated response body. */
 function boundedWithNote(text: string, bytesRead: number, declaredBytes: number | undefined): string {
 	const trimmed = text.trim();
 	if (trimmed.length === 0) return truncationNote(0, 0, bytesRead, declaredBytes);
@@ -174,12 +158,10 @@ function boundedWithNote(text: string, bytesRead: number, declaredBytes: number 
 	return `${trimmed.slice(0, shown)} ${truncationNote(shown, trimmed.length, bytesRead, declaredBytes)}`;
 }
 
-/** Read bounded error detail string from response. */
 export async function readProviderErrorDetail(response: Response, options?: { maxBytes?: number }): Promise<string> {
 	return (await readProviderErrorBody(response, options)).detail;
 }
 
-/** Extract human-readable error message from provider JSON envelope or raw text. */
 export function providerErrorMessage(body: ProviderErrorBody): string {
 	const trimmed = body.text.trim();
 	if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return body.detail;
@@ -193,7 +175,6 @@ export function providerErrorMessage(body: ProviderErrorBody): string {
 	return message ? boundProviderErrorDetail(message) : body.detail;
 }
 
-/** Extract message string from error envelope object. */
 function extractMessage(value: unknown): string | undefined {
 	if (typeof value !== "object" || value === null) return undefined;
 	const own = (key: string): unknown =>

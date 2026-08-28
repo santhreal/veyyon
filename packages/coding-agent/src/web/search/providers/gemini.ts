@@ -1,4 +1,3 @@
-/** Google Gemini Web Search Provider Uses Gemini's Google Search grounding via Cloud Code Assist API. */
 import type { AuthStorage, FetchImpl, OAuthAccess } from "@veyyon/ai";
 import { withOAuthAccess } from "@veyyon/ai/auth-retry";
 import {
@@ -52,9 +51,7 @@ export interface GeminiSearchParams extends GeminiToolParams {
 	query: string;
 	system_prompt?: string;
 	num_results?: number;
-	/** Maximum output tokens. */
 	max_output_tokens?: number;
-	/** Sampling temperature (0–1). Lower = more focused/factual. */
 	temperature?: number;
 	signal?: AbortSignal;
 	authStorage: AuthStorage;
@@ -76,14 +73,12 @@ export function buildGeminiRequestTools(params: GeminiToolParams): Array<Record<
 	return tools;
 }
 
-/** Resolved auth for a Gemini API request. */
 interface GeminiAuth {
 	accessToken: string;
 	projectId: string;
 	isAntigravity: boolean;
 }
 
-/** First configured Gemini OAuth provider plus its pre-resolved access. */
 interface GeminiAuthSeed {
 	provider: GeminiProviderId;
 	access: OAuthAccess;
@@ -99,7 +94,6 @@ interface GeminiSearchResult {
 	usage?: { inputTokens: number; outputTokens: number; totalTokens: number };
 }
 
-/** Walks the configured Gemini OAuth providers in deterministic order and returns the first one that yields a usable access token + projectId via */
 export async function findGeminiAuth(
 	authStorage: AuthStorage,
 	sessionId: string | undefined,
@@ -117,7 +111,6 @@ function hasGeminiOAuth(authStorage: AuthStorage): boolean {
 	return GEMINI_PROVIDERS.some((provider: GeminiProviderId) => authStorage.hasOAuth(provider));
 }
 
-/** Cloud Code Assist API response types */
 interface GeminiGroundingChunk {
 	web?: {
 		uri?: string;
@@ -282,7 +275,6 @@ async function parseGeminiSearchStream(
 	};
 }
 
-/** Calls the Cloud Code Assist API with Google Search grounding enabled. If a request returns a refreshable auth failure (401/403/auth-flavoured 400), */
 async function callGeminiSearch(
 	auth: GeminiAuth,
 	model: string,
@@ -502,10 +494,6 @@ async function callGeminiDeveloperSearch(
 	});
 }
 
-/**
- * Executes a web search using Google Gemini with Google Search grounding.
- */
-/** Did the model actually run a web search? A grounded Gemini/antigravity response carries at least one grounding signal: a source, a citation, or a search query */
 export function geminiPerformedSearch(
 	result: Pick<GeminiSearchResult, "sources" | "citations" | "searchQueries">,
 ): boolean {
@@ -523,7 +511,6 @@ export async function searchGemini(params: GeminiSearchParams): Promise<SearchRe
 			params.authStorage,
 			seed.provider,
 			access =>
-				// Derive bearer + projectId from the access this attempt received; a re-resolved access may omit projectId, in which case the seed's
 				callGeminiSearch(
 					{
 						accessToken: access.accessToken,
@@ -574,9 +561,6 @@ export async function searchGemini(params: GeminiSearchParams): Promise<SearchRe
 		);
 	}
 
-	// Fail loud when the model answered without searching. Returning `result.answer`
-	// here would surface a conversational greeting as a "search result" — the exact
-	// dogfood failure where `web_search test` came back as an Antigravity chat reply.
 	if (!geminiPerformedSearch(result) && result.answer.trim()) {
 		throw new SearchProviderError(
 			"gemini",
@@ -603,15 +587,11 @@ export async function searchGemini(params: GeminiSearchParams): Promise<SearchRe
 	};
 }
 
-/** Search provider for Google Gemini web search. */
 export class GeminiProvider extends SearchProvider {
 	readonly id = "gemini";
 	readonly label = "Gemini";
 
 	isAvailable(authStorage: AuthStorage): boolean {
-		// Cheap, in-memory check — avoids driving the refresh pipeline during
-		// the provider-chain probe. `searchGemini` refreshes OAuth lazily on the
-		// actual request and resolves developer API keys through AuthStorage.
 		return hasGeminiOAuth(authStorage) || authStorage.hasAuth(DEVELOPER_API_PROVIDER);
 	}
 

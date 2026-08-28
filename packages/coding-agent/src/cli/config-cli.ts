@@ -1,5 +1,3 @@
-/** Config CLI command handlers. Handles `veyyon config <command>` subcommands for managing settings. */
-
 import { APP_NAME, errorMessage, getAgentDir, isRecord, nearestNames } from "@veyyon/utils";
 import { renderHelpParagraph, renderHelpTable } from "@veyyon/utils/cli";
 import chalk from "chalk";
@@ -34,13 +32,11 @@ type CliSettingDef = {
 	type: string;
 	description: string;
 	tab: string;
-	/** The key that replaced this one, when it is superseded. See `retiredBy`. */
 	retiredBy?: string;
 };
 
 const ALL_SETTING_PATHS = Object.keys(SETTINGS_SCHEMA) as SettingPath[];
 
-/** Find setting definition by path */
 function findSettingDef(path: string): CliSettingDef | undefined {
 	if (!isSettingPath(path)) return undefined;
 	const key = path;
@@ -54,12 +50,10 @@ function findSettingDef(path: string): CliSettingDef | undefined {
 	};
 }
 
-/** Setting paths a user probably meant when `key` matched nothing, best first. "Unknown setting" plus "run config list" is a poor answer when the schema has */
 export function suggestSettingPaths(key: string, limit = 3): string[] {
 	return nearestNames(key, Object.keys(SETTINGS_SCHEMA), limit);
 }
 
-/** Report a key that matches no setting, naming near misses when there are any. One owner for the message so `get`, `set`, and `reset` cannot drift into */
 function reportUnknownSetting(key: string): void {
 	console.error(chalk.red(`Unknown setting: ${key}`));
 	const suggestions = suggestSettingPaths(key);
@@ -72,7 +66,6 @@ function reportUnknownSetting(key: string): void {
 	console.error(chalk.dim(`\nRun '${APP_NAME} config list' to see available keys`));
 }
 
-/** Get available values for a setting */
 function getSettingValues(def: CliSettingDef): readonly string[] | undefined {
 	if (def.type === "enum") {
 		return getEnumValues(def.path);
@@ -80,13 +73,10 @@ function getSettingValues(def: CliSettingDef): readonly string[] | undefined {
 	return undefined;
 }
 
-/** Canonical action list; the `config` command's options validation imports this. */
 export const CONFIG_ACTIONS: ConfigAction[] = ["list", "get", "set", "reset", "path", "init-xdg"];
 
-/** Widest opening value token that can still share its key's line in `config list`. `renderHelpTable` puts the first wrapped line of a value inline after the key, and nothing can */
 const INLINE_VALUE_WIDTH = 30;
 
-/** Indent for a value printed below its key rather than beside it. Deeper than the two spaces a key sits at, so a continuation line can never be read as a new */
 const VALUE_BLOCK_INDENT = "      ";
 
 function formatValue(value: unknown): string {
@@ -127,15 +117,12 @@ function getTypeDisplay(def: CliSettingDef): string {
 		case "record":
 			return "(record)";
 		case "modelChain":
-			// Says what it accepts rather than what it stores: both spellings are
-			// valid, and "(string)" told the reader the list form was not.
 			return "(model chain: pattern, or comma-separated, or a list)";
 		default:
 			return "(string)";
 	}
 }
 
-/** The one sentence every rejected `config set` value ends with. A config error has an unusually good remedy available -- the command the */
 function configSetRemedy(path: SettingPath, example: string): string {
 	return `Fix: run \`${APP_NAME} config set ${path} ${example}\`.`;
 }
@@ -180,15 +167,12 @@ function parseAndSetValue(path: SettingPath, rawValue: string): void {
 			try {
 				parsed = JSON.parse(trimmed);
 			} catch {
-				// TWO DIFFERENT MISTAKES, and both said `Invalid array JSON`. This one
-				// is a quoting slip: the shell ate the brackets before veyyon saw them.
 				throw new Error(
 					`${path} is a list and "${rawValue}" is not valid JSON. ` +
 						`${configSetRemedy(path, `'[]'`)} Quote the value so the shell keeps the brackets.`,
 				);
 			}
 			if (!Array.isArray(parsed)) {
-				// Parsed fine and is the wrong shape, which is a different fix.
 				throw new Error(
 					`${path} is a list and ${rawValue} is valid JSON but not an array. ` +
 						configSetRemedy(path, `'["one","two"]'`),
@@ -264,7 +248,6 @@ async function writeStdout(text: string): Promise<void> {
 }
 
 async function handleList(flags: { json?: boolean }): Promise<void> {
-	// A superseded key is still readable and settable, so an existing config keeps working, but it is not something to CHOOSE — listing it beside the key that
 	const defs = ALL_SETTING_PATHS.map(path => findSettingDef(path)).filter(
 		(def): def is CliSettingDef => !!def && !def.retiredBy,
 	);
@@ -273,7 +256,6 @@ async function handleList(flags: { json?: boolean }): Promise<void> {
 		const result: Record<string, { value: unknown; type: string; description: string }> = {};
 		for (const def of defs) {
 			result[def.path] = {
-				// `?? null` so unset settings still serialize a `value` key (JSON.stringify drops undefined).
 				value: settings.get(def.path) ?? null,
 				type: def.type,
 				description: def.description,
@@ -299,21 +281,17 @@ async function handleList(flags: { json?: boolean }): Promise<void> {
 		return a.localeCompare(b);
 	});
 
-	// ONE table for the whole listing, not one per group: `renderHelpTable` derives its gutter from the rows it is handed, so a call per group would put the value column in a
 	const rows: Array<readonly [string, string]> = [];
 	for (const group of sortedGroups) {
 		rows.push([chalk.bold.blue(`[${group}]`), ""]);
 		for (const def of groups[group]) {
 			const key = `  ${chalk.white(def.path)} =`;
 			const detail = `${formatValue(settings.get(def.path))} ${chalk.dim(getTypeDisplay(def))}`;
-			// A long value WRAPS onto indented continuation lines; it is never truncated. `bashInterceptor.patterns` serializes to ~2.3kB of JSON, and an ellipsis there
 			const [firstToken = ""] = detail.split(" ");
 			if (Bun.stringWidth(firstToken) <= INLINE_VALUE_WIDTH) {
 				rows.push([key, detail]);
 				continue;
 			}
-			// The value opens with a token too long to share the key's line, so it gets its own
-			// indented block instead of being jammed into the description column.
 			rows.push([key, ""]);
 			for (const line of renderHelpParagraph(detail, { indent: VALUE_BLOCK_INDENT })) {
 				rows.push([line, ""]);
@@ -321,7 +299,6 @@ async function handleList(flags: { json?: boolean }): Promise<void> {
 		}
 		rows.push(["", ""]);
 	}
-	// `indent: ""` because the group headers are part of the table and belong at column 0; the setting rows carry their own two-space indent.
 	console.log(renderHelpTable(rows, { indent: "", maxGutterFraction: 1 / 2 }).join("\n"));
 }
 
@@ -363,7 +340,6 @@ function handleGet(key: string | undefined, flags: { json?: boolean }): void {
 	console.log(formatValue(value));
 }
 
-/** Wait for the write and refuse to report success it did not achieve. `set` and `reset` used to print their green tick and exit 0 without ever waiting for the */
 async function persistOrExit(): Promise<void> {
 	await settings.flush().catch(() => {});
 	const failed = settings.lastSaveError;
@@ -403,9 +379,6 @@ async function handleSet(key: string | undefined, value: string | undefined, fla
 	} else {
 		console.log(chalk.green(`${theme.status.success} Set ${def.path} = ${formatValue(newValue)}`));
 		if (def.retiredBy) {
-			// Written, because refusing would break a script that predates the
-			// supersession, but never silently: the value may be migrated away on the
-			// next load, so say where it belongs now.
 			console.error(chalk.yellow(`${def.path} is retired; ${def.retiredBy} is the setting that governs this now.`));
 		}
 	}
@@ -425,7 +398,6 @@ async function handleReset(key: string | undefined, flags: { json?: boolean }): 
 	}
 
 	const path = def.path as SettingPath;
-	// Reset REMOVES the key rather than writing the default back into the file. Writing it made every reset value look explicitly configured — the config
 	settings.unset(path);
 	await persistOrExit();
 	const defaultValue = getDefault(path);

@@ -1,5 +1,3 @@
-/** IRC tool — agent-to-agent messaging over the process-global IrcBus. `send` is fire-and-forget: the bus routes the message to the recipient */
-
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
 import { errorMessage, formatDuration, prompt } from "@veyyon/utils";
@@ -11,8 +9,6 @@ import type { ToolSession } from ".";
 
 const DEFAULT_IRC_TIMEOUT_MS = 120_000;
 
-// Re-exported for back-compat: the definition lives in the light module so the
-// tool registry can gate irc without loading this implementation at boot.
 import { isIrcEnabled } from "./irc-enabled";
 
 export { isIrcEnabled };
@@ -46,7 +42,6 @@ export interface IrcDetails {
 	from?: string;
 	to?: string;
 	receipts?: IrcDeliveryReceipt[];
-	/** Message consumed by `wait` / `send await:true`; null when the wait timed out. */
 	waited?: IrcMessage | null;
 	inbox?: IrcMessage[];
 	peers?: IrcPeerInfo[];
@@ -65,7 +60,6 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 	readonly description: string;
 	readonly parameters = ircSchema;
 	readonly strict = true;
-	// Only the ops that block observe an interrupt. `list`, `inbox`, a fire-and-forget `send` and a `send` the tool rejects all return at once,
 	readonly interruptible = (args: Partial<IrcParams>): boolean =>
 		args.op === "wait" || (args.op === "send" && args.await === true);
 
@@ -131,7 +125,6 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 
 	#executeList(registry: AgentRegistry, senderId: string): AgentToolResult<IrcDetails> {
 		const bus = IrcBus.global();
-		// ONE call, and the registry owns what it means. This is the roster the MODEL reads, and the ids it hands back are the ids the model then
 		const peers = registry.listAddressableBy(senderId).map(ref => ({
 			id: ref.id,
 			displayName: ref.displayName,
@@ -178,7 +171,6 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 		if (!requested) {
 			return errorResult('`to` is required for op="send".', { op: "send", from: senderId });
 		}
-		// The model is told to address a driving agent as `Main`. That is a role, not a key: a process running two conversations has one of each, so the
 		const to = registry.resolveId(requested, registry.scopeOf(senderId))?.id ?? requested;
 		if (!message) {
 			return errorResult('`message` is required for op="send".', { op: "send", from: senderId });
@@ -228,7 +220,6 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 		}
 
 		try {
-			// Broadcasts fan out to running peers only; reviving every parked agent or waking completed/idle agents on a broadcast would restart finished subagents
 			if (!isBroadcast && registry.get(to) && !registry.canAddress(senderId, to)) {
 				return errorResult(
 					`Agent "${to}" cannot be messaged from this conversation. Run \`irc list\` for the peers of this session.`,
@@ -237,15 +228,11 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 			}
 			const targetRefs = isBroadcast ? registry.listVisibleTo(senderId).filter(ref => ref.status === "running") : [];
 			const targets = isBroadcast ? targetRefs.map(ref => ref.id) : [to];
-			// A broadcast that also reaches a driving agent delivers the body to it directly (its own incoming card); relaying the sibling legs to the
 			const suppressRelay = targetRefs.some(ref => ref.kind === "main");
 			const receipts = await Promise.all(
 				targets.map(target =>
 					bus.send(
 						{ from: senderId, to: target, body: message, replyTo: params.replyTo },
-						// Awaited sends mark the sender as blocked on an answer so a
-						// busy recipient that cannot reach a step boundary (async
-						// disabled) auto-replies instead of stranding the sender.
 						{ expectsReply: params.await || undefined, suppressRelay: suppressRelay || undefined },
 					),
 				),
@@ -273,7 +260,6 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 				if (delivered.length > 0) {
 					const reply = await waiting;
 					if (reply.error) {
-						// The send already succeeded; if the wait was interrupted by our caller signal (steering / IRC), preserve the delivery receipt so
 						if (signal?.aborted) {
 							lines.push(
 								`Send delivered but the reply wait was interrupted before ${to} answered. ` +
@@ -346,7 +332,6 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 				return {
 					content: [{ type: "text", text: `No message${filterNote} within ${formatDuration(timeoutMs)}.` }],
 					details: { op: "wait", from: senderId, waited: null },
-					// A clean wait timeout carries no information once consumed.
 					useless: true,
 				};
 			}
@@ -374,7 +359,6 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 			return {
 				content: [{ type: "text", text: "Inbox empty." }],
 				details: { op: "inbox", from: senderId, inbox: [] },
-				// An empty inbox drain carries no information once consumed.
 				useless: true,
 			};
 		}
@@ -404,12 +388,8 @@ function errorResult(text: string, details: IrcDetails): AgentToolResult<IrcDeta
 
 function normalizeIrcTimeoutMs(value: number): number {
 	if (value === 0) return 0; // 0 = timeout disabled
-	// Negative or non-finite settings are misconfigurations — fall back to the
-	// default instead of producing an instant 1 ms timeout.
 	if (!Number.isFinite(value) || value < 0) return DEFAULT_IRC_TIMEOUT_MS;
 	return Math.max(1, Math.trunc(value));
 }
 
-// The TUI renderer lives in `irc-render.ts` (light module, boot-path safe);
-// re-exported here so the library surface and existing importers keep working.
 export { createIrcMessageCard, ircToolRenderer } from "./irc-render";

@@ -1,39 +1,23 @@
-/**
- * Cross-process daemon broker protocol shared by the tool, client, and broker.
- */
-/** Hidden CLI selector used to re-enter the daemon broker worker. */
 export const DAEMON_BROKER_WORKER_ARG = "__veyyon_worker_daemon_broker";
 
-/** Fixed dimensions negotiated with every supervised PTY. */
 export const DAEMON_PTY_COLUMNS = 120;
 export const DAEMON_PTY_ROWS = 40;
 
-// Internal tool→broker-worker handoff keys, set by the launching process and
-// deleted by the broker on read (see broker.ts). Not user-configurable, so no
-// legacy `OMP_*` alias is kept — the value moves with the veyyon brand.
-/** Environment key carrying the broker's canonical project directory. */
 export const DAEMON_PROJECT_DIR_ENV = "VEYYON_DAEMON_PROJECT_DIR";
 
-/** Environment key carrying the broker's private runtime directory. */
 export const DAEMON_RUNTIME_DIR_ENV = "VEYYON_DAEMON_RUNTIME_DIR";
 
-/** Optional environment key overriding last-client shutdown grace. */
 export const DAEMON_IDLE_GRACE_ENV = "VEYYON_DAEMON_IDLE_GRACE_MS";
 
-/** Optional environment key overriding exited daemon cleanup TTL. */
 export const DAEMON_CLEANUP_WAIT_ENV = "VEYYON_DAEMON_CLEANUP_WAIT_MS";
 
-/** Default post-exit retention before an exited daemon is purged (15 minutes). */
 export const DEFAULT_CLEANUP_WAIT_MS = 15 * 60 * 1000;
 
-/** Stable lifecycle states exposed by the launch tool. */
 export const DAEMON_STATES = ["starting", "running", "ready", "restarting", "stopping", "exited", "failed"] as const;
 export type DaemonState = (typeof DAEMON_STATES)[number];
 
-/** Restart behavior applied after an unexpected daemon exit. */
 export const DAEMON_RESTART_POLICIES = ["no", "on-failure", "always"] as const;
 export type DaemonRestartPolicy = (typeof DAEMON_RESTART_POLICIES)[number];
-/** Readiness conditions; every configured condition must pass. */
 export interface DaemonReadySpec {
 	log?: string;
 	port?: number;
@@ -41,7 +25,6 @@ export interface DaemonReadySpec {
 	timeoutMs: number;
 }
 
-/** Immutable launch specification retained for restart and inspection. */
 export interface DaemonSpec {
 	name: string;
 	application: string;
@@ -55,7 +38,6 @@ export interface DaemonSpec {
 	detached: boolean;
 }
 
-/** Serializable daemon state visible to every client in one project directory. */
 export interface DaemonSnapshot {
 	name: string;
 	id: string;
@@ -66,26 +48,21 @@ export interface DaemonSnapshot {
 	readyAt?: number;
 	exitedAt?: number;
 	exitCode?: number;
-	/** Signal name that terminated the process (e.g. "SIGTERM"), when killed by a signal rather than exiting with a code. */
 	signal?: string;
 	exitReason?: string;
 	restartCount: number;
 	outputBytes: number;
 	owner?: string;
-	/** Which component ended the process; set on every terminal transition. */
 	terminatedBy?: DaemonTerminationOwner;
 	readyMatch?: string;
-	/** Readiness conditions still unmet while `state` is `starting`; absent once ready or without a ready spec. */
 	readyPending?: ("log" | "port")[];
 	persist: boolean;
 	detached: boolean;
 }
 
-/** Signals accepted by daemon input operations. */
 export const DAEMON_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT", "SIGKILL"] as const;
 export type DaemonSignal = (typeof DAEMON_SIGNALS)[number];
 
-/** Every component that can end a supervised process, as a run-time array so a consumer can enumerate the paths instead of restating them. */
 export const DAEMON_TERMINATION_OWNERS = [
 	"process-exit",
 	"external-signal",
@@ -99,14 +76,11 @@ export const DAEMON_TERMINATION_OWNERS = [
 	"launch-failure",
 ] as const;
 
-/** The component responsible for a supervised process's termination. */
 export type DaemonTerminationOwner = (typeof DAEMON_TERMINATION_OWNERS)[number];
 
-/** The retained record of one completed daemon generation: what it was, how it ended, who ended it, and the tail of its output. Written to the per-project */
 export interface DaemonCompletionRecord {
 	name: string;
 	id: string;
-	/** The session that started the daemon, when the start named one. */
 	owner?: string;
 	terminatedBy: DaemonTerminationOwner;
 	exitReason?: string;
@@ -117,11 +91,9 @@ export interface DaemonCompletionRecord {
 	exitedAt: number;
 	restartCount: number;
 	outputBytes: number;
-	/** Sanitized tail of the daemon's captured output at termination. */
 	outputTail: string;
 }
 
-/** Typed broker operation sent over the authenticated socket. */
 export type DaemonOperation =
 	| { op: "ping" }
 	| { op: "start"; spec: DaemonSpec; owner?: string }
@@ -143,7 +115,6 @@ export type DaemonOperation =
 	| { op: "describe"; name: string }
 	| { op: "shutdown" };
 
-/** Typed broker result decoded before it reaches tool code. */
 export type DaemonRpcResult =
 	| { op: "ping"; projectDir: string }
 	| { op: "start"; daemon: DaemonSnapshot; readyTimedOut: boolean }
@@ -152,7 +123,6 @@ export type DaemonRpcResult =
 			op: "logs";
 			name: string;
 			text: string;
-			/** Raw PTY byte stream used only to reconstruct the terminal screen. */
 			terminalText?: string;
 			cursor: number;
 			timedOut: boolean;
@@ -165,17 +135,14 @@ export type DaemonRpcResult =
 	| { op: "describe"; daemon: DaemonSnapshot; spec: DaemonSpec }
 	| { op: "shutdown" };
 
-/** Authenticated request envelope used by socket clients. */
 export interface DaemonWireRequest {
 	id: string;
 	token: string;
 	operation: DaemonOperation;
 }
 
-/** Response envelope kept raw until matched with its pending operation. */
 export type DaemonWireResponse = { id: string; ok: true; result: unknown } | { id: string; ok: false; error: string };
 
-// launch/protocol.ts is deliberately dependency-free (zero imports) so the broker worker can load it in isolation, so this keeps a self-contained copy of
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -280,7 +247,6 @@ function readySpec(value: unknown): DaemonReadySpec {
 	return { log, port, host, timeoutMs };
 }
 
-/** Decode and validate a daemon launch specification. */
 export function parseDaemonSpec(value: unknown): DaemonSpec {
 	const source = record(value, "daemon spec");
 	const detached = source.detached === undefined ? false : booleanValue(source.detached, "spec.detached");
@@ -298,7 +264,6 @@ export function parseDaemonSpec(value: unknown): DaemonSpec {
 	};
 }
 
-/** Decode and validate one daemon snapshot. */
 export function parseDaemonSnapshot(value: unknown): DaemonSnapshot {
 	const source = record(value, "daemon snapshot");
 	return {
@@ -324,7 +289,6 @@ export function parseDaemonSnapshot(value: unknown): DaemonSnapshot {
 	};
 }
 
-/** Decode and validate one retained completion record. */
 export function parseDaemonCompletionRecord(value: unknown): DaemonCompletionRecord {
 	const source = record(value, "daemon completion");
 	return {
@@ -344,7 +308,6 @@ export function parseDaemonCompletionRecord(value: unknown): DaemonCompletionRec
 	};
 }
 
-/** Decode a socket request before the broker acts on it. */
 export function parseDaemonWireRequest(value: unknown): DaemonWireRequest {
 	const source = record(value, "daemon request");
 	return {
@@ -354,7 +317,6 @@ export function parseDaemonWireRequest(value: unknown): DaemonWireRequest {
 	};
 }
 
-/** Decode a socket response envelope before resolving a pending call. */
 export function parseDaemonWireResponse(value: unknown): DaemonWireResponse {
 	const source = record(value, "daemon response");
 	const id = stringValue(source.id, "response.id");
@@ -420,7 +382,6 @@ function parseDaemonOperation(value: unknown): DaemonOperation {
 	}
 }
 
-/** Decode a broker result using its pending operation as the discriminator. */
 export function parseDaemonRpcResult(operation: DaemonOperation, value: unknown): DaemonRpcResult {
 	const source = record(value, `${operation.op} result`);
 	switch (operation.op) {

@@ -14,7 +14,6 @@ import { previewLine } from "../../tools/render-utils";
 import { USER_TODO_EDIT_CUSTOM_TYPE } from "../../tools/todo";
 import type { InteractiveModeContext } from "../types";
 
-/** The slice of the interactive context this controller uses: 7 members of the 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency */
 export type TanCommandControllerContext = Pick<
 	InteractiveModeContext,
 	"mcpManager" | "rebuildChatFromMessages" | "session" | "sessionManager" | "settings" | "showError" | "showStatus"
@@ -60,7 +59,6 @@ export class TanCommandController {
 		}
 
 		const parentSessionId = session.sessionId;
-		// Providers route on `promptCacheKey ?? sessionId`, so the parent's live requests may cache under a pinned key that differs from its session id
 		const parentPromptCacheKey = session.agent.promptCacheKey ?? parentSessionId;
 		const thinkingLevel = session.configuredThinkingLevel();
 		const systemPrompt = session.systemPrompt.slice();
@@ -69,9 +67,6 @@ export class TanCommandController {
 		const ownerId = session.getAgentId() ?? MAIN_AGENT_ID;
 		const mcpManager = this.ctx.mcpManager;
 		const cwd = this.ctx.sessionManager.getCwd();
-		// Nest the clone inside the parent's artifact directory (like a subagent
-		// session) rather than as a top-level sibling, so it shares the parent's
-		// artifacts in place — no copy needed.
 		const sessionDir = parentFile.slice(0, -6);
 		const settings = createSubagentSettings(this.ctx.settings);
 		const customTools = mcpManager ? createMCPProxyTools(mcpManager) : undefined;
@@ -132,9 +127,6 @@ export class TanCommandController {
 							void clone?.abort();
 						};
 						signal.addEventListener("abort", abortClone, { once: true });
-						// The fork inherits the parent's todo list via session entries;
-						// its reminders would drag the tan back onto the parent's task.
-						// Clear runtime state and persist an empty edit so reloads agree.
 						clone.setTodoPhases([]);
 						cloneManager.appendCustomEntry(USER_TODO_EDIT_CUSTOM_TYPE, { phases: [] });
 						const injectContextSwitch = () => {
@@ -145,7 +137,6 @@ export class TanCommandController {
 								timestamp: Date.now(),
 							});
 						};
-						// Compaction summarizes the fork notice away with the rest of the history, after which the clone re-adopts the parent's task as its
 						const unsubscribeCompaction = clone.subscribe(event => {
 							if (event.type === "auto_compaction_end" && event.result && !event.aborted) {
 								injectContextSwitch();
@@ -156,9 +147,6 @@ export class TanCommandController {
 								abortClone();
 								throw new Error("Aborted before execution");
 							}
-							// Inject a context-switch developer message so the clone knows
-							// it is a tangential fork — its parent owns the prior conversation;
-							// this agent must focus exclusively on the user's request.
 							injectContextSwitch();
 							await clone.prompt(trimmedWork, { attribution: "user" });
 							await clone.waitForIdle();
@@ -169,7 +157,6 @@ export class TanCommandController {
 							signal.removeEventListener("abort", abortClone);
 						}
 					} finally {
-						// Keep the finished tan in the Control Center roster instead of unregistering it: flip the ref to parked BEFORE dispose so the sdk dispose wrapper
 						if (clone) {
 							if (signal.aborted) {
 								agentRegistry.setStatus(cloneId, "aborted");
@@ -194,7 +181,6 @@ export class TanCommandController {
 			jobId,
 			work: trimmedWork,
 		});
-		// /tan is meant to run alongside an active session. While the parent turn is still streaming, queue the dispatch breadcrumb for the next turn rather than
 		const wasStreaming = session.isStreaming;
 		await session.sendCustomMessage(
 			{

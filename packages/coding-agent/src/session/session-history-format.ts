@@ -1,4 +1,3 @@
-/** Concise markdown transcript serializer for `history://` URLs. Unlike `session-dump-format.ts` (verbose `/dump` export), this emits a */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, TextContent, ToolResultMessage } from "@veyyon/ai";
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
@@ -17,24 +16,16 @@ import type {
 } from "./messages";
 
 export interface HistoryFormatOptions {
-	/** Optional H1 prepended to the transcript. */
 	title?: string;
-	/** Render assistant thinking blocks (default: elided). */
 	includeThinking?: boolean;
-	/** Render tool intent comment before tool call lines. */
 	includeToolIntent?: boolean;
-	/** Render watched-session roles as inline `**agent**:` / `**user**:` labels (collapsing consecutive same-role messages) instead of `## ` headings, so a primary transcript embedded inside an advisor turn stays visually distinct. */
 	watchedRoles?: boolean;
-	/** Expand the primary agent's injected constraint context — plan mode's rules (`plan-mode-context`) and the approved plan it implements */
 	expandPrimaryContext?: boolean;
-	/** Append the full unified diff (from a tool result's `details.diff`) below edit/apply_patch tool lines, instead of just the path. The advisor sets */
 	expandEditDiffs?: boolean;
 }
 
-/** Max length of the primary-arg summary inside `→ tool(...)` lines. */
 const PRIMARY_ARG_MAX = 120;
 
-/** Per-tool preference order for the most informative scalar argument. */
 const PRIMARY_ARG_KEYS = [
 	"path",
 	"file_path",
@@ -53,14 +44,10 @@ const PRIMARY_ARG_KEYS = [
 	"id",
 ] as const;
 
-/** Collapse whitespace runs and truncate to `max` chars with an ellipsis. */
 function oneLine(text: string, max = PRIMARY_ARG_MAX): string {
 	return truncate(collapseWhitespace(text), max);
 }
 
-/** Join the text blocks of a string-or-blocks content field. Images become `[image]`. */
-// This view renders image blocks as an "[image]" placeholder rather than
-// dropping them, so the reader sees that an image was present.
 const contentToText = (content: string | readonly (TextContent | ImageContent)[]): string =>
 	contentText(content, { image: "[image]" });
 
@@ -81,10 +68,8 @@ function primaryArgValue(value: unknown): string {
 	return "";
 }
 
-/** Pick the most informative scalar argument of a tool call. */
 function primaryArg(name: string, args: Record<string, unknown> | undefined): string {
 	if (!args || typeof args !== "object") return "";
-	// Advisor note is the most informative summary; preserve severity too.
 	if (name === "advise") {
 		const note = typeof args.note === "string" ? args.note : "";
 		const severity = typeof args.severity === "string" ? args.severity : "";
@@ -112,7 +97,6 @@ function primaryArg(name: string, args: Record<string, unknown> | undefined): st
 		const summary = primaryArgValue(value);
 		if (summary) return oneLine(summary);
 	}
-	// Fallback: first non-intent string arg, then a compact JSON of the args.
 	const rest: Record<string, unknown> = {};
 	let restCount = 0;
 	for (const key in args) {
@@ -126,21 +110,16 @@ function primaryArg(name: string, args: Record<string, unknown> | undefined): st
 	try {
 		return oneLine(JSON.stringify(rest));
 	} catch {
-		// A circular reference or a BigInt makes the args unserializable. Returning "" here rendered the
-		// call as if it took no arguments at all, which is a false reading of the transcript; naming the
-		// keys keeps the row honest and still tells you which arguments were there.
 		return oneLine(`{unserializable: ${Object.keys(rest).join(", ")}}`);
 	}
 }
 
-/** Wrap a diff body in a backtick fence sized to outlast the longest backtick run inside it, so a diff that touches markdown (triple backticks) can't break */
 function fenceDiff(diff: string): string {
 	const longest = diff.match(/`+/g)?.reduce((m, run) => Math.max(m, run.length), 0) ?? 0;
 	const fence = "`".repeat(Math.max(3, longest + 1));
 	return `${fence}diff\n${diff}\n${fence}`;
 }
 
-/** One line per tool call: `→ read(src/foo.ts:50-80) ⇒ ok · 31 lines`. */
 function toolCallLine(
 	name: string,
 	args: Record<string, unknown> | undefined,
@@ -179,7 +158,6 @@ function toolCallLine(
 	return base;
 }
 
-/** One line for a user-initiated `!`/`$` execution. */
 function executionLine(
 	kind: "bash" | "python",
 	source: string,
@@ -194,15 +172,12 @@ function executionLine(
 	return `→ ${kind}! ${oneLine(source)} ⇒ ${status} · ${formatCount("line", lines)}`;
 }
 
-/** Hidden custom messages that inject the primary agent's operative *constraints* — plan mode's rules and the approved plan it implements. A reviewer (the */
 export const PRIMARY_CONTEXT_CUSTOM_TYPES: ReadonlySet<string> = new Set(["plan-mode-context", "plan-mode-reference"]);
 
-/** Hidden non-primary custom messages whose content is needed to understand visible transcript entries. */
 const CONTEXTUAL_NON_PRIMARY_HIDDEN_CUSTOM_TYPES: Record<string, true> = {
 	"image-attachment-description": true,
 };
 
-/** One-liner for custom/hook messages: `[irc] A → B: body…`. */
 function customOneLiner(msg: CustomMessage | HookMessage): string {
 	const details = (msg.details ?? {}) as Record<string, unknown>;
 	const str = (key: string): string => (typeof details[key] === "string" ? (details[key] as string) : "");
@@ -226,7 +201,6 @@ function customOneLiner(msg: CustomMessage | HookMessage): string {
 	}
 }
 
-/** Format a session's message array as a concise markdown transcript. `messages` is the session's in-memory message array (or the read-only */
 export function formatSessionHistoryMarkdown(messages: unknown[], opts?: HistoryFormatOptions): string {
 	const typed = messages as AgentMessage[];
 	const lines: string[] = [];
@@ -234,7 +208,6 @@ export function formatSessionHistoryMarkdown(messages: unknown[], opts?: History
 		lines.push(`# ${opts.title}`, "");
 	}
 
-	// Index tool results by call id so each toolCall collapses to one line.
 	const resultsByCallId = new Map<string, ToolResultMessage>();
 	for (const msg of typed) {
 		if (msg.role === "toolResult") {
@@ -242,7 +215,6 @@ export function formatSessionHistoryMarkdown(messages: unknown[], opts?: History
 		}
 	}
 	const consumed = new Set<string>();
-	// In watched mode, consecutive same-role messages collapse under one label (the watched agent emits one assistant message per tool call, so otherwise
 	let lastWatchedLabel: string | undefined;
 
 	for (const msg of typed) {
@@ -279,7 +251,6 @@ export function formatSessionHistoryMarkdown(messages: unknown[], opts?: History
 					} else if (opts?.includeThinking && block.type === "thinking" && block.thinking.trim()) {
 						body.push(`_thinking:_ ${block.thinking}`);
 					}
-					// redactedThinking elided entirely (no readable text)
 				}
 				if (body.length === 0) break;
 				if (opts?.watchedRoles) {
@@ -301,7 +272,6 @@ export function formatSessionHistoryMarkdown(messages: unknown[], opts?: History
 				break;
 			}
 			case "toolResult": {
-				// Normally consumed by its toolCall; orphans (e.g. truncated history) get their own line.
 				if (consumed.has(msg.toolCallId)) break;
 				lines.push(toolCallLine(msg.toolName, undefined, msg, opts?.includeToolIntent, opts?.expandEditDiffs), "");
 				lastWatchedLabel = undefined;

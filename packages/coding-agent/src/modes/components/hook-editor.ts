@@ -1,4 +1,3 @@
-/** Multi-line editor component for hooks and ask custom input. Supports Ctrl+G for external editor. */
 import {
 	Container,
 	Editor,
@@ -33,15 +32,11 @@ import {
 } from "./modal-shell";
 
 export interface HookEditorOptions {
-	/** When true, use prompt-style keybindings with the legacy ask prompt chrome. */
 	promptStyle?: boolean;
-	/** `"card"` (default) is the standalone surface: a floating ModalShell over the transcript, with the keys as footer chips. `"embedded"` renders the */
 	presentation?: "card" | "embedded";
-	/** Card presentation only: repaint request for chip hover paints. */
 	onRequestRender?: () => void;
 }
 
-/** Columns of padding on EACH side of the editor's title and hint rows in the embedded presentation. */
 export const HOOK_EDITOR_TEXT_PAD_COLS = 1;
 
 export class HookEditorComponent extends Container {
@@ -50,7 +45,6 @@ export class HookEditorComponent extends Container {
 	#onCancelCallback: () => void;
 	#tui: TUI;
 	#promptStyle: boolean;
-	/** Floating card (default) versus bare rows inside a host's own card. */
 	readonly #card: boolean;
 	#cardTitle: string;
 	#onRequestRender: (() => void) | undefined;
@@ -74,8 +68,6 @@ export class HookEditorComponent extends Container {
 		this.#card = options?.presentation !== "embedded";
 		this.#onRequestRender = options?.onRequestRender;
 
-		// The card's title bar takes the title's first line; the rest (the ask
-		// prompt's option list, for one) is context and stays in the body.
 		const [firstTitleLine = "", ...restTitleLines] = title.split("\n");
 		this.#cardTitle = firstTitleLine;
 		const bodyTitle = this.#card ? restTitleLines.join("\n") : title;
@@ -95,8 +87,6 @@ export class HookEditorComponent extends Container {
 		}
 		this.addChild(this.#editor);
 
-		// Embedded, the keys are a dim line under the editor, because the host's
-		// card footer names its own. A card puts them in that footer instead.
 		if (!this.#card) {
 			this.addChild(new Spacer(1));
 			this.addChild(
@@ -118,7 +108,6 @@ export class HookEditorComponent extends Container {
 		this.#onRequestRender = callback;
 	}
 
-	/** Footer chips. Both chords named here are remappable (`app.message.followUp` and `app.editor.external`) and the handlers read */
 	#shortcuts(): readonly ModalShortcut[] {
 		const submit = actionKeyHint("app.message.followUp");
 		const shortcuts: ModalShortcut[] = [
@@ -207,9 +196,6 @@ export class HookEditorComponent extends Container {
 
 	handleInput(keyData: string): void {
 		if (keyData.startsWith("\x1b[<")) {
-			// Only the card paints a shell, so an embedded editor's geometry stays
-			// null, every chrome hit-test misses, and the report is swallowed here
-			// rather than typed into the text as literal escape bytes.
 			routeSgrMouseInput(keyData, event => this.#routeMouse(event));
 			return;
 		}
@@ -224,71 +210,55 @@ export class HookEditorComponent extends Container {
 		this.#onSubmitCallback(this.#editor.getExpandedText());
 	}
 
-	/** Route non-bracketed paste transports (e.g. kitty's OSC 5522 enhanced clipboard) into the inner editor, mirroring bracketed-paste semantics. Without this hook, */
 	pasteText(text: string): void {
 		this.#editor.pasteText(text);
 	}
 
-	/** Prompt-style: raw Enter submits; Editor owns newline-producing sequences. The follow-up chord (`app.message.followUp` → Ctrl+Q / Ctrl+Enter) also */
 	#handlePromptStyleInput(keyData: string): void {
-		// Submit on the follow-up chord first so it wins over Editor's own
-		// Ctrl+Enter newline handling. Mirrors #handleHookStyleInput.
 		if (matchesAppFollowUp(keyData)) {
 			this.#submitCurrentText();
 			return;
 		}
 
-		// Prompt-style keeps Escape as an explicit cancel key and also honors app.interrupt remaps.
 		if (matchesKey(keyData, "escape") || matchesKey(keyData, "esc") || matchesAppInterrupt(keyData)) {
 			this.#onCancelCallback();
 			return;
 		}
 
-		// Ctrl+G for external editor
 		if (matchesAppExternalEditor(keyData)) {
 			void this.#openExternalEditor();
 			return;
 		}
 
-		// Submit on any plain Enter encoding, including terminals that report unmodified Enter as LF.
 		if (matchesKey(keyData, "enter") || matchesKey(keyData, "return")) {
 			this.#submitCurrentText();
 			return;
 		}
 
-		// Let Editor handle modified newline-producing variants (Shift+Enter, Ctrl+Enter, Alt+Enter, etc.)
 		this.#editor.handleInput(keyData);
 	}
 
-	/** Hook-style: Enter=newline, app.message.followUp chord (Ctrl+Q/Ctrl+Enter) submits. */
 	#handleHookStyleInput(keyData: string): void {
-		// Submit on the follow-up chord. Uses the shared keybinding so Ctrl+Q works
-		// on Windows Terminal (#1903) and any user remap of `app.message.followUp`
-		// applies here too.
 		if (matchesAppFollowUp(keyData)) {
 			this.#submitCurrentText();
 			return;
 		}
 
-		// Plain Enter inserts a new line in hook editor
 		if (matchesKey(keyData, "enter") || matchesKey(keyData, "return") || keyData === "\n") {
 			this.#editor.handleInput("\n");
 			return;
 		}
 
-		// Escape to cancel
 		if (matchesAppInterrupt(keyData)) {
 			this.#onCancelCallback();
 			return;
 		}
 
-		// Ctrl+G for external editor
 		if (matchesAppExternalEditor(keyData)) {
 			void this.#openExternalEditor();
 			return;
 		}
 
-		// Forward to editor
 		this.#editor.handleInput(keyData);
 	}
 

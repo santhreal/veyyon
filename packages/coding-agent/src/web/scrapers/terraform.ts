@@ -64,9 +64,6 @@ interface TerraformProvider {
 	}>;
 }
 
-/**
- * Handle Terraform Registry URLs via API
- */
 export const handleTerraform: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -79,14 +76,12 @@ export const handleTerraform: SpecialHandler = async (
 
 		const fetchedAt = new Date().toISOString();
 
-		// Match module URL: /modules/{namespace}/{name}/{provider}
 		const moduleMatch = parsed.pathname.match(/^\/modules\/([^/]+)\/([^/]+)\/([^/]+)/);
 		if (moduleMatch) {
 			const [, namespace, name, provider] = moduleMatch;
 			return await handleModuleUrl(url, namespace, name, provider, timeout, signal, fetchedAt);
 		}
 
-		// Match provider URL: /providers/{namespace}/{type}
 		const providerMatch = parsed.pathname.match(/^\/providers\/([^/]+)\/([^/]+)/);
 		if (providerMatch) {
 			const [, namespace, type] = providerMatch;
@@ -124,7 +119,6 @@ async function handleModuleUrl(
 
 	if (mod.description) md += `${mod.description}\n\n`;
 
-	// Metadata line
 	md += `**Version:** ${mod.version}`;
 	if (mod.verified) md += " ✓ Verified";
 	md += `\n`;
@@ -137,10 +131,8 @@ async function handleModuleUrl(
 	}
 	md += "\n";
 
-	// Usage example
 	md += `## Usage\n\n\`\`\`hcl\nmodule "${mod.name}" {\n  source  = "${mod.namespace}/${mod.name}/${mod.provider}"\n  version = "${mod.version}"\n}\n\`\`\`\n\n`;
 
-	// Inputs
 	const inputs = mod.root?.inputs;
 	if (inputs && inputs.length > 0) {
 		md += `## Inputs (${inputs.length})\n\n`;
@@ -148,13 +140,8 @@ async function handleModuleUrl(
 		md += "|------|------|----------|-------------|\n";
 		for (const input of inputs.slice(0, 30)) {
 			const required = (input.required ?? input.default === undefined) ? "Yes" : "No";
-			// A `|` inside inline code still splits a GFM table row (row parsing runs
-			// before inline-code parsing), and registry JSON is author-controlled, so
-			// the name and backticked type need escaping too, not just the description.
 			const name = escapeMarkdownTableCell(input.name);
 			const type = escapeMarkdownTableCell(input.type ?? "any");
-			// Slice the raw text first, then escape: slicing an already-escaped
-			// string could cut through a `\|` sequence and leave a dangling `\`.
 			const desc = escapeMarkdownTableCell((input.description ?? "").slice(0, 80));
 			md += `| ${name} | \`${type}\` | ${required} | ${desc} |\n`;
 		}
@@ -164,7 +151,6 @@ async function handleModuleUrl(
 		md += "\n";
 	}
 
-	// Outputs
 	const outputs = mod.root?.outputs;
 	if (outputs && outputs.length > 0) {
 		md += `## Outputs (${outputs.length})\n\n`;
@@ -179,7 +165,6 @@ async function handleModuleUrl(
 		md += "\n";
 	}
 
-	// Dependencies
 	const deps = mod.root?.dependencies;
 	if (deps && deps.length > 0) {
 		md += `## Dependencies (${deps.length})\n\n`;
@@ -194,7 +179,6 @@ async function handleModuleUrl(
 		md += "\n";
 	}
 
-	// Resources
 	const resources = mod.root?.resources;
 	if (resources && resources.length > 0) {
 		md += `## Resources (${resources.length})\n\n`;
@@ -207,7 +191,6 @@ async function handleModuleUrl(
 		md += "\n";
 	}
 
-	// Submodules
 	if (mod.submodules && mod.submodules.length > 0) {
 		md += `## Submodules (${mod.submodules.length})\n\n`;
 		for (const sub of mod.submodules.slice(0, 10)) {
@@ -245,7 +228,6 @@ async function handleProviderUrl(
 
 	if (provider.description) md += `${provider.description}\n\n`;
 
-	// Metadata
 	md += `**Version:** ${provider.version}\n`;
 	if (provider.tier) md += `**Tier:** ${provider.tier}\n`;
 	md += `**Downloads:** ${formatNumber(provider.downloads)}\n`;
@@ -257,10 +239,8 @@ async function handleProviderUrl(
 	}
 	md += "\n";
 
-	// Usage example
 	md += `## Usage\n\n\`\`\`hcl\nterraform {\n  required_providers {\n    ${provider.name} = {\n      source  = "${provider.namespace}/${provider.name}"\n      version = "~> ${provider.version}"\n    }\n  }\n}\n\nprovider "${provider.name}" {\n  # Configuration options\n}\n\`\`\`\n\n`;
 
-	// Documentation summary
 	if (provider.docs && provider.docs.length > 0) {
 		const categories = new Map<string, typeof provider.docs>();
 		for (const doc of provider.docs) {

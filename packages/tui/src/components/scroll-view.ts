@@ -14,24 +14,12 @@ export interface ScrollViewTheme {
 
 export interface ScrollViewOptions {
 	height: number;
-	/** Defaults to "auto". "auto" reserves a scrollbar column only when content overflows. */
 	scrollbar?: ScrollbarMode | boolean;
-	/** Logical row count for pre-windowed line slices. Defaults to lines.length. */
 	totalRows?: number;
 	theme?: ScrollViewTheme;
 	trackChar?: string;
 	thumbChar?: string;
-	/**
-	 * Indicator appended when a row overflows `contentWidth`. Defaults to
-	 * {@link Ellipsis.Unicode}. Pass {@link Ellipsis.Omit} when callers wrap
-	 * lines to width themselves and only trailing padding can overflow (e.g.
-	 * the plan-review overlay), so no stray `…` lands on every padded row.
-	 */
 	ellipsis?: Ellipsis;
-	/**
-	 * Rows moved per keystroke when {@link ScrollView.handleScrollKey} sees a
-	 * Shift+Arrow (the "scroll faster" affordance). Defaults to 5.
-	 */
 	fastScrollLines?: number;
 }
 
@@ -46,12 +34,6 @@ function firstCellGlyph(value: string, fallback: string): string {
 	return visibleWidth(glyph) === 1 ? glyph : fallback;
 }
 
-/**
- * Fixed-height viewport over pre-rendered lines, with optional right-edge scrollbar.
- *
- * ScrollView owns only the row offset. Callers remain responsible for producing
- * already-wrapped logical lines appropriate for the current render width.
- */
 export class ScrollView implements Component {
 	#lines: readonly string[];
 	#height: number;
@@ -81,12 +63,6 @@ export class ScrollView implements Component {
 	}
 
 	setLines(lines: readonly string[]): void {
-		// The defensive copy is deliberate and must stay: transcript components
-		// mutate their previously returned render arrays in place (streaming
-		// row caches), so a same-reference fast path here serves STALE rows —
-		// the agent-hub transcript tail froze exactly that way (2026-07-24).
-		// The copy is O(content) but ~20us at 10k rows; render() stays
-		// O(viewport) regardless.
 		this.#lines = lines.slice();
 		this.#clampScrollOffset();
 	}
@@ -136,7 +112,6 @@ export class ScrollView implements Component {
 		this.#scrollOffset = this.getMaxScrollOffset();
 	}
 
-	/** Apply navigation key to the viewport. Returns true if consumed. */
 	handleScrollKey(data: string): boolean {
 		if (matchesKey(data, "shift+up")) {
 			this.scroll(-this.#fastScrollLines);
@@ -173,15 +148,10 @@ export class ScrollView implements Component {
 		return false;
 	}
 
-	invalidate(): void {
-		// No cached layout to invalidate.
-	}
+	invalidate(): void {}
 
-	/** Available columns for content drawing at `width`, excluding scrollbar gutter. */
 	contentWidth(width: number): number {
 		const safeWidth = Number.isFinite(width) ? Math.max(0, Math.trunc(width)) : 0;
-		// Two columns when the bar shows: one breathing-space gap + the bar
-		// itself — right-aligned content must never kiss the scrollbar glyph.
 		return Math.max(0, safeWidth - (safeWidth > 0 && this.#shouldRenderScrollbar() ? 2 : 0));
 	}
 

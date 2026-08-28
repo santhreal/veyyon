@@ -1,29 +1,19 @@
-// Frame transforms for color blending, ground fading, and row-by-row block reveals.
-
 import { clamp, clamp01 } from "@veyyon/utils/math";
 import { sgrSequence } from "./ansi";
 import { parseHexColor } from "./paint-ground";
 
-/** Pre-computed string representations of 0–255 for channel value emission. */
 export const CHANNEL_STR: readonly string[] = Array.from({ length: 256 }, (_, i) => String(i));
 
-/** Pre-computed two-digit hex for 0–255, avoiding `toString(16).padStart(2, "0")` per call. */
 const HEX_BYTE: readonly string[] = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"));
 
 function clampChannel(value: number): number {
 	return clamp(Math.round(value), 0, 255);
 }
 
-/** `#rrggbb` from channels, each clamped to a byte. */
 export function toHexColor(r: number, g: number, b: number): string {
 	return `#${HEX_BYTE[clampChannel(r)]}${HEX_BYTE[clampChannel(g)]}${HEX_BYTE[clampChannel(b)]}`;
 }
 
-/**
- * Mix two colors. `t` 0 returns `from`, 1 returns `to`. Blending is done on
- * the raw channels rather than in a perceptual space: over the 90-220ms these
- * transitions run, the difference is invisible, and the cost is not.
- */
 export function blendHex(from: string, to: string, t: number): string {
 	const a = parseHexColor(from);
 	const b = parseHexColor(to);
@@ -32,15 +22,8 @@ export function blendHex(from: string, to: string, t: number): string {
 	return toHexColor(a.r + (b.r - a.r) * k, a.g + (b.g - a.g) * k, a.b + (b.b - a.b) * k);
 }
 
-/**
- * The SGR scanner. `ansi.ts` owns the pattern: four modules used to spell it
- * out themselves and the fourth had already drifted into dropping colon-form
- * truecolor. This is the fifth caller, not a fifth copy.
- */
 const SGR = sgrSequence("g");
 
-/** Fade one rendered line toward `groundHex` by `strength` (0 to 1). */
-/** Parse an SGR parameter substring as a non-negative integer. Returns -1 on malformed input. */
 function parseSgrInt(s: string, start: number, len: number): number {
 	let n = 0;
 	for (let k = 0; k < len; k++) {
@@ -52,7 +35,6 @@ function parseSgrInt(s: string, start: number, len: number): number {
 }
 
 function fadeLineWithParsedGround(line: string, gr: number, gg: number, gb: number, k: number): string {
-	// Fast path: no extended-color SGR sequences in the line.
 	if (
 		line.indexOf("38;2;") === -1 &&
 		line.indexOf("48;2;") === -1 &&
@@ -64,7 +46,6 @@ function fadeLineWithParsedGround(line: string, gr: number, gg: number, gb: numb
 	SGR.lastIndex = 0;
 	return line.replace(SGR, (whole, params: string) => {
 		if (params === "") return whole;
-		// Fast path: this SGR sequence has no truecolor.
 		if (
 			params.indexOf("38;2;") === -1 &&
 			params.indexOf("48;2;") === -1 &&
@@ -73,30 +54,23 @@ function fadeLineWithParsedGround(line: string, gr: number, gg: number, gb: numb
 		) {
 			return whole;
 		}
-		// In-place scan: walk params char by char, splitting on ';' (0x3b) and
-		// ':' (0x3a). When we find 38/48 followed by 2, blend the next 3 RGB
-		// values. Avoids allocating a tokens array via split(/([;:])/).
 		let out = "";
 		let changed = false;
 		let i = 0;
 		const n = params.length;
 		while (i < n) {
-			// Read one token (up to next separator).
 			let j = i;
 			while (j < n && params.charCodeAt(j) !== 0x3b && params.charCodeAt(j) !== 0x3a) j++;
 			const tokLen = j - i;
-			// Check for 38/48 followed by 2, using charCodeAt to avoid slicing for comparison.
 			if (
 				tokLen === 2 &&
 				params.charCodeAt(i + 1) === 0x38 &&
 				(params.charCodeAt(i) === 0x33 || params.charCodeAt(i) === 0x34) &&
 				j < n
 			) {
-				// Read the next token after the separator.
 				let k2 = j + 1;
 				while (k2 < n && params.charCodeAt(k2) !== 0x3b && params.charCodeAt(k2) !== 0x3a) k2++;
 				if (k2 - (j + 1) === 1 && params.charCodeAt(j + 1) === 0x32 && k2 < n) {
-					// Read 3 RGB values after the "2".
 					let pos = k2;
 					let rVal = -1;
 					let gVal = -1;
@@ -142,7 +116,6 @@ function fadeLineWithParsedGround(line: string, gr: number, gg: number, gb: numb
 					}
 				}
 			}
-			// Not a truecolor token: emit as-is with its separator.
 			out += params.slice(i, j);
 			if (j < n) out += params[j];
 			i = j + 1;
@@ -159,7 +132,6 @@ export function fadeLineTowards(line: string, groundHex: string, strength: numbe
 	return fadeLineWithParsedGround(line, ground.r, ground.g, ground.b, k);
 }
 
-/** Fade a block of rendered lines toward the ground behind it. */
 export function fadeLinesTowards(lines: readonly string[], groundHex: string, strength: number): string[] {
 	if (strength >= 1) return lines.slice();
 	const k = clamp01(strength);
@@ -172,11 +144,6 @@ export function fadeLinesTowards(lines: readonly string[], groundHex: string, st
 	return result;
 }
 
-/**
- * How many rows of a block of `total` rows are shown at `progress`. `minimum`
- * is the smallest block worth showing — a bordered card's is 2, because one
- * border row alone reads as a stray rule rather than a card opening.
- */
 export function revealedRows(total: number, progress: number, minimum = 0): number {
 	if (total <= 0) return 0;
 	const floor = Math.min(minimum, total);

@@ -1,4 +1,3 @@
-/** The inline `/account status` block: which account each provider is serving this session with. clients (`runtime.output`), and the two used to be able to disagree. Taking an */
 import { replaceTabs, truncateToWidth } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
 import {
@@ -13,40 +12,27 @@ import {
 import { TRUNCATE_LENGTHS } from "../../tools/render-utils";
 import { formatDurationCoarse, formatUsageWindowLine, usageWindowLabelColumn } from "./format";
 
-/** Left margin of every account row, matching the other inline report blocks. */
 const ROW_INDENT = "  ";
-/** Width of the provider column, wide enough for the longest provider label plus a gap. */
 const PROVIDER_COLUMN = 19;
-/** Width of the account-name column, before the role annotations. */
 const NAME_COLUMN = 28;
-/** Continuation lines hang under the account name, not under the provider. */
 const DETAIL_INDENT = " ".repeat(ROW_INDENT.length + PROVIDER_COLUMN);
-/** Bar cells. Narrower than the `/usage` report's default: this block carries three columns. */
 const USAGE_BAR_WIDTH = 10;
 
-/** Shown in the NAME column when the user never named the account. */
 export const NO_NAME_PLACEHOLDER = "(no name set)";
-/** The invitation that follows an unnamed account. */
 export const NAME_HINT = "/account name <text>";
 
-/** Search-provider preference → the credential providers that preference spends. Only the search backends that route through a stored ACCOUNT are listed, because only those can */
 export const WEB_SEARCH_CREDENTIAL_PROVIDERS: Readonly<Record<string, readonly string[]>> = {
 	anthropic: ["anthropic"],
 	codex: ["openai-codex"],
 	gemini: ["google-gemini-cli", "google-antigravity"],
 };
 
-/** Where the roles a session routes come from. Resolved by the caller, annotated here. */
 export interface AccountRoleSources {
-	/** The session's main model, when one is resolved. */
 	mainModel?: { provider: string; id: string };
-	/** Providers of the models subagents run on, in role order. */
 	subagentProviders?: readonly string[];
-	/** The configured `providers.webSearch` preference, `auto` included. */
 	webSearchPreference?: string;
 }
 
-/** Which session roles each provider serves, as the block annotates them. The annotation is the answer to "why is this provider in my session at all", and it is per */
 export function accountRoleAnnotations(sources: AccountRoleSources): Map<string, string[]> {
 	const roles = new Map<string, string[]>();
 	const add = (provider: string, role: string): void => {
@@ -60,25 +46,20 @@ export function accountRoleAnnotations(sources: AccountRoleSources): Map<string,
 
 	if (sources.mainModel) add(sources.mainModel.provider, `main model  (${sources.mainModel.id})`);
 	for (const provider of sources.subagentProviders ?? []) add(provider, "subagents");
-	// `auto` is deliberately absent from the table: it resolves across every engine at call time, so
-	// no single provider can be said to serve search. The table is the only authority here.
 	for (const provider of WEB_SEARCH_CREDENTIAL_PROVIDERS[sources.webSearchPreference ?? ""] ?? []) {
 		add(provider, "web search");
 	}
 	return roles;
 }
 
-/** Sanitize, de-tab and clamp one cell of display text, optionally padding it to a column. */
 function cell(text: string, width: number, pad = false): string {
 	return truncateToWidth(replaceTabs(sanitizeText(text)), width, undefined, pad);
 }
 
-/** Trailing padding is invisible but ends up in transcripts and exact-byte tests. */
 function line(...parts: string[]): string {
 	return parts.join("").trimEnd();
 }
 
-/** `5 Hour   [███████▏░░] 71%   resets in 2h` for one usage window. */
 function usageLines(row: AccountRow, now: number): string[] {
 	const lines: string[] = [];
 	const labels = row.usage.map(window => sanitizeText(window.label));
@@ -98,14 +79,12 @@ function usageLines(row: AccountRow, now: number): string[] {
 	return lines;
 }
 
-/** Why the chosen account stopped serving, in the words the store actually has for it. */
 function rotationReason(chosen: AccountRow, now: number): string {
 	if (chosen.blockedUntilMs !== undefined && chosen.blockedUntilMs > now) return "usage limit";
 	if (chosen.healthReason) return cell(chosen.healthReason, TRUNCATE_LENGTHS.CONTENT);
 	return "unavailable";
 }
 
-/** The two lines a rotated choice gets, naming the account the user picked and what replaced it. This is the case the surface exists for. The account serving the session is NOT the one they */
 function divergenceLines(provider: string, chosen: AccountRow, now: number): string[] {
 	const chosenLabel = cell(accountDisplayLabel(chosen), TRUNCATE_LENGTHS.TITLE);
 	const unblocks =
@@ -118,7 +97,6 @@ function divergenceLines(provider: string, chosen: AccountRow, now: number): str
 	];
 }
 
-/** The `/account status` block: one account per provider this session actually routed to. The footer's denominator is the number of providers you hold accounts FOR, not the number */
 export function renderAccountStatus(
 	inventory: AccountInventory,
 	now: number,
@@ -149,14 +127,9 @@ export function renderAccountStatus(
 			),
 		);
 
-		// An unnamed row shows `(no name set)` where its label would go, so the label ladder's
-		// answer moves down here — otherwise the block would name the provider and nothing else.
 		const identity = [
 			...(row.name ? [] : [accountDisplayLabel(row)]),
 			...accountIdentityDetail(row),
-			// Trails the identity here rather than leading it as on the card: this block already
-			// spends its first column on the provider, so the plan reads as the last qualifier of
-			// the account rather than competing with the name.
 			...(row.planTier ? [row.planTier] : []),
 		];
 		if (identity.length > 0) {
@@ -179,8 +152,6 @@ export function renderAccountStatus(
 			const unblocks = formatDurationCoarse(row.blockedUntilMs - now);
 			lines.push(line(DETAIL_INDENT, `rate limited · ${unblocks} until it unblocks`));
 		}
-		// The same sentence the card prints, with this surface's own remedy: a text client has no
-		// `a` key to press. The fact is one owner's, the offer is the surface's.
 		const credential = credentialStateNote(row, now);
 		if (credential) {
 			lines.push(line(DETAIL_INDENT, `${credential} · /providers to sign in again`));
@@ -188,7 +159,6 @@ export function renderAccountStatus(
 		lines.push("");
 	}
 
-	// ONE hint for the whole block, not one per unnamed account. A real session routes several providers at once and almost none of them are named, so the per-row form printed the same
 	const unnamed = Array.from(routed.values()).filter(
 		rows => !(rows.find(r => r.activeForSession) ?? rows[0])?.name,
 	).length;
@@ -199,9 +169,6 @@ export function renderAccountStatus(
 		);
 	}
 
-	// A torn-down login is not an account "in use", so it has no block of its own here — but this is
-	// the surface a user checks first, and saying nothing would leave the dead login discoverable only
-	// by opening the manager on a hunch. One pointer, counted, in the same shape as the naming hint.
 	const signedOut = inventory.providers.filter(entry => entry.disabledCause !== undefined);
 	if (signedOut.length > 0) {
 		const which = signedOut.map(entry => entry.label).join(", ");

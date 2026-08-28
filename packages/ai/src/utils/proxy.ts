@@ -3,25 +3,15 @@ import * as tls from "node:tls";
 import * as AIError from "../error";
 import type { FetchImpl } from "../types";
 
-/**
- * Checks if a host is local or cloud metadata, which should always bypass the proxy
- * (e.g. localhost, 127/8, ::1, 169.254.169.254, metadata.google.internal).
- */
 export function isLocalOrMetadataHost(host: string): boolean {
 	const lowerHost = host.toLowerCase();
 
-	// Hostnames: localhost and the cloud metadata service.
 	if (lowerHost === "localhost" || lowerHost.endsWith(".localhost") || lowerHost === "metadata.google.internal") {
 		return true;
 	}
 
-	// Strip IPv6 brackets before numeric checks.
 	const ip = lowerHost.replace(/^\[|\]$/g, "");
 
-	// IPv4 loopback (127/8), unspecified (0/8), RFC1918 private (10/8, 172.16/12,
-	// 192.168/16) and link-local (169.254/16 — covers IMDS 169.254.169.254 and
-	// ECS credentials 169.254.170.2). None are reachable through a remote egress
-	// proxy, and credential/metadata probes must never leak to one.
 	const v4 = ip.match(/^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/);
 	if (v4) {
 		const a = Number(v4[1]);
@@ -33,8 +23,6 @@ export function isLocalOrMetadataHost(host: string): boolean {
 		return false;
 	}
 
-	// IPv6 loopback (::1), unspecified (::), link-local (fe80::/10) and
-	// unique-local (fc00::/7 — covers EC2 IPv6 IMDS fd00:ec2::254).
 	if (ip === "::1" || ip === "::") return true;
 	if (/^fe[89ab][0-9a-f]:/.test(ip)) return true;
 	if (/^f[cd][0-9a-f]{2}:/.test(ip)) return true;
@@ -42,10 +30,6 @@ export function isLocalOrMetadataHost(host: string): boolean {
 	return false;
 }
 
-/**
- * Check if the url should bypass the proxy due to hard-coded localhost/metadata checks
- * or custom NO_PROXY/no_proxy environment variables rules.
- */
 export function shouldBypassProxy(urlObj: URL): boolean {
 	if (isLocalOrMetadataHost(urlObj.hostname)) {
 		return true;
@@ -81,14 +65,12 @@ export function shouldBypassProxy(urlObj: URL): boolean {
 			ruleHost = ruleHost.slice(0, lastColon);
 		}
 
-		// Strip IPv6 brackets
 		ruleHost = ruleHost.replace(/^\[|\]$/g, "");
 
 		if (rulePort && rulePort !== targetPort) {
 			continue;
 		}
 
-		// Match host part
 		if (ruleHost.startsWith(".")) {
 			const suffix = ruleHost;
 			const cleanRule = ruleHost.slice(1);
@@ -107,16 +89,10 @@ export function shouldBypassProxy(urlObj: URL): boolean {
 
 const proxyCache = new Map<string, string | undefined>();
 
-/** Test seam: clears the provider proxy cache. */
 export function __resetProxyCache(): void {
 	proxyCache.clear();
 }
 
-/**
- * Normalizes provider id (e.g. github-copilot -> VEYYON_PROXY_GITHUB_COPILOT) and looks it up.
- * If not found, falls back to VEYYON_PROXY. Results are memoized because env values are static
- * for the lifetime of the process and this function is called for every outgoing request.
- */
 export function getProxyForProvider(provider: string): string | undefined {
 	if (proxyCache.has(provider)) {
 		return proxyCache.get(provider);
@@ -129,9 +105,6 @@ export function getProxyForProvider(provider: string): string | undefined {
 	return value;
 }
 
-/**
- * Wraps a fetch implementation to inject proxy options for non-local hosts.
- */
 export function wrapFetchForProxy(fetchImpl: FetchImpl, provider: string): FetchImpl {
 	const proxyUrl = getProxyForProvider(provider);
 	if (!proxyUrl) {
@@ -144,7 +117,6 @@ export function wrapFetchForProxy(fetchImpl: FetchImpl, provider: string): Fetch
 		try {
 			urlObj = new URL(urlStr);
 		} catch {
-			// Fallback to calling fetch unmodified if URL is unparseable
 			return fetchImpl(input, init);
 		}
 
@@ -163,16 +135,10 @@ export function wrapFetchForProxy(fetchImpl: FetchImpl, provider: string): Fetch
 }
 
 export interface ConnectProxiedSocketOptions {
-	/** Caller cancellation for the proxy TCP/TLS handshake and CONNECT tunnel. */
 	signal?: AbortSignal;
-	/** Maximum wall-clock time to establish the final TLS tunnel. Disabled when absent or non-positive. */
 	timeoutMs?: number;
 }
 
-/**
- * Tunnel a socket connection through an HTTP CONNECT proxy.
- * This is used specifically to wrap Node's `http2.connect(baseUrl, { createConnection })` for Cursor.
- */
 export async function connectProxiedSocket(
 	proxyUrlStr: string,
 	targetUrlStr: string,
@@ -215,11 +181,6 @@ export async function connectProxiedSocket(
 		tunnelSocket?.off("error", onTunnelError);
 		tunnelSocket?.off("close", onTunnelClose);
 	};
-	// Calling `socket.destroy()` or `socket.end()` leaves unread CONNECT request
-	// bytes in the proxy server's TCP receive buffer. When unread data is pending,
-	// TCP FIN teardown does not close the peer socket stream on Node or Bun.
-	// `socket.resetAndDestroy()` sends a TCP RST packet that tears down the
-	// connection immediately at both OS and stream levels on the peer.
 	const destroyInProgress = (): void => {
 		if (tunnelSocket) {
 			if (typeof tunnelSocket.resetAndDestroy === "function") {
@@ -279,9 +240,6 @@ export async function connectProxiedSocket(
 			return;
 		}
 
-		// Read the just-connected socket through a local const: `tunnelSocket` is a
-		// closure-captured `let`, so TS widens it back to `| undefined` at every read
-		// even right after this assignment. The local keeps the listener wiring typed.
 		const socket = tls.connect({
 			socket: rawSocket,
 			servername: targetHost,
@@ -317,8 +275,6 @@ export async function connectProxiedSocket(
 		timeout.unref?.();
 	}
 
-	// Local const for the same reason as tunnelSocket above: the closure-captured
-	// `rawSocket` let is not narrowed after assignment, so wire listeners via `socket`.
 	const socket = useProxySsl
 		? tls.connect({
 				host: proxyHost,

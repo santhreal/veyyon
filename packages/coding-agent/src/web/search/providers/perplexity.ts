@@ -1,7 +1,4 @@
-/** Perplexity Web Search Provider Supports four auth modes: */
-
 import type { AssistantMessage, AssistantMessageEventStream, AuthStorage, Context, FetchImpl, Usage } from "@veyyon/ai";
-// The owner, not the barrel: a retry wrapper, not the streaming engine behind it.
 import { withOAuthAccess } from "@veyyon/ai/auth-retry";
 import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
 import { streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
@@ -238,11 +235,8 @@ export interface PerplexitySearchParams {
 	system_prompt?: string;
 	search_recency_filter?: "hour" | "day" | "week" | "month" | "year";
 	num_results?: number;
-	/** Maximum output tokens. Defaults to 8192. */
 	max_tokens?: number;
-	/** Sampling temperature (0–1). Lower = more focused/factual. Defaults to 0.2. */
 	temperature?: number;
-	/** Number of search results to retrieve. Defaults to 20. */
 	num_search_results?: number;
 	authStorage: AuthStorage;
 	sessionId?: string;
@@ -399,7 +393,6 @@ function throwPerplexityStreamError(message: AssistantMessage): never {
 	throw new SearchProviderError("perplexity", `Perplexity API request failed (${status}).`, status);
 }
 
-/** Call Perplexity API-key endpoint (or OpenRouter) through the shared OpenAI streaming providers. */
 async function callPerplexityApi(
 	config: ApiConfig,
 	request: PerplexityRequest,
@@ -521,20 +514,16 @@ async function callPerplexityAsk(
 	params: PerplexitySearchParams,
 ): Promise<{ answer: string; sources: SearchSource[]; model?: string; requestId?: string }> {
 	const requestId = crypto.randomUUID();
-	// The consumer `perplexity_ask` endpoint is itself a research assistant and has no system-message slot. Prepending the API-style system prompt to the
 
 	const headers: Record<string, string> = {
 		"Content-Type": "application/json",
 		Accept: "text/event-stream",
 		Origin: PERPLEXITY_WEB_ORIGIN,
 		Referer: `${PERPLEXITY_WEB_ORIGIN}/`,
-		// Signed-in requests identify as the macOS app, which is what unlocks the account's Pro model
-		// selection; anonymous ones look like an ordinary browser, since there is no app session to match.
 		"User-Agent": auth.type === "anonymous" ? CHROME_DESKTOP_USER_AGENT : PERPLEXITY_NATIVE_APP_USER_AGENT,
 		[PERPLEXITY_HEADERS.REQUEST_ID]: requestId,
 	};
 	if (auth.type === "oauth") {
-		// The ask endpoint authenticates via the next-auth session cookie, NOT a bearer header — a bearer (even a garbage one) is ignored and the request
 		headers.Cookie = `__Secure-next-auth.session-token=${auth.token}`;
 	} else if (auth.type === "cookies") {
 		headers.Cookie = auth.cookies;
@@ -553,24 +542,17 @@ async function callPerplexityAsk(
 		attachments: [],
 		frontend_uuid: crypto.randomUUID(),
 		frontend_context_uuid: crypto.randomUUID(),
-		// The same version the `X-App-ApiVersion` header carries. Sent twice per request by the app, so it is
-		// read from one constant rather than restated.
 		version: PERPLEXITY_NATIVE_APP_API_VERSION,
 		language: "en-US",
 		timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 		search_recency_filter: params.search_recency_filter ?? null,
 		is_incognito: true,
 		use_schematized_api: true,
-		// `true` (the native app's default) lets the backend classifier skip retrieval for queries it deems answerable from memory — the model then
 		skip_search_enabled: false,
-		// Belt and braces with `skip_search_enabled: false`: the web client sets
-		// this to force retrieval even when the skip classifier fires.
 		always_search_override: true,
 		prompt_source: "user",
 		source: "default",
 		local_search_enabled: false,
-		// Declare no tool-approval UI and no local (Comet) browser agent, so the
-		// stream never stalls waiting for a confirmation we cannot render.
 		should_ask_for_mcp_tool_confirmation: false,
 		supports_tool_approval_modal: false,
 		force_enable_browser_agent: false,
@@ -606,9 +588,6 @@ async function callPerplexityAsk(
 			};
 		};
 
-		// The consumer ask endpoint intermittently drops the socket before sending an
-		// HTTP response (#5315). Retry the transport exactly once; each physical
-		// attempt re-resolves and rebuilds from the raw query.
 		let response: Response;
 		const requestInit = buildRequestInit();
 		try {
@@ -764,8 +743,6 @@ function applySourceLimit(result: SearchResponse, limit?: number): SearchRespons
 	return result;
 }
 
-/** Execute Perplexity web search */
-
 export async function searchPerplexity(params: PerplexitySearchParams): Promise<SearchResponse> {
 	const systemPrompt = params.system_prompt;
 	const messages: PerplexityRequest["messages"] = [];
@@ -816,7 +793,6 @@ export async function searchPerplexity(params: PerplexitySearchParams): Promise<
 				if (error instanceof SearchProviderError) lastError = error;
 			}
 		} else {
-			// Use OAuth/cookies/anonymous path
 			try {
 				const askResult =
 					auth.type === "oauth"
@@ -850,17 +826,14 @@ export async function searchPerplexity(params: PerplexitySearchParams): Promise<
 	throw new SearchProviderError("perplexity", "No authentication method available.", 401);
 }
 
-/** Search provider for Perplexity. */
 export class PerplexityProvider extends SearchProvider {
 	readonly id = "perplexity";
 	readonly label = "Perplexity";
 
-	/** Auto-chain admission. Requires a direct Perplexity credential (`PERPLEXITY_COOKIES`, OAuth session, or `PERPLEXITY_API_KEY`). */
 	isAvailable(authStorage: AuthStorage): boolean {
 		return !!$env.PERPLEXITY_COOKIES?.trim() || authStorage.hasAuth("perplexity");
 	}
 
-	/** Perplexity accepts anonymous browser-style ask requests, and the OpenRouter-backed `perplexity/sonar-pro` path is opt-in through */
 	isExplicitlyAvailable(_authStorage: AuthStorage): boolean {
 		return true;
 	}

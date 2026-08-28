@@ -1,4 +1,3 @@
-/** An append-only record of which credential was spent where. This is the detective half, and it answers a question the preventive half cannot: after the */
 import { constants as fsConstants, type Stats } from "node:fs";
 import type { FileHandle } from "node:fs/promises";
 import * as fs from "node:fs/promises";
@@ -17,13 +16,10 @@ import type { OperatorNotices } from "../session/operator-notices";
 import { PLACEHOLDER_RE } from "./placeholder";
 import type { VaultLocations } from "./vault";
 
-/** Filename of the log, inside the active profile's directory. */
 export const SECRET_AUDIT_FILENAME = "secret-audit.jsonl";
 
-/** Longest complete JSONL record the log will emit, including the newline. The cross-process lock prevents interleaving; this separate cap prevents a single pathological */
 export const MAX_RECORD_BYTES = 2048;
 
-/** Snapshot and traversal bounds are security limits, not presentation preferences. */
 const MAX_COMMAND_CHARS = 1200;
 const MAX_RECORDED_SECRETS = 16;
 const MAX_SECRET_JSON_BYTES = 128;
@@ -41,38 +37,24 @@ const MAX_DECODE_RECORDS = 32_768;
 const MAX_PENDING_RECORDS = 128;
 const MAX_PENDING_BYTES = MAX_PENDING_RECORDS * MAX_RECORD_BYTES;
 
-/** Size at which the log is rotated, keeping one previous generation. An append-only file with no ceiling is a slow leak, and this one has a second cost: `read` */
 export const ROTATE_AT_BYTES = 2 * 1024 * 1024;
 
-/** Suffix of the kept previous generation. */
 export const ROTATED_SUFFIX = ".1";
 
-/** One expansion, as it appears on one line of the log. */
 export interface SecretExpansionRecord {
-	/** Epoch milliseconds at expansion. */
 	at: number;
-	/** Placeholders that were substituted, for example `#GITHUB_TOKEN#`. Never values. */
 	secrets: string[];
-	/** Number of additional placeholders not listed so the record remains bounded. */
 	omittedSecrets?: number;
-	/** Tool that received them. */
 	tool: string;
-	/** Session the expansion happened in, so a log shared by a profile can be split by session. Optional because a session id is optional: a session that has not been persisted has none */
 	session?: string;
-	/** The command as the model wrote it, with every retained secret still a placeholder. */
 	command: string;
-	/** True when any evidence in this record was cut to fit {@link MAX_RECORD_BYTES}. */
 	truncated?: true;
 }
 
-/** Absolute path of the log for a set of vault locations. */
 export function secretAuditPath(locations: VaultLocations): string {
-	// PROFILE, never project: a project directory is a git worktree, and a log of which
-	// credentials an agent used is not something to invite into a commit.
 	return path.join(locations.profileDir, SECRET_AUDIT_FILENAME);
 }
 
-/** Placeholders present in a value, in encounter order, without duplicates. The walk is iterative and bounded. It deliberately uses the same enumerable string keys and */
 export function placeholdersIn(value: unknown, known: (placeholder: string) => boolean): string[] {
 	return inspectAuditValue(value, known, text => text, false).secrets;
 }
@@ -111,7 +93,6 @@ interface PendingInspection {
 	assign: (value: InertSnapshot) => void;
 }
 
-/** Build one inert snapshot while discovering placeholders; input objects never reach JSON.stringify. */
 function inspectAuditValue(
 	value: unknown,
 	known: (placeholder: string) => boolean,
@@ -271,7 +252,6 @@ function inspectAuditValue(
 	};
 }
 
-/** Scan without match-array materialisation, then protect the complete string before retaining it. */
 function inspectText(value: string, state: InspectionState): string {
 	if (value.length > MAX_SCANNED_STRING_BYTES) {
 		throw new Error("Refusing secret expansion because an audit string exceeds the byte limit.");
@@ -318,7 +298,6 @@ function inspectText(value: string, state: InspectionState): string {
 	}
 }
 
-/** Build a bounded record from arguments before expansion. */
 export function buildExpansionRecord(options: {
 	args: Record<string, unknown>;
 	tool: string;
@@ -352,7 +331,6 @@ export function buildExpansionRecord(options: {
 	return record;
 }
 
-/** Protect labels without ever retaining attacker text when protection itself is unavailable. */
 function protectMetadata(value: string, obfuscate: (value: string) => string): string {
 	if (value.length > MAX_FIELD_CHARS || Buffer.byteLength(value) > MAX_FIELD_CHARS) {
 		return "[oversized metadata omitted]";
@@ -367,7 +345,6 @@ function protectMetadata(value: string, obfuscate: (value: string) => string): s
 	}
 }
 
-/** Serialize only our inert tagged snapshot; input properties and `toJSON` are never consulted. */
 function stringifySnapshot(value: InertSnapshot): string {
 	if (value === null || typeof value === "boolean" || typeof value === "number") return String(value);
 	if (typeof value === "string") return JSON.stringify(value);
@@ -383,7 +360,6 @@ function stringifySnapshot(value: InertSnapshot): string {
 	return `{${entries.join(",")}}`;
 }
 
-/** Serialise one record to the exact bytes appended, newline included. */
 export function encodeRecord(record: SecretExpansionRecord): string {
 	assertEncodableRecord(record);
 
@@ -426,9 +402,6 @@ export function encodeRecord(record: SecretExpansionRecord): string {
 	let line = serialiseRecord(encoded);
 	if (Buffer.byteLength(line) <= MAX_RECORD_BYTES) return line;
 
-	// Placeholder names are the primary evidence. Keep a bounded ordered prefix plus the exact
-	// omitted count, then spend whatever remains on command context. Tool and session labels are
-	// bounded separately so hostile direct callers cannot crowd both kinds of evidence out.
 	encoded.truncated = true;
 	encoded.tool = capJsonString(encoded.tool, MAX_METADATA_JSON_BYTES);
 	if (encoded.session !== undefined) {
@@ -448,8 +421,6 @@ export function encodeRecord(record: SecretExpansionRecord): string {
 
 	line = serialiseRecord(encoded);
 	if (Buffer.byteLength(line) > MAX_RECORD_BYTES) {
-		// This can only be reached through a typed-but-invalid runtime value whose fixed metadata
-		// cannot fit. Refusing the append is safer than emitting an over-cap or malformed line.
 		throw new Error("The secret audit record metadata exceeds the maximum record size.");
 	}
 
@@ -480,7 +451,6 @@ export function encodeRecord(record: SecretExpansionRecord): string {
 	return line;
 }
 
-/** Fail closed on runtime values that escaped the TypeScript interface. */
 function assertEncodableRecord(record: SecretExpansionRecord): void {
 	const valid =
 		Number.isFinite(record.at) &&
@@ -495,17 +465,14 @@ function assertEncodableRecord(record: SecretExpansionRecord): void {
 	if (!valid) throw new Error("The secret audit record has invalid metadata.");
 }
 
-/** Construct the on-disk line in one field order, discarding unknown runtime properties. */
 function serialiseRecord(record: SecretExpansionRecord): string {
 	return `${JSON.stringify(record)}\n`;
 }
 
-/** Bound a direct-call string before JSON encoding so preflight itself cannot allocate without limit. */
 function boundedPrefix(value: string, maxChars: number): string {
 	return value.length <= maxChars ? value : prefixWithEllipsis(value, maxChars - 1);
 }
 
-/** Keep a UTF-16-safe prefix and record the cut visibly. */
 function prefixWithEllipsis(value: string, requestedEnd: number): string {
 	let end = clamp(requestedEnd, 0, value.length);
 	if (
@@ -521,7 +488,6 @@ function prefixWithEllipsis(value: string, requestedEnd: number): string {
 	return `${value.slice(0, end)}…`;
 }
 
-/** Cap a JSON string by its encoded bytes, not its source character count. */
 function capJsonString(value: string, maxBytes: number): string {
 	if (Buffer.byteLength(JSON.stringify(value)) <= maxBytes) return value;
 	let low = 0;
@@ -540,7 +506,6 @@ function capJsonString(value: string, maxBytes: number): string {
 	return best;
 }
 
-/** The encoder's JSON escapes protect the file format, not the terminal: JSON.parse restores control bytes. Normalise every decoded string before it reaches `/secret log`, including hand-edited or */
 function terminalSafeRecord(record: SecretExpansionRecord): SecretExpansionRecord {
 	return {
 		...record,
@@ -551,7 +516,6 @@ function terminalSafeRecord(record: SecretExpansionRecord): SecretExpansionRecor
 	};
 }
 
-/** Parse a log back, skipping nothing silently: an unreadable line is reported as such. */
 export function decodeLog(text: string): { records: SecretExpansionRecord[]; malformed: number } {
 	const records: SecretExpansionRecord[] = [];
 	let malformed = 0;
@@ -635,7 +599,6 @@ export function decodeLog(text: string): { records: SecretExpansionRecord[]; mal
 	return { records, malformed };
 }
 
-/** Whether a parsed line is a secret-expansion record, checking EVERY field the renderer reads. The check used to be `typeof at === "number" && Array.isArray(secrets)` followed by a cast, so a */
 function isSecretExpansionRecord(value: unknown): value is SecretExpansionRecord {
 	if (!isRecord(value)) return false;
 	const candidate = value;
@@ -656,7 +619,6 @@ function isSecretExpansionRecord(value: unknown): value is SecretExpansionRecord
 	);
 }
 
-/** Reject paths an audit write must never follow or reinterpret. */
 function assertOwnedRegularFile(filePath: string, stats: Stats): void {
 	if (!stats.isFile()) {
 		throw new Error(`The secret audit path at ${escapeTerminalText(filePath)} is not a regular file.`);
@@ -730,7 +692,6 @@ async function assertParentIdentity(parent: PinnedParent): Promise<void> {
 	}
 }
 
-/** Create missing parent components one at a time while every namespace mutation pins its parent. */
 async function ensureAuditParent(filePath: string): Promise<void> {
 	const target = path.dirname(filePath);
 	const parsed = path.parse(target);
@@ -800,7 +761,6 @@ async function ensureAuditParent(filePath: string): Promise<void> {
 	}
 }
 
-/** Secure the exact opened descriptor, then prove the pathname still names that inode. */
 async function secureHandle(filePath: string, handle: FileHandle, applyAcl: boolean): Promise<Stats> {
 	let stats = await handle.stat();
 	assertOwnedRegularFile(filePath, stats);
@@ -882,7 +842,6 @@ function isAlreadyExists(error: unknown): boolean {
 	return isRecord(error) && error.code === "EEXIST";
 }
 
-/** Whether an append needs a boundary before its first JSON byte. */
 async function handleNeedsLineSeparator(handle: FileHandle, stats: Stats): Promise<boolean> {
 	if (stats.size === 0) return false;
 	const lastByte = Buffer.allocUnsafe(1);
@@ -917,7 +876,6 @@ async function readBounded(handle: FileHandle, cap: number): Promise<Buffer> {
 	return bytes.subarray(0, offset);
 }
 
-/** Ordered, bounded audit queue. Records are encoded synchronously so the queue never retains a caller object whose getters or fields can change after expansion has begun. */
 export class SecretAuditLog {
 	readonly #logPath: string;
 	readonly #rawRotatedPath: string;
@@ -944,7 +902,6 @@ export class SecretAuditLog {
 		return escapeTerminalText(this.#rawRotatedPath);
 	}
 
-	/** Queue one already-sanitized record. Capacity exhaustion throws synchronously, before the caller expands placeholders, and emits one visible bounded-loss notice. */
 	record(record: SecretExpansionRecord): void {
 		const line = encodeRecord(record);
 		const bytes = Buffer.byteLength(line);
@@ -1045,7 +1002,6 @@ export class SecretAuditLog {
 		}
 	}
 
-	/** Copy the full live generation into the pinned previous-generation descriptor and datasync it before truncating the still-open live descriptor. A failed rotation therefore leaves the */
 	async #rotateIfFull(incomingBytes: number, parent: PinnedParent): Promise<void> {
 		const current = await openExistingAuditFile(this.#logPath, fsConstants.O_RDWR);
 		if (current === null) {

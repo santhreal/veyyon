@@ -1,10 +1,5 @@
-/** Shared Content-Length message framing for the JSON byte streams spoken by the LSP and DAP stdio clients. Both protocols use the same base-protocol framing: */
-
-// Reused for all full (non-streaming) decodes; each decode() resets state, so a
-// single instance is safe and avoids per-message TextDecoder allocation.
 const MESSAGE_DECODER = new TextDecoder("utf-8");
 
-/** Locate the `\r\n\r\n` header terminator across the pending chunk list. Returns the absolute byte index of the first `\r`, or -1 when not present. */
 function findHeaderEndInChunks(chunks: Buffer[]): number {
 	let global = 0;
 	let b0 = -1;
@@ -25,7 +20,6 @@ function findHeaderEndInChunks(chunks: Buffer[]): number {
 	return -1;
 }
 
-/** Copy the byte range [from, to) out of the pending chunk list into one Buffer. */
 function copyChunkRange(chunks: Buffer[], from: number, to: number): Buffer {
 	const out = Buffer.allocUnsafe(to - from);
 	let global = 0;
@@ -44,7 +38,6 @@ function copyChunkRange(chunks: Buffer[], from: number, to: number): Buffer {
 	return out;
 }
 
-/** Drop the first `count` bytes from the pending chunk list in place. */
 function dropChunkFront(chunks: Buffer[], count: number): void {
 	let removed = 0;
 	while (chunks.length > 0) {
@@ -59,7 +52,6 @@ function dropChunkFront(chunks: Buffer[], count: number): void {
 	}
 }
 
-/** The `Content-Length` of a header block, or `undefined` when the block states none, states a malformed one, or states two that disagree. */
 function parseContentLength(headerText: string): number | undefined {
 	let found: number | undefined;
 	for (const line of headerText.split(/\r?\n/)) {
@@ -70,20 +62,16 @@ function parseContentLength(headerText: string): number | undefined {
 		if (!/^\d+$/.test(value)) return undefined;
 		const parsed = Number.parseInt(value, 10);
 		if (!Number.isSafeInteger(parsed)) return undefined;
-		// Two lengths that disagree leave the frame boundary ambiguous, and
-		// picking either one mis-frames every message after it. Resync instead.
 		if (found !== undefined && found !== parsed) return undefined;
 		found = parsed;
 	}
 	return found;
 }
 
-/** Incremental Content-Length frame decoder for a JSON message byte stream. Incoming bytes are buffered as a list of chunks and only joined when a full */
 export class MessageFramer {
 	readonly #pendingChunks: Buffer[] = [];
 	#pendingLen = 0;
 
-	/** Seed the buffer with any unparsed remainder left by a previous reader. */
 	constructor(seed: Buffer) {
 		if (seed.length > 0) {
 			this.#pendingChunks.push(seed);
@@ -91,13 +79,11 @@ export class MessageFramer {
 		}
 	}
 
-	/** Append a freshly read chunk to the pending buffer. */
 	push(chunk: Buffer): void {
 		this.#pendingChunks.push(chunk);
 		this.#pendingLen += chunk.length;
 	}
 
-	/** Yield the JSON text of every complete message currently buffered. A header block that states no usable `Content-Length` is non-protocol noise (e.g. a */
 	*drain(onResync: (headerText: string) => void): Generator<string> {
 		while (true) {
 			const headerEnd = findHeaderEndInChunks(this.#pendingChunks);
@@ -123,7 +109,6 @@ export class MessageFramer {
 		}
 	}
 
-	/** The unparsed remainder, to persist when the reader stops. */
 	remainder(): Buffer {
 		return this.#pendingChunks.length === 0
 			? Buffer.alloc(0)

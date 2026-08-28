@@ -1,4 +1,3 @@
-/** Custom tool loader - loads TypeScript tool modules using native Bun import. Dependencies (the self-contained typebox shim and pi-coding-agent) are injected via the */
 import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
 import { errorMessage, logger } from "@veyyon/utils";
@@ -11,7 +10,6 @@ import type { ExecOptions } from "../../exec/exec";
 import { execCommand, withSessionCpuExec } from "../../exec/exec";
 import type { HookUIContext } from "../../extensibility/hooks/types";
 import { getAllPluginToolPaths } from "../../extensibility/plugins/loader";
-// Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
 import { type CodingAgentApi, loadCodingAgentApi } from "../coding-agent-api";
 import { factoryExportMissingMessage, moduleImportFailedMessage, nameConflictMessage } from "../load-failure";
 import * as typebox from "../typebox";
@@ -39,7 +37,6 @@ function isLoadableCustomTool(value: unknown): value is LoadedCustomTool["tool"]
 }
 
 function invalidToolError(path: string, index: number, source: ToolLoadError["source"]): ToolLoadError {
-	// Not `invalidArtifactFieldMessage`: the factory may return an array, so the reader needs to know WHICH element failed, and any of four fields may be
 	const which = index === 0 ? "The tool" : `Tool #${index + 1} in the array`;
 	return {
 		path,
@@ -51,9 +48,6 @@ function invalidToolError(path: string, index: number, source: ToolLoadError["so
 	};
 }
 
-/**
- * Load a single tool module using native Bun import.
- */
 async function loadTool(
 	toolPath: string,
 	cwd: string,
@@ -62,7 +56,6 @@ async function loadTool(
 ): Promise<LoadToolResult> {
 	const resolvedPath = resolvePath(toolPath, cwd);
 
-	// Skip declarative tool files (.md, .json) - these are metadata only, not executable modules
 	if (resolvedPath.endsWith(".md") || resolvedPath.endsWith(".json")) {
 		return {
 			tools: [],
@@ -115,22 +108,16 @@ async function loadTool(
 	}
 }
 
-/** Tool path with optional source metadata, suitable for forwarding from a
- * parent session to a subagent so the subagent can re-bind tools to its own
- * `CustomToolAPI` without redoing the filesystem scan. */
 export interface ToolPathWithSource {
 	path: string;
 	source?: { provider: string; providerName: string; level: "user" | "project" };
 }
 
-/** Loads custom tools from paths with conflict detection and error handling. Manages a shared API instance passed to all tool factories, providing access to */
 export class CustomToolLoader {
 	tools: LoadedCustomTool[] = [];
 	errors: ToolLoadError[] = [];
 	#sharedApi: CustomToolAPI;
 	#seenNames: Set<string>;
-	/** Separate from `#seenNames`, which grows: this is only the built-ins, so a
-	 * conflict can say whether the operator is fighting veyyon or their own copy. */
 	#builtInNames: ReadonlySet<string>;
 
 	constructor(
@@ -184,11 +171,7 @@ export class CustomToolLoader {
 			for (let ei = 0; ei < errors.length; ei++) this.errors.push(errors[ei]!);
 
 			for (const loadedTool of loadedTools) {
-				// Check for name conflicts
 				if (this.#seenNames.has(loadedTool.tool.name)) {
-					// WHICH owner decides the remedy. Against a built-in the operator
-					// must rename their own tool, because the built-in is not going
-					// anywhere; against an earlier custom tool either copy can go.
 					const owner = this.#builtInNames.has(loadedTool.tool.name)
 						? "a built-in veyyon tool"
 						: "a custom tool that loaded earlier";
@@ -212,7 +195,6 @@ export class CustomToolLoader {
 	}
 }
 
-/** Load all tools from configuration. @param pathsWithSources - Array of tool paths with optional source metadata @param cwd - Current working directory for resolving relative paths @param builtInToolNames - Names of built-in tools to check for conflicts */
 export async function loadCustomTools(
 	pathsWithSources: ToolPathWithSource[],
 	cwd: string,
@@ -226,7 +208,6 @@ export async function loadCustomTools(
 	adoptSpawnedPid?: (pid: number) => void,
 	gateSpawn?: (what: string) => Promise<void>,
 ) {
-	// No paths means no author code will ever see the API object, and building one costs the whole package barrel (see `../coding-agent-api`). Every launch calls this from `createAgentSession`,
 	if (pathsWithSources.length === 0) {
 		return { tools: [] as LoadedCustomTool[], errors: [] as ToolLoadError[], setUIContext: () => {} };
 	}
@@ -249,7 +230,6 @@ export async function loadCustomTools(
 	};
 }
 
-/** Collect the absolute tool-source paths to load, without importing or binding factories. Hot path on session startup — the scan walks */
 export async function discoverCustomToolPaths(
 	configuredPaths: string[],
 	cwd: string,
@@ -258,7 +238,6 @@ export async function discoverCustomToolPaths(
 	const allPathsWithSources: ToolPathWithSource[] = [];
 	const seen = new Set<string>();
 
-	// Helper to add paths without duplicates
 	const addPath = (p: string, source?: { provider: string; providerName: string; level: "user" | "project" }) => {
 		const resolved = path.resolve(p);
 		if (!seen.has(resolved)) {
@@ -267,7 +246,6 @@ export async function discoverCustomToolPaths(
 		}
 	};
 
-	// 1. Discover tools via capability system (user + project from all providers)
 	const discoveredTools = await loadCapability<DiscoveredCustomTool>(toolCapability.id, { cwd, agentDir });
 	for (const tool of discoveredTools.items) {
 		addPath(tool.path, {
@@ -277,12 +255,10 @@ export async function discoverCustomToolPaths(
 		});
 	}
 
-	// 2. Plugin tools: profile plugins/node_modules/*/
 	for (const pluginPath of await getAllPluginToolPaths(cwd, agentDir ? pluginsRootFor(agentDir) : undefined)) {
 		addPath(pluginPath, { provider: "plugin", providerName: "Plugin", level: "user" });
 	}
 
-	// 3. Explicitly configured paths (can override/add)
 	for (const configPath of configuredPaths) {
 		addPath(resolvePath(configPath, cwd), { provider: "config", providerName: "Config", level: "project" });
 	}
@@ -290,7 +266,6 @@ export async function discoverCustomToolPaths(
 	return allPathsWithSources;
 }
 
-/** Discover and load tools from standard locations via capability system: 1. User and project tools discovered by capability providers */
 export async function discoverAndLoadCustomTools(
 	configuredPaths: string[],
 	cwd: string,

@@ -1,4 +1,3 @@
-/** Client-side WebSocket wrapper for collab live-session sharing. Connects to a relay room, seals/opens AES-GCM frames, and reconnects with */
 import { exponentialBackoffDelay, logger } from "@veyyon/utils";
 import { RELAY_FATAL_CLOSE_REASONS, RELAY_MAX_PENDING_SENDS } from "@veyyon/wire/relay";
 import { open, seal } from "./crypto";
@@ -10,18 +9,15 @@ const WS_BACKPRESSURE_DRAIN_THRESHOLD = 32 * 1024;
 const WS_BACKPRESSURE_DRAIN_RETRY_MS = 25;
 
 export interface CollabSocketOptions {
-	/** wss://host[:port]/r/<roomId> — no query string. */
 	wsUrl: string;
 	role: "host" | "guest";
 	key: CryptoKey;
 }
 
 export class CollabSocket {
-	/** Fires after every successful (re)connect. */
 	onOpen?: () => void;
 	onFrame?: (frame: CollabFrame, fromPeer: number) => void;
 	onControl?: (msg: RelayControlMessage) => void;
-	/** Fires once per terminal close (intentional, fatal code, or bad key). willReconnect=true for transient drops that will retry. */
 	onClose?: (reason: string, willReconnect: boolean) => void;
 
 	readonly #opts: CollabSocketOptions;
@@ -29,13 +25,9 @@ export class CollabSocket {
 	#retryTimer: NodeJS.Timeout | undefined;
 	#backpressureDrainTimer: NodeJS.Timeout | undefined;
 	#attempt = 0;
-	/** Terminal state: intentional close or fatal failure. Cleared by connect(). */
 	#closed = false;
-	/** Serializes seal() so frames hit the wire in send() order. */
 	#sendChain: Promise<void> = Promise.resolve();
-	/** Serializes open() so frames are delivered in arrival order. */
 	#recvChain: Promise<void> = Promise.resolve();
-	/** Envelopes sealed while disconnected, flushed on the next open. */
 	#pendingSends: Uint8Array[] = [];
 
 	constructor(opts: CollabSocketOptions) {
@@ -133,7 +125,6 @@ export class CollabSocket {
 		}
 	}
 
-	/** Intentional close: clears any retry timer, suppresses reconnect. A later connect() starts fresh. */
 	close(): void {
 		const hadActivity = this.#ws !== null || this.#retryTimer !== undefined;
 		this.#clearRetry();
@@ -146,9 +137,7 @@ export class CollabSocket {
 		if (ws) {
 			try {
 				ws.close(1000);
-			} catch {
-				// already closing/closed
-			}
+			} catch {}
 		}
 		if (hadActivity && !wasClosed) this.onClose?.("closed", false);
 	}
@@ -171,9 +160,7 @@ export class CollabSocket {
 			if (this.#ws !== ws) return;
 			this.#handleMessage(ws, event.data);
 		};
-		ws.onerror = () => {
-			// The paired close event carries the actionable state; nothing to do here.
-		};
+		ws.onerror = () => {};
 		ws.onclose = (event: CloseEvent) => {
 			if (this.#ws !== ws) return;
 			this.#clearBackpressureDrain();
@@ -227,7 +214,6 @@ export class CollabSocket {
 		this.#scheduleRetry();
 	}
 
-	/** Decryption failure: wrong key or corrupted frame. Never reconnect. */
 	#failFatal(reason: string): void {
 		if (this.#closed) return;
 		this.#closed = true;
@@ -239,9 +225,7 @@ export class CollabSocket {
 		if (ws) {
 			try {
 				ws.close(1000);
-			} catch {
-				// already closing/closed
-			}
+			} catch {}
 		}
 		this.onClose?.(reason, false);
 	}

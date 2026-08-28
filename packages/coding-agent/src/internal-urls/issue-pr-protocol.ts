@@ -1,10 +1,7 @@
-/** Protocol handlers for `issue://` and `pr://`. Both single-item reads route through the SQLite-backed `github-cache`, */
-// Owners, not the barrel: 2 modules against 74.
 import { formatCount } from "@veyyon/utils/format";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../config/settings";
 import { AgentRegistry } from "../registry/agent-registry";
-// The FETCHERS, not the `github` tool. `../tools/gh` is the tool: 38 ops, the run-watch poller, PR checkout, and `PROMPTS` for its own description, which is 352 modules. This handler wants six names
 import {
 	getOrFetchIssue,
 	getOrFetchPr,
@@ -31,7 +28,6 @@ interface ParsedPrDiff {
 	kind: "pr-diff";
 	repo?: string;
 	number: number;
-	/** `list` → enumerate changed files. `all` → full unified diff. */
 	mode: "list" | "all" | "slice";
 	index?: number;
 }
@@ -55,9 +51,6 @@ function parseListOptions(url: InternalUrl, scheme: Scheme, repo: string | undef
 	const allowedStates: ParsedList["state"][] =
 		scheme === "pr" ? ["open", "closed", "merged", "all"] : ["open", "closed", "all"];
 	if (stateRaw !== null && !(allowedStates as string[]).includes(stateRaw)) {
-		// Reject instead of silently falling back to "open": a typo'd state
-		// would otherwise return the open list, indistinguishable from "no
-		// matches for the requested state".
 		throw new Error(`Invalid ${scheme}:// list state '${stateRaw}'. Expected one of: ${allowedStates.join(", ")}.`);
 	}
 	const state = (stateRaw ?? "open") as ParsedList["state"];
@@ -86,8 +79,6 @@ function parseListOptions(url: InternalUrl, scheme: Scheme, repo: string | undef
 function parseUrl(url: InternalUrl, scheme: Scheme): Parsed {
 	const host = url.rawHost || url.hostname;
 	const rawPath = url.rawPathname ?? url.pathname;
-	// Strip a single leading slash so we can detect empty internal segments
-	// (e.g. `pr://owner//77` → pathname `//77` → stripped `/77` → ["", "77"]).
 	const stripped = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath;
 	const parts: string[] = [];
 	if (stripped !== "") {
@@ -105,7 +96,6 @@ function parseUrl(url: InternalUrl, scheme: Scheme): Parsed {
 		}
 	}
 
-	// Shapes: scheme:// → list default repo
 	let repo: string | undefined;
 	let numberPart: string | undefined;
 	let diffParts: string[] = [];
@@ -114,18 +104,14 @@ function parseUrl(url: InternalUrl, scheme: Scheme): Parsed {
 		return parseListOptions(url, scheme, undefined);
 	}
 	if (host && parts.length === 0) {
-		// scheme://N (numeric) or scheme://owner (host-only, no repo segment)
 		numberPart = host;
 	} else if (parts[0] === "diff" && parsePositiveDecimalInt(host) !== undefined) {
-		// <scheme>://N/diff[/<sub>] — short form with diff suffix. Restrict this ambiguity to numeric hosts so `<scheme>://owner/diff` remains the valid
 		numberPart = host;
 		diffParts = parts;
 	} else if (host && parts.length === 1) {
-		// scheme://owner/repo  → list
 		repo = `${host}/${parts[0]}`;
 		return parseListOptions(url, scheme, repo);
 	} else if (host && parts.length >= 2) {
-		// scheme://owner/repo/N[/diff[/<sub>]]
 		repo = `${host}/${parts[0]}`;
 		numberPart = parts[1];
 		diffParts = parts.slice(2);
@@ -135,9 +121,6 @@ function parseUrl(url: InternalUrl, scheme: Scheme): Parsed {
 		);
 	}
 
-	// Reject unrecognized trailing segments before parsing the number so
-	// shapes like `issue://owner/repo/foo/bar` surface as "Invalid URL"
-	// rather than the misleading "Invalid number: foo".
 	if (diffParts.length > 0) {
 		if (scheme === "issue") {
 			throw new Error(
@@ -163,7 +146,6 @@ function parseUrl(url: InternalUrl, scheme: Scheme): Parsed {
 		return { kind: "single", repo, number: num, comments };
 	}
 
-	// diffParts has already been validated above; scheme is `pr`.
 	if (diffParts.length === 1) {
 		return { kind: "pr-diff", repo, number: num, mode: "list" };
 	}
@@ -178,7 +160,6 @@ function parseUrl(url: InternalUrl, scheme: Scheme): Parsed {
 	return { kind: "pr-diff", repo, number: num, mode: "slice", index: idx };
 }
 
-/** Working directory to run `gh` in. Order: */
 function resolveCwd(context: ResolveContext | undefined): string {
 	if (context?.cwd) return context.cwd;
 	const cwds: string[] = [];
@@ -320,7 +301,6 @@ interface BuildSingleArgs {
 	rendered: string;
 	status: CacheStatus;
 	fetchedAt: number;
-	/** Resolved repo (post short-form expansion) — used for the PR-only diff hint. */
 	repo?: string;
 }
 
@@ -422,7 +402,6 @@ async function fetchAndRenderPrDiff(
 		};
 	}
 
-	// mode === "list"
 	const header = `# Pull Request Diff: ${repo}#${parsed.number} (${formatCount("file", files.length)})`;
 	const body =
 		files.length === 0
@@ -439,9 +418,6 @@ async function fetchAndRenderPrDiff(
 	};
 }
 
-/**
- * Handler for `issue://` URLs.
- */
 export class IssueProtocolHandler implements ProtocolHandler {
 	readonly scheme = "issue";
 	readonly immutable = true;
@@ -459,8 +435,6 @@ export class IssueProtocolHandler implements ProtocolHandler {
 				throw new Error(`issue:// listing failed: ${message}`);
 			}
 		}
-		// parseUrl already rejects `issue://.../diff`; this guard is a belt-and-
-		// suspenders catch in case the union grows.
 		if (parsed.kind !== "single") {
 			throw new Error(`Invalid issue:// URL: unexpected variant '${parsed.kind}'`);
 		}
@@ -488,9 +462,6 @@ export class IssueProtocolHandler implements ProtocolHandler {
 	}
 }
 
-/**
- * Handler for `pr://` URLs.
- */
 export class PrProtocolHandler implements ProtocolHandler {
 	readonly scheme = "pr";
 	readonly immutable = true;

@@ -1,9 +1,7 @@
 import { THINKING_EFFORTS } from "@veyyon/catalog/effort";
 import { scope } from "arktype";
 
-// Schema construction is deferred behind modelsConfigSchemas(): even with the jitless scope below (~65% cheaper than default ArkType codegen), building
 function buildModelsConfigSchemas() {
-	// Config schemas validate at most a handful of times per process (on config load), so the eager JIT codegen ArkType runs at definition time is pure
 	const { type } = scope({}, { jitless: true });
 
 	const OpenRouterRoutingSchema = type({
@@ -16,7 +14,6 @@ function buildModelsConfigSchemas() {
 		"order?": "string[]",
 	});
 
-	// `"+": "reject"` because every key here NAMES a thinking level, and a key that names no level cannot do anything. ArkType allows undeclared keys by
 	const ReasoningEffortMapSchema = type({
 		"+": "reject",
 		"minimal?": "string",
@@ -61,7 +58,6 @@ function buildModelsConfigSchemas() {
 		"strictResponsesPairing?": "boolean",
 		"supportsImageDetailOriginal?": "boolean",
 		"supportsServerCompaction?": "boolean",
-		// anthropic-messages compat flags (same `compat` slot, per-api interpretation)
 		"requiresToolResultId?": "boolean",
 		"replayUnsignedThinking?": "boolean",
 	} as const;
@@ -77,14 +73,12 @@ function buildModelsConfigSchemas() {
 		'"openai-completions" | "openai-responses" | "openai-codex-responses" | "azure-openai-responses" | "anthropic-messages" | "google-generative-ai" | "google-gemini-cli" | "google-vertex"',
 	);
 
-	// ArkType infers a literal union only from a literal definition, so the six levels are spelled here rather than built from `THINKING_EFFORTS`: a
 	const EffortSchema = type('"minimal" | "low" | "medium" | "high" | "xhigh" | "max"');
 
 	const ThinkingControlModeSchema = type(
 		'"effort" | "budget" | "google-level" | "anthropic-adaptive" | "anthropic-budget-effort"',
 	);
 
-	/** Fail closed if the schema's literals and the ladder in `@veyyon/catalog/effort` disagree. */
 	for (const effort of THINKING_EFFORTS) {
 		if (EffortSchema(effort) instanceof type.errors) {
 			throw new Error(
@@ -95,17 +89,14 @@ function buildModelsConfigSchemas() {
 		}
 	}
 
-	// The ladder itself is not restated. `THINKING_EFFORTS` is `readonly Effort[]` and TypeScript does not consider a string-enum member assignable to its own
 	const EFFORT_ORDER = THINKING_EFFORTS as readonly (typeof EffortSchema.infer)[];
 
-	/** Accepts the canonical `efforts` vocabulary plus the legacy `minLevel`/`maxLevel`/`levels` range shape, normalizing both to */
 	const ModelThinkingSchema = type({
 		mode: ThinkingControlModeSchema,
 		"efforts?": EffortSchema.array(),
 		"defaultLevel?": EffortSchema,
 		"effortMap?": ReasoningEffortMapSchema,
 		"supportsDisplay?": "boolean",
-		// Legacy range vocabulary (pre-efforts configs).
 		"minLevel?": EffortSchema,
 		"maxLevel?": EffortSchema,
 		"levels?": EffortSchema.array(),
@@ -133,7 +124,6 @@ function buildModelsConfigSchemas() {
 			};
 		});
 
-	// `remoteCompaction` is RETIRED. Nothing has read it since per-provider compaction configuration went away, so a config that still sets it
 	const RetiredRemoteCompactionSchema = type("unknown");
 
 	const ModelDefinitionSchema = type({
@@ -161,7 +151,6 @@ function buildModelsConfigSchemas() {
 		"compactionModel?": "string",
 		"remoteCompaction?": RetiredRemoteCompactionSchema,
 	}).narrow((value, ctx) => {
-		// Enforce id non-empty
 		if (typeof value.id === "string" && value.id.length === 0) {
 			return ctx.mustBe("id a non-empty string");
 		}
@@ -249,7 +238,6 @@ function buildModelsConfigSchemas() {
 		"models?": ModelDefinitionSchema.array(),
 		"modelOverrides?": { "[string]": ModelOverrideSchema },
 		"disableStrictTools?": "boolean",
-		/** Streaming transport override. When set to `"pi-native"`, veyyon dispatches every model under this provider via the auth-gateway's */
 		"transport?": '"pi-native"',
 	}).narrow((value, ctx) => {
 		if (value.baseUrl !== undefined && typeof value.baseUrl === "string" && value.baseUrl.length === 0) {
@@ -272,7 +260,6 @@ type Schemas = ReturnType<typeof buildModelsConfigSchemas>;
 
 let schemasCache: Schemas | undefined;
 
-/** The models-config schema set, built lazily on first config load. */
 export function modelsConfigSchemas(): Schemas {
 	schemasCache ??= buildModelsConfigSchemas();
 	return schemasCache;

@@ -6,47 +6,31 @@ import {
 } from "./indexed-session-storage";
 import type { SessionTitleUpdate } from "./session-title-slot";
 
-/** Supported `bun:sql` adapter dialects. `Bun.SQL` reports this string on `client.options.adapter`; we detect it once at construction and pick the */
 export type SqlSessionStorageAdapter = "postgres" | "mysql" | "sqlite";
 
-/** Minimal subset of the `Bun.SQL` instance surface used by {@link SqlSessionStorage}. Bun's SQL client exposes a tagged-template API too, */
 export interface SqlSessionStorageClient {
 	unsafe(query: string, values?: unknown[]): Promise<unknown[]>;
-	/** `Bun.SQL` exposes the parsed connection options here. We only consult `adapter` to pick the dialect; the field is typed as */
 	options: { adapter?: string; [key: string]: unknown };
 	end?(): Promise<void>;
 }
 
 export interface SqlSessionStorageOptions {
-	/** Connected `Bun.SQL` instance (PostgreSQL, MySQL, or SQLite). */
 	client: SqlSessionStorageClient;
-	/** Override the auto-detected adapter. Useful when the client is wrapped (e.g. by a pool) and `client.options.adapter` is unreliable. */
 	adapter?: SqlSessionStorageAdapter;
-	/** Table name to use. Default: `veyyon_session_files`. Must match `[A-Za-z_][A-Za-z0-9_]{0,62}` — inlined into prepared statements at */
 	table?: string;
-	/** If true, run `CREATE TABLE IF NOT EXISTS` during `create()`. Default: true. Disable when the table is owned by an external */
 	createTable?: boolean;
 }
 
 interface DialectQueries {
 	createTable: string;
-	/** Add title metadata columns to existing tables created before title fields existed. */
 	addTitleColumns: readonly string[];
-	/** Insert or replace the full content for `path`. Used for `writeText`/`flags="w"` truncate. */
 	upsertReplace: string;
-	/** Insert if missing; otherwise append the new chunk to existing content. Used for `writeLine`. */
 	upsertAppend: string;
-	/** Update indexed title metadata without rewriting the JSONL body. */
 	updateTitle: string;
-	/** Delete a single row by path. */
 	delete: string;
-	/** Move a row from one path to another (caller deletes any conflicting destination first). */
 	rename: string;
-	/** Warm the synchronous index without transferring full content. */
 	loadIndex: string;
-	/** Read the full content for the async `readText` surface. */
 	readFull: string;
-	/** Read bounded byte windows from the head and tail of the content. */
 	readSlices: string;
 }
 
@@ -187,7 +171,6 @@ function decodeSqlBytes(value: unknown): string {
 	return String(value);
 }
 
-/** SQL-backed implementation of {@link SessionStorage} using `bun:sql`. Each session JSONL file maps to a row keyed by `path`; one table stores the file */
 export class SqlSessionStorage extends IndexedSessionStorage {
 	readonly #adapter: SqlSessionStorageAdapter;
 	readonly #table: string;
@@ -198,7 +181,6 @@ export class SqlSessionStorage extends IndexedSessionStorage {
 		this.#table = table;
 	}
 
-	/** Apply the dialect-correct DDL (unless `createTable: false` is set) and warm the metadata index with every existing row. Must be awaited before passing */
 	static async create(options: SqlSessionStorageOptions): Promise<SqlSessionStorage> {
 		const backend = new SqlSessionStorageBackend(options);
 		const storage = new SqlSessionStorage(backend, backend.adapter, backend.table);

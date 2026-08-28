@@ -1,41 +1,7 @@
-/**
- * How long a single DeepSWE trial is allowed to run.
- *
- * The bench wraps one `pier run` in one timer. That single run spans three
- * phases the task itself budgets separately in `task.toml`: building the
- * environment, running the agent, and running the verifier. A flat harness
- * timeout that ignores those numbers does not shorten the task, it truncates
- * it, and the truncation is not neutral. Any arm that is slower per turn eats
- * more truncations than a fast one, so a flat timeout quietly converts "this
- * arm spends more wall clock per turn" into "this arm solves fewer tasks",
- * which is a different claim entirely.
- *
- * So the default is derived per task from what the task granted, and the flag
- * stays as an explicit override for an operator who knowingly wants a shorter
- * run. Nothing here silently substitutes a number: a task with no agent budget
- * throws, and an override that cuts into a task's own budget is reported to the
- * caller so the run can say so out loud.
- */
-
-/**
- * The three `task.toml` budgets a single `pier run` spans, in seconds.
- *
- * Named for the phases rather than the TOML keys because the keys live in three
- * different tables (`[environment].build_timeout_sec`, `[agent].timeout_sec`,
- * `[verifier].timeout_sec`) and a reader should not have to hold that mapping.
- */
 export interface TaskTimeBudgetSec {
-	/** `[environment].build_timeout_sec`: image build, before the agent starts. */
 	readonly build: number;
-	/** `[agent].timeout_sec`: what the task grants the agent itself. */
 	readonly agent: number;
-	/** `[verifier].timeout_sec`: grading, after the agent stops. */
 	readonly verifier: number;
-	/**
-	 * Phases the task declared no budget for. Summing a missing phase as zero
-	 * would under-budget the trial by exactly the amount nobody wrote down, so
-	 * the omission travels with the number instead of being absorbed into it.
-	 */
 	readonly missing: readonly ("build" | "verifier")[];
 }
 
@@ -48,13 +14,6 @@ function table(root: Record<string, unknown>, name: string): Record<string, unkn
 	return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;
 }
 
-/**
- * Read the three phase budgets out of an already-parsed `task.toml`.
- *
- * Throws when `[agent].timeout_sec` is absent or non-positive: that is the one
- * number this whole mechanism exists to honour, and inventing a replacement for
- * it would reintroduce the flat-default bug one layer down.
- */
 export function taskTimeBudget(parsed: Record<string, unknown>, taskLabel: string): TaskTimeBudgetSec {
 	const agent = positiveNumber(table(parsed, "agent")?.timeout_sec);
 	if (agent === undefined) {
@@ -71,7 +30,6 @@ export function taskTimeBudget(parsed: Record<string, unknown>, taskLabel: strin
 	return { build: build ?? 0, agent, verifier: verifier ?? 0, missing };
 }
 
-/** Parse a `task.toml` and extract its phase budgets. */
 export function parseTaskTimeBudget(tomlText: string, taskLabel: string): TaskTimeBudgetSec {
 	let parsed: Record<string, unknown>;
 	try {
@@ -82,39 +40,18 @@ export function parseTaskTimeBudget(tomlText: string, taskLabel: string): TaskTi
 	return taskTimeBudget(parsed, taskLabel);
 }
 
-/**
- * Wall clock the task granted the whole trial: every phase the one timer spans.
- *
- * Not just the agent budget. The timer starts before the image build and is
- * still running during verification, so charging the agent's budget alone would
- * kill trials mid-grade and record them as agent failures.
- */
 export function budgetedTrialTimeoutSec(budget: TaskTimeBudgetSec): number {
 	return budget.build + budget.agent + budget.verifier;
 }
 
-/** What {@link resolveTrialTimeout} decided, and why. */
 export interface ResolvedTrialTimeout {
-	/** Seconds the harness will allow this trial. */
 	readonly timeoutSec: number;
-	/** `"task"` when derived from `task.toml`, `"override"` when the flag won. */
 	readonly source: "task" | "override";
-	/** The task's own budget, kept so callers can report what an override gave up. */
 	readonly budgetedSec: number;
-	/**
-	 * True when an explicit override is SHORTER than the task's own budget, i.e.
-	 * this trial may be cut off while the task still considers it running. The
-	 * caller must surface this; a silent truncation is the original bug.
-	 */
 	readonly truncatesTask: boolean;
-	/** Phases with no declared budget, forwarded from {@link TaskTimeBudgetSec}. */
 	readonly missingPhases: readonly ("build" | "verifier")[];
 }
 
-/**
- * Decide one trial's timeout: the explicit override if given, else the task's
- * own summed budget.
- */
 export function resolveTrialTimeout(budget: TaskTimeBudgetSec, overrideSec?: number): ResolvedTrialTimeout {
 	const budgetedSec = budgetedTrialTimeoutSec(budget);
 	if (overrideSec === undefined) {
@@ -135,14 +72,6 @@ export function resolveTrialTimeout(budget: TaskTimeBudgetSec, overrideSec?: num
 	};
 }
 
-/**
- * Parse `--trial-timeout`.
- *
- * `undefined` means "not passed", which is what makes the per-task default
- * reachable. A malformed value is rejected rather than rounded down to a
- * default, because a typo that silently becomes 900 is the failure mode this
- * whole module is about.
- */
 export function parseTrialTimeoutFlag(raw: string | undefined): number | undefined {
 	if (raw === undefined) return undefined;
 	const value = Number(raw);
@@ -152,12 +81,6 @@ export function parseTrialTimeoutFlag(raw: string | undefined): number | undefin
 	return value;
 }
 
-/**
- * The one-line warning a run prints when an override truncates tasks.
- *
- * Returns `undefined` when nothing is truncated, so the caller's control flow is
- * "print it if there is one" rather than a condition restated at the call site.
- */
 export function truncationWarning(resolved: ReadonlyMap<string, ResolvedTrialTimeout>): string | undefined {
 	const truncated = [...resolved.entries()].filter(([, r]) => r.truncatesTask);
 	if (truncated.length === 0) return undefined;

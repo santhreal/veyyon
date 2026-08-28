@@ -1,10 +1,7 @@
-/** SwiftLint CLI-based linter client. Parses SwiftLint's JSON reporter output into LSP Diagnostic format. */
-
 import { errorMessage, readPipeText } from "@veyyon/utils";
 import type { Diagnostic, DiagnosticSeverity, LinterClient, ServerConfig } from "../../lsp/types";
 import { adoptIntoPrimarySessionCpuBudget } from "../../session/cpu-limit";
 
-/** Shape of a single violation from `swiftlint lint --reporter json`. */
 interface SwiftLintViolation {
 	character: number;
 	file: string;
@@ -45,16 +42,13 @@ async function runSwiftLint(
 		const [stdout, stderr] = await Promise.all([readPipeText(proc.stdout), readPipeText(proc.stderr)]);
 		await proc.exited;
 
-		// swiftlint exits non-zero when violations found — that's not a failure
 		return { stdout, stderr, success: stdout.length > 0 };
 	} catch (err) {
 		return { stdout: "", stderr: errorMessage(err), success: false };
 	}
 }
 
-/** SwiftLint CLI-based linter client. Runs `swiftlint lint --reporter json` and converts violations to LSP diagnostics. */
 export class SwiftLintClient implements LinterClient {
-	/** Factory method for creating SwiftLintClient instances */
 	static create(config: ServerConfig, cwd: string): LinterClient {
 		return new SwiftLintClient(config, cwd);
 	}
@@ -65,7 +59,6 @@ export class SwiftLintClient implements LinterClient {
 	) {}
 
 	async format(_filePath: string, content: string): Promise<string> {
-		// SwiftLint doesn't support formatting
 		return content;
 	}
 
@@ -90,7 +83,6 @@ export class SwiftLintClient implements LinterClient {
 			const violations: SwiftLintViolation[] = JSON.parse(jsonOutput);
 
 			for (const v of violations) {
-				// SwiftLint lines/characters are 1-based; LSP is 0-based
 				const line = Math.max(0, v.line - 1);
 				const character = Math.max(0, v.character - 1);
 
@@ -105,14 +97,10 @@ export class SwiftLintClient implements LinterClient {
 					code: v.rule_id,
 				});
 			}
-		} catch {
-			// JSON parse failed, return empty
-		}
+		} catch {}
 
 		return diagnostics;
 	}
 
-	dispose(): void {
-		// Nothing to dispose for CLI client
-	}
+	dispose(): void {}
 }

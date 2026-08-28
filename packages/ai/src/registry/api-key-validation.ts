@@ -29,14 +29,6 @@ type ModelListValidationOptions = {
 	fetch?: FetchImpl;
 };
 
-/**
- * How long a credential check may take before it is abandoned.
- *
- * One owner because a validation that hangs is indistinguishable to the user from a
- * rejected key: the dialog just sits there. `registry/oauth/xiaomi.ts` runs its own
- * key check and held a second `15_000` under this same name, so a change here would
- * have left one provider on a different budget with nothing to say which.
- */
 export const VALIDATION_TIMEOUT_MS = 15_000;
 
 function normalizeAnthropicCompatibleBaseUrl(baseUrl: string): string {
@@ -50,14 +42,7 @@ function resolveValidationHeaders(
 	return typeof headers === "function" ? headers() : headers;
 }
 
-/**
- * Validate an API key against an OpenAI-compatible chat completions endpoint.
- *
- * Performs a minimal request to verify credentials and endpoint access.
- */
 export async function validateOpenAICompatibleApiKey(options: OpenAICompatibleValidationOptions): Promise<void> {
-	// The scoped handle clears its backing timer on settle (a bare
-	// AbortSignal.timeout stays armed), and the fence spans the body read.
 	const requestTimeout = scopedTimeoutSignal(VALIDATION_TIMEOUT_MS, options.signal);
 	const signal = requestTimeout.signal;
 	try {
@@ -82,8 +67,6 @@ export async function validateOpenAICompatibleApiKey(options: OpenAICompatibleVa
 			return;
 		}
 
-		// A validation endpoint answers the request that carried the key, so the body is read
-		// under the shared ceiling and redacted before it can reach a message or a log.
 		const body = await AIError.readProviderErrorBody(response);
 		const message = body.text.trim()
 			? `${options.provider} API key validation failed (${response.status}): ${AIError.providerErrorMessage(body)}`
@@ -94,12 +77,7 @@ export async function validateOpenAICompatibleApiKey(options: OpenAICompatibleVa
 	}
 }
 
-/**
- * Validate an API key against an Anthropic-compatible messages endpoint.
- */
 export async function validateAnthropicCompatibleApiKey(options: AnthropicCompatibleValidationOptions): Promise<void> {
-	// The scoped handle clears its backing timer on settle (a bare
-	// AbortSignal.timeout stays armed), and the fence spans the body read.
 	const requestTimeout = scopedTimeoutSignal(VALIDATION_TIMEOUT_MS, options.signal);
 	const signal = requestTimeout.signal;
 	try {
@@ -135,15 +113,7 @@ export async function validateAnthropicCompatibleApiKey(options: AnthropicCompat
 	}
 }
 
-/**
- * Validate an API key against a provider models endpoint.
- *
- * Useful for providers where access to specific models may vary by plan and
- * should not block key validation.
- */
 export async function validateApiKeyAgainstModelsEndpoint(options: ModelListValidationOptions): Promise<void> {
-	// The scoped handle clears its backing timer on settle (a bare
-	// AbortSignal.timeout stays armed), and the fence spans the body read.
 	const requestTimeout = scopedTimeoutSignal(VALIDATION_TIMEOUT_MS, options.signal);
 	const signal = requestTimeout.signal;
 	try {

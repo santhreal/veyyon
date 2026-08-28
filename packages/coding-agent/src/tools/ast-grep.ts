@@ -103,8 +103,6 @@ async function runMultiTargetAstGrep(
 	let filesSearched = 0;
 	let limitReached = false;
 	throwIfAborted(options.signal, "ast_grep");
-	// Resolve target kind once outside the per-match loop so file vs directory
-	// path resolution is deterministic and does not rely on string suffix matching.
 	const targetStats = await Promise.all(
 		targets.map(async target => {
 			const resolvedBase = path.resolve(target.basePath);
@@ -115,7 +113,6 @@ async function runMultiTargetAstGrep(
 			return { basePath: resolvedBase, isFile };
 		}),
 	);
-	// Each target is an independent native scan on libuv's blocking pool, so they run concurrently instead of serializing behind one another. Every
 	const settled = await Promise.allSettled(
 		targets.map(target =>
 			astGrep({
@@ -143,9 +140,6 @@ async function runMultiTargetAstGrep(
 		}
 		for (const match of targetResult.matches) {
 			const absolute = targetInfo.isFile ? targetInfo.basePath : path.resolve(targetInfo.basePath, match.path);
-			// Overlapping targets (a directory plus a file nested
-			// inside it) surface the same match twice; keep the
-			// first occurrence.
 			const matchKey = `${absolute}\0${match.startLine}\0${match.startColumn}`;
 			if (seenMatchKeys.has(matchKey)) {
 				totalMatches = Math.max(0, totalMatches - 1);
@@ -183,28 +177,19 @@ export interface AstGrepToolDetails {
 	filesSearched: number;
 	limitReached: boolean;
 	parseErrors?: string[];
-	/** Total parse error count before {@link PARSE_ERRORS_LIMIT} capping. Omitted when no errors. */
 	parseErrorsTotal?: number;
 	scopePath?: string;
 	files?: string[];
 	fileMatches?: Array<{ path: string; count: number }>;
 	meta?: OutputMeta;
-	/** Pre-formatted text for the user-visible TUI render. Mirrors `result.text` lines but uses
-	 * a `│` gutter and `*` to mark match lines. The TUI uses this directly so it never parses model-facing text. */
 	displayContent?: string;
-	/** Absolute base directory used during search. Used by the renderer to resolve
-	 * display-relative paths to absolute paths for OSC 8 hyperlinks. */
 	searchPath?: string;
-	/** Session cwd at search time. Display header/match paths are cwd-relative, so
-	 * the renderer resolves them against this; `searchPath` is the scope target. */
 	cwd?: string;
 }
 
 export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolDetails> {
 	readonly name = "ast_grep";
 	readonly approval = "read" as const;
-	// ast_grep reads file contents under its search path, so an out-of-cwd search
-	// prompts in non-yolo modes like a point read does. See cwd-boundary.ts.
 	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] =>
 		searchPathFilesystemTargets(args, cwd);
 	readonly label = "AST Grep";
@@ -323,7 +308,6 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 			if (result.matches.length === 0) {
 				const searched = result.filesSearched;
 				const where = scopePath ?? resolvedSearchPath;
-				// A bare "No matches found" hid WHY it was empty. The most common cause of a surprising zero is that ast_grep selects files by
 				const noMatchMessage = cappedParseErrors.length
 					? "No matches found. Parse issues mean the query may be mis-scoped; narrow `path` before concluding absence."
 					: searched === 0
@@ -332,8 +316,6 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 				const parseMessage = cappedParseErrors.length
 					? `\n${formatParseErrors(cappedParseErrors, parseErrorsTotal).join("\n")}`
 					: "";
-				// Zero matches is useless even with parse issues: the follow-up
-				// call has already corrected course by the time compaction runs.
 				return toolResult(baseDetails).text(`${noMatchMessage}${parseMessage}`).useless().done();
 			}
 
@@ -342,8 +324,6 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 			if (useHashLines) {
 				for (const relativePath of fileList) {
 					const absolutePath = path.resolve(this.session.cwd, relativePath);
-					// Whole-file content tag: any anchor validates while the file is
-					// unchanged; over-cap / unreadable files get no tag (plain output).
 					const tag = await recordFileSnapshot(this.session, absolutePath);
 					if (tag) hashContexts.set(relativePath, { tag });
 				}
@@ -444,7 +424,6 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 interface AstGrepRenderArgs {
 	pat?: string;
 	path?: string | string[];
-	/** Legacy pre-`path` argument name; kept so historical transcripts still render a scope. */
 	paths?: string[];
 	skip?: number;
 }
@@ -564,8 +543,6 @@ export const astGrepToolRenderer = {
 
 		const textContent = result.details?.displayContent ?? result.content?.find(c => c.type === "text")?.text ?? "";
 		const allLines = textContent.split("\n");
-		// Resolve hyperlinks over the whole output so nested directory headers
-		// reconstruct across the blank-line groups the tree list collapses by.
 		const contexts = classifyGroupedLines(allLines, details?.cwd ?? details?.searchPath, details?.searchPath);
 		const styledLines = new Array<string>(allLines.length);
 		for (let li = 0; li < allLines.length; li++) {

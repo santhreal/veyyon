@@ -1,5 +1,3 @@
-/** `/profile` and `/profiles` command logic, kept out of the registry so the verb parser and the effects are unit-testable without a live TUI. */
-
 import { getActiveProfile, listProfiles } from "@veyyon/utils";
 import {
 	createProfile,
@@ -15,10 +13,8 @@ import type {
 	ExtensionAskDialogResult,
 } from "../extensibility/extensions";
 
-/** Label of the picker row that starts a fresh profile. */
 export const CREATE_NEW_LABEL = "＋ Create new profile";
 
-/** A parsed `/profile` invocation. `parseProfileCommand` maps raw argument text to exactly one of these; the dispatcher then runs the matching effect. */
 export type ProfileIntent =
 	| { kind: "picker" }
 	| { kind: "list" }
@@ -28,19 +24,15 @@ export type ProfileIntent =
 	| { kind: "remove"; name: string }
 	| { kind: "usage"; message: string };
 
-/** The narrow TUI surface the dispatcher needs. The registry builds this from `InteractiveModeContext`; tests supply a fake that records the calls. */
 export interface ProfileCommandPort {
 	showStatus(message: string): void;
 	showError(message: string): void;
-	/** Prefill the composer so the operator finishes a free-text argument (name). */
 	setEditorText(text: string): void;
 	askDialog(questions: ExtensionAskDialogQuestion[]): Promise<ExtensionAskDialogResult | undefined>;
-	/** Relaunch the process under a new profile. `env` carries `VEYYON_PROFILE`. */
 	requestRelaunch(env: Record<string, string | undefined>): void;
 	requestShutdown(): void;
 }
 
-/** Parse raw `/profile` argument text into a single {@link ProfileIntent}. Recognized forms (case-insensitive verbs): */
 export function parseProfileCommand(rawArgs: string): ProfileIntent {
 	const args = rawArgs.trim();
 	if (!args) return { kind: "picker" };
@@ -48,9 +40,6 @@ export function parseProfileCommand(rawArgs: string): ProfileIntent {
 	const lower = args.toLowerCase();
 	if (lower === "list" || lower === "ls") return { kind: "list" };
 
-	// Rename, three spellings. Try the explicit `rename <old> to <new>` first so
-	// the old-profile token is captured, then the `[<old>] rename to <new>` form
-	// (bare `rename to <new>` renames the active profile).
 	let match = args.match(/^rename\s+(\S+)\s+to\s+(.+)$/i);
 	if (match) return { kind: "rename", target: match[1], newName: match[2]!.trim() };
 	match = args.match(/^(?:(\S+)\s+)?rename\s+to\s+(.+)$/i);
@@ -74,12 +63,10 @@ export function parseProfileCommand(rawArgs: string): ProfileIntent {
 	return { kind: "switch", name: args };
 }
 
-/** Human label for a profile directory name (`default` stays literal). */
 function profileLabel(name: string, display: string): string {
 	return display && display !== name ? `${name} (${display})` : name;
 }
 
-/** Render the plain-text profile list for `/profile list`. */
 export async function formatProfileList(): Promise<string> {
 	const active = getActiveProfile() ?? "default";
 	const lines: string[] = [];
@@ -95,7 +82,6 @@ export async function formatProfileList(): Promise<string> {
 	return lines.join("\n");
 }
 
-/** Dispatch a parsed `/profile` intent against the port the TUI supplies. Named for its SURFACE. The CLI has its own dispatcher for the same verb, */
 export async function runProfileSlashCommand(intent: ProfileIntent, port: ProfileCommandPort): Promise<void> {
 	switch (intent.kind) {
 		case "usage":
@@ -136,24 +122,17 @@ async function runSwitch(name: string, port: ProfileCommandPort): Promise<void> 
 		port.showStatus(`Already on profile "${resolved ?? "default"}"`);
 		return;
 	}
-	// `resolved` is undefined for the default profile, and the spawn merge in InteractiveMode.shutdown() DROPS undefined env values, so passing it
 	port.requestRelaunch({ VEYYON_PROFILE: resolved ?? "" });
 	port.showStatus(`Switching to profile "${resolved ?? "default"}", starting a fresh session…`);
 	port.requestShutdown();
 }
 
-/** Warn when a new display name will not behave as a switch target. Directory names are the unique key; display names are not, so a rename can silently */
 async function renameCaveat(resolved: string | undefined, trimmed: string): Promise<string | undefined> {
 	const ownDir = resolved ?? "default";
 	const profiles = listProfiles();
-	// (1) Shadowed by a directory name: resolveProfileByName resolves directory
-	// names first, so a display name equal to ANOTHER profile's directory name is
-	// unreachable — the directory always wins.
 	if (profiles.some(profile => profile.name !== ownDir && profile.name === trimmed)) {
 		return `Heads up: "${trimmed}" is also another profile's directory name, so /profile ${trimmed} switches to that profile, not this one. Rename to a distinct name to switch by it.`;
 	}
-	// (2) Duplicate display name: two profiles sharing a display name make
-	// switch-by-display-name ambiguous, which fails loudly only later at switch.
 	for (const profile of profiles) {
 		if (profile.name === ownDir) continue;
 		const dirName = profile.name === "default" ? undefined : profile.name;
@@ -176,7 +155,6 @@ async function runRename(target: string | undefined, newName: string, port: Prof
 		port.showError(`No profile named "${target}". Try /profiles`);
 		return;
 	}
-	// Check reachability against the pre-rename world (skips the target itself).
 	const caveat = await renameCaveat(resolved, trimmed);
 	await writeProfileDisplayName(resolved, trimmed);
 	const base = `Renamed profile "${resolved ?? "default"}" to "${trimmed}"`;
@@ -241,7 +219,6 @@ async function runCreate(name: string, port: ProfileCommandPort): Promise<void> 
 	);
 }
 
-/** The interactive picker: list every profile plus a create row, then act on the chosen one. Free-text names (create, rename) are finished in the composer via */
 async function runPicker(port: ProfileCommandPort): Promise<void> {
 	const active = getActiveProfile();
 	const activeName = active ?? "default";
@@ -268,7 +245,6 @@ async function runPicker(port: ProfileCommandPort): Promise<void> {
 	const item = result.results[0];
 	const custom = item?.customInput?.trim();
 	if (custom) {
-		// Typed a name via the dialog's free-text row: switch if it exists, else create.
 		const resolved = await resolveProfileByName(custom);
 		if (resolved === null) await runCreate(custom, port);
 		else await runSwitch(custom, port);
@@ -286,7 +262,6 @@ async function runPicker(port: ProfileCommandPort): Promise<void> {
 	await runProfileActionMenu(dirName, active, port);
 }
 
-/** Second picker step: switch / rename / delete the chosen profile. */
 async function runProfileActionMenu(
 	dirName: string,
 	active: string | undefined,

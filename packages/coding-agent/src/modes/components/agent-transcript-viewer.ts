@@ -1,4 +1,3 @@
-/** Fullscreen transcript viewer. The Agent Control Center mounts this as a `fullscreen` overlay */
 import * as fs from "node:fs";
 import type { AgentTool } from "@veyyon/agent-core";
 import {
@@ -24,9 +23,6 @@ import { getEditorTheme, theme } from "../theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 
-// The whole transcript sits on ONE left rail (COMPOSER_INSET_COLS); the
-// viewer's chrome rows pad to the same rail so title, body, editor, and
-// footer share one gutter.
 const RAIL_PAD = " ".repeat(COMPOSER_INSET_COLS);
 
 import { type AgentDisplayState, agentDisplayState, agentStatusWord } from "./agent-status-display";
@@ -44,31 +40,24 @@ import {
 } from "./modal-shell";
 import { formatContextUsage } from "./status-line/context-thresholds";
 
-/** Result of one host-backed transcript read. */
 export interface AgentTranscriptRemoteRead {
 	text: string;
 	newSize: number;
-	/** Terminal read failure reported by the host; guests should surface it instead of retrying hot. */
 	error?: string;
 }
 
-/** Guest-side proxy for agent actions executed on the collab host. A guest has no local sessions, so every action a local operator performs */
 export interface AgentTranscriptRemote {
 	chat(id: string, text: string): void;
 	kill(id: string): void;
 	revive(id: string): void;
-	/** Mirrors readFileIncremental: text from fromByte (complete JSONL lines), newSize = next fromByte base; null = temporarily unavailable. */
 	readTranscript(id: string, fromByte: number): Promise<AgentTranscriptRemoteRead | null>;
 }
 
 export interface AgentTranscriptViewerDeps {
 	agentId: string;
 	registry: AgentRegistry;
-	/** Collab guest: read transcript from the host instead of a local file. */
 	remote?: AgentTranscriptRemote;
-	/** Progress/cost snapshot source for the stats line. */
 	observers?: SessionObserverRegistry;
-	/** Revive+prompt path for messageable local agents. Lazy to avoid touching the global. */
 	lifecycle?: () => AgentLifecycleManager;
 	ui: TUI;
 	getTool?: (name: string) => AgentTool | undefined;
@@ -76,24 +65,18 @@ export interface AgentTranscriptViewerDeps {
 	cwd: string;
 	hideThinkingBlock?: () => boolean;
 	proseOnlyThinking?: () => boolean;
-	/** Expand argot handles in entries parsed off disk, before they reach the builder. The persisted transcript keeps the cheap handles, so without this */
 	expandArgot?: (entries: SessionMessageEntry[]) => SessionMessageEntry[];
 	expandKeys: KeyId[];
-	/** Keys that toggle the whole hub closed (app.agents.hub + app.session.observe). */
 	hubKeys: KeyId[];
 	requestRender: () => void;
-	/** Close just this viewer (Esc), returning to the hub table. */
 	onClose: () => void;
-	/** Close this viewer AND the hub (hub-toggle keys). */
 	onHubClose: () => void;
 }
 
-/** How often to re-stat a file-backed transcript for growth (advisor/live tail). */
 const POLL_MS = 250;
 
 const SENTINEL_BYTES = 4096;
 
-/** Sanitize wire-delivered error text for a single TUI row: tabs → spaces, newlines collapsed, absolute paths shortened, truncated to `maxWidth`. */
 function sanitizeErrorLine(text: string, maxWidth: number): string {
 	const singleLine = replaceTabs(text)
 		.replace(/[\r\n]+/g, " ")
@@ -159,7 +142,6 @@ export class AgentTranscriptViewer implements Component {
 
 	#localState: LocalTranscriptState | undefined;
 	#localUnavailable = "";
-	// Remote transcript state (incremental; the host caps each read).
 	#remoteBytes = 0;
 	#remoteFetchInFlight = false;
 	#remoteToken = 0;
@@ -170,7 +152,6 @@ export class AgentTranscriptViewer implements Component {
 	#model: string | undefined;
 	#pollTimer: NodeJS.Timeout | undefined;
 	#disposed = false;
-	/** Geometry of the last painted card; every pointer hit-test reads it. */
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 
@@ -199,7 +180,6 @@ export class AgentTranscriptViewer implements Component {
 		this.#pollTimer.unref?.();
 	}
 
-	/** Advisor transcripts are read-only; everything else may be messaged. */
 	get #sendable(): boolean {
 		const ref = this.deps.registry.get(this.deps.agentId);
 		if (!ref || ref.kind === "advisor") return false;
@@ -219,8 +199,6 @@ export class AgentTranscriptViewer implements Component {
 		this.#pollTimer = undefined;
 	}
 
-	// Transcript loading
-	/** Refresh the transcript from a local file or remote host. */
 	#refresh(): void {
 		if (this.#disposed) return;
 		if (this.deps.remote) {
@@ -266,8 +244,6 @@ export class AgentTranscriptViewer implements Component {
 			try {
 				current = readFileRangeSync(sessionFile, sentinel.offset, sentinel.bytes.byteLength);
 			} catch (err) {
-				// The file can be unlinked/rotated between statSync and this read.
-				// Treat as not-appendable so #refresh falls back to a guarded full load.
 				logger.debug("transcript viewer: sentinel read failed", { err: String(err) });
 				return false;
 			}
@@ -281,18 +257,15 @@ export class AgentTranscriptViewer implements Component {
 		try {
 			data = fs.readFileSync(sessionFile);
 		} catch (err) {
-			// Leave #localState unchanged so a transient read error retries next poll.
 			logger.debug("transcript viewer: read failed", { err: String(err) });
 			return;
 		}
-		// The file may have grown between the earlier `statSync` and this read. Anchor the tail cursor to what we actually consumed so the next poll's
 		let post: fs.Stats;
 		try {
 			post = fs.statSync(sessionFile);
 		} catch {
 			post = stat;
 		}
-		// A reader that opens the file mid-append sees a trailing partial line (no terminating newline). Carry those bytes as `pending` so the next
 		const text = data.toString("utf-8");
 		const lastNewline = text.lastIndexOf("\n");
 		const complete = lastNewline >= 0 ? text.slice(0, lastNewline + 1) : "";
@@ -330,8 +303,6 @@ export class AgentTranscriptViewer implements Component {
 		try {
 			sentinels = sentinelsFromFile(sessionFile, stat.size);
 		} catch (err) {
-			// File unlinked/rotated mid-poll: fall back to a guarded full reload
-			// instead of letting the open escape the poll timer.
 			logger.debug("transcript viewer: sentinel recompute failed", { err: String(err) });
 			this.#loadLocalFull(sessionFile, stat);
 			return;
@@ -379,9 +350,6 @@ export class AgentTranscriptViewer implements Component {
 					return;
 				}
 				if (result.newSize < fromByte) {
-					// Host transcript rotated/truncated — drop the stale rendered rows
-					// before restarting; otherwise the post-rotation fetch would stack
-					// new content under the pre-rotation history.
 					this.#remoteBytes = 0;
 					this.#remoteError = "";
 					this.#hasRemoteData = false;
@@ -409,7 +377,6 @@ export class AgentTranscriptViewer implements Component {
 						return;
 					}
 				}
-				// First completed fetch (even empty) clears the "Loading…" placeholder.
 				if (firstData) this.deps.requestRender();
 			})
 			.catch((error: unknown) => {
@@ -418,7 +385,6 @@ export class AgentTranscriptViewer implements Component {
 			});
 	}
 
-	/** Filter to message entries, tracking the model from the first assistant / a model_change. */
 	#extractMessages(entries: FileEntry[]): SessionMessageEntry[] {
 		const messages: SessionMessageEntry[] = [];
 		for (const entry of entries) {
@@ -432,7 +398,6 @@ export class AgentTranscriptViewer implements Component {
 		return messages;
 	}
 
-	/** The two builder feeds are the choke point: every source (full local load, local append, remote read) ends at one of them, so the expansion is applied */
 	#expand(entries: SessionMessageEntry[]): SessionMessageEntry[] {
 		return this.deps.expandArgot?.(entries) ?? entries;
 	}
@@ -447,15 +412,12 @@ export class AgentTranscriptViewer implements Component {
 		this.deps.requestRender();
 	}
 
-	// Input
 	handleInput(data: string): void {
 		if (data.startsWith("\x1b[<")) {
 			routeSgrMouseInput(data, event => this.#routeMouse(event));
 			return;
 		}
 
-		// The hub/observe toggle keys close the whole hub (matches the table view's
-		// toggle semantics), not just this viewer.
 		for (const key of this.deps.hubKeys) {
 			if (matchesKey(data, key)) {
 				this.deps.onHubClose();
@@ -480,7 +442,6 @@ export class AgentTranscriptViewer implements Component {
 			}
 		}
 
-		// Once the reader starts typing a message, the editor owns every key.
 		const editorEmpty = !this.#editor || this.#editor.getText().trim() === "";
 		if (editorEmpty && this.#handleScroll(data)) return;
 
@@ -490,7 +451,6 @@ export class AgentTranscriptViewer implements Component {
 		}
 	}
 
-	/** Pointer: card chrome answers first (close glyph, click-outside, chips), then the wheel scrolls the body. A click that lands nowhere is swallowed */
 	#routeMouse(event: SgrMouseEvent): boolean {
 		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
 			motion: event.motion,
@@ -530,7 +490,6 @@ export class AgentTranscriptViewer implements Component {
 		this.deps.requestRender();
 	}
 
-	/** Returns true when the key was a scroll command. ScrollView owns the offset. */
 	#handleScroll(data: string): boolean {
 		if (this.#scrollView.handleScrollKey(data)) {
 			this.#syncFollow();
@@ -572,9 +531,7 @@ export class AgentTranscriptViewer implements Component {
 		if (!lifecycle) return;
 		void (async () => {
 			try {
-				// Revives a parked agent; returns the live session for running/idle.
 				const session = await lifecycle().ensureLive(id);
-				// Steers a mid-turn agent; sends a normal prompt to an idle one.
 				await session.prompt(trimmed, { streamingBehavior: "steer" });
 			} catch (error) {
 				this.#notice = errorMessage(error);
@@ -584,7 +541,6 @@ export class AgentTranscriptViewer implements Component {
 		this.deps.requestRender();
 	}
 
-	// Render
 	render(width: number): readonly string[] {
 		const termHeight = process.stdout.rows || 40;
 		const sizing = sizingForArea(MODAL_SIZING_LARGE, termHeight);
@@ -593,9 +549,6 @@ export class AgentTranscriptViewer implements Component {
 			this.#shellGeometry = null;
 			return new Array(termHeight).fill(padding(width));
 		}
-		// The transcript components carry their own rail inset, and ScrollView
-		// reserves the last column for the scrollbar, so the body is widthed to
-		// the card's content column and nothing pads it again.
 		const contentWidth = dims.contentWidth;
 		const innerWidth = Math.max(20, contentWidth - COMPOSER_INSET_COLS);
 		const ref = this.deps.registry.get(this.deps.agentId);
@@ -617,9 +570,6 @@ export class AgentTranscriptViewer implements Component {
 		const statsLine = this.#statsLine();
 		const shortcuts = this.#shortcuts();
 
-		// One owner for "how many rows do I get": the shell truncates a body that
-		// runs long, so the scroll viewport is sized from the same plan the card
-		// paints with, minus the rows this body spends on its own chrome.
 		const plan = planModalChrome({
 			sizing,
 			modalHeight: dims.modalHeight,
@@ -661,7 +611,6 @@ export class AgentTranscriptViewer implements Component {
 		return shell.lines;
 	}
 
-	/** Footer chips: what this viewer can do right now, in house grammar. */
 	#shortcuts(): readonly ModalShortcut[] {
 		const expandKey = this.deps.expandKeys[0] ?? "ctrl+o";
 		const chips: ModalShortcut[] = [];
@@ -677,7 +626,6 @@ export class AgentTranscriptViewer implements Component {
 		kind: string | undefined,
 		parentId: string | undefined,
 	): string[] {
-		// "Transcript", not the name of the screen that opened it. This viewer is reached from the Agent Control Center, and titling it with the surface it
 		const lines = [theme.fg("accent", `Transcript ${theme.sep.dot} ${this.deps.agentId}`)];
 		if (status && kind) {
 			const kindTag = theme.fg("dim", ` ${parentId ? `${kind} ${theme.sep.dot} of ${parentId}` : kind}`);

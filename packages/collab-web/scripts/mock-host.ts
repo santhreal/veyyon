@@ -1,14 +1,3 @@
-/**
- * Offline mock collab host: starts the local relay, opens a room as host, and
- * serves the canned fixture session to any collab-web guest that joins.
- *
- *   bun scripts/mock-host.ts [--port 7466]
- *
- * Replays a scripted streaming turn on every guest prompt, ticks subagent
- * progress on the bus every 2s, and answers fetch-transcript with byte slices
- * of the fixture JSONL — exactly the frames a real `veyyon /collab` host emits.
- */
-
 import { clampLow } from "@veyyon/utils/math";
 import type { AgentSnapshot, HostFrame, SessionState, WireFrame, WireSessionEntry } from "@veyyon/wire";
 import { generateRoomKey, importRoomKey, open, seal } from "../src/lib/codec";
@@ -54,8 +43,6 @@ const rawKey = generateRoomKey();
 const key = await importRoomKey(rawKey);
 const link = formatCollabLink(relay.url, roomId, rawKey);
 
-// ── mutable session state ────────────────────────────────────────────────────
-
 const entries: WireSessionEntry[] = [...fixtureEntries];
 const agents: AgentSnapshot[] = fixtureAgents.map(agent => ({ ...agent }));
 const peers = new Map<number, string>();
@@ -72,15 +59,12 @@ let replayTimer: Timer | null = null;
 let tick = 0;
 let shuttingDown = false;
 
-// ── sealed transport (order-preserving, mirrors relay-client) ────────────────
-
 const ws = new WebSocket(`${relay.url}/r/${roomId}?role=host`);
 ws.binaryType = "arraybuffer";
 
 let sendChain: Promise<void> = Promise.resolve();
 let recvChain: Promise<void> = Promise.resolve();
 
-/** Seal and send a frame; peerId 0 broadcasts, N targets that guest. */
 function sendFrame(frame: HostFrame, targetPeer = 0): void {
 	sendChain = sendChain
 		.then(async () => {
@@ -130,8 +114,6 @@ function notice(level: "info" | "warning" | "error", message: string): void {
 	sendFrame({ t: "event", event: { type: "notice", level, message, source: "collab" } });
 }
 
-// ── scripted turn replay ─────────────────────────────────────────────────────
-
 function startReplay(): void {
 	turnSeq++;
 	replayQueue = makeScriptedTurn(turnSeq, lastEntryId);
@@ -176,8 +158,6 @@ function cancelReplay(): void {
 	}
 	replayQueue = [];
 }
-
-// ── guest frame handling ─────────────────────────────────────────────────────
 
 function peerName(fromPeer: number): string {
 	return peers.get(fromPeer) ?? `guest-${fromPeer}`;
@@ -247,7 +227,6 @@ function handleFetchTranscript(reqId: number, fromByte: number, fromPeer: number
 	const total = transcriptBytes.byteLength;
 	const start = clampLow(fromByte, 0, total);
 	const text = start >= total ? "" : transcriptDecoder.decode(transcriptBytes.subarray(start));
-	// We always serve to EOF, so the next offset base is the full size.
 	sendFrame({ t: "transcript", reqId, text, newSize: total }, fromPeer);
 }
 
@@ -269,7 +248,6 @@ function handleFrame(frame: WireFrame, fromPeer: number): void {
 			handleFetchTranscript(frame.reqId, frame.fromByte, fromPeer);
 			break;
 		default:
-			// Host-frame echoes or unknown types: ignore.
 			break;
 	}
 }
@@ -322,8 +300,6 @@ ws.onclose = event => {
 	shutdown(1);
 };
 
-// ── progress ticker ──────────────────────────────────────────────────────────
-
 const tickInterval: Timer = setInterval(() => {
 	tick++;
 	sendFrame({ t: "bus", channel: "task:subagent:progress", data: makeProbeProgress(tick) });
@@ -336,21 +312,16 @@ const tickInterval: Timer = setInterval(() => {
 	}
 }, TICK_INTERVAL_MS);
 
-// ── shutdown ─────────────────────────────────────────────────────────────────
-
 function shutdown(code: number): void {
 	if (shuttingDown) return;
 	shuttingDown = true;
 	cancelReplay();
 	clearInterval(tickInterval);
 	sendFrame({ t: "bye", reason: "mock host shutting down" });
-	// Let the bye flush through the send chain before tearing the room down.
 	void sendChain.finally(() => {
 		try {
 			ws.close(1000);
-		} catch {
-			// already closing
-		}
+		} catch {}
 		relay.stop();
 		process.exit(code);
 	});

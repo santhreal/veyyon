@@ -1,5 +1,3 @@
-// High-level API
-
 import { decodeJwtPayload } from "@veyyon/utils/jwt";
 import * as AIError from "../../error";
 import { getProviderDefinition, PROVIDER_REGISTRY } from "../registry";
@@ -25,23 +23,14 @@ const builtInOAuthProviders: OAuthProviderInfo[] = PROVIDER_REGISTRY.filter(
 
 const customOAuthProviders = new Map<string, OAuthProviderInterface>();
 
-/**
- * Register a custom OAuth provider.
- */
 export function registerOAuthProvider(provider: OAuthProviderInterface): void {
 	customOAuthProviders.set(provider.id, provider);
 }
 
-/**
- * Get a custom OAuth provider by ID.
- */
 export function getOAuthProvider(id: OAuthProviderId): OAuthProviderInterface | undefined {
 	return customOAuthProviders.get(id);
 }
 
-/**
- * Remove all custom OAuth providers registered by a source.
- */
 export function unregisterOAuthProviders(sourceId: string): void {
 	for (const [id, provider] of customOAuthProviders.entries()) {
 		if (provider.sourceId === sourceId) {
@@ -50,10 +39,6 @@ export function unregisterOAuthProviders(sourceId: string): void {
 	}
 }
 
-/**
- * Refresh token for any OAuth provider.
- * Saves the new credentials and returns the new access token.
- */
 export async function refreshOAuthToken(
 	provider: OAuthProvider,
 	credentials: OAuthCredentials,
@@ -71,8 +56,6 @@ export async function refreshOAuthToken(
 			provider,
 		});
 	}
-	// Providers without a real refresher (static bearer tokens / API keys that
-	// don't expire) return the credentials unchanged.
 	return def.refreshToken ? def.refreshToken(credentials) : credentials;
 }
 function getPerplexityJwtExpiryMs(token: string): number | undefined {
@@ -81,18 +64,6 @@ function getPerplexityJwtExpiryMs(token: string): number | undefined {
 	return decoded.exp * 1000 - 5 * 60_000;
 }
 
-/**
- * Build API-key bytes for a provider from an already-fresh OAuth credential.
- *
- * Refresh is owned by AuthStorage. This helper deliberately refuses expired
- * credentials so it cannot POST broker redaction sentinels to upstream token
- * endpoints as a side channel.
- *
- * For providers that need credential metadata at request time, returns
- * JSON-encoded credentials plus expiry metadata for diagnostics/edge guards.
- * @returns API key string, or null if no credentials
- * @throws Error if the credential is expired and must be refreshed upstream
- */
 export async function getOAuthApiKey(
 	provider: OAuthProvider,
 	credentials: Record<string, OAuthCredentials>,
@@ -103,9 +74,6 @@ export async function getOAuthApiKey(
 	}
 
 	if (provider === "perplexity") {
-		// Perplexity JWTs usually omit `exp` (server-side sessions). Trust the JWT
-		// claim when present; otherwise treat the credential as non-expiring rather
-		// than honoring a stale stored `expires` (older logins wrote loginTime+1h).
 		const NEVER_EXPIRES = 8.64e15;
 		const normalizedExpires =
 			creds.expires > 0 && creds.expires < 10_000_000_000 ? creds.expires * 1000 : creds.expires;
@@ -115,13 +83,6 @@ export async function getOAuthApiKey(
 			creds = { ...creds, expires };
 		}
 	}
-	// Refresh is the sole responsibility of `AuthStorage` (which calls
-	// `refreshOAuthToken` directly with broker-aware single-flighting). If we
-	// reach here with an expired credential, the outer pipeline failed to
-	// refresh before this call OR the refresh slot is the broker sentinel —
-	// either way, posting the credential to a provider endpoint would only
-	// trigger a `__remote__`-against-real-provider failure that gets classified
-	// as `invalid_grant` and disables the row. Refuse loudly instead.
 	if (Date.now() >= creds.expires) {
 		if (provider === "perplexity") {
 			const jwtExpiry = getPerplexityJwtExpiryMs(creds.access);
@@ -135,7 +96,6 @@ export async function getOAuthApiKey(
 			{ kind: "validation", provider },
 		);
 	}
-	// For providers that need request-time credential metadata, return JSON.
 	const needsStructuredApiKey =
 		provider === "github-copilot" ||
 		provider === "google-gemini-cli" ||
@@ -156,9 +116,6 @@ export async function getOAuthApiKey(
 	return { newCredentials: creds, apiKey };
 }
 
-/**
- * Get list of OAuth providers.
- */
 export function getOAuthProviders(): OAuthProviderInfo[] {
 	const customProviders = Array.from(customOAuthProviders.values(), provider => ({
 		id: provider.id,

@@ -1,20 +1,3 @@
-/**
- * Offline stand-in for the public collab relay (`wss://share.veyyon.dev`).
- *
- * Speaks the exact relay contract the real clients expect:
- * - `GET /r/<roomId>?role=host|guest` upgrades to a WebSocket.
- * - The host creates the room; a second host is rejected with close 4009 and
- *   a guest joining a missing room with close 4004.
- * - Host binary frames: envelope peerId 0 broadcasts to every guest, peerId N
- *   targets that guest only — forwarded unchanged either way.
- * - Guest binary frames: the first 4 envelope bytes are rewritten to the
- *   sender's peerId, then forwarded to the host.
- * - TEXT control to the host: `{"t":"peer-joined","peer":N}` / `{"t":"peer-left","peer":N}`.
- * - Host disconnect: TEXT `{"t":"room-closed"}` to every guest, then close 4001
- *   and the room is garbage-collected.
- *
- * The relay never sees plaintext: payloads stay sealed end to end.
- */
 import { RELAY_FATAL_CLOSE_REASONS } from "@veyyon/wire/relay";
 import { rewriteEnvelopePeer, unpackEnvelope } from "../src/lib/link";
 
@@ -25,7 +8,6 @@ const DEFAULT_PORT = 7466;
 interface SocketData {
 	roomId: string;
 	role: "host" | "guest";
-	/** Assigned on open for guests; the host stays 0. */
 	peerId: number;
 }
 
@@ -38,9 +20,7 @@ interface Room {
 }
 
 export interface LocalRelay {
-	/** ws://localhost:<port> — append `/r/<roomId>?role=…` to connect. */
 	url: string;
-	/** Closes every room and stops the server. Idempotent. */
 	stop(): void;
 }
 
@@ -104,7 +84,6 @@ export function startLocalRelay(port = 0): LocalRelay {
 				const room = rooms.get(roomId);
 				if (!room) return;
 				if (role === "host") {
-					// Rejected second host: the live room is not ours to tear down.
 					if (room.host !== ws) return;
 					rooms.delete(roomId);
 					const closure = JSON.stringify({ t: "room-closed" });

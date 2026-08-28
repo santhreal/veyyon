@@ -1,4 +1,3 @@
-/** SSH Configuration File Writer Utilities for reading/writing ssh.json files at user or project level. */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { atomicWriteFile, isEnoent, withFileLock } from "@veyyon/utils";
@@ -16,7 +15,6 @@ export interface SSHConfigFile {
 	hosts?: Record<string, SSHHostConfig>;
 }
 
-/** Read an SSH config file. Returns empty config if file doesn't exist. */
 export async function readSSHConfigFile(filePath: string): Promise<SSHConfigFile> {
 	try {
 		const content = await fs.promises.readFile(filePath, "utf-8");
@@ -24,7 +22,6 @@ export async function readSSHConfigFile(filePath: string): Promise<SSHConfigFile
 		return parsed;
 	} catch (error) {
 		if (isEnoent(error)) {
-			// File doesn't exist, return empty config
 			return { hosts: {} };
 		}
 		if (error instanceof SyntaxError) {
@@ -34,9 +31,7 @@ export async function readSSHConfigFile(filePath: string): Promise<SSHConfigFile
 	}
 }
 
-/** Write an SSH config file atomically. Creates parent directories if they don't exist. */
 export async function writeSSHConfigFile(filePath: string, config: SSHConfigFile): Promise<void> {
-	// Ensure the parent directory exists and is owner-only (it holds credentials).
 	const dir = path.dirname(filePath);
 	await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
 
@@ -44,9 +39,7 @@ export async function writeSSHConfigFile(filePath: string, config: SSHConfigFile
 	await atomicWriteFile(filePath, content, { mode: 0o600 });
 }
 
-/** Read-modify-write an SSH config file under a cross-process lock. Every mutation (add/update/remove) funnels through here so two concurrent */
 async function mutateSSHConfigFile(filePath: string, mutate: (current: SSHConfigFile) => SSHConfigFile): Promise<void> {
-	// The lock is a sibling directory of the config file (`ssh.json.lock`), and its mkdir is non-recursive, so the parent dir (e.g. `<cwd>/.veyyon`) must
 	await fs.promises.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
 	await withFileLock(filePath, async () => {
 		const current = await readSSHConfigFile(filePath);
@@ -55,7 +48,6 @@ async function mutateSSHConfigFile(filePath: string, mutate: (current: SSHConfig
 	});
 }
 
-/** Validate host name. @returns Error message if invalid, undefined if valid */
 export function validateHostName(name: string): string | undefined {
 	if (!name) {
 		return "Host name cannot be empty";
@@ -63,29 +55,22 @@ export function validateHostName(name: string): string | undefined {
 	if (name.length > 100) {
 		return "Host name is too long (max 100 characters)";
 	}
-	// Check for invalid characters (only allow alphanumeric, dash, underscore, dot)
 	if (!/^[a-zA-Z0-9_.-]+$/.test(name)) {
 		return "Host name can only contain letters, numbers, dash, underscore, and dot";
 	}
 	return undefined;
 }
 
-/** Add an SSH host to a config file. */
 export async function addSSHHost(filePath: string, name: string, hostConfig: SSHHostConfig): Promise<void> {
-	// Validate host name
 	const nameError = validateHostName(name);
 	if (nameError) {
 		throw new Error(nameError);
 	}
 
-	// Validate host field
 	if (!hostConfig.host) {
 		throw new Error("Host address cannot be empty");
 	}
 
-	// The duplicate check reads the current on-disk state, so it must run inside
-	// the lock: another writer may have added this name between our validation
-	// and our write.
 	await mutateSSHConfigFile(filePath, existing => {
 		if (existing.hosts?.[name]) {
 			throw new Error(`Host "${name}" already exists in ${filePath}`);
@@ -100,15 +85,12 @@ export async function addSSHHost(filePath: string, name: string, hostConfig: SSH
 	});
 }
 
-/** Update an existing SSH host in a config file. If the host doesn't exist, this will add it. */
 export async function updateSSHHost(filePath: string, name: string, hostConfig: SSHHostConfig): Promise<void> {
-	// Validate host name
 	const nameError = validateHostName(name);
 	if (nameError) {
 		throw new Error(nameError);
 	}
 
-	// Validate host field
 	if (!hostConfig.host) {
 		throw new Error("Host address cannot be empty");
 	}
@@ -122,10 +104,7 @@ export async function updateSSHHost(filePath: string, name: string, hostConfig: 
 	}));
 }
 
-/** Remove an SSH host from a config file. */
 export async function removeSSHHost(filePath: string, name: string): Promise<void> {
-	// The existence check reads the current on-disk state, so it must run inside
-	// the lock alongside the removal.
 	await mutateSSHConfigFile(filePath, existing => {
 		if (!existing.hosts?.[name]) {
 			throw new Error(`Host "${name}" not found in ${filePath}`);
@@ -138,9 +117,6 @@ export async function removeSSHHost(filePath: string, name: string): Promise<voi
 	});
 }
 
-/**
- * List all host names in a config file.
- */
 export async function listSSHHosts(filePath: string): Promise<string[]> {
 	const config = await readSSHConfigFile(filePath);
 	return Object.keys(config.hosts ?? {});

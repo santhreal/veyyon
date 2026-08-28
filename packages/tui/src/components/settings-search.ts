@@ -1,15 +1,7 @@
-/** Field-weighted ranking for settings search. Lower scores rank first. */
-
 import { hasAlphanumeric } from "@veyyon/utils/regex";
 import { fuzzyMatch } from "../fuzzy";
 import type { SettingItem } from "./settings-list";
 
-/**
- * Per-field penalties added to a field's fuzzy score. The gaps are wide on
- * purpose: any label hit must beat any description hit, however good the prose
- * match is, because a fuzzy score varies by a few points while these differ by
- * hundreds.
- */
 const FIELD_PENALTY = {
 	label: 0,
 	keywords: 10,
@@ -18,8 +10,6 @@ const FIELD_PENALTY = {
 	description: 400,
 } as const;
 
-/** Substring hits are what a user believes they typed, so they outrank any
- *  subsequence hit; a prefix is stronger still (`them` -> `theme.dark`). */
 const SUBSTRING_BONUS = 2_000;
 const PREFIX_BONUS = 3_000;
 
@@ -39,7 +29,6 @@ function scoreField(query: string, text: string | undefined, penalty: number): n
 	return match.matches ? penalty + match.score : undefined;
 }
 
-/** The best one token can do across every field of an item, or no match. */
 function scoreToken(item: SettingItem, token: string): number | undefined {
 	const scores: (number | undefined)[] = [
 		scoreField(token, item.label, FIELD_PENALTY.label),
@@ -61,13 +50,10 @@ function scoreToken(item: SettingItem, token: string): number | undefined {
 	return best;
 }
 
-/** Rank settings items for a query. Returns matching items, best first. */
 export function rankSettingItems(items: readonly SettingItem[], query: string): SettingSearchResult[] {
 	const trimmed = query.trim();
 	if (!trimmed) return [];
 	if (!hasAlphanumeric(trimmed)) return [];
-	// Punctuation-only tokens (a stray `-` between words) cannot match anything;
-	// dropping them keeps `auto - compaction` an AND of its two real words.
 	const tokens = trimmed.split(/\s+/).filter(hasAlphanumeric);
 	if (tokens.length === 0) return [];
 
@@ -88,13 +74,10 @@ export function rankSettingItems(items: readonly SettingItem[], query: string): 
 		if (matchedAll) results.push({ item, score: total });
 	}
 
-	// Ties break on label so the order is stable between renders rather than
-	// depending on the input array's order.
 	results.sort((a, b) => a.score - b.score || a.item.label.localeCompare(b.item.label));
 	return results;
 }
 
-/** Matching items only, best first. */
 export function filterSettingItems(items: readonly SettingItem[], query: string): SettingItem[] {
 	const ranked = rankSettingItems(items, query);
 	const result = new Array<SettingItem>(ranked.length);

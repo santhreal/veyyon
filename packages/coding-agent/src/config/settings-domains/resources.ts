@@ -1,6 +1,4 @@
-/** Resources domain slice of SETTINGS_SCHEMA, composed in ../settings-schema.ts. Every limit on what a session may CONSUME lives here, on one visible tab, because */
 export const RESOURCES_SETTINGS = {
-	// CPU
 	"session.cpuLimitCores": {
 		type: "number",
 		default: 0,
@@ -11,9 +9,6 @@ export const RESOURCES_SETTINGS = {
 			description:
 				"Maximum CPU a session's spawned processes may use, in cores (0 = off). This is the per-profile default: every session that profile starts inherits it, and one session can depart from it with /cpu-limit <cores> or lift it entirely with /cpu-limit remove, neither of which writes this setting. Every process the session starts (bash commands, MCP servers, custom tools, launch tasks, workers) joins a per-session budget group: a cgroup v2 quota on Linux, a Job Object hard cap on Windows, both kernel-enforced, so the group throttles as a whole. While the group runs saturated, new commands are refused with an error naming the budget. On macOS there is no kernel quota, so enforcement is policy-only (refuse new commands, renice, optional kill) and a startup warning says so. The harness's own compute (agent turns, in-process workers) is never capped.",
 			keywords: ["cpu", "limit", "quota", "cgroup", "throttle", "cores", "budget"],
-			// A numeric setting with no option list is dropped by the UI adapter
-			// (pathToSettingDef treats optionless numbers as schema-only), so the
-			// ladder is what makes the row exist. See subagent.idleTtlMs.
 			options: [
 				{ value: "0", label: "Off", description: "Default" },
 				{ value: "1", label: "1 core" },
@@ -39,7 +34,6 @@ export const RESOURCES_SETTINGS = {
 		},
 	},
 
-	// Memory
 	"session.memoryLimitGb": {
 		type: "number",
 		default: 0,
@@ -50,8 +44,6 @@ export const RESOURCES_SETTINGS = {
 			description:
 				"Maximum resident memory the session tree may hold at once, in gigabytes (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. This is a kernel cap, not a polite refusal: on Linux it is cgroup v2 memory.max on the session budget group, so a group at the limit is reclaimed first and then a process INSIDE it is OOM-killed by the kernel, whichever process the kernel picks, with no warning and no chance to finish. Set it where an OOM kill is preferable to the machine swapping, and leave it off if a killed command would cost more than the memory does. A host without a memory controller reports the limit as unenforceable once at startup rather than pretending to hold it.",
 			keywords: ["memory", "ram", "limit", "oom", "cgroup", "budget", "gb"],
-			// Optionless numbers are dropped by the UI adapter; the ladder is what
-			// makes the row exist. See session.cpuLimitCores.
 			options: [
 				{ value: "0", label: "Off", description: "Default" },
 				{ value: "2", label: "2 GB" },
@@ -64,7 +56,6 @@ export const RESOURCES_SETTINGS = {
 		},
 	},
 
-	// Disk
 	"session.writeBudgetGb": {
 		type: "number",
 		default: 0,
@@ -75,8 +66,6 @@ export const RESOURCES_SETTINGS = {
 			description:
 				"Cumulative gigabytes the session tree may WRITE to disk before further writes are refused (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. Writes are metered by the same group that meters CPU (cgroup v2 io accounting on Linux, Job Object I/O accounting on Windows). Once the total is reached, a new command is refused with an error naming the budget and how much it has written; already running commands keep running unless Kill Over-Budget Writers is on. A host where write accounting cannot be read reports the limit as unenforceable once at startup rather than pretending to hold it.",
 			keywords: ["disk", "write", "budget", "gb", "io", "quota", "limit"],
-			// Optionless numbers are dropped by the UI adapter; the ladder is what
-			// makes the row exist. See session.cpuLimitCores.
 			options: [
 				{ value: "0", label: "Off", description: "Default" },
 				{ value: "1", label: "1 GB" },
@@ -103,7 +92,6 @@ export const RESOURCES_SETTINGS = {
 		},
 	},
 
-	// Processes
 	"session.maxProcesses": {
 		type: "number",
 		default: 0,
@@ -114,8 +102,6 @@ export const RESOURCES_SETTINGS = {
 			description:
 				"Hard cap on how many processes may be alive at once across the session tree (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned, all in one budget group, so the cap is not multiplied by delegating. Enforced by the kernel where it can be: cgroup v2 pids.max on Linux and a Job Object process limit on Windows both refuse the fork itself, so a runaway loop stops instead of filling the process table. Elsewhere the cap is policy-only, refusing a new spawn with an error naming the limit and the current count, and a startup notice says the kernel is not holding it.",
 			keywords: ["processes", "pids", "fork", "limit", "cap", "bomb"],
-			// Optionless numbers are dropped by the UI adapter; the ladder is what
-			// makes the row exist. See session.cpuLimitCores.
 			options: [
 				{ value: "0", label: "Off", description: "Default" },
 				{ value: "32", label: "32 processes" },

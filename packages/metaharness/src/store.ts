@@ -8,10 +8,8 @@ import { readJobResult } from "./runner";
 
 export type RunStatus = "running" | "complete" | "failed" | "cancelled";
 
-/** Benchmark implementation that produced a run. */
 export type BenchmarkKind = "harbor" | "edit" | "deepswe";
 
-/** How a run relates to its experiment's question. */
 export type RunRole = "baseline" | "variant" | "";
 
 export interface RunRow {
@@ -20,15 +18,10 @@ export interface RunRow {
 	dataset: string;
 	agent: string;
 	models: string;
-	/** JSON prewalk config (`{ into?: string }`); older rows may hold legacy reasoning-slide JSON. */
 	prewalk: string | null;
-	/** Benchmark-specific launch configuration. */
 	config: Record<string, unknown>;
-	/** Role inside the experiment (baseline vs treatment); "" when unspecified. */
 	role: RunRole;
-	/** One-line description of what this arm tests (e.g. "prewalk→flash at first edit/write"). */
 	note: string;
-	/** Display-name override for the arm; "" falls back to the jobName-derived arm label. */
 	label: string;
 	status: RunStatus;
 	pid: number | null;
@@ -45,9 +38,7 @@ export interface RunRow {
 	tokIn: number;
 	tokOut: number;
 	tokCache: number;
-	/** Benchmark-native aggregate score, when the benchmark exposes one. */
 	score: number | null;
-	/** Values keyed by the adapter's metric definitions. */
 	metrics: Record<string, number | null>;
 }
 
@@ -61,11 +52,9 @@ export interface TraceRow {
 	durationMs: number;
 	detail: string;
 	updatedAt: number;
-	/** Adapter-owned locator used by the uniform trace endpoint. */
 	tracePath: string | null;
 }
 
-/** Row in the `experiments` table: goal metadata keyed by experiment id. */
 export interface ExperimentMeta {
 	id: string;
 	goal: string;
@@ -136,10 +125,8 @@ CREATE TABLE IF NOT EXISTS experiments (
 );
 `;
 
-/** Directory names inside the jobs root that are not Harbor job dirs. */
 const NON_JOB_DIRS = new Set(["_bench", "_manager"]);
 
-/** True when a bun:sqlite error is a transient busy/recovery lock. */
 function isBusyLock(err: unknown): boolean {
 	if (err && typeof err === "object" && "code" in err) {
 		const code = err.code;
@@ -148,7 +135,6 @@ function isBusyLock(err: unknown): boolean {
 	return false;
 }
 
-/** Enable WAL journaling, retrying on busy lock. */
 function enableWal(db: Database): void {
 	const attempts = 10;
 	for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -208,7 +194,6 @@ export class RunStore {
 		this.#db.close();
 	}
 
-	/** Register a run this manager just launched (pid-owning). */
 	registerLaunch(launch: LaunchRecord): void {
 		this.#db.query("DELETE FROM trials WHERE job_name = ?").run(launch.jobName);
 		this.#db
@@ -240,7 +225,6 @@ export class RunStore {
 		fs.writeFileSync(path.join(jobDir, "manager.json"), JSON.stringify(launch, null, 2));
 	}
 
-	/** Upsert the experiment's stated goal. */
 	setExperimentGoal(id: string, goal: string): void {
 		this.#db
 			.query(
@@ -250,7 +234,6 @@ export class RunStore {
 			.run(id, goal, Date.now());
 	}
 
-	/** Stored experiment metadata, or null when the id was never registered. */
 	getExperimentMeta(id: string): ExperimentMeta | null {
 		const row = this.#db.query("SELECT id, goal, updated_at FROM experiments WHERE id = ?").get(id) as {
 			id: string;
@@ -260,7 +243,6 @@ export class RunStore {
 		return row ? { id: row.id, goal: row.goal, updatedAt: row.updated_at } : null;
 	}
 
-	/** Every registered experiment row, newest first. */
 	listExperimentMeta(): ExperimentMeta[] {
 		const rows = this.#db
 			.query("SELECT id, goal, updated_at FROM experiments ORDER BY updated_at DESC")
@@ -272,12 +254,10 @@ export class RunStore {
 		return rows.map(r => ({ id: r.id, goal: r.goal, updatedAt: r.updated_at }));
 	}
 
-	/** Drop the experiment metadata row (run rows are deleted separately via deleteRun). */
 	deleteExperimentMeta(id: string): void {
 		this.#db.query("DELETE FROM experiments WHERE id = ?").run(id);
 	}
 
-	/** Delete a run row and its trials; returns false when the run is unknown. */
 	deleteRun(jobName: string): boolean {
 		if (!this.getRun(jobName)) return false;
 		this.#db.query("DELETE FROM trials WHERE job_name = ?").run(jobName);
@@ -285,7 +265,6 @@ export class RunStore {
 		return true;
 	}
 
-	/** Set role/note/label metadata on an existing run row. */
 	setRunMeta(jobName: string, meta: { role?: RunRole; note?: string; label?: string }): boolean {
 		const existing = this.getRun(jobName);
 		if (!existing) return false;
@@ -295,7 +274,6 @@ export class RunStore {
 		return true;
 	}
 
-	/** Mark a launched run's terminal state (called when its child process exits). */
 	markExit(jobName: string, exitCode: number | null, cancelled = false): void {
 		const status: RunStatus = cancelled ? "cancelled" : exitCode === 0 ? "complete" : "failed";
 		this.#db
@@ -303,10 +281,6 @@ export class RunStore {
 			.run(status, exitCode, Date.now(), jobName);
 	}
 
-	/**
-	 * Discover job dirs on disk that have no run row yet (runs launched by the
-	 * CLI or a previous manager instance) and backfill them as historical rows.
-	 */
 	discover(): number {
 		if (!fs.existsSync(this.jobsDir)) return 0;
 		const entries = fs.readdirSync(this.jobsDir, { withFileTypes: true });
@@ -331,7 +305,6 @@ export class RunStore {
 		return added;
 	}
 
-	/** Re-read a job dir from disk and mirror trial + rollup state into the DB. */
 	syncRun(jobName: string): RunRow | null {
 		const jobDir = path.join(this.jobsDir, jobName);
 		if (!fs.existsSync(jobDir)) return this.getRun(jobName);
@@ -414,7 +387,6 @@ export class RunStore {
 		return this.getRun(jobName);
 	}
 
-	/** Sync every run currently marked running; returns the refreshed rows. */
 	syncActive(): RunRow[] {
 		const active = this.#db.query("SELECT job_name FROM runs WHERE status = 'running'").all() as Array<{
 			job_name: string;
@@ -431,7 +403,6 @@ export class RunStore {
 		return out;
 	}
 
-	/** Sync every known run once for startup reconciliation. */
 	syncAll(): void {
 		const rows = this.#db.query("SELECT job_name FROM runs").all() as Array<{ job_name: string }>;
 		for (const { job_name } of rows) this.syncRun(job_name);
@@ -500,7 +471,6 @@ function rowToRun(r: Record<string, unknown>): RunRow {
 	};
 }
 
-/** Best-effort launch metadata for historical (CLI-launched) job dirs. */
 function readHarborConfig(jobDir: string): { dataset: string; agent: string; models: string } {
 	try {
 		const raw = JSON.parse(fs.readFileSync(path.join(jobDir, "config.json"), "utf8")) as Record<string, unknown>;
@@ -525,10 +495,8 @@ function dirCreatedAt(dir: string): number {
 	}
 }
 
-/** Stale threshold for foreign runs without a terminal marker. */
 const JOB_DIR_STALE_MS = 30 * 60 * 1000;
 
-/** Newest mtime across the job dir and its result.json (cheap freshness probe). */
 function jobDirMtime(dir: string): number {
 	let newest = 0;
 	for (const p of [dir, path.join(dir, "result.json")]) {

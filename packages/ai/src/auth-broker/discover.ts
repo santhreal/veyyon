@@ -34,23 +34,18 @@ export interface ResolveAuthBrokerConfigOptions {
 
 export interface DiscoverAuthStorageOptions {
 	agentDir?: string;
-	/** Directory whose agent.db backs the local SQLite credential store. */
 	storeAgentDir?: string;
-	/** Candidate legacy credential-store paths to seed from if shared store is empty. */
 	seedSourceDbPaths?: string[];
 	configValueResolver?: (config: string) => Promise<string | undefined>;
 	cachePath?: string;
 	sourceLabel?: string;
-	/** Whether quota exhaustion may fail over to another account. */
 	loadBalancing?: boolean | (() => boolean);
 }
 
-/** Path to the local bearer token file. Created by `veyyon auth-broker token`. */
 export function getAuthBrokerTokenFilePath(): string {
 	return path.join(getConfigRootDir(), "auth-broker.token");
 }
 
-/** Default resolver for config values checking process.env first. */
 async function defaultResolveConfigValue(config: string): Promise<string | undefined> {
 	if (config.startsWith("!")) return undefined;
 	const envValue = process.env[config];
@@ -74,7 +69,6 @@ interface ConfigSnapshot {
 	token?: string;
 }
 
-/** Resolve dotted config key (nested or flat) against parsed YAML. */
 function readDottedString(record: Record<string, unknown>, dottedKey: string): string | undefined {
 	let current: unknown = record;
 	for (const segment of dottedKey.split(".")) {
@@ -122,7 +116,6 @@ function resolveSnapshotTtlMs(): number {
 	return DEFAULT_SNAPSHOT_CACHE_TTL_MS;
 }
 
-/** Resolve broker connection configuration from environment, config, or token file. */
 export async function resolveAuthBrokerConfig(
 	options: ResolveAuthBrokerConfigOptions = {},
 ): Promise<AuthBrokerClientConfig | null> {
@@ -135,7 +128,6 @@ export async function resolveAuthBrokerConfig(
 	let url = envUrl && envUrl.length > 0 ? envUrl : undefined;
 	let configToken: string | undefined;
 	if (!url || !envToken) {
-		// Profile config overrides global machine-wide config.
 		const fromProfile = await readConfigYaml(agentDir);
 		const fromGlobal = await readConfigYaml(getGlobalConfigRootDir());
 		const fromConfig = { url: fromProfile.url ?? fromGlobal.url, token: fromProfile.token ?? fromGlobal.token };
@@ -162,7 +154,6 @@ export async function resolveAuthBrokerConfig(
 	return { url, token };
 }
 
-/** Create an AuthStorage instance with broker support and local fallback. */
 export async function discoverAuthStorage(options: DiscoverAuthStorageOptions = {}): Promise<AuthStorage> {
 	const agentDir = options.agentDir ?? getAgentDir();
 	const brokerConfig = await resolveAuthBrokerConfig({
@@ -226,7 +217,6 @@ export async function discoverAuthStorage(options: DiscoverAuthStorageOptions = 
 
 	const storeAgentDir = options.storeAgentDir ?? agentDir;
 	const dbPath = getAgentDbPath(storeAgentDir);
-	// Seed shared store from older per-profile store if empty.
 	if (options.storeAgentDir && options.storeAgentDir !== agentDir) {
 		const seedSources = options.seedSourceDbPaths ?? [getAgentDbPath(agentDir)];
 		await seedSharedCredentialStore(seedSources, dbPath);
@@ -240,7 +230,6 @@ export async function discoverAuthStorage(options: DiscoverAuthStorageOptions = 
 	return storage;
 }
 
-/** One-time promotion of older per-profile credentials to empty shared store. */
 async function seedSharedCredentialStore(sourceDbPaths: readonly string[], sharedDbPath: string): Promise<void> {
 	const shared = await SqliteAuthCredentialStore.open(sharedDbPath);
 	try {
@@ -251,9 +240,6 @@ async function seedSharedCredentialStore(sourceDbPaths: readonly string[], share
 			const source = await SqliteAuthCredentialStore.open(sourceDbPath);
 			let seeded = false;
 			try {
-				// `listAuthCredentials` already returns only active rows; the explicit
-				// disabled guard keeps the promotion correct even if that ever changes,
-				// so a known-bad login is never carried into the shared store.
 				const rows = source.listAuthCredentials().filter(row => row.disabledCause === null);
 				if (rows.length === 0) continue;
 				const byProvider = new Map<string, AuthCredential[]>();
@@ -275,7 +261,6 @@ async function seedSharedCredentialStore(sourceDbPaths: readonly string[], share
 			} finally {
 				source.close();
 			}
-			// First non-empty source wins; do not merge older stores on top.
 			if (seeded) return;
 		}
 	} finally {

@@ -1,4 +1,3 @@
-// Subpath import, NOT the `@veyyon/utils` barrel: the barrel pulls in `env.ts`, which loads dotenv at import time, and this module is reachable from the JS eval process entry where
 import { isAbortError } from "@veyyon/utils/abortable";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { ToolError } from "../../tools/tool-errors";
@@ -22,7 +21,6 @@ interface ActiveRun {
 	runId: string;
 	filename: string;
 	pendingTools: Map<string, PendingTool>;
-	/** Rejections floated by this run's cell code, captured before its result was sent. */
 	floatingRejections: unknown[];
 }
 
@@ -31,9 +29,7 @@ type RunResult = Extract<EvalWorkerOutbound, { type: "result" }>;
 export type WorkerCoreOptions =
 	| {
 			mode: "isolated";
-			/** Mirror the session cwd onto the real process cwd so cell code using `process.cwd()`, relative paths, or child processes without an explicit */
 			chdir?: (cwd: string) => void;
-			/** Required when the isolated realm has postmortem's global unhandledRejection handler installed (the dedicated subprocess: */
 			interceptUnhandledRejections?: (handler: (reason: unknown) => boolean) => () => void;
 	  }
 	| {
@@ -41,7 +37,6 @@ export type WorkerCoreOptions =
 			interceptUnhandledRejections(handler: (reason: unknown) => boolean): () => void;
 	  };
 
-/** Finished-cell filenames retained for attributing rejections that surface after the run settled. */
 const RECENT_CELL_FILES_MAX = 256;
 
 function errorPayload(error: unknown): EvalRunErrorPayload {
@@ -65,7 +60,6 @@ function errorFromPayload(payload: EvalRunErrorPayload): Error {
 	return error;
 }
 
-/** Fold rejections floated by cell code into the run result: an otherwise successful run fails with the first floating rejection (an unawaited promise */
 function foldFloatingRejections(active: ActiveRun, result: RunResult, hooks: RuntimeHooks): RunResult {
 	const rejections = active.floatingRejections;
 	if (rejections.length === 0) return result;
@@ -100,15 +94,12 @@ export class WorkerCore {
 		this.#uninstallRejectionGuard = this.#installRejectionGuard();
 	}
 
-	/** Capture unhandled rejections floated by eval-cell code (unawaited async calls) so they fail the owning run instead of tearing down the worker or — */
 	#installRejectionGuard(): () => void {
 		if (this.#options.interceptUnhandledRejections) {
-			// Postmortem owns the realm's unhandledRejection hook (inline host, or the dedicated subprocess where isMainThread is true): attribution
 			return this.#options.interceptUnhandledRejections(reason => this.#consumeRejection(reason));
 		}
 		const onRejection = (reason: unknown): void => {
 			if (this.#consumeRejection(reason)) return;
-			// Not cell-attributable: restore default fatality. Rethrowing from a timer surfaces it as an uncaught exception, which reaches the host
 			setTimeout(() => {
 				throw reason;
 			}, 0);
@@ -119,13 +110,9 @@ export class WorkerCore {
 		};
 	}
 
-	/** Attribute an unhandled rejection to eval-cell code. Live runs are stashed on the run (folded into its result after the settle drain); finished cells */
 	#consumeRejection(reason: unknown): boolean {
 		const stack = reason instanceof Error && typeof reason.stack === "string" ? reason.stack : undefined;
 		if (stack) {
-			// The stack can name several cells (helper defined by an earlier cell,
-			// called from the live one); the outermost matching frame is the caller
-			// that owns the floating promise.
 			let owner: ActiveRun | undefined;
 			let ownerIndex = -1;
 			for (const run of this.#runs.values()) {
@@ -159,9 +146,6 @@ export class WorkerCore {
 			}
 		}
 		if (this.#options.mode === "isolated" && this.#runs.size > 0) {
-			// Dedicated eval worker: during a live run, a rejection without a cell
-			// frame (e.g. `Promise.reject("msg")` or a library-created reason) is
-			// still cell activity — nothing else runs user code in this realm.
 			if (this.#runs.size === 1) {
 				const only = this.#runs.values().next().value;
 				only?.floatingRejections.push(reason);
@@ -185,9 +169,6 @@ export class WorkerCore {
 					this.#ensureRuntime(msg.snapshot);
 					this.#transport.send({ type: "ready" });
 				} catch (error) {
-					// Inline fallback delivers messages on a microtask. A sync throw
-					// from ensureRuntime/setCwd would otherwise become a process-fatal
-					// unhandledRejection on the main thread.
 					this.#transport.send({ type: "init-failed", error: errorPayload(error) });
 				}
 				return;
@@ -222,10 +203,7 @@ export class WorkerCore {
 		if (this.#options.mode !== "isolated" || !this.#options.chdir) return;
 		try {
 			if (process.cwd() === cwd) return;
-		} catch {
-			// The current cwd was deleted; the chdir below is the recovery.
-		}
-		// Process cwd is realm-wide state. Moving it while another cell is mid-run would silently redirect that cell's `process.cwd()`, relative fs access,
+		} catch {}
 		for (const runId of this.#runs.keys()) {
 			if (runId === currentRunId) continue;
 			this.#transport.send({
@@ -239,8 +217,6 @@ export class WorkerCore {
 		try {
 			this.#options.chdir(cwd);
 		} catch (error) {
-			// `process.chdir` throws when the session cwd no longer exists; keep
-			// the cell on the runtime's virtual cwd instead of failing the run.
 			this.#transport.send({
 				type: "log",
 				level: "warn",
@@ -269,9 +245,6 @@ export class WorkerCore {
 			result = { type: "result", runId, ok: false, error: errorPayload(error) };
 		}
 		try {
-			// One event-loop turn so rejections the cell already floated surface
-			// while this run can still own them (rejection callbacks run before
-			// timers fire).
 			await Bun.sleep(0);
 			result = foldFloatingRejections(active, result, hooks);
 		} finally {
@@ -297,9 +270,6 @@ export class WorkerCore {
 		try {
 			this.#transport.send({ type: "tool-call", id, runId: active.runId, name, args });
 		} catch (error) {
-			// Non-serializable args (DataCloneError from postMessage / IPC send).
-			// No reply will ever arrive; fail this call instead of stranding a
-			// pending entry until close.
 			active.pendingTools.delete(id);
 			reject(error);
 		}
@@ -347,8 +317,6 @@ export class WorkerCore {
 		this.#unsubscribe();
 		try {
 			this.#transport.close();
-		} catch {
-			// Ignore
-		}
+		} catch {}
 	}
 }

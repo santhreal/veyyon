@@ -1,13 +1,4 @@
-// XY Chart — shared color palette
-//
-// Generates monochromatic shades from the theme accent color.
-// Series 0 = accent (or blue fallback). Series 1+ are darker/lighter
-// shades of the same hue with subtle hue drift to stay in the same
-// color family (like navy ↔ cyan from blue).
-//
-// Used by both the SVG and ASCII renderers.
 
-/** Default accent for charts when the theme doesn't provide one. */
 export const CHART_ACCENT_FALLBACK = '#3b82f6' // blue-500
 
 
@@ -70,23 +61,14 @@ function rgbToHex(r: number, g: number, b: number): string {
 }
 
 
-/** Check whether a string is a valid 6-digit hex color (e.g. "#3b82f6"). */
 export function isValidHex(color: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(color)
 }
 
-/**
- * Detect whether a background color is dark (lightness < 50%).
- */
 export function isDarkBackground(bgHex: string): boolean {
   return hexToHsl(bgHex)[2] < 50
 }
 
-/**
- * Mix two hex colors in RGB space.
- * `ratio` controls how much of `fgHex` shows: 0 = pure bg, 1 = pure fg.
- * Equivalent to alpha-compositing fg over bg at the given opacity.
- */
 export function mixHexColors(bgHex: string, fgHex: string, ratio: number): string {
   const [br, bg, bb] = hexToRgb(bgHex)
   const [fr, fg, fb] = hexToRgb(fgHex)
@@ -94,19 +76,8 @@ export function mixHexColors(bgHex: string, fgHex: string, ratio: number): strin
   return rgbToHex(br * inv + fr * ratio, bg * inv + fg * ratio, bb * inv + fb * ratio)
 }
 
-/**
- * Get the hex color for a series index.
- * Index 0 returns the accent color as-is.
- * Index 1+ alternate between darker and lighter shades of the same hue
- * with subtle hue drift (±8-12° per tier) to stay in the same family.
- *
- * When `bgColor` is provided, shade direction adapts to the background:
- *   - Light bg: odd = darker, even = lighter (default)
- *   - Dark bg:  odd = lighter, even = darker (so shades stay visible)
- */
 export function getSeriesColor(index: number, accentColor: string, bgColor?: string): string {
   if (index === 0) return accentColor
-  // Fall back to defaults when inputs aren't valid hex (e.g. CSS variable refs like "var(--accent)")
   const safeAccent = isValidHex(accentColor) ? accentColor : CHART_ACCENT_FALLBACK
   const safeBg = bgColor && isValidHex(bgColor) ? bgColor : undefined
   const [h, s] = hexToHsl(safeAccent)
@@ -115,13 +86,11 @@ export function getSeriesColor(index: number, accentColor: string, bgColor?: str
   const tier = Math.ceil(index / 2)
   const oddIndex = index % 2 === 1
 
-  // On dark backgrounds, flip: odd = lighter, even = darker
   const dark = safeBg && isDarkBackground(safeBg) ? !oddIndex : oddIndex
   const l = dark
     ? Math.max(25, 48 - tier * 13)
     : Math.min(78, 55 + tier * 11)
 
-  // Subtle hue drift: darker shades shift slightly negative, lighter shift positive
   const hShift = (dark ? -8 : 12) * tier
   const newH = ((h + hShift) % 360 + 360) % 360
 

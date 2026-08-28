@@ -1,24 +1,12 @@
-/** Recognising the git URLs a plugin can be installed from. is not a git URL I can clone from", and that is the ONLY thing `null` means. There is no failure to */
-
-/**
- * Parsed git URL information.
- */
 export type GitSource = {
-	/** Always "git" for git sources */
 	type: "git";
-	/** Clone URL (always valid for git clone, without ref suffix) */
 	repo: string;
-	/** Git host domain (e.g., "github.com") */
 	host: string;
-	/** Repository path (e.g., "user/repo") */
 	path: string;
-	/** Git ref (branch, tag, commit) if specified */
 	ref?: string;
-	/** True if ref was specified (package won't be auto-updated) */
 	pinned: boolean;
 };
 
-/** Known git hosts and their URL extraction logic. */
 const KNOWN_HOSTS: Record<string, (pathname: string, hash: string) => { user: string; project: string } | null> = {
 	"github.com": extractStandard,
 	"gitlab.com": extractGitLab,
@@ -27,7 +15,6 @@ const KNOWN_HOSTS: Record<string, (pathname: string, hash: string) => { user: st
 	"codeberg.org": extractStandard,
 };
 
-/** Namespaced shorthand prefixes accepted by `veyyon plugin install`, mapped to their canonical host. `PluginManager.install` normalizes non-GitHub prefixes */
 export const SHORTHAND_PREFIXES: Record<string, string> = {
 	github: "github.com",
 	gitlab: "gitlab.com",
@@ -37,7 +24,6 @@ export const SHORTHAND_PREFIXES: Record<string, string> = {
 	srht: "git.sr.ht",
 };
 
-/** `<prefix>:<user>/<repo>[.git][#<ref>]` shape. `<repo>` is non-greedy so the optional `.git` suffix and `#ref` tail bind tightly; `<repo>` may itself */
 const SHORTHAND_RE = /^([a-z]+):([^/:#]+)\/([^#]+?)(?:\.git)?(?:#(.+))?$/i;
 
 function stripUrlCredentials(url: string): string {
@@ -72,13 +58,11 @@ function extractGitLab(pathname: string, _hash: string): { user: string; project
 	return { user, project };
 }
 
-/** Try to parse a URL against known git hosts. Returns `{ domain, user, project, committish }` or null. */
 function tryKnownHost(candidate: string): { domain: string; user: string; project: string; committish: string } | null {
 	let parsed: URL;
 	try {
 		parsed = new URL(candidate);
 	} catch {
-		// Not a URL, so not a known-host URL. See the file header on what null means.
 		return null;
 	}
 
@@ -94,8 +78,6 @@ function tryKnownHost(candidate: string): { domain: string; user: string; projec
 		try {
 			committish = decodeURIComponent(parsed.hash.slice(1));
 		} catch {
-			// A ref whose percent-escapes are not valid UTF-8 cannot be resolved, so the whole spec is refused
-			// rather than cloned at the default branch, which would silently install the wrong code.
 			return null;
 		}
 	}
@@ -158,7 +140,6 @@ function splitRef(url: string): { repo: string; ref?: string } {
 	return { repo: `${host}/${repoPath}`, ref };
 }
 
-/** Try known-host parsing and build a GitSource from the result. */
 function tryKnownHostSource(
 	split: { repo: string; ref?: string },
 	candidate: string,
@@ -194,7 +175,6 @@ function parseGenericGitUrl(url: string): GitSource | null {
 				try {
 					decodeURIComponent(parsed.hash.slice(1));
 				} catch {
-					// Undecodable ref: refuse the spec rather than clone the default branch. Same as above.
 					return null;
 				}
 			}
@@ -202,8 +182,6 @@ function parseGenericGitUrl(url: string): GitSource | null {
 			repoPath = parsed.pathname.replace(/^\/+/, "");
 			repo = stripUrlCredentials(repoWithoutRef);
 		} catch {
-			// Carried a protocol prefix but is not a parseable URL, so there is nothing to clone. Null is the
-			// parser's negative answer, not a swallowed failure.
 			return null;
 		}
 	} else {
@@ -216,7 +194,6 @@ function parseGenericGitUrl(url: string): GitSource | null {
 			repoPath = parsed.pathname.replace(/^\/+/, "");
 			repo = stripUrlCredentials(repo);
 		} catch {
-			// `host/user/repo` with an https prefix bolted on still did not parse, so this is not a git URL.
 			return null;
 		}
 		if (!host.includes(".") && host !== "localhost") return null;
@@ -228,11 +205,7 @@ function parseGenericGitUrl(url: string): GitSource | null {
 	return { type: "git", repo, host, path: normalizedPath, ref, pinned: Boolean(ref) };
 }
 
-/** Match an npm/bun-style namespaced shorthand (`github:user/repo`, optionally `…#ref` or `….git`). Returns null for protocol URLs and any prefix not in */
 function tryNamespacedShorthand(trimmed: string): GitSource | null {
-	// Cheap gate: bail out before touching protocol URLs (`https://`, `ssh://`,
-	// `git://`) where the char after the colon is always `/`. The shorthand we
-	// care about never starts with `<scheme>://`.
 	if (!/^[a-z]+:[^/]/i.test(trimmed)) return null;
 	const match = trimmed.match(SHORTHAND_RE);
 	if (!match) return null;
@@ -247,7 +220,6 @@ function tryNamespacedShorthand(trimmed: string): GitSource | null {
 		try {
 			decodeURIComponent(ref);
 		} catch {
-			// Undecodable ref: refuse the shorthand rather than resolve it to the default branch.
 			return null;
 		}
 	}
@@ -262,22 +234,17 @@ function tryNamespacedShorthand(trimmed: string): GitSource | null {
 	};
 }
 
-/** Parse git source into a GitSource. Rules: */
 export function parseGitUrl(source: string): GitSource | null {
 	const trimmed = source.trim();
 
 	const shorthand = tryNamespacedShorthand(trimmed);
 	if (shorthand) return shorthand;
 
-	// Strip the `git+` URL prefix that npm/bun accept (`git+https://…`,
-	// `git+ssh://…`, `git+git://…`). The rest of the pipeline only deals with
-	// bare schemes.
 	const stripped = /^git\+/i.test(trimmed) ? trimmed.slice(4) : trimmed;
 
 	const hasGitPrefix = /^git:(?!\/\/)/i.test(stripped);
 	const url = hasGitPrefix ? stripped.slice(4).trim() : stripped;
 
-	// Accept: explicit protocol URL, `git:` shorthand, or scp-like SSH (`git@host:user/repo`). The scp form is unambiguous — no local path
 	if (!hasGitPrefix && !/^(https?|ssh|git):\/\//i.test(url) && !/^git@[^:]+:.+\/.+/i.test(url)) {
 		return null;
 	}
@@ -289,17 +256,14 @@ export function parseGitUrl(source: string): GitSource | null {
 			try {
 				decodeURIComponent(hash);
 			} catch {
-				// Undecodable ref: refuse rather than clone something the caller did not ask for.
 				return null;
 			}
 		}
 	}
 	const split = splitRef(url);
 
-	// SCP-like SSH URLs (git@host:user/repo) — convert to https for host matching
 	const scpMatch = split.repo.match(/^git@([^:]+):(.+)$/);
 
-	// Try known hosts with the repo URL directly
 	const directCandidates: string[] = [];
 	if (scpMatch) {
 		directCandidates.push(`https://${scpMatch[1]}/${scpMatch[2]}`);
@@ -319,7 +283,6 @@ export function parseGitUrl(source: string): GitSource | null {
 		if (result) return result;
 	}
 
-	// Try with https:// prefix for bare host/user/repo shorthand
 	if (!split.repo.includes("://") && !split.repo.startsWith("git@")) {
 		const httpsCandidate = split.ref ? `https://${split.repo}#${split.ref}` : `https://${url}`;
 		const result = tryKnownHostSource(split, httpsCandidate, `https://${split.repo}`);
@@ -329,7 +292,6 @@ export function parseGitUrl(source: string): GitSource | null {
 	return parseGenericGitUrl(url);
 }
 
-/** Returns true if the spec is parseable as a git source (protocol URL, scp-like SSH wrapped in `git:`, plain `git:` shorthand, or namespaced */
 export function isGitSpec(spec: string): boolean {
 	return parseGitUrl(spec) !== null;
 }

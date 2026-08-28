@@ -1,4 +1,3 @@
-/** Setup CLI command handler. Handles `veyyon setup` for onboarding and `veyyon setup <component>` for optional dependencies. */
 import * as path from "node:path";
 import { $which, getProjectDir, getPythonEnvDir } from "@veyyon/utils";
 import { $ } from "bun";
@@ -23,7 +22,6 @@ export interface SetupCommandArgs {
 	};
 }
 
-/** Canonical component list; the `setup` command's options validation imports this. */
 export const SETUP_COMPONENTS: SetupComponent[] = ["python", "speech", "status", "auth", ""];
 
 const MANAGED_PYTHON_ENV = getPythonEnvDir();
@@ -41,9 +39,6 @@ function managedPythonPath(): string {
 		: path.join(MANAGED_PYTHON_ENV, "bin", "python");
 }
 
-/**
- * Check Python environment and kernel dependencies.
- */
 async function checkPythonSetup(): Promise<PythonCheckResult> {
 	const result: PythonCheckResult = {
 		available: false,
@@ -65,14 +60,6 @@ async function checkPythonSetup(): Promise<PythonCheckResult> {
 	return result;
 }
 
-/**
- * Install Python packages using uv (preferred) or pip.
- */
-// Python installation helper removed: the subprocess runner has no Python package dependencies beyond a working interpreter. `veyyon setup python --check`
-
-/**
- * Run the setup command.
- */
 export async function runSetupCommand(cmd: SetupCommandArgs): Promise<void> {
 	switch (cmd.component) {
 		case "python":
@@ -88,14 +75,12 @@ export async function runSetupCommand(cmd: SetupCommandArgs): Promise<void> {
 }
 
 async function handleStatusSetup(flags: { json?: boolean; check?: boolean }): Promise<void> {
-	// The install questions come first because they are the ones that decide whether anything below them can work at all: a veyyon that cannot run does
 	const checks = [...(await runInstallHealthChecks()), ...(await runDoctorChecks())];
 	if (flags.json) {
 		console.log(JSON.stringify(checks, null, 2));
 	} else {
 		console.log(formatDoctorResults(checks));
 	}
-	// An error-level check has to reach the exit code, or a script that runs this to gate a deploy passes on a machine where veyyon does not work. `veyyon
 	if (checks.some(check => check.status === "error")) process.exit(1);
 }
 
@@ -128,7 +113,6 @@ async function handlePythonSetup(flags: { json?: boolean; check?: boolean }): Pr
 	process.exit(1);
 }
 
-/** One installable speech dependency. `isReady`/`status` are read-only probes; `pick` (optional) lets an interactive user choose + persist a model; `ensure` */
 interface SpeechComponent {
 	name: string;
 	isReady(): Promise<boolean>;
@@ -205,7 +189,6 @@ function buildSpeechComponents(): SpeechComponent[] {
 	];
 }
 
-/** Unified `veyyon setup speech` flow. Drives every {@link SpeechComponent} through one path: report (`--json`/`--check`) or install (interactive pick + ensure */
 async function handleSpeechSetup(flags: { json?: boolean; check?: boolean }): Promise<void> {
 	await Settings.init({ cwd: getProjectDir() });
 	const components = buildSpeechComponents();

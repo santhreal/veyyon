@@ -1,8 +1,5 @@
-/** Self-contained QR Code generator (byte mode, versions 1-40, EC levels L/M/Q/H) with a half-block ANSI terminal renderer. */
-
 export type QrEcLevel = "L" | "M" | "Q" | "H";
 
-/** Per-EC-level metadata: index into the spec tables and the 2-bit format code. */
 const EC_LEVELS: Record<QrEcLevel, { table: number; formatBits: number }> = {
 	L: { table: 0, formatBits: 1 },
 	M: { table: 1, formatBits: 0 },
@@ -13,8 +10,6 @@ const EC_LEVELS: Record<QrEcLevel, { table: number; formatBits: number }> = {
 const MIN_VERSION = 1;
 const MAX_VERSION = 40;
 
-// ISO/IEC 18004 Table 9 — error-correction codewords per block, indexed
-// [ecTable][version]. Index 0 of each row pads the 1-based version axis.
 // biome-ignore format: spec table, one row per EC level
 const ECC_CODEWORDS_PER_BLOCK: readonly (readonly number[])[] = [
 	[-1, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28, 30, 28, 28, 28, 28, 30, 30, 26, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
@@ -23,8 +18,6 @@ const ECC_CODEWORDS_PER_BLOCK: readonly (readonly number[])[] = [
 	[-1, 17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28, 30, 24, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
 ];
 
-// ISO/IEC 18004 Table 9 — number of error-correction blocks, indexed
-// [ecTable][version].
 // biome-ignore format: spec table, one row per EC level
 const NUM_EC_BLOCKS: readonly (readonly number[])[] = [
 	[-1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9, 10, 12, 12, 12, 13, 14, 15, 16, 17, 18, 19, 19, 20, 21, 22, 24, 25],
@@ -45,7 +38,6 @@ function getBit(value: number, index: number): boolean {
 	return ((value >>> index) & 1) !== 0;
 }
 
-/** Whether mask `m` flips the module at (x, y); the 8 data-mask conditions from the spec. */
 function maskBit(m: number, x: number, y: number): boolean {
 	switch (m) {
 		case 0:
@@ -67,7 +59,6 @@ function maskBit(m: number, x: number, y: number): boolean {
 	}
 }
 
-/** GF(256) multiply under the QR primitive polynomial x^8 + x^4 + x^3 + x^2 + 1 (0x11D). */
 function gfMultiply(x: number, y: number): number {
 	let z = 0;
 	for (let i = 7; i >= 0; i--) {
@@ -77,7 +68,6 @@ function gfMultiply(x: number, y: number): number {
 	return z & 0xff;
 }
 
-/** Reed-Solomon generator polynomial coefficients for `degree` EC codewords. */
 function rsDivisor(degree: number): Uint8Array {
 	const result = new Uint8Array(degree);
 	result[degree - 1] = 1;
@@ -92,7 +82,6 @@ function rsDivisor(degree: number): Uint8Array {
 	return result;
 }
 
-/** Reed-Solomon remainder (the EC codewords) of `data` divided by `divisor`. */
 function rsRemainder(data: Uint8Array, divisor: Uint8Array): Uint8Array {
 	const result = new Uint8Array(divisor.length);
 	for (const b of data) {
@@ -104,7 +93,6 @@ function rsRemainder(data: Uint8Array, divisor: Uint8Array): Uint8Array {
 	return result;
 }
 
-/** Total data modules (bits available before EC) for a version. */
 function rawDataModules(version: number): number {
 	let result = (16 * version + 128) * version + 64;
 	if (version >= 2) {
@@ -115,7 +103,6 @@ function rawDataModules(version: number): number {
 	return result;
 }
 
-/** Number of usable data codewords (8-bit) at a given version + EC level. */
 function dataCodewords(version: number, ecTable: number): number {
 	return (
 		Math.floor(rawDataModules(version) / 8) -
@@ -123,24 +110,18 @@ function dataCodewords(version: number, ecTable: number): number {
 	);
 }
 
-/** Byte-mode character-count indicator width in bits for a version. */
 function charCountBits(version: number): number {
 	return version <= 9 ? 8 : 16;
 }
 
 export interface QrEncodeOptions {
-	/** Lowest version to consider (default 1). */
 	minVersion?: number;
-	/** Highest version to consider (default 40). */
 	maxVersion?: number;
-	/** Force a mask 0-7; -1 (default) auto-selects the lowest-penalty mask. */
 	mask?: number;
 }
 
-/** A finished QR symbol: a square grid of dark/light modules plus the chosen version, EC level, and mask. `module(x, y)` is the only access path the */
 export class QrCode {
 	readonly size: number;
-	/** Selected mask pattern (0-7). */
 	readonly mask: number;
 	readonly #modules: boolean[][];
 	readonly #isFunction: boolean[][];
@@ -164,12 +145,10 @@ export class QrCode {
 		return this.#modules[y]![x]!;
 	}
 
-	/** Encode a string in byte mode (UTF-8). Throws if it exceeds version 40. */
 	static encodeText(text: string, ecLevel: QrEcLevel = "M", options?: QrEncodeOptions): QrCode {
 		return QrCode.encodeBytes(new TextEncoder().encode(text), ecLevel, options);
 	}
 
-	/** Encode raw bytes in byte mode. Throws if they exceed version 40 at this EC level. */
 	static encodeBytes(data: Uint8Array, ecLevel: QrEcLevel = "M", options?: QrEncodeOptions): QrCode {
 		const ec = EC_LEVELS[ecLevel];
 		const minVersion = Math.max(MIN_VERSION, options?.minVersion ?? MIN_VERSION);
@@ -201,7 +180,6 @@ export class QrCode {
 		return new QrCode(version, ecLevel, codewords, mask);
 	}
 
-	/** Split into blocks, append Reed-Solomon EC, and interleave per the spec. */
 	static #interleave(data: Uint8Array, version: number, ecTable: number): Uint8Array {
 		const numBlocks = NUM_EC_BLOCKS[ecTable]![version]!;
 		const eccLen = ECC_CODEWORDS_PER_BLOCK[ecTable]![version]!;
@@ -216,8 +194,6 @@ export class QrCode {
 			const datLen = shortLen - eccLen + (i < numShort ? 0 : 1);
 			const dat = data.subarray(offset, offset + datLen);
 			offset += datLen;
-			// Every block is padded to the longest block's length so interleaving
-			// stays column-aligned; short blocks leave a zero in the last data slot.
 			const block = new Uint8Array(blockLen);
 			block.set(dat, 0);
 			block.set(rsRemainder(dat, divisor), blockLen - eccLen);
@@ -228,15 +204,12 @@ export class QrCode {
 		let w = 0;
 		for (let i = 0; i < blockLen; i++) {
 			for (let b = 0; b < numBlocks; b++) {
-				// Skip the padding column at the data/EC boundary of short blocks.
 				if (i === shortLen - eccLen && b < numShort) continue;
 				result[w++] = blocks[b]![i]!;
 			}
 		}
 		return result;
 	}
-
-	// ── Module placement ──────────────────────────────────────────────────
 
 	#setFunction(x: number, y: number, dark: boolean): void {
 		this.#modules[y]![x] = dark;
@@ -256,7 +229,6 @@ export class QrCode {
 		const last = align.length - 1;
 		for (let i = 0; i <= last; i++) {
 			for (let j = 0; j <= last; j++) {
-				// Skip the three finder corners.
 				if ((i === 0 && j === 0) || (i === 0 && j === last) || (i === last && j === 0)) continue;
 				this.#drawAlignment(align[i]!, align[j]!);
 			}
@@ -346,8 +318,6 @@ export class QrCode {
 		}
 	}
 
-	// ── Masking ───────────────────────────────────────────────────────────
-
 	#applyMask(mask: number): void {
 		for (let y = 0; y < this.size; y++) {
 			for (let x = 0; x < this.size; x++) {
@@ -383,7 +353,6 @@ export class QrCode {
 		const size = this.size;
 		const mods = this.#modules;
 
-		// Rule 1 + Rule 3 — adjacent same-color runs, finder-like patterns (rows).
 		for (let y = 0; y < size; y++) {
 			let runColor = false;
 			let runLen = 0;
@@ -402,7 +371,6 @@ export class QrCode {
 			}
 			result += this.#finderTerminate(runColor, runLen, history) * PENALTY_N3;
 		}
-		// Rule 1 + Rule 3 — columns.
 		for (let x = 0; x < size; x++) {
 			let runColor = false;
 			let runLen = 0;
@@ -422,7 +390,6 @@ export class QrCode {
 			result += this.#finderTerminate(runColor, runLen, history) * PENALTY_N3;
 		}
 
-		// Rule 2 — 2x2 blocks of one color.
 		for (let y = 0; y < size - 1; y++) {
 			for (let x = 0; x < size - 1; x++) {
 				const c = mods[y]![x];
@@ -432,7 +399,6 @@ export class QrCode {
 			}
 		}
 
-		// Rule 4 — dark/light balance.
 		let dark = 0;
 		for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (mods[y]![x]) dark++;
 		const total = size * size;
@@ -467,7 +433,6 @@ export class QrCode {
 	}
 }
 
-/** Append-only MSB-first bit buffer. */
 class BitBuffer {
 	#bits: number[] = [];
 
@@ -487,14 +452,12 @@ class BitBuffer {
 }
 
 export interface QrRenderOptions {
-	/** Quiet-zone width in modules on every side (default 4, per spec). */
 	margin?: number;
 }
 
 const ANSI_RESET = "\x1b[0m";
 const ANSI_QR_ROW_PREFIX = "\x1b[47m\x1b[30m"; // white background, black foreground
 
-/** Render a QR symbol as ANSI half-block rows: each text row packs two module rows via `▀`/`▄`/`█`, drawn black-on-white so a phone camera reads dark */
 export function renderQrHalfBlocks(qr: QrCode, options?: QrRenderOptions): string[] {
 	const margin = Math.max(0, options?.margin ?? 4);
 	const dim = qr.size + margin * 2;

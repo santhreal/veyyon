@@ -54,40 +54,30 @@ interface SecCompany {
 	};
 }
 
-/**
- * Extract CIK from various SEC EDGAR URL patterns
- */
 function extractCik(url: URL): string | null {
 	const { hostname, pathname, searchParams } = url;
 
-	// Check hostname
 	if (!hostname.includes("sec.gov")) return null;
 
-	// Pattern: ?CIK=xxx or ?cik=xxx
 	const cikParam = searchParams.get("CIK") || searchParams.get("cik");
 	if (cikParam) {
 		return normalizeCik(cikParam);
 	}
 
-	// Pattern: /cik/XXXXXXXXXX or /cik/XXXXXXXXXX/...
 	const cikPathMatch = pathname.match(/\/cik\/(\d+)/i);
 	if (cikPathMatch) {
 		return normalizeCik(cikPathMatch[1]);
 	}
 
-	// Pattern: /submissions/CIK*.json
 	const submissionsMatch = pathname.match(/\/submissions\/CIK(\d+)\.json/i);
 	if (submissionsMatch) {
 		return normalizeCik(submissionsMatch[1]);
 	}
 
-	// Pattern: /cgi-bin/browse-edgar with company search (no CIK yet)
 	if (pathname.includes("/cgi-bin/browse-edgar") && searchParams.get("company")) {
-		// Company name search - we'd need to search first, skip for now
 		return null;
 	}
 
-	// Pattern: Filing URLs like /Archives/edgar/data/XXXXXXXXXX/...
 	const archivesMatch = pathname.match(/\/Archives\/edgar\/data\/(\d+)/);
 	if (archivesMatch) {
 		return normalizeCik(archivesMatch[1]);
@@ -96,17 +86,11 @@ function extractCik(url: URL): string | null {
 	return null;
 }
 
-/**
- * Normalize CIK to 10 digits with leading zeros
- */
 function normalizeCik(cik: string): string {
 	const cleaned = cik.replace(/\D/g, "");
 	return cleaned.padStart(10, "0");
 }
 
-/**
- * Format address for display
- */
 function formatAddress(addr: SecCompany["addresses"]["business"]): string {
 	const parts: string[] = [];
 	if (addr.street1) parts.push(addr.street1);
@@ -121,9 +105,6 @@ function formatAddress(addr: SecCompany["addresses"]["business"]): string {
 	return parts.join("\n");
 }
 
-/**
- * Get recent filings of specific types
- */
 function getRecentFilings(company: SecCompany, formTypes: string[], limit = 10): SecFiling[] {
 	const { recent } = company.filings;
 	const filings: SecFiling[] = [];
@@ -145,17 +126,11 @@ function getRecentFilings(company: SecCompany, formTypes: string[], limit = 10):
 	return filings;
 }
 
-/**
- * Build SEC EDGAR filing URL
- */
 function buildFilingUrl(cik: string, accessionNumber: string, document: string): string {
 	const accessionNoDashes = accessionNumber.replace(/-/g, "");
 	return `https://www.sec.gov/Archives/edgar/data/${parseInt(cik, 10)}/${accessionNoDashes}/${document}`;
 }
 
-/**
- * Handle SEC EDGAR URLs via data.sec.gov API
- */
 export const handleSecEdgar: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -165,17 +140,13 @@ export const handleSecEdgar: SpecialHandler = async (
 		const parsed = tryParseUrl(url);
 		if (!parsed) return null;
 
-		// Check if it's an SEC URL
 		if (!parsed.hostname.includes("sec.gov")) return null;
 
-		// Extract CIK from URL
 		const cik = extractCik(parsed);
 		if (!cik) return null;
 
 		const fetchedAt = new Date().toISOString();
 
-		// Fetch company data from SEC API
-		// SEC requires a proper User-Agent with contact info
 		const apiUrl = `https://data.sec.gov/submissions/CIK${cik}.json`;
 		const result = await loadPage(apiUrl, {
 			timeout,
@@ -191,10 +162,8 @@ export const handleSecEdgar: SpecialHandler = async (
 		const company = tryParseJson<SecCompany>(result.content);
 		if (!company) return scraperDegrade("sec-edgar", "unexpected response shape");
 
-		// Build markdown output
 		let md = `# ${company.name}\n\n`;
 
-		// Basic info
 		md += `**CIK:** ${company.cik}`;
 		if (company.tickers?.length) {
 			md += ` · **Ticker${company.tickers.length > 1 ? "s" : ""}:** ${company.tickers.join(", ")}`;
@@ -214,7 +183,6 @@ export const handleSecEdgar: SpecialHandler = async (
 		}
 		md += "\n";
 
-		// Business address
 		if (company.addresses?.business) {
 			const addr = formatAddress(company.addresses.business);
 			if (addr) {
@@ -222,7 +190,6 @@ export const handleSecEdgar: SpecialHandler = async (
 			}
 		}
 
-		// Recent key filings (10-K, 10-Q, 8-K)
 		const keyFilings = getRecentFilings(company, ["10-K", "10-K/A", "10-Q", "10-Q/A", "8-K", "8-K/A"], 15);
 		if (keyFilings.length) {
 			md += `## Recent Filings (10-K, 10-Q, 8-K)\n\n`;
@@ -232,14 +199,11 @@ export const handleSecEdgar: SpecialHandler = async (
 			for (const filing of keyFilings) {
 				const filingUrl = buildFilingUrl(cik, filing.accessionNumber, filing.primaryDocument);
 				const desc = filing.primaryDocDescription || filing.form;
-				// primaryDocument is an external filename that can carry parens; route the
-				// link through markdownLink so a `(` in the URL does not truncate it.
 				md += `| ${filing.filingDate} | ${markdownLink(filing.form, filingUrl)} | ${escapeMarkdownTableCell(desc)} |\n`;
 			}
 			md += "\n";
 		}
 
-		// All recent filings (last 20)
 		const allFilings = getRecentFilings(company, [], 20);
 		if (allFilings.length) {
 			md += `## All Recent Filings\n\n`;
@@ -249,18 +213,13 @@ export const handleSecEdgar: SpecialHandler = async (
 			for (const filing of allFilings) {
 				const filingUrl = buildFilingUrl(cik, filing.accessionNumber, filing.primaryDocument);
 				const desc = filing.primaryDocDescription || filing.form;
-				// primaryDocument is an external filename that can carry parens; route the
-				// link through markdownLink so a `(` in the URL does not truncate it.
 				md += `| ${filing.filingDate} | ${markdownLink(filing.form, filingUrl)} | ${escapeMarkdownTableCell(desc)} |\n`;
 			}
 			md += "\n";
 		}
 
-		// Links
 		md += `## Links\n\n`;
 		md += `- ${markdownLink("SEC EDGAR Filings", `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}&type=&dateb=&owner=include&count=40`)}\n`;
-		// encodeURIComponent leaves ( ) unencoded, so a company name like
-		// "Alphabet Inc. (Class A)" would truncate a bare link at the first `(`.
 		md += `- ${markdownLink("Company Search", `https://www.sec.gov/cgi-bin/browse-edgar?company=${encodeURIComponent(company.name)}&CIK=&type=&owner=include&count=40&action=getcompany`)}\n`;
 
 		return buildResult(md, { url, method: "sec-edgar", fetchedAt, notes: ["Fetched via SEC EDGAR API"] });

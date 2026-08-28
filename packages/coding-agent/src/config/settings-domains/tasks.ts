@@ -1,7 +1,4 @@
-/** Tasks domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const TASKS_SETTINGS = {
-	// Tasks
-	// Plan mode
 	"plan.enabled": {
 		type: "boolean",
 		default: true,
@@ -25,8 +22,6 @@ export const TASKS_SETTINGS = {
 		},
 	},
 
-	// Per-model harness profile overrides (src/harness/model-profile.ts). Keys are
-	// `provider/model-id` or `provider/*`; values: { repair?: boolean, tools?: string[] }.
 	"harness.profiles": { type: "record", default: {} as Record<string, unknown> },
 
 	"goal.enabled": {
@@ -86,7 +81,6 @@ export const TASKS_SETTINGS = {
 		},
 	},
 
-	// Off by default. Canonical todo state already stopped auto-clearing for the reason recorded in agent-session.ts: watching a phase total shrink after
 	"tasks.todoClearDelay": {
 		type: "number",
 		default: -1,
@@ -107,7 +101,6 @@ export const TASKS_SETTINGS = {
 		},
 	},
 
-	// Skills
 	"skills.enabled": { type: "boolean", default: true },
 
 	"skills.enableSkillCommands": {
@@ -121,13 +114,10 @@ export const TASKS_SETTINGS = {
 		},
 	},
 
-	// Skills load only from the active profile's Veyyon agent dir (plus its managed auto-learn skills and profile-installed plugins). There is no
-
 	"skills.ignoredSkills": { type: "array", default: [] as string[] },
 
 	"skills.includeSkills": { type: "array", default: [] as string[] },
 
-	// Commands
 	"commands.enableClaudeUser": {
 		type: "boolean",
 		default: true,

@@ -1,5 +1,3 @@
-/** Agent tools for loading and unloading Argot project shorthand. Loading is agent-driven: a session starts UNARMED and the model loads the */
-
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot";
 import { type } from "arktype";
@@ -17,25 +15,19 @@ const folderSchema = type({
 export type ArgotFolderInput = typeof folderSchema.infer;
 
 export interface ArgotLoadDetails {
-	/** The work-unit root the folder resolved to. */
 	root: string;
-	/** How many handles the loaded project's dictionary carries. */
 	handles: number;
-	/** The path string as it arrived, so the transcript shows what was asked for. */
 	requested: string;
 }
 
 export interface ArgotUnloadDetails {
 	root: string;
-	/** Whether the unload changed anything (false when the folder was never taught). */
 	changed: boolean;
 	requested: string;
 }
 
-/** The session's Argot codec, when the session has one. `ToolSession.getArgotSession` is optional and returns an optional, so the type */
 type ArgotSession = NonNullable<ReturnType<NonNullable<ToolSession["getArgotSession"]>>>;
 
-/** Read the session's Argot codec, or fail loud when Argot is off for this session. */
 function requireArgot(session: ToolSession): ArgotSession {
 	const argot = session.getArgotSession?.();
 	if (argot === undefined) {
@@ -49,7 +41,6 @@ function requireArgot(session: ToolSession): ArgotSession {
 export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDetails> {
 	readonly name = ARGOT_LOAD_TOOL;
 	readonly label = "ArgotLoad";
-	// Write-tier per argot's SPEC approval contract: loading reads a project tree (possibly outside the session cwd) and writes the generated dictionary into
 	readonly approval = "write" as const;
 	readonly formatApprovalDetails = (args: unknown): string[] => {
 		const raw = (args as Partial<ArgotFolderInput>).folder_path;
@@ -61,9 +52,6 @@ export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDe
 		"Load a folder's Argot shorthand so you can write its long paths and identifiers as short `§handle` tokens. Resolves the folder to its own project (nearest .git or .argot), reads or builds that project's dictionary, and teaches you its handles. Load the narrowest folder that is your work unit, not a parent holding many projects. Every handle expands losslessly, so this only saves tokens.";
 	readonly parameters = folderSchema;
 	readonly strict = true;
-	// Always active (not discoverable): loading is the canonical arming flow, and
-	// the notation preamble instructs the model to call this tool — you must never
-	// instruct a model to call a tool that is not in its tool list.
 	readonly summary = "Load a folder's Argot shorthand so its paths can be written as short handles";
 	readonly #session: ToolSession;
 
@@ -86,12 +74,8 @@ export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDe
 
 		let loaded: Awaited<ReturnType<typeof loadArgotFolder>>;
 		try {
-			// Use the session's configured dictionary budget so a folder loaded mid-session
-			// is generated under the same policy as the session's own project.
 			loaded = await loadArgotFolder(argot, folder, signal, this.#session.settings.get("argot.tokenBudget"));
 		} catch (err) {
-			// A genuine conflict (two projects binding one handle name to different
-			// expansions) or a malformed cache surfaces loud, never a silent skip.
 			throw toolFailure(err);
 		}
 
@@ -107,7 +91,6 @@ export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDe
 			};
 		}
 
-		// The handle table is taught through the system prompt, which is built once and refreshed explicitly — a mid-session load must rebuild it or
 		if (loaded.handles > 0) {
 			await this.#session.refreshBaseSystemPrompt?.("argot-load");
 		}
@@ -168,8 +151,6 @@ export class ArgotUnloadTool implements AgentTool<typeof folderSchema, ArgotUnlo
 			};
 		}
 
-		// The teach set changed; rebuild the prompt so the handle table stops
-		// advertising this project's shorthand next turn.
 		if (result.changed) {
 			await this.#session.refreshBaseSystemPrompt?.("argot-unload");
 		}

@@ -2,14 +2,10 @@ import type { Api, ApiKey, AssistantMessage, Context, Model, SimpleStreamOptions
 import { completeSimple } from "@veyyon/ai/stream";
 import { validateToolCall } from "@veyyon/ai/utils/validation";
 import { isRecord } from "@veyyon/utils/type-guards";
-// The owners, not the barrel. `type` is `@veyyon/ai`'s re-export of arktype, so
-// naming arktype is naming the same module; `validateToolCall` is one function
-// over a tool list. Together they were costing the whole streaming stack.
 import { type as t } from "arktype";
 import type { ChangelogCategory, ConventionalAnalysis } from "./types";
 import { extractTextContent, extractToolCall, normalizeAnalysis, parseJsonPayload } from "./utils";
 
-/** Live transform for repository text immediately before an external model request. */
 export type ObfuscateProviderText = (text: string) => string;
 export type ResolveObfuscateProviderText = () => ObfuscateProviderText | Promise<ObfuscateProviderText>;
 
@@ -19,7 +15,6 @@ export interface CompleteCommitOptions extends Omit<SimpleStreamOptions, "apiKey
 	apiKey: ApiKey;
 }
 
-/** Build a fresh sanitized context for every physical provider attempt. The API-key resolver is the one-shot transport's retry boundary. Rebuilding */
 export async function completeCommitSimple(
 	model: Model<Api>,
 	buildContext: CommitContextBuilder,
@@ -49,7 +44,6 @@ const changelogCategoryLiteral = t(
 	"'Added' | 'Changed' | 'Fixed' | 'Deprecated' | 'Removed' | 'Security' | 'Breaking Changes'",
 );
 
-/** Shared arktype schema for the `create_conventional_analysis` tool used by both the single-pass analysis call and the map-reduce reduce phase. Schemas */
 const detailItem = t({
 	text: "string",
 	"changelog_category?": changelogCategoryLiteral,
@@ -69,7 +63,6 @@ export interface ConventionalAnalysisTool {
 	parameters: typeof conventionalAnalysisParameters;
 }
 
-/** Build a `create_conventional_analysis` tool descriptor. Phase-specific `description` text is the only thing that varies between callers. */
 export function createConventionalAnalysisTool(description: string): ConventionalAnalysisTool {
 	return {
 		name: "create_conventional_analysis",
@@ -85,20 +78,17 @@ interface ParsedConventionalAnalysis {
 	issue_refs: string[];
 }
 
-/** The shape the text fallback has to find. `normalizeAnalysis` maps over `details`, so an answer without one — a refusal, */
 function isParsedConventionalAnalysis(value: unknown): value is ParsedConventionalAnalysis {
 	if (!isRecord(value) || !Array.isArray(value.details)) return false;
 	return value.details.every(detail => isRecord(detail) && typeof detail.text === "string");
 }
 
-/** Extract a {@link ConventionalAnalysis} from an assistant response, preferring a structured tool call and falling back to JSON embedded in text content. */
 export function parseConventionalAnalysisResponse(
 	message: AssistantMessage,
 	tool: ConventionalAnalysisTool,
 ): ConventionalAnalysis {
 	const toolCall = extractToolCall(message, tool.name);
 	if (toolCall) {
-		// Schema-validated against conventionalAnalysisParameters just above.
 		const parsed = validateToolCall([tool], toolCall) as unknown as ParsedConventionalAnalysis;
 		return normalizeAnalysis(parsed);
 	}

@@ -5,21 +5,7 @@ import { THINK_CLOSE, THINK_OPEN, XML_THINKING_CLOSE, XML_THINKING_OPEN } from "
 
 type Tag = { readonly open: string; readonly close: string; readonly fenced?: boolean };
 
-/**
- * Every dialect's in-band thinking section in its canonical `renderThinking`
- * form (see the sibling `./*.ts` scanners). {@link ThinkingInbandScanner} heals
- * reasoning a model leaked into its visible text channel back into thinking
- * events, whichever dialect idiom the leak used.
- *
- * Plain (attribute-free) delimiters only — matching what `renderThinking`
- * emits and what models leak in practice. Attributed or namespaced XML thinking
- * tags (`<thinking signature="…">`, `antml:thinking`) are recovered by the owned
- * anthropic-dialect parser, not this text-channel healing fallback.
- */
 const TAGS: readonly Tag[] = [
-	// The first two come from the shared vocabulary rather than being retyped: this scanner heals reasoning that
-	// leaked into the visible channel, so it has to look for exactly what `renderThinking` emitted, and a copy
-	// here that drifted would leave the leak unhealed with nothing reporting it.
 	{ open: THINK_OPEN, close: THINK_CLOSE }, // deepseek, glm, hermes, kimi, qwen3 (and anthropic/minimax/xml)
 	{ open: XML_THINKING_OPEN, close: XML_THINKING_CLOSE }, // anthropic, minimax, xml
 	{ open: "<scratchpad>", close: "</scratchpad>" }, // anthropic
@@ -34,7 +20,6 @@ export class ThinkingInbandScanner implements InbandScanner {
 	#buffer = "";
 	#closeTag = "";
 	#thinking = "";
-	/** Fence-aware close-matcher while inside a ` ```thinking ` block; undefined otherwise. */
 	#fenced: FencedThinkingScanner | undefined;
 
 	feed(text: string): InbandScanEvent[] {
@@ -61,7 +46,6 @@ export class ThinkingInbandScanner implements InbandScanner {
 		const events: InbandScanEvent[] = [];
 		for (;;) {
 			if (this.#fenced) {
-				// Run even with an empty buffer so a held partial close flushes on final.
 				const result = this.#fenced.feed(this.#buffer, final);
 				this.#buffer = result.closed ? result.rest : "";
 				this.#emitThinking(result.thinking, events);

@@ -1,4 +1,3 @@
-/** Read back the system prompt a given configuration would actually send. assembled from named statements, each with a condition, so whole regions */
 import { estimateTokensFromText, prompt } from "@veyyon/utils";
 import { type BuildSystemPromptOptions, buildSystemPrompt } from "../system-prompt";
 import { splitPromptSections } from "./prompt-sections";
@@ -13,52 +12,37 @@ import {
 	statementsOf,
 } from "./statement-registry";
 
-/** One section of an assembled prompt, with what it cost. */
 export interface InspectedSection {
-	/** Registry id, or `preamble` for the text before the first banner. */
 	readonly id: string;
-	/** Where the text came from, per the registry. `unregistered` is not a formality: it means the assembled prompt carries a */
 	readonly source: "template" | "runtime" | "preamble" | "unregistered";
-	/** Which `systemPrompt[]` entry it landed in — the provider caching boundary. */
 	readonly blockIndex: number;
 	readonly bytes: number;
 	readonly tokens: number;
 	readonly text: string;
 }
 
-/** A registered section that the assembled prompt does not contain. The half an inspection could not report. `sections` answers "what is in this */
 export interface MissingSection {
 	readonly id: string;
-	/** From the registry: `false` means the prompt is broken, not merely minimal. */
 	readonly optional: boolean;
 	readonly purpose: string;
 }
 
-/** One statement, with what it costs the prompt it is in. to the section, and TOOL POLICY is 9KB of it, so the answer for the section that matters most is */
 export interface InspectedStatement {
 	readonly id: string;
 	readonly section: string;
-	/** Why the row exists, from the registry, so the cost sits next to the reason to pay it. */
 	readonly purpose: string;
-	/** The condition in English, which is why this statement is or is not in this prompt. */
 	readonly condition: string;
 	readonly present: boolean;
-	/** MARGINAL bytes: what the prompt would be shorter by without this statement, not the length of its text. */
 	readonly bytes: number;
 	readonly tokens: number;
-	/** The rendered bytes this statement contributed, or `""` when it is absent. Defined as the marginal text for the same reason the cost is marginal: it is the growth this */
 	readonly text: string;
 }
 
 export interface PromptInspection {
-	/** The blocks exactly as `buildSystemPrompt` returns them. */
 	readonly blocks: readonly string[];
 	readonly sections: readonly InspectedSection[];
-	/** Registered sections absent from this assembly, in registry order. */
 	readonly missing: readonly MissingSection[];
-	/** Every registered statement, present or not, in registry order. Empty when this prompt did not come from the statement registry, which is a custom system */
 	readonly statements: readonly InspectedStatement[];
-	/** Whether the blocks above were assembled from statements at all. */
 	readonly fromStatements: boolean;
 	readonly totalBytes: number;
 	readonly totalTokens: number;
@@ -68,7 +52,6 @@ const SECTION_SOURCE: ReadonlyMap<string, "template" | "runtime"> = new Map(
 	SYSTEM_PROMPT_SECTIONS.map(section => [section.id as string, section.source]),
 );
 
-/** Assemble the prompt for `options` and break it down by section. Byte-faithful: concatenating `sections` within a block reproduces that block, */
 export async function inspectSystemPrompt(options: BuildSystemPromptOptions = {}): Promise<PromptInspection> {
 	const { systemPrompt, statementContext, statementOverrides, replacedStatementSections } =
 		await buildSystemPrompt(options);
@@ -76,9 +59,6 @@ export async function inspectSystemPrompt(options: BuildSystemPromptOptions = {}
 
 	for (const [blockIndex, block] of systemPrompt.entries()) {
 		for (const rendered of splitPromptSections(block)) {
-			// A split can yield an empty leading preamble when a block opens
-			// directly on a banner; reporting it would invent a section that is not
-			// in the prompt.
 			if (rendered.name === "preamble" && rendered.text === "") continue;
 			const id = resolveSectionId(rendered.name, blockIndex);
 			sections.push({
@@ -113,7 +93,6 @@ export async function inspectSystemPrompt(options: BuildSystemPromptOptions = {}
 	};
 }
 
-/** What each statement adds to the section it is in, measured rather than estimated. HOW, and why not more simply. Rendering a statement on its own and measuring the result is the */
 function priceStatements(
 	context: StatementContext,
 	overrides: StatementOverrides,
@@ -123,8 +102,6 @@ function priceStatements(
 
 	for (const section of STATEMENT_SECTIONS) {
 		let template = sectionBanner(section);
-		// One render per step, both measures taken from it. Rendering twice to price bytes and
-		// tokens separately would double the work for two numbers about the same string.
 		let running = measure(template, context);
 
 		if (replacedSections.has(section)) {
@@ -175,7 +152,6 @@ function priceStatements(
 	return priced;
 }
 
-/** Render a section prefix once and report the result with both costs of it. */
 function measure(template: string, context: StatementContext): { bytes: number; tokens: number; text: string } {
 	const rendered = prompt.render(template, context);
 	return {
@@ -185,7 +161,6 @@ function measure(template: string, context: StatementContext): { bytes: number; 
 	};
 }
 
-/** How much of two renders is identical from the start, which is where the new statement begins. */
 function commonPrefixLength(before: string, after: string): number {
 	const limit = Math.min(before.length, after.length);
 	let index = 0;
@@ -193,7 +168,6 @@ function commonPrefixLength(before: string, after: string): number {
 	return index;
 }
 
-/** Name the leading region by its registry id rather than by the splitter's. `splitPromptSections` calls everything before the first banner "preamble", */
 function resolveSectionId(name: string, blockIndex: number): string {
 	return name === "preamble" && blockIndex === 0 ? "conventions" : name;
 }
@@ -203,7 +177,6 @@ function sourceOf(name: string): InspectedSection["source"] {
 	return SECTION_SOURCE.get(name) ?? "unregistered";
 }
 
-/** The breakdown as a table, largest section first. Sorted by cost rather than by position because the question this answers is */
 export function formatInspectionTable(inspection: PromptInspection): string {
 	const rows = [...inspection.sections].sort((a, b) => b.tokens - a.tokens);
 	const width = (values: string[]) => Math.max(...values.map(v => v.length));
@@ -225,7 +198,6 @@ export function formatInspectionTable(inspection: PromptInspection): string {
 			`${String(inspection.totalBytes).padStart(7)}  ${String(inspection.totalTokens).padStart(7)}`,
 	);
 
-	// Absent sections are reported UNDER the table rather than as zero-cost rows in it. A row of zeroes reads as "this section is here and empty", which is a
 	if (inspection.missing.length > 0) {
 		lines.push("", "not in this prompt:");
 		for (const section of inspection.missing) {
@@ -234,9 +206,6 @@ export function formatInspectionTable(inspection: PromptInspection): string {
 		}
 		const required = inspection.missing.filter(section => !section.optional);
 		if (required.length > 0) {
-			// Named rather than counted, and stated as a defect: a required section
-			// that did not render means assembly broke, and the reader needs to know
-			// that this output is not simply a minimal configuration.
 			lines.push(
 				"",
 				`${required.length} REQUIRED section${required.length === 1 ? "" : "s"} did not render ` +
@@ -247,11 +216,8 @@ export function formatInspectionTable(inspection: PromptInspection): string {
 	return lines.join("\n");
 }
 
-/** The per-statement breakdown as a table, most expensive first, absent rules listed under it. Sorted by cost for the same reason the section table is: the question is which rules are worth */
 export function formatStatementTable(inspection: PromptInspection): string {
 	if (!inspection.fromStatements) {
-		// Not an empty table. An empty table says the statements cost nothing, which is false here:
-		// this prompt was not built from them at all.
 		return "this prompt was not assembled from statements (a custom system prompt replaced it), so there is nothing to price";
 	}
 

@@ -1,4 +1,3 @@
-/** TUI renderers for built-in tools. These provide rich visualization for tool calls and results in the TUI. */
 import type { Component } from "@veyyon/tui";
 import { editToolRenderer } from "../edit/renderer";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -31,7 +30,6 @@ import { todoToolRenderer } from "./todo";
 import { createVibeToolRenderer } from "./vibe-render";
 import { writeToolRenderer } from "./write";
 
-/** Per-renderer opt-in for a full viewport replay when the first result replaces a painted pending-call render. A predicate receives the painted */
 export type FirstResultViewportRepaint = boolean | ((args: unknown, options: RenderResultOptions) => boolean);
 
 export type ToolRenderer = {
@@ -43,17 +41,11 @@ export type ToolRenderer = {
 		args?: unknown,
 	) => Component;
 	mergeCallAndResult?: boolean;
-	/** Whether the call render IS an interactive widget rather than a preview of one. `ask` paints the whole selectable question in `renderCall`, because until a result arrives */
 	callIsLiveWidget?: boolean;
-	/** Render without background box, inline in the response flow */
 	inline?: boolean;
-	/** Whether the renderer's pending-call path visibly consumes `options.spinnerFrame`. Used to avoid scheduling repaint ticks for live */
 	animatedPendingPreview?: boolean | ((args: unknown) => boolean);
-	/** Whether the renderer's partial-result path visibly consumes `options.spinnerFrame`. */
 	animatedPartialResult?: boolean | ((args: unknown) => boolean);
-	/** Whether replacing a pending call render with the first result requires a full viewport repaint. Use for merged renderers whose pending rows can be */
 	forceFirstResultViewportRepaint?: FirstResultViewportRepaint;
-	/** Whether settling a provisional partial result into the final render requires a full viewport repaint. Use when the result renderer changes chrome or */
 	forceResultViewportRepaintOnSettle?: boolean;
 };
 
@@ -81,7 +73,6 @@ export const toolRenderers: Record<string, ToolRenderer> = {
 	reflect: reflectToolRenderer as ToolRenderer,
 	search_tool_bm25: searchToolBm25Renderer as ToolRenderer,
 	ssh: sshToolRenderer as ToolRenderer,
-	// Lazy getter: `taskToolRenderer` lives in a module that closes an import cycle back here (task/renderer → task/render → … → tools/renderers), so
 	get task(): ToolRenderer {
 		return taskToolRenderer as ToolRenderer;
 	},

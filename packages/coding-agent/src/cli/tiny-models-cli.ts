@@ -15,7 +15,6 @@ import type { TinyTitleProgressEvent } from "../tiny/title-protocol";
 
 export type TinyModelsAction = "download" | "list";
 
-/** Canonical action list; the `tiny-models` command's options validation imports this. */
 export const TINY_MODELS_ACTIONS: TinyModelsAction[] = ["download", "list"];
 
 export interface TinyModelsCommandArgs {
@@ -58,8 +57,6 @@ function downloadErrorSummary(error: string | undefined): string | undefined {
 
 export function resolveModels(model: string | undefined): TinyLocalModelKey[] {
 	if (!model) return [DEFAULT_TINY_TITLE_LOCAL_MODEL_KEY];
-	// `all` is a prefetch convenience: skip models that fail before load (unsupported
-	// runtime), so the bulk download stays green when every *usable* model succeeds.
 	if (model === "all")
 		return TINY_LOCAL_MODELS.filter(spec => !("unsupportedReason" in spec) || !spec.unsupportedReason).map(
 			spec => spec.key,
@@ -71,15 +68,11 @@ export function resolveModels(model: string | undefined): TinyLocalModelKey[] {
 	return [model];
 }
 
-/** A catalog model plus its on-disk cache state, for the `list` action. */
 export interface TinyModelListing extends TinyTitleLocalModelSpec {
-	/** At least one `.onnx` weight is present, so the model can load offline. */
 	downloaded: boolean;
-	/** Total bytes the model occupies in the Transformers.js cache (0 when absent). */
 	cachedBytes: number;
 }
 
-/** Pair every catalog model with its on-disk cache state. `cacheDir` defaults to the real Transformers.js cache root; tests pass a temporary directory. */
 export async function buildTinyModelListing(cacheDir?: string): Promise<TinyModelListing[]> {
 	return Promise.all(
 		TINY_LOCAL_MODELS.map(async spec => {
@@ -117,9 +110,6 @@ function makeProgressReporter(modelKey: TinyLocalModelKey, json: boolean | undef
 		const progress = event.progress ?? lastProgress;
 		if (progress >= 0 && progress < lastProgress + 1 && event.status !== "ready") return;
 		if (progress >= 0) lastProgress = progress;
-		// Eight steps per column through the shared owner. STATIC: a one-shot
-		// `\r`-rewritten line with no render loop, so there is no clock to settle
-		// a value on — the 8x resolution is what makes the 1% reports visible.
 		const ratio = progress >= 0 ? clampLow(progress / 100, 0, 1) : 0;
 		const barWidth = 30;
 		const bar = subCellBar(ratio, barWidth);

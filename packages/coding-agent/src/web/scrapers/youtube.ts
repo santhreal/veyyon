@@ -2,7 +2,6 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { collapseWhitespace, errorMessage, ptree, Snowflake, truncate } from "@veyyon/utils";
-// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
 import type { AgentStorage } from "../../session/agent-storage";
 import { primarySessionCpuAdoption } from "../../session/cpu-limit";
@@ -18,29 +17,23 @@ interface YouTubeUrl {
 	playlistId?: string;
 }
 
-/**
- * Parse YouTube URL into components
- */
 function parseYouTubeUrl(url: string): YouTubeUrl | null {
 	try {
 		const parsed = tryParseUrl(url);
 		if (!parsed) return null;
 		const hostname = parsed.hostname.replace(/^www\./, "");
 
-		// youtube.com/watch?v=VIDEO_ID
 		if ((hostname === "youtube.com" || hostname === "m.youtube.com") && parsed.pathname === "/watch") {
 			const videoId = parsed.searchParams.get("v");
 			const playlistId = parsed.searchParams.get("list") || undefined;
 			if (videoId) return { videoId, playlistId };
 		}
 
-		// youtube.com/v/VIDEO_ID or youtube.com/embed/VIDEO_ID
 		if (hostname === "youtube.com" || hostname === "m.youtube.com") {
 			const match = parsed.pathname.match(/^\/(v|embed)\/([a-zA-Z0-9_-]{11})/);
 			if (match) return { videoId: match[2] };
 		}
 
-		// youtu.be/VIDEO_ID
 		if (hostname === "youtu.be") {
 			const videoId = parsed.pathname.slice(1).split("/")[0];
 			if (videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
@@ -48,31 +41,23 @@ function parseYouTubeUrl(url: string): YouTubeUrl | null {
 			}
 		}
 
-		// youtube.com/shorts/VIDEO_ID
 		if (hostname === "youtube.com" && parsed.pathname.startsWith("/shorts/")) {
 			const videoId = parsed.pathname.replace("/shorts/", "").split("/")[0];
 			if (videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
 				return { videoId };
 			}
 		}
-	} catch {
-		// `new URL` on operator-supplied text: unparseable means not a YouTube
-		// link, which is the `null` below.
-	}
+	} catch {}
 
 	return null;
 }
 
-/**
- * Clean VTT subtitle content to plain text
- */
 function cleanVttToText(vtt: string): string {
 	const lines = vtt.split("\n");
 	const textLines: string[] = [];
 	let lastLine = "";
 
 	for (const line of lines) {
-		// Skip WEBVTT header, timestamps, and metadata
 		if (
 			line.startsWith("WEBVTT") ||
 			line.startsWith("Kind:") ||
@@ -86,13 +71,10 @@ function cleanVttToText(vtt: string): string {
 			continue;
 		}
 
-		// Remove inline timestamp tags like <00:00:01.520>
 		let cleaned = line.replace(/<\d{2}:\d{2}:\d{2}\.\d{3}>/g, "");
-		// Remove other VTT tags like <c> </c>
 		cleaned = cleaned.replace(/<\/?[^>]+>/g, "");
 		cleaned = cleaned.trim();
 
-		// Skip duplicates (auto-generated captions often repeat)
 		if (cleaned && cleaned !== lastLine) {
 			textLines.push(cleaned);
 			lastLine = cleaned;
@@ -102,9 +84,6 @@ function cleanVttToText(vtt: string): string {
 	return collapseWhitespace(textLines.join(" "));
 }
 
-/**
- * Handle YouTube URLs - fetch metadata and transcript
- */
 export const handleYouTube: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -115,9 +94,6 @@ export const handleYouTube: SpecialHandler = async (
 	const yt = parseYouTubeUrl(url);
 	if (!yt) return null;
 
-	// Scoped so the deadline timer is cleared on settle instead of staying
-	// armed like a bare AbortSignal.timeout; the fence spans every fetch and
-	// yt-dlp invocation in the handler.
 	const handlerTimeout = scopedTimeoutSignal(timeout * 1000, userSignal);
 	const signal = handlerTimeout.signal;
 	try {
@@ -125,7 +101,6 @@ export const handleYouTube: SpecialHandler = async (
 		const notes: string[] = [];
 		const videoUrl = `https://www.youtube.com/watch?v=${yt.videoId}`;
 
-		// Prefer Parallel extract when it sits in the reader chain and creds exist
 		const fetchPreference = settings.get("providers.fetch");
 		if ((fetchPreference === "auto" || fetchPreference === "parallel") && findParallelApiKey(storage)) {
 			try {
@@ -154,14 +129,10 @@ export const handleYouTube: SpecialHandler = async (
 				}
 			} catch (error) {
 				throwIfAborted(signal);
-				// Parallel extract is the better source when it works (a real transcript rather
-				// than yt-dlp metadata), so its failure changes what the reader gets. yt-dlp
-				// still runs below, which is why this is a note and not a degrade.
 				notes.push(`Parallel extract failed (${errorMessage(error)}); used yt-dlp instead`);
 			}
 		}
 
-		// Ensure yt-dlp is available (auto-download if missing)
 		const ytdlp = await ensureTool("yt-dlp", { signal, silent: true });
 		if (!ytdlp) {
 			return {
@@ -185,7 +156,6 @@ export const handleYouTube: SpecialHandler = async (
 			onSpawnPid: primarySessionCpuAdoption(),
 		};
 
-		// Fetch video metadata
 		const metaResult = await ptree.exec(
 			[ytdlp, "--dump-json", "--no-warnings", "--no-playlist", "--skip-download", videoUrl],
 			execOptions,
@@ -216,26 +186,20 @@ export const handleYouTube: SpecialHandler = async (
 				uploadDate = meta.upload_date || "";
 				viewCount = meta.view_count || 0;
 			} catch (error) {
-				// yt-dlp answered with something that is not the JSON it documents. The result
-				// below is still built, from the fallback title alone, so the reader has to be
-				// told the metadata is missing rather than absent from the video.
 				notes.push(
 					`yt-dlp metadata was not valid JSON (${errorMessage(error)}); title and channel are unavailable`,
 				);
 			}
 		}
 
-		// Format upload date
 		let formattedDate = "";
 		if (uploadDate && uploadDate.length === 8) {
 			formattedDate = `${uploadDate.slice(0, 4)}-${uploadDate.slice(4, 6)}-${uploadDate.slice(6, 8)}`;
 		}
 
-		// Try to fetch subtitles
 		let transcript = "";
 		let transcriptSource = "";
 
-		// First, list available subtitles
 		const listResult = await ptree.exec(
 			[ytdlp, "--list-subs", "--no-warnings", "--no-playlist", "--skip-download", videoUrl],
 			execOptions,
@@ -244,12 +208,10 @@ export const handleYouTube: SpecialHandler = async (
 		const hasManualSubs = listResult.stdout.includes("[info] Available subtitles");
 		const hasAutoSubs = listResult.stdout.includes("[info] Available automatic captions");
 
-		// Create temp directory for subtitle download
 		const tmpDir = os.tmpdir();
 		const tmpBase = path.join(tmpDir, `yt-${yt.videoId}-${Snowflake.next()}`);
 
 		try {
-			// Try manual subtitles first (English preferred)
 			if (hasManualSubs) {
 				const subResult = await ptree.exec(
 					[
@@ -270,7 +232,6 @@ export const handleYouTube: SpecialHandler = async (
 				);
 
 				if (subResult.ok) {
-					// Find the downloaded subtitle file using glob
 					const subFiles = await Array.fromAsync(new Bun.Glob(`${tmpBase}*.vtt`).scan({ absolute: true }));
 					if (subFiles.length > 0) {
 						const vttContent = await Bun.file(subFiles[0]).text();
@@ -281,7 +242,6 @@ export const handleYouTube: SpecialHandler = async (
 				}
 			}
 
-			// Fall back to auto-generated captions
 			if (!transcript && hasAutoSubs) {
 				const autoResult = await ptree.exec(
 					[
@@ -312,19 +272,15 @@ export const handleYouTube: SpecialHandler = async (
 				}
 			}
 		} finally {
-			// Cleanup temp files (fire-and-forget with error suppression)
 			Array.fromAsync(new Bun.Glob(`${tmpBase}*`).scan({ absolute: true }))
 				.then(tmpFiles => Promise.all(tmpFiles.map(f => fs.unlink(f).catch(() => {}))))
 				.catch(() => {});
 		}
-		// Only a user-initiated abort is fatal; the per-fetch time budget expiring
-		// just means partial metadata/transcript, which we surface as a note.
 		throwIfAborted(userSignal);
 		if (signal?.aborted) {
 			notes.push("Fetch time budget exhausted; metadata/transcript may be incomplete");
 		}
 
-		// Build markdown output
 		let md = `# ${title}\n\n`;
 		if (channel) md += `**Channel:** ${channel}\n`;
 		if (formattedDate) md += `**Uploaded:** ${formattedDate}\n`;
@@ -333,7 +289,6 @@ export const handleYouTube: SpecialHandler = async (
 		md += `**Video ID:** ${yt.videoId}\n\n`;
 
 		if (description) {
-			// Truncate long descriptions
 			const descPreview = truncate(description, 1000);
 			md += `---\n\n## Description\n\n${descPreview}\n\n`;
 		}

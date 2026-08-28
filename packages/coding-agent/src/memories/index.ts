@@ -19,7 +19,6 @@ import {
 } from "@veyyon/utils";
 import { isSessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
 
-/** Clamp an internal fixed memory-pass effort to the model's ladder, saying so when the level moves. Memory passes request Low/Medium by convention; rows */
 function clampMemoryEffort(model: Model, requested: Effort): Effort | undefined {
 	const clamped = clampThinkingLevelForModel(model, requested);
 	if (clamped !== requested) {
@@ -37,9 +36,6 @@ import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model
 import { DEFAULT_MODEL_SLOT } from "../config/model-roles";
 import type { Settings } from "../config/settings";
 
-// The path layout lives in its own leaf: this module reaches 558 modules (it asks a model to
-// summarise a session), and `internal-urls/memory-protocol` needs only the root. Re-exported so
-// every existing caller keeps asking this file for it.
 export { getMemoryRoot } from "./paths";
 
 import type { MemoryBackendSaveInput, MemoryBackendSaveResult } from "../memory-backend/types";
@@ -144,7 +140,6 @@ interface ConsolidationOutputSchema {
 	skills: ConsolidationSkillSchema[];
 }
 
-/** Start the background memory startup pipeline. Skips for ephemeral sessions, subagent sessions, disabled settings, or DB failures. */
 export function startMemoryStartupTask(options: {
 	session: AgentSession;
 	settings: Settings;
@@ -212,10 +207,7 @@ async function readMemoryToolDeveloperInstructionsSnapshot(
 	let summary = "";
 	try {
 		summary = (await Bun.file(path.join(memoryRoot, "memory_summary.md")).text()).trim();
-	} catch {
-		// Missing or unreadable summary — injection is best-effort; fall through
-		// so any captured lessons still surface on their own.
-	}
+	} catch {}
 	const learned = await readLearnedLessons(memoryRoot);
 	return { summary, learned };
 }
@@ -232,7 +224,6 @@ function renderMemoryToolDeveloperInstructionsSnapshot(
 	const summaryOut = snapshot.summary
 		? truncateByApproxTokens(snapshot.summary, cfg.summaryInjectionTokenLimit).trim()
 		: "";
-	// Lessons share ONE injection budget with the summary so the combined block stays within `summaryInjectionTokenLimit` (~4 chars/token, matching
 	const learnedBudget = Math.max(0, cfg.summaryInjectionTokenLimit - Math.ceil(summaryOut.length / 4));
 	const learnedOut =
 		snapshot.learned && learnedBudget > 0 ? truncateByApproxTokens(snapshot.learned, learnedBudget).trim() : "";
@@ -255,12 +246,10 @@ function cacheMemoryToolDeveloperInstructions(
 	return value;
 }
 
-/** Drop the per-session memory instruction snapshot after explicit memory state changes that must affect the active conversation immediately, such as */
 export function clearMemoryToolDeveloperInstructionsCache(session: MemoryInstructionSession | undefined): void {
 	if (session) memoryToolDeveloperInstructionsBySession.delete(session);
 }
 
-/** Refresh the active session's consolidated-memory snapshot after startup maintenance. Startup may finish after the first prompt build and write `memory_summary.md`; */
 export async function refreshMemoryToolDeveloperInstructionsCacheAfterStartup(
 	session: MemoryInstructionSession,
 	agentDir: string,
@@ -277,9 +266,6 @@ export async function refreshMemoryToolDeveloperInstructionsCacheAfterStartup(
 	cacheMemoryToolDeveloperInstructions(session, sessionFile, snapshot, settings);
 }
 
-/**
- * Build memory usage instructions for prompt injection.
- */
 export async function buildMemoryToolDeveloperInstructions(
 	agentDir: string,
 	settings: Settings,
@@ -299,9 +285,6 @@ export async function buildMemoryToolDeveloperInstructions(
 	return cacheMemoryToolDeveloperInstructions(session, sessionFile, snapshot, settings);
 }
 
-/**
- * Clear all persisted memory state and generated artifacts.
- */
 export async function clearMemoryData(agentDir: string, cwd: string): Promise<void> {
 	const db = openMemoryDb(getAgentDbPath(agentDir));
 	try {
@@ -312,9 +295,6 @@ export async function clearMemoryData(agentDir: string, cwd: string): Promise<vo
 	await fs.rm(getMemoryRoot(agentDir, cwd), { recursive: true, force: true });
 }
 
-/**
- * Force-enqueue global consolidation maintenance work.
- */
 export function enqueueMemoryConsolidation(agentDir: string, cwd: string, sourceUpdatedAt = unixNow()): void {
 	const db = openMemoryDb(getAgentDbPath(agentDir));
 	try {
@@ -665,9 +645,7 @@ async function collectThreads(session: AgentSession, currentThreadId?: string): 
 				}
 				break;
 			}
-		} catch {
-			// ignore malformed session files
-		}
+		} catch {}
 
 		if (currentThreadId && id === currentThreadId) continue;
 		threads.push({
@@ -714,7 +692,6 @@ function extractPersistableMessages(payload: string): PersistableMemoryMessage[]
 		const role = row.message.role;
 		if (!isPersistableMemoryRole(role)) continue;
 
-		// The memory model is a text-only summarizer. Project the untrusted persisted message onto this raw allowlist before any provider attempt. Image bytes, provider replay payloads,
 		const text = extractMemoryMessageText(row.message);
 		if (role === "toolResult") {
 			const toolName = row.message.toolName;
@@ -757,9 +734,6 @@ async function runStage1Job(options: {
 		const rawSystemPrompt = memoriesPrompts["memories/stage_one_system"].text;
 		const providerContext: Context = { messages: [] };
 		const refreshProviderContext = (): void => {
-			// Rebuild from the raw allowlisted projection after every credential await. Sanitizing
-			// each complete string before JSON serialization and head-tail truncation prevents
-			// either lossy step from splitting a secret into no-longer-matchable fragments.
 			const providerItems = rawPersisted.flatMap(item => {
 				const text = sanitize(item.text);
 				if (item.role === "toolResult" && text.length > 32_000) return [];
@@ -868,7 +842,6 @@ function buildRawMemoriesMarkdown(outputs: Stage1OutputRow[]): string {
 	return `# Raw Memories\n\n${blocks.join("\n")}`;
 }
 
-/** The rollout-summary section of the consolidation prompt. EVERY SENTENCE THIS RETURNS IS READ BY THE MODEL AS FACT, which is why neither failure below may end */
 export async function readRolloutSummaries(memoryRoot: string): Promise<string> {
 	const summariesDir = path.join(memoryRoot, "rollout_summaries");
 	let names: string[];
@@ -889,9 +862,6 @@ export async function readRolloutSummaries(memoryRoot: string): Promise<string> 
 		try {
 			text = await Bun.file(path.join(summariesDir, name)).text();
 		} catch (error) {
-			// Named individually so an operator can fix the specific file. A summary that is PRESENT and
-			// empty is a different thing and is skipped below without a word: it was written with no
-			// content, and reporting it as unreadable would send someone after a file that is fine.
 			logger.warn("Memory rollout summary could not be read", { file: name, error: String(error) });
 			unreadable.push(name);
 			continue;
@@ -906,8 +876,6 @@ export async function readRolloutSummaries(memoryRoot: string): Promise<string> 
 		return "No rollout summaries yet.";
 	}
 	if (unreadable.length > 0) {
-		// The mixed case is the likely one and the hardest to notice, because the section LOOKS populated.
-		// The gap is named in the same text the model reads, not only in the log.
 		blocks.push(
 			`--- unreadable ---\n${unreadable.length} further summaries could not be read: ${unreadable.join(", ")}`,
 		);
@@ -934,8 +902,6 @@ async function runConsolidationModel(options: {
 }> {
 	const { memoryRoot, model, apiKey } = options;
 	const sanitize = options.obfuscateProviderText ?? ((text: string) => text);
-	// Keep the complete source strings intact across awaited I/O. The attempt builder below
-	// resolves the live sanitizer only after credentials and before truncation/rendering.
 	const rawMemories = await Bun.file(path.join(memoryRoot, "raw_memories.md")).text();
 	const rawRolloutSummaries = await readRolloutSummaries(memoryRoot);
 	const rawSystemPrompt = memoriesPrompts["memories/consolidation_system"].text;
@@ -1059,7 +1025,6 @@ async function applyConsolidation(
 	}
 }
 
-/** Every file under `rootDir`, as paths relative to it. `readdirIfPresent` rather than a bare catch: absence is an answer here (a memory root with no skills */
 async function listRelativeFiles(rootDir: string, prefix = ""): Promise<string[]> {
 	const entries = await readdirIfPresent(rootDir, "existing memory files");
 	const files: string[] = [];
@@ -1075,7 +1040,6 @@ async function listRelativeFiles(rootDir: string, prefix = ""): Promise<string[]
 	return files;
 }
 
-/** Remove directories under `rootDir` that consolidation left empty. THE LISTING FAILURE IS NOT AN EMPTY DIRECTORY, and reading it as one deleted live data. The old code */
 async function pruneEmptyDirectories(rootDir: string): Promise<void> {
 	const entries = await readdirIfPresent(rootDir, "empty memory directories to prune");
 	for (const entry of entries) {
@@ -1201,7 +1165,6 @@ function redactSecrets(input: string): string {
 		/(?:sk|pk|rk|tok|key|secret|token|password)[-_A-Za-z0-9]{12,}/g,
 		/[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}/g,
 		/(?:AKIA|ASIA)[A-Z0-9]{16}/g,
-		// Common provider token prefixes (GitHub, npm, Slack, Google).
 		/(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/g,
 		/github_pat_[A-Za-z0-9_]{20,}/g,
 		/npm_[A-Za-z0-9]{30,}/g,
@@ -1273,8 +1236,6 @@ function sanitizeSkillRelativePath(rawPath: string): string | undefined {
 }
 
 function refreshProviderContextForApiKey(apiKey: ApiKey, refresh: () => void): ApiKey {
-	// Populate once for static keys and test seams. Resolver-backed keys refresh again only after
-	// every awaited credential resolution, immediately before completeSimple starts that attempt.
 	refresh();
 	if (typeof apiKey === "string") return apiKey;
 	return async context => {
@@ -1341,15 +1302,11 @@ function loadMemoryConfig(settings: Settings): MemoryRuntimeConfig {
 	};
 }
 
-/** Filename of the captured-lessons file under a project's memory root. Written by the `learn` tool via {@link saveLearnedLesson} and read back by */
 const LEARNED_LESSONS_FILE = "learned.md";
-/** Newest-first cap on retained lessons, bounding file growth by entry count. */
 const MAX_LEARNED_LESSONS = 100;
-/** Per-field char caps so a single huge capture can't bloat learned.md. */
 const MAX_LEARNED_CONTENT_CHARS = 2000;
 const MAX_LEARNED_CONTEXT_CHARS = 400;
 
-/** Strip prompt-injection vectors from a single line of lesson text: control/ format chars, angle brackets (`</skills>`), backticks, and `~~~` fences, then */
 function neutralizeInjection(text: string): string {
 	return text
 		.replace(/[\p{Cc}\p{Cf}]/gu, " ")
@@ -1359,22 +1316,18 @@ function neutralizeInjection(text: string): string {
 		.trim();
 }
 
-/** Slice to `maxChars`, dropping a trailing unpaired high surrogate. */
 function boundChars(text: string, maxChars: number): string {
 	if (text.length <= maxChars) return text;
 	const sliced = text.slice(0, maxChars);
 	return /[\uD800-\uDBFF]$/.test(sliced) ? sliced.slice(0, -1) : sliced;
 }
 
-/** Normalize one lesson field for storage: neutralize injection delimiters FIRST, then redact secrets (so delimiter stripping can't reassemble a token */
 function normalizeLearnedText(text: string, maxChars: number): string {
 	return boundChars(redactSecrets(neutralizeInjection(text)).trim(), maxChars);
 }
 
-/** Per-path write chains serializing `learned.md` read-modify-write. */
 const learnedWriteChains = new Map<string, Promise<unknown>>();
 
-/** Append one lesson to the project's `learned.md` (newest-first, deduped, capped, secret-redacted, injection-neutralized). The file backs the `learn` */
 export async function saveLearnedLesson(
 	agentDir: string,
 	cwd: string,
@@ -1388,20 +1341,12 @@ export async function saveLearnedLesson(
 	const line = context ? `- ${content} _(context: ${context})_` : `- ${content}`;
 	const filePath = path.join(getMemoryRoot(agentDir, cwd), LEARNED_LESSONS_FILE);
 
-	// Serialize the read-modify-write per file: parallel `learn` calls (sibling
-	// subagents, or two shared tool calls in one turn) share the project memory
-	// root, so an unguarded RMW would let the last writer drop the other's lesson.
 	const run = (learnedWriteChains.get(filePath) ?? Promise.resolve()).then(() => appendLearnedLine(filePath, line));
-	// `guarded` only keeps the chain alive for the NEXT writer; the failure itself is not swallowed,
-	// because `await run` below rethrows it to this caller. Without the guard one failed append would
-	// reject every later lesson on the same file.
 	const guarded = run.catch(() => {});
 	learnedWriteChains.set(filePath, guarded);
 	try {
 		await run;
 	} finally {
-		// Drop the entry once this write is the chain tail, so the map does not
-		// retain one promise per distinct memory root for the process lifetime.
 		if (learnedWriteChains.get(filePath) === guarded) learnedWriteChains.delete(filePath);
 	}
 	return { backend: "local", stored: 1, message: `Lesson saved to ${LEARNED_LESSONS_FILE}.` };
@@ -1422,7 +1367,6 @@ async function appendLearnedLine(filePath: string, line: string): Promise<void> 
 	await Bun.write(filePath, `${lessons.join("\n")}\n`);
 }
 
-/** Read `learned.md`, neutralizing each line on read too — a hand-edited or pre-existing file bypasses write-time normalization and the block renders */
 async function readLearnedLessons(memoryRoot: string): Promise<string> {
 	let raw = "";
 	try {
@@ -1431,8 +1375,6 @@ async function readLearnedLessons(memoryRoot: string): Promise<string> {
 		return "";
 	}
 	if (!raw) return "";
-	// Neutralize delimiters THEN redact per line — mirrors the write path so a
-	// hand-edited line cannot reassemble a token after delimiter stripping.
 	return raw
 		.split("\n")
 		.map(line => redactSecrets(neutralizeInjection(line)))

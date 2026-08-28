@@ -36,21 +36,17 @@ type WizardPhase = "splash" | "transition" | "scene" | "outro" | "done";
 
 const SCENE_MARGIN_X = 4;
 const MIN_CONTENT_WIDTH = 20;
-/** Cross-dissolve duration from the splash into the first scene. */
 const SCENE_TRANSITION_MS = 420;
 
-/** In-scene hints for a scene that declares none: a list you move through and confirm. Scenes with other keys declare their own through */
 const DEFAULT_SCENE_HINTS: readonly SetupKeyHint[] = [
 	{ keys: "↑↓", label: "select" },
 	{ keys: "enter", label: "confirm" },
 ];
 
-/** Chip ids for the three keys the wizard itself acts on. */
 const CHIP_BACK = "back";
 const CHIP_SKIP = "skip";
 const CHIP_LEAVE = "leave";
 
-/** A hint as one chip label: the key, then what it does. */
 function hintLabel(hint: SetupKeyHint): string {
 	return `${hint.keys} ${hint.label}`;
 }
@@ -59,13 +55,11 @@ function indentLine(line: string, width: number, indent: number): string {
 	const prefix = padding(Math.min(indent, Math.max(0, width - 1)));
 	return padLineToWidth(prefix + line, width);
 }
-/** Stable per-row jitter in [0,1) for the dissolve reveal order. */
 function rowNoise(y: number): number {
 	const h = Math.imul(y ^ 0x9e3779b9, 2654435761);
 	return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
 }
 
-/** Top-biased cross-dissolve between two equal-height frames. As `progress` (0..1) advances, each row flips from `from` to `to` once it crosses a per-row */
 function dissolveFrames(from: string[], to: string[], progress: number, height: number): string[] {
 	const eased = progress * progress * (3 - 2 * progress);
 	const denom = Math.max(1, height - 1);
@@ -85,16 +79,12 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 	#timer: NodeJS.Timeout | undefined;
 	#done = Promise.withResolvers<void>();
 	#disposed = false;
-	/** Screen row where the active scene's body began in the last rendered frame. */
 	#bodyRowStart = 0;
-	/** Left margin of the scene column in the last rendered frame. */
 	#bodyMarginX = SCENE_MARGIN_X;
-	/** Frame to dissolve FROM when moving scene-to-scene. */
 	#transitionFrom: string[] | undefined;
 	#lastWidth = 0;
 	#lastHeight = 0;
 	#sceneFocusTarget: Component | undefined;
-	/** Clickable footer chips of the last rendered frame, in screen coordinates. */
 	#footerHitRects: ShortcutHitRect[] = [];
 	#hoveredChipId: string | null = null;
 
@@ -139,7 +129,6 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 			return;
 		}
 		if (this.#phase === "splash") {
-			// Esc means the same thing on the splash as it does on every step: leave setup. It used to START the wizard here, alongside Enter and
 			if (matchesKey(data, "escape")) {
 				this.#beginOutro();
 				return;
@@ -160,14 +149,12 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 			}
 			return;
 		}
-		// While the scene is still animating in (the splash auto-advances after SETUP_SPLASH_MS), swallow confirm keys: a late "press enter to skip"
 		if (
 			this.#phase === "transition" &&
 			(matchesKey(data, "enter") || matchesKey(data, "return") || matchesKey(data, "space"))
 		) {
 			return;
 		}
-		// Esc leaves setup. It used to fall through to the active scene, where no scene claimed it, so the only advertised way out was ctrl+c, a key
 		if (matchesKey(data, "escape")) {
 			if (this.#activeScene?.escapeAction?.()) {
 				this.#activeScene.handleInput?.(data);
@@ -187,7 +174,6 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		this.#activeScene?.handleInput?.(data);
 	}
 
-	/** Mouse handling for the fullscreen wizard (SGR tracking is on while the overlay holds the alternate screen). The frame paints from screen row 0, */
 	#routeMouseEvent(event: SgrMouseEvent): void {
 		if (this.#phase === "splash" || this.#phase === "outro") {
 			if (!event.leftClick) return;
@@ -249,11 +235,9 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		}
 		this.#lastWidth = safeWidth;
 		this.#lastHeight = height;
-		// The wizard owns the whole viewport: every row is padded to the full width so the layout stays rectangular, and closed with a reset so no styling
 		return this.#fitToScreen(lines, safeWidth, height).map(line => `${line}${SGR_RESET}`);
 	}
 
-	/** The progress breadcrumb: every step named, the current one lit. It used to be `█ ▓ · · · step 3 of 5`, which said where you were and */
 	#renderProgress(width: number): string {
 		const total = this.scenes.length;
 		if (total <= 1) return "";
@@ -272,7 +256,6 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		return visibleWidth(line) <= width ? line : theme.fg("dim", `step ${current + 1} of ${total}`);
 	}
 
-	/** The footer's key chips for the frame being rendered. The active scene owns the keys that act inside it (select, toggle, switch */
 	#footerShortcuts(): ModalShortcut[] {
 		const inScene = this.#activeScene?.keyHints?.() ?? DEFAULT_SCENE_HINTS;
 		const isLastScene = this.#sceneIndex >= this.scenes.length - 1;
@@ -291,17 +274,14 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		return chips;
 	}
 
-	/** The chip rows for this frame, wrapped to the width instead of cut. It used to be one row, truncated. At 80 columns the six hints of the */
 	#footerLayout(width: number): ShortcutLayoutRow[] {
 		return layoutShortcutRows(this.#footerShortcuts(), width, this.#hoveredChipId);
 	}
 
-	/** The clickable chip under a screen coordinate, if the pointer is on one. */
 	#chipAt(row: number, col: number): ShortcutHitRect | undefined {
 		return this.#footerHitRects.find(rect => rect.row === row && col >= rect.colStart && col < rect.colEnd);
 	}
 
-	/** A chip does exactly what its key does. */
 	#runFooterChip(id: string): void {
 		if (id === CHIP_BACK) this.#previousScene();
 		else if (id === CHIP_SKIP) this.#finishScene();
@@ -316,8 +296,6 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		const marginX = Math.max(0, Math.floor((width - contentWidth) / 2));
 		this.#bodyMarginX = marginX;
 		const sun = sunMark(15, 5, { trueColor: TERMINAL.trueColor });
-		// One centered column: the sun, the wordmark in the terminal's own font,
-		// the breadcrumb, then the scene — nothing floats, everything breathes.
 		const progress = this.#renderProgress(contentWidth);
 		const header = [
 			"",
@@ -328,7 +306,6 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 			indentLine(theme.bold(title), width, marginX),
 		];
 		if (subtitle) {
-			// Wrapped, not cut. The approvals step's subtitle is 76 columns of prose and the content column is 72 at an 80-column terminal, so the
 			for (const line of wrapTextWithAnsi(subtitle, contentWidth)) {
 				header.push(indentLine(theme.fg("muted", line), width, marginX));
 			}
@@ -339,7 +316,6 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		const chipRows = this.#footerLayout(contentWidth);
 		const footer = ["", ...chipRows.map(row => indentLine(row.styled, width, marginX))];
 		const maxBodyLines = Math.max(0, height - header.length - footer.length);
-		// The scene is told its row budget so it can size its own list to the viewport. A scene that still overruns is clipped, but never silently:
 		const rendered = this.#activeScene?.render(contentWidth, maxBodyLines) ?? [];
 		const body = this.#clipBody(rendered, maxBodyLines);
 		const lines = header.concat(body.map(line => indentLine(line, width, marginX)));
@@ -352,7 +328,6 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		return lines;
 	}
 
-	/** Where this frame put its clickable chips, so the next report can be turned back into the key the chip stands for. The chip strip closes the frame, so */
 	#recordChipRects(rows: readonly ShortcutLayoutRow[], frameRows: number, marginX: number, height: number): void {
 		this.#footerHitRects = [];
 		const firstRow = frameRows - rows.length;
@@ -371,7 +346,6 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		}
 	}
 
-	/** Fit a scene's rows into its budget, replacing the last kept row with a count when rows are dropped, so an overrun is visible instead of a frame */
 	#clipBody(lines: readonly string[], budget: number): string[] {
 		if (budget <= 0) return [];
 		if (lines.length <= budget) return lines.slice();
@@ -444,7 +418,6 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		this.ctx.ui.requestRender();
 	}
 
-	/** Enter the first scene through a dissolve from the splash. */
 	#beginScene(): void {
 		this.#transitionFrom = undefined;
 		this.#mountSceneController("transition");
@@ -452,7 +425,6 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 
 	#finishScene(): void {
 		if (this.#phase !== "scene" && this.#phase !== "transition") return;
-		// Dissolve into the next scene: capture this frame before unmounting.
 		if (this.#lastWidth > 0 && this.#sceneIndex + 1 < this.scenes.length) {
 			this.#transitionFrom = this.#renderScene(this.#lastWidth, this.#lastHeight);
 			this.#unmountActiveScene();
@@ -478,7 +450,6 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 
 	#unmountActiveScene(): void {
 		this.#sceneFocusTarget = undefined;
-		// A scene may return a promise here (the theme and glyph steps hand back a live preview asynchronously). Unmounting must not block the next scene's
 		void this.#activeScene?.onUnmount?.();
 		this.#activeScene?.dispose?.();
 		this.#activeScene = undefined;

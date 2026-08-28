@@ -22,10 +22,8 @@ interface InputState {
 	cursor: number;
 }
 
-/** Default character a masked input renders in place of each grapheme typed. */
 export const DEFAULT_MASK_CHAR = "•";
 
-/** Project a value to its masked form and map cursor position. */
 export function maskValue(value: string, cursor: number, maskChar: string): { value: string; cursor: number } {
 	let masked = "";
 	let maskedCursor = 0;
@@ -36,35 +34,24 @@ export function maskValue(value: string, cursor: number, maskChar: string): { va
 	return { value: masked, cursor: Math.min(maskedCursor, masked.length) };
 }
 
-/**
- * Input component - single-line text input with horizontal scrolling
- */
 export class Input implements Component, Focusable {
 	#value: string = "";
 	#cursor: number = 0; // Cursor position in the value
 	#useTerminalCursor = false;
-	/** When set, mask displayed characters with this character. */
 	mask: string | undefined;
-	/** Byte-preserving paste mode for credentials. */
 	credentialMode = false;
-	/** Rendered before the editable area; set to "" for chrome-less embedding. */
 	prompt = "> ";
 	onSubmit?: (value: string) => void;
 	onEscape?: () => void;
-	/** Optional cancel matcher evaluated after bracketed-paste framing. */
 	isEscapeInput?: (data: string) => boolean;
 
-	/** Focusable interface - set by TUI when focus changes */
 	focused: boolean = false;
 
-	// Bracketed paste mode buffering
 	#pasteHandler = new BracketedPasteHandler();
 
-	// Kill ring for Emacs-style kill/yank operations
 	#killRing = new KillRing();
 	#lastAction: "kill" | "yank" | "type-word" | null = null;
 
-	// Undo support
 	#undoStack: InputState[] = [];
 
 	getValue(): string {
@@ -73,7 +60,6 @@ export class Input implements Component, Focusable {
 
 	setValue(value: string): void {
 		this.#value = value;
-		// Callers seed or replace the value wholesale; typing continues at the end.
 		this.#cursor = value.length;
 	}
 
@@ -86,19 +72,13 @@ export class Input implements Component, Focusable {
 	}
 
 	handleInput(data: string): void {
-		// Handle bracketed paste mode
 		const paste = this.#pasteHandler.process(data);
 		if (paste.handled) {
-			// Bytes before the start marker are ordinary input; route them straight
-			// to key handling (never back through the paste gate, which would fold
-			// them into the active buffer).
 			if (paste.prefix !== undefined && paste.prefix.length > 0) {
 				this.#handleKeyInput(paste.prefix);
 			}
 			if (paste.pasteContent !== undefined) {
 				this.#handlePaste(paste.pasteContent);
-				// `remaining` follows a completed paste and may itself begin another
-				// paste, so it goes through the full gate.
 				if (paste.remaining.length > 0) {
 					this.handleInput(paste.remaining);
 				}
@@ -117,19 +97,16 @@ export class Input implements Component, Focusable {
 			return;
 		}
 
-		// Undo
 		if (kb.matches(data, "tui.editor.undo")) {
 			this.#undo();
 			return;
 		}
 
-		// Submit
 		if (kb.matches(data, "tui.input.submit") || isLoneLineFeed(data)) {
 			if (this.onSubmit) this.onSubmit(this.#value);
 			return;
 		}
 
-		// Deletion
 		if (kb.matches(data, "tui.editor.deleteCharBackward")) {
 			this.#handleBackspace();
 			return;
@@ -160,7 +137,6 @@ export class Input implements Component, Focusable {
 			return;
 		}
 
-		// Kill ring actions
 		if (kb.matches(data, "tui.editor.yank")) {
 			this.#yank();
 			return;
@@ -170,7 +146,6 @@ export class Input implements Component, Focusable {
 			return;
 		}
 
-		// Cursor movement
 		if (kb.matches(data, "tui.editor.cursorLeft")) {
 			this.#lastAction = null;
 			if (this.#cursor > 0) {
@@ -218,15 +193,12 @@ export class Input implements Component, Focusable {
 			return;
 		}
 
-		// Regular character input, including Kitty CSI-u text-producing sequences.
 		const printableText = extractPrintableText(data);
 		if (printableText) {
 			this.#insertCharacter(printableText);
 		}
 	}
 
-	/** Apply terminal paste semantics to text from non-bracketed paste transports
-	 *  (e.g. kitty's OSC 5522 enhanced clipboard read). Mirrors `Editor.pasteText`. */
 	pasteText(text: string): void {
 		this.#handlePaste(text);
 	}
@@ -239,7 +211,6 @@ export class Input implements Component, Focusable {
 				break;
 			}
 		}
-		// Undo coalescing: consecutive word typing coalesces into one undo unit.
 		if (!isWordChunk || this.#lastAction !== "type-word") {
 			this.#pushUndo();
 		}
@@ -317,7 +288,6 @@ export class Input implements Component, Focusable {
 			return;
 		}
 
-		// Save state before cursor movement (moveWordBackwards resets lastAction).
 		const wasKill = this.#lastAction === "kill";
 		this.#pushUndo();
 
@@ -339,7 +309,6 @@ export class Input implements Component, Focusable {
 			return;
 		}
 
-		// Save state before cursor movement (moveWordForwards resets lastAction).
 		const wasKill = this.#lastAction === "kill";
 		this.#pushUndo();
 
@@ -419,7 +388,6 @@ export class Input implements Component, Focusable {
 		this.#lastAction = null;
 		this.#pushUndo();
 
-		// Preserve raw bytes for credentials; apply single-line cleanup otherwise.
 		const insertedText = this.credentialMode
 			? pastedText
 			: replaceTabs(
@@ -432,12 +400,9 @@ export class Input implements Component, Focusable {
 		this.#cursor += insertedText.length;
 	}
 
-	invalidate(): void {
-		// No cached state to invalidate currently
-	}
+	invalidate(): void {}
 
 	render(width: number): readonly string[] {
-		// Calculate visible window
 		const prompt = this.prompt;
 		const availableWidth = width - visibleWidth(prompt);
 
@@ -445,19 +410,16 @@ export class Input implements Component, Focusable {
 			return [prompt];
 		}
 
-		// Apply mask if configured.
 		const effectiveMask = this.credentialMode ? (this.mask ?? DEFAULT_MASK_CHAR) : this.mask;
 		const { value: sourceValue, cursor: cursorIndex } =
 			effectiveMask === undefined
 				? { value: this.#value, cursor: this.#cursor }
 				: maskValue(this.#value, this.#cursor, effectiveMask);
-		// Ensure we always have a grapheme to invert at the cursor (space at end).
 		const displayValue = cursorIndex >= sourceValue.length ? `${sourceValue} ` : sourceValue;
 
 		const totalCols = visibleWidth(displayValue);
 		const cursorCols = visibleWidth(displayValue.slice(0, cursorIndex));
 
-		// Width of the grapheme at the cursor, for ensuring it fits in the viewport.
 		const cursorIter = segmenter.segment(displayValue.slice(cursorIndex))[Symbol.iterator]();
 		const cursorG = cursorIter.next().value?.segment ?? " ";
 		const cursorGWidth = visibleWidth(cursorG);
@@ -468,7 +430,6 @@ export class Input implements Component, Focusable {
 			const half = Math.floor(availableWidth / 2);
 			startCol = clampLow(cursorCols - half, 0, maxStart);
 
-			// Ensure the cursor grapheme is inside the viewport (and fits fully if wide).
 			const maxCursorRel = Math.max(0, availableWidth - cursorGWidth);
 			const cursorRel = cursorCols - startCol;
 			if (cursorRel > maxCursorRel) {
@@ -481,7 +442,6 @@ export class Input implements Component, Focusable {
 		let cursorDisplay = prefixText.length;
 		cursorDisplay = clampLow(cursorDisplay, 0, visibleText.length);
 
-		// Build the visible line and insert the cursor marker at the buffer cursor.
 		let cursorGrapheme = "";
 		for (const seg of segmenter.segment(visibleText.slice(cursorDisplay))) {
 			cursorGrapheme = seg.segment;
@@ -492,11 +452,9 @@ export class Input implements Component, Focusable {
 		const atCursor = cursorGrapheme;
 		const afterCursor = visibleText.slice(cursorDisplay + atCursor.length);
 
-		// Hardware cursor marker (zero-width, emitted before the cursor cell for IME positioning)
 		const marker = this.focused ? CURSOR_MARKER : "";
 		const cursorChar = this.#useTerminalCursor ? atCursor : `\x1b[7m${atCursor || " "}\x1b[27m`;
 
-		// Clamp only the trailing text (measured in terminal cells), keeping the cursor marker intact.
 		const beforeWidth = visibleWidth(beforeCursor);
 		const cursorWidth = this.#useTerminalCursor ? visibleWidth(atCursor) : visibleWidth(atCursor || " ");
 		const remainingAfterWidth = Math.max(0, availableWidth - beforeWidth - cursorWidth);

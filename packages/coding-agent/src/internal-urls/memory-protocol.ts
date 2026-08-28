@@ -3,8 +3,6 @@ import * as path from "node:path";
 import { getAgentDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
 import { errorMessage } from "@veyyon/utils/type-guards";
-// The path layout, not the memory subsystem: `../memories` reaches 558 modules because it asks a model
-// to summarise a session, and `getMemoryRoot` is a path join. `../memories/paths` is 76.
 import { getMemoryRoot } from "../memories/paths";
 import { getMnemopiSessionState, type MnemopiScopedMemoryHit, type MnemopiSessionState } from "../mnemopi/state";
 import { AgentRegistry } from "../registry/agent-registry";
@@ -15,7 +13,6 @@ import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, Ur
 const DEFAULT_MEMORY_FILE = "memory_summary.md";
 const MEMORY_NAMESPACE = "root";
 
-/** Snapshot of memory roots for every registered session, deduped. Each session has its own cwd (possibly a worktree), so subagents and main */
 export function memoryRootsFromRegistry(): string[] {
 	const agentDir = getAgentDir();
 	const roots: string[] = [];
@@ -28,7 +25,6 @@ export function memoryRootsFromRegistry(): string[] {
 	return roots;
 }
 
-/** The memory root a `memory://` read resolves against. The caller's own cwd when it threaded one. Otherwise the registry's roots, */
 function memoryRootsForContext(context?: ResolveContext): string[] {
 	if (context?.cwd) return [getMemoryRoot(getAgentDir(), context.cwd)];
 	const roots = memoryRootsFromRegistry();
@@ -50,9 +46,6 @@ function toMemoryValidationError(error: unknown): Error {
 	return new Error(message.replace("skill://", "memory://"));
 }
 
-/**
- * Resolve a memory:// URL to an absolute filesystem path under memory root.
- */
 export function resolveMemoryUrlToPath(url: InternalUrl, memoryRoot: string): string {
 	const namespace = url.rawHost || url.hostname;
 	if (!namespace) {
@@ -136,7 +129,6 @@ async function tryResolveInRoot(url: InternalUrl, memoryRoot: string): Promise<I
 	};
 }
 
-/** Snapshot of live mnemopi session states, deduplicated. A mnemopi backend always keeps its state on the {@link AgentSession} it was initialised for; */
 function mnemopiSessionStatesFromRegistry(): MnemopiSessionState[] {
 	const seen = new Set<unknown>();
 	const states: MnemopiSessionState[] = [];
@@ -153,7 +145,6 @@ function mnemopiSessionStatesFromRegistry(): MnemopiSessionState[] {
 	return states;
 }
 
-/** Look up a mnemopi memory row by id across every live session's scoped banks. First hit wins; returns `null` when the id is not stored anywhere in scope. */
 function tryResolveMnemopiMemory(id: string): MnemopiScopedMemoryHit | null {
 	for (const state of mnemopiSessionStatesFromRegistry()) {
 		const hit = state?.getScopedMemory(id);
@@ -162,7 +153,6 @@ function tryResolveMnemopiMemory(id: string): MnemopiScopedMemoryHit | null {
 	return null;
 }
 
-/** Render a mnemopi memory row as text/markdown with a small YAML-front-matter header. The frontmatter carries the metadata an agent needs to reason about */
 function renderMnemopiMemory(url: InternalUrl, hit: MnemopiScopedMemoryHit): InternalResource {
 	const { row, bank, store } = hit;
 	const meta = row.metadata == null ? "" : `metadata: ${JSON.stringify(row.metadata)}\n`;
@@ -190,7 +180,6 @@ function renderMnemopiMemory(url: InternalUrl, hit: MnemopiScopedMemoryHit): Int
 	};
 }
 
-/** Protocol handler for memory:// URLs. Resolves file-backed roots against the calling session cwd when provided. */
 export class MemoryProtocolHandler implements ProtocolHandler {
 	readonly scheme = "memory";
 	readonly immutable = true;
@@ -201,7 +190,6 @@ export class MemoryProtocolHandler implements ProtocolHandler {
 			throw new Error("memory:// URL requires a namespace: memory://root or memory://<memory-id>");
 		}
 
-		// Mnemopi rows live in SQLite banks per session, keyed by memory id. Any host other than the file-backed `root` namespace is treated as a
 		if (namespace !== MEMORY_NAMESPACE) {
 			const mnemopiStates = mnemopiSessionStatesFromRegistry();
 			if (mnemopiStates.length === 0) {
@@ -247,9 +235,6 @@ export class MemoryProtocolHandler implements ProtocolHandler {
 
 	async complete(_query?: string, context?: ResolveContext): Promise<UrlCompletion[]> {
 		const completions: UrlCompletion[] = [];
-		// An ambiguous root throws in `resolve`; a completer must not. Offering the
-		// namespace anyway would be offering a value whose read is refused, so the
-		// absence IS the honest completion.
 		let projectRoots = 0;
 		try {
 			projectRoots = memoryRootsForContext(context).length;

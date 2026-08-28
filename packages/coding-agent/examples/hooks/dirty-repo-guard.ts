@@ -1,17 +1,9 @@
-/**
- * Dirty Repo Guard Hook
- *
- * Prevents session changes when there are uncommitted git changes.
- * Useful to ensure work is committed before switching context.
- */
 import type { HookAPI, HookContext } from "@veyyon/coding-agent";
 
 async function checkDirtyRepo(pi: HookAPI, ctx: HookContext, action: string): Promise<{ cancel: boolean } | undefined> {
-	// Check for uncommitted changes
 	const { stdout, code } = await pi.exec("git", ["status", "--porcelain"]);
 
 	if (code !== 0) {
-		// Not a git repo, allow the action
 		return;
 	}
 
@@ -21,11 +13,9 @@ async function checkDirtyRepo(pi: HookAPI, ctx: HookContext, action: string): Pr
 	}
 
 	if (!ctx.hasUI) {
-		// In non-interactive mode, block by default
 		return { cancel: true };
 	}
 
-	// Count changed files
 	const changedFiles = stdout.trim().split("\n").filter(Boolean).length;
 
 	const choice = await ctx.ui.select(`You have ${changedFiles} uncommitted file(s). ${action} anyway?`, [

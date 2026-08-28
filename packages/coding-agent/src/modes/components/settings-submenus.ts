@@ -14,7 +14,6 @@ import { getSelectListTheme, theme } from "../theme/theme";
 import { handleInputOrEscape } from "./plugin-settings";
 import { MouseRoutedSubmenu } from "./select-list-mouse-routing";
 
-/** Submenu component for free-text string settings. Mirrors the ConfigInputSubmenu pattern from plugin-settings.ts. */
 export class TextInputSubmenu extends Container {
 	#input: Input;
 	#error: Text;
@@ -59,9 +58,6 @@ export class TextInputSubmenu extends Container {
 	}
 }
 
-/**
- * Submenu component for selecting from a list of options.
- */
 export class SelectSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList;
 	#previewText: Text | null = null;
@@ -80,16 +76,13 @@ export class SelectSubmenu extends MouseRoutedSubmenu {
 	) {
 		super();
 
-		// Title
 		this.addChild(new Text(theme.bold(theme.fg("accent", title)), 0, 0));
 
-		// Description
 		if (description) {
 			this.addChild(new Spacer(1));
 			this.addChild(new Text(theme.fg("muted", description), 0, 0));
 		}
 
-		// Preview (if provided)
 		if (getPreview) {
 			this.addChild(new Spacer(1));
 			this.addChild(new Text(theme.fg("muted", "Preview:"), 0, 0));
@@ -97,13 +90,10 @@ export class SelectSubmenu extends MouseRoutedSubmenu {
 			this.addChild(this.#previewText);
 		}
 
-		// Spacer
 		this.addChild(new Spacer(1));
 
-		// Select list
 		this.#selectList = new SelectList(options, Math.min(options.length, 10), getSelectListTheme());
 
-		// Pre-select current value
 		const currentIndex = options.findIndex(o => o.value === currentValue);
 		if (currentIndex !== -1) {
 			this.#selectList.setSelectedIndex(currentIndex);
@@ -135,12 +125,9 @@ export class SelectSubmenu extends MouseRoutedSubmenu {
 
 		this.addChild(this.#selectList);
 
-		// Hint
 		this.addChild(new Spacer(1));
 		this.addChild(new Text(theme.fg("dim", "  Enter to select · Esc to go back"), 0, 0));
 
-		// Optional footer component below the interactive rows, so the list never
-		// shifts while browsing.
 		if (footer) {
 			this.addChild(new Spacer(1));
 			this.addChild(footer);
@@ -153,7 +140,6 @@ export class SelectSubmenu extends MouseRoutedSubmenu {
 		}
 	}
 
-	/** The select list is the only interactive child; the base records where it lands and routes wheel/hover/click to it. */
 	mouseTarget(): SelectList {
 		return this.#selectList;
 	}

@@ -1,25 +1,5 @@
 #!/usr/bin/env bun
 import { Database } from "bun:sqlite";
-/**
- * Title-generation benchmark harness.
- *
- * Samples random first-of-session messages from the local history DB, renders
- * the shipped `title-system.md` prompt, and runs every message against a matrix
- * of title models — the on-device ONNX models (LFM2 350M/700M, Gemma 270M) via
- * the tiny-title worker, plus a remote Ollama model (Llama 3.2 3B by default).
- * Each model lane runs concurrently; within a lane requests are sequential
- * because the local worker serializes generation on one pipeline.
- *
- * Results (per-sample titles + latency, plus per-model summaries) are written
- * to a timestamped JSON file so runs can be compared later.
- *
- * Usage:
- *   bun scripts/bench-title-models.ts
- *   bun scripts/bench-title-models.ts --count 30 --seed 42
- *   bun scripts/bench-title-models.ts --models lfm2-350m,gemma-270m
- *   bun scripts/bench-title-models.ts --ollama-url http://spark.internal:11434 --ollama-models llama3.2:3b,lfm2:2.6b
- *   bun scripts/bench-title-models.ts --db ~/.veyyon/profiles/default/agent/history.db --out bench.json
- */
 import * as os from "node:os";
 import * as path from "node:path";
 import { getAgentDir, getProjectDir, prompt } from "@veyyon/utils";
@@ -31,14 +11,12 @@ import { isTinyTitleLocalModelKey } from "../src/tiny/models";
 import { normalizeGeneratedTitle } from "../src/tiny/text";
 import { shutdownTinyTitleClient, tinyTitleClient } from "../src/tiny/title-client";
 
-/** A sampled prompt with the cleaned text actually fed to the models. */
 export interface PreparedPrompt {
 	id: number;
 	raw: string;
 	input: string;
 }
 
-/** One title produced for one input by one model, with wall-clock latency. */
 export interface BenchSample {
 	id: number;
 	input: string;
@@ -46,7 +24,6 @@ export interface BenchSample {
 	ms: number;
 }
 
-/** All samples for one model plus the aggregate quality/latency summary. */
 interface BenchLane {
 	model: string;
 	transport: "local" | "ollama";
@@ -54,7 +31,6 @@ interface BenchLane {
 	summary: BenchSummary;
 }
 
-/** Aggregate stats for a lane; latency percentiles skip the cold first call. */
 interface BenchSummary {
 	count: number;
 	nulls: number;
@@ -82,12 +58,9 @@ const DEFAULT_OLLAMA_MODELS = ["llama3.2:3b", "lfm2:2.6b"];
 const MIN_INPUT_CHARS = 10;
 const MAX_INPUT_CHARS = 800;
 
-/** System prompt with examples (used for the capable Ollama model). */
 const TITLE_PROMPT_WITH_EXAMPLES = prompt.render(promptText("titles/system"), { includeExamples: true });
-/** Example-free prompt matching what the on-device worker ships to tiny models. */
 const TITLE_PROMPT_NO_EXAMPLES = prompt.render(promptText("titles/system"), { includeExamples: false });
 
-/** Deterministic mulberry32 PRNG so `--seed` reproduces a sample set. */
 function createRng(seed: number): () => number {
 	let state = seed >>> 0;
 	return () => {
@@ -99,7 +72,6 @@ function createRng(seed: number): () => number {
 	};
 }
 
-/** Pick `count` distinct random first-of-session prompts within the size band. */
 function sampleHistoryPrompts(dbPath: string, count: number, rng: () => number): { id: number; prompt: string }[] {
 	const db = new Database(dbPath, { readonly: true });
 	try {
@@ -123,7 +95,6 @@ function sampleHistoryPrompts(dbPath: string, count: number, rng: () => number):
 			seen.add(key);
 			unique.push(row);
 		}
-		// Fisher–Yates with the seeded RNG, then take the first `count`.
 		for (let i = unique.length - 1; i > 0; i--) {
 			const j = Math.floor(rng() * (i + 1));
 			[unique[i], unique[j]] = [unique[j], unique[i]];
@@ -134,7 +105,6 @@ function sampleHistoryPrompts(dbPath: string, count: number, rng: () => number):
 	}
 }
 
-/** Run one local ONNX model over every prompt (sequential; worker is single-lane). */
 async function runLocalLane(model: string, prompts: PreparedPrompt[]): Promise<BenchSample[]> {
 	const samples: BenchSample[] = [];
 	for (const item of prompts) {
@@ -145,7 +115,6 @@ async function runLocalLane(model: string, prompts: PreparedPrompt[]): Promise<B
 	return samples;
 }
 
-/** Extract the `<title>` payload from a free-form chat completion. */
 function parseChatTitle(text: string, sourceText: string): string | null {
 	if (!text || /<title\s*\/>/i.test(text)) return null;
 	const closed = /<title>([\s\S]*?)<\/title>/i.exec(text);
@@ -153,7 +122,6 @@ function parseChatTitle(text: string, sourceText: string): string | null {
 	return normalizeGeneratedTitle(closed?.[1] ?? open?.[1] ?? text, sourceText);
 }
 
-/** Run one Ollama chat model over every prompt via the /api/chat endpoint. */
 export async function runOllamaLane(
 	baseUrl: string,
 	model: string,
@@ -163,9 +131,6 @@ export async function runOllamaLane(
 	const samples: BenchSample[] = [];
 	for (const item of prompts) {
 		const started = performance.now();
-		// This is the physical remote-attempt seam. Reload every live secret source, sanitize the
-		// complete raw history string, and only then apply tiny-message truncation/normalization.
-		// A future retry must execute this loop body again rather than reuse a prepared body.
 		const runtime = await loadStandaloneSecretRuntime(secretRuntime);
 		const providerInput = preprocessTinyMessage(runtime.obfuscate(item.raw));
 		const response = await fetch(new URL("/api/chat", baseUrl), {
@@ -195,7 +160,6 @@ export async function runOllamaLane(
 	return samples;
 }
 
-/** Fold a lane's samples into latency percentiles and title-quality ratios. */
 function summarize(samples: BenchSample[]): BenchSummary {
 	const warm = samples
 		.slice(1)
@@ -271,8 +235,6 @@ async function main(): Promise<void> {
 
 	console.info(`Benchmarking ${rows.length} prompts (seed ${config.seed}) from ${config.dbPath}`);
 
-	// Each model is its own concurrent lane; the local worker still serializes
-	// its own lanes internally, but the Ollama lane genuinely runs in parallel.
 	const laneTasks: Promise<BenchLane>[] = [
 		...config.localModels.map(async (model): Promise<BenchLane> => {
 			const samples = await runLocalLane(model, prepared);
@@ -311,7 +273,6 @@ async function main(): Promise<void> {
 
 	await shutdownTinyTitleClient();
 
-	// Prompt-centric view: each row is one input with every model's title beside it.
 	const matrix = prepared.map(item => {
 		const titles: Record<string, string> = {};
 		for (const lane of lanes) titles[lane.model] = lane.samples.find(sample => sample.id === item.id)?.title ?? "∅";

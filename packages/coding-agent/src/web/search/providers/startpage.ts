@@ -10,16 +10,13 @@ import type { LoadedHtmlPage } from "./browser-page";
 import { browserFetch } from "./browser-page";
 import { classifyProviderHttpError, resolveExternalResultUrl, withHardTimeout } from "./utils";
 
-/** Startpage proxies Google's index behind a privacy frontend and serves fully server-rendered result pages — no JS challenge on the happy path. Its bot */
 const STARTPAGE_HOME_URL = "https://www.startpage.com/";
 
-/** Hosts that belong to the engine itself, so a link back into it is not a result. Matched as the host or any subdomain. */
 const STARTPAGE_OWN_HOSTS: readonly string[] = ["startpage.com"];
 const STARTPAGE_SEARCH_URL = "https://www.startpage.com/sp/search";
 const STARTPAGE_TRANSFORM_BOUNDARY = "Startpage search";
 const MAX_NUM_RESULTS = 20;
 
-/** Recency → Startpage `with_date` param. Accepts single letters; an absent value returns the unfiltered default. */
 const RECENCY_TO_STARTPAGE_WITH_DATE: Record<NonNullable<SearchParams["recency"]>, string> = {
 	day: "d",
 	week: "w",
@@ -27,21 +24,18 @@ const RECENCY_TO_STARTPAGE_WITH_DATE: Record<NonNullable<SearchParams["recency"]
 	year: "y",
 };
 
-/** One organic result lifted from the Startpage results page. */
 interface ParsedResult {
 	title: string;
 	url: string;
 	snippet?: string;
 }
 
-/** `true` when Startpage answered with a bot challenge instead of results. Two shapes exist. The older one 302s to `/en/errors/` (legacy: `/sp/captcha`), */
 function isChallengeResponse(page: LoadedHtmlPage): boolean {
 	if (/\/(?:errors|captcha)\//.test(page.url) || page.url.includes("/sp/captcha")) return true;
 	if (page.html.includes("component---src-pages-captcha") || page.html.includes("/sp/captcha")) return true;
 	return page.html.includes('id="anubis_challenge"') || page.html.includes('id="anubis_version"');
 }
 
-/** Lift the hidden inputs from the homepage's `/sp/search` form. Returns `undefined` when the form or its `sc` anti-bot token cannot be found so the */
 function parseSearchFormInputs(html: string): Record<string, string> | undefined {
 	const { document } = parseHTML(html);
 	const form = document.querySelector('form[action="/sp/search"]');
@@ -54,12 +48,10 @@ function parseSearchFormInputs(html: string): Record<string, string> | undefined
 	return inputs.sc ? inputs : undefined;
 }
 
-/** Accept only http(s) result targets that point away from Startpage itself. */
 function sanitizeResultUrl(href: string | null | undefined): string | undefined {
 	return resolveExternalResultUrl(href, STARTPAGE_HOME_URL, STARTPAGE_OWN_HOSTS);
 }
 
-/** Walk the server-rendered results page in document order. Each organic hit lives in a `div.result` container holding the title */
 function parseHtmlResults(html: string): ParsedResult[] {
 	const { document } = parseHTML(html);
 	const results: ParsedResult[] = [];
@@ -76,7 +68,6 @@ function parseHtmlResults(html: string): ParsedResult[] {
 	return results;
 }
 
-/** Fetch the homepage and lift the search form's hidden inputs. Best effort: any failure (network, non-OK status, challenge shell, markup drift) yields */
 async function fetchFormInputs(
 	fetchImpl: FetchImpl,
 	signal: AbortSignal,
@@ -190,7 +181,6 @@ async function callStartpageHtml(params: SearchParams): Promise<string> {
 	});
 }
 
-/** Execute a Startpage web search via the homepage-token form flow. */
 export async function searchStartpage(params: SearchParams): Promise<SearchResponse> {
 	const numResults = clampNumResults(
 		params.numSearchResults ?? params.limit,
@@ -212,7 +202,6 @@ export async function searchStartpage(params: SearchParams): Promise<SearchRespo
 	return { provider: "startpage", sources };
 }
 
-/** Search provider for Startpage (no API key required). */
 export class StartpageProvider extends SearchProvider {
 	readonly id = "startpage";
 	readonly label = "Startpage";

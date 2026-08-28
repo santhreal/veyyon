@@ -3,26 +3,17 @@ import * as logger from "@veyyon/utils/logger";
 import { takeRecentLoopPhase } from "@veyyon/utils/loop-phase";
 
 export interface LoopWatchdogOptions {
-	/** How far ahead each probe tick is scheduled, in ms. Default 250. */
 	intervalMs?: number;
-	/** A tick later than this past its deadline counts as a block. Default 250. */
 	thresholdMs?: number;
-	/** Monotonic clock source; injectable for tests. Default `performance.now`. */
 	now?: () => number;
-	/** Timer source; injectable for tests. Default `setTimeout`. */
 	schedule?: (cb: () => void, ms: number) => LoopWatchdogTimer;
 }
 
-/**
- * Timer handle the watchdog arms. `cancel`, when present, is invoked on stop()
- * so a stopped watchdog leaves no armed timer to wake the loop even once.
- */
 interface LoopWatchdogTimer {
 	unref?(): void;
 	cancel?(): void;
 }
 
-/** Event-loop lag probe to detect and log loop blocking stalls. */
 export class LoopWatchdog {
 	#intervalMs: number;
 	#thresholdMs: number;
@@ -31,9 +22,6 @@ export class LoopWatchdog {
 	#expected = 0;
 	#wasBlocked = false;
 	#running = false;
-	// Bumped by stop(); each scheduled tick captures the generation it was armed
-	// under and no-ops if it no longer matches, so a start()→stop()→start() cycle
-	// cannot leave the pre-stop timer chain rescheduling itself in parallel.
 	#generation = 0;
 	#handle: LoopWatchdogTimer | undefined;
 
@@ -74,9 +62,6 @@ export class LoopWatchdog {
 	#tick(generation: number): void {
 		if (!this.#running || generation !== this.#generation) return;
 		const blockedMs = this.#now() - this.#expected;
-		// Consume the recent phase every tick (block or not) so attribution is
-		// scoped to the just-elapsed interval and never carries a stale phase
-		// forward to a later, phase-less block.
 		const phase = takeRecentLoopPhase();
 		if (blockedMs > this.#thresholdMs) {
 			if (!this.#wasBlocked) {

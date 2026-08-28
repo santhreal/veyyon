@@ -1,5 +1,3 @@
-/** The system prompt as STATEMENTS, not as a document. was real. `section-registry.ts` declares sections as rows, so a section is addressable, */
-
 import { isRecord } from "@veyyon/utils";
 import { assertNoRegisteredBanners, bannerTable, renderBanner } from "./banner-grammar";
 import { SYSTEM_PROMPT_SECTIONS, TEMPLATE_SECTION_IDS } from "./section-registry";
@@ -123,47 +121,34 @@ import statementToolPolicyToolIo from "./statements/tool-policy/tool-io.md" with
 
 const SYSTEM_SECTION_BANNERS = bannerTable(SYSTEM_PROMPT_SECTIONS);
 
-/** When a statement is included. THE FORMS COMPOSE. Full tool descriptors render only when tool information exists AND native */
 export type StatementCondition =
-	/** Always in the prompt. The absence of a condition is stated rather than left implicit. */
 	| { readonly kind: "always" }
-	/** Included when `variable` is truthy, matching `{{#if variable}}`. */
 	| { readonly kind: "when"; readonly variable: string }
-	/** Included when `collection` contains `member`, matching `{{#has collection "member"}}`. */
 	| { readonly kind: "whenContains"; readonly collection: string; readonly member: string }
-	/** Included when every nested condition holds, matching nested `{{#if}}` blocks. */
 	| { readonly kind: "whenAll"; readonly conditions: readonly StatementCondition[] }
-	/** Included when any nested condition holds, matching `{{#ifAny a b}}`. */
 	| { readonly kind: "whenAny"; readonly conditions: readonly StatementCondition[] }
-	/** Included when the nested condition does NOT hold: a block-level `{{else}}` arm. */
 	| { readonly kind: "not"; readonly condition: StatementCondition };
 
-/** Row-authoring builders. Nested object literals say the same thing, and for a two-level condition they say it in four */
 export function when(variable: string): StatementCondition {
 	return { kind: "when", variable };
 }
 
-/** `{{#has collection "member"}}`. */
 export function contains(collection: string, member: string): StatementCondition {
 	return { kind: "whenContains", collection, member };
 }
 
-/** Every condition holds: nested `{{#if}}` blocks. */
 export function allOf(...conditions: readonly StatementCondition[]): StatementCondition {
 	return { kind: "whenAll", conditions };
 }
 
-/** Any condition holds: `{{#ifAny a b}}`. */
 export function anyOf(...conditions: readonly StatementCondition[]): StatementCondition {
 	return { kind: "whenAny", conditions };
 }
 
-/** The condition does not hold: a block-level `{{else}}` arm. */
 export function not(condition: StatementCondition): StatementCondition {
 	return { kind: "not", condition };
 }
 
-/** The template variables that are FACTS ABOUT THE SESSION rather than settings. A statement's condition names a variable, and that variable has to come from somewhere. Most come */
 export const SESSION_FACT_VARIABLES: Readonly<Record<string, string>> = Object.freeze({
 	skills: "the skills this session loaded, from the skill registry",
 	rules: "domain rules whose globs the session matched",
@@ -181,20 +166,14 @@ export const SESSION_FACT_VARIABLES: Readonly<Record<string, string>> = Object.f
 		"whether an obfuscator is holding secrets, so the redaction note is only shown to a session that can produce `#XXXX#` tokens",
 });
 
-/** One statement of the system prompt. */
 export interface PromptStatement {
-	/** Stable, addressable name, `<section>/<slug>`. This is the handle the whole design exists to provide: a test asserts a statement by id */
 	readonly id: string;
-	/** The section this statement belongs to, from `section-registry.ts`. */
 	readonly section: string;
 	readonly condition: StatementCondition;
-	/** The statement's exact bytes, including its trailing newline. */
 	readonly text: string;
-	/** What this statement tells the model, and why it is its own statement. */
 	readonly purpose: string;
 }
 
-/** Every system-prompt statement in model-visible order. `as const satisfies` preserves literal ids and section names for the derived */
 export const PROMPT_STATEMENTS = [
 	{
 		id: "conventions/conventions",
@@ -356,9 +335,6 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "tool-policy/inspect-image",
 		section: "tool-policy",
-		// Both tools it names: the statement is a PREFERENCE between them, so with no
-		// `read` tool it would compare the image tool against something the session
-		// cannot call and read as an instruction to use a tool that is not there.
 		condition: allOf(contains("tools", "inspect_image"), contains("tools", "read")),
 		text: statementToolPolicyInspectImage,
 		purpose: "prefers the image tool over a plain read to spare context, when both tools exist",
@@ -581,7 +557,6 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "tool-policy/delegation-allowed",
 		section: "tool-policy",
-		// The floor, and the level that had no sentence at all: the section rendered its heading, its gates and its subagent-value bullets with nothing saying when spawning is appropriate, so the
 		condition: allOf(
 			contains("tools", "task"),
 			when("hasSpawnableSubagent"),
@@ -595,7 +570,6 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "tool-policy/delegation-subagent-value",
 		section: "tool-policy",
-		// `hasSpawnableSubagent` as well as the tool, because the tool outlives the agents. It stays built with every row disabled so an ephemeral `/` command can still grant one, and this
 		condition: allOf(contains("tools", "task"), when("hasSpawnableSubagent"), not(when("useCodexTaskPrompt"))),
 		text: statementToolPolicyDelegationSubagentValue,
 		purpose:
@@ -611,9 +585,6 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "tool-policy/delegation-gates",
 		section: "tool-policy",
-		// The task tool remains built when every agent row is disabled so a direct
-		// slash command can grant one for a turn. Model-facing role guidance must
-		// disappear in that state because it has no enabled destination.
 		condition: allOf(contains("tools", "task"), when("hasSpawnableSubagent")),
 		text: statementToolPolicyDelegationGates,
 		purpose:
@@ -695,7 +666,6 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "execution-workflow/decompose-todo-batching",
 		section: "execution-workflow",
-		// The only conditioned row of the five restored here, and it is conditioned because it names a tool. Telling a session with no todo tool to batch its todo calls is instruction the
 		condition: contains("tools", "todo"),
 		text: statementExecutionDecomposeTodoBatching,
 		purpose:
@@ -762,7 +732,6 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "delivery-contract/no-partial-yield",
 		section: "delivery-contract",
-		// Unconditional on purpose. A reduced tool set does not make stopping mid-deliverable acceptable, so any gate here would recreate the defect this row exists to close: an
 		condition: { kind: "always" },
 		text: statementDeliveryNoPartialYield,
 		purpose:
@@ -826,7 +795,6 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "delivery-contract/never-stop-early",
 		section: "delivery-contract",
-		// LAST ROW OF THE LAST STATIC SECTION, deliberately. This is the final recency slot of the cached prefix, and position is part of why the instruction works; upstream states the same
 		condition: { kind: "always" },
 		text: statementDeliveryNeverStopEarly,
 		purpose:
@@ -834,15 +802,12 @@ export const PROMPT_STATEMENTS = [
 	},
 ] as const satisfies readonly PromptStatement[];
 
-/** One row, with its literal id and section intact. */
 export type PromptStatementEntry = (typeof PROMPT_STATEMENTS)[number];
 
-/** Every statement id, which is what an override, an ablation or an assertion names. */
 export type PromptStatementId = PromptStatementEntry["id"];
 
 export const PROMPT_STATEMENT_IDS: readonly PromptStatementId[] = PROMPT_STATEMENTS.map(statement => statement.id);
 
-/** Every static section whose text is supplied by statement modules. The list comes from the section registry rather than from the rows themselves. */
 export const STATEMENT_SECTIONS: readonly string[] = TEMPLATE_SECTION_IDS;
 
 {
@@ -879,22 +844,18 @@ const SECTION_BANNERS = new Map(
 	SYSTEM_PROMPT_SECTIONS.map(section => [section.id, section.name ? `${renderBanner(section.name)}\n` : ""] as const),
 );
 
-/** The statements of one section, in order. */
 export function statementsOf(section: string): readonly PromptStatementEntry[] {
 	return STATEMENTS_BY_SECTION.get(section) ?? EMPTY_STATEMENTS;
 }
 
-/** The row for an id, or `undefined`. */
 export function statementById(id: string): PromptStatementEntry | undefined {
 	return STATEMENTS_BY_ID.get(id);
 }
 
-/** Every template variable the statements depend on, deduplicated. This is what replaces regexing `system-prompt.md` to find out what the prompt gates on. A */
 export const STATEMENT_CONDITION_VARIABLES: readonly string[] = [
 	...new Set(PROMPT_STATEMENTS.flatMap(statement => conditionVariables(statement.condition))),
 ];
 
-/** The context variables a condition reads. This function takes the full condition union so every condition form stays */
 export function conditionVariables(condition: StatementCondition): readonly string[] {
 	switch (condition.kind) {
 		case "always":
@@ -911,10 +872,8 @@ export function conditionVariables(condition: StatementCondition): readonly stri
 	}
 }
 
-/** The values a condition is evaluated against: the same context the template is rendered with. */
 export type StatementContext = Readonly<Record<string, unknown>>;
 
-/** Whether `condition` holds in `context`. Truthiness matches Handlebars because statement modules still use Handlebars */
 export function conditionHolds(condition: StatementCondition, context: StatementContext): boolean {
 	switch (condition.kind) {
 		case "always":
@@ -929,25 +888,19 @@ export function conditionHolds(condition: StatementCondition, context: Statement
 			return false;
 		}
 		case "whenAll":
-			// An empty `whenAll` is `always`, which is `Array.every`'s answer and the right one: a
-			// statement gated on nothing is ungated. `statement-registry.test.ts` pins both empties
-			// so this is a decision rather than an accident of which built-in was reached for.
 			return condition.conditions.every(nested => conditionHolds(nested, context));
 		case "whenAny":
-			// And an empty `whenAny` is never, for the same reason read the other way.
 			return condition.conditions.some(nested => conditionHolds(nested, context));
 		case "not":
 			return !conditionHolds(condition.condition, context);
 	}
 }
 
-/** Handlebars' notion of truthy: `[]` and `""` are false, `0` is false, everything else is JS-truthy. */
 function isTruthy(value: unknown): boolean {
 	if (Array.isArray(value)) return value.length > 0;
 	return Boolean(value);
 }
 
-/** Assemble one static section's template text from its statements. Statement files carry their own trailing newline and are concatenated without */
 export function assembleSection(
 	section: string,
 	context: StatementContext,
@@ -956,8 +909,6 @@ export function assembleSection(
 	let out = sectionBanner(section);
 	for (const statement of statementsOf(section)) {
 		if (!conditionHolds(statement.condition, context)) continue;
-		// `Object.hasOwn`, not a truthiness check: `""` is a legitimate override meaning "keep the
-		// statement present and say nothing", and it is distinct from `null`, which ablates the row.
 		if (!Object.hasOwn(overrides, statement.id)) {
 			out += statement.text;
 			continue;
@@ -968,11 +919,8 @@ export function assembleSection(
 	return out;
 }
 
-/** A per-statement replacement map: statement id to replacement text, or `null` to ABLATE the row. questions, and they are the same experiment run two ways: remove the rule (does the model get */
 export type StatementOverrides = Readonly<Record<string, string | null>>;
 
-/** Validate a raw `statement id -> replacement` map into a typed one, failing closed on every way it could silently do nothing. */
-/** Parse the raw JSON payload of a per-statement override into a validated map. Lives here rather than in `system-prompt.ts` for the same reason */
 export function parseStatementOverridesJson(raw: string | undefined): StatementOverrides {
 	if (raw === undefined || raw.trim() === "") return {};
 	let parsed: unknown;
@@ -995,8 +943,6 @@ export function resolveStatementOverrides(raw: Readonly<Record<string, unknown>>
 	const out: Record<string, string | null> = {};
 	for (const [id, value] of Object.entries(raw)) {
 		if (statementById(id) === undefined) {
-			// The id list is long, so the message names the section's rows rather than every
-			// registered statement: an operator's typo is almost always inside the section they meant.
 			const section = id.includes("/") ? id.slice(0, id.indexOf("/")) : "";
 			const nearby = statementsOf(section).map(statement => statement.id);
 			throw new Error(
@@ -1018,12 +964,10 @@ export function resolveStatementOverrides(raw: Readonly<Record<string, unknown>>
 	return out;
 }
 
-/** The bytes a section contributes before any statement does: its banner, or nothing. Split out of {@link assembleSection} rather than inlined twice because `prompt-inspect` prices */
 export function sectionBanner(section: string): string {
 	return SECTION_BANNERS.get(section) ?? "";
 }
 
-/** A condition in one line of English, for the surfaces that show a reader why a statement is here. Lives with the condition type rather than in the inspection command because it has to stay */
 export function describeCondition(condition: StatementCondition): string {
 	switch (condition.kind) {
 		case "always":
@@ -1039,7 +983,6 @@ export function describeCondition(condition: StatementCondition): string {
 		case "whenAny":
 			return condition.conditions.length === 0 ? "never" : condition.conditions.map(describeCondition).join(" or ");
 		case "not": {
-			// Parenthesised only where it changes the reading: `not (a and b)` is not `not a and b`.
 			const inner = describeCondition(condition.condition);
 			return inner.includes(" and ") || inner.includes(" or ") ? `not (${inner})` : `not ${inner}`;
 		}

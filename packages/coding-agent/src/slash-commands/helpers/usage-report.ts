@@ -26,13 +26,8 @@ function formatUsageReportAccount(report: UsageReport, limit: UsageLimit, index:
 			: typeof metaOrgId === "string" && metaOrgId
 				? metaOrgId
 				: undefined;
-	// Two subscriptions (orgs) can share one email — suffix the org so the rows
-	// are tellable apart.
 	const email = report.metadata?.email;
 	if (typeof email === "string" && email) return org ? `${email} (${org})` : email;
-	// Guard metadata values for truthiness before using, then fall back to scope.
-	// ?? won't help here: empty string is not null/undefined, so it would suppress
-	// a valid scoped fallback (e.g. metadata.accountId="" hides limit.scope.accountId).
 	const metaAccountId = report.metadata?.accountId;
 	const accountId = typeof metaAccountId === "string" && metaAccountId ? metaAccountId : limit.scope.accountId;
 	if (typeof accountId === "string" && accountId) {
@@ -63,7 +58,6 @@ function renderUsageReports(
 	)) {
 		lines.push("", formatProviderName(provider));
 		const activeAccount = resolveActiveAccount?.(provider);
-		// Provider-wide disclaimers render once per provider, not per limit.
 		const providerNotes = Array.from(new Set(providerReports.flatMap(report => report.notes ?? [])));
 		for (const note of providerNotes)
 			lines.push(`  ${sanitizeText(note.replace(/[\r\n]+/g, " ").replace(/\t/g, "  "))}`);
@@ -107,8 +101,6 @@ function renderUsageReports(
 			for (let index = 0; index < report.limits.length; index++) {
 				const limit = report.limits[index]!;
 				const window = limit.window?.label ?? limit.scope.windowId;
-				// Skip the tier suffix when the label already names it (e.g. Anthropic's
-				// "Claude 7 Day (Fable)" with scope.tier "fable") — mirrors limitTitle in usage-cli.
 				const tier =
 					limit.scope.tier && !limit.label.toLowerCase().includes(limit.scope.tier.toLowerCase())
 						? ` (${limit.scope.tier})`
@@ -131,7 +123,6 @@ function renderUsageReports(
 	return ["```", ...lines, "```"].join("\n");
 }
 
-/** Build the `/usage` ACP-mode text. Prefers provider-reported limits when the session exposes `fetchUsageReports`; otherwise falls back to the local */
 export async function buildUsageReportText(runtime: SlashCommandRuntime): Promise<string> {
 	const provider = runtime.session as SlashCommandRuntime["session"] & {
 		fetchUsageReports?: () => Promise<UsageReport[] | null>;

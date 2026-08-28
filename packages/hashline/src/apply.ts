@@ -1,4 +1,3 @@
-/** Apply edits to file content string. */
 import {
 	afterInsertLandingShiftWarning,
 	ambiguousBoundaryEchoMessage,
@@ -26,14 +25,11 @@ function getCursorAnchors(cursor: Cursor): Anchor[] {
 	return cursor.kind === "before_anchor" || cursor.kind === "after_anchor" ? [cursor.anchor] : [];
 }
 
-/** Anchors an edit asserts against, over the full Edit union (recovery passes
- *  already-resolved edits, so its `block` arm exists for type-exhaustiveness). */
 export function getEditAnchors(edit: Edit): Anchor[] {
 	if (edit.kind === "delete" || edit.kind === "block") return [edit.anchor];
 	return getCursorAnchors(edit.cursor);
 }
 
-/** Every anchor line touched by a set of edits. */
 export function collectEditAnchorLines(edits: readonly Edit[]): number[] {
 	const lines: number[] = [];
 	for (const edit of edits) {
@@ -42,13 +38,11 @@ export function collectEditAnchorLines(edits: readonly Edit[]): number[] {
 	return lines;
 }
 
-/** Whether `edit` REWRITES the content of the lines it anchors on, as opposed to */
 export function editRewritesItsAnchor(edit: Edit): boolean {
 	if (edit.kind === "insert") return edit.mode === "replacement";
 	return true;
 }
 
-/** Anchor lines whose content this edit set replaces or deletes. */
 export function collectRewrittenAnchorLines(edits: readonly Edit[]): Set<number> {
 	const lines = new Set<number>();
 	for (const edit of edits) {
@@ -59,7 +53,6 @@ export function collectRewrittenAnchorLines(edits: readonly Edit[]): Set<number>
 }
 
 function trailingPhantomLine(fileLines: readonly string[]): number {
-	// `split("\n")` on a newline-terminated file yields a trailing "" sentinel.
 	return fileLines.length > 1 && fileLines[fileLines.length - 1] === "" ? fileLines.length : 0;
 }
 
@@ -69,10 +62,6 @@ function dropTrailingPhantomDeletes(edits: AppliedEdit[], fileLines: readonly st
 	return edits.filter(edit => edit.kind !== "delete" || edit.anchor.line !== phantomLine);
 }
 
-/**
- * Verify every anchored edit points at an existing line. File-version binding is
- * checked once per section via the header hash before this function runs.
- */
 function validateLineBounds(edits: readonly AppliedEdit[], fileLines: readonly string[]): void {
 	for (const edit of edits) {
 		for (const anchor of getEditAnchors(edit)) {
@@ -125,10 +114,8 @@ function bucketAnchorEditsByLine(edits: IndexedEdit[]): Map<number, IndexedEdit[
 	return byLine;
 }
 
-/** Returns true if line consists only of closing delimiters. */
 export const STRUCTURAL_CLOSER_RE = /^\s*[)\]}]+[;,]?\s*$/;
 
-/** Check for JSX/XML closing boundary structure. */
 const JSX_CLOSER_RE = /^\s*(?:<\/>|<\/[A-Za-z][\w.:-]*>|\/>)\s*[;,]?\s*$/;
 const JSX_NAMED_CLOSER_RE = /^\s*<\/([A-Za-z][\w.:-]*)>\s*[;,]?\s*$/;
 const JSX_FRAGMENT_CLOSER_RE = /^\s*<\/>\s*[;,]?\s*$/;
@@ -230,7 +217,6 @@ interface DelimiterBalance {
 	brace: number;
 }
 
-/** Net `()` / `[]` / `{}` delta across `lines`, skipping delimiters inside line */
 function computeDelimiterBalance(lines: readonly string[]): DelimiterBalance {
 	const balance: DelimiterBalance = { paren: 0, bracket: 0, brace: 0 };
 	let inBlockComment = false;
@@ -281,7 +267,6 @@ function computeDelimiterBalance(lines: readonly string[]): DelimiterBalance {
 					break;
 			}
 		}
-		// `"` / `'` cannot span lines; only backtick templates and block comments do.
 		if (quote === '"' || quote === "'") quote = "";
 	}
 	return balance;
@@ -321,18 +306,13 @@ function balanceCovers(candidate: DelimiterBalance, target: DelimiterBalance): b
 }
 
 interface ReplacementGroup {
-	/** Positions in the edit array of the payload inserts, in payload order. */
 	insertIndices: number[];
-	/** Positions in the edit array of the range deletes, ascending by line. */
 	deleteIndices: number[];
 	payload: string[];
-	/** First deleted line (1-indexed). */
 	startLine: number;
-	/** Last deleted line (1-indexed). */
 	endLine: number;
 }
 
-/** Group raw delete and insert edits back into replacement hunks. */
 function findReplacementGroup(edits: readonly AppliedEdit[], start: number): ReplacementGroup | undefined {
 	const first = edits[start];
 	if (first?.kind !== "insert" || first.mode !== "replacement" || first.cursor.kind !== "before_anchor") {
@@ -368,7 +348,6 @@ function findReplacementGroup(edits: readonly AppliedEdit[], start: number): Rep
 	};
 }
 
-/** Largest `k` such that the payload's last `k` lines exactly equal the `k` */
 function findDuplicateSuffix(group: ReplacementGroup, fileLines: readonly string[], delta: DelimiterBalance): number {
 	if (balanceIsZero(delta)) return 0;
 	const { payload, endLine } = group;
@@ -387,7 +366,6 @@ function findDuplicateSuffix(group: ReplacementGroup, fileLines: readonly string
 	return 0;
 }
 
-/** Find duplicate prefix or suffix lines between range and payload. */
 function findDuplicatePrefix(group: ReplacementGroup, fileLines: readonly string[], delta: DelimiterBalance): number {
 	if (balanceIsZero(delta)) return 0;
 	const { payload, startLine } = group;
@@ -515,7 +493,6 @@ function prefixCanCoverSuffixClosers(
 	return balanceCovers(uncoveredPrefixBalance, neededOpeners);
 }
 
-/** Missing segment of the range's deleted structural-closer suffix that should */
 function findDroppedSuffixClosers(
 	group: ReplacementGroup,
 	fileLines: readonly string[],
@@ -622,11 +599,7 @@ function findBoundaryEcho(group: ReplacementGroup, fileLines: readonly string[])
 	if (leadingMax === 0) return undefined;
 	const trailingMax = countDuplicateTrailingBoundaryLines(group, fileLines);
 	if (trailingMax === 0) return undefined;
-	// Bail when every payload line could be claimed by a boundary echo: any
-	// repair would strip explicit replacement content with no signal that the
-	// payload was a mistake rather than an intentional duplication.
 	if (leadingMax + trailingMax >= group.payload.length) return undefined;
-	// Balance-neutrality guard (see header comment): the dropped echo lines must
 	const leadingBalance = computeDelimiterBalance(group.payload.slice(0, leadingMax));
 	const trailingBalance = computeDelimiterBalance(group.payload.slice(group.payload.length - trailingMax));
 	const droppedBalance = balanceDelta(leadingBalance, balanceNegate(trailingBalance));
@@ -655,7 +628,6 @@ function describeBoundaryRepair(group: ReplacementGroup, action: string): string
 	);
 }
 
-/** Find duplicate prefix or suffix lines between range and payload. */
 function findOneSidedBoundaryEcho(
 	group: ReplacementGroup,
 	fileLines: readonly string[],
@@ -687,7 +659,6 @@ function describeOneSidedEchoRepair(group: ReplacementGroup, side: "leading" | "
 	);
 }
 
-/** One pass-1 outcome per source position: resolved edits (with an optional */
 type RepairSlot =
 	| { kind: "edits"; edits: AppliedEdit[]; warning?: string }
 	| {
@@ -698,7 +669,6 @@ type RepairSlot =
 			delta: DelimiterBalance;
 	  };
 
-/** Delimiter balance of the lines immediately above a group's range that are */
 function netDeletedPrefixBalance(
 	group: ReplacementGroup,
 	deletedLines: ReadonlySet<number>,
@@ -715,7 +685,6 @@ function netDeletedPrefixBalance(
 	return balanceDelta(computeDelimiterBalance(deleted), computeDelimiterBalance(inserted));
 }
 
-/** Net delimiter balance a slot contributes, computed over the slot's own */
 function slotPatchDelta(slot: RepairSlot, fileLines: readonly string[]): DelimiterBalance {
 	if (slot.kind === "candidate") return slot.delta;
 	const inserted: string[] = [];
@@ -727,7 +696,6 @@ function slotPatchDelta(slot: RepairSlot, fileLines: readonly string[]): Delimit
 	return balanceDelta(computeDelimiterBalance(inserted), computeDelimiterBalance(deleted));
 }
 
-/** Apply single-hunk replacement boundary repair. */
 function repairReplacementBoundaries(
 	edits: readonly AppliedEdit[],
 	fileLines: readonly string[],
@@ -735,10 +703,6 @@ function repairReplacementBoundaries(
 	edits: AppliedEdit[];
 	warnings: string[];
 } {
-	// Pass 1: apply every repair whose correctness is local to one group
-	// (boundary echo, duplicate prefix/suffix). Defer the missing-closer repair:
-	// it must weigh a group's imbalance against the whole patch, which is only
-	// known once the local repairs above have settled.
 	const slots: RepairSlot[] = [];
 	let i = 0;
 	while (i < edits.length) {
@@ -769,10 +733,6 @@ function repairReplacementBoundaries(
 		if (balanceIsZero(delta)) {
 			const oneSided = findOneSidedBoundaryEcho(group, fileLines);
 			if (oneSided) {
-				// A payload shorter than range+echo cannot be the widened
-				// range's full content: the repair would delete range line(s)
-				// the payload never restates, while the "shifted range"
-				// reading keeps them. Reject rather than guess.
 				if (group.payload.length < group.deleteIndices.length + oneSided.count) {
 					throw new Error(
 						ambiguousBoundaryEchoMessage(group.startLine, group.endLine, oneSided.side, oneSided.count),
@@ -871,7 +831,6 @@ function repairReplacementBoundaries(
 			insertedLineMaps,
 		);
 		if (droppedClosers) {
-			// Sparing a closer re-inserts it *after* the payload, which claims
 			const keptIndent = leadingIndent(fileLines[droppedClosers.startLine - 1] ?? "");
 			const payloadIndent = bodyTargetIndent(slot.group.payload);
 			const payloadOpens = balanceCovers(
@@ -915,7 +874,6 @@ function repairReplacementBoundaries(
 	return { edits: out, warnings };
 }
 
-/** Leading run of tabs and spaces. */
 function leadingIndent(line: string): string {
 	let end = 0;
 	while (end < line.length) {
@@ -926,25 +884,19 @@ function leadingIndent(line: string): string {
 	return line.slice(0, end);
 }
 
-/** `deeper` strictly extends `shallower` (same indent style, more depth). */
 function isIndentDeeper(deeper: string, shallower: string): boolean {
 	return deeper.length > shallower.length && deeper.startsWith(shallower);
 }
 
 interface AfterInsertGroup {
-	/** Anchor line shared by every insert row of the hunk. */
 	anchor: number;
-	/** Indices into the edit list, in patch order. */
 	members: number[];
-	/** First line of the resolved block when lowered from `insert_after_block N:`. */
 	blockStart?: number;
 }
 
-/** Depth of an after-insert hunk's body: the shallowest indentation across its */
 function bodyTargetIndent(rows: readonly string[]): string | undefined {
 	const nonBlank = rows.filter(hasNonWhitespace);
 	if (nonBlank.length === 0) return undefined;
-	// A body of pure closers re-balances delimiters; it claims no depth.
 	if (nonBlank.every(row => STRUCTURAL_CLOSER_RE.test(row))) return undefined;
 	let target = leadingIndent(nonBlank[0] ?? "");
 	for (const row of nonBlank) {
@@ -956,7 +908,6 @@ function bodyTargetIndent(rows: readonly string[]): string | undefined {
 	return target;
 }
 
-/** Resolve where an after-insert hunk anchored on `group.anchor` should land */
 function resolveShiftedLanding(
 	group: AfterInsertGroup,
 	target: string,
@@ -983,7 +934,6 @@ function resolveShiftedLanding(
 	return landing === group.anchor ? undefined : { line: landing, crossed };
 }
 
-/** Resolve where a block-lowered after-insert anchored on the block's closing */
 function resolveInwardLanding(
 	group: AfterInsertGroup,
 	target: string,
@@ -993,9 +943,6 @@ function resolveInwardLanding(
 ): number | undefined {
 	const anchorText = fileLines[group.anchor - 1];
 	if (anchorText === undefined || !hasNonWhitespace(anchorText)) return undefined;
-	// Fires only when the block ends in a pure closer the body out-indents.
-	// Blocks ending in content (indentation-only languages) already land the
-	// body inside the block — nothing to correct.
 	if (!STRUCTURAL_CLOSER_RE.test(anchorText)) return undefined;
 	if (!isIndentDeeper(target, leadingIndent(anchorText))) return undefined;
 
@@ -1009,21 +956,16 @@ function resolveInwardLanding(
 		if (!STRUCTURAL_CLOSER_RE.test(text)) break; // content reached — land right after it
 		const indent = leadingIndent(text);
 		if (!isIndentDeeper(target, indent)) break; // closer at the body's depth — land after it
-		// Another hunk owns this closer (the group's own rows put the anchor
-		// itself in `targetedLines`; that one is ours to cross).
 		if (line !== group.anchor && targetedLines.has(line)) return undefined;
 		landing = line - 1;
 	}
 	return landing === group.anchor ? undefined : landing;
 }
 
-/** Slide mis-anchored after-insert hunks to the depth their body indentation */
 function repairAfterInsertLandings(
 	edits: readonly AppliedEdit[],
 	fileLines: readonly string[],
 ): { edits: readonly AppliedEdit[]; warnings: string[] } {
-	// Group plain (non-replacement) after-anchor inserts per authored hunk:
-	// rows of one hunk share the anchor line and the patch header line.
 	const groups = new Map<string, AfterInsertGroup>();
 	edits.forEach((edit, idx) => {
 		if (edit.kind !== "insert" || edit.mode === "replacement") return;
@@ -1036,7 +978,6 @@ function repairAfterInsertLandings(
 	});
 	if (groups.size === 0) return { edits, warnings: [] };
 
-	// Lines explicitly targeted by any edit; a shift never crosses them.
 	const targetedLines = new Set<number>();
 	for (const edit of edits) {
 		if (edit.kind === "delete") targetedLines.add(edit.anchor.line);
@@ -1071,13 +1012,9 @@ function repairAfterInsertLandings(
 	return { edits: out ?? edits, warnings };
 }
 
-/** Apply a parsed list of edits to a text body. Pure function — no I/O. */
 export function applyEdits(text: string, edits: readonly Edit[]): ApplyResult {
 	if (edits.length === 0) return { text, firstChangedLine: undefined };
 
-	// Block edits are deferred until `resolveBlockEdits` expands them into
-	// concrete inserts + deletes. Reaching the applier with one still present
-	// is an internal wiring bug, not authored-input error.
 	for (const edit of edits) {
 		if (edit.kind === "block") throw new Error(UNRESOLVED_BLOCK_INTERNAL);
 	}
@@ -1099,7 +1036,6 @@ export function applyEdits(text: string, edits: readonly Edit[]): ApplyResult {
 	const { edits: landed, warnings: landingWarnings } = repairAfterInsertLandings(repaired, fileLines);
 	const warnings = boundaryWarnings.concat(landingWarnings);
 
-	// Partition edits into bof, eof, and anchor-targeted buckets.
 	const bofLines: string[] = [];
 	const eofLines: string[] = [];
 	const anchorEdits: IndexedEdit[] = [];
@@ -1113,7 +1049,6 @@ export function applyEdits(text: string, edits: readonly Edit[]): ApplyResult {
 		}
 	});
 
-	// Apply per-line buckets in one forward pass.
 	const byLine = bucketAnchorEditsByLine(anchorEdits);
 	const rebuiltLines: string[] = [];
 	for (let idx = 0; idx < fileLines.length; idx++) {

@@ -3,7 +3,6 @@ import * as AIError from "../error";
 
 const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 120_000;
 const DEFAULT_STREAM_FIRST_EVENT_TIMEOUT_MS = 100_000;
-/** Re-mint persistent race promises every N iterations (see hoisted-racer comment). */
 const RACER_REMINT_INTERVAL = 1024;
 
 function normalizeIdleTimeoutMs(value: string | undefined, fallback: number): number | undefined {
@@ -14,7 +13,6 @@ function normalizeIdleTimeoutMs(value: string | undefined, fallback: number): nu
 	return Math.trunc(parsed);
 }
 
-/** Returns the idle timeout used for provider streaming transports. */
 export function getStreamIdleTimeoutMs(fallbackMs: number = DEFAULT_STREAM_IDLE_TIMEOUT_MS): number | undefined {
 	return normalizeIdleTimeoutMs(
 		$env.VEYYON_STREAM_IDLE_TIMEOUT_MS ?? $env.VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS,
@@ -22,7 +20,6 @@ export function getStreamIdleTimeoutMs(fallbackMs: number = DEFAULT_STREAM_IDLE_
 	);
 }
 
-/** Returns the idle timeout used for OpenAI-family streaming transports. */
 export function getOpenAIStreamIdleTimeoutMs(fallbackMs: number = DEFAULT_STREAM_IDLE_TIMEOUT_MS): number | undefined {
 	return normalizeIdleTimeoutMs(
 		$env.VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS ?? $env.VEYYON_STREAM_IDLE_TIMEOUT_MS,
@@ -30,7 +27,6 @@ export function getOpenAIStreamIdleTimeoutMs(fallbackMs: number = DEFAULT_STREAM
 	);
 }
 
-/** Returns the timeout used while waiting for the first stream event. */
 export function getStreamFirstEventTimeoutMs(
 	idleTimeoutMs?: number,
 	fallbackMs: number = DEFAULT_STREAM_FIRST_EVENT_TIMEOUT_MS,
@@ -39,7 +35,6 @@ export function getStreamFirstEventTimeoutMs(
 	return normalizeIdleTimeoutMs($env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS, fallback);
 }
 
-/** Returns the first-event timeout used for OpenAI-family streaming transports. */
 export function getOpenAIStreamFirstEventTimeoutMs(
 	idleTimeoutMs?: number,
 	fallbackMs: number = DEFAULT_STREAM_FIRST_EVENT_TIMEOUT_MS,
@@ -54,7 +49,6 @@ export function getOpenAIStreamFirstEventTimeoutMs(
 	return Math.max(base, idleTimeoutMs);
 }
 
-/** Arms a clearable pre-response (time-to-first-byte) abort guard for streaming fetch. */
 export function armPreResponseTimeout(
 	callerSignal: AbortSignal | undefined,
 	timeoutMs: number | undefined,
@@ -71,7 +65,6 @@ export function armPreResponseTimeout(
 	return { signal, clear: () => clearTimeout(timer) };
 }
 
-/** Maximum continuous duration local work may hold off the idle watchdog. */
 export const DEFAULT_MAX_LOCAL_WORK_HOLD_MS = 90 * 60_000;
 
 export interface IdleTimeoutIteratorOptions {
@@ -81,17 +74,12 @@ export interface IdleTimeoutIteratorOptions {
 	firstItemErrorMessage?: string;
 	onIdle?: () => void;
 	onFirstItemTimeout?: () => void;
-	/** Optional semantic-progress predicate. Non-progress items do not reset the idle deadline. */
 	isProgressItem?: (item: unknown) => boolean;
-	/** Reports consumer-side local work in flight pausing the watchdog. */
 	hasPendingLocalWork?: () => boolean;
-	/** Upper bound (ms) on how long local work may hold off the watchdog. */
 	maxLocalWorkHoldMs?: number;
-	/** Signal to cancel iteration immediately upon abort. */
 	abortSignal?: AbortSignal;
 }
 
-/** Yields items from an async iterable while enforcing maximum idle gaps. */
 export async function* iterateWithIdleTimeout<T>(
 	iterable: AsyncIterable<T>,
 	options: IdleTimeoutIteratorOptions,
@@ -109,14 +97,9 @@ export async function* iterateWithIdleTimeout<T>(
 		try {
 			const returnPromise = iterator.return?.();
 			if (returnPromise) {
-				// Closing is best-effort because the reason iteration ended has
-				// precedence over a source that objects to being closed.
 				void Promise.resolve(returnPromise).catch(() => {});
 			}
-		} catch {
-			// A synchronous return() failure has the same precedence as a rejected
-			// return promise: it cannot replace the outcome already being produced.
-		}
+		} catch {}
 	};
 
 	if (abortSignal?.aborted) {
@@ -139,9 +122,6 @@ export async function* iterateWithIdleTimeout<T>(
 		try {
 			return options.isProgressItem(item);
 		} catch {
-			// True on purpose: treating an unclassifiable item as PROGRESS keeps the idle timer from firing on
-			// a stream that is in fact moving. The conservative direction here is to not kill a live stream,
-			// and the opposite default would abort a working request because a predicate threw.
 			return true;
 		}
 	};
@@ -150,10 +130,7 @@ export async function* iterateWithIdleTimeout<T>(
 	const invokeTimeoutHook = (callback: (() => void) | undefined): void => {
 		try {
 			callback?.();
-		} catch {
-			// Hooks abort or observe the transport; their failure cannot replace
-			// the stable StreamTimeoutError produced by this watchdog.
-		}
+		} catch {}
 	};
 
 	let localWorkHoldStartedAt: number | undefined;
@@ -163,27 +140,16 @@ export async function* iterateWithIdleTimeout<T>(
 		if (!options.hasPendingLocalWork) return false;
 		try {
 			const pending = options.hasPendingLocalWork();
-			// The bound is on one CONTINUOUS stretch of local work, so the clock
-			// starts when work appears and clears the moment it drains.
 			if (!pending) localWorkHoldStartedAt = undefined;
 			return pending;
 		} catch {
-			// False matches the documented default for a caller that supplies no predicate at all, so a
-			// throwing predicate cannot hold the idle timer off forever. The timer is the safety net; a
-			// predicate that fails must not disable it.
 			return false;
 		}
 	};
-	// Local work means the current gap is attributable to the consumer side,
-	// not the provider: slide the active deadline a full budget past now
-	// instead of aborting. Once the work completes the watchdog resumes from
-	// the last extension, so a provider that stalls afterwards is still caught.
 	const extendDeadlineForLocalWork = (): boolean => {
 		const now = Date.now();
 		localWorkHoldStartedAt ??= now;
 		if (maxLocalWorkHoldMs > 0 && now - localWorkHoldStartedAt >= maxLocalWorkHoldMs) {
-			// Refusing to slide any further is what turns an unbounded silence
-			// into a reported failure the turn can recover from.
 			localWorkHoldExpired = true;
 			return false;
 		}
@@ -203,18 +169,6 @@ export async function* iterateWithIdleTimeout<T>(
 		(firstItemTimeoutMs === undefined || firstItemTimeoutMs <= 0) &&
 		(options.idleTimeoutMs === undefined || options.idleTimeoutMs <= 0);
 
-	// Persistent racers, hoisted out of the per-item loop. The abort promise can
-	// only ever resolve once (abort latches), and a timeout resolution always
-	// precedes a throw — so neither needs per-item re-creation. This keeps the
-	// token hot path free of timer create/destroy and listener churn.
-	//
-	// Each Promise.race() call still attaches a reaction record to every pending
-	// racer, and those records live until the racer settles — so a never-firing
-	// abort/timeout promise would accumulate one record per streamed item for
-	// the stream's whole life. The loop re-mints both promises every
-	// RACER_REMINT_INTERVAL iterations to keep that retention bounded; the
-	// listener and timer callbacks resolve through late-bound variables so a
-	// re-mint never strands them.
 	let abortPromise: Promise<{ kind: "abort" }> | undefined;
 	let abortListener: (() => void) | undefined;
 	let resolveAbort: ((value: { kind: "abort" }) => void) | undefined;
@@ -246,8 +200,6 @@ export async function* iterateWithIdleTimeout<T>(
 		if (deadlineMs === undefined) return;
 		const remainingMs = deadlineMs - Date.now();
 		if (remainingMs > 0) {
-			// Progress moved the deadline since this timer was armed — re-arm for
-			// the remainder. One stale wake per idle period, not one per item.
 			timerFireAtMs = deadlineMs;
 			timer = setTimeout(onTimerFire, remainingMs);
 			return;
@@ -257,15 +209,12 @@ export async function* iterateWithIdleTimeout<T>(
 	};
 	const armTimer = (deadlineMs: number): void => {
 		if (timeoutPromise === undefined || timeoutFired) {
-			// A fired-but-unconsumed resolution (the item won the same race) is
-			// stale — racing it again would fake a timeout, so mint a fresh one.
 			const { promise, resolve } = Promise.withResolvers<{ kind: "timeout" }>();
 			timeoutPromise = promise;
 			resolveTimeout = resolve;
 			timeoutFired = false;
 		}
 		if (timer !== undefined) {
-			// An armed timer firing at or before the new deadline re-arms itself.
 			if (timerFireAtMs <= deadlineMs) return;
 			clearTimeout(timer);
 		}
@@ -273,9 +222,6 @@ export async function* iterateWithIdleTimeout<T>(
 		timer = setTimeout(onTimerFire, Math.max(0, deadlineMs - Date.now()));
 	};
 
-	// The in-flight iterator.next() promise, persisted across loop iterations:
-	// a deadline extension for pending local work loops without consuming it,
-	// and issuing a second next() while one is outstanding would drop an item.
 	let pendingNext:
 		| Promise<{ kind: "next"; result: IteratorResult<T> } | { kind: "error"; error: unknown }>
 		| undefined;
@@ -349,11 +295,6 @@ export async function* iterateWithIdleTimeout<T>(
 				racers.push(abortPromise);
 			}
 
-			// Tracks whether this iteration handed an item to the consumer and resumed
-			// normally. Any other exit — internal throw, `done` return, or the consumer
-			// abandoning us via `.return()`/`.throw()` at the `yield` below — must close
-			// the upstream iterator so the underlying SSE body / SDK stream (and its
-			// socket) is released instead of being left suspended.
 			let continuing = false;
 			try {
 				const outcome = await Promise.race(racers);
@@ -366,8 +307,6 @@ export async function* iterateWithIdleTimeout<T>(
 				}
 				if (outcome.kind === "timeout") {
 					if (hasPendingLocalWork() && extendDeadlineForLocalWork()) {
-						// A local tool is still running; the provider cannot make
-						// progress until we hand its result back. Keep waiting.
 						continuing = true;
 						continue;
 					}
@@ -394,15 +333,9 @@ export async function* iterateWithIdleTimeout<T>(
 					return;
 				}
 				const item = outcome.result.value;
-				// Non-progress items (e.g. provider keepalives, synthetic `start` events that
-				// arrive before the model has produced any tokens) MUST NOT flip us out of
-				// `awaitingFirstItem`. Otherwise the next iteration switches from the (longer)
-				// first-item watchdog to the (shorter) idle watchdog while we're still waiting
-				// on the model's first real output.
 				if (isProgressItem(item)) {
 					markFirstItemReceived();
 					lastProgressAt = Date.now();
-					// Real progress ends the stretch the bound is measured over.
 					localWorkHoldStartedAt = undefined;
 				}
 				yield item;
@@ -413,7 +346,6 @@ export async function* iterateWithIdleTimeout<T>(
 		}
 	} finally {
 		clearTimeout(timer);
-		// Settle the persistent racers so the final Promise.race releases them.
 		resolveTimeout?.({ kind: "timeout" });
 		if (abortListener && abortSignal) {
 			abortSignal.removeEventListener("abort", abortListener);
@@ -423,40 +355,11 @@ export async function* iterateWithIdleTimeout<T>(
 }
 
 export interface TerminalGraceIteratorOptions {
-	/**
-	 * Epoch-ms timestamp at which the consumer observed a logically terminal
-	 * item (e.g. a chat-completions chunk carrying `finish_reason`), or
-	 * `undefined` while the stream is still mid-response. Read before every
-	 * pull, so the consumer can flip it between yields.
-	 */
 	finishedAtMs: () => number | undefined;
-	/**
-	 * Post-terminal budget: how long after `finishedAtMs()` to keep draining
-	 * trailing items (e.g. a usage-only chunk or the `[DONE]` sentinel) before
-	 * ending the iteration cleanly. The deadline is fixed at
-	 * `finishedAtMs() + graceMs`; trailing items do not extend it, so
-	 * keepalive-only servers cannot hold the stream open.
-	 */
 	graceMs: number;
-	/**
-	 * Invoked when the grace window closes with the source still open. Use it
-	 * to abort the underlying request: the source generator is typically parked
-	 * mid-`next()` (not at a yield), so a queued `.return()` alone cannot reach
-	 * the transport until that pending read settles.
-	 */
 	onGraceEnd?: () => void;
 }
 
-/**
- * Yields items from an async iterable until the consumer marks the stream
- * logically finished AND the source stays silent past a short grace window.
- *
- * Misbehaving OpenAI-compatible servers deliver the terminal chunk but never
- * send `[DONE]` nor close the connection; without this guard the consumer
- * hangs on `iterator.next()` until the idle watchdog converts an
- * already-successful turn into a timeout error. Grace expiry is a clean end
- * of iteration, never an error.
- */
 export async function* iterateWithTerminalGrace<T>(
 	iterable: AsyncIterable<T>,
 	options: TerminalGraceIteratorOptions,
@@ -469,10 +372,7 @@ export async function* iterateWithTerminalGrace<T>(
 		graceEndCalled = true;
 		try {
 			options.onGraceEnd?.();
-		} catch {
-			// Grace expiry is a successful logical completion. A transport-cleanup
-			// hook cannot convert it into a failed response.
-		}
+		} catch {}
 	};
 	try {
 		while (true) {
@@ -499,9 +399,6 @@ export async function* iterateWithTerminalGrace<T>(
 			try {
 				const outcome = await Promise.race([nextPromise, timeoutPromise]);
 				if (outcome === "timeout") {
-					// The abandoned read settles (likely rejects) once onGraceEnd
-					// aborts the transport — mark it handled so it cannot surface
-					// as an unhandled rejection.
 					void Promise.resolve(nextPromise).catch(() => {});
 					invokeGraceEnd();
 					return;
@@ -520,10 +417,7 @@ export async function* iterateWithTerminalGrace<T>(
 			try {
 				const returnPromise = iterator.return?.();
 				if (returnPromise) void Promise.resolve(returnPromise).catch(() => {});
-			} catch {
-				// Best-effort close must not replace a source error or clean grace
-				// completion that is already on its way to the consumer.
-			}
+			} catch {}
 		}
 	}
 }

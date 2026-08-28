@@ -1,11 +1,3 @@
-/**
- * Recovers stale section tags by proving that every anchored line still maps
- * to one unchanged, contiguous region in the current file, then replaying the
- * edit against that live content.
- *
- * Recovery fails closed when the target changed or became ambiguous. The
- * patcher then returns a mismatch with fresh context instead of guessing.
- */
 import * as Diff from "diff";
 import { applyEdits, collectEditAnchorLines } from "./apply";
 import { RECOVERY_EXTERNAL_WARNING, RECOVERY_LINE_REMAP_WARNING, RECOVERY_SESSION_CHAIN_WARNING } from "./messages";
@@ -20,11 +12,8 @@ export interface RecoveryArgs {
 }
 
 export interface RecoveryResult {
-	/** Post-recovery text. */
 	text: string;
-	/** First changed line (1-indexed) relative to the live `currentText`, or `undefined`. */
 	firstChangedLine: number | undefined;
-	/** Warnings collected during recovery, including the user-facing recovery banner. */
 	warnings: string[];
 }
 
@@ -56,7 +45,6 @@ function buildLineMap(previousText: string, currentText: string): Map<number, nu
 	return map;
 }
 
-/** Values appearing two or more times in `lines`, for O(1) duplicate checks. */
 function collectDuplicatedValues(lines: readonly string[]): Set<string> {
 	const seen = new Set<string>();
 	const duplicated = new Set<string>();
@@ -68,19 +56,10 @@ function collectDuplicatedValues(lines: readonly string[]): Set<string> {
 }
 
 interface AnchorNeighbors {
-	/** Nearest non-anchor line above the anchor's run (`start - 1`), or `undefined` at the file edge. */
 	before: number | undefined;
-	/** Nearest non-anchor line below the anchor's run (`end + 1`), or `undefined` at the file edge. */
 	after: number | undefined;
 }
 
-/**
- * Nearest non-anchor context line on each side of every anchor, computed in
- * one sweep over the sorted anchor set. Anchors in one contiguous run share
- * both neighbors (the lines just outside the run), so this replaces the
- * per-anchor directional walk across anchored ranges — O(anchors²) on a
- * large block replacement — with one O(anchors log anchors) pass.
- */
 function computeAnchorNeighbors(anchorLines: ReadonlySet<number>, lineCount: number): Map<number, AnchorNeighbors> {
 	const sorted = Array.from(anchorLines).sort((a, b) => a - b);
 	const neighbors = new Map<number, AnchorNeighbors>();
@@ -137,11 +116,6 @@ function validateRemappedAnchorContext(
 	const previousLines = previousText.split("\n");
 	const currentLines = currentText.split("\n");
 	const anchorLines = new Set(collectEditAnchorLines(edits));
-	// Precompute once per validation pass: which line values are duplicated,
-	// and each anchor's nearest non-anchor context. The per-anchor forms —
-	// indexOf/lastIndexOf full-file scans plus directional walks across
-	// anchored ranges — are O(anchors×lines) + O(anchors²) and blow up on
-	// large block replacements.
 	const duplicatedPrevious = collectDuplicatedValues(previousLines);
 	const duplicatedCurrent = collectDuplicatedValues(currentLines);
 	const anchorNeighbors = computeAnchorNeighbors(anchorLines, previousLines.length);
@@ -236,9 +210,6 @@ function replayRemappedAnchorsOnCurrent(
 	try {
 		applied = applyEdits(currentText, remapped.edits);
 	} catch {
-		// Recovery is an ATTEMPT: null means "these edits could not be replayed onto the current text", which
-		// is the same answer a failed remap gives above, and the caller then reports the original conflict to
-		// the user rather than a recovery failure. Applying half of them would corrupt the file.
 		return null;
 	}
 	if (applied.text === currentText) return null;
@@ -248,26 +219,10 @@ function replayRemappedAnchorsOnCurrent(
 		warnings: [remapped.offset === 0 ? recoveryWarning : RECOVERY_LINE_REMAP_WARNING, ...(applied.warnings ?? [])],
 	};
 }
-/**
- * Stateless recovery driver over a {@link SnapshotStore}. Construct once and
- * call {@link Recovery.tryRecover} per stale-tag incident.
- *
- * Recovery maps every stale anchor through unchanged lines from the tagged
- * snapshot to the live text, validates surrounding context, and replays the
- * edit directly on live content. All anchors must move by one consistent
- * offset. A changed, deleted, split, or ambiguous target is rejected so the
- * caller can surface a {@link MismatchError} with current context.
- */
 export class Recovery {
 	constructor(readonly store: SnapshotStore) {}
-	/**
-	 * Attempt recovery. Returns `null` when no path forward is found — the
-	 * caller should then surface a {@link MismatchError}.
-	 */
 	tryRecover(args: RecoveryArgs): RecoveryResult | null {
 		const { path, currentText, fileHash, edits } = args;
-		// When retained texts collide on the 16-bit tag, use the latest one.
-		// Recovery still requires its anchors and context to map unambiguously.
 		const snapshot = this.store.byHash(path, fileHash);
 		if (!snapshot) return null;
 		const recoveryWarning =

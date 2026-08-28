@@ -1,18 +1,12 @@
-/**
- * CPU and heap profiling wrappers for debug reports.
- */
-
 export interface CpuProfile {
 	data: string;
 	markdown: string;
 }
 
 export interface ProfilerSession {
-	/** Stop profiling and return the profile data */
 	stop(): Promise<CpuProfile>;
 }
 
-/** V8 CPU Profile node structure */
 interface CpuProfileNode {
 	id: number;
 	callFrame?: {
@@ -24,7 +18,6 @@ interface CpuProfileNode {
 	children?: number[];
 }
 
-/** V8 CPU Profile structure */
 interface CpuProfileData {
 	nodes?: CpuProfileNode[];
 	samples?: number[];
@@ -33,7 +26,6 @@ interface CpuProfileData {
 	endTime?: number;
 }
 
-/** Format CPU profile data as markdown for LLM analysis. Extracts top functions by self time and call counts. */
 function formatProfileAsMarkdown(profileJson: string): string {
 	try {
 		const profile = JSON.parse(profileJson) as CpuProfileData;
@@ -60,7 +52,6 @@ function formatProfileAsMarkdown(profileJson: string): string {
 			});
 		}
 
-		// Distribute sample times to nodes
 		const samples = profile.samples ?? [];
 		const timeDeltas = profile.timeDeltas ?? [];
 		for (let i = 0; i < samples.length; i++) {
@@ -72,7 +63,6 @@ function formatProfileAsMarkdown(profileJson: string): string {
 			}
 		}
 
-		// Sort by self time and get top functions
 		const sorted = Array.from(nodeMap.values())
 			.filter(n => n.selfTime > 0 && n.functionName !== "(root)" && n.functionName !== "(idle)")
 			.sort((a, b) => b.selfTime - a.selfTime)
@@ -105,25 +95,17 @@ function formatProfileAsMarkdown(profileJson: string): string {
 	}
 }
 
-/** Start CPU profiling. Returns a session that can be stopped to get the profile data. */
 export async function startCpuProfile(): Promise<ProfilerSession> {
 	const v8 = await import("node:v8");
 	try {
-		// Enables `%GetOptimizationStatus` and friends when V8 natives are needed for ad-hoc profiling. Best-effort: Bun does not implement
 		v8.setFlagsFromString("--allow-natives-syntax");
-	} catch {
-		// Documented above: Bun does not implement this, and the profiler works
-		// without it.
-	}
+	} catch {}
 
 	const { Session } = await import("node:inspector/promises");
 	const session = new Session();
 	session.connect();
 
 	await session.post("Profiler.enable");
-	// Default CDP interval is 1ms, which mis-attributes await-resumption samples
-	// to the line after `await` (one sparse sample inherits the entire wait). 100µs
-	// scatters samples enough to keep CPU vs. async-wait attribution honest.
 	await session.post("Profiler.setSamplingInterval", { interval: 100 });
 	await session.post("Profiler.start");
 
@@ -145,12 +127,9 @@ export interface HeapSnapshot {
 	data: string;
 }
 
-/** Generate a heap snapshot. Uses Bun's built-in generateHeapSnapshot. */
 export function generateHeapSnapshotData(): HeapSnapshot {
-	// Force GC before snapshot
 	Bun.gc(true);
 
-	// Use V8 format for Chrome DevTools compatibility
 	const snapshot = Bun.generateHeapSnapshot("v8");
 
 	return {

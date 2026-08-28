@@ -8,13 +8,7 @@ import {
 } from "./constants.js";
 import type { HandleMeta, Vocabulary } from "./types.js";
 
-/**
- * Thrown when an `AGENTS.dict` is present but malformed. Argot never silently
- * downgrades a broken dict to an empty one: a repo that ships a dictionary and
- * gets no expansion is a worse failure than a loud parse error.
- */
 export class ArgotParseError extends Error {
-	/** The file the dict was read from, for the operator's message. */
 	readonly source: string;
 
 	constructor(message: string, source: string) {
@@ -26,7 +20,6 @@ export class ArgotParseError extends Error {
 
 const utf8 = new TextEncoder();
 
-/** Shape of the raw TOML table, before validation. */
 interface RawDict {
 	version?: unknown;
 	sigil?: unknown;
@@ -34,11 +27,6 @@ interface RawDict {
 	meta?: unknown;
 }
 
-/**
- * Parse and fully validate an `AGENTS.dict`. Every rule fails loud with a
- * message that names the offending key and the fix. `source` is the path used
- * in error messages.
- */
 export function parseDict(content: string, source: string): Vocabulary {
 	let raw: RawDict;
 	try {
@@ -77,8 +65,6 @@ function parseVersion(value: unknown, source: string): number {
 
 function parseSigil(value: unknown, source: string): string {
 	if (value === undefined) {
-		// Sigil is optional. A missing one takes the default so the vocabulary is
-		// always complete and the codec has exactly one marker to key on.
 		return DEFAULT_SIGIL;
 	}
 	if (typeof value !== "string") {
@@ -174,7 +160,6 @@ function parseMeta(value: unknown, handles: Map<string, string>, source: string)
 	return meta;
 }
 
-/** A plain TOML table: a non-null, non-array object. */
 function isPlainTable(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

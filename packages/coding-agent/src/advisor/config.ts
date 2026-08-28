@@ -14,7 +14,6 @@ import { expandAtImports } from "../discovery/at-imports";
 import { BUILTIN_TOOL_NAMES, normalizeToolNames } from "../tools/builtin-names";
 import { collectConfigCandidates } from "./watchdog";
 
-/** One advisor declared in a `WATCHDOG.yml` file. `model` is a model selector with an optional `:level` thinking suffix (e.g. `x-ai/grok-code-fast:high`), */
 export interface AdvisorConfig {
 	name: string;
 	model?: string;
@@ -22,7 +21,6 @@ export interface AdvisorConfig {
 	instructions?: string;
 }
 
-/** The result of walking the `WATCHDOG.yml`/`WATCHDOG.yaml` search path: the deduped advisor roster plus the concatenated top-level `instructions` baseline */
 export interface DiscoveredAdvisors {
 	advisors: AdvisorConfig[];
 	sharedInstructions: string | undefined;
@@ -40,7 +38,6 @@ const watchdogYamlSchema = type({
 	"advisors?": advisorEntrySchema.array(),
 });
 
-/** Normalize an advisor name into a filesystem-/id-safe slug used for its transcript filename and session id: lowercase, non-alphanumerics collapsed to */
 export function slugifyAdvisorName(name: string): string {
 	const slug = name
 		.toLowerCase()
@@ -52,7 +49,6 @@ export function slugifyAdvisorName(name: string): string {
 const UUID_V7_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ADVISOR_PROVIDER_SESSION_KEY_SEPARATOR = "\u0000";
 
-/** Returns a stable provider-facing UUIDv7 for one advisor within one primary session. Codex treats `session_id`/`conversation_id` as a UUID-shaped routing identity, */
 export function getOrCreateAdvisorProviderSessionId(
 	ids: Map<string, string>,
 	primarySessionId: string | undefined,
@@ -72,14 +68,11 @@ export function getOrCreateAdvisorProviderSessionId(
 	return next;
 }
 
-/** Built tool names, for validating an advisor's `tools` list. */
 const KNOWN_TOOL_NAMES = new Set<string>(BUILTIN_TOOL_NAMES);
 
-/** Keep only valid tool names from an advisor's `tools` list, dropping unknowns with a warning. The advisor is a full agent, so any built tool may be granted; */
 function filterAdvisorTools(tools: string[] | undefined, sourcePath: string): string[] | undefined {
 	if (tools === undefined) return undefined;
 	if (tools.length === 0) return [];
-	// Normalize legacy aliases (search→grep, find→glob) and dedupe before validating.
 	const filtered = normalizeToolNames(tools).filter(name => {
 		if (KNOWN_TOOL_NAMES.has(name)) return true;
 		logger.warn("Advisor config: dropping unknown tool", { path: sourcePath, tool: name });
@@ -88,7 +81,6 @@ function filterAdvisorTools(tools: string[] | undefined, sourcePath: string): st
 	return filtered.length > 0 ? filtered : undefined;
 }
 
-/** Discover advisor configs from `WATCHDOG.yml`/`WATCHDOG.yaml` files on the same user + project search path as `WATCHDOG.md`. Advisors are keyed by slug; a */
 export async function discoverAdvisorConfigs(cwd: string, agentDir?: string): Promise<DiscoveredAdvisors> {
 	const items = await collectConfigCandidates(cwd, agentDir, ["WATCHDOG.yml", "WATCHDOG.yaml"]);
 	const advisors = new Map<string, AdvisorConfig>();
@@ -137,16 +129,13 @@ export async function discoverAdvisorConfigs(cwd: string, agentDir?: string): Pr
 	};
 }
 
-/** Which level a `WATCHDOG.yml` lives at: the project root or the user agent dir. */
 export type AdvisorConfigScope = "project" | "user";
 
-/** The editable contents of a single `WATCHDOG.yml` file: the shared top-level `instructions` plus the advisor roster. Unlike {@link DiscoveredAdvisors}, this */
 export interface WatchdogConfigDoc {
 	instructions?: string;
 	advisors: AdvisorConfig[];
 }
 
-/** Resolve the `WATCHDOG.yml` path for a scope: `project` → `<projectDir>/WATCHDOG.yml` (discovered by the project-level walk), `user` → `<agentDir>/WATCHDOG.yml` (the */
 export function advisorConfigFilePath(
 	scope: AdvisorConfigScope,
 	dirs: { projectDir: string; agentDir: string },
@@ -154,7 +143,6 @@ export function advisorConfigFilePath(
 	return path.join(scope === "user" ? dirs.agentDir : dirs.projectDir, "WATCHDOG.yml");
 }
 
-/** Resolve which `WATCHDOG.{yml,yaml}` to edit for a scope: prefer the canonical `.yml`, but when only a `.yaml` exists for that scope, edit it in place so an */
 export async function resolveAdvisorConfigEditPath(
 	scope: AdvisorConfigScope,
 	dirs: { projectDir: string; agentDir: string },
@@ -166,7 +154,6 @@ export async function resolveAdvisorConfigEditPath(
 	return yml;
 }
 
-/** Load one `WATCHDOG.yml` file for editing — raw, un-merged, un-expanded. Missing, unparseable, or schema-invalid files yield an empty doc (never throws) so the */
 export async function loadWatchdogConfigFile(filePath: string): Promise<WatchdogConfigDoc> {
 	let text: string;
 	try {
@@ -189,8 +176,6 @@ export async function loadWatchdogConfigFile(filePath: string): Promise<Watchdog
 	}
 	const result = watchdogYamlSchema(parsed);
 	if (result instanceof type.errors) {
-		// Schema-invalid is the same hazard as unparseable: the editor shows an
-		// empty doc, and saving it removes the file. Keep the bytes.
 		await quarantineUnparseableFile(filePath, text, new Error(result.summary));
 		return { advisors: [] };
 	}
@@ -205,7 +190,6 @@ export async function loadWatchdogConfigFile(filePath: string): Promise<Watchdog
 	};
 }
 
-/** Serialize an editable doc back to block-style `WATCHDOG.yml` text via Bun's `YAML.stringify` (the same API the repo uses for other hand-editable config), */
 export function serializeWatchdogConfig(doc: WatchdogConfigDoc): string {
 	const out: { instructions?: string; advisors?: AdvisorConfig[] } = {};
 	if (doc.instructions?.trim()) out.instructions = doc.instructions;
@@ -223,7 +207,6 @@ export function serializeWatchdogConfig(doc: WatchdogConfigDoc): string {
 	return text.endsWith("\n") ? text : `${text}\n`;
 }
 
-/** Write an editable doc to `WATCHDOG.yml`. An empty doc removes the file so discovery falls back to the legacy single-advisor path rather than leaving an */
 export async function saveWatchdogConfigFile(filePath: string, doc: WatchdogConfigDoc): Promise<void> {
 	const content = serializeWatchdogConfig(doc);
 	if (!content.trim()) {
@@ -234,7 +217,6 @@ export async function saveWatchdogConfigFile(filePath: string, doc: WatchdogConf
 		}
 		return;
 	}
-	// `WATCHDOG.yml` is a file people write by hand, and the dashboard saves it back after editing one advisor. Re-serializing would drop the comments they used to explain what
 	let existingText = "";
 	try {
 		existingText = await Bun.file(filePath).text();

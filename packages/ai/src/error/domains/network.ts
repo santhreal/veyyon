@@ -1,17 +1,3 @@
-/**
- * The network families: what the socket did, and what the clock did.
- *
- * `transport` is a fault the next attempt can differ on — a socket that closed, an HTTP/2 stream the
- * peer reset, an errno, a gateway page, a provider that said "overloaded". `refusal` is the same
- * subject with the opposite answer: the peer NAMED a code whose meaning is that a replay reproduces
- * it. `timeout` is neither, because a context that timed out once times out again on the same model,
- * so the turn moves to another one rather than re-sending.
- *
- * The three live together because they partition the same prose between them and read each other's
- * conditions to do it: the transport rule of last resort must not fire on a timeout, and the timeout
- * rules must know whether an HTTP/2 code was named. Splitting them made those two files import each
- * other, which is the same thing with an extra edge.
- */
 import { http2RetryVerdict, isUnexpectedSocketCloseMessage } from "@veyyon/utils/fetch-retry";
 import { isStreamFrameLimitError } from "@veyyon/utils/stream-frame-limit";
 import {
@@ -25,7 +11,6 @@ import type { ErrorDomain } from "./types";
 
 const TIMEOUT_PATTERN = /\b(?:operation\s+)?timed?\s*out\b|\btimeout\b|\bstream stall\b/i;
 
-/** The sole owner of the timeout wording; `domains/transport.ts` reads it to keep its own rule off timeouts. */
 export function isTimeoutText(text: string): boolean {
 	return TIMEOUT_PATTERN.test(text);
 }
@@ -67,48 +52,14 @@ export const timeoutDomain: ErrorDomain = {
 
 export const STREAM_READ_ERROR_PATTERN = /stream[_ -]?read[_ -]?error/i;
 const TRANSIENT_ENVELOPE_PATTERN = /anthropic stream envelope error:/i;
-/** `before message_start`: the stream ended before the provider opened the message. */
 export const STREAM_BEFORE_MESSAGE_START_PATTERN = /before message_start/i;
-/**
- * The stream-corruption vocabulary: a response that arrived in pieces the reader cannot assemble.
- *
- * `STREAM_PARSE_TRUNCATION_PATTERN` is a body that stopped mid-JSON, `STREAM_EVENT_ORDER_PATTERN` an
- * envelope whose events arrived out of order, and `STREAM_CORRUPTION_EXTRA_PATTERN` the three
- * transport phrasings neither of those nor {@link TRANSIENT_TRANSPORT_PATTERN} covers: a TLS record
- * the peer corrupted, an HTTP/2 stream error the peer reported, and the upstream code `1302`. All of
- * it lived in `isProviderRetryableError` as a prose block the provider ladder read and no other
- * reader had, so a truncated stream from an Anthropic-compatible proxy was retried by that ladder
- * and came back to the turn as an unclassified failure. The words are unchanged; the owner is.
- *
- * `1302` is word-bounded for the reason the status numbers are (see {@link
- * TRANSIENT_TRANSPORT_PATTERN}): provider errors carry model ids, request ids and token counts, and
- * a bare four digits matches any of them.
- */
 export const STREAM_PARSE_TRUNCATION_PATTERN =
 	/unterminated string|unexpected end of json input|unexpected end of data|unexpected eof|end of file|eof while parsing|truncated/i;
-/** `stream event order`: the envelope's events did not arrive in the order the protocol states. */
 export const STREAM_EVENT_ORDER_PATTERN = /stream event order|before message_start/i;
 const STREAM_CORRUPTION_EXTRA_PATTERN = /bad record mac|stream error.*received from peer|(?<![\w-])1302(?![\w-])/i;
-/**
- * A stream the peer closed without the terminal event the protocol requires.
- *
- * This is the same fault whatever reads it: the response stopped early, so the bytes on hand are not
- * an answer. It gets its own pattern because the providers spell it differently and nothing else in
- * this family reads the concept. `Cloud Code Assist stream ended without a finish reason (connection
- * dropped or response truncated)` classified only through the word `truncated` in its parenthetical,
- * while `OpenAI completions stream closed before a terminal finish reason was received` carried no
- * word any pattern here held and reached the turn unclassified — the same truncated stream, walled
- * by one provider and retried by the other because of a word one of them happened to use.
- *
- * An empty response is the degenerate case: the terminal event is absent along with everything else.
- *
- * The gaps between the anchors exclude `.` so a match stays inside one sentence, which keeps a
- * message that merely mentions a finish reason after some unrelated close from reading as this.
- */
 export const STREAM_NO_TERMINAL_REASON_PATTERN =
 	/\b(?:closed|ended|stopped|terminated|finished)\b[^.]{0,48}?\b(?:before|without)\b[^.]{0,32}?(?:terminal\s+)?(?:finish[_\s]reason|terminal\s+event)|\breturned an empty response\b/i;
 
-/** Whether a message describes a stream whose bytes did not survive the transport. */
 export function isStreamCorruptionText(text: string): boolean {
 	return (
 		STREAM_PARSE_TRUNCATION_PATTERN.test(text) ||
@@ -118,25 +69,9 @@ export function isStreamCorruptionText(text: string): boolean {
 	);
 }
 
-// Copilot routing flap: HTTP 400 `model_not_supported` (structural code on the
-// error, also surfaced in text). Treated as transient — a retry usually lands
-// on a backend that has the model.
 const COPILOT_MODEL_NOT_SUPPORTED_CODE = "model_not_supported";
 const COPILOT_MODEL_NOT_SUPPORTED_PATTERN = /model_not_supported/i;
 
-/**
- * The socket vocabulary: every rendering of a peer that could not be reached, or that dropped the
- * connection under a request, errno and prose alike.
- *
- * It is a list rather than a line of the transport pattern below because two layers read it. The
- * transport rule reads it as one alternative among many, and an MCP tool call reads it on its own to
- * decide whether a failed call is worth a reconnect and one more attempt. That second reader kept
- * nine literals of its own (`econnrefused`, `fetch failed`, `network error`, …) beside these, so the
- * same sentence was matched by two rule sets and `ENETUNREACH`/`EHOSTUNREACH` were retryable for one
- * of them and not the other.
- *
- * The errnos are word-bounded for the reason the statuses are: `EPIPELINE` names no socket.
- */
 export const DEAD_SOCKET_ERRNOS = [
 	"ECONNRESET",
 	"ECONNREFUSED",
@@ -148,7 +83,6 @@ export const DEAD_SOCKET_ERRNOS = [
 	"EAI_AGAIN",
 ] as const;
 
-/** The same faults as prose, tolerating the separator a provider chose (`network_error`, `network error`). */
 export const DEAD_SOCKET_PHRASE_SOURCES = [
 	"network.?error",
 	"connection.?error",
@@ -161,16 +95,10 @@ const DEAD_SOCKET_SOURCE = `${DEAD_SOCKET_PHRASE_SOURCES.join("|")}|(?<![\\w-])(
 
 export const DEAD_SOCKET_PATTERN = new RegExp(DEAD_SOCKET_SOURCE, "i");
 
-/**
- * The message names a socket that cannot carry the request: the peer refused it, reset it, or is
- * unreachable. A layer that reconnects before retrying asks this rather than the whole transient
- * vocabulary, which also covers a live peer answering 500 or holding the request past a deadline.
- */
 export function namesDeadSocket(text: string): boolean {
 	return DEAD_SOCKET_PATTERN.test(text);
 }
 
-/** Word-bounded numeric HTTP status patterns to avoid matching digits inside IDs/counts. */
 export const TRANSIENT_TRANSPORT_PATTERN = new RegExp(
 	String.raw`overloaded|provider.?returned.?error|rate.?limit|too many requests|temporar(?:y|ily)|processing your request|(?<![\w-])(?:429|500|502|503|504)(?![\w-])|service.?unavailable|server.?error|internal.?error|retry your request|other side closed|upstream.?connect|upstream.?request.?failed|reset before headers|socket hang up|websocket closed|timed? out|timeout|terminated|retry delay|stream stall|no error details in response|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)|malformed.?function.?call|` +
 		DEAD_SOCKET_SOURCE,
@@ -190,12 +118,10 @@ export function isTransientErrorText(text: string): boolean {
 	);
 }
 
-/** The RFC 7540 §7 verdict for a message naming an HTTP/2 error code, `undefined` when it names none. */
 export function http2Verdict(text: string): boolean | undefined {
 	return http2RetryVerdict(text);
 }
 
-/** Matches GitHub Copilot model routing failure codes. */
 export function isCopilotModelNotSupported(signal: { text: string; code: string | undefined }): boolean {
 	return signal.code === COPILOT_MODEL_NOT_SUPPORTED_CODE || COPILOT_MODEL_NOT_SUPPORTED_PATTERN.test(signal.text);
 }
@@ -260,20 +186,6 @@ export const transportDomain: ErrorDomain = {
 	],
 };
 
-/**
- * The refusal family: a transport failure whose next identical attempt fails the same way.
- *
- * Two kinds of evidence say that, and both are structural. The peer NAMED an HTTP/2 code the RFC
- * says a replay reproduces, or the peer never delimited a frame it was still sending — a framing
- * violation reaches the same peer with the same behavior, so a retry is a second helping of it.
- *
- * Separate from `transport` because it is the same subject with the opposite answer, and separate
- * from a wording because a code is a fact. It vetoes a retry for the whole failure and is ordered
- * ahead of `transport` in the registry, so a wrapper that composed "connection error, please retry"
- * around `NGHTTP2_CANCEL` still reads as transient — the description is the wrapper's to write — and
- * is still not retried by anyone. Before this existed, the classifier refused a cancel and then the
- * provider predicate's prose fallback retried it anyway through the words "timed out".
- */
 export const refusalDomain: ErrorDomain = {
 	id: "refusal",
 	why: "The peer named an HTTP/2 code, or never delimited a frame, so the next identical attempt fails the same way.",

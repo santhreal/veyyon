@@ -3,11 +3,6 @@ import type { ArmResult } from "./aggregate";
 export const COMPARISON_SYSTEMS = ["veyyon", "factory", "hermes"] as const;
 export type ComparisonSystem = (typeof COMPARISON_SYSTEMS)[number];
 
-/**
- * Model an arm sweep runs when `--model` is omitted. It lives here, beside the
- * cross-system pin, so one module owns every model the bench can choose and the
- * docs test can import the value instead of pattern-matching run.ts source.
- */
 export const DEFAULT_MODEL = "google-antigravity/gemini-3.5-flash";
 export const COMPARISON_MODEL = "google-antigravity/gemini-3.6-flash";
 export const COMPARISON_TASK_LIST = "tasks/pilot-10.txt";
@@ -19,7 +14,6 @@ export interface ComparisonArtifacts {
 	log: string;
 }
 
-/** Provenance for a real continuation replay frozen immediately before compaction. */
 export interface ReplayCorpusTrial {
 	manifestSha256: string;
 	sourceSessionId: string;
@@ -39,7 +33,6 @@ export interface NativeCompactionEvidence {
 	afterTokens: number | null;
 }
 
-/** Inputs which must be identical within one paired (task, repeat) cell. */
 export interface ComparisonExecution {
 	taskInstructionsHash: string;
 	repositoryStateHash: string;
@@ -48,13 +41,6 @@ export interface ComparisonExecution {
 	samplingDescription: string;
 }
 
-/**
- * The portable result contract shared by the three Pier adapters.
- *
- * `qualitativeScore` is an outcome produced by the real replay evaluator. This
- * module deliberately does not invent fixtures, replay sessions, or a scoring
- * formula; it only validates and aggregates outcomes supplied by that evaluator.
- */
 export interface SystemTrialResult {
 	system: ComparisonSystem;
 	task: string;
@@ -310,11 +296,6 @@ function validateTrial(trial: SystemTrialResult, model: string, issues: string[]
 	}
 }
 
-/**
- * Convert runner results into the strict comparison contract. Missing fields stay
- * visible and are rejected by {@link aggregateSystemComparison}; no zero/default
- * fallback is introduced here.
- */
 export function comparisonTrialsFromArmResults(results: readonly ComparisonArmResult[]): SystemTrialResult[] {
 	return results.map(result => ({
 		system: result.system ?? (result.arm as ComparisonSystem),
@@ -521,7 +502,6 @@ function fmtCost(total: SystemTotals): string {
 	return total.providerCostSupported && total.costUsd !== null ? `$${total.costUsd.toFixed(4)}` : "unsupported";
 }
 
-/** Render only observed comparison data; an unsupported metric can never print PASS. */
 export function renderSystemComparison(comparison: SystemComparison): string {
 	const lines = [
 		"# Cross-system DeepSWE comparison",

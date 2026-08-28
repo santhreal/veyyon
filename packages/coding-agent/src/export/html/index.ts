@@ -15,13 +15,11 @@ import markdownRendererJs from "./markdown-renderer.js" with { type: "text" };
 import templateCss from "./template.css" with { type: "text" };
 import templateHtml from "./template.html" with { type: "text" };
 import templateJs from "./template.js" with { type: "text" };
-// Pre-built React tool renderers, built by `gen:tool-views`. The file is gitignored, and Bun resolves this text import when this module's importer
 import toolViewsJs from "./tool-views.generated.js" with { type: "text" };
 import { EXPORT_FALLBACK_BASE_BG, webExportThemeVars } from "./web-palette";
 
 let cachedTemplate: string | undefined;
 
-/** Compose the standalone export template: minified CSS, tool renderers, and viewer JS inlined. */
 export function getTemplate(): string {
 	if (cachedTemplate) return cachedTemplate;
 	const minifiedCss = templateCss
@@ -29,7 +27,6 @@ export function getTemplate(): string {
 		.replace(/\s+/g, " ")
 		.replace(/\s*([{}:;,])\s*/g, "$1")
 		.trim();
-	// Function replacements so `$'`, `$&`, `$$`, etc. inside the embedded CSS/JS are not interpreted as substitution patterns. The cast is safe:
 	cachedTemplate = (templateHtml as unknown as string)
 		.replace("<template-css/>", () => `<style>${minifiedCss}</style>`)
 		.replace("<template-tool-views/>", () => `<script>${toolViewsJs}</script>`)
@@ -40,17 +37,12 @@ export function getTemplate(): string {
 
 export interface ExportOptions {
 	outputPath?: string;
-	/** Which color palette the export ships with. - `"web"` (default) — the veyyon brand identity (collab-web pink/purple), */
 	palette?: "web" | "theme";
-	/** TUI theme to derive colors from when `palette: "theme"`. Ignored for the default `"web"` palette. Resolves to the active TUI theme when omitted. */
 	themeName?: string;
-	/** Embed subagent session transcripts found next to the session file (default true). */
 	includeSubSessions?: boolean;
-	/** Redact secrets from the snapshot before it is written, through the same typed walk `/share` uses. An exported HTML file leaves the machine the moment the operator attaches */
 	obfuscator?: SecretObfuscator;
 }
 
-/** Parse a color string to RGB values. */
 function parseColor(color: string): { r: number; g: number; b: number } | undefined {
 	const hexMatch = color.match(/^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/);
 	if (hexMatch) {
@@ -71,7 +63,6 @@ function parseColor(color: string): { r: number; g: number; b: number } | undefi
 	return undefined;
 }
 
-/** Calculate relative luminance of a color (0-1, higher = lighter). */
 function getLuminance(r: number, g: number, b: number): number {
 	const toLinear = (c: number) => {
 		const s = c / 255;
@@ -80,7 +71,6 @@ function getLuminance(r: number, g: number, b: number): number {
 	return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
 }
 
-/** Adjust color brightness. */
 function adjustBrightness(color: string, factor: number): string {
 	const parsed = parseColor(color);
 	if (!parsed) return color;
@@ -88,20 +78,16 @@ function adjustBrightness(color: string, factor: number): string {
 	return `rgb(${adjust(parsed.r)}, ${adjust(parsed.g)}, ${adjust(parsed.b)})`;
 }
 
-/** Derive export background colors from a base color. */
 function deriveExportColors(baseColor: string): { pageBg: string; cardBg: string; infoBg: string } {
 	let base = baseColor;
 	let parsed = parseColor(base);
 	if (!parsed) {
-		// An unparseable base means a malformed theme value, not a design choice.
-		// Derive from the brand ground instead of inventing a tint, and say so.
 		logger.warn("Theme userMessageBg is not a parseable color; deriving export surfaces from the brand ground", {
 			userMessageBg: baseColor,
 			fallback: EXPORT_FALLBACK_BASE_BG,
 		});
 		base = EXPORT_FALLBACK_BASE_BG;
 		parsed = parseColor(base);
-		// The brand ground is a literal hex owned in this repo, so it always parses.
 		if (!parsed) throw new Error(`EXPORT_FALLBACK_BASE_BG is not a parseable color: ${EXPORT_FALLBACK_BASE_BG}`);
 	}
 
@@ -120,13 +106,10 @@ function deriveExportColors(baseColor: string): { pageBg: string; cardBg: string
 	};
 }
 
-/** Generate CSS custom properties for the export `:root`. Two call shapes: */
 export async function generateThemeVars(
 	palette: "web" | "theme" | (string & {}) = "web",
 	themeName?: string,
 ): Promise<string> {
-	// Legacy single-arg form: `generateThemeVars("my-theme")` — the first arg
-	// is a theme name, not a palette. Route it to the themed path.
 	if (palette !== "web" && palette !== "theme") {
 		return generateThemeVars("theme", palette);
 	}
@@ -149,11 +132,8 @@ export async function generateThemeVars(
 	return lines.join(" ");
 }
 
-/** Embedded subagent session transcript, keyed by slash-joined agent path in `SessionData.subSessions`. */
 export interface SubSession {
-	/** Bare agent id (session file stem), e.g. "ToolAsk". */
 	agentId: string;
-	/** Key of the parent sub-session, or null when spawned by the main session. */
 	parent: string | null;
 	header: SessionHeader | null;
 	entries: SessionEntry[];
@@ -169,7 +149,6 @@ export interface SessionData {
 	subSessions?: Record<string, SubSession>;
 }
 
-/** Snapshot the session (plus optional agent state) into the JSON shape the viewer renders. */
 export function buildSessionData(sm: SessionManager, state?: AgentState): SessionData {
 	return {
 		header: sm.getHeader(),
@@ -180,7 +159,6 @@ export function buildSessionData(sm: SessionManager, state?: AgentState): Sessio
 	};
 }
 
-/** Collect subagent session transcripts stored next to a session file. A session at `<dir>/<name>.jsonl` keeps its subagent sessions at `<dir>/<name>/<AgentId>.jsonl`; */
 export async function collectSubSessions(sessionFile: string): Promise<Record<string, SubSession>> {
 	const result: Record<string, SubSession> = {};
 	if (!isSessionFileName(sessionFile)) return result;
@@ -205,7 +183,6 @@ async function collectSubSessionsFromDir(
 		const agentId = name.slice(0, -6);
 		const key = parentKey ? `${parentKey}/${agentId}` : agentId;
 		const fileEntries = await loadEntriesFromFile(path.join(dir, name));
-		// Empty/corrupt files (no valid session header) load as [] — skip silently.
 		if (fileEntries.length > 0) {
 			const header = (fileEntries.find(e => e.type === "session") as SessionHeader | undefined) ?? null;
 			const entries = fileEntries.filter((e): e is SessionEntry => e.type !== "session");
@@ -221,7 +198,6 @@ async function collectSubSessionsFromDir(
 	}
 }
 
-/** Split the template at the session-data marker. The marker must appear exactly once; a template without it (or with two) is a build defect, not bad input. */
 function splitTemplateAtSessionMarker(template: string): { head: string; tail: string } {
 	const marker = "{{SESSION_DATA}}";
 	const first = template.indexOf(marker);
@@ -230,7 +206,6 @@ function splitTemplateAtSessionMarker(template: string): { head: string; tail: s
 	return { head: template.slice(0, first), tail: template.slice(first + marker.length) };
 }
 
-/** The builtin's `toJSON` step: a holder replaces a value with `value.toJSON(key)` before serializing it, once, and never re-applies it to the result. `key` is */
 function applyToJSON(value: unknown, key: string): unknown {
 	if (value !== null && typeof value === "object" && "toJSON" in value && typeof value.toJSON === "function") {
 		return value.toJSON(key);
@@ -238,16 +213,11 @@ function applyToJSON(value: unknown, key: string): unknown {
 	return value;
 }
 
-/** Incremental JSON serializer. Emits the same bytes `JSON.stringify(value)` emits — leaf strings/numbers/booleans go through `JSON.stringify` itself, */
 export function* jsonPieces(value: unknown): Generator<string> {
-	// The objects on the path from the root to the value being emitted. The builtin throws on a
-	// cycle; without this the generator descends forever, and a caller that streams its output
-	// to a file gets an unbounded write instead of an error.
 	const ancestors = new Set<object>();
 
 	const root = applyToJSON(value, "");
 	if (root === undefined || typeof root === "function" || typeof root === "symbol") {
-		// `JSON.stringify` answers `undefined` here, which is not JSON and cannot be written to a file. A session snapshot that serializes to nothing is
 		throw new TypeError("A session snapshot serializes to nothing");
 	}
 	yield* emitValue(root);
@@ -262,8 +232,6 @@ export function* jsonPieces(value: unknown): Generator<string> {
 				yield JSON.stringify(v);
 				return;
 			case "number":
-				// NaN and Infinity are not representable in JSON; the builtin
-				// emits them as `null`.
 				yield Number.isFinite(v) ? String(v) : "null";
 				return;
 			case "boolean":
@@ -274,12 +242,9 @@ export function* jsonPieces(value: unknown): Generator<string> {
 			case "object":
 				break;
 			default:
-				// A symbol or function reaching here as a bare array element
-				// serializes to `null`, exactly like the builtin.
 				yield "null";
 				return;
 		}
-		// No `toJSON` branch here. The builtin applies `toJSON` once, at the holder that owns the value, and serializes the result as-is; applying
 		if (v instanceof String || v instanceof Number || v instanceof Boolean) {
 			yield* emitValue(v.valueOf());
 			return;
@@ -291,8 +256,6 @@ export function* jsonPieces(value: unknown): Generator<string> {
 				yield "[";
 				for (let index = 0; index < v.length; index++) {
 					if (index > 0) yield ",";
-					// The builtin passes the index as the key, so an element's
-					// `toJSON(key)` sees "0", "1", … and not `undefined`.
 					const item = applyToJSON(v[index], String(index));
 					if (item === undefined || typeof item === "function" || typeof item === "symbol") yield "null";
 					else yield* emitValue(item);
@@ -300,14 +263,11 @@ export function* jsonPieces(value: unknown): Generator<string> {
 				yield "]";
 				return;
 			}
-			// Own enumerable properties only; every value stays `unknown` until its
-			// turn in emitValue, which narrows by runtime typeof checks.
 			const source = v as Record<string, unknown>;
 			yield "{";
 			let first = true;
 			for (const [key, raw] of Object.entries(source)) {
 				const item = applyToJSON(raw, key);
-				// The builtin omits undefined-, function- and symbol-valued properties.
 				if (item === undefined || typeof item === "function" || typeof item === "symbol") continue;
 				if (!first) yield ",";
 				first = false;
@@ -321,18 +281,12 @@ export function* jsonPieces(value: unknown): Generator<string> {
 	}
 }
 
-/** Serialized-string characters accumulated before one Buffer encoding pass. */
 const ENCODE_CHUNK_CHARS = 256 * 1024;
 
-/** Base64 sink with byte-level carry. Base64 encodes 3 bytes into 4 chars, so a chunk boundary is only clean at a multiple of 3 input bytes; everything else */
 export class StreamingBase64Writer {
-	// Pieces are accumulated to ENCODE_CHUNK_CHARS before one Buffer round trip
-	// encodes them together: per-piece Buffer.from + concat on hundreds of
-	// thousands of small pieces dominated the export profile otherwise.
 	#pending: string[] = [];
 	#pendingChars = 0;
 	#carry = Buffer.alloc(0);
-	/** The sink receives base64 chunks in order and may write them however it likes (batching, promise chaining) — `push`/`end` are synchronous and */
 	constructor(private readonly write: (chunk: string) => void) {}
 
 	push(piece: string): void {
@@ -353,8 +307,6 @@ export class StreamingBase64Writer {
 		const joined = this.#pending.join("");
 		this.#pending = [];
 		this.#pendingChars = 0;
-		// The carry is raw bytes, possibly a SPLIT multi-byte character — never
-		// decode it to a string; prepend it at the byte level instead.
 		const bytes =
 			this.#carry.length > 0
 				? Buffer.concat([this.#carry, Buffer.from(joined, "utf8")])
@@ -366,13 +318,10 @@ export class StreamingBase64Writer {
 	}
 }
 
-/** How many JSON source bytes may stream before the writer yields to the event loop. */
 const YIELD_BYTE_BUDGET = 4 * 1024 * 1024;
 
-/** Base64 characters accumulated before the writer commits one file write. */
 const WRITE_FLUSH_CHARS = 1024 * 1024;
 
-/** Write the standalone HTML export WITHOUT ever holding the whole document — or even the whole JSON payload — in memory. The template is split at the */
 async function writeExportFile(
 	outputPath: string,
 	sessionData: SessionData,
@@ -387,13 +336,8 @@ async function writeExportFile(
 		const handle = await fs.open(tempPath, "w");
 		try {
 			await handle.write(beforeData);
-			// Batch base64 chunks into ~1 MiB file writes: one awaited write per
-			// serializer piece turns an 80 MiB export into hundreds of thousands of
-			// async round trips (measured: 825ms -> 58s).
 			let pending: string[] = [];
 			let pendingChars = 0;
-			// Writes are chained, never launched concurrently: two overlapping
-			// handle.write calls could reorder base64 quanta and corrupt the payload.
 			let writeChain: Promise<void> = Promise.resolve();
 			const flushPending = (): Promise<void> => {
 				if (pending.length === 0) return writeChain;
@@ -408,9 +352,6 @@ async function writeExportFile(
 				pendingChars += chunk.length;
 				if (pendingChars >= WRITE_FLUSH_CHARS) void flushPending();
 			});
-			// Yield only after crossing a byte budget, so timers and sockets keep
-			// getting service during a long export; yielding per piece measured
-			// 825ms -> 65s and is exactly what this budget avoids.
 			let bytesSinceYield = 0;
 			for (const piece of jsonPieces(sessionData)) {
 				b64.push(piece);
@@ -430,7 +371,6 @@ async function writeExportFile(
 	});
 }
 
-/** Export session to HTML using SessionManager and AgentState. */
 export async function exportSessionToHtml(
 	sm: SessionManager,
 	state?: AgentState,
@@ -447,8 +387,6 @@ export async function exportSessionToHtml(
 		if (Object.keys(subSessions).length > 0) sessionData.subSessions = subSessions;
 	}
 
-	// After sub-sessions are attached: a subagent transcript carries the same tool output the
-	// primary one does, so redacting before the merge would leave the child's copy verbatim.
 	const redacted = opts.obfuscator?.hasSecrets()
 		? redactSessionDataForShare(opts.obfuscator, sessionData)
 		: sessionData;
@@ -458,7 +396,6 @@ export async function exportSessionToHtml(
 	return outputPath;
 }
 
-/** Export session file to HTML (standalone). */
 export async function exportFromFile(inputPath: string, options?: ExportOptions | string): Promise<string> {
 	const opts: ExportOptions = typeof options === "string" ? { outputPath: options } : options || {};
 

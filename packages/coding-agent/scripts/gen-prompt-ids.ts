@@ -1,22 +1,3 @@
-/**
- * Write the id space of every prompt registry to a module the launch path can afford.
- *
- * WHY A GENERATED LIST AND NOT THE REGISTRIES THEMSELVES. The refusal that catches a typo
- * in `VEYYON_EVAL_PROMPTS` needs the complete set of ids and nothing else — no prompt text,
- * no row modules. Reading it from `prompts/all-registries.ts` put that aggregate's 250
- * modules behind prompt assembly, which is on the launch path: the assembler reached 718
- * modules with that edge and 528 without it, against a bundled binary that spends about
- * 290ms initializing modules before the first frame.
- *
- * An id is also a more honest thing to check against than a claim. `unclaimedEvalPrompt-
- * OverrideIds` answers "did a registry that happens to be loaded take this id", which
- * depends on import order; the generated list is the whole id space of the build.
- *
- *     bun run gen:prompt-ids
- *
- * `a-prompt-id-list-is-the-build-it-was-generated-from.test.ts` compares the file to the
- * live registries, so adding a prompt without regenerating fails.
- */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { allPromptIds, PROMPT_REGISTRIES } from "../src/prompts/all-registries";
@@ -35,7 +16,6 @@ export function renderPromptIdModule(ids: readonly string[], registries: number)
  * them.
  */
 
-/** The number of registries the ids came from, for a refusal that says where to look. */
 export const PROMPT_REGISTRY_COUNT = ${registries};
 
 export const PROMPT_IDS: readonly string[] = [

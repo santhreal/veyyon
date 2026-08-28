@@ -1,7 +1,5 @@
 import type { AuthStorage } from "@veyyon/ai";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
-// The derived provider set from the registry that derives it (164 modules) rather than the
-// barrel (346), which additionally brings the streaming engine and every transport.
 import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai/registry/derived";
 import { type Component, type Focusable, Input, matchesKey, type SgrMouseEvent, wrapTextWithAnsi } from "@veyyon/tui";
 import { errorMessage, getActiveAuthDbPath } from "@veyyon/utils";
@@ -19,7 +17,6 @@ function loginCopyHint(): string {
 	return theme.fg("dim", "(clipboard copy attempted; Alt+C retries)");
 }
 
-/** Friendly provider name for status copy (e.g. "Anthropic"), through the one label owner the account card, the model hub, the footline and the login dialog all use. This scene used to read the */
 function providerDisplayName(providerId: string): string {
 	return formatProviderName(providerId);
 }
@@ -80,7 +77,6 @@ interface PromptState {
 	input: CopyablePromptInput;
 }
 
-/** "Sign in" panel: lets the user authenticate one or more model providers via OAuth. Unlike a standalone scene it never auto-advances the wizard: the user */
 export class SignInTab implements SetupTab {
 	readonly id = "sign-in";
 	readonly label = "Sign in";
@@ -95,7 +91,6 @@ export class SignInTab implements SetupTab {
 	#loginAbort: AbortController | undefined;
 	#loggingInProvider: string | undefined;
 	#disposed = false;
-	/** Render line where the provider selector begins. */
 	#selectorRowStart = 2;
 
 	constructor(private readonly host: SetupSceneHost) {
@@ -103,15 +98,12 @@ export class SignInTab implements SetupTab {
 		this.#selector = this.#createSelector();
 	}
 
-	/** Modal while an OAuth flow is running so the scene won't switch tabs or finish. */
 	get modal(): boolean {
 		return this.#loggingInProvider !== undefined;
 	}
 
 	dispose(): void {
 		this.#disposed = true;
-		// Not just the validation spinner: the provider band is on the shared clock too, and a
-		// scene that leaves is the only thing that knows the card is gone.
 		this.#selector.dispose();
 		this.#loginAbort?.abort();
 		this.#resolvePrompt("");
@@ -122,7 +114,6 @@ export class SignInTab implements SetupTab {
 		this.#prompt?.input.invalidate();
 	}
 
-	/** Esc's two in-panel meanings. The search rung is the one that mattered most: this is the FIRST list a new user meets, it holds every OAuth */
 	escapeAction(): SetupKeyHint | undefined {
 		if (this.#loggingInProvider) return { keys: "esc", label: "cancel sign-in" };
 		return this.#selector.hasActiveSearch() ? { keys: "esc", label: "clear search" } : undefined;
@@ -142,13 +133,11 @@ export class SignInTab implements SetupTab {
 		this.#selector.handleInput(data);
 	}
 
-	/** Forward mouse to the provider selector; pointer is inert during an active login or code prompt. */
 	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
 		if (this.#loggingInProvider || this.#prompt) return;
 		this.#selector.routeMouse(event, line - this.#selectorRowStart, col);
 	}
 
-	/** Rows this panel needs besides the provider list in the current state: the selector's own search-status row, plus the browser-login link, the code */
 	#reservedRows(): number {
 		let rows = 1;
 		if (this.#authUrl) rows += 2;
@@ -165,9 +154,6 @@ export class SignInTab implements SetupTab {
 		} else {
 			lines.push(theme.fg("muted", "Pick a provider to sign in — you can connect more than one."), "");
 			this.#selectorRowStart = lines.length;
-			// Size the provider list to the rows the wizard actually has. A fixed
-			// ten-row list overran the body budget, and the overlay clipped the
-			// tail, so providers past the fold could not be reached at all.
 			if (rows !== undefined) {
 				this.#selector.setMaxVisible(Math.max(1, rows - lines.length - this.#reservedRows()));
 			}
@@ -175,9 +161,6 @@ export class SignInTab implements SetupTab {
 			for (let li = 0; li < sl.length; li++) lines.push(sl[li]!);
 		}
 
-		// A short URL renders inline under the link; a long one renders exactly
-		// once BELOW the code prompt (pushing a 2-line teaser here and the full
-		// URL later printed its first two lines twice).
 		const urlLines = this.#authUrl ? wrapTextWithAnsi(theme.fg("dim", this.#authUrl), width) : [];
 		if (this.#authUrl) {
 			lines.push(
@@ -234,7 +217,6 @@ export class SignInTab implements SetupTab {
 			await this.#authStorage.login(providerId as OAuthProvider, {
 				signal: this.#loginAbort.signal,
 				onAuth: info => {
-					// Store the full authorization URL as the primary copy/display target: it works from any machine, including SSH boxes where
 					this.#authUrl = info.url;
 					this.#authLaunchUrl = info.launchUrl && info.launchUrl !== info.url ? info.launchUrl : undefined;
 					this.#statusLines = [];
@@ -254,12 +236,8 @@ export class SignInTab implements SetupTab {
 					this.host.requestRender();
 				},
 				onManualCodeInput: () =>
-					// An authorization code, or a redirect URL carrying one: exchangeable for tokens.
 					this.#showPrompt({ message: "Paste the authorization code (or full redirect URL):", secret: true }),
 				onSuccessPage: url => {
-					// Device-code/paste flows have no browser redirect of their own;
-					// open the freshly-served branded success page so every provider
-					// finishes on the same "Signed in to Veyyon" screen.
 					this.host.ctx.openInBrowser(url);
 				},
 			});
@@ -287,9 +265,6 @@ export class SignInTab implements SetupTab {
 				const message = errorMessage(error);
 				this.#statusLines = [
 					theme.fg("error", `Login failed: ${message}`),
-					// "→", not "Esc": the login has ended, so Esc is back to meaning
-					// "leave setup" and naming it here offered to abandon onboarding
-					// as the remedy for one provider failing.
 					theme.fg("dim", "Choose another provider, or press → to skip this step."),
 				];
 				this.#authUrl = undefined;
@@ -307,16 +282,13 @@ export class SignInTab implements SetupTab {
 		if (!url) return;
 		try {
 			await copyToClipboard(url);
-		} catch {
-			// Clipboard integration is best-effort; the full URL remains rendered below.
-		}
+		} catch {}
 		this.host.requestRender();
 	}
 
 	#showPrompt(prompt: { message: string; placeholder?: string; secret?: boolean }): Promise<string> {
 		this.#resolvePrompt("");
 		const input = new Input();
-		// An API key pasted during onboarding is a credential and stayed on screen in clear text, including on whatever recording or shoulder was watching. `credentialMode` masks the render
 		input.credentialMode = prompt.secret !== false;
 		const focusInput = new CopyablePromptInput(
 			input,

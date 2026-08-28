@@ -1,8 +1,5 @@
-/** A bounded walk over JSON that rewrites every string in it, keys included. not about secrets: it is a general-purpose transformer, and its three callers want three */
-
 import { isWellFormedUtf16, utf8ByteLength } from "@veyyon/utils/string-length";
 
-/** JSON as it arrives from a caller's object, where an optional property is `undefined`. NAMED FOR WHAT MAKES IT DIFFERENT, because it used to be called `JsonValue` and it is */
 export type JsonWithOptionalFields =
 	| string
 	| number
@@ -11,19 +8,13 @@ export type JsonWithOptionalFields =
 	| JsonWithOptionalFields[]
 	| { [key: string]: JsonWithOptionalFields | undefined };
 
-/** An object of {@link JsonWithOptionalFields}, which is what a tool's arguments are. */
 export type JsonRecord = { [key: string]: JsonWithOptionalFields | undefined };
 
-/** Maximum container nesting accepted by the iterative JSON transformation walk. */
 export const MAX_JSON_TRANSFORM_DEPTH = 128;
-/** Maximum unique containers plus primitive positions visited by one JSON transformation. */
 export const MAX_JSON_TRANSFORM_NODES = 100_000;
-/** Maximum cumulative plain-object keys visited by one JSON transformation. */
 export const MAX_JSON_TRANSFORM_KEYS = 100_000;
-/** Maximum cumulative UTF-8 bytes in input or transformed JSON strings and keys. */
 export const MAX_JSON_TRANSFORM_STRING_BYTES = 16 * 1024 * 1024;
 
-/** Payload-independent failure categories safe to expose at confidentiality boundaries. */
 export type JsonTransformFailureCode =
 	| "accessor"
 	| "array-items"
@@ -41,7 +32,6 @@ export type JsonTransformFailureCode =
 	| "output-text"
 	| "symbol-key";
 
-/** A bounded-walker refusal whose code never contains payload data. */
 export class JsonTransformError extends Error {
 	constructor(
 		readonly code: JsonTransformFailureCode,
@@ -77,7 +67,6 @@ type JsonWalkEvent =
 	| { type: "key"; key: string; frame: JsonWalkFrame; index: number }
 	| { type: "complete"; frame: JsonWalkFrame };
 
-/** Map every string in bounded JSON, including object keys. The explicit stack prevents call-stack exhaustion. Gray/done memo states reject cycles and map */
 export function mapJsonStrings<T>(value: T, fn: (s: string) => string): T {
 	const memo = new WeakMap<object, { status: "visiting" | "done"; result?: unknown }>();
 	const events: JsonWalkEvent[] = [{ type: "visit", value, depth: 0, target: { frame: undefined, index: 0 } }];

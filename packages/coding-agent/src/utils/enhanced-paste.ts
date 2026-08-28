@@ -6,7 +6,6 @@ const PASTE_EVENT_NAME_BASE64 = Buffer.from("Paste event", "utf8").toString("bas
 
 const IMAGE_MIME_PRIORITY = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
 const TEXT_MIME_TYPE = "text/plain";
-/** Kitty's "give me the list of available MIME types" sentinel — see `TARGETS_MIME` in `kitty/clipboard.py`. */
 const MIME_LISTING_TARGET = ".";
 
 type PasteReadKind = "image" | "text";
@@ -35,9 +34,6 @@ type PasteState = PasteListingState | PasteReadState;
 
 export interface EnhancedPasteHandlers {
 	write(data: string): void;
-	/** Ask the terminal to arm enhanced paste. Separate from {@link write} because
-	 *  the mode set is gated on a capability report the terminal owns, while the
-	 *  OSC 5522 clipboard replies below are plain writes. */
 	requestMode(): void;
 	pasteText(text: string): void;
 	pasteImage(image: ImageContent): void | Promise<void>;
@@ -52,9 +48,6 @@ function decodeBase64Utf8(value: string): string | undefined {
 	try {
 		return Buffer.from(value, "base64").toString("utf8");
 	} catch {
-		// The payload of a terminal paste escape sequence, which arrives from whatever the terminal chose to
-		// send. Undefined means "this packet carried no text", and the caller falls back to treating the
-		// sequence as ordinary input rather than pasting a mojibake string it invented.
 		return undefined;
 	}
 }
@@ -94,13 +87,10 @@ export class EnhancedPasteController {
 		this.#handlers = handlers;
 	}
 
-	/** Ask the terminal for enhanced-paste notifications. The escape itself is the terminal's to write, and it writes it only after DECRQM confirms DEC private */
 	enable(): void {
 		this.#handlers.requestMode();
 	}
 
-	/** Forget any in-flight read. The mode reset belongs to the terminal's teardown,
-	 *  which writes it only if it armed the mode in the first place. */
 	disable(): void {
 		this.#state = undefined;
 	}
@@ -155,7 +145,6 @@ export class EnhancedPasteController {
 		if (!mimeType) return;
 
 		if (state.phase === "listing") {
-			// Kitty (as of writing) implements the "list available MIME types" response shape by sending a single DATA packet with `mime="."` and
 			if (mimeType === MIME_LISTING_TARGET) {
 				if (!packet.payload) return;
 				const listing = decodeBase64Utf8(packet.payload);

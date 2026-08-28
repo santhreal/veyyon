@@ -1,5 +1,3 @@
-/** Tool output pruning utilities for compaction. */
-
 import type { ToolResultMessage } from "@veyyon/ai";
 import { toolResultNeverRan } from "../tool-result-never-ran";
 import type { AgentMessage, AgentToolCall } from "../types";
@@ -15,19 +13,12 @@ import {
 import { splitReadSelector } from "./utils";
 
 export interface PruneConfig {
-	/** Keep the most recent tool output tokens intact. */
 	protectTokens: number;
-	/** Only prune if total savings meets this threshold. */
 	minimumSavings: number;
-	/** Tool-result protection matchers. String entries protect every result from that tool; predicates may inspect the paired tool call. */
 	protectedTools: ProtectedToolMatcher[];
-	/** Optional supersede key function (see {@link SupersedePruneConfig.supersedeKey}). */
 	supersedeKey?: SupersedeKeyFn;
-	/** Useless-flagged results bypass the protect window (see {@link USELESS_NOTICE}). Default true. */
 	pruneUseless?: boolean;
-	/** Compaction boundary: the `firstKeptEntryId` of the latest compaction on */
 	keepBoundaryId?: string;
-	/** Prompt-cache guard. When set, a tool result whose all-message suffix */
 	cacheWarmSuffixTokens?: number;
 }
 
@@ -43,36 +34,24 @@ export interface PruneResult {
 	tokensSaved: number;
 }
 
-/** Exact placeholder written over a superseded tool result. */
 export const SUPERSEDED_NOTICE = "[Superseded by a newer read of this file]";
 
-/** Exact placeholder written over an elided useless tool result. */
 export const USELESS_NOTICE = "[Uneventful result elided]";
 
-/** Maps a tool call to its supersede targets. A tool result is superseded when */
 export type SupersedeKeyFn = (
 	toolName: string,
 	args: Record<string, unknown>,
 ) => string | readonly string[] | ReadonlySet<string> | undefined;
 
 export interface SupersedePruneConfig {
-	/** Supersede key function; results sharing a key supersede older ones. */
 	supersedeKey?: SupersedeKeyFn;
-	/** Also prune results flagged useless by their tool. Default false. */
 	pruneUseless?: boolean;
-	/** Prune a candidate now when all messages after it total at most this many estimated tokens. Default 8 000. */
 	suffixTokenLimit?: number;
-	/** Read-equivalent price of re-writing one already-cached token, used to decide */
 	cacheWritePremium?: number;
-	/** Turns the reclaimed tokens are assumed to survive if nothing prunes them, */
 	paybackTurns?: number;
-	/** Prune all candidates when the last message is at least this old: the */
 	idleFlushMs?: number;
-	/** Clock override for tests. */
 	now?: number;
-	/** Compaction boundary (`firstKeptEntryId` of the latest compaction). Entries */
 	keepBoundaryId?: string;
-	/** Tool-result protection matchers (same contract as {@link PruneConfig.protectedTools}). */
 	protectedTools: ProtectedToolMatcher[];
 }
 
@@ -85,7 +64,6 @@ function createPrunedNotice(tokens: number): string {
 	return `[Output truncated - ${tokens} tokens]`;
 }
 
-/** Generic age-based pruning floor. Below this, blanking a result to */
 const MIN_PRUNE_TOKENS = 50;
 
 function estimatePrunedSavings(tokens: number, notice: string): number {
@@ -93,7 +71,6 @@ function estimatePrunedSavings(tokens: number, notice: string): number {
 	return Math.max(0, tokens - noticeTokens);
 }
 
-/** For each entry index, the estimated token total of all *message* entries */
 function computeMessageSuffixTokens(entries: readonly SessionEntry[]): number[] {
 	const suffix = new Array<number>(entries.length);
 	let accumulated = 0;
@@ -108,14 +85,11 @@ function computeMessageSuffixTokens(entries: readonly SessionEntry[]): number[] 
 interface SupersedeCandidate {
 	entry: SessionMessageEntry;
 	message: ToolResultMessage;
-	/** Index of the entry within the `entries` array. */
 	index: number;
 	tokens: number;
-	/** Placeholder text written over the blanked result. */
 	notice: string;
 }
 
-/** Collect superseded tool results: for every unpruned, unprotected tool result */
 function collectSupersededResults(
 	entries: readonly SessionEntry[],
 	toolCallsById: ReadonlyMap<string, AgentToolCall>,
@@ -131,19 +105,6 @@ function collectSupersededResults(
 		const toolCall = toolCallsById.get(message.toolCallId);
 		if (!toolCall) continue;
 		if (isProtectedToolResult(message, toolCall, protectedTools)) continue;
-		// A result that carries no file content is not a read of the file it names,
-		// in either direction. It must not be blanked to "[Superseded by a newer read
-		// of this file]", which replaces the one fact it carries with a claim about a
-		// read that did not happen; and it must not COUNT as the newer read either,
-		// which is the half that loses data: the group is walked newest first, so such
-		// a result marked the last real read of that path superseded and left the model
-		// a pointer to a read that produced nothing.
-		//
-		// Two members. A placeholder for a call that never reached the tool, and a call
-		// that reached it and failed. The second was unguarded: a read of a path that
-		// errored blanked the earlier successful read of the same path, so the content
-		// left context and only the error string remained. `collectUselessResults` below
-		// already excludes `isError` for this reason.
 		if (toolResultNeverRan(message.details) || message.isError === true) continue;
 		const rawKey = supersedeKey(toolCall.name, toolCall.arguments as Record<string, unknown>);
 		if (rawKey === undefined) continue;
@@ -151,9 +112,6 @@ function collectSupersededResults(
 			typeof rawKey === "string" ? [rawKey] : Array.isArray(rawKey) ? rawKey : Array.from(rawKey);
 		if (targets.length === 0) continue;
 
-		// An earlier read is superseded only when EVERY target it carries is covered
-		// by newer reads. A target is covered if an identical target was read later, or
-		// if a selector-free read of the same base path was read later.
 		const superseded = targets.every(t => {
 			if (seenTargets.has(t)) return true;
 			const sep = t.indexOf("\u0000");
@@ -174,7 +132,6 @@ function collectSupersededResults(
 	return candidates.reverse();
 }
 
-/** Collect tool results their tool flagged contextually useless (zero matches, */
 function collectUselessResults(
 	entries: readonly SessionEntry[],
 	toolCallsById: ReadonlyMap<string, AgentToolCall>,
@@ -195,7 +152,6 @@ function collectUselessResults(
 	return candidates;
 }
 
-/** Deepest batch of victims whose reclaimed tokens pay for the one cache rewrite */
 function chooseWorthwhileSweep(
 	candidates: readonly SupersedeCandidate[],
 	suffixTokens: readonly number[],
@@ -218,7 +174,6 @@ function chooseWorthwhileSweep(
 	return bestCut === candidates.length ? [] : candidates.slice(bestCut);
 }
 
-/** Prune superseded tool results (e.g. stale `read` outputs replaced by a newer */
 export function pruneSupersededToolResults(entries: SessionEntry[], config: SupersedePruneConfig): PruneResult {
 	const toolCallsById = collectToolCallsById(entries);
 	const candidates = config.supersedeKey
@@ -248,23 +203,12 @@ export function pruneSupersededToolResults(entries: SessionEntry[], config: Supe
 
 	let toPrune: SupersedeCandidate[];
 	if (idle) {
-		// Provider cache is cold (idle exceeds the retention TTL), so re-writing
-		// the sent region costs nothing. Entries before the compaction boundary
-		// are summarized away and never sent — skip them to avoid pointless churn.
 		toPrune = candidates.filter(candidate => candidate.index >= boundaryIndex);
 	} else {
 		const suffixTokenLimit = config.suffixTokenLimit ?? DEFAULT_SUFFIX_TOKEN_LIMIT;
-		// suffixTokens[i] = estimated tokens of all messages strictly after entry i.
 		const suffixTokens = computeMessageSuffixTokens(entries);
 		const eligible = candidates.filter(candidate => candidate.index >= boundaryIndex);
-		// The cheap tail: a candidate whose own suffix is small is worth rewriting on
-		// its own, which is the read -> edit -> read loop.
 		const tail = eligible.filter(candidate => suffixTokens[candidate.index] <= suffixTokenLimit);
-		// Deeper than the tail, one victim never pays for the rewrite it forces, but a
-		// batch of them does. Asking the question per candidate is why a long session
-		// reclaimed almost nothing: at 120k of context every candidate outside the last
-		// few thousand tokens failed the test alone, while together they were most of
-		// the dead weight in the window.
 		const batch = chooseWorthwhileSweep(eligible, suffixTokens, config);
 		toPrune = batch.length > tail.length ? batch : tail;
 	}
@@ -308,7 +252,6 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 
 	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
 	const cacheWarmSuffixTokens = config.cacheWarmSuffixTokens;
-	// All-message suffix per index, only when the cache guard is armed.
 	const messageSuffix = cacheWarmSuffixTokens === undefined ? undefined : computeMessageSuffixTokens(entries);
 
 	for (let i = entries.length - 1; i >= 0; i--) {
@@ -324,12 +267,6 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 			continue;
 		}
 
-		// Prompt-cache guard: a result whose all-message suffix exceeds the
-		// warm-cache window sits in the already-sent cached prefix — mutating it
-		// re-writes the whole suffix (cacheWrite premium). Entries before the
-		// compaction boundary are summarized away (never sent). Both are skipped
-		// before any prune decision, so superseded/useless cannot reach a deep,
-		// still-cached copy; compaction/shake reclaim those when they rebuild.
 		const inWarmPrefix =
 			messageSuffix !== undefined && cacheWarmSuffixTokens !== undefined && messageSuffix[i] > cacheWarmSuffixTokens;
 		if (inWarmPrefix || i < boundaryIndex) {
@@ -337,10 +274,6 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 			continue;
 		}
 
-		// Superseded and useless results bypass the age-based protect window
-		// (a stale re-read copy, or a result the tool flagged as uninformative,
-		// is dead weight at any age) — but only within the cache-warm tail: the
-		// guard above already excluded deeper, still-cached copies.
 		const superseded = supersededMessages?.has(message) ?? false;
 		const useless = uselessMessages?.has(message) ?? false;
 		const tooSmall = tokens < MIN_PRUNE_TOKENS;
@@ -350,8 +283,6 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 		}
 
 		candidates.push({ entry: entry as SessionMessageEntry, tokens, superseded, useless });
-		// Dead weight being pruned away (superseded/useless) must not consume
-		// the protectTokens window of the real results retained behind it.
 		if (!superseded && !useless) accumulatedTokens += tokens;
 	}
 
@@ -386,7 +317,6 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 	return { prunedCount, tokensSaved };
 }
 
-/** Supersede targets for the `read` tool: a list of normalized target keys. */
 export function readToolSupersedeKey(toolName: string, args: Record<string, unknown>): readonly string[] | undefined {
 	if (toolName !== "read") return undefined;
 	const path = args.path;

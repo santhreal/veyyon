@@ -27,9 +27,6 @@ interface MDNDoc {
 	};
 }
 
-/**
- * Convert MDN body sections to markdown
- */
 async function convertMDNBody(sections: MDNSection[]): Promise<string> {
 	const parts: string[] = [];
 
@@ -89,7 +86,6 @@ async function convertMDNBody(sections: MDNSection[]): Promise<string> {
 				break;
 
 			default:
-				// Skip unknown types
 				break;
 		}
 	}
@@ -97,7 +93,6 @@ async function convertMDNBody(sections: MDNSection[]): Promise<string> {
 	return parts.join("\n\n");
 }
 
-/** Convert a table's rows (each cell a fragment of HTML) into the lines of a GitHub-flavored Markdown table. Each cell's HTML is rendered to Markdown, then */
 export async function buildMarkdownTableFromHtmlRows(rows: string[][]): Promise<string[]> {
 	const rendered = await Promise.all(rows.map(row => Promise.all(row.map(cell => htmlToBasicMarkdown(cell)))));
 	const table = renderMarkdownTable(rendered);
@@ -108,19 +103,16 @@ export const handleMDN: SpecialHandler = async (url: string, timeout: number, si
 	const urlObj = tryParseUrl(url);
 	if (!urlObj) return null;
 
-	// Only handle developer.mozilla.org
 	if (!urlObj.hostname.includes("developer.mozilla.org")) {
 		return null;
 	}
 
-	// Only handle docs paths
 	if (!urlObj.pathname.includes("/docs/")) {
 		return null;
 	}
 
 	const notes: string[] = [];
 
-	// Construct JSON API URL
 	const jsonUrl = url.replace(/\/?$/, "/index.json");
 
 	try {
@@ -139,7 +131,6 @@ export const handleMDN: SpecialHandler = async (url: string, timeout: number, si
 
 		const { doc } = data;
 
-		// Build markdown content
 		const parts: string[] = [];
 
 		parts.push(`# ${doc.title}`);

@@ -39,7 +39,6 @@ import { resolveToolSearchScope } from "./search-scope";
 import { ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
-/** Chars of a changed line kept in the diff preview sent to the model and the display. */
 const DIFF_PREVIEW_MAX_CHARS = 120;
 
 const astEditOpSchema = type({
@@ -158,26 +157,18 @@ export interface AstEditToolDetails {
 	applied: boolean;
 	limitReached: boolean;
 	parseErrors?: string[];
-	/** Total parse error count before {@link PARSE_ERRORS_LIMIT} capping. Omitted when no errors. */
 	parseErrorsTotal?: number;
 	scopePath?: string;
 	files?: string[];
 	fileReplacements?: Array<{ path: string; count: number }>;
 	meta?: OutputMeta;
-	/** Pre-formatted text for the user-visible TUI render. Mirrors `result.text` lines but uses
-	 * a `│` gutter (no model-only hashline anchors). The TUI uses this directly so it never parses model-facing text. */
 	displayContent?: string;
-	/** Absolute base directory used during the edit. Used by the renderer to resolve
-	 * display-relative paths to absolute paths for OSC 8 hyperlinks. */
 	searchPath?: string;
-	/** Session cwd at edit time. Display header paths are cwd-relative, so the
-	 * renderer resolves them against this; `searchPath` is the scope target. */
 	cwd?: string;
 }
 
 type AstEditSchemaInfer = typeof astEditSchema.infer;
 
-/** Filesystem paths an ast_edit call targets, for the cwd boundary (cwd-boundary.ts). The `paths` arg lists the files edited; internal-scheme */
 export function astEditFilesystemTargets(args: unknown, cwd = process.cwd()): string[] {
 	if (!args || typeof args !== "object" || !("paths" in args)) return [];
 	const paths = args.paths;
@@ -195,8 +186,6 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 			: [];
 		return paths.length > 0 && paths.every(path => isInternalUrlPath(path)) ? "read" : "write";
 	};
-	// The cwd boundary gates out-of-cwd AST edits in non-yolo modes; internal
-	// schemes are filtered by the boundary. See cwd-boundary.ts.
 	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] =>
 		astEditFilesystemTargets(args, cwd);
 	readonly formatApprovalDetails = (args: unknown): string[] => {
@@ -348,9 +337,7 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 						const fullText = normalizeToLF(await Bun.file(absolutePath).text());
 						const tag = snapshotStore.record(canonicalSnapshotKey(absolutePath), fullText);
 						hashContexts.set(relativePath, { tag });
-					} catch {
-						// Best-effort: if a file disappears between ast-edit and rendering, emit plain line output.
-					}
+					} catch {}
 				}
 			}
 			const outputLines: string[] = [];
@@ -423,7 +410,6 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 				outputLines.push("", ...formatParseErrors(cappedParseErrors, parseErrorsTotal));
 			}
 
-			// Register pending action so `resolve` can apply or discard these previewed changes
 			if (!result.applied && result.totalReplacements > 0) {
 				const previewReplacementPlural = result.totalReplacements !== 1 ? "s" : "";
 				const previewFilePlural = result.filesTouched !== 1 ? "s" : "";
@@ -431,7 +417,6 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 					label: `AST Edit: ${result.totalReplacements} replacement${previewReplacementPlural} in ${result.filesTouched} file${previewFilePlural}`,
 					sourceToolName: this.name,
 					apply: async (_reason: string) => {
-						// Plan mode keeps the working tree read-only. ast_edit's preview (dryRun) is a harmless read, but THIS apply writes files to disk.
 						for (const fileChange of result.fileChanges) {
 							enforcePlanModeWrite(this.session, fileChange.path, { op: "update" });
 						}
@@ -457,9 +442,6 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 						for (const change of applyResult.changes) {
 							recordAppliedFile(formatPath(change.path));
 						}
-						// The preview minted tags from pre-apply content; the rewrite just
-						// invalidated them. Re-record post-apply snapshots (canonical keys)
-						// so the model's next hashline edit anchors against fresh tags.
 						const freshTagLines: string[] = [];
 						if (useHashLines) {
 							const snapshotStore = getFileSnapshotStore(this.session);
@@ -469,9 +451,7 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 									const fullText = normalizeToLF(await Bun.file(appliedAbsolutePath).text());
 									const freshTag = snapshotStore.record(canonicalSnapshotKey(appliedAbsolutePath), fullText);
 									freshTagLines.push(formatHashlineHeader(relativePath, freshTag));
-								} catch {
-									// File disappeared between apply and re-read; skip its tag.
-								}
+								} catch {}
 							}
 						}
 						const appliedFileReplacements = appliedFileList.map(filePath => ({
@@ -537,7 +517,6 @@ interface AstEditRenderArgs {
 
 const COLLAPSED_CHANGE_LIMIT = PREVIEW_LIMITS.COLLAPSED_LINES * 2;
 
-/** Flatten pre-styled change groups into frame body lines. Groups are separated by a blank line and carry no tree guides — the frame border is the container, */
 function buildChangeBody(groups: string[][], expanded: boolean, budget: number, theme: Theme): string[] {
 	const lines: string[] = [];
 	let shown = 0;
@@ -546,7 +525,6 @@ function buildChangeBody(groups: string[][], expanded: boolean, budget: number, 
 		const separator = shown > 0 ? 1 : 0;
 		const remainingAfter = groups.length - (i + 1);
 		const reserved = !expanded && remainingAfter > 0 ? 1 : 0;
-		// Always emit the first group; budget only gates subsequent ones.
 		if (!expanded && shown > 0 && lines.length + separator + group.length + reserved > budget) break;
 		if (separator) lines.push("");
 		for (let li = 0; li < group.length; li++) lines.push(group[li]!);
@@ -557,9 +535,6 @@ function buildChangeBody(groups: string[][], expanded: boolean, budget: number, 
 	return lines;
 }
 
-/** One-line header preview of an AST pattern. `renderStatusLine` only flattens
- * CR/LF, so a multi-line tab-indented pattern would otherwise punch raw tabs
- * into the status line; collapse all whitespace runs to single spaces. */
 function patternPreview(pat: string | undefined): string | undefined {
 	const collapsed = collapseWhitespace(pat);
 	return collapsed || undefined;
@@ -576,7 +551,6 @@ export const astEditToolRenderer = {
 		const description =
 			rewriteCount === 1 ? patternPreview(args.ops?.[0]?.pat) : rewriteCount ? `${rewriteCount} rewrites` : "?";
 		const header = renderStatusLine({ icon: "pending", title: "AST Edit", description, meta }, uiTheme);
-		// Pending call has no body yet — a lone status line is sleeker than an empty frame.
 		return new Text(header, 0, 0);
 	},
 
@@ -612,8 +586,6 @@ export const astEditToolRenderer = {
 			if (details?.scopePath) meta.push(formatScopeMeta(details.scopePath));
 			if (filesSearched > 0) meta.push(`searched ${filesSearched}`);
 			const header = renderStatusLine({ icon: "warning", title: "AST Edit", description, meta }, uiTheme);
-			// The "0 replacements" count already rides on the status line; only parse
-			// errors are worth a body, so frame solely when there are some.
 			const bodyLines: string[] = [];
 			appendParseErrorsBulletList(bodyLines, details?.parseErrors, uiTheme, details?.parseErrorsTotal);
 			if (bodyLines.length === 0) return new Text(header, 0, 0);
@@ -636,15 +608,11 @@ export const astEditToolRenderer = {
 
 		const textContent = result.details?.displayContent ?? result.content?.find(c => c.type === "text")?.text ?? "";
 		const allLines = textContent.split("\n");
-		// Resolve hyperlinks over the whole output so nested directory headers
-		// reconstruct across the blank-line groups the tree list collapses by.
 		const contexts = classifyGroupedLines(allLines, details?.cwd ?? details?.searchPath, details?.searchPath);
 		const styledLines = new Array<string>(allLines.length);
 		for (let li = 0; li < allLines.length; li++) {
 			const line = allLines[li]!;
 			const ctx = contexts[li]!;
-			// Swap the inner code-frame gutter `│` for a space so it does not nest a
-			// second vertical bar inside the frame border.
 			const display = replaceTabs(line.replace("│", " "));
 			if (ctx.kind === "dir") {
 				const styled = uiTheme.fg("accent", display);

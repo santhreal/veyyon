@@ -1,15 +1,11 @@
-/** Cumulative disk-write accounting for a session budget group. TWO SOURCES, ONE TOTAL. A session tree writes to disk from two places that */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isEnoent } from "@veyyon/utils/fs-error";
 
-/** Bytes in one gigabyte, the unit `session.writeBudgetGb` is expressed in. */
 export const BYTES_PER_GB = 1024 ** 3;
 
-/** Where a group's spawned-process write bytes are being read from. */
 export type SpawnedWriteSource = "io.stat" | "proc-io" | "none";
 
-/** Sum `wbytes=` across every device line of a cgroup v2 `io.stat`. Undefined when the file carries no `wbytes` at all, which is how "this controller is */
 export function parseIoStatWrittenBytes(text: string): number | undefined {
 	let total: number | undefined;
 	for (const line of text.split("\n")) {
@@ -24,7 +20,6 @@ export function parseIoStatWrittenBytes(text: string): number | undefined {
 	return total;
 }
 
-/** `write_bytes` from a `/proc/<pid>/io`. `write_bytes`, not `wchar`: wchar counts bytes handed to `write(2)`, */
 export function parseProcIoWrittenBytes(text: string): number | undefined {
 	for (const line of text.split("\n")) {
 		if (!line.startsWith("write_bytes:")) continue;
@@ -34,12 +29,9 @@ export function parseProcIoWrittenBytes(text: string): number | undefined {
 	return undefined;
 }
 
-/** One reading of the spawned half of a group's writes. */
 export interface SpawnedWriteSample {
 	source: SpawnedWriteSource;
-	/** Cumulative group total, when `source` is `io.stat`. */
 	ioStatBytes?: number;
-	/** Per-process cumulative totals, when `source` is `proc-io`. */
 	procIo?: Array<{ pid: number; bytes: number }>;
 }
 
@@ -48,13 +40,10 @@ async function readOptionalFile(file: string): Promise<string | undefined> {
 		return await fs.readFile(file, "utf8");
 	} catch (error) {
 		if (isEnoent(error)) return undefined;
-		// EACCES on another user's /proc entry, EIO on a wedged controller: an
-		// unreadable source is an absent source, never a thrown poll.
 		return undefined;
 	}
 }
 
-/** Read the group's spawned-process writes, preferring `io.stat` and falling back to `/proc/<pid>/io` over the live members. Probes by reading: a */
 export async function sampleSpawnedWrites(options: {
 	cgroupDir: string | undefined;
 	procRoot: string;
@@ -72,35 +61,29 @@ export async function sampleSpawnedWrites(options: {
 		const bytes = parseProcIoWrittenBytes(text);
 		if (bytes !== undefined) procIo.push({ pid, bytes });
 	}
-	// An empty group on a host WITH procfs is not the same as a host without it, but neither has produced a byte yet and both read as `proc-io` the
 	if (procIo.length > 0) return { source: "proc-io", procIo };
 	const procRootReadable = await readOptionalFile(path.join(options.procRoot, "self", "io"));
 	return procRootReadable === undefined ? { source: "none" } : { source: "proc-io", procIo };
 }
 
-/** The cumulative byte total one budget group is judged against: harness tool writes plus whichever spawned source the host can actually read. */
 export class WriteAccountant {
 	#harnessBytes = 0;
 	#ioStatBytes = 0;
 	readonly #procIoHighWater = new Map<number, number>();
 	#source: SpawnedWriteSource = "none";
 
-	/** Bytes veyyon's own tools wrote; the harness is never in the group. */
 	recordHarnessWrite(bytes: number): void {
 		if (!Number.isFinite(bytes) || bytes <= 0) return;
 		this.#harnessBytes += bytes;
 	}
 
-	/** Fold one spawned-side sample in, replacing the source it came from. */
 	applySample(sample: SpawnedWriteSample): void {
 		this.#source = sample.source;
 		if (sample.source === "io.stat") {
-			// A cumulative kernel counter: take it, never add to it.
 			this.#ioStatBytes = Math.max(this.#ioStatBytes, sample.ioStatBytes ?? 0);
 			return;
 		}
 		for (const entry of sample.procIo ?? []) {
-			// High-water, so a finished command's bytes survive its exit. A per-process counter only ever rises, so a lower reading means a
 			const previous = this.#procIoHighWater.get(entry.pid) ?? 0;
 			if (entry.bytes > previous) this.#procIoHighWater.set(entry.pid, entry.bytes);
 		}
@@ -126,7 +109,6 @@ export class WriteAccountant {
 	}
 }
 
-/** Bytes as an operator-facing size, in the unit the number is legible at. */
 export function formatWriteBytes(bytes: number): string {
 	if (bytes >= BYTES_PER_GB) return `${(bytes / BYTES_PER_GB).toFixed(2)} GB`;
 	const mb = bytes / (1024 * 1024);

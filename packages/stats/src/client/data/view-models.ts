@@ -11,16 +11,13 @@ import type {
 	ToolUsageStats,
 } from "../types";
 
-/** Fixed display order for the agent-token-share breakdown. */
 const AGENT_TYPE_ORDER: AgentType[] = ["main", "subagent", "advisor"];
 
 export interface AgentTokenSegment {
 	agentType: AgentType;
-	/** input + output + cache read + cache write — the displayed denominator. */
 	tokens: number;
 	requests: number;
 	cost: number;
-	/** Fraction (0-1) of total tokens across all present agent types. */
 	share: number;
 }
 
@@ -30,13 +27,6 @@ export interface AgentTokenShareView {
 	segments: AgentTokenSegment[];
 }
 
-/**
- * Build the "token usage by agent" breakdown: one segment per agent type that
- * appears in the data, ordered main -> subagents -> advisor, each carrying its
- * token total and share of the grand total. Token counts sum the same four
- * columns the overview renders (input + output + cache read + cache write) so a
- * segment's share never disagrees with the count beside it.
- */
 export function buildAgentTokenShare(stats: AgentTypeStats[]): AgentTokenShareView {
 	const byType = new Map<AgentType, AgentTypeStats>();
 	for (const stat of stats) byType.set(stat.agentType, stat);
@@ -233,11 +223,8 @@ export function buildFolderRows(folders: FolderStats[]): FolderRowView[] {
 	}));
 }
 
-/** Table row for the Tools route: usage stats plus derived rates/shares. */
 export interface ToolRowView extends ToolUsageStats {
-	/** errors / calls (0 for zero calls). */
 	errorRate: number;
-	/** Calls relative to the busiest tool, 0-100, for the share bar. */
 	callsPercentage: number;
 }
 

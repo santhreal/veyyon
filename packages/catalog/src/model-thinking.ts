@@ -61,7 +61,6 @@ function normalizeOllamaWireEfforts<TApi extends Api>(
 	efforts: readonly Effort[],
 ): readonly Effort[] {
 	if (spec.provider !== "ollama" && spec.provider !== "ollama-cloud") return efforts;
-	// Ollama Cloud's GLM-5.2 endpoint 400s on every level except high/max.
 	if (spec.provider === "ollama-cloud" && isGlm52ReasoningEffortModelId(spec.id)) {
 		return OLLAMA_CLOUD_GLM_52_WIRE_EFFORTS;
 	}
@@ -266,8 +265,6 @@ function inferDetectedEffortMap<TApi extends Api>(
 		if (isMinimaxReasoningModelOnAnthropicEndpoint(spec)) {
 			return MINIMAX_ANTHROPIC_ADAPTIVE_EFFORT_MAP;
 		}
-		// Adaptive effort ladders are wire-exact (see
-		// getAnthropicAdaptiveEfforts) — no mapping needed.
 		return undefined;
 	}
 	if (!isOpenAICompatReasoningApi(spec.api)) {
@@ -279,8 +276,6 @@ function inferDetectedEffortMap<TApi extends Api>(
 	if (isOpenAICompatMimoReasoningEffortModel(spec, compat)) {
 		return MIMO_REASONING_EFFORT_MAP;
 	}
-	// Host quirk: Fireworks rejects `minimal` (maps to `none`) on ladders
-	// that genuinely include it. Filtered to supported efforts later.
 	if (modelMatchesHost(spec, "fireworks")) {
 		return FIREWORKS_REASONING_EFFORT_MAP;
 	}
@@ -324,10 +319,6 @@ function inferThinkingControlMode<TApi extends Api>(
 				if (semverGte(parsedModel.version, "4.6")) {
 					return "anthropic-adaptive";
 				}
-				// Opus 4.5 supports `output_config.effort` (sent alongside
-				// `thinking.budget_tokens`); Sonnet 4.5 and Haiku 4.5 reject the
-				// field with HTTP 400 "This model does not support the effort
-				// parameter." (#3497).
 				if (parsedModel.kind === "opus" && semverGte(parsedModel.version, "4.5")) {
 					return "anthropic-budget-effort";
 				}
@@ -339,9 +330,6 @@ function inferThinkingControlMode<TApi extends Api>(
 				if (isAnthropicAdaptiveGenAtLeast(parsedModel, "4.6")) {
 					return "anthropic-adaptive";
 				}
-				// Opus 4.5 on Bedrock metadata mirrors the direct-Anthropic
-				// shape; the Bedrock provider still emits plain budget thinking
-				// on the wire for the budget-effort mode.
 				if (parsedModel.kind === "opus" && semverGte(parsedModel.version, "4.5")) {
 					return "anthropic-budget-effort";
 				}
@@ -399,9 +387,6 @@ export function requireSupportedEffort<TApi extends Api>(model: ApiModel<TApi>, 
 	const levels = getSupportedEfforts(model);
 	if (!levels.includes(effort)) {
 		if (levels.length === 0) {
-			// Distinct message for the no-effort-surface case: the old text ended
-			// "Supported efforts: " with an empty list, which reads as truncated
-			// and gives the operator no way forward.
 			throw new Error(
 				`Thinking effort ${effort} is not supported by ${model.provider}/${model.id}: the model exposes no controllable thinking efforts. Send no effort (the model manages reasoning internally) or turn thinking off.`,
 			);
@@ -449,8 +434,6 @@ export function resolveWireModelId<TApi extends Api>(model: ApiModel<TApi>, effo
 export function minimumSupportedEffort<TApi extends Api>(model: ApiModel<TApi>): Effort | undefined {
 	const efforts = model.thinking?.efforts;
 	if (!efforts || efforts.length === 0) return undefined;
-	// Canonical order regardless of how the ladder was authored: the lowest
-	// supported effort is the first entry of the canonicalized ladder.
 	return canonicalizeEfforts(efforts)[0];
 }
 

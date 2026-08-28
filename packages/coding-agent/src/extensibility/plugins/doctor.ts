@@ -1,14 +1,11 @@
 import { $which } from "@veyyon/utils";
 import { theme } from "../../modes/theme/theme";
-// `session/auth-broker-config`, which OWNS this, not the `sdk` barrel that re-exports it: the barrel is
-// the whole application and this file wants one function.
 import { discoverAuthStorage } from "../../session/auth-broker-config";
 import type { DoctorCheck } from "./types";
 
 export async function runDoctorChecks(): Promise<DoctorCheck[]> {
 	const checks: DoctorCheck[] = [];
 
-	// 1. Tools veyyon shells out to. `vey` and `veyyon` used to be checked here as well, by looking their names up on PATH and reporting "Found at <path>".
 	const binaries = [{ name: "git", description: "Version control" }];
 
 	for (const bin of binaries) {
@@ -20,7 +17,6 @@ export async function runDoctorChecks(): Promise<DoctorCheck[]> {
 		});
 	}
 
-	// 2. Check provider authentication (OAuth storage + Env API keys)
 	try {
 		const authStorage = await discoverAuthStorage();
 		const providers = [
@@ -55,14 +51,11 @@ export async function runDoctorChecks(): Promise<DoctorCheck[]> {
 	return checks;
 }
 
-/** `1 warning`, `2 warnings`. The summary line read "1 warnings" for a year. */
 function count(n: number, noun: string): string {
 	return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }
 
 export function formatDoctorResults(checks: DoctorCheck[]): string {
-	// Note: This function returns plain text without theming as it may be called outside TUI context.
-	// For TUI usage, the plugin CLI handler applies theme colors.
 	const lines: string[] = ["System health", ""];
 
 	for (const check of checks) {
@@ -80,9 +73,6 @@ export function formatDoctorResults(checks: DoctorCheck[]): string {
 	const ok = checks.length - errors - warnings;
 
 	lines.push("");
-	// The verdict, not a tally. "13 ok, 1 warnings, 0 errors" made the reader do
-	// the arithmetic to find out whether anything was actually wrong, and the
-	// counts that are zero are the ones nobody needs to read.
 	if (errors > 0) {
 		lines.push(`${count(errors, "check")} failed. ${count(ok, "check")} passed.`);
 	} else if (warnings > 0) {

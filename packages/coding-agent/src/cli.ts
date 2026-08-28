@@ -1,16 +1,11 @@
 #!/usr/bin/env bun
 import { errorMessage } from "@veyyon/utils/type-guards";
 
-// Strip macOS malloc-stack-logging vars in the parent entrypoint, before any subprocess/worker spawn. libmalloc reads MallocStackLogging /
 try {
 	delete process.env.MallocStackLogging;
 	delete process.env.MallocStackLoggingNoCompact;
-} catch {
-	// A frozen or proxied `process.env` is the only way this throws, and the
-	// vars it would strip are a macOS-only child-process warning.
-}
+} catch {}
 
-/** CLI entry point — registers all commands explicitly and delegates to the lightweight CLI runner from pi-utils. */
 import { parentPort } from "node:worker_threads";
 import type { CliConfig } from "@veyyon/utils/cli";
 import {
@@ -48,10 +43,7 @@ if (Bun.semver.order(Bun.version, MIN_BUN_VERSION) < 0) {
 
 process.title = APP_NAME;
 
-// `Bun.build`-API compiled Windows executables report `import.meta.main === false`: the standalone loader keys the entry module with native backslashes
 const isProcessEntry = import.meta.main || process.env.VEYYON_COMPILED === "true";
-
-// Worker-host entry declaration (Worker threads and worker subprocesses re-enter `Bun.main` with a hidden argv selector instead of loading separate
 
 async function showHelp(config: CliConfig): Promise<void> {
 	const { renderRootHelp } = await import("@veyyon/utils/cli");
@@ -62,9 +54,7 @@ async function showHelp(config: CliConfig): Promise<void> {
 		process.stdout.write(`\n${extra}\n`);
 	}
 }
-/** Smoke-test entry. Spawns bundled workers, pings everything, then exits. Purpose: catch the silent worker-load and bundled-asset regressions that hit */
 async function runSmokeTest(): Promise<void> {
-	// Force the core `@veyyon/natives` addon to actually LOAD and RUN first. The loader is lazy — it defers `dlopen`/version-sentinel validation until the
 	const natives = await import("@veyyon/natives");
 	const width = natives.visibleWidth("veyyon", 4);
 	if (width !== 6) {
@@ -80,7 +70,6 @@ async function runSmokeTest(): Promise<void> {
 	const { smokeTestTtsWorker } = await import("./tts/tts-client");
 	const { smokeTestMnemopiEmbedWorker } = await import("./mnemopi/embed-client");
 	const { smokeTestJsEvalWorker } = await import("./eval/js/context-manager");
-	// Smoke dependencies stay lazy so normal CLI startup does not load worker clients.
 	const { smokeTestDaemonBroker } = await import("./launch/client");
 	await smokeTestSyncWorker();
 
@@ -110,7 +99,6 @@ async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 		await runTinyWorker();
 		return true;
 	}
-	// Bun flushes messages the parent posted before spawn once this entry's top-level evaluation completes, delivering them only to listeners present
 	if (arg === TAB_WORKER_ARG) {
 		if (parentPort) installWorkerInbox(parentPort);
 		await import("./tools/browser/tab-worker-entry");
@@ -123,9 +111,6 @@ async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 	}
 	if (arg === JS_EVAL_PROCESS_ARG) {
 		const { startJsEvalProcess } = await import("./eval/js/process-entry");
-		// The JS evaluator forwards user-controlled payloads (tool-call args,
-		// display outputs); a non-serializable one must fail that cell, not
-		// SIGKILL the kernel and erase the eval session's state.
 		await runIpcSubprocessWorker(startJsEvalProcess, { rethrowConnectedSendErrors: true });
 		return true;
 	}
@@ -145,13 +130,11 @@ async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 		return true;
 	}
 	if (arg === DAEMON_BROKER_WORKER_ARG) {
-		// Worker selectors must dispatch before the normal command graph loads.
 		const { startDaemonBrokerFromEnvironment } = await import("./launch/broker");
 		await startDaemonBrokerFromEnvironment();
 		return true;
 	}
 	if (arg === STATS_SYNC_WORKER_ARG) {
-		// The sync worker handles messages via `self.onmessage`, assigned during this *async* dynamic import. Bun flushes the worker's initial message
 		const scope = globalThis as unknown as { onmessage: ((event: MessageEvent) => void) | null };
 		const pending: MessageEvent[] = [];
 		const buffer = (event: MessageEvent): void => {
@@ -168,7 +151,6 @@ async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 	return false;
 }
 
-/** Boot a subprocess-isolated transformers.js worker over the parent's IPC channel and block until the parent disconnects. The tiny-model, STT, and TTS */
 async function runIpcSubprocessWorker<In, Out>(
 	start: (transport: {
 		send(message: Out): void;
@@ -176,15 +158,11 @@ async function runIpcSubprocessWorker<In, Out>(
 		onMessage(handler: (message: In) => void): () => void;
 	}) => void,
 	options?: {
-		/** Rethrow send failures while the IPC channel is still connected instead of shutting down. A connected-channel failure means this particular */
 		rethrowConnectedSendErrors?: boolean;
 	},
 ): Promise<void> {
 	const { promise: shuttingDown, resolve: shutdown } = Promise.withResolvers<void>();
 	type IpcSend = (this: NodeJS.Process, message: unknown, callback?: (error: Error | null) => void) => boolean;
-	// `process.send` only exists when spawned with an IPC channel; the parent
-	// always spawns us that way. If it's missing, the parent vanished and
-	// there's no one to talk to.
 	const ipcSend = (): IpcSend | undefined => (process as NodeJS.Process & { send?: IpcSend }).send;
 	const send = (message: Out): void => {
 		const sender = ipcSend();
@@ -226,9 +204,6 @@ async function runIpcSubprocessWorker<In, Out>(
 		},
 	});
 	const keepalive = setInterval(() => {}, 2 ** 30);
-	// Parent went away (crashed, SIGKILL, etc.) — commit suicide so we don't
-	// linger as an orphan. SIGKILL via `process.kill` keeps us symmetrical with
-	// the parent's hard-kill on shutdown: skip every JS/native finalizer.
 	process.on("disconnect", () => shutdown());
 	try {
 		await shuttingDown;
@@ -238,21 +213,16 @@ async function runIpcSubprocessWorker<In, Out>(
 	process.kill(process.pid, "SIGKILL");
 }
 
-/** Hidden subcommand that boots the tiny-model worker inside this process over the parent's IPC channel. The agent's main process spawns the same binary */
 async function runTinyWorker(): Promise<void> {
 	const { startTinyTitleWorker } = await import("./tiny/worker");
 	await runIpcSubprocessWorker(startTinyTitleWorker);
 }
 
-/** Run the CLI with the given argv (no `process.argv` prefix). */
 export async function runCli(argv: string[]): Promise<void> {
 	let resolvedArgv = argv;
 	try {
 		const extracted = extractProfileFlags(resolvedArgv);
 		resolvedArgv = extracted.argv;
-		// One-time legacy-layout migration (bare-root default profile →
-		// profiles/default). Must run before any profile path is read or
-		// written — notably before `@veyyon/utils/env` loads the agent `.env`.
 		const migration = migrateLegacyDefaultProfileLayout();
 		if (migration.migrated) {
 			process.stderr.write(
@@ -262,7 +232,6 @@ export async function runCli(argv: string[]): Promise<void> {
 		if (extracted.profile !== undefined) {
 			setProfile(extracted.profile);
 		} else {
-			// No explicit --profile: resolve from the profile env var (VEYYON_PROFILE — an explicitly empty value
 			setProfile(resolveStartupProfile());
 		}
 		if (extracted.aliasName !== undefined) {
@@ -283,20 +252,17 @@ export async function runCli(argv: string[]): Promise<void> {
 			return;
 		}
 	} catch (error) {
-		// A bootstrap flag with no value (`--profile`, `--alias=`) is a bad command line, not a run that failed, so it owes the caller EXIT_USAGE like every
 		const message = errorMessage(error);
 		process.stderr.write(`Error: ${message}\n`);
 		process.exitCode = error instanceof CliUsageError ? EXIT_USAGE : EXIT_FAILURE;
 		return;
 	}
 
-	// Worker-thread entry dispatch must run before the first `await`: the stats sync worker's buffering onmessage handler is installed in the
 	if (resolvedArgv[0]?.startsWith("__veyyon_worker_")) {
 		await runWorkerEntrypoint(resolvedArgv[0]);
 		return;
 	}
 
-	// Declare this module as the worker-host entry now that the active profile is resolved. The worker-host module is side-effect-free; importing
 	if (isProcessEntry) declareWorkerHostEntry();
 
 	if (resolvedArgv[0] === "--smoke-test") {
@@ -307,13 +273,8 @@ export async function runCli(argv: string[]): Promise<void> {
 		import("@veyyon/utils/cli"),
 		import("./cli-commands"),
 	]);
-	// --help and --version are handled by run() directly, don't rewrite those.
-	// Everything else that isn't a known subcommand routes to "launch".
 	const resolved = resolveCliArgv(resolvedArgv);
 	if ("error" in resolved) {
-		// A mistyped subcommand is a bad command line, not a run that failed:
-		// `veyyon confg` cannot succeed on a retry, so it owes the caller the same
-		// EXIT_USAGE that an unrecognized flag returns (see cli/exit-codes.ts).
 		process.stderr.write(`Error: ${resolved.error}\n`);
 		process.exitCode = EXIT_USAGE;
 		return;
@@ -321,7 +282,6 @@ export async function runCli(argv: string[]): Promise<void> {
 	return run({ bin: APP_NAME, version: VERSION, argv: resolved.argv, commands, help: showHelp });
 }
 
-/** The members of an `AggregateError`, one per line, or `""` for any other error. Without this, an aggregate prints as its message alone — and Bun's own message */
 function formatAggregateMembers(err: Error, seen: Set<unknown>, indent: string): string {
 	const members = (err as { errors?: unknown }).errors;
 	if (!Array.isArray(members) || members.length === 0) return "";
@@ -344,14 +304,12 @@ function formatAggregateMembers(err: Error, seen: Set<unknown>, indent: string):
 	return out;
 }
 
-/** Render an error escaping `runCli` for the operator. `Bun.inspect` on an Error embeds source-context excerpts around each frame — in the compiled */
 export function formatCliFatal(err: unknown, opts: { stack: boolean; colors: boolean }): string {
 	if (opts.stack) return `${Bun.inspect(err, { colors: opts.colors })}\n`;
 	let out: string;
 	if (err instanceof Error) {
 		out = `${err.name && err.name !== "Error" ? err.name : "Error"}: ${err.message || "(no message)"}`;
 		out += formatAggregateMembers(err, new Set([err]), "  ");
-		// A wrapped error can form a cause cycle (`e.cause === e`, or A↔B), which would make this walk loop forever and hang the process at the exact moment
 		const seen = new Set<unknown>([err]);
 		let cause: unknown = err.cause;
 		while (cause !== undefined && cause !== null) {
@@ -375,7 +333,6 @@ export function formatCliFatal(err: unknown, opts: { stack: boolean; colors: boo
 	return `${out}\n  (set VEYYON_STACK=1 for the full stack trace)\n`;
 }
 
-// Floating call instead of top-level await: TLA forces `--bytecode` (CJS lowering) builds to fail, and the entrypoint needs nothing after this.
 if (isProcessEntry || !Bun.isMainThread) {
 	runCli(process.argv.slice(2)).catch((err: unknown) => {
 		process.stderr.write(

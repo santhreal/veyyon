@@ -17,8 +17,6 @@ import type {
 	UsageWindow,
 } from "../usage";
 
-// (Refresh is the sole responsibility of AuthStorage; no provider-direct refresh here.)
-
 interface AntigravityQuotaInfo {
 	remainingFraction?: number;
 	resetTime?: string;
@@ -160,10 +158,6 @@ function parseWindow(
 
 function buildAmount(info: AntigravityQuotaInfo): UsageAmount {
 	const apiRemainingFraction = clampFraction(info.remainingFraction);
-	// Observed Antigravity responses omit remainingFraction for exhausted
-	// Google/Gemini counters and keep only resetTime. Treat that shape as
-	// "blocked until reset" rather than unknown so a healthy sibling backend
-	// counter cannot mask it during dedupe.
 	const remainingFraction = apiRemainingFraction ?? (info.resetTime ? 0 : undefined);
 	const amount: UsageAmount = { unit: "percent" };
 	if (remainingFraction === undefined) return amount;
@@ -239,12 +233,6 @@ function normalizeQuotaInfos(info: AntigravityModelInfo): AntigravityQuotaInfo[]
 	return results;
 }
 
-/**
- * Return the OAuth access token to use against `/v1internal:*`. AuthStorage is
- * the sole refresh authority (broker-aware, single-flighted, rotation-safe);
- * an expired token short-circuits the probe rather than POSTing the broker
- * sentinel back to Google.
- */
 function resolveAccessToken(params: UsageFetchParams): string | undefined {
 	const { credential } = params;
 	if (!credential.accessToken) return undefined;
@@ -307,10 +295,6 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 	}
 	const data = (await response.json()) as AntigravityUsageResponse;
 
-	// The API returns per-model quota entries, but quota is shared across
-	// models within the same backend counter, tier, and reset window. Keep
-	// Google and Anthropic-backed Antigravity models separate so a healthy
-	// Claude counter cannot mask an exhausted Gemini counter.
 	const deduped = new Map<
 		string,
 		{
@@ -337,9 +321,6 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 			const tierKey = (quotaInfo.tier ?? "default").toLowerCase();
 			const counterName = formatCounterName(quotaInfo);
 			const counterKey = counterName?.toLowerCase() ?? "default";
-			// Use the parsed window id when available so provider enum names like
-			// WINDOW_WEEKLY normalize into the same visible `/usage` group as
-			// weeklyQuotaInfo entries.
 			const windowId = window?.id ?? quotaInfo.windowId ?? "default";
 			const key = `${counterKey}|${tierKey}|${windowId}`;
 			const existing = deduped.get(key);
@@ -347,8 +328,6 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 				deduped.set(key, { amount, window, tier: quotaInfo.tier, tierKey, windowId, counterName, counterKey });
 				continue;
 			}
-			// Merge: keep the entry with fraction data for the bar, but
-			// also keep any window with a reset time so "resets in…" survives.
 			const eFrac = existing.amount.remainingFraction;
 			const cFrac = amount.remainingFraction;
 			const eHasFrac = eFrac !== undefined;
@@ -365,8 +344,6 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 				bestAmount = amount;
 				bestTier = quotaInfo.tier ?? existing.tier;
 			}
-			// Always merge in window with reset time if the current
-			// best doesn't have one.
 			if (!bestWindow?.resetsAt && window?.resetsAt) {
 				bestWindow = window;
 			}
@@ -445,9 +422,6 @@ function getAntigravityCounterLimits(report: UsageReport, counterKey: string): U
 	return report.limits.filter(limit => limit.id.toLowerCase().startsWith(prefix));
 }
 
-// Exhaustion checks are only safe with a concrete backend counter. A no-model
-// Antigravity credential lookup (for example image-provider discovery) must
-// not turn one exhausted family into a provider-wide block.
 function scopeAntigravityLimitsForModel(
 	report: UsageReport,
 	context: CredentialRankingContext | undefined,
@@ -465,31 +439,14 @@ function rankAntigravityLimits(report: UsageReport, context: CredentialRankingCo
 	return scopeAntigravityLimitsForModel(report, context);
 }
 
-/**
- * Antigravity quotas are returned per backend counter (Anthropic / Google /
- * OpenAI) and can include both daily and weekly windows. `fetchAntigravityUsage`
- * sorts `limits` ascending by `remainingFraction`; after model-family scoping,
- * the most-pressured relevant counter/window is index 0.
- *
- * Leave `secondary` unset: AuthStorage compares secondary metrics before
- * primary metrics, which is correct for providers with a fixed short/long
- * split but wrong here. Ranking Antigravity by the bottleneck counter first
- * avoids preferring an account at 95% Gemini daily / 0% Claude weekly over one
- * with healthier Gemini headroom.
- */
 export const antigravityRankingStrategy: CredentialRankingStrategy = {
 	findWindowLimits(report, context) {
 		return { primary: rankAntigravityLimits(report, context)[0] };
 	},
 	scopeLimits: scopeAntigravityLimitsForModel,
-	// Always return a scope for Antigravity so missing/unknown model context
-	// cannot fall through to AuthStorage's provider-wide block bucket.
 	blockScope(context) {
 		const counterKey = getAntigravityCounterKeyForModel(context);
 		return `counter:${counterKey ?? "unknown"}`;
 	},
-	// Antigravity windows carry `durationMs` when the response identifies them
-	// as daily/weekly. Fall back to daily for legacy unlabelled quotaInfo
-	// entries from `daily-cloudcode-pa.googleapis.com`.
 	windowDefaults: { primaryMs: DAY_MS, secondaryMs: DAY_MS },
 };

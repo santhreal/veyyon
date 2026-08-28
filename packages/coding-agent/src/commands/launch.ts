@@ -1,7 +1,3 @@
-/**
- * Root command for the coding agent CLI.
- */
-
 import { Args, Command, Flags } from "@veyyon/utils/cli";
 import { APP_NAME } from "@veyyon/utils/dirs";
 import { type Args as ParsedArgs, parseArgs, reportCliUsageError } from "../cli/args";
@@ -177,19 +173,14 @@ export default class Index extends Command {
 		"max-time": Flags.string({
 			description: "Stop the session after this duration (e.g., 600, 10m, 1h)",
 		}),
-		// `--auto-approve` / `--yolo`: declared here so the generated `--help` lists both spellings. Runtime parsing happens in `cli/args.ts parseArgs` — `runRootCommand` consumes the manual
 		"auto-approve": Flags.boolean({
 			aliases: ["yolo"],
 			description: "Auto-approve all tool calls (skip approval prompts)",
 		}),
-		// `--dangerously-skip-permissions`: start with the full /yolo bypass on.
-		// Declared here so `--help` lists it; runtime parsing is in
-		// `cli/args.ts parseArgs`, applied via `bypassAllApprovals` on the session.
 		"dangerously-skip-permissions": Flags.boolean({
 			description:
 				"Remove the session's permission prompts, including per-tool prompt overrides (a blatantly destructive command, an explicit deny, and plan mode still block). Toggle at runtime with /yolo.",
 		}),
-		// `--approval-mode`: declared here so the generated `--help` lists it; runtime parsing happens in `cli/args.ts parseArgs`. The value is applied via `Settings.override("tools.approvalMode", …)`
 		"approval-mode": Flags.string({
 			options: ["plan", "ask", "ask-command", "auto", "yolo", "always-ask", "write", "auto-edit"],
 			description:
@@ -212,9 +203,6 @@ export default class Index extends Command {
 	static strict = false;
 
 	async run(): Promise<void> {
-		// Loaded HERE, not at module scope: this module's flag table is the only
-		// thing root help needs, and `../main` pulls the entire runtime graph
-		// (~0.7s of module load) that `veyyon --help` must not pay for.
 		const { prepareAcpTerminalAuthArgs } = await import("../modes/acp/terminal-auth");
 		const { args } = prepareAcpTerminalAuthArgs(this.argv);
 		let parsed: ParsedArgs;
@@ -227,7 +215,6 @@ export default class Index extends Command {
 			}
 			throw error;
 		}
-		// Painted BEFORE the runtime graph loads, so a bare interactive launch reaches a typable composer in ~60ms rather than waiting ~760ms for
 		const { runStartupPrologue, shouldPrepaintLaunchCard } = await import("../startup/launch-card");
 		if (shouldPrepaintLaunchCard(parsed)) await runStartupPrologue(parsed);
 		const { runRootCommand } = await import("../main");

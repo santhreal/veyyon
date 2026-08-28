@@ -1,4 +1,3 @@
-/** HTTP discovery protocols for configured and implicit providers — ollama, llama.cpp, lm-studio, openai-models-list, and new-api/one-api-style proxies. */
 import type { ApiKey, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import type { Api, Model } from "@veyyon/ai/types";
@@ -21,7 +20,6 @@ import { isRecord, trimTrailingSlashes } from "@veyyon/utils";
 import { withScopedTimeoutSignal } from "../utils/fetch-timeout";
 import type { ProviderDiscovery } from "./models-config-schema";
 
-// Default cap on `max_tokens` for auto-discovered models that do not advertise their own output limit (OpenAI-models-list, Ollama, llama.cpp, new-api/
 export const DISCOVERY_DEFAULT_CONTEXT_WINDOW = OPENAI_COMPAT_DISCOVERY_DEFAULT_CONTEXT_WINDOW;
 export const DISCOVERY_DEFAULT_MAX_TOKENS = OPENAI_COMPAT_DISCOVERY_DEFAULT_MAX_TOKENS;
 
@@ -48,9 +46,6 @@ function normalizeOllamaHostEnv(value: string | undefined): string | undefined {
 		}
 		return `${parsed.protocol}//${parsed.host}`;
 	} catch {
-		// A host string out of an environment variable or a setting, which may be anything. Undefined means
-		// "not a usable host", and the caller answers by not attempting discovery against it rather than by
-		// guessing a URL -- the throw is the shape test, not a swallowed failure.
 		return undefined;
 	}
 }
@@ -67,10 +62,8 @@ export function getOllamaContextLengthOverride(): number | undefined {
 	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-// Anthropic-safe variant of the discovery cap. The Anthropic stream converter in `packages/ai/src/providers/anthropic.ts` derives the request limit as
 const DISCOVERY_DEFAULT_MAX_TOKENS_ANTHROPIC = 8_192;
 
-/** Routes discovered-model `maxTokens` defaults around Anthropic's 3× output divisor. */
 export function discoveryDefaultMaxTokens(api: Api | undefined): number {
 	return api === "anthropic-messages" ? DISCOVERY_DEFAULT_MAX_TOKENS_ANTHROPIC : DISCOVERY_DEFAULT_MAX_TOKENS;
 }
@@ -85,11 +78,8 @@ export interface DiscoveryProviderConfig {
 	optional?: boolean;
 }
 
-/** Registry-provided capabilities the protocol probes need; never the registry itself. */
 export interface DiscoveryContext {
-	/** Injected fetch implementation (tests stub this). */
 	fetch: FetchImpl;
-	/** Resolve a provider's bearer credential for `Authorization: Bearer …`. Returns undefined when no key is stored or it is a local/no-auth */
 	getBearerApiKeyResolver(provider: string): Promise<ApiKey | undefined>;
 }
 
@@ -115,7 +105,6 @@ type LlamaCppModelListEntry = {
 	id: string;
 	input?: ("text" | "image")[];
 	runtimeContextWindow?: number;
-	/** `--ctx-size` extracted from the entry's `status.args` (rendered CLI arg vector) or `status.preset` INI. Populated for llama-server router-mode */
 	configuredContextWindow?: number;
 	trainingContextWindow?: number;
 };
@@ -143,7 +132,6 @@ function isLlamaCppUnlimitedSentinel(value: unknown): boolean {
 	return false;
 }
 
-/** llama.cpp `/props.default_generation_settings.params.{max_tokens,n_predict}` are per-request defaults the server applies when a client omits the field — */
 function extractLlamaCppMaxTokens(payload: Record<string, unknown>): "contextWindow" | undefined {
 	const generationSettings = payload.default_generation_settings;
 	const params = isRecord(generationSettings) ? generationSettings.params : undefined;
@@ -251,9 +239,6 @@ function parseLlamaCppModelList(payload: unknown): LlamaCppModelListEntry[] {
 	});
 }
 
-// llama-server's `to_args()` renders the long form `--ctx-size` (never `-c`),
-// but tolerate the short form and the embedded `--flag=value` shape so a
-// hand-rolled forwarder cannot silently downgrade the discovered window.
 const LLAMA_CPP_CTX_SIZE_FLAGS = new Set(["--ctx-size", "-c"]);
 
 function extractLlamaCppCtxSizeFromArgs(value: unknown): number | undefined {
@@ -273,8 +258,6 @@ function extractLlamaCppCtxSizeFromArgs(value: unknown): number | undefined {
 	return undefined;
 }
 
-// `common_preset::to_ini()` emits one option per line as `<long-arg-without-dashes> = <value>`,
-// so `ctx-size = 8192` is the exact wire form (issue #4190).
 function extractLlamaCppCtxSizeFromIni(value: unknown): number | undefined {
 	if (typeof value !== "string") {
 		return undefined;
@@ -372,7 +355,6 @@ async function discoverOllamaModelMetadata(
 			contextWindow,
 		};
 	} catch {
-		// This is ENRICHMENT of a model that has already been discovered, behind a 150ms probe: null means "no extra metadata", the model is still offered, and the caller falls back to the documented
 		return null;
 	}
 }
@@ -450,8 +432,6 @@ async function discoverLlamaCppServerMetadata(
 			input: extractLlamaCppInputCapabilities(payload),
 		};
 	} catch {
-		// Same as the Ollama metadata probe above: optional enrichment behind a 150ms budget, null means the
-		// server's `/props` had nothing to add, and the models it serves are still discovered.
 		return null;
 	}
 }
@@ -571,7 +551,6 @@ export async function discoverLlamaCppModelRuntimeMetadata(
 			? await withAuth(apiKey, key => attempt({ ...baseHeaders, Authorization: `Bearer ${key}` }))
 			: await attempt(baseHeaders);
 	} catch {
-		// A per-model refinement, including the credential lookup it needs: undefined leaves the model with the values discovery already gave it rather than removing it. Reporting per model per discovery
 		return undefined;
 	}
 }
@@ -619,7 +598,6 @@ export async function discoverOpenAIModelsList(
 		const id = item.id;
 		if (!id) continue;
 		const nativeMetadataForModel = nativeMetadata?.get(id);
-		// Thin OpenAI-compatible proxies frequently omit `context_length`/ `max_model_len` on `/v1/models`, leaving discovered models pinned at
 		const reference = resolveModelReference(id, references) as ModelSpec<Api> | undefined;
 		const referenceCompat = reference?.compat as OpenAICompat | undefined;
 		const contextWindow =
@@ -639,14 +617,8 @@ export async function discoverOpenAIModelsList(
 				thinking: reference?.thinking,
 				input: nativeMetadataForModel?.input ?? reference?.input ?? ["text"],
 				...(providerConfig.discovery.type === "lm-studio" ? { imageInputDecoder: "stb" as const } : {}),
-				// Proxy/gateway pricing is provider-specific and rarely matches
-				// upstream bundled catalogs, so keep costs local-unknown even
-				// when we successfully recover the upstream model identity.
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 				contextWindow,
-				// Cap the reference's output limit at the discovered context
-				// window so an ID collision with a larger bundled model can
-				// never request more tokens than the local runtime advertises.
 				maxTokens: Math.min(reference?.maxTokens ?? discoveryDefaultMaxTokens(providerConfig.api), contextWindow),
 				headers,
 				compat: {
@@ -721,7 +693,6 @@ export async function discoverLiteLLMModels(
 	return richModels.map(spec => buildModel({ ...spec, headers }));
 }
 
-/** Discover models from an Anthropic+OpenAI-compatible reseller proxy that exposes both `/v1/messages` and `/v1/chat/completions`, advertising each */
 export async function discoverProxyModels(
 	providerConfig: DiscoveryProviderConfig,
 	ctx: DiscoveryContext,
@@ -779,19 +750,13 @@ export async function discoverProxyModels(
 				reasoning: reference?.reasoning ?? false,
 				thinking: reference?.thinking,
 				input: reference?.input ?? ["text"],
-				// Proxy pricing is provider-specific and usually does not match
-				// upstream bundled catalogs, so keep costs local-unknown even when
-				// we successfully recover the upstream model identity.
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-				// Prefer the context_length the API reports for this model; fall
-				// back to the bundled reference, then a sane default.
 				contextWindow:
 					toPositiveNumberOrUndefined(item.context_length) ??
 					reference?.contextWindow ??
 					DISCOVERY_DEFAULT_CONTEXT_WINDOW,
 				maxTokens: reference?.maxTokens ?? discoveryDefaultMaxTokens(api),
 				headers,
-				// OpenAI-compat fields are no-ops on anthropic models; the Anthropic SDK ignores them. Provider-level disableStrictTools
 				compat: isAnthropic
 					? undefined
 					: {
@@ -846,7 +811,6 @@ export function normalizeOpenAIModelsListBaseUrl(baseUrl?: string): string {
 	}
 }
 
-/** The native-API base URL for an Ollama endpoint. This used to return `${protocol}//${host}`, which discards the path. An Ollama behind a reverse */
 function normalizeOllamaBaseUrl(baseUrl?: string): string {
 	return toOllamaNativeBaseUrl(catalogNormalizeOllamaBaseUrl(baseUrl || DEFAULT_OLLAMA_BASE_URL));
 }

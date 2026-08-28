@@ -1,5 +1,3 @@
-/** IrcBus - Process-global mailbox bus for agent-to-agent messaging. Replaces the old auto-reply model: a `send` never blocks on the recipient */
-
 import { type InstrumentationLevel, sessionTelemetryDetail } from "@veyyon/ai/instrumentation";
 import { errorMessage, logger, Snowflake } from "@veyyon/utils";
 import { settingsOrNull } from "../config/settings-instance";
@@ -9,13 +7,10 @@ import type { CustomMessage } from "../session/messages";
 
 export interface IrcMessage {
 	id: string;
-	/** Sender agent id. */
 	from: string;
-	/** Recipient agent id (resolved; "all" is expanded by the tool, not stored). */
 	to: string;
 	body: string;
 	ts: number;
-	/** Message id being answered. */
 	replyTo?: string;
 }
 
@@ -25,33 +20,22 @@ export interface IrcDeliveryReceipt {
 	error?: string;
 }
 
-/** The delivery path taken inside the bus. */
 export type IrcDeliveryRoute = "refused" | "waiter" | "injected" | "wake" | "revival" | "buffered" | "unavailable";
 
-/** Recipient classification without persisting its agent id. */
 export type IrcRecipientClass = AgentKind | "unknown";
 
-/** Structured, content-free facts about one exactly-once IRC delivery attempt. `rich` is deliberately small: the canonical agent-communication policy */
 export interface IrcDeliveryTelemetry {
 	level: "rich" | "ultra";
 	outcome: IrcDeliveryReceipt["outcome"];
-	/** UTF-8 byte count of the message payload; never the payload itself. */
 	payloadBytes: number;
-	/** Ultra: sender agent id. */
 	sender?: string;
-	/** Ultra: coarse recipient kind, not its id. */
 	recipientClass?: IrcRecipientClass;
-	/** Ultra: hand-off path through refusal, wait, wake, live injection, revival, or buffering. */
 	route?: IrcDeliveryRoute;
-	/** Ultra: whether a parked recipient was revived before hand-off. */
 	revived?: boolean;
-	/** Ultra: end-to-end send-to-record latency, in milliseconds. */
 	deliveryLatencyMs?: number;
-	/** Ultra: derived only from the already-represented reply relationship. */
 	messageKind?: "message" | "reply";
 }
 
-/** Complete content-free facts before a participant's policy projects rich or ultra fields. */
 export interface IrcDeliveryFacts {
 	outcome: IrcDeliveryReceipt["outcome"];
 	payloadBytes: number;
@@ -63,17 +47,13 @@ export interface IrcDeliveryFacts {
 	messageKind: "message" | "reply";
 }
 
-/** Complete directional facts offered to one participant for policy-gated persistence. */
 export interface IrcPersistedDeliveryFacts extends IrcDeliveryFacts {
 	messageId: string;
 	direction: "sent" | "received";
 }
 
-/** Directional JSONL record written to one participating agent session. */
 export interface IrcPersistedDeliveryTelemetry extends IrcDeliveryTelemetry {
-	/** Shared across sent/received records for cross-session deduplication. */
 	messageId: string;
-	/** This session's role in the delivery. */
 	direction: "sent" | "received";
 }
 
@@ -83,7 +63,6 @@ interface IrcDeliveryAttempt extends IrcDeliveryReceipt {
 	revived: boolean;
 }
 
-/** Project complete facts to the fields admitted by one instrumentation level. */
 export function projectIrcDeliveryTelemetry(level: "rich" | "ultra", facts: IrcDeliveryFacts): IrcDeliveryTelemetry {
 	const telemetry: IrcDeliveryTelemetry = {
 		level,
@@ -101,15 +80,11 @@ export function projectIrcDeliveryTelemetry(level: "rich" | "ultra", facts: IrcD
 	return telemetry;
 }
 
-/** One line of the bus's own record of the traffic: the message and how it landed. */
 export interface IrcLogEntry {
 	message: IrcMessage;
 	outcome: IrcDeliveryReceipt["outcome"];
-	/** Present only on `failed`: why it did not reach the recipient. */
 	error?: string;
-	/** Content-free structured delivery facts, gated by session instrumentation. */
 	telemetry?: IrcDeliveryTelemetry;
-	/** The conversation this line belongs to, stamped at record time from the sender's (else the recipient's) {@link AgentRef.scope}. */
 	scope?: string;
 }
 
@@ -119,16 +94,12 @@ interface IrcWaiter {
 	cancel: () => void;
 }
 
-/** Mailbox cap per agent; oldest messages are dropped beyond it. */
 const MAILBOX_CAP = 100;
 
-/** Traffic lines kept for the comms view. A cap, not a page: the log is read from the newest end, and an unbounded one would grow for the life of a */
 const LOG_CAP = 500;
 
-/** Consecutive strictly-alternating messages allowed between one pair of agents before the bus stops carrying them. */
 const PING_PONG_CAP = 16;
 
-/** Who counts as alive for a blocking `wait`, so it ends when nobody can answer instead of burning its whole timeout. */
 export interface IrcLivenessOptions {
 	registry: AgentRegistry;
 	senderId: string;
@@ -145,7 +116,6 @@ export class IrcBus {
 		return IrcBus.#global;
 	}
 
-	/** Reset the global bus. Test-only. */
 	static resetGlobalForTests(): void {
 		IrcBus.#global = undefined;
 	}
@@ -165,24 +135,19 @@ export class IrcBus {
 			settingsOrNull()?.get("session.instrumentation") ?? "off",
 	) {
 		this.#registry = registry;
-		// Lazy: the lifecycle global self-constructs against the global registry,
-		// so only touch it when a parked recipient actually needs reviving.
 		this.#lifecycle = () => lifecycle ?? AgentLifecycleManager.global();
 		this.#instrumentationLevel = instrumentationLevel;
 	}
 
-	/** Fire-and-forget delivery. Never blocks on the recipient generating anything: the receipt reports how the message reached the recipient */
 	async send(
 		msg: Omit<IrcMessage, "id" | "ts">,
 		opts?: { expectsReply?: boolean; suppressRelay?: boolean },
 	): Promise<IrcDeliveryReceipt> {
-		// One wrapper around the whole delivery, so the log gets every leg exactly once. `#send` returns from seven places -- three refusals, the waiter
 		const message: IrcMessage = { ...msg, id: Snowflake.next(), ts: Date.now() };
 		let attempt: IrcDeliveryAttempt;
 		try {
 			attempt = await this.#send(message, opts);
 		} catch (error) {
-			// `#send` reports its known failures as receipts, but the relay, the waiter hand-off and the mailbox enqueue all sit outside its try
 			this.#record(
 				{ message, outcome: "failed", error: errorMessage(error) },
 				{ to: message.to, outcome: "failed", recipientClass: "unknown", route: "unavailable", revived: false },
@@ -197,24 +162,20 @@ export class IrcBus {
 		return receipt;
 	}
 
-	/** The bus's own record of the traffic, oldest first, capped at {@link LOG_CAP}. A copy: the array is handed to render paths that hold it across frames, and */
 	log(): IrcLogEntry[] {
 		return this.#log.slice();
 	}
 
-	/** Subscribe to traffic as it happens. Returns the unsubscribe. A listener that throws must not break delivery -- it is a display feed -- */
 	onMessage(listener: (entry: IrcLogEntry) => void): () => void {
 		this.#logListeners.add(listener);
 		return () => this.#logListeners.delete(listener);
 	}
 
-	/** Drop every trace of the named agents: their mailboxes, their pending waiters, and every traffic line they took part in. */
 	forgetAgents(ids: Iterable<string>, scope?: string): void {
 		const gone = new Set(ids);
 		if (gone.size === 0) return;
 		for (const id of gone) {
 			this.#mailboxes.delete(id);
-			// SNAPSHOT the array. `cancel` settles, and settling runs `cleanup`, which splices this very array through `#removeWaiter`. Iterating it
 			for (const waiter of [...(this.#waiters.get(id) ?? [])]) waiter.cancel();
 			this.#waiters.delete(id);
 		}
@@ -226,7 +187,6 @@ export class IrcBus {
 		if (kept.length !== this.#log.length) this.#log.splice(0, this.#log.length, ...kept);
 	}
 
-	/** How many messages the tail of the traffic log has spent confined to `a` and `b`, counting back from the newest. */
 	#pingPongLength(a: string, b: string): number {
 		if (a === b) return 0;
 		let length = 0;
@@ -240,7 +200,6 @@ export class IrcBus {
 	}
 
 	#record(entry: IrcLogEntry, attempt: IrcDeliveryAttempt): void {
-		// Stamped here and nowhere else: both endpoints are registered at the moment a message is recorded, so this is the only place the answer is
 		entry.scope ??= this.#scopeOf(entry.message);
 		const facts: IrcDeliveryFacts = {
 			outcome: attempt.outcome,
@@ -292,8 +251,6 @@ export class IrcBus {
 				persist.call(session, facts);
 			}
 		} catch (error) {
-			// Session persistence is observability-only. A closed or mirrored
-			// session must not turn successful message delivery into failure.
 			logger.warn("IrcBus: session telemetry persistence failed; delivery was unaffected", {
 				agentId,
 				error: String(error),
@@ -301,7 +258,6 @@ export class IrcBus {
 		}
 	}
 
-	/** The conversation a message belongs to: the sender's scope, else the recipient's. */
 	#scopeOf(message: IrcMessage): string | undefined {
 		try {
 			return this.#registry.get(message.from)?.scope ?? this.#registry.get(message.to)?.scope;
@@ -335,7 +291,6 @@ export class IrcBus {
 				revived: false,
 			};
 		}
-		// Advisor refs are observability-only transcripts, never messageable peers.
 		if (ref.kind === "advisor") {
 			return {
 				to: message.to,
@@ -346,8 +301,6 @@ export class IrcBus {
 				revived: false,
 			};
 		}
-		// Checked after the recipient is known to exist and be messageable, so a
-		// loop refusal never masks the more specific reason a send was doomed.
 		if (this.#pingPongLength(message.from, message.to) >= PING_PONG_CAP) {
 			return {
 				to: message.to,
@@ -379,9 +332,6 @@ export class IrcBus {
 			}
 		}
 
-		// A pending `wait` from the recipient consumes the message directly —
-		// it is returned from their irc tool call and never hits the inbox or
-		// the session injection path.
 		const waiter = this.#takeMatchingWaiter(message.to, message.from);
 		if (waiter) {
 			waiter.resolve(message);
@@ -418,7 +368,6 @@ export class IrcBus {
 				revived,
 			};
 		} catch (error) {
-			// Live hand-off failed (e.g. recipient disposed mid-shutdown): buffer the message so a later `wait`/`inbox` from the recipient can still
 			this.#enqueue(message);
 			return {
 				to: message.to,
@@ -431,7 +380,6 @@ export class IrcBus {
 		}
 	}
 
-	/** Block until a message for `agentId` (optionally from `filter.from`) arrives; consume + return it. Null on timeout (`timeoutMs <= 0` waits */
 	async wait(
 		agentId: string,
 		filter: { from?: string },
@@ -444,7 +392,6 @@ export class IrcBus {
 		}
 
 		if (options?.drainPending !== false) {
-			// Already-pending mail satisfies the wait without parking a waiter.
 			const pending = this.#takeFromMailbox(agentId, filter.from);
 			if (pending) return pending;
 		}
@@ -486,7 +433,6 @@ export class IrcBus {
 		const waiter: IrcWaiter = {
 			from: filter.from,
 			resolve: msg => settle({ kind: "message", msg }),
-			// Settles, not merely cleans up. `cancel` had no caller until `forgetAgents` gained one, and it was written as `cleanup()` alone:
 			cancel: () => settle({ kind: "timeout" }),
 		};
 
@@ -514,7 +460,6 @@ export class IrcBus {
 			const { registry, senderId } = liveness;
 			const hasRunningSender = (from?: string): boolean =>
 				registry.listVisibleTo(senderId).some(ref => ref.status === "running" && (!from || ref.id === from));
-			// `revivable` asks whether the peer could still answer, not whether it is answering now. A recipient that is idle or parked is woken by the
 			const canStillReply = (from: string): boolean => {
 				const ref = registry.get(from);
 				return ref !== undefined && ref.status !== "aborted" && registry.canAddress(senderId, from);
@@ -539,7 +484,6 @@ export class IrcBus {
 		return promise;
 	}
 
-	/** Drain (or peek) pending messages for `agentId`. */
 	inbox(agentId: string, opts?: { peek?: boolean }): IrcMessage[] {
 		const mailbox = this.#mailboxes.get(agentId);
 		if (!mailbox || mailbox.length === 0) return [];
@@ -569,7 +513,6 @@ export class IrcBus {
 		}
 	}
 
-	/** Resolve the OLDEST waiter for `agentId` whose from-filter accepts `from`. */
 	#takeMatchingWaiter(agentId: string, from: string): IrcWaiter | undefined {
 		const waiters = this.#waiters.get(agentId);
 		if (!waiters) return undefined;
@@ -598,9 +541,7 @@ export class IrcBus {
 		return message;
 	}
 
-	/** Surface agent↔agent traffic as a display-only card on the driving session's UI. Skipped when that agent is either endpoint: as recipient its own */
 	#relayToMainUi(message: IrcMessage, scope: string | undefined): void {
-		// Exact scope first, then an unattributed root. Two roots can match the permissive `sameScope` rule at once (a scoped conversation plus a
 		const roots = this.#registry.listInScope(scope).filter(ref => ref.kind === "main" && ref.session !== null);
 		const root = roots.find(ref => ref.scope !== undefined && ref.scope === scope) ?? roots[0];
 		if (!root?.session) return;
@@ -618,7 +559,6 @@ export class IrcBus {
 		try {
 			mainSession.emitIrcRelayObservation(record);
 		} catch (error) {
-			// Display-only forwarding must never affect delivery semantics, so the throw is still swallowed. What is not acceptable is swallowing it
 			logger.warn("Inter-agent message was delivered but could not be shown in the transcript", {
 				from: message.from,
 				to: message.to,

@@ -1,16 +1,9 @@
-/**
- * Get the API key or OAuth token for a provider.
- */
-
-// The registry itself (163 modules) rather than the barrel (346).
 import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import { Args, Command, Flags } from "@veyyon/utils/cli";
 import chalk from "chalk";
 import { isAuthenticated } from "../config/auth-state";
 import { credentialRemedySentence } from "../config/missing-credentials";
 import { ModelRegistry } from "../config/model-registry";
-// `session/auth-broker-config`, which OWNS this, not the `sdk` barrel that re-exports it: the barrel is
-// the whole application and this file wants one function.
 import { discoverAuthStorage } from "../session/auth-broker-config";
 import { getAvailableAuthMethods } from "../web/search/providers/perplexity-auth";
 
@@ -106,7 +99,6 @@ export default class Token extends Command {
 
 			const modelRegistry = new ModelRegistry(authStorage);
 
-			// Resolve the API key / token
 			let apiKey: string | undefined;
 
 			if (provider === "perplexity") {
@@ -126,7 +118,6 @@ export default class Token extends Command {
 			}
 
 			if (!isAuthenticated(apiKey)) {
-				// Find all active/configured providers
 				const activeProviders = new Set<string>();
 				for (const p of PROVIDER_REGISTRY) {
 					if (authStorage.hasAuth(p.id)) {
@@ -142,7 +133,6 @@ export default class Token extends Command {
 
 				const msg = `No active credential found for provider "${providerName}".`;
 				process.stderr.write(`${chalk.red(msg)}\n`);
-				// `veyyon token` is a CLI with no TUI, so `/login` was not a route its reader had. The provider is known here, so the remedy can name
 				if (activeProviders.size > 0) {
 					process.stderr.write(`Configured providers: ${Array.from(activeProviders).sort().join(", ")}\n`);
 				}
@@ -158,9 +148,7 @@ export default class Token extends Command {
 						process.stdout.write(`${parsed.token}\n`);
 						return;
 					}
-				} catch {
-					// Not a JSON string, print as-is
-				}
+				} catch {}
 			}
 
 			process.stdout.write(`${apiKey}\n`);

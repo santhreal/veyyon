@@ -27,46 +27,26 @@ import { checkRubyKernelAvailability, type KernelDisplayOutput, RubyKernel } fro
 import { resolveExplicitRubyRuntime } from "./runtime";
 
 export interface RubyExecutorOptions {
-	/** Working directory for command execution */
 	cwd?: string;
-	/** Timeout in milliseconds */
 	timeoutMs?: number;
-	/** Absolute wall-clock deadline in milliseconds since epoch */
 	deadlineMs?: number;
-	/** Runtime-work budget (ms). Used only for timeout-annotation text when the caller drives cancellation via the eval watchdog `signal`. Does not arm a timer. */
 	idleTimeoutMs?: number;
-	/** Callback for streaming output chunks (already sanitized) */
 	onChunk?: (chunk: string) => Promise<void> | void;
-	/** AbortSignal for cancellation */
 	signal?: AbortSignal;
-	/** Session identifier for kernel reuse */
 	sessionId?: string;
-	/** Logical owner identifier for retained kernel cleanup */
 	kernelOwnerId?: string;
-	/** Explicit interpreter path (`ruby.interpreter`). Skips discovery when set. */
 	interpreter?: string;
-	/** Restart the kernel before executing */
 	reset?: boolean;
-	/** Whether the kernel outlives this call (`ruby.kernelMode`). Defaults to `session`, which is the behaviour every Ruby eval had before the setting existed. */
 	kernelMode?: KernelMode;
-	/** Session file path for accessing task outputs */
 	sessionFile?: string;
-	/** Effective artifacts directory for the current session. */
 	artifactsDir?: string;
-	/** Artifact path/id for full output storage */
 	artifactPath?: string;
 	artifactId?: string;
-	/** On-disk roots the prelude helpers substitute for internal-URL schemes (e.g. `{ local: "/…/artifacts/local" }`). Exported to the kernel as */
 	localRoots?: Record<string, string>;
-	/** ToolSession used to resolve host-side `tool.<name>(args)` calls. When omitted, the bridge env vars are not injected and `tool.foo(...)` raises. */
 	toolSession?: ToolSession;
-	/** Callback for status events emitted by tool bridge invocations. */
 	emitStatus?: (event: JsStatusEvent) => void;
-	/** Live status events streamed as they are emitted. */
 	onStatus?: (event: JsStatusEvent) => void;
-	/** @internal Bridge session id, set by `executeRuby` before delegating. */
 	bridgeSessionId?: string;
-	/** @internal Bridge endpoint info, set by `executeRuby` before delegating. */
 	bridge?: { url: string; token: string };
 }
 
@@ -84,7 +64,6 @@ export interface RubyResult {
 	stdinRequested: boolean;
 }
 
-// Session bookkeeping One RubyKernel subprocess per (session id, cwd, interpreter) tuple. The
 interface RubySessionOwners {
 	ownerIds: Set<string>;
 	hasFallbackOwner: boolean;
@@ -209,8 +188,6 @@ async function replaceSessionKernel(session: RubySession, cwd: string, options: 
 
 async function resetSession(sessionKey: string): Promise<void> {
 	const existing =
-		// As in the Julia and Python executors: a start that failed leaves nothing to reset, and its failure
-		// belongs to the caller awaiting the start.
 		sessions.get(sessionKey) ?? (await startingSessions.get(sessionKey)?.promise.catch(() => undefined));
 	if (!existing) return;
 	sessions.delete(sessionKey);
@@ -336,7 +313,6 @@ async function ensureToolBridge(options: RubyExecutorOptions): Promise<void> {
 	}
 }
 
-/** Run one cell on a kernel that exists only for it. Nothing carries over: no variable an earlier cell defined, no `require` it performed, no monkey patch. */
 async function executePerCall(code: string, cwd: string, options: RubyExecutorOptions): Promise<RubyResult> {
 	if (options.bridge && !options.bridgeSessionId) {
 		options.bridgeSessionId = `rb-bridge:${crypto.randomUUID()}`;
@@ -363,9 +339,6 @@ async function executeOnSession(code: string, cwd: string, options: RubyExecutor
 	}
 	if (options.reset) {
 		const inFlight = resettingSessions.get(sessionKey);
-		// Another caller owns this reset and is awaiting `resetPromise` itself, so its failure is reported
-		// there. Here the only thing that matters is that the reset has SETTLED before running on the
-		// context: if it failed, `acquireSession` below starts a fresh one and fails with its own reason.
 		if (inFlight) await inFlight.catch(() => undefined);
 		else {
 			const resetPromise = resetSession(sessionKey);
@@ -381,9 +354,6 @@ async function executeOnSession(code: string, cwd: string, options: RubyExecutor
 		}
 	} else {
 		const inFlight = resettingSessions.get(sessionKey);
-		// Another caller owns this reset and is awaiting `resetPromise` itself, so its failure is reported
-		// there. Here the only thing that matters is that the reset has SETTLED before running on the
-		// context: if it failed, `acquireSession` below starts a fresh one and fails with its own reason.
 		if (inFlight) await inFlight.catch(() => undefined);
 	}
 	const session = await acquireSession(sessionKey, sessionId, cwd, options);
@@ -463,7 +433,6 @@ export async function executeRuby(code: string, options?: RubyExecutorOptions): 
 	}
 }
 
-/** Wire this subsystem into the session's owner-scoped cleanup. Registered at module scope rather than called by name from `agent-session.dispose()`, which is */
 registerOwnedResourceDisposer({
 	name: "ruby-kernels",
 	scope: "eval-kernel-owner",

@@ -101,7 +101,6 @@ function emitDroppedRecordNotice(options: SessionLoadOptions, issues: readonly S
 	);
 }
 
-/** Re-link entries whose parent is not in the file, and say how many were re-linked. Entries form a tree keyed by `parentId`, and the branch walk climbs from a leaf to */
 function stitchOrphanedEntries(entries: readonly FileEntry[]): number {
 	if (entries.length < 2) return 0;
 	const ids = new Set<string>();
@@ -128,7 +127,6 @@ function emitStitchedRecordNotice(options: SessionLoadOptions, stitched: number)
 	);
 }
 
-/** The record loop both load paths feed, so a rule written once reaches both. There are two paths because a session under 8 MiB is read as one string and a larger */
 class SessionRecordLoop {
 	readonly entries: FileEntry[] = [];
 	readonly #issues: SessionRecordIssue[] = [];
@@ -152,13 +150,11 @@ class SessionRecordLoop {
 		this.#byteOffset = options.startByteOffset ?? 1;
 	}
 
-	/** Advance past a line the caller consumed itself, such as the physical title slot. */
 	skip(byteLength: number): void {
 		this.#line += 1;
 		this.#byteOffset += byteLength + 1;
 	}
 
-	/** Feed one physical line and its byte length. A blank line only moves the cursor. */
 	push(text: string, byteLength: number): void {
 		if (text.trim().length === 0) {
 			this.skip(byteLength);
@@ -193,7 +189,6 @@ class SessionRecordLoop {
 		this.skip(byteLength);
 	}
 
-	/** Report what was dropped, re-link what was orphaned, and hand back the entries. */
 	finish(): FileEntry[] {
 		if (this.#issues.length > 0) {
 			logger.warn(
@@ -213,7 +208,6 @@ class SessionRecordLoop {
 	}
 }
 
-/** Parse session JSONL while stripping and folding the optional fixed title slot. */
 export function parseSessionContent(
 	content: string,
 	context: SessionLoadOptions = {},
@@ -233,7 +227,6 @@ export function parseSessionContent(
 	return { entries: foldTitleSlot(loop.finish(), slot), titleSlot: slot };
 }
 
-/** Exported for testing — the ≥8MiB streaming path (works on any file size). */
 export async function loadEntriesFromFileStream(
 	filePath: string,
 	options: SessionLoadOptions = {},
@@ -255,8 +248,6 @@ export async function loadEntriesFromFileStream(
 			const text = decoder.decode(lineBytes);
 			if (first) {
 				first = false;
-				// The slot is a fixed-size first line, not a record, so it never reaches the
-				// shape check; the cursor still has to step over its bytes.
 				const slot = parseTitleSlotLine(text.trim());
 				if (slot) {
 					titleSlot = titleUpdateFromSlot(slot);
@@ -274,7 +265,6 @@ export async function loadEntriesFromFileStream(
 	return { entries: foldTitleSlot(loop.finish(), titleSlot), titleSlot };
 }
 
-/** Read only the fixed-size head window to detect a physical title slot. */
 export async function readTitleSlotFromFile(
 	filePath: string,
 	storage: SessionStorage = new FileSessionStorage(),
@@ -290,12 +280,10 @@ export async function readTitleSlotFromFile(
 	if (newlineIndex < 0) return undefined;
 	return parseTitleSlotLine(head.slice(0, newlineIndex));
 }
-/** Exported for compaction.test.ts */
 export function parseSessionEntries(content: string): FileEntry[] {
 	return parseSessionContent(content).entries;
 }
 
-/** Exported for testing */
 export async function loadEntriesFromFile(
 	filePath: string,
 	storage: SessionStorage = new FileSessionStorage(),
@@ -328,7 +316,6 @@ export async function loadEntriesFromFile(
 	return entries;
 }
 
-/** Resolve blob references in loaded entries, restoring both session image blocks and persisted provider image URLs back to the inline data expected by downstream transports. Mutates entries in place. */
 function hasImageUrl(value: unknown): value is { image_url: string } {
 	return typeof value === "object" && value !== null && "image_url" in value && typeof value.image_url === "string";
 }
@@ -338,19 +325,16 @@ function shouldResolveImagePayload(value: unknown, key: string | undefined): val
 	return (key === "content" && isImageBlock(value)) || key === "images";
 }
 
-/** Running count of references the blob store could not answer, threaded through the walk. */
 interface LostPayloads {
 	count: number;
 }
 
-/** One reference the walk found, and the slot it has to be written back into. The traversal is synchronous and the reads are not, so a site names its own */
 type BlobSite =
 	| { kind: "image-data"; owner: { data: string } }
 	| { kind: "image-url"; owner: { image_url: string } }
 	| { kind: "text"; owner: Record<string, unknown>; key: string }
 	| { kind: "text-item"; owner: unknown[]; index: number };
 
-/** Walk the transcript once and collect the references, without awaiting anything. The walk used to be `async` and mapped every array element and every object key */
 function collectBlobSites(value: unknown, sites: BlobSite[], key?: string): void {
 	if (shouldResolveImagePayload(value, key)) {
 		sites.push({ kind: "image-data", owner: value });
@@ -360,8 +344,6 @@ function collectBlobSites(value: unknown, sites: BlobSite[], key?: string): void
 	if (Array.isArray(value)) {
 		for (let index = 0; index < value.length; index++) {
 			const item = value[index];
-			// A string child is recorded against the parent, because a resolver receives
-			// the string by value and cannot rewrite the slot it lives in.
 			if (typeof item === "string") {
 				if (isTextBlobRef(item)) sites.push({ kind: "text-item", owner: value, index });
 				continue;
@@ -378,8 +360,6 @@ function collectBlobSites(value: unknown, sites: BlobSite[], key?: string): void
 	const target = value as Record<string, unknown>;
 	for (const childKey of Object.keys(target)) {
 		const item = target[childKey];
-		// Externalized text (large tool results, text blocks) is a plain `blobtext:`
-		// string value at an arbitrary key; restore the full content in place.
 		if (typeof item === "string") {
 			if (isTextBlobRef(item)) sites.push({ kind: "text", owner: target, key: childKey });
 			continue;
@@ -388,12 +368,9 @@ function collectBlobSites(value: unknown, sites: BlobSite[], key?: string): void
 	}
 }
 
-/** How many blob reads may be in flight at once. A session-wide `Promise.all` over every reference issued all of them at once: a */
 const BLOB_READ_CONCURRENCY = 8;
 
 async function resolveBlobSite(site: BlobSite, blobStore: BlobStore, lost: LostPayloads): Promise<void> {
-	// Each resolver returns the reference unchanged when the blob is gone, and it is
-	// only called on a value that IS a reference, so an unchanged value is a loss.
 	switch (site.kind) {
 		case "image-data": {
 			const resolved = await resolveImageData(blobStore, site.owner.data);
@@ -440,7 +417,6 @@ async function resolveBlobSites(sites: BlobSite[], blobStore: BlobStore, lost: L
 	);
 }
 
-/** Tell the operator that a payload the transcript points at is not in the blob store. The load keeps the reference, which is what makes the loss recoverable: restoring the */
 function emitLostPayloadNotice(options: BlobResolutionOptions, lost: number): void {
 	if (!options.operatorNotices || lost === 0) return;
 	options.operatorNotices.warn(
@@ -453,13 +429,11 @@ function emitLostPayloadNotice(options: BlobResolutionOptions, lost: number): vo
 	);
 }
 
-/** Where a load reports a payload the blob store could not answer. */
 export interface BlobResolutionOptions {
 	source?: string;
 	operatorNotices?: OperatorNotices;
 }
 
-/** Restore every externalized payload the blob store still holds, and report the ones it does not. Returns the number of references that stayed references. */
 export async function resolveBlobRefsInEntries(
 	entries: FileEntry[],
 	blobStore: BlobStore,
@@ -478,7 +452,6 @@ export async function resolveBlobRefsInEntries(
 	return lost.count;
 }
 
-/** Read-only message view of a session file: load entries, migrate to the current version, resolve blob refs, and build the context along the */
 export async function loadSessionMessagesReadOnly(filePath: string): Promise<AgentMessage[]> {
 	const entries = await loadEntriesFromFile(filePath);
 	if (entries.length === 0) return [];

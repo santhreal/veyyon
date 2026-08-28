@@ -1,4 +1,3 @@
-/** Session sharing. The session JSON is gzipped and sealed with a fresh AES-256-GCM key */
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -13,54 +12,39 @@ import { redactSessionDataForShare } from "./redact-snapshot";
 
 export { DEFAULT_SHARE_URL };
 
-/** Hard cap for blobs accepted by the share server (mirrors relay shareMaxBytes). */
 export const SERVER_MAX_SEALED_BYTES = 1_000_000;
-/** Gist raw fetches cap at 10 MB; keep base64 (×4/3) comfortably under it. */
 const GIST_MAX_SEALED_BYTES = 5_000_000;
 
 const SHARE_KEY_BYTES = 32;
-/** The viewer picks the gist file by this suffix. */
 const GIST_FILENAME = "session.veyyonshare.txt";
-/** Gist ids are hex; the relay never issues pure-hex ids, so the viewer can route on shape. */
 const GIST_ID_RE = /^[0-9a-f]{20,64}$/;
 
-/** Progressively harsher per-string caps applied when the sealed blob is over budget. */
 const TEXT_CAPS = [32_768, 8_192, 2_048, 512];
-/** 1×1 transparent GIF; stands in for stripped data-URL images so <img> tags stay valid. */
 const BLANK_IMAGE_DATA_URL = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 const IMAGE_OMITTED_TEXT = "[image omitted from share]";
 
 export type ShareStore = "blob" | "gist";
 
 export interface ShareSessionOptions {
-	/** Share server/viewer base URL; defaults to {@link DEFAULT_SHARE_URL}. */
 	serverUrl?: string;
-	/** Where to upload the sealed blob. `"blob"` (default) posts to the share server; `"gist"` pushes to a secret GitHub gist first (needs an */
 	store?: ShareStore;
-	/** Agent state for system prompt + tool descriptions in the snapshot. */
 	state?: AgentState;
-	/** Redacts the snapshot before sealing via a typed, per-field walk over the session (header title/cwd, system prompt, tool descriptions, entry summaries, */
 	obfuscator?: SecretObfuscator;
 }
 
 export interface ShareSessionResult {
-	/** Viewer link: `<serverUrl>/<id>#<key>`. */
 	url: string;
 	method: "gist" | "server";
-	/** Underlying gist URL (gist method only). */
 	gistUrl?: string;
-	/** True when content was trimmed to fit the upload budget. */
 	truncated: boolean;
 	sealedBytes: number;
 }
 
-/** Build the snapshot that gets sealed and uploaded, redacted when an obfuscator is provided. */
 export function buildShareSnapshot(sm: SessionManager, options?: ShareSessionOptions): SessionData {
 	const data = buildSessionData(sm, options?.state);
 	return options?.obfuscator?.hasSecrets() ? redactSessionDataForShare(options.obfuscator, data) : data;
 }
 
-/** Share the session; uploads to the share server unless `options.store` is `"gist"`. */
 export async function shareSession(sm: SessionManager, options?: ShareSessionOptions): Promise<ShareSessionResult> {
 	const data = buildShareSnapshot(sm, options);
 	const keyBytes = new Uint8Array(SHARE_KEY_BYTES);
@@ -81,14 +65,12 @@ export async function shareSession(sm: SessionManager, options?: ShareSessionOpt
 				sealedBytes: forGist.sealed.byteLength,
 			};
 		}
-		// gh unusable or gist creation failed — fall back to the share server.
 		return shareViaServer(key, data, base, keyText, forGist);
 	}
 
 	return shareViaServer(key, data, base, keyText);
 }
 
-/** Strip trailing slashes so `<base>/<id>` composes cleanly. */
 export function normalizeShareServerUrl(serverUrl?: string): string {
 	const base = trimTrailingSlashes((serverUrl ?? DEFAULT_SHARE_URL).trim());
 	return base || DEFAULT_SHARE_URL;
@@ -99,12 +81,10 @@ interface SealedSession {
 	truncated: boolean;
 }
 
-/** Seal `data`, trimming content until the sealed blob fits `maxBytes`. Exported for tests. */
 export async function sealToFit(key: CryptoKey, data: SessionData, maxBytes: number): Promise<SealedSession> {
 	let sealed = await sealSessionData(key, data);
 	if (sealed.byteLength <= maxBytes) return { sealed, truncated: false };
 
-	// Work on a deep copy; the caller may re-fit the original at another budget.
 	const working = structuredClone(data);
 	stripImagePayloads(working);
 	sealed = await sealSessionData(key, working);
@@ -116,7 +96,6 @@ export async function sealToFit(key: CryptoKey, data: SessionData, maxBytes: num
 		if (sealed.byteLength <= maxBytes) return { sealed, truncated: true };
 	}
 
-	// Last resort: drop oldest entries (orphaned children render as roots).
 	while (working.entries.length > 4) {
 		working.entries = working.entries.slice(Math.ceil(working.entries.length / 2));
 		sealed = await sealSessionData(key, working);
@@ -126,12 +105,10 @@ export async function sealToFit(key: CryptoKey, data: SessionData, maxBytes: num
 	throw new Error(`Session too large to share: ${sealed.byteLength} bytes sealed exceeds the ${maxBytes} byte limit`);
 }
 
-/** `[12B IV][AES-256-GCM(gzip(JSON))]` — decrypted and gunzipped by share-loader.js. */
 async function sealSessionData(key: CryptoKey, data: SessionData): Promise<Uint8Array<ArrayBuffer>> {
 	return sealBytes(key, Bun.gzipSync(new TextEncoder().encode(JSON.stringify(data))));
 }
 
-/** Replace inline image payloads (image blocks + data: URLs) with tiny placeholders, in place. */
 function stripImagePayloads(value: unknown): void {
 	if (Array.isArray(value)) {
 		for (let i = 0; i < value.length; i++) {
@@ -155,7 +132,6 @@ function stripImagePayloads(value: unknown): void {
 	}
 }
 
-/** Truncate every string longer than `cap`, in place. */
 function capLongStrings(value: unknown, cap: number): void {
 	if (Array.isArray(value)) {
 		for (let i = 0; i < value.length; i++) {
@@ -176,7 +152,6 @@ function capLongStrings(value: unknown, cap: number): void {
 	}
 }
 
-/** Create a secret gist holding base64 of the sealed blob; null when `gh` is unusable. */
 async function tryCreateGist(sealed: Uint8Array): Promise<{ id: string; url: string } | null> {
 	if (!$which("gh")) return null;
 	const auth = await $`gh auth status`.quiet().nothrow();
@@ -208,7 +183,6 @@ async function tryCreateGist(sealed: Uint8Array): Promise<{ id: string; url: str
 	}
 }
 
-/** Seal to the server cap (reusing `preFit` when it already fits) and upload. */
 async function shareViaServer(
 	key: CryptoKey,
 	data: SessionData,
@@ -229,7 +203,6 @@ async function shareViaServer(
 	};
 }
 
-/** POST the sealed blob to the share server; returns the assigned id. */
 async function uploadToServer(sealed: Uint8Array, base: string): Promise<string> {
 	let res: Response;
 	try {
@@ -242,13 +215,9 @@ async function uploadToServer(sealed: Uint8Array, base: string): Promise<string>
 		throw new Error(`Share upload to ${base} failed: ${errorMessage(err)}`);
 	}
 	if (!res.ok) {
-		// The non-ok STATUS is the failure and it is already in the thrown message; the body is extra context,
-		// so a body that cannot be read just leaves the message without it.
 		const detail = (await res.text().catch(() => "")).trim().slice(0, 200);
 		throw new Error(`Share upload to ${base} failed: HTTP ${res.status}${detail ? ` (${detail})` : ""}`);
 	}
-	// A body that is not JSON fails the id check below and throws "server returned no usable id", which is the
-	// accurate description of a 200 response this client cannot use.
 	const body = (await res.json().catch(() => null)) as { id?: unknown } | null;
 	const id = body && typeof body.id === "string" ? body.id : "";
 	if (!/^[A-Za-z0-9_-]{10,64}$/.test(id)) {

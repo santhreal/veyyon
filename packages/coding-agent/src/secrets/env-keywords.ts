@@ -1,14 +1,11 @@
-/** Which environment variable NAMES are treated as holding a credential. TIER B DATA, NOT A LITERAL. The keyword list used to be a regex written inline in */
 import * as path from "node:path";
 import { CONFIG_DIR_NAME, isEnoent, isRecord } from "@veyyon/utils";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { parse as parseYaml } from "yaml";
 import bundledYaml from "./env-keywords.yml" with { type: "text" };
 
-/** Filename a user drops to extend the list. */
 export const ENV_KEYWORDS_FILENAME = "secret-env-keywords.yml";
 
-/** The shape of the data file: one key, a list of uppercase words. */
 interface EnvKeywordsFile {
 	keywords?: unknown;
 }
@@ -17,10 +14,8 @@ const ENV_KEYWORDS_FILE_FIELDS: Readonly<Record<string, true>> = {
 	keywords: true,
 };
 
-/** Keywords shipped with veyyon. Parsed once at module load from the embedded file. Embedded with `with { type: "text" }` rather */
 export const BUNDLED_ENV_KEYWORDS: readonly string[] = parseKeywords(bundledYaml, "the bundled keyword list");
 
-/** Turn a keyword list into the matcher. ONE OWNER FOR THE BOUNDARY RULE. Every caller gets its pattern from here, so there is no second */
 export function buildEnvSecretPattern(keywords: readonly string[]): RegExp {
 	const normalized = new Set<string>();
 	for (const keyword of keywords) {
@@ -31,16 +26,12 @@ export function buildEnvSecretPattern(keywords: readonly string[]): RegExp {
 		normalized.add(trimmed.toUpperCase());
 	}
 	if (normalized.size === 0) {
-		// Matches nothing, rather than an empty alternation that matches everything. An empty
-		// keyword list means "detect nothing", and the catastrophic reading of it is "detect every
-		// variable", which would send every environment value through the obfuscator.
 		return /(?!)/;
 	}
 	const escaped = Array.from(normalized).map(keyword => keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 	return new RegExp(`(?:${escaped.join("|")})(?:_|$)`, "i");
 }
 
-/** Parse one data file, refusing anything that is not a list of usable keywords. */
 function parseKeywords(text: string, label: string): string[] {
 	let parsed: unknown;
 	try {
@@ -73,7 +64,6 @@ function parseKeywords(text: string, label: string): string[] {
 	return result;
 }
 
-/** Load the keyword list: the bundled one, plus anything the operator added. A MISSING USER FILE IS EMPTY; AN UNREADABLE ONE IS AN ERROR, the same asymmetry the `secrets.yml` */
 export async function loadEnvSecretKeywords(options: { cwd: string; agentDir: string }): Promise<string[]> {
 	const keywords = new Set(BUNDLED_ENV_KEYWORDS);
 	for (const filePath of [

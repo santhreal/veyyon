@@ -40,27 +40,19 @@ export interface GuestSnapshot {
 	entries: readonly WireSessionEntry[];
 	state: SessionState | null;
 	agents: readonly AgentSnapshot[];
-	/** Keyed by `payload.progress.id`. */
 	progress: ReadonlyMap<string, SubagentProgressPayload>;
-	/** Keyed by `payload.id`. */
 	lifecycle: ReadonlyMap<string, SubagentLifecyclePayload>;
-	/** Streaming assistant ghost; held until the matching entry lands. */
 	stream: WireAssistantMessage | null;
 	streamDone: boolean;
 	activeTools: ReadonlyMap<string, ActiveTool>;
-	/** agent_start..agent_end, reconciled by state.isStreaming. */
 	working: boolean;
-	/** True when this guest joined through a read-only (view) link. */
 	readOnly: boolean;
-	/** Pending host-side UI request (`ask` select/editor) this guest can answer. */
 	uiRequest: CollabUiRequest | null;
-	/** Capped at 50, newest last. */
 	notices: readonly Notice[];
 }
 
 const MAX_NOTICES = 50;
 
-/** One fetch-transcript round trip. */
 export type TranscriptResult = { kind: "rows"; text: string; newSize: number } | { kind: "error"; message: string };
 
 interface PendingTranscript {
@@ -71,7 +63,6 @@ interface PendingTranscript {
 export class GuestClient {
 	readonly #socket: CollabSocket;
 	readonly #name: string;
-	/** base64url write token from a full link; absent when joined via a view link. */
 	readonly #writeToken: string | undefined;
 	readonly #listeners = new Set<() => void>();
 	readonly #pendingTranscripts = new Map<number, PendingTranscript>();
@@ -100,7 +91,6 @@ export class GuestClient {
 	#notices: readonly Notice[] = [];
 	#snapshot: GuestSnapshot;
 
-	/** @throws Error when the link does not parse. */
 	constructor(link: string, displayName: string) {
 		const parsed = parseCollabLink(link);
 		if ("error" in parsed) throw new Error(parsed.error);
@@ -144,7 +134,6 @@ export class GuestClient {
 		};
 	}
 
-	/** Cached stable reference; replaced (with fresh collection refs) per applied frame. */
 	getSnapshot(): GuestSnapshot {
 		return this.#snapshot;
 	}
@@ -169,7 +158,6 @@ export class GuestClient {
 		this.#socket.send({ t: "agent-cmd", cmd, agentId, text });
 	}
 
-	/** Incremental subagent-transcript read. */
 	fetchTranscript(agentId: string, fromByte: number): Promise<TranscriptResult | null> {
 		const reqId = ++this.#reqSeq;
 		const { promise, resolve } = Promise.withResolvers<TranscriptResult | null>();
@@ -182,7 +170,6 @@ export class GuestClient {
 		return promise;
 	}
 
-	/** Test seam: apply a synthetic host frame through the real apply path. */
 	applyFrameForTest(frame: HostFrame): void {
 		this.#applyFrameSafe(frame);
 	}
@@ -243,7 +230,6 @@ export class GuestClient {
 		}
 	}
 
-	/** Surfaces apply failures instead of letting the socket's recv chain swallow them. */
 	#applyFrameSafe(frame: HostFrame): void {
 		try {
 			this.#applyFrame(frame);

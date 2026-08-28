@@ -38,9 +38,6 @@ interface ReleaseResponse {
 	};
 }
 
-/**
- * Handle MetaCPAN URLs via fastapi.metacpan.org
- */
 export const handleMetaCPAN: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -53,21 +50,18 @@ export const handleMetaCPAN: SpecialHandler = async (
 
 		const fetchedAt = new Date().toISOString();
 
-		// Match /pod/Module::Name pattern
 		const podMatch = parsed.pathname.match(/^\/pod\/(.+?)(?:\/|$)/);
 		if (podMatch) {
 			const moduleName = decodeURIComponent(podMatch[1]);
 			return await fetchModule(url, moduleName, timeout, fetchedAt, signal);
 		}
 
-		// Match /release/AUTHOR/Distribution pattern
 		const releaseMatch = parsed.pathname.match(/^\/release\/([^/]+)\/([^/]+)/);
 		if (releaseMatch) {
 			const distribution = decodeURIComponent(releaseMatch[2]);
 			return await fetchRelease(url, distribution, timeout, fetchedAt, signal);
 		}
 
-		// Match /release/Distribution pattern (without author)
 		const simpleReleaseMatch = parsed.pathname.match(/^\/release\/([^/]+)$/);
 		if (simpleReleaseMatch) {
 			const distribution = decodeURIComponent(simpleReleaseMatch[1]);
@@ -95,7 +89,6 @@ async function fetchModule(
 	const module = tryParseJson<ModuleResponse>(result.content);
 	if (!module) return null;
 
-	// Fetch additional release info for dependencies and metadata
 	const releaseUrl = `https://fastapi.metacpan.org/v1/release/${module.distribution}`;
 	const releaseResult = await loadPage(releaseUrl, { timeout: Math.min(timeout, 5), signal });
 
@@ -152,7 +145,6 @@ function formatModuleMarkdown(module: ModuleResponse, release: ReleaseResponse |
 			md += `**Issues:** ${resources.bugtracker.web}\n`;
 		}
 
-		// Show runtime dependencies
 		const runtimeDeps = release.dependency?.filter(
 			d => d.phase === "runtime" && d.relationship === "requires" && d.module !== "perl",
 		);
@@ -202,7 +194,6 @@ function formatReleaseMarkdown(release: ReleaseResponse): string {
 		md += `**Issues:** ${resources.bugtracker.web}\n`;
 	}
 
-	// Show runtime dependencies
 	const runtimeDeps = release.dependency?.filter(
 		d => d.phase === "runtime" && d.relationship === "requires" && d.module !== "perl",
 	);

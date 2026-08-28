@@ -1,17 +1,3 @@
-/**
- * Handoff hook - transfer context to a new focused session
- *
- * Instead of compacting (which is lossy), handoff extracts what matters
- * for your next task and creates a new session with a generated prompt.
- *
- * Usage:
- *   /handoff now implement this for teams as well
- *   /handoff execute phase one of the plan
- *   /handoff check other places that need this fix
- *
- * The generated prompt appears as a draft in the editor for review/editing.
- */
-
 import { serializeConversation } from "@veyyon/agent-core";
 import { type Context, complete, type Message } from "@veyyon/ai";
 import type { HookAPI, SessionEntry } from "@veyyon/coding-agent";
@@ -60,7 +46,6 @@ export default function (pi: HookAPI) {
 				return;
 			}
 
-			// Gather conversation context from current branch
 			const branch = ctx.sessionManager.getBranch();
 			const messages = branch
 				.filter((entry): entry is SessionEntry & { type: "message" } => entry.type === "message")
@@ -71,11 +56,8 @@ export default function (pi: HookAPI) {
 				return;
 			}
 
-			// Keep raw branch messages until the provider attempt; serialization happens only
-			// after every complete structured string has passed through the live transform.
 			const currentSessionFile = ctx.sessionManager.getSessionFile();
 
-			// Generate the handoff prompt with loader UI
 			const result = await ctx.ui.custom<string | null>((tui, theme, done) => {
 				const loader = new ComposerLoader(tui, theme, `Generating handoff prompt...`);
 				loader.onAbort = () => done(null);
@@ -134,7 +116,6 @@ export default function (pi: HookAPI) {
 				return;
 			}
 
-			// Let user edit the generated prompt
 			const editedPrompt = await ctx.ui.editor("Edit handoff prompt (ctrl+enter to submit, esc to cancel)", result);
 
 			if (editedPrompt === undefined) {
@@ -142,7 +123,6 @@ export default function (pi: HookAPI) {
 				return;
 			}
 
-			// Create new session with parent tracking
 			const newSessionResult = await ctx.newSession({
 				parentSession: currentSessionFile,
 			});
@@ -152,7 +132,6 @@ export default function (pi: HookAPI) {
 				return;
 			}
 
-			// Set the edited prompt in the main editor for submission
 			ctx.ui.setEditorText(editedPrompt);
 			ctx.ui.notify("Handoff ready. Submit when ready.", "info");
 		},

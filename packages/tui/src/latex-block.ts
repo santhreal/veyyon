@@ -1,7 +1,6 @@
 import { latexColorScope, latexToUnicode, MATH_FONT_COMMANDS } from "./latex-to-unicode";
 import { clamp, padding, visibleWidth } from "./utils";
 
-/** Rectangular block of rendered text with baseline. */
 interface Box {
 	lines: string[];
 	baseline: number;
@@ -14,9 +13,6 @@ const BAR = "─";
 const FRAC_COMMANDS: Record<string, true> = { frac: true, dfrac: true, tfrac: true, cfrac: true };
 const BINOM_COMMANDS: Record<string, true> = { binom: true, dbinom: true, tbinom: true };
 
-// Display "wrapper" environments whose body is an expression (possibly with `\\`
-// row breaks and `&` alignment). Their rows are parsed so fractions inside stack
-// and `&` columns align.
 const DISPLAY_ROW_ENVIRONMENTS: Record<string, true> = {
 	equation: true,
 	eqnarray: true,
@@ -34,7 +30,6 @@ const DISPLAY_ROW_ENVIRONMENTS: Record<string, true> = {
 	math: true,
 };
 
-// Environments laid out as 2-D grids of parsed cells: [open, close] delimiter.
 const GRID_ENVIRONMENTS: Record<string, readonly [string, string]> = {
 	matrix: ["", ""],
 	smallmatrix: ["", ""],
@@ -50,7 +45,6 @@ const GRID_ENVIRONMENTS: Record<string, readonly [string, string]> = {
 	drcases: ["", "}"],
 };
 
-// Operators whose display-style scripts stack above/below the symbol.
 const LIMIT_OPERATORS: Record<string, true> = {
 	sum: true,
 	prod: true,
@@ -84,8 +78,6 @@ const LIMIT_OPERATORS: Record<string, true> = {
 	argmin: true,
 };
 
-// Integral-family operators: scripts stay beside the symbol (LaTeX display
-// convention) unless an explicit `\limits` follows.
 const INTEGRAL_OPERATORS: Record<string, true> = {
 	int: true,
 	iint: true,
@@ -99,9 +91,6 @@ const INTEGRAL_OPERATORS: Record<string, true> = {
 	smallint: true,
 };
 
-// Vertical delimiter piece characters: `only` for single-line content, then
-// top/mid/bot columns for stretched forms; `axis` replaces `mid` at the
-// baseline row (the brace point).
 interface DelimPieces {
 	only: string;
 	top: string;
@@ -125,8 +114,6 @@ const DELIM_PIECES: Record<string, DelimPieces> = {
 	"⌋": { only: "⌋", top: "⎥", mid: "⎥", bot: "⎦" },
 };
 
-// `\left`/`\right`/`\middle` delimiter token → piece-table key. Unknown tokens
-// fall back to `latexToUnicode` and render at the baseline row only.
 const DELIM_KEYS: Record<string, string> = {
 	"(": "(",
 	")": ")",
@@ -157,7 +144,6 @@ const DELIM_KEYS: Record<string, string> = {
 	".": "",
 };
 
-/** Inline-run conversion context. */
 interface Ctx {
 	wrap: (run: string) => string;
 }
@@ -168,12 +154,10 @@ function spaces(n: number): string {
 	return padding(n);
 }
 
-/** Pad `line` on the right to `width` visible columns. */
 function padRight(line: string, width: number): string {
 	return line + spaces(width - visibleWidth(line));
 }
 
-/** Pad `line` symmetrically (left-biased) to `width` visible columns. */
 function center(line: string, width: number): string {
 	const extra = width - visibleWidth(line);
 	if (extra <= 0) return line;
@@ -181,7 +165,6 @@ function center(line: string, width: number): string {
 	return spaces(left) + line + spaces(extra - left);
 }
 
-/** A single rendered string (possibly multi-line) as a baseline-centered box. */
 function textBox(text: string): Box {
 	const raw = text.split("\n");
 	let width = 0;
@@ -191,7 +174,6 @@ function textBox(text: string): Box {
 	return { lines, baseline: (raw.length - 1) >> 1, width };
 }
 
-/** Pad every line of `b` to `width` per `align`, keeping the baseline. */
 function padBox(b: Box, width: number, align: CellAlign): Box {
 	if (b.width >= width) return b;
 	const lines = new Array<string>(b.lines.length);
@@ -208,7 +190,6 @@ function padBox(b: Box, width: number, align: CellAlign): Box {
 	return { lines, baseline: b.baseline, width };
 }
 
-/** Place boxes side by side, aligning their baselines. */
 function hconcat(boxes: Box[]): Box {
 	if (boxes.length === 1) return boxes[0];
 	let above = 0;
@@ -233,7 +214,6 @@ function hconcat(boxes: Box[]): Box {
 	return { lines, baseline: above, width };
 }
 
-/** Stack boxes vertically, e.g. the rows of an aligned block. */
 function vconcat(boxes: Box[], align: CellAlign = "l"): Box {
 	if (boxes.length === 1) return boxes[0];
 	let width = 0;
@@ -248,7 +228,6 @@ function vconcat(boxes: Box[], align: CellAlign = "l"): Box {
 	return { lines, baseline: (lines.length - 1) >> 1, width };
 }
 
-/** Stack `num` over `den`, separated by a bar; the bar becomes the baseline. */
 function fracBox(num: Box, den: Box): Box {
 	const width = Math.max(num.width, den.width) + 2;
 	const lines: string[] = [];
@@ -258,7 +237,6 @@ function fracBox(num: Box, den: Box): Box {
 	return { lines, baseline: num.lines.length, width };
 }
 
-/** Generate vertical delimiter column for given height. */
 function delimColumn(key: string, height: number, baseline: number): Box | null {
 	if (!key) return null;
 	const pieces = DELIM_PIECES[key];
@@ -283,7 +261,6 @@ function delimColumn(key: string, height: number, baseline: number): Box | null 
 	return { lines, baseline, width };
 }
 
-/** Wrap `inner` in (possibly stretched) delimiters, padding tall content. */
 function delimBox(inner: Box, left: string, right: string): Box {
 	const height = inner.lines.length;
 	const lcol = delimColumn(left, height, inner.baseline);
@@ -299,7 +276,6 @@ function delimBox(inner: Box, left: string, right: string): Box {
 	return hconcat(parts);
 }
 
-/** `\binom{n}{k}`: `n` over `k` (no bar) inside stretched parentheses. */
 function binomBox(top: Box, bottom: Box): Box {
 	const width = Math.max(top.width, bottom.width);
 	const lines: string[] = [];
@@ -309,7 +285,6 @@ function binomBox(top: Box, bottom: Box): Box {
 	return delimBox({ lines, baseline: top.lines.length, width }, "(", ")");
 }
 
-/** Draw radical for multi-line radicand. */
 function radicalBox(inner: Box, degree: string | null): Box {
 	const lines: string[] = [` ┌${BAR.repeat(inner.width + 1)}`];
 	for (let y = 0; y < inner.lines.length; y++) {
@@ -318,11 +293,9 @@ function radicalBox(inner: Box, degree: string | null): Box {
 	const box: Box = { lines, baseline: inner.baseline + 1, width: inner.width + 3 };
 	if (!degree) return box;
 	const deg = latexToUnicode(`^{${degree}}`);
-	// Degree sits one row above the baseline, at the radical's upper left.
 	return hconcat([{ lines: [deg, spaces(visibleWidth(deg))], baseline: 1, width: visibleWidth(deg) }, box]);
 }
 
-/** Big operator with limits: `sup` centered above `glyph`, `sub` below. */
 function limitsBox(glyph: Box, sub: Box | null, sup: Box | null): Box {
 	const width = Math.max(glyph.width, sub?.width ?? 0, sup?.width ?? 0);
 	const lines: string[] = [];
@@ -333,7 +306,6 @@ function limitsBox(glyph: Box, sub: Box | null, sup: Box | null): Box {
 	return { lines, baseline, width };
 }
 
-/** Attach block scripts to base as right-hand column. */
 function attachScripts(base: Box, sub: Box | null, sup: Box | null): Box {
 	if (sub === null && sup === null) return base;
 	const single = base.lines.length === 1;
@@ -351,7 +323,6 @@ function attachScripts(base: Box, sub: Box | null, sup: Box | null): Box {
 		const below = base.lines.length - 1 - base.baseline - (sub.lines.length - 1);
 		let drop = Math.max(below, single ? 1 : 0);
 		if (sup && drop < 1) drop = 1;
-		// Rows between the baseline row and the subscript's top row.
 		const gap = lines.length === 0 ? drop : drop - 1;
 		for (let k = 0; k < gap; k++) lines.push(blank);
 		for (let li = 0; li < sub.lines.length; li++) lines.push(padRight(sub.lines[li]!, width));
@@ -359,7 +330,6 @@ function attachScripts(base: Box, sub: Box | null, sup: Box | null): Box {
 	return hconcat([base, { lines, baseline, width }]);
 }
 
-/** Lay out parsed cells as a grid. */
 function gridBox(rows: Box[][], align: (col: number) => CellAlign, gap: (col: number) => number, rowGap = 0): Box {
 	let ncols = 0;
 	for (let ri = 0; ri < rows.length; ri++) ncols = Math.max(ncols, rows[ri]!.length);
@@ -399,7 +369,6 @@ interface Span {
 	end: number;
 }
 
-/** Read a balanced `{…}` beginning at `i` (which must point at `{`). */
 function readBraceGroup(src: string, i: number): Span {
 	let depth = 0;
 	let out = "";
@@ -430,7 +399,6 @@ function readBraceGroup(src: string, i: number): Span {
 	return { text: out, end: j };
 }
 
-/** Read one command argument ({...} group, char, or \command). */
 function readArg(src: string, i: number): Span {
 	while (src[i] === " ") i++;
 	if (i >= src.length) return { text: "", end: i };
@@ -458,7 +426,6 @@ function readArg(src: string, i: number): Span {
 	return { text: src.slice(i, end), end };
 }
 
-/** Read a `\left`/`\right`/`\middle` delimiter token (char or `\command`). */
 function readDelimToken(src: string, i: number): Span | null {
 	while (src[i] === " ") i++;
 	if (i >= src.length) return null;
@@ -469,7 +436,6 @@ function readDelimToken(src: string, i: number): Span | null {
 	return { text: src.slice(i, j), end: j };
 }
 
-/** Piece-table key for a delimiter token; unknown commands resolve via Unicode. */
 function delimKey(token: string): string {
 	const mapped = DELIM_KEYS[token];
 	if (mapped !== undefined) return mapped;
@@ -478,14 +444,12 @@ function delimKey(token: string): string {
 
 interface LeftRightParts {
 	left: string;
-	/** Inner source split at top-level `\middle` delimiters. */
 	segments: string[];
 	middles: string[];
 	right: string;
 	end: number;
 }
 
-/** Parse `\left⟨tok⟩ … \right⟨tok⟩` starting at the backslash of `\left`. */
 function readLeftRight(src: string, start: number): LeftRightParts | null {
 	const left = readDelimToken(src, start + 5);
 	if (!left) return null;
@@ -527,7 +491,6 @@ function readLeftRight(src: string, start: number): LeftRightParts | null {
 	return null; // unbalanced
 }
 
-/** Find index of matching close delimiter. */
 function matchDelim(src: string, i: number, open: string, close: string): number {
 	let depth = 0;
 	for (let k = i; k < src.length; k++) {
@@ -556,7 +519,6 @@ interface EnvParts {
 	end: number;
 }
 
-/** Locate a `\begin{env}…\end{env}` block (balanced) starting at the backslash. */
 function readEnvironment(src: string, start: number): EnvParts | null {
 	let i = start + 6; // past "\begin"
 	while (src[i] === " ") i++;
@@ -585,13 +547,11 @@ function readEnvironment(src: string, start: number): EnvParts | null {
 	return { env: nameGroup.text.trim(), bodyStart: nameGroup.end, bodyEnd, end: k };
 }
 
-/** The full `\begin{env}…\end{env}` substring as an inline run. */
 function consumeEnvironment(src: string, start: number): Span | null {
 	const env = readEnvironment(src, start);
 	return env ? { text: src.slice(start, env.end), end: env.end } : null;
 }
 
-/** Split an environment body on top-level `\\` row breaks (depth-aware). */
 function splitRows(body: string): string[] {
 	const rows: string[] = [];
 	let braceDepth = 0;
@@ -633,7 +593,6 @@ function splitRows(body: string): string[] {
 	return rows;
 }
 
-/** Split a row on top-level `&` column separators (depth-aware), trimming cells. */
 function splitCells(row: string): string[] {
 	const cells: string[] = [];
 	let braceDepth = 0;
@@ -669,7 +628,6 @@ function splitCells(row: string): string[] {
 	return cells;
 }
 
-/** Append a script (`^`/`_`) and its argument to the inline run verbatim. */
 function readScript(src: string, i: number): Span {
 	let out = src[i];
 	i++;
@@ -691,14 +649,12 @@ function readScript(src: string, i: number): Span {
 	return { text: out, end: i };
 }
 
-/** Bare argument of a script read by `readScript` (`^{ab}` → `ab`, `^a` → `a`). */
 function scriptArgOf(text: string): string {
 	let arg = text.slice(1).trimStart();
 	if (arg.startsWith("{") && arg.endsWith("}")) arg = arg.slice(1, -1);
 	return arg;
 }
 
-/** Render a \begin{env}...\end{env} block. */
 function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end: number } | null {
 	const env = readEnvironment(src, start);
 	if (env === null) return null;
@@ -709,7 +665,6 @@ function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end
 		let p = env.bodyStart;
 		while (src[p] === " " || src[p] === "\n" || src[p] === "\t") p++;
 		if (starred && src[p] === "[") {
-			// Starred matrix variants take an optional alignment argument.
 			const close = src.indexOf("]", p);
 			if (close !== -1 && close < env.bodyEnd) {
 				p = close + 1;
@@ -746,7 +701,6 @@ function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end
 	}
 	let bodyStart = env.bodyStart;
 	if (base === "alignat" || base === "alignedat" || base === "gatheredat") {
-		// These carry a required column-count argument `{n}` before the body.
 		let p = bodyStart;
 		while (src[p] === " " || src[p] === "\n") p++;
 		if (src[p] === "{") bodyStart = readBraceGroup(src, p).end;
@@ -771,8 +725,6 @@ function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end
 			end: env.end,
 		};
 	}
-	// `align`-family semantics: columns alternate right/left in `rl` pairs, a
-	// thin gap inside each pair and a wide gap between pairs.
 	const parsedGrid: Box[][] = new Array(cellRows.length);
 	for (let ri = 0; ri < cellRows.length; ri++) {
 		const row = cellRows[ri]!;
@@ -788,20 +740,13 @@ function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end
 	return { box: grid, end: env.end };
 }
 
-/** Paint box lines through latexColorScope painter. */
 function colorizeBox(box: Box, scope: (text: string) => string): Box {
 	const lines = new Array<string>(box.lines.length);
 	for (let li = 0; li < box.lines.length; li++) lines[li] = scope(box.lines[li]!);
 	return { lines, baseline: box.baseline, width: box.width };
 }
 
-/** Parse math fragment into layout box. */
-/** Recursion guard for 2-D block layout. */
 const MAX_BLOCK_DEPTH = 64;
-// Longest tail flattened inline at the depth cap. Past MAX_BLOCK_DEPTH the source
-// is unreadable as 2-D layout; a giant tail (a 50k-deep `\frac` chain is ~300KB)
-// would make even the linear `latexToUnicode` degrade costly via bubbling string
-// concatenation, so flatten only a bounded prefix. Real math never reaches here.
 const MAX_BLOCK_DEGRADE_TAIL = 2048;
 let blockDepth = 0;
 
@@ -829,13 +774,11 @@ function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 		boxes.push(textBox(latexToUnicode(ctx.wrap(color + inline))));
 		inline = "";
 	};
-	/** Child context carrying the enclosing wrapper plus current color state. */
 	const inner = (): Ctx => {
 		if (!color) return ctx;
 		const pre = color;
 		return { wrap: run => ctx.wrap(pre + run) };
 	};
-	/** Apply the active `\color` scope to a structural box's glyphs. */
 	const paint = (box: Box): Box => (colorScope === null ? box : colorizeBox(box, colorScope));
 	let i = 0;
 	while (i < src.length) {
@@ -873,8 +816,6 @@ function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 					k = close === -1 ? src.length : close + 1;
 				}
 				const arg = readArg(src, k);
-				// Display style always draws the roof (like LaTeX); inline math
-				// keeps the flat `√(…)` form via latexToUnicode.
 				flush();
 				boxes.push(paint(radicalBox(parseExpr(arg.text, inner()), degree)));
 				i = arg.end;
@@ -894,8 +835,6 @@ function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 					}
 					const height = above + below + 1;
 					if (height === 1) {
-						// Single-line: keep the whole span inline so converter
-						// state (fonts, colors, spacing) is preserved.
 						inline += src.slice(i, lr.end);
 						i = lr.end;
 						continue;
@@ -933,8 +872,6 @@ function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 					let supText: string | null = null;
 					let m = k;
 					for (;;) {
-						// Peek past spaces without consuming them, so a run
-						// following the operator keeps its leading space.
 						let n = m;
 						while (src[n] === " ") n++;
 						if (src[n] === "_" && subText === null) {
@@ -1012,8 +949,6 @@ function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 				}
 			}
 			if (name && (MATH_FONT_COMMANDS.has(name) || name === "textcolor")) {
-				// Scoped wrapper around 2-D content: recurse with the wrapper
-				// re-applied to every inline run, so styling crosses boxes.
 				let k = j;
 				while (src[k] === " ") k++;
 				let prefix = `\\${name}`;
@@ -1052,13 +987,10 @@ function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 				}
 			}
 			if (!name) {
-				// Non-letter command (`\\`, `\,`, `\{`, …): keep the 2-char token inline.
 				inline += `\\${src[j] ?? ""}`;
 				i = j + 1;
 				continue;
 			}
-			// Other command: keep it and its bracket/brace arguments inline so a
-			// `{…}` argument is never mistaken for a top-level stacking group.
 			inline += `\\${name}`;
 			i = j;
 			while (src[i] === "[" || src[i] === "{") {
@@ -1077,8 +1009,6 @@ function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 		}
 		if (c === "^" || c === "_") {
 			const first = readScript(src, i);
-			// Consume an immediately following opposite script (`M_i^j`) so both
-			// land in one shared column instead of two successive ones.
 			let second: Span | null = null;
 			let n = first.end;
 			while (src[n] === " ") n++;
@@ -1088,8 +1018,6 @@ function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 			const subText = c === "_" ? first.text : second?.text;
 			const supBox = supText === undefined ? null : parseExpr(scriptArgOf(supText), inner());
 			const subBox = subText === undefined ? null : parseExpr(scriptArgOf(subText), inner());
-			// The converter falls back to `^(…)`/`_(…)` when any character lacks a
-			// Unicode script form; those scripts get real raised/lowered boxes.
 			const unconvertible = (raw: string | undefined): boolean => {
 				if (raw === undefined) return false;
 				const flat = latexToUnicode(raw);
@@ -1097,8 +1025,6 @@ function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 			};
 			const tall = (supBox !== null && supBox.lines.length > 1) || (subBox !== null && subBox.lines.length > 1);
 			if (tall || unconvertible(supText) || unconvertible(subText)) {
-				// Block script (`x^{\frac{1}{2}}`, `x^q`): raise/lower the boxes
-				// against the run or box they follow.
 				flush();
 				const base = boxes.pop() ?? textBox("");
 				boxes.push(paint(attachScripts(base, subBox, supBox)));
@@ -1107,9 +1033,6 @@ function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 			}
 			const last = boxes[boxes.length - 1];
 			if (inline === "" && last !== undefined && last.lines.length > 1) {
-				// Scripts directly on a tall box (`M^T`, `\right|_{x=a}`): pin
-				// the Unicode script glyphs (guaranteed convertible here after
-				// the gate above) to its corners.
 				const corner = (raw: string | undefined): Box | null =>
 					raw === undefined ? null : textBox(latexToUnicode(ctx.wrap(color + raw)));
 				boxes[boxes.length - 1] = paint(attachScripts(last, corner(subText), corner(supText)));
@@ -1128,8 +1051,6 @@ function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 			continue;
 		}
 		if (c === "(" || c === "[") {
-			// Bare delimiters stretch when their content is tall (common in
-			// model output that omits `\left`/`\right`).
 			const closeCh = c === "(" ? ")" : "]";
 			const close = matchDelim(src, i, c, closeCh);
 			if (close !== -1) {
@@ -1150,7 +1071,6 @@ function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 	return hconcat(boxes);
 }
 
-/** Split on top-level `\n` and `\\` row separators (outside braces and environments). */
 function splitLines(src: string): string[] {
 	const lines: string[] = [];
 	let braceDepth = 0;
@@ -1196,7 +1116,6 @@ function splitLines(src: string): string[] {
 	return lines;
 }
 
-/** Render display LaTeX math to lines with 2-D layout. */
 export function latexToBlock(src: string): string[] {
 	if (typeof src !== "string" || src.trim() === "") return [];
 	const rawLines = splitLines(src.trim());

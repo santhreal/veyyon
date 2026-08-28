@@ -108,7 +108,6 @@ function sanitizeEmbeddingProviderText(text: string): string {
 	}
 }
 
-/** Compose per-query cache key from inputs that can change vector. */
 function queryCacheKey(text: string): string | null {
 	const active = activeEmbeddingOptions();
 	const provider = active?.provider;
@@ -177,7 +176,6 @@ export function embeddingsDisabled(): boolean {
 	return embeddingsDisabledFromEnv();
 }
 
-/** Resolved per-input character cap for embed. */
 function effectiveMaxInputChars(): number {
 	const override = activeEmbeddingOptions()?.maxInputChars;
 	if (override !== undefined) return Math.max(0, Math.trunc(override));
@@ -186,10 +184,8 @@ function effectiveMaxInputChars(): number {
 	return 8192;
 }
 
-/** Elision marker injected between the retained head and tail of an oversized input. */
 const EMBEDDING_ELISION_MARKER = "\n\n[...]\n\n";
 
-/** Right-clip oversized input preserving head and tail context. */
 function clipToWindow(text: string, max: number): string {
 	if (text.length <= max) return text;
 	if (max <= EMBEDDING_ELISION_MARKER.length + 16) return text.slice(text.length - max);
@@ -199,7 +195,6 @@ function clipToWindow(text: string, max: number): string {
 	return text.slice(0, headLen) + EMBEDDING_ELISION_MARKER + text.slice(text.length - tailLen);
 }
 
-/** Clip inputs to effectiveMaxInputChars using head/tail split. */
 function capInputs(texts: readonly string[]): readonly string[] {
 	const max = effectiveMaxInputChars();
 	if (max === 0) return texts;
@@ -232,7 +227,6 @@ function embeddingApiKey(): ApiKey {
 	return $env.MNEMOPI_EMBEDDING_API_KEY || $env.OPENROUTER_API_KEY || $env.OPENAI_API_KEY || "";
 }
 
-/** A resolver always counts as configured; a static key only when non-empty. */
 function embeddingKeyConfigured(key: ApiKey = embeddingApiKey()): boolean {
 	return typeof key === "function" || key !== "";
 }
@@ -245,12 +239,10 @@ function embeddingBaseUrl(): string {
 	return $env.MNEMOPI_EMBEDDING_API_URL || $env.OPENROUTER_BASE_URL || OPENROUTER_API_ENDPOINT;
 }
 
-/** Resolve model to embed with from config. */
 function defaultModel(): string {
 	return embeddingModel();
 }
 
-/** Resolve embedding model name for active runtime scope. */
 export function currentEmbeddingModel(): string {
 	return defaultModel();
 }
@@ -261,7 +253,6 @@ export function isApiModel(modelName: string): boolean {
 	return isApiEmbeddingModel(modelName, env);
 }
 
-/** Dimension of a named embedding model. */
 export { embeddingDimFor } from "../config";
 
 function toEmbeddingVector(row: unknown): Vector {
@@ -278,7 +269,6 @@ function toEmbeddingVector(row: unknown): Vector {
 	}
 	return vector;
 }
-/** Drain and validate an embedding stream into a matrix matching the requested inputs exactly. */
 async function collectMatrix(batches: EmbeddingOutput, expectedRows: number): Promise<EmbeddingMatrix> {
 	const rows: Vector[] = [];
 	for await (const batch of batches) {
@@ -298,7 +288,6 @@ async function collectMatrix(batches: EmbeddingOutput, expectedRows: number): Pr
 	return rows;
 }
 
-/** Fastembed identifier for configured model name or null if unsupported locally. */
 function fastembedModelName(modelName: string): StandardEmbeddingModel | null {
 	const id = FASTEMBED_ID_BY_HF_REPO[modelName];
 	return id === undefined ? null : (id as StandardEmbeddingModel);
@@ -362,7 +351,6 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 	}
 
 	try {
-		// withAuth re-resolves key on 401; fetchWithRetry handles 429 backoff.
 		return await withScopedTimeoutSignal(30000, async signal => {
 			const response = await withAuth(apiKey, async key => {
 				const headers: Record<string, string> = {
@@ -426,7 +414,6 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 	}
 }
 
-/** Report failed embedding request with diagnostic details. */
 function reportEmbeddingFailure(cause: string, target: string): void {
 	logger.warn("Memory embedding failed, falling back to keyword-only search", {
 		cause,
@@ -464,7 +451,6 @@ export function setLocalModelInitializerForTests(initializer: LocalModelInitiali
 	pendingQueryEmbeddings.clear();
 }
 
-/** Override fastembed model constructor. */
 export const setLocalModelInitializer = setLocalModelInitializerForTests;
 
 export function resetEmbeddingProviderForTests(): void {
@@ -604,7 +590,6 @@ export function getEmbeddingApiCallCountForTests(): number {
 	return apiCallCount;
 }
 
-/** Test-only cache-key visibility; values contain an HMAC digest, never raw query text. */
 export function getEmbeddingQueryCacheKeysForTests(): readonly string[] {
 	return [...queryCache.keys()];
 }

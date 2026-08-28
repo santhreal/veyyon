@@ -1,4 +1,3 @@
-/** Per-model harness profile overrides (A3 MVP). Profiles live in `harness.profiles` (config.yml) or `harness-profiles.yml` in the */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Model } from "@veyyon/ai/types";
@@ -9,11 +8,8 @@ import { type PromptSectionName, promptSectionNames } from "../system-prompt-bui
 import { applyHarnessToolAllowlist } from "../tools/loading";
 
 export interface HarnessModelProfile {
-	/** When false, schema repair is skipped for this model. Default: true. */
 	repair?: boolean;
-	/** When set, only these tool names are exposed to the model (MVP hint / filter). */
 	tools?: readonly string[];
-	/** Reorder the default system-prompt template's banner sections for this model. Names come from promptSectionNames(); listed sections lead, the rest follow */
 	promptSectionOrder?: readonly PromptSectionName[];
 }
 
@@ -22,23 +18,18 @@ type HarnessProfilesRecord = Record<string, HarnessModelProfile>;
 let cachedAgentDir: string | undefined;
 let cachedFileProfiles: HarnessProfilesRecord | undefined;
 
-/** Test-only: clear cached harness-profiles.yml load. */
 export function resetHarnessProfileFileCache(): void {
 	cachedAgentDir = undefined;
 	cachedFileProfiles = undefined;
 }
 
-// Built on first use, not at module load: `prompt-sections.ts` derives its names from `section-registry.ts`, and reading that while this module evaluates would put
 const knownPromptSectionNames: () => ReadonlySet<string> = once(() => new Set(promptSectionNames()));
 
 function normalizePromptSectionOrder(value: unknown): readonly PromptSectionName[] | undefined {
 	if (!Array.isArray(value)) return undefined;
 	const order: PromptSectionName[] = [];
 	for (const entry of value) {
-		// A non-string entry gets the SAME answer as an unknown name, because it is the same fact: this is not a section. It used to be `continue`, so a
 		if (typeof entry !== "string" || !knownPromptSectionNames().has(entry)) {
-			// Reject the whole list: a typo'd section silently dropped would apply a
-			// different order than the operator wrote.
 			logger.warn(
 				`harness profile promptSectionOrder has unknown section ${JSON.stringify(entry)} ` +
 					`(valid: ${promptSectionNames().join(", ")}); ignoring the list`,
@@ -50,7 +41,6 @@ function normalizePromptSectionOrder(value: unknown): readonly PromptSectionName
 	return order.length > 0 ? order : undefined;
 }
 
-/** The per-model tool allowlist, refused whole if any entry is not a tool name. The same rule `normalizePromptSectionOrder` follows, and for a stronger reason: */
 function normalizeToolAllowlist(value: unknown): readonly string[] | undefined {
 	if (!Array.isArray(value)) return undefined;
 	const names: string[] = [];
@@ -90,7 +80,6 @@ function normalizeProfilesRecord(raw: unknown): HarnessProfilesRecord {
 	return profiles;
 }
 
-/** Load `harness-profiles.yml`, distinguishing "no such file" from "cannot use it". Both used to return `{}`, through two branches that did the same thing — an */
 function loadHarnessProfilesFile(agentDir: string): HarnessProfilesRecord {
 	const filePath = path.join(agentDir, "harness-profiles.yml");
 	try {
@@ -133,7 +122,6 @@ function profileMatchesKey(key: string, modelKeyValue: string): boolean {
 	return false;
 }
 
-/** Resolve the harness profile for a model, if any. */
 export function resolveHarnessProfileForModel(
 	settings: Settings,
 	model: Model | undefined,
@@ -149,14 +137,12 @@ export function resolveHarnessProfileForModel(
 	return match;
 }
 
-/** Whether schema repair should run for this model (harness profile + env). */
 export function isRepairEnabledForModel(settings: Settings, model: Model | undefined): boolean {
 	const profile = resolveHarnessProfileForModel(settings, model);
 	if (profile?.repair === false) return false;
 	return true;
 }
 
-/** Resolve the per-model system-prompt section order, if configured. */
 export function resolvePromptSectionOrderForModel(
 	settings: Settings,
 	model: Model | undefined,
@@ -164,7 +150,6 @@ export function resolvePromptSectionOrderForModel(
 	return resolveHarnessProfileForModel(settings, model)?.promptSectionOrder;
 }
 
-/** Apply the optional per-model tool allowlist from a harness profile. Settings adapter: the filter itself is {@link applyHarnessToolAllowlist} in */
 export function filterToolsByHarnessProfile(
 	toolNames: readonly string[],
 	settings: Settings,

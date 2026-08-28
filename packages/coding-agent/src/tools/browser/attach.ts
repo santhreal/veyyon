@@ -9,7 +9,6 @@ import { ToolError, throwIfAborted } from "../tool-errors";
 const ATTACH_TARGET_SKIP_PATTERN =
 	/request[\s_-]?handler|devtools|background[\s_-]?(?:page|host)|service[\s_-]?worker/i;
 
-/** Allocate an unused TCP port on 127.0.0.1 by binding to port 0 and reading back the kernel-assigned port. There's a small race between close and the */
 export async function findFreeCdpPort(): Promise<number> {
 	const { promise, resolve, reject } = Promise.withResolvers<number>();
 	const server = net.createServer();
@@ -28,7 +27,6 @@ export async function findFreeCdpPort(): Promise<number> {
 	return promise;
 }
 
-/** Poll `${cdpUrl}/json/version` until it responds with 200, with abort + timeout support. */
 export async function waitForCdp(cdpUrl: string, timeoutMs: number, signal?: AbortSignal): Promise<void> {
 	const deadline = Date.now() + timeoutMs;
 	let lastErr: unknown;
@@ -57,7 +55,6 @@ export async function waitForCdp(cdpUrl: string, timeoutMs: number, signal?: Abo
 	);
 }
 
-/** Pull a `--remote-debugging-port=<n>` value out of an argv array (Chromium accepts both `--flag=value` and `--flag value`). Returns null if absent or */
 function findCdpPortInArgs(args: string[]): number | null {
 	for (const arg of args) {
 		const m = /^--remote-debugging-port=(\d+)$/.exec(arg);
@@ -75,7 +72,6 @@ function findCdpPortInArgs(args: string[]): number | null {
 	return null;
 }
 
-/** One-shot probe: returns true when `/json/version` answers 200 within the timeout. */
 async function probeCdpAt(port: number, signal?: AbortSignal): Promise<boolean> {
 	const probeTimeout = scopedTimeoutSignal(1500, signal);
 	try {
@@ -83,16 +79,12 @@ async function probeCdpAt(port: number, signal?: AbortSignal): Promise<boolean> 
 		await res.body?.cancel();
 		return res.ok;
 	} catch {
-		// "Nothing is listening on that port" arrives as a thrown fetch, not as a status, so the throw is the
-		// probe's answer rather than a swallowed failure. A timeout lands here too and means the same thing to
-		// the caller: do not attach to this port.
 		return false;
 	} finally {
 		probeTimeout.cancel();
 	}
 }
 
-/** If any running instance of `exe` was launched with `--remote-debugging-port` and that endpoint actually answers, return it so attach can reuse it instead */
 export async function findReusableCdp(
 	exe: string,
 	signal?: AbortSignal,
@@ -114,13 +106,10 @@ export async function findReusableCdp(
 	return null;
 }
 
-/** Pick the best page target on an attached browser. Prefer discoverable page targets first so Chromium/Edge attach flows that hide pages from */
 export async function pickElectronTarget(browser: Browser, matcher?: string): Promise<Page> {
 	const discoveredPages = await Promise.all(
 		browser.targets().map(async target => {
 			if (String(target.type()) !== "page") return null;
-			// A target that will not hand over its page is not usable, which is the whole question here; the
-			// nulls are filtered below and an empty result falls back to `browser.pages()`, then throws.
 			return await target.page().catch(() => null);
 		}),
 	);
@@ -141,8 +130,6 @@ async function enrichPages(pages: Page[]): Promise<Array<{ page: Page; url: stri
 		pages.map(async page => ({
 			page,
 			url: page.url(),
-			// The title is display-only, used to match a tab by name; a page mid-navigation has no title to give
-			// and an empty one simply does not match, which is the same outcome as a page called nothing.
 			title: ((await page.title().catch(() => "")) ?? "").trim(),
 		})),
 	);
@@ -163,14 +150,12 @@ async function pickPageFromList(pages: Page[], matcher?: string): Promise<Page> 
 	);
 }
 
-/** SIGTERM the process tree, wait briefly, then SIGKILL anything still alive. Single-process variant for our own spawned children. */
 export async function gracefulKillTreeOnce(pid: number, gracePeriodMs = 2000): Promise<void> {
 	const process = processHandle(pid);
 	if (!process) return;
 	await process.terminate({ gracefulMs: gracePeriodMs, timeoutMs: 500 });
 }
 
-/** Multi-process variant for attach: find every PID running `executablePath` (single-instance apps may keep an orphan around) and tear them all down. */
 export async function killExistingByPath(executablePath: string, signal?: AbortSignal): Promise<number> {
 	const processes = processHandlesByPath(executablePath);
 	if (!processes.length) return 0;

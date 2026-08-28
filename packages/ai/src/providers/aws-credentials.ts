@@ -42,17 +42,11 @@ export async function resolveAwsCredentials(opts: CredentialResolveOptions = {})
 	const hit = cache.get(cacheKey);
 	if (hit && hit.expiresAt - REFRESH_SKEW_MS > Date.now()) return hit.creds;
 
-	// Single-flight: N concurrent cold calls must not each spawn credential_process/SSO/IMDS fetches.
-	// The shared resolution is deliberately detached from any caller's signal — aborting one
-	// request must not fail every waiter — and bounded by its own timeout instead; each caller
-	// races its own signal against the shared promise.
 	const existing = inflight.get(cacheKey);
 	if (existing) return raceWithSignal(existing, opts.signal);
 
 	const fetchImpl = opts.fetch ?? (globalThis.fetch as FetchImpl);
 	const promise = (async () => {
-		// Scoped so the shared-resolve timer is cleared on settle instead of
-		// staying armed like a bare AbortSignal.timeout.
 		const resolveTimeout = scopedTimeoutSignal(SHARED_RESOLVE_TIMEOUT_MS);
 		try {
 			const creds = await resolveFresh(profile, region, resolveTimeout.signal, fetchImpl);
@@ -73,15 +67,12 @@ async function resolveFresh(
 	signal?: AbortSignal,
 	fetchImpl: FetchImpl = globalThis.fetch as FetchImpl,
 ): Promise<ResolvedCredentials> {
-	// 1. Environment first — matches the AWS SDK chain order.
 	const envCreds = readEnvCredentials();
 	if (envCreds) return envCreds;
 
-	// 2. Profile (static or SSO).
 	const profileCreds = await readProfileCredentials(profile, region, signal, fetchImpl);
 	if (profileCreds) return profileCreds;
 
-	// 3. EC2 IMDSv2.
 	if ($env.AWS_EC2_METADATA_DISABLED?.toLowerCase() !== "true") {
 		const imdsCreds = await readImdsCredentials(signal, fetchImpl);
 		if (imdsCreds) return imdsCreds;
@@ -103,8 +94,6 @@ function readEnvCredentials(): ResolvedCredentials | undefined {
 		? { accessKeyId: ak, secretAccessKey: sk, sessionToken: token }
 		: { accessKeyId: ak, secretAccessKey: sk };
 }
-
-// ---------- INI parsing ----------
 
 type IniFile = Record<string, Record<string, string>>;
 
@@ -144,8 +133,6 @@ async function readIniFile(p: string): Promise<IniFile | undefined> {
 	}
 }
 
-// ---------- Profile / SSO ----------
-
 async function readProfileCredentials(
 	profile: string,
 	region: string,
@@ -159,8 +146,6 @@ async function readProfileCredentials(
 	const credentialsIni = await readIniFile(credentialsPath);
 	const configIni = await readIniFile(configPath);
 
-	// Static credentials live in ~/.aws/credentials; SSO config lives in
-	// ~/.aws/config under `[profile foo]`. Merge into a single view.
 	const merged: Record<string, string> = { ...(configIni?.[profile] ?? {}), ...(credentialsIni?.[profile] ?? {}) };
 	if (Object.keys(merged).length === 0) return undefined;
 
@@ -171,8 +156,6 @@ async function readProfileCredentials(
 		};
 		if (merged.aws_session_token) {
 			out.sessionToken = merged.aws_session_token;
-			// Session-token creds in the credentials file are short-lived STS keys that
-			// external tools rotate in place; cap the cache so rotations are picked up.
 			out.expiresAt = Date.now() + FILE_SESSION_CREDS_TTL_MS;
 		}
 		return out;
@@ -203,9 +186,6 @@ async function readSsoCredentials(
 	signal: AbortSignal | undefined,
 	fetchImpl: FetchImpl,
 ): Promise<ResolvedCredentials | undefined> {
-	// Two SSO profile shapes:
-	//   - legacy: `sso_start_url` + `sso_region` directly on the profile
-	//   - sso-session: `sso_session = my-session` references a `[sso-session my-session]` block
 	let startUrl = profileCfg.sso_start_url;
 	let ssoRegion = profileCfg.sso_region;
 	const sessionName = profileCfg.sso_session;
@@ -243,7 +223,6 @@ async function readSsoCredentials(
 		signal,
 	});
 	if (!response.ok) {
-		// goes through the shared redactor rather than a local slice.
 		const detail = await AIError.readProviderErrorDetail(response);
 		throw new AIError.AwsCredentialsError(
 			`AWS SSO GetRoleCredentials failed: ${response.status} ${detail}`,
@@ -260,8 +239,6 @@ async function readSsoCredentials(
 			"sso-role",
 		);
 
-	// region is honored at the caller; we only consume defaultRegion to keep the
-	// param wired for symmetry with other resolution paths.
 	void defaultRegion;
 
 	return {
@@ -284,20 +261,12 @@ async function loadSsoCachedToken(
 		if (isEnoent(err)) return undefined;
 		throw err;
 	}
-	// Prefer the deterministic hash for legacy `sso_start_url` profiles or the
-	// session name for the newer `sso-session` shape; otherwise scan.
 	const candidates: string[] = [];
 	const hash = await sha1Hex(sessionName || startUrl);
 	candidates.push(`${hash}.json`);
 	for (const entry of entries) {
 		if (entry.endsWith(".json") && !candidates.includes(entry)) candidates.push(entry);
 	}
-	// A file that cannot be read or parsed might have been the one we needed, and
-	// we cannot tell which without reading it. Errors are therefore collected
-	// rather than dropped, and reported below only when the scan came up empty,
-	// which is exactly the case where a swallowed error IS the reason for the
-	// failure. Reporting them on a successful scan would fire on every unrelated
-	// profile's stale file and train everyone to ignore the line.
 	const unreadable: string[] = [];
 	for (const file of candidates) {
 		if (!entries.includes(file)) continue;
@@ -327,8 +296,6 @@ async function sha1Hex(input: string): Promise<string> {
 	for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, "0");
 	return out;
 }
-
-// ---------- credential_process ----------
 
 interface CredentialProcessEnvelope {
 	Version?: number;
@@ -461,7 +428,6 @@ export function tokenizeCredentialProcessCommand(cmd: string): string[] {
 			current += ch;
 			continue;
 		}
-		// double-quote
 		if (ch === '"') {
 			mode = "normal";
 			continue;
@@ -473,7 +439,6 @@ export function tokenizeCredentialProcessCommand(cmd: string): string[] {
 				i++;
 				continue;
 			}
-			// Preserve literal backslash for Windows paths.
 			current += ch;
 			continue;
 		}
@@ -489,8 +454,6 @@ export function tokenizeCredentialProcessCommand(cmd: string): string[] {
 	return tokens;
 }
 
-// ---------- IMDSv2 ----------
-
 const IMDS_HOST = "169.254.169.254";
 const IMDS_TIMEOUT_MS = 1000;
 
@@ -498,8 +461,6 @@ async function readImdsCredentials(
 	parentSignal: AbortSignal | undefined,
 	fetchImpl: FetchImpl,
 ): Promise<ResolvedCredentials | undefined> {
-	// Scoped so the 1s probe timer is cleared on settle instead of staying
-	// armed like a bare AbortSignal.timeout; the fence spans every body read.
 	const imdsTimeout = scopedTimeoutSignal(IMDS_TIMEOUT_MS, parentSignal);
 	const signal = imdsTimeout.signal;
 	try {
@@ -542,9 +503,6 @@ async function readImdsCredentials(
 		if (body.Expiration) out.expiresAt = Date.parse(body.Expiration);
 		return out;
 	} catch {
-		// Undefined means "IMDS did not give us credentials", which is also what a host with no instance
-		// role gives. The credential chain moves to the next source and reports when EVERY source fails,
-		// naming them; failing here would break the chain on a host that simply is not on EC2.
 		return undefined;
 	} finally {
 		imdsTimeout.cancel();
@@ -561,7 +519,5 @@ export function invalidateAwsCredentialCache(opts: { profile?: string; region?: 
 	const region = opts.region || $env.AWS_REGION || $env.AWS_DEFAULT_REGION || "us-east-1";
 	const cacheKey = `${profile}\x00${region}`;
 	cache.delete(cacheKey);
-	// A resolution already running was started from the credentials now known to be
-	// stale, so a caller arriving during it must start its own rather than join it.
 	inflight.delete(cacheKey);
 }

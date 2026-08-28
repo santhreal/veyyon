@@ -28,7 +28,6 @@ import { ToolAbortError, ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice, TOOL_TIMEOUTS } from "./tool-timeouts";
 
-/** Count `\n` occurrences via charCodeAt, avoiding `split("\n").length` allocation. */
 function countNewlines(text: string): number {
 	let count = 0;
 	for (let i = 0; i < text.length; i++) {
@@ -37,7 +36,6 @@ function countNewlines(text: string): number {
 	return count;
 }
 
-/** Language tokens the eval tool accepts, in stable display order. */
 export type EvalLanguageToken = "py" | "js" | "rb" | "jl";
 const EVAL_LANGUAGE_ORDER: readonly EvalLanguageToken[] = ["py", "js", "rb", "jl"];
 const EVAL_LANGUAGE_RUNTIME: Record<EvalLanguageToken, string> = {
@@ -53,7 +51,6 @@ const EVAL_LANGUAGE_NAME: Record<EvalLanguageToken, string> = {
 	jl: "Julia",
 };
 
-/** Join names as an English "or" list: ["A"]→"A", ["A","B"]→"A or B", 3+→"A, B, or C". */
 function joinWithOr(items: readonly string[]): string {
 	if (items.length <= 1) return items[0] ?? "";
 	if (items.length === 2) return `${items[0]} or ${items[1]}`;
@@ -66,8 +63,6 @@ function describeLanguageField(langs: readonly EvalLanguageToken[]): string {
 
 function describeCodeField(langs: readonly EvalLanguageToken[]): string {
 	const replLangs = langs.filter(lang => lang === "rb" || lang === "jl");
-	// No persistent REPL backends → keep the original py/js phrasing verbatim so the
-	// default (rb/jl off) wire schema stays byte-identical to the pre-feature one.
 	if (replLangs.length === 0) return "code to run in this eval call, verbatim. Use top-level await freely.";
 	const awaitLangs = langs.filter(lang => lang === "py" || lang === "js");
 	const clauses: string[] = [];
@@ -76,16 +71,13 @@ function describeCodeField(langs: readonly EvalLanguageToken[]): string {
 	return `code to run in this eval call, verbatim. ${clauses.join("; ")}.`;
 }
 
-/** One-line discovery summary listing the runtimes available this session. */
 function summarizeEvalLanguages(langs: readonly EvalLanguageToken[]): string {
 	const names = langs.map(lang => EVAL_LANGUAGE_NAME[lang]);
 	const list = names.length > 0 ? joinWithOr(names) : "Python or JavaScript";
-	// "in-process" matches the historical py/js summary; persistent kernels (rb/jl) switch wording.
 	const backend = langs.some(lang => lang === "rb" || lang === "jl") ? "a persistent" : "an in-process";
 	return `Execute ${list} code in ${backend} eval backend`;
 }
 
-/** Resolved-allowance → enabled language tokens, preserving display order. */
 function enabledEvalLanguages(backends: EvalBackendsAllowance): EvalLanguageToken[] {
 	const allowed: Record<EvalLanguageToken, boolean> = {
 		py: backends.python,
@@ -102,7 +94,6 @@ const evalCellCommonFields = {
 	"reset?": type("boolean").describe("wipe this language's kernel before running. Other languages are untouched."),
 };
 
-/** Per-call input: a single cell. State persists within a language across separate eval calls and across tool calls, so each call is one logical step */
 export const evalSchema = type({
 	language: type("'py' | 'js' | 'rb' | 'jl'").describe(describeLanguageField(EVAL_LANGUAGE_ORDER)),
 	...evalCellCommonFields,
@@ -111,7 +102,6 @@ export const evalSchema = type({
 export type EvalToolParams = typeof evalSchema.infer;
 export type EvalCellInput = EvalToolParams;
 
-/** Build a session-scoped copy of the eval schema whose `language` enum and field descriptions advertise only the runtimes enabled for this session. Disabled */
 function buildEvalSchema(langs: readonly EvalLanguageToken[]): typeof evalSchema {
 	const schema = type({
 		language: type.enumerated(...langs).describe(describeLanguageField(langs)),
@@ -128,7 +118,6 @@ export type EvalToolResult = {
 
 export type EvalProxyExecutor = (params: EvalToolParams, signal?: AbortSignal) => Promise<EvalToolResult>;
 
-/** Cap per `display()` value sent back to the model. */
 const MAX_DISPLAY_TEXT_CHARS = 8000;
 
 export function formatDisplayJsonForText(value: unknown): string {
@@ -144,7 +133,6 @@ export function formatDisplayJsonForText(value: unknown): string {
 	return `${truncate(text, MAX_DISPLAY_TEXT_CHARS, "")}\n[…${chars.length - MAX_DISPLAY_TEXT_CHARS}ch elided…]`;
 }
 
-/** Format display() JSON values into text the model can see. Images are surfaced separately as ImageContent so the model can actually inspect them; this helper */
 function formatDisplayOutputsForText(outputs: EvalDisplayOutput[]): string {
 	const chunks: string[] = [];
 	let displayIndex = 0;
@@ -161,11 +149,8 @@ export interface EvalToolDescriptionOptions {
 	js?: boolean;
 	rb?: boolean;
 	jl?: boolean;
-	/** Parent spawn policy (`getSessionSpawns`). `true`/omitted means unrestricted, `false`/`""` hides `agent()`, and a comma list drives the advertised default. */
 	spawns?: boolean | string | null;
-	/** Effective discovered agent names after enable settings and parent spawn policy. */
 	effectiveAgents?: readonly string[];
-	/** Configured default when it remains in `effectiveAgents`; otherwise omitted. */
 	effectiveDefaultAgent?: string;
 }
 
@@ -197,7 +182,6 @@ export function getEvalToolDescription(options: EvalToolDescriptionOptions = {})
 
 export interface EvalToolOptions {
 	proxyExecutor?: EvalProxyExecutor;
-	/** Create-time discovery snapshot used by model-visible description metadata. */
 	discoveredAgents?: readonly AgentDefinition[];
 }
 
@@ -206,7 +190,6 @@ interface ResolvedBackend {
 	notice?: string;
 }
 
-/** The one cell a call runs, resolved against the session. ONE, not a list, and the singular is load-bearing rather than tidying. The wire */
 interface ResolvedEvalCell {
 	index: number;
 	title?: string;
@@ -216,12 +199,10 @@ interface ResolvedEvalCell {
 	resolved: ResolvedBackend;
 }
 
-/** Name the cell for a cancellation message, so an operator can tell what they interrupted. */
 function describeEvalCell(cell: ResolvedEvalCell): string {
 	return cell.title ?? `the ${cell.resolved.backend.id} cell`;
 }
 
-/** The clamp notice for one cell, or `undefined` when its timeout was honored (or disabled). `timeoutMs === 0` disables the deadline entirely (see the run */
 function timeoutClampNotice(cell: ResolvedEvalCell, maxTimeout?: number): string | undefined {
 	if (cell.timeoutMs === 0) return undefined;
 	return formatTimeoutClampNotice(
@@ -231,7 +212,6 @@ function timeoutClampNotice(cell: ResolvedEvalCell, maxTimeout?: number): string
 	);
 }
 
-/** The notice line for a call: the backend's own notice and the timeout clamp, whichever of the two the cell produced. */
 function detailsNotice(cell: ResolvedEvalCell, maxTimeout?: number): string | undefined {
 	const notices = [
 		...new Set([cell.resolved.notice, timeoutClampNotice(cell, maxTimeout)].filter(Boolean) as string[]),
@@ -327,7 +307,6 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 			effectiveDefaultAgent: catalog.defaultAgent,
 		});
 	}
-	/** All reuse-chain examples; the `examples` getter filters by enabled languages. */
 	static readonly #ALL_EXAMPLES: readonly ToolExample<typeof evalSchema.infer>[] = [
 		{
 			caption: "First call — set up once",
@@ -390,7 +369,6 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 	#paramsKey?: string;
 	#cachedParams?: typeof evalSchema;
 
-	/** Languages enabled for this session, in display order. Detached tools (no session) fall back to the shipped defaults (py/js; rb/jl are opt-in). */
 	#enabledLanguages(): EvalLanguageToken[] {
 		return this.session ? enabledEvalLanguages(resolveEvalBackends(this.session)) : ["py", "js"];
 	}
@@ -453,9 +431,6 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 			reset: params.reset ?? false,
 			resolved,
 		};
-		// `languages` stays a one-element array: it is part of the details wire type
-		// the renderer reads, so its shape is a contract even though a call has only
-		// ever had one language.
 		const languages: EvalLanguage[] = [cell.resolved.backend.id];
 		const notice = detailsNotice(cell, session.settings.get("tools.maxTimeout"));
 		const sessionAbortController = new AbortController();
@@ -489,9 +464,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 					output: "",
 					status: "pending",
 				};
-				/** The cell's folded output, once it has produced any. Empty until then. */
 				let foldedOutput = "";
-				// Set while the cell is inside backend.execute(). Streamed stdout is appended to its rendered `output` live so a long-running cell (e.g. a
 				let activeLiveCell: { result: EvalCellResult; buf: TailBuffer } | undefined;
 
 				const appendTail = (text: string) => {
@@ -540,9 +513,6 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 				outputSink = new OutputSink({
 					artifactPath,
 					artifactId,
-					// eval is the single largest producer of tool-result bytes, and its
-					// largest tenth of results carried two thirds of them. Price the
-					// inline window through the one owner rather than the flat default.
 					spillThreshold: inlineBudgetFor(session),
 					headBytes: resolveOutputSinkHeadBytes(session.settings),
 					maxColumns: resolveOutputMaxColumns(session.settings),
@@ -558,7 +528,6 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 				const sessionId = session.getEvalSessionId?.() ?? defaultEvalSessionId(session);
 
 				const backend = cell.resolved.backend;
-				// The per-cell `timeout` is a budget on the cell runtime's *own* work. Host-side `agent()`/`parallel()`/`completion()` bridge calls suspend
 				const idleTimeoutMs =
 					cell.timeoutMs === 0
 						? undefined
@@ -578,7 +547,6 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 				cellResult.statusEvents = undefined;
 				cellResult.exitCode = undefined;
 				cellResult.durationMs = undefined;
-				// Held by name as well as through `activeLiveCell`, which the `finally` below clears. This is the ONLY surviving record of what a cancelled
 				const liveOutput = new TailBuffer(DEFAULT_MAX_BYTES * 2);
 				activeLiveCell = { result: cellResult, buf: liveOutput };
 				pushUpdate();
@@ -677,7 +645,6 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 				cellResult.hasMarkdown = cellHasMarkdown || undefined;
 
 				if (cellOutput) {
-					// Fold test bookkeeping out of what the MODEL sees. `cellResult.output` was assigned the raw text just above, and the renderer reads that, so
 					foldedOutput = foldToolOutputBookkeeping(cellOutput).text;
 					appendTail(foldedOutput);
 				}
@@ -685,12 +652,8 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 				if (result.cancelled) {
 					cellResult.status = "error";
 					pushUpdate();
-					// THREE different signals are merged into `combinedSignal`, and this one flag collapsed all of them. The two that matter here want
 					if (signal?.aborted || sessionAbortController.signal.aborted) {
 						await finalizeOutput();
-						// `result.output` is empty for an interrupted cell, so the streamed
-						// text is the only surviving record of how far the work got, and it
-						// is what the operator needs to decide whether to re-run.
 						const partial = (result.output || liveOutput.text()).trim();
 						throw new ToolAbortError(
 							[
@@ -773,7 +736,6 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 					try {
 						await finalizeOutput();
 					} catch (error) {
-						// Reached on the failure path, so the throw in flight must survive: it is what the caller is waiting for, and rethrowing from a `finally` would
 						logger.warn("Eval output could not be written to its overflow sink; the full output is lost", {
 							error: errorMessage(error),
 						});
@@ -786,7 +748,6 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 	}
 }
 
-/** Reconcile the cell's visible output with the sink's own accounting. The sink counted every byte that streamed through it, including bytes the */
 async function summarizeFinal(
 	cellOutput: string,
 	finalizeOutput: () => Promise<OutputSummary | undefined>,

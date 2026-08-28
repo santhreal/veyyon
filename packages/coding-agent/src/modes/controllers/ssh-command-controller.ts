@@ -1,4 +1,3 @@
-/** SSH Command Controller Handles /ssh subcommands for managing SSH host configurations. */
 import { errorMessage, getProjectDir, getSSHConfigPath, logger } from "@veyyon/utils";
 import { type SSHHost, sshCapability } from "../../capability/ssh";
 import { loadCapability } from "../../discovery";
@@ -14,7 +13,6 @@ const SSH_ADD_USAGE =
 
 const SSH_REMOVE_USAGE = "Usage: /ssh remove <name>";
 
-/** The option spellings `/ssh add` no longer has, keyed by bare name. */
 const SSH_ADD_REMOVED_OPTIONS: Record<string, string> = {
 	host: "write the host as the second word, after the name",
 	user: "write `user <user>`",
@@ -24,7 +22,6 @@ const SSH_ADD_REMOVED_OPTIONS: Record<string, string> = {
 	compat: "write `compat` as a plain word",
 };
 
-/** `/ssh remove` never had an option worth converting. It used to read a scope and then throw it away: SSH hosts live in ONE file, so nothing was there to select. */
 const SSH_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
 	scope: "drop it — SSH hosts live in one config file, so there is no scope to choose",
 };
@@ -40,15 +37,11 @@ type SshAddParsed = {
 	error?: string;
 };
 
-/** The slice of the interactive context this controller uses: 2 members of the 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency */
 export type SshCommandControllerContext = Pick<InteractiveModeContext, "present" | "session" | "showError">;
 
 export class SSHCommandController {
 	constructor(private ctx: SshCommandControllerContext) {}
 
-	/**
-	 * Handle /ssh command and route to subcommands
-	 */
 	async handle(text: string): Promise<void> {
 		const parts = text.trim().split(/\s+/);
 		const subcommand = parts[1]?.toLowerCase();
@@ -74,9 +67,6 @@ export class SSHCommandController {
 		}
 	}
 
-	/**
-	 * Show help text
-	 */
 	#showHelp(): void {
 		const helpText = [
 			"",
@@ -95,7 +85,6 @@ export class SSHCommandController {
 		this.#showMessage(helpText);
 	}
 
-	/** Parse the argument tail of `/ssh add`. Both required values are POSITION: token 1 is the name and token 2 is the */
 	#parseAddCommand(text: string): SshAddParsed {
 		const prefixMatch = text.match(/^\/ssh\s+add\b\s*(.*)$/i);
 		const tokens = parseCommandArgs(prefixMatch?.[1]?.trim() ?? "");
@@ -133,8 +122,6 @@ export class SSHCommandController {
 				word = "compat";
 				index += 1;
 			} else if (/^\d+$/.test(token)) {
-				// `Number.parseInt` accepts trailing garbage (parseInt("22oops") === 22),
-				// so the digit test above is what keeps a typo from becoming a port.
 				const port = Number(token);
 				if (port < 1 || port > 65535) {
 					return {
@@ -155,9 +142,6 @@ export class SSHCommandController {
 		return parsed;
 	}
 
-	/**
-	 * Handle /ssh add - read the plain-word arguments and add the host to config
-	 */
 	async #handleAdd(text: string): Promise<void> {
 		const parsed = this.#parseAddCommand(text);
 		if (parsed.error) {
@@ -210,24 +194,18 @@ export class SSHCommandController {
 		}
 	}
 
-	/**
-	 * Handle /ssh list - show all configured SSH hosts
-	 */
 	async #handleList(): Promise<void> {
 		try {
 			const cwd = getProjectDir();
 			const userConfig = await readSSHConfigFile(getSSHConfigPath());
 			const userHosts = Object.keys(userConfig.hosts ?? {});
 
-			// Load discovered hosts via capability system
 			const configHostNames = new Set(userHosts);
 			let discoveredHosts: SSHHost[] = [];
 			try {
 				const result = await loadCapability<SSHHost>(sshCapability.id, { cwd });
 				discoveredHosts = result.items.filter(h => !configHostNames.has(h.name));
 			} catch (error) {
-				// Configured hosts still list, but the user should know why
-				// discovered hosts are missing instead of seeing a short list.
 				logger.warn("SSH host discovery failed; listing configured hosts only", {
 					error: errorMessage(error),
 				});
@@ -248,7 +226,6 @@ export class SSHCommandController {
 
 			const lines: string[] = ["", theme.bold("Configured SSH Hosts"), ""];
 
-			// Hosts configured in the active profile
 			if (userHosts.length > 0) {
 				lines.push(theme.fg("accent", "Profile level") + theme.fg("muted", " (ssh.json):"));
 				for (const name of userHosts) {
@@ -259,7 +236,6 @@ export class SSHCommandController {
 				lines.push("");
 			}
 
-			// Read-only hosts contributed by a discovery provider
 			if (discoveredHosts.length > 0) {
 				for (const { providerName, shortPath, items: hosts } of groupBySource(discoveredHosts, h => h._source)) {
 					lines.push(
@@ -285,9 +261,6 @@ export class SSHCommandController {
 		}
 	}
 
-	/**
-	 * Format host details (host, user, port) for display
-	 */
 	#formatHostDetails(config: { host?: string; username?: string; port?: number }): string {
 		const parts: string[] = [];
 		if (config.host) parts.push(config.host);
@@ -296,9 +269,6 @@ export class SSHCommandController {
 		return theme.fg("dim", parts.length > 0 ? `[${parts.join(", ")}]` : "");
 	}
 
-	/**
-	 * Handle /ssh remove <name> - remove a host from config
-	 */
 	async #handleRemove(text: string): Promise<void> {
 		const match = text.match(/^\/ssh\s+(?:remove|rm)\b\s*(.*)$/i);
 		const tokens = parseCommandArgs(match?.[1]?.trim() ?? "");
@@ -338,9 +308,6 @@ export class SSHCommandController {
 		}
 	}
 
-	/**
-	 * Show a message in the chat
-	 */
 	#showMessage(text: string): void {
 		showCommandMessage(this.ctx, text);
 	}

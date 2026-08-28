@@ -1,4 +1,3 @@
-/** The operator's side of project trust: see what a repository wants to run, and decide. withheld, so the decision is never racing a side effect. That ordering is the safety property, */
 import * as path from "node:path";
 import { pathExists } from "@veyyon/utils";
 import { clearClaudePluginRootsCache, resolveActiveProjectRegistryPath } from "../discovery/helpers";
@@ -16,7 +15,6 @@ export interface TrustCommandArgs {
 	cwd: string;
 	agentDir: string;
 	action: TrustAction;
-	/** Paths named on the command line; empty means "everything discovered". */
 	paths: readonly string[];
 }
 
@@ -24,7 +22,6 @@ export interface TrustCandidate {
 	relativePath: string;
 	absolutePath: string;
 	verdict: ProjectTrustVerdict;
-	/** What this file grants, in the operator's terms. */
 	grants: string;
 }
 
@@ -34,13 +31,10 @@ export interface TrustCommandResult {
 	storePath: string;
 	decision: "trusted" | "denied" | "undecided";
 	candidates: TrustCandidate[];
-	/** Paths the caller named that are not inside the project root. */
 	outOfScope: string[];
-	/** Paths the caller named that do not exist or cannot be read. */
 	unreadable: string[];
 }
 
-/** Every project-controlled file that grants execution, whether or not it is decided. Discovery is deliberately narrow: this lists the doors, not everything behind them. The plugin */
 async function discoverCandidatePaths(cwd: string): Promise<string[]> {
 	const registry = await resolveActiveProjectRegistryPath(cwd);
 	return registry ? [registry] : [];
@@ -68,7 +62,6 @@ export async function runTrustCommand(args: TrustCommandArgs): Promise<TrustComm
 			executables.push(executable);
 			continue;
 		}
-		// describeProjectExecutable folds "outside the project" and "cannot be read" into one null, and the operator's next move differs: one is the wrong directory, the other is a
 		if (await pathExists(absolutePath, "a path named for a trust decision")) outOfScope.push(absolutePath);
 		else unreadable.push(absolutePath);
 	}
@@ -96,7 +89,6 @@ export async function runTrustCommand(args: TrustCommandArgs): Promise<TrustComm
 	};
 }
 
-/** The report an operator reads. One line per file, decision first. */
 export function renderTrustReport(result: TrustCommandResult): string {
 	const lines: string[] = [];
 	lines.push(`Project: ${result.projectRoot}`);
@@ -124,7 +116,6 @@ export function renderTrustReport(result: TrustCommandResult): string {
 	return `${lines.join("\n")}\n`;
 }
 
-/** The `/trust` verb, for a session that is already running. Same authority and same report as the CLI command; only the parsing differs, because a slash */
 export async function runTrustSlashCommand(args: string, agentDir: string, cwd: string): Promise<string> {
 	const words = args.trim().split(/\s+/).filter(Boolean);
 	const verb = (words[0] ?? "").toLowerCase();
@@ -136,8 +127,6 @@ export async function runTrustSlashCommand(args: string, agentDir: string, cwd: 
 				: null;
 	if (action === null) return `Unknown /trust verb "${verb}". Use approve, deny, forget, or nothing to report.\n`;
 	const result = await runTrustCommand({ cwd, agentDir, action, paths: words.slice(1) });
-	// A decision changes what discovery may read, and plugin roots are cached for the life of the
-	// process; without this the operator would have to restart to see their own answer take effect.
 	if (action !== "list") clearClaudePluginRootsCache();
 	return renderTrustReport(result);
 }

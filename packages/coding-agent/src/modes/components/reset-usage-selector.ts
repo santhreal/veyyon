@@ -37,7 +37,6 @@ const RESET_PENDING_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "esc cancel pending", clickable: true, id: "close" },
 ];
 
-/** Account picker for `/usage reset` — floating ModalShell card. Lists Codex accounts with their saved rate-limit reset counts; selecting one redeems a */
 export class ResetUsageSelectorComponent implements Component {
 	#accounts: ResetUsageAccount[];
 	#selectedIndex = 0;
@@ -47,14 +46,10 @@ export class ResetUsageSelectorComponent implements Component {
 	#onCancelCallback: () => void;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
-	/** Frame row where the account rows begin (shell body start). */
 	#listRowStart = 0;
-	/** Pointer-highlighted account (never the selected one; selection owns its row). */
 	#hoveredIndex: number | null = null;
-	/** Per-render map of 0-based body line → account index. */
 	#hitRows: (number | undefined)[] = [];
 	#onRequestRender?: () => void;
-	/** The cross-fade between the account the pointer left and the one it arrived at, once a host lends this card a repaint. Absent, the band is switched. */
 	#hoverFade: HoverFade | undefined;
 
 	constructor(accounts: ResetUsageAccount[], onSelect: (account: ResetUsageAccount) => void, onCancel: () => void) {
@@ -67,29 +62,23 @@ export class ResetUsageSelectorComponent implements Component {
 
 	setOnRequestRender(cb: () => void): void {
 		this.#onRequestRender = cb;
-		// The band fades only once the card has a repaint to lend it: the frames between two mouse
-		// reports have no input to hang off. Same ambient gate as the open unfold.
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: pointerMotionEnabled() });
 		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
 	}
 
-	/** Settle the pointer band so no timer outlives a dismissed card. */
 	dispose(): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = undefined;
 		this.#hoveredIndex = null;
 	}
 
-	/** Band strength for an account row; without a fade the hovered row is at 1 and the rest at 0. */
 	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
-	invalidate(): void {
-		// No cached state to invalidate currently
-	}
+	invalidate(): void {}
 
 	#pendingAccount(): ResetUsageAccount | undefined {
 		return this.#pendingIndex !== null ? this.#accounts[this.#pendingIndex] : undefined;
@@ -277,8 +266,6 @@ export class ResetUsageSelectorComponent implements Component {
 		if (event.leftClick) {
 			const index = this.#hitRows[line];
 			if (index !== undefined) {
-				// Click mirrors Enter: first press arms the pending state, a second
-				// press on the same row spends the reset.
 				this.#selectedIndex = index;
 				this.handleInput("\n");
 				this.#onRequestRender?.();

@@ -1,22 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Emit a run's benchmark results into a FEATURE DOC page.
- *
- * Bench results belong next to the feature they measure, not in the
- * changelog: the doc page carries a marker-fenced block this tool inserts
- * or replaces in place, so re-benching a feature updates one canonical
- * block instead of scattering result tables through prose or CHANGELOG.
- *
- * Usage:
- *   bun packages/metaharness/src/bench-report.ts \
- *     --run <jobName> --doc docs/<page>.md [--key <block-key>] [--jobs-dir <dir>]
- *
- * `--key` names the block (defaults to the run's benchmark kind) so one page
- * can hold independent blocks for several benchmarks. The block is delimited
- * by `<!-- bench-results:<key> -->` / `<!-- /bench-results:<key> -->`; when
- * the markers are absent the block is appended under a "## Benchmark
- * results" heading.
- */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { BENCHMARK_DEFINITIONS, type BenchmarkSnapshot, readBenchmarkSnapshot } from "./benchmarks";
@@ -30,7 +12,6 @@ function formatMetric(value: number | null, format: "percent" | "number" | "usd"
 	return value.toFixed(2);
 }
 
-/** Render the canonical results block (markers included) for one run. */
 export function renderBenchResultsBlock(run: RunRow, snapshot: BenchmarkSnapshot, key: string): string {
 	const definition = BENCHMARK_DEFINITIONS.find(d => d.kind === run.benchmark);
 	if (!definition) throw new Error(`No benchmark definition for kind ${run.benchmark}`);
@@ -53,12 +34,6 @@ export function renderBenchResultsBlock(run: RunRow, snapshot: BenchmarkSnapshot
 	return lines.join("\n");
 }
 
-/**
- * Insert or replace the keyed block in a doc's text. Replacement spans the
- * existing marker pair exactly; a missing pair appends the block under a
- * "## Benchmark results" heading (created if absent) so the first emit
- * needs no manual doc preparation.
- */
 export function upsertBenchResultsBlock(docText: string, key: string, block: string): string {
 	const open = `<!-- bench-results:${key} -->`;
 	const close = `<!-- /bench-results:${key} -->`;

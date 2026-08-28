@@ -51,21 +51,14 @@ import { handleTabSwitchKey, hoverBandAt, SCROLL_LIST_THEME } from "./selector-h
 
 const SUBMIT_OPTION = "Submit";
 
-/** Minimum rows kept for the question/submit body on a short terminal. Higher than the plan overlay's floor, and deliberately so: this body carries */
 const MIN_BODY_ROWS = 5;
-/** Rows ModalShell reserves outside the body budget, so the body/list layout decision (side-by-side preview vs stacked) is made against a realistic budget */
 const CHROME_ROWS = minModalChromeRows(MODAL_SIZING_LARGE);
 const PREVIEW_MIN_WIDTH = 40;
 const SIDE_BY_SIDE_LIST_MIN_WIDTH = 30;
 const SIDE_BY_SIDE_GAP_WIDTH = 3;
 const MAX_HEADER_CHIP_WIDTH = 16;
-/** Maximum number of title lines shown in the prompt editor overlay, so a long or multi-line question cannot push the input row off-screen. Mirrors */
 const MAX_PROMPT_TITLE_ROWS = 3;
-/** Columns consumed by the chrome the bounded title is rendered inside. The title goes to `onPrompt`, which mounts a `HookEditorComponent` in the */
 const PROMPT_TITLE_CHROME_COLUMNS = HOOK_EDITOR_TEXT_PAD_COLS * 2;
-/** Maximum number of wrapped lines for an in-body question header, so a long
- *  or multi-line question cannot push the option list off-screen. Mirrors the
- *  row-cap pattern used by boundPromptTitle for the prompt editor overlay. */
 const MAX_HEADER_ROWS = 4;
 
 function promptTitleContentWidth(): number {
@@ -73,8 +66,6 @@ function promptTitleContentWidth(): number {
 	return Math.max(1, cols - PROMPT_TITLE_CHROME_COLUMNS);
 }
 
-/** Bound a prompt editor title to a fixed row/width budget so long or
- *  multi-line questions stay usable inside the small prompt overlay. */
 export function boundPromptTitle(prefix: string, question: string): string {
 	const width = promptTitleContentWidth();
 	const flat = normalizedInlineInput(`${prefix}${question}`);
@@ -120,8 +111,6 @@ interface RenderedList {
 	lines: string[];
 	scrollOffset: number;
 	indicator: string;
-	/** Question lists only: per-row start line within the unclipped list, and the
-	 *  total unclipped line count, so pointer rows map back to option rows. */
 	lineStarts?: number[];
 	lineCount?: number;
 }
@@ -139,9 +128,6 @@ function questionTabLabel(question: ExtensionAskDialogQuestion, index: number): 
 
 function renderQuestionTitle(question: ExtensionAskDialogQuestion, width: number): string[] {
 	const mdTheme = getMarkdownTheme();
-	// The agent is asking, so the question itself carries the living `ask` hue:
-	// the same theme token the `await` breath paints, sourced from ONE place so a
-	// rebrand owns it. This is the visible "your turn" — the prompt reads green.
 	const askToken = activityColorToken("ask");
 	const questionText = renderInlineMarkdown(replaceTabs(question.question), mdTheme, t => theme.fg(askToken, t));
 	const wrapped = wrapTextWithAnsi(questionText, Math.max(1, width));
@@ -294,7 +280,6 @@ function renderRowLabel(
 	const marker = `${theme.fg(checked ? "success" : "dim", optionMarker(question, checked))} `;
 	const cursor = selected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
 	const label = renderInlineMarkdown(rowItem.label, mdTheme, t => theme.fg(color, t));
-	// "✎ note" marker (glyph + word), matching the plan-review annotation mark.
 	const noteMarker =
 		state.note && state.noteRowKey === rowItem.key
 			? `  ${theme.styledSymbol("tool.edit", "success")} ${theme.fg("success", "note")}`
@@ -330,7 +315,6 @@ function isAskText(value: unknown): boolean {
 	return typeof value === "string" && value.trim().length > 0;
 }
 
-/** Refuse a question this dialog cannot render, naming the field and the question that carried it. */
 function assertRenderableAskQuestions(questions: readonly ExtensionAskDialogQuestion[]): void {
 	if (!Array.isArray(questions) || questions.length === 0) {
 		throw new Error("Ask dialog needs a non-empty array of questions.");
@@ -397,14 +381,9 @@ export class AskDialogComponent implements Component {
 	#states: QuestionState[];
 	#activeTabIndex = 0;
 	#submitScrollOffset = 0;
-	/** Pointer-highlighted option row on the active question tab (null clears). */
 	#hoveredRowIndex: number | null = null;
-	/** Pointer-highlighted tab id (null clears). Tabs keep hover separate from the active tab: */
-	/** activating on hover would silently change which question is being answered. */
 	#hoveredTabId: string | null = null;
-	/** The cross-fade between the row the pointer left and the row it arrived at, once the card has a repaint to lend it ({@link setOnRequestRender}). Absent, */
 	#hoverFade: HoverFade | undefined;
-	/** Last render's option-list geometry for pointer hit-testing. */
 	#listPointerMap: {
 		frameStart: number;
 		lineStarts: number[];
@@ -443,9 +422,6 @@ export class AskDialogComponent implements Component {
 				timedOut: false,
 			};
 		});
-		// The dialog appearing IS the agent yielding the turn: flip the living
-		// status to `ask` so any concurrent shimmer surface reads the green
-		// "your turn" breath. `dispose()` returns it to rest.
 		setShimmerActivity("ask");
 		if (options.timeout && options.timeout > 0) {
 			this.#countdown = new CountdownTimer(
@@ -467,22 +443,14 @@ export class AskDialogComponent implements Component {
 	dispose(): void {
 		this.#closed = true;
 		this.#countdown?.dispose();
-		// A dismissed card leaves nothing running on the shared clock, and forgets
-		// where the pointer was: the next dialog opens with no band under a pointer
-		// that has since moved.
 		this.#hoverFade?.dispose();
 		this.#hoverFade = undefined;
 		this.#hoveredRowIndex = null;
-		// The user answered (or it timed out): drop the `ask` breath back to rest.
-		// The next agent turn's `agent_start` flips it to `thinking`.
 		setShimmerActivity("idle");
 	}
 
 	setOnRequestRender(callback: () => void): void {
 		this.#onRequestRenderExternal = callback;
-		// The band fades only once the card has a repaint to lend it: the frames
-		// between two mouse reports have no input to hang off. Same ambient gate as
-		// the open unfold; without it the band is switched.
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade({ requestRender: callback, enabled: pointerMotionEnabled() });
 		if (this.#hoveredRowIndex !== null) this.#hoverFade.set(this.#hoveredRowIndex);
@@ -494,8 +462,6 @@ export class AskDialogComponent implements Component {
 			return;
 		}
 		if (this.#closed || this.#promptActive) return;
-		// Reset the inactivity countdown on any key that reaches past the
-		// closed/prompt guards, matching HookSelector/HookInput semantics.
 		this.#countdown?.reset();
 		if (matchesSelectCancel(keyData)) {
 			this.#finishCancel();
@@ -518,9 +484,6 @@ export class AskDialogComponent implements Component {
 		const dims = computeModalDims(width, termHeight, sizing);
 		const contentWidth = dims?.contentWidth ?? Math.max(1, width - 4);
 		const headerLines = this.#renderHeader(contentWidth);
-		// ModalShell's own chrome (top/close bar, footer divider, bottom border,
-		// vertical padding, footer band) reserves CHROME_ROWS outside the body;
-		// the header rows are part of the body we hand it, so subtract those too.
 		const bodyRows = Math.max(MIN_BODY_ROWS, (dims?.modalHeight ?? termHeight) - headerLines.length - CHROME_ROWS);
 		const bodyLines = this.#isSubmitTab()
 			? this.#renderSubmitBody(contentWidth, bodyRows)
@@ -537,9 +500,6 @@ export class AskDialogComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		// Pointer map for the option list: frame row of the list's first rendered
-		// line plus the unclipped row starts from this render. Null on the submit
-		// tab, whose body is a scrollable summary with no selectable rows.
 		this.#listPointerMap =
 			bodyLines.lineStarts !== undefined && bodyLines.lineCount !== undefined
 				? {
@@ -552,8 +512,6 @@ export class AskDialogComponent implements Component {
 		return shell.lines;
 	}
 
-	/** Footer chips for the active tab (browse vs submit review), mirroring
-	 *  the old dynamic hint text as clickable/inert ModalShortcut entries. */
 	#buildShortcuts(indicator: string): ModalShortcut[] {
 		const chips: ModalShortcut[] = [];
 		if (this.#isSubmitTab()) {
@@ -620,9 +578,6 @@ export class AskDialogComponent implements Component {
 				this.#requestRender();
 				return true;
 			}
-			// The tab bar is the first header line inside the card, so its own line numbering starts at
-			// the body row. `tabAt` was already implemented and simply never called from here, which is
-			// what made the tab strip an unreachable affordance.
 			const geometry = this.#shellGeometry;
 			const tabBar = this.#tabBar;
 			const hoveredTab =
@@ -644,7 +599,6 @@ export class AskDialogComponent implements Component {
 			const local = map ? event.row - map.frameStart + map.scrollOffset : -1;
 			let rowIndex: number | null = null;
 			if (map && local >= 0 && local < map.lineCount) {
-				// Largest row start at or below the line: the row the pointer is over.
 				for (let index = map.lineStarts.length - 1; index >= 0; index--) {
 					if ((map.lineStarts[index] ?? 0) <= local) {
 						rowIndex = index;
@@ -653,8 +607,6 @@ export class AskDialogComponent implements Component {
 				}
 			}
 			if (event.motion) {
-				// The band paints on every option row, the cursor row included; the pointer never moves
-				// the cursor, so a mouse crossing the card cannot change which option Enter answers.
 				if (rowIndex !== this.#hoveredRowIndex) {
 					this.#hoveredRowIndex = rowIndex;
 					this.#hoverFade?.set(rowIndex);
@@ -663,8 +615,6 @@ export class AskDialogComponent implements Component {
 				return true;
 			}
 			if (event.leftClick && rowIndex !== null) {
-				// Click mirrors the cursor + Enter: an option answers (single) or
-				// toggles (multi), the Other row opens the inline input.
 				const active = this.#activeQuestionState();
 				if (active) {
 					active.state.cursorIndex = rowIndex;
@@ -683,9 +633,6 @@ export class AskDialogComponent implements Component {
 	}
 
 	#hasSubmitTab(): boolean {
-		// Multi questions confirm on the Submit tab (Enter toggles, never
-		// submits), so any multi question forces the tab even when there is
-		// only one question.
 		return this.questions.length > 1 || this.questions.some(question => question.multi);
 	}
 
@@ -717,8 +664,6 @@ export class AskDialogComponent implements Component {
 			const tabs: Tab[] = questionTabs;
 			this.#tabBar = new TabBar("", tabs, getTabBarTheme(), this.#activeTabIndex);
 			this.#tabBar.showHint = false;
-			// Hover is applied before the render that produces this frame's bytes, and re-applied every
-			// frame because the bar is rebuilt each render; a band set after render would never paint.
 			if (this.#hoveredTabId !== null) this.#tabBar.setHoverTab(this.#hoveredTabId);
 			const tbLines = this.#tabBar.render(width);
 			for (let li = 0; li < tbLines.length; li++) lines.push(tbLines[li]!);
@@ -798,8 +743,6 @@ export class AskDialogComponent implements Component {
 		const option = question.options[rowItem.optionIndex ?? -1];
 		if (!option) return;
 		if (question.multi) {
-			// Multi is toggle-only: Enter and Space both toggle, and the
-			// answer is confirmed from the Submit tab.
 			if (state.selectedOptions.has(option.label)) {
 				state.selectedOptions.delete(option.label);
 				clearNoteIfRow(state, rowItem.key);
@@ -822,7 +765,6 @@ export class AskDialogComponent implements Component {
 			return;
 		}
 		if (matchesSelectDown(keyData)) {
-			// Clamped against the rendered line count in #renderSubmitBody.
 			this.#submitScrollOffset += 1;
 			this.#requestRender();
 			return;
@@ -838,7 +780,6 @@ export class AskDialogComponent implements Component {
 		this.#hoveredRowIndex = null;
 	}
 
-	/** Activate the tab a pointer clicked. Tab ids are the question index, or `submit` for the review tab, which is the last index. */
 	#selectTabId(id: string): void {
 		const index = id === "submit" ? this.#submitTabIndex() : Number.parseInt(id, 10);
 		if (!Number.isInteger(index) || index < 0 || index > this.#submitTabIndex()) return;
@@ -873,7 +814,6 @@ export class AskDialogComponent implements Component {
 			);
 			if (input === undefined || this.#closed) return;
 			if (input.trim() === "") {
-				// Submitting an empty value unselects the custom answer.
 				state.customInput = undefined;
 				clearNoteIfRow(state, rowItem.key);
 				return;
@@ -921,8 +861,6 @@ export class AskDialogComponent implements Component {
 		const selectedRow = rowItems[state.cursorIndex];
 		const preview =
 			selectedRow?.kind === "option" ? question.options[selectedRow.optionIndex ?? -1]?.preview : undefined;
-		// The preview pane exists only while the highlighted option carries a
-		// preview; otherwise the list takes the full dialog width.
 		if (!preview?.trim()) return this.#renderQuestionList(question, state, rowItems, width, maxRows);
 		const sideBySide = width >= SIDE_BY_SIDE_LIST_MIN_WIDTH + PREVIEW_MIN_WIDTH + SIDE_BY_SIDE_GAP_WIDTH;
 		if (sideBySide) {
@@ -947,7 +885,6 @@ export class AskDialogComponent implements Component {
 		return { lines: lines.slice(0, maxRows), scrollOffset: list.scrollOffset, indicator: list.indicator };
 	}
 
-	/** Band strength for an option row. Without a fade — a 256-color terminal, or transitions off — the hovered row is at 1 and every other row at 0, which is */
 	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredRowIndex ? 1 : 0;
@@ -970,7 +907,6 @@ export class AskDialogComponent implements Component {
 			const rl = renderRowLabel(rowItem, question, state, index === state.cursorIndex, mdTheme, width);
 			for (let li = 0; li < rl.length; li++) allLines.push(rl[li]!);
 		}
-		// Pointer hover bands the whole row (label + description lines), the cursor row included: the row the keyboard already sits on has to answer the pointer, or it reads as a dead cell that
 		for (let index = 0; index < rowItems.length; index++) {
 			const strength = this.#hoverStrength(index);
 			if (strength <= 0) continue;

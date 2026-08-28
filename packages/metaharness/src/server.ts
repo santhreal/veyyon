@@ -7,15 +7,12 @@ import { buildExperiments, experimentDetail, experimentOf } from "./experiments"
 import { harborRunnerArgs, type LaunchRequest } from "./launch-args";
 import { type LaunchRecord, type RunRole, type RunRow, RunStore } from "./store";
 
-/** PUT /api/experiments/:id body — goal and per-run role/note/label metadata. */
 export interface ExperimentMetaUpdate {
 	goal?: string;
 	runs?: Record<string, { role?: RunRole; note?: string; label?: string }>;
 }
 
-/** POST /api/experiments body — pre-registers an experiment id with a goal. */
 export interface CreateExperimentRequest {
-	/** Dash-free token; runs group into it as `<id>-<arm>` job names. */
 	id: string;
 	goal?: string;
 }
@@ -28,13 +25,10 @@ const PKG_DIR = path.resolve(import.meta.dir, "..");
 
 export type { LaunchRequest } from "./launch-args";
 
-/** POST /api/experiments/:id/arms body — a new comparable arm; sample+config inherited. */
 export interface AddArmRequest {
-	/** Arm label; becomes the `<id>-<arm>` job name. */
 	arm: string;
 	model: string;
 	prewalk?: LaunchRequest["prewalk"];
-	/** Explicit task sample; skips sibling inheritance when provided. */
 	include?: string[];
 	role?: RunRole;
 	note?: string;
@@ -68,19 +62,16 @@ function parseServerArgs(argv: string[]): { port: number; jobsDir: string } {
 	return { port, jobsDir };
 }
 
-/** Job names are single path segments; anything else could escape the jobs dir. */
 function assertSafeJobName(jobName: string): void {
 	if (!jobName || jobName === "." || jobName === ".." || /[/\\]/.test(jobName)) {
 		throw new Error(`invalid job name: ${jobName}`);
 	}
 }
 
-/** True when `pid` names a live process. A null pid is never live. */
 function pidAlive(pid: number | null): boolean {
 	return pid != null && isProcessAlive(pid);
 }
 
-/** Resolve launch request for a new arm added to an existing experiment. */
 export function resolveArmLaunch(store: RunStore, experimentId: string, req: AddArmRequest): LaunchRequest {
 	if (!req.arm || /[^\w.-]/.test(req.arm)) throw new Error("arm must be a non-empty [A-Za-z0-9_.-] token");
 	if (!req.model) throw new Error("model is required");
@@ -326,7 +317,6 @@ export class ManagerServer {
 		});
 	}
 
-	/** Launch any supported benchmark and register it in the uniform run store. */
 	launch(request: LaunchRequest): { jobName: string; pid: number } {
 		if (!request.model) throw new Error("model is required");
 		const benchmark = request.benchmark ?? "harbor";
@@ -383,7 +373,6 @@ export class ManagerServer {
 		return { jobName, pid };
 	}
 
-	/** Resume a harbor run in place via the runner's `--resume`. */
 	resume(jobName: string, opts: { filterErrorTypes?: string[] } = {}): { jobName: string; pid: number } {
 		const run = this.#store.getRun(jobName);
 		if (!run) throw new Error(`run ${jobName} not found`);
@@ -419,7 +408,6 @@ export class ManagerServer {
 		return { jobName, pid };
 	}
 
-	/** Spawn a detached runner child, wire its exit back into the store, and register the run. */
 	#spawnRunner(argv: string[], cwd: string, record: Omit<LaunchRecord, "pid">): number {
 		const jobName = record.jobName;
 		const logDir = path.join(this.jobsDir, "_manager", "logs");
@@ -449,12 +437,10 @@ export class ManagerServer {
 		return proc.pid;
 	}
 
-	/** Liveness check that survives manager restarts: managed child, or a running row with a live pid. */
 	#runLive(run: RunRow): boolean {
 		return this.#children.has(run.jobName) || (run.status === "running" && pidAlive(run.pid));
 	}
 
-	/** Register an experiment id (with an optional goal) so it is browsable before its first arm. */
 	createExperiment(req: CreateExperimentRequest): { id: string; goal: string } {
 		const id = req.id?.trim() ?? "";
 		if (!/^[A-Za-z0-9_.]+$/.test(id)) {
@@ -465,7 +451,6 @@ export class ManagerServer {
 		return { id, goal };
 	}
 
-	/** Apply goal + per-run role/note metadata; used by the UI and for backfill. */
 	updateExperimentMeta(id: string, update: ExperimentMetaUpdate): { id: string; updatedRuns: string[] } {
 		if (update.goal !== undefined) this.#store.setExperimentGoal(id, update.goal);
 		const updatedRuns: string[] = [];
@@ -477,7 +462,6 @@ export class ManagerServer {
 		return { id, updatedRuns };
 	}
 
-	/** Delete an experiment and its associated runs/artifacts. */
 	deleteExperiment(id: string): { id: string; deletedRuns: string[] } | null {
 		const runs = this.#store.listRuns().filter(r => experimentOf(r.jobName) === id);
 		if (runs.length === 0 && !this.#store.getExperimentMeta(id)) return null;
@@ -493,7 +477,6 @@ export class ManagerServer {
 		return { id, deletedRuns: runs.map(r => r.jobName) };
 	}
 
-	/** Permanently delete a run and its on-disk artifacts. */
 	deleteRun(jobName: string): boolean {
 		const run = this.#store.getRun(jobName);
 		if (!run) return false;
@@ -503,7 +486,6 @@ export class ManagerServer {
 		return true;
 	}
 
-	/** Remove a run's DB rows and on-disk artifacts (job dir + manager log). */
 	#destroyRun(jobName: string): void {
 		assertSafeJobName(jobName);
 		this.#store.deleteRun(jobName);
@@ -511,12 +493,10 @@ export class ManagerServer {
 		fs.rmSync(path.join(this.jobsDir, "_manager", "logs", `${jobName}.log`), { force: true });
 	}
 
-	/** Add a comparable arm to an existing experiment, inheriting its sample + config. */
 	addArm(experimentId: string, req: AddArmRequest): { jobName: string; pid: number } {
 		return this.launch(resolveArmLaunch(this.#store, experimentId, req));
 	}
 
-	/** Cancel a managed run. */
 	cancel(jobName: string): { jobName: string; cancelled: boolean } {
 		const child = this.#children.get(jobName);
 		if (child) {
@@ -547,7 +527,6 @@ export class ManagerServer {
 		return { jobName, cancelled: false };
 	}
 
-	/** Return a normalized trace regardless of the benchmark's native artifact format. */
 	#trace(jobName: string, traceName: string, tail: number, raw: boolean): Response {
 		const trace = this.#store.listTraces(jobName).find(item => item.name === traceName);
 		if (!trace?.tracePath) return Response.json({ error: "trace not found" }, { status: 404 });
@@ -624,7 +603,6 @@ export class ManagerServer {
 		return Response.json({ jobName, trace: traceName, entries: entries.slice(-n), totalEvents: lines.length });
 	}
 }
-/** Exception types recorded in a job's result.json. */
 function erroredExceptionTypes(jobDir: string): string[] {
 	try {
 		const raw = JSON.parse(fs.readFileSync(path.join(jobDir, "result.json"), "utf8")) as {
@@ -640,10 +618,8 @@ function erroredExceptionTypes(jobDir: string): string[] {
 	}
 }
 
-/** Trace files can be runaway-huge; the viewer only shows a tail anyway. */
 const TRACE_READ_CAP_BYTES = 32 * 1024 * 1024;
 
-/** Last `cap` bytes of a file as text, dropping a leading partial line when truncated. */
 function readTextTail(file: string, cap: number): string {
 	const size = fs.statSync(file).size;
 	if (size <= cap) return fs.readFileSync(file, "utf8");
@@ -659,7 +635,6 @@ function readTextTail(file: string, cap: number): string {
 	}
 }
 
-/** True when error is a Bun dev-server stream teardown. */
 function isDevStreamTeardown(err: unknown): boolean {
 	return err instanceof Error && (err as Error & { code?: string }).code === "ERR_STREAM_RELEASE_LOCK";
 }

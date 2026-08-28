@@ -33,12 +33,6 @@ export type {
 	ToolUsageStats,
 } from "./types";
 
-/**
- * Format cost in dollars.
- */
-/**
- * Print stats summary to console.
- */
 async function printStats(): Promise<void> {
 	const stats = await getDashboardStats();
 	const { overall, byModel, byFolder } = stats;
@@ -79,9 +73,6 @@ async function printStats(): Promise<void> {
 	console.log("");
 }
 
-/**
- * Main CLI entry point.
- */
 async function main(): Promise<void> {
 	const { values } = parseArgs({
 		options: {
@@ -116,7 +107,6 @@ Examples:
 	}
 
 	try {
-		// Sync first
 		const tty = process.stderr.isTTY === true;
 		process.stderr.write("Syncing session files...\n");
 		let lastWidth = 0;
@@ -153,13 +143,11 @@ Examples:
 			return;
 		}
 
-		// Start server
 		const port = parseInt(values.port || "3847", 10);
 		const { port: actualPort } = await startServer(port);
 		console.log(`Dashboard available at: http://localhost:${actualPort}`);
 		console.log("Press Ctrl+C to stop\n");
 
-		// Keep process running
 		process.on("SIGINT", () => {
 			console.log("\nShutting down...");
 			closeDb();
@@ -172,7 +160,6 @@ Examples:
 	}
 }
 
-// Run if executed directly
 if (import.meta.main) {
 	main();
 }

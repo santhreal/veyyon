@@ -57,7 +57,6 @@ function isTokenStart(text: string, index: number): boolean {
 	return index === 0 || PATH_DELIMITERS.has(text[index - 1] ?? "");
 }
 
-/** Locate the slash that opens a slash command on the line. */
 export function findLeadingSlashCommandStart(text: string): number | null {
 	const trimmed = text.trimStart();
 	if (!trimmed.startsWith("/")) return null;
@@ -124,10 +123,7 @@ export interface AutocompleteItem {
 	value: string;
 	label: string;
 	description?: string;
-	/** Dim hint text shown inline after cursor when this item is selected */
 	hint?: string;
-	/** Category header this item renders under (see SelectItem.group). Set on
-	 *  slash-command completions when the menu is browsed with no filter. */
 	group?: string;
 }
 
@@ -138,21 +134,14 @@ export interface SlashCommand {
 	aliases?: string[];
 	description?: string;
 	argumentHint?: string;
-	/** Category shown as a group header when the / menu is browsed unfiltered
-	 *  (e.g. "session", "modes", "model"). Untagged commands render last under
-	 *  no header. */
 	category?: string;
-	/** Whether the command consumes argument text after the command name. False means the full input stays normal prompt text once args are present. */
 	allowArgs?: boolean;
-	/** Dynamic display-only description for slash-command autocomplete. Must be synchronous and side-effect free. */
 	getAutocompleteDescription?: () => string | undefined;
 	getArgumentCompletions?(argumentPrefix: string): Awaitable<AutocompleteItem[] | null>;
-	/** Return inline hint text for the current argument state (shown as dim ghost text after cursor) */
 	getInlineHint?(argumentText: string): string | null;
 }
 
 export interface AutocompleteProvider {
-	/** Get autocomplete suggestions for current text/cursor position */
 	getSuggestions(
 		lines: string[],
 		cursorLine: number,
@@ -162,7 +151,6 @@ export interface AutocompleteProvider {
 		prefix: string; // What we're matching against (e.g., "/" or "src/")
 	} | null>;
 
-	/** Apply the selected item and return new text + cursor position */
 	applyCompletion(
 		lines: string[],
 		cursorLine: number,
@@ -176,22 +164,16 @@ export interface AutocompleteProvider {
 		onApplied?: () => void;
 	};
 
-	/** Get inline hint text to show as dim ghost text after the cursor */
 	getInlineHint?(lines: string[], cursorLine: number, cursorCol: number): string | null;
-	/** Synchronously try to complete a slash command at the start of a line (no async I/O). */
-	/** Returns matched items and the full prefix, or null if not applicable. */
 	trySyncSlashCompletion?(textBeforeCursor: string): { items: AutocompleteItem[]; prefix: string } | null;
-	/** Synchronously expand text immediately before cursor (e.g. emoji :shortcode:). */
 	trySyncInlineReplace?(textBeforeCursor: string): { replaceLen: number; insert: string } | null;
 
-	/** Force file-path completion (called on Tab). */
 	getForceFileSuggestions?(
 		lines: string[],
 		cursorLine: number,
 		cursorCol: number,
 	): Promise<{ items: AutocompleteItem[]; prefix: string } | null>;
 
-	/** Whether a Tab press should attempt file completion at the cursor. */
 	shouldTriggerFileCompletion?(lines: string[], cursorLine: number, cursorCol: number): boolean;
 }
 
@@ -226,10 +208,6 @@ function commandMatchesNameOrAlias(cmd: CommandEntry, commandName: string): bool
 export function scoreCommandTextMatch(lowerPrefix: string, lowerTarget: string): number {
 	if (lowerPrefix.length === 0) return 1;
 	if (lowerPrefix === lowerTarget) return 1000;
-	// Flat score for every prefix match so same-prefix commands keep registry
-	// order under the stable sort. A length penalty here would rank the shorter
-	// name first (e.g. `/set` → `setup` above `settings`), silently changing the
-	// command that the sync-completion path applies on Enter.
 	if (lowerTarget.startsWith(lowerPrefix)) return 900;
 	return isSubsequenceMatch(lowerPrefix, lowerTarget) ? subsequenceScore(lowerPrefix, lowerTarget) : 0;
 }
@@ -239,12 +217,6 @@ function buildSlashCommandCompletions(
 	lowerPrefix: string,
 	preferredCategoryOrder?: readonly string[],
 ): AutocompleteItem[] {
-	// Group headers only exist in the browse view (no filter): a scored filter
-	// interleaves categories, and per-run headers over a scattered order would
-	// fragment into repeats. Category order: the caller's preferred order first
-	// (the app's deliberate browse sequence), then first appearance in the
-	// registry for anything unlisted. Only the BROWSE view reorders — filtered
-	// ranking and the Enter-applies-first-match contract stay untouched.
 	const browsing = lowerPrefix.length === 0;
 	const categoryOrder = new Map<string, number>();
 	if (browsing) {
@@ -268,9 +240,6 @@ function buildSlashCommandCompletions(
 		const staticDesc = getStaticCommandDescription(cmd);
 		let fullDescMemo: string | undefined;
 		let fullDescComputed = false;
-		// Resolve the (possibly live) display description lazily, only once a
-		// candidate actually matches — getAutocompleteDescription reads live
-		// session state and must not run for every command on each keystroke.
 		const resolveFullDesc = (): string | undefined => {
 			if (!fullDescComputed) {
 				const displayDesc = getAutocompleteCommandDescription(cmd);
@@ -298,10 +267,6 @@ function buildSlashCommandCompletions(
 			});
 		}
 
-		// Alias rows exist so an alias the user actually typed still completes
-		// (`/models` → the model command). When the primary NAME already
-		// matched the prefix, its row is present and an alias row would be a
-		// duplicate with the identical description — pure menu clutter.
 		if (lowerPrefix.length > 0 && nameScore === 0) {
 			const aliases = getCommandAliases(cmd);
 			for (let ai = 0; ai < aliases.length; ai++) {
@@ -321,9 +286,6 @@ function buildSlashCommandCompletions(
 	}
 	ranked.sort((a, b) => b.score - a.score);
 	if (browsing) {
-		// Stable partition into category-contiguous runs so SelectList renders one
-		// header per category. Score order is preserved inside each category, and
-		// untagged commands trail the tagged ones with no header of their own.
 		const rank = (g: string | undefined): number =>
 			g === undefined ? Number.MAX_SAFE_INTEGER : (categoryOrder.get(g) ?? Number.MAX_SAFE_INTEGER);
 		ranked.sort((a, b) => rank(a.group) - rank(b.group) || b.score - a.score);
@@ -350,7 +312,6 @@ function hasPromptTextBeforeSlash(
 
 const SKILL_NAMESPACE = "skill:";
 
-/** Whether a mid-prompt slash token is skill-shaped. */
 export function midPromptSkillTokenMatches(lowerToken: string, name: string, description?: string): boolean {
 	if (SKILL_NAMESPACE.startsWith(lowerToken)) return true;
 	const lowerName = name.toLowerCase();
@@ -375,7 +336,6 @@ function buildMidPromptSkillCompletions(commands: CommandEntry[], lowerPrefix: s
 }
 
 export interface CombinedAutocompleteProviderOptions {
-	/** Category sequence for unfiltered slash menu browse view. */
 	categoryOrder?: readonly string[];
 }
 
@@ -383,9 +343,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 	#commands: CommandEntry[];
 	#basePath: string;
 	#categoryOrder: readonly string[] | undefined;
-	// Intentionally separate from veyyon-natives cache: this cache is a local,
-	// per-directory readdir fast-path for prefix completions. Global fuzzy
-	// discovery continues to use native fuzzyFind + shared scan cache.
 	#dirCache: Map<string, { entries: fs.Dirent[]; timestamp: number }> = new Map();
 	readonly #DIR_CACHE_TTL = 2000; // 2 seconds
 
@@ -435,25 +392,13 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 				if (matches.length > 0) {
 					return {
 						items: matches,
-						// Preserve the full text-before-cursor for submitted slash
-						// commands so the editor's Enter-staleness check still applies
-						// completion for `  /sk`. Mid-prompt skill lookup keeps only
-						// the slash token because accepting it replaces the whole draft.
 						prefix: isMidPromptSkillLookup ? commandText : textBeforeCursor,
 					};
 				}
 				if (!isMidPromptSkillLookup && slashStart === leadingSlashStart && !commandText.slice(1).includes("/")) {
 					return null;
 				}
-
-				// A slash token with no matching command may still be an absolute
-				// path (`/tmp/fo` at prompt start, `see /tmp` mid-prompt); fall
-				// through to file-path completion.
 			} else if (!isMidPromptSkillLookup) {
-				// Submitted slash commands own their argument text only when the
-				// matched command accepts args. No-arg slash-looking prompts such
-				// as `/settings @file` still fall through to prompt-composer
-				// completions because submit treats them as normal prompt text.
 				const commandName = commandText.slice(1, spaceIndex); // Command without "/"
 				const argumentText = commandText.slice(spaceIndex + 1); // Text after space
 
@@ -482,12 +427,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		const atPrefix = this.#extractAtPrefix(textBeforeCursor);
 		if (atPrefix) {
 			const { rawPrefix, isQuotedPrefix } = parsePathPrefix(atPrefix);
-			// Recursive fuzzy walks rooted outside the project (e.g. `@../`,
-			// `@~/`, `@/abs`) can be huge — a parent dir full of sibling
-			// projects blows past several seconds of latency. Outside cwd,
-			// fall back to plain prefix listing of the immediate directory
-			// (matches Claude Code's behavior). Inside cwd we keep the
-			// fuzzy-then-prefix flow.
 			if (rawPrefix.length > 0 && this.#isOutsideCwd(rawPrefix)) {
 				const items = await this.#getFileSuggestions(atPrefix);
 				if (items.length === 0) return null;
@@ -517,8 +456,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			if (suggestions.length === 0) return null;
 
 			if (suggestions.length === 1 && suggestions[0]?.value === pathMatch && !pathMatch.endsWith("/")) {
-				// Exact match found (e.g. user typed "src" and "src/" is the only match)
-				// We still return it so user can select it and add /
 				return {
 					items: suggestions,
 					prefix: pathMatch,
@@ -554,13 +491,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			findTrailingSlashCommandStart(prefix) !== null;
 
 		if (isMidPromptSkillLookup && trailingSlashStart !== null) {
-			// Replace ONLY the partial slash token (e.g. "/sec") at the cursor with
-			// `/skill:<name> `; the rest of the user's draft — prose typed before
-			// the slash, text after the cursor, and any other lines — is preserved.
-			// The submit-time parser (`parseSkillInvocation` in coding-agent/skills)
-			// detects the mid-prompt `/skill:<name>` token and threads the surrounding
-			// prose through as `args`, so the skill still invokes (issue #3913, after
-			// the original mid-prompt autocomplete landed in #3654 wiped the draft).
 			const beforeSlash = currentLine.slice(0, trailingSlashStart);
 			const insert = `/${item.value} `;
 			const newLine = `${beforeSlash}${insert}${afterCursor}`;
@@ -573,12 +503,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			};
 		}
 
-		// Slash command suggestions can be accepted before the debounced refresh
-		// catches up to newly typed characters. Replace the live command token,
-		// not only the prefix captured when the suggestion list was rendered.
-		// Absolute-path completions share the leading-slash prefix shape but
-		// insert values starting with `/` (or `"` when quoted); those must take
-		// the path tail below instead of command-style `/<name> ` insertion.
 		const isPathCompletionItem = item.value.startsWith("/") || item.value.startsWith('"');
 		if (findLeadingSlashCommandStart(prefix) !== null && leadingSlashStart !== null && !isPathCompletionItem) {
 			const slashPrefix = textBeforeCursor.slice(leadingSlashStart);
@@ -614,11 +538,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			};
 		}
 
-		// Slash command argument and plain file path completion both fall through
-		// to the path-completion tail below — `beforePrefix` already covers the
-		// rendered prefix, which preserves earlier arguments (e.g. accepting
-		// `package.json` for `/swarm run pac<Tab>` keeps the `run` token intact).
-		// For file paths, complete the path
 		const newLine = beforePrefix + item.value + afterCursor;
 		const newLines = lines.slice();
 		newLines[cursorLine] = newLine;
@@ -659,8 +578,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			return pathPrefix;
 		}
 
-		// Automatic updates complete only unambiguous path syntax. Bare relative
-		// tokens remain available through explicit Tab completion.
 		if (
 			pathPrefix.startsWith("/") ||
 			pathPrefix.startsWith("./") ||
@@ -683,10 +600,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		return filePath;
 	}
 
-	// Resolve `rawPrefix` lexically (no I/O) and report whether it points
-	// somewhere outside `this.#basePath`. Used to skip recursive fuzzy walks
-	// rooted at parent / absolute / home paths — those routinely include
-	// thousands of unrelated files and stall the UI for seconds.
 	#isOutsideCwd(rawPrefix: string): boolean {
 		if (rawPrefix.length === 0) return false;
 		let target: string;
@@ -730,9 +643,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 				return null;
 			}
 		} catch {
-			// A base directory we cannot stat has no completions to offer, which is the same answer a path
-			// that is a file gives. Null means "no suggestions", the state of every half-typed path, and the
-			// prompt simply shows none; the read the user is completing towards reports its own failure.
 			return null;
 		}
 
@@ -785,12 +695,8 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			const { rawPrefix, isAtPrefix, isQuotedPrefix } = parsePathPrefix(prefix);
 			let expandedPrefix = rawPrefix;
 
-			// Normalize backslashes to forward slashes so Windows native paths
-			// (C:\tmp\foo) work with the /-based splitting/joining below.
 			expandedPrefix = expandedPrefix.replace(/\\/g, "/");
 
-			// Capture the pre-expansion prefix so root checks can still
-			// detect bare "~" and "~/" after #expandHomePath rewrites them.
 			const preExpand = expandedPrefix;
 
 			if (expandedPrefix.startsWith("~")) {
@@ -849,7 +755,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 						const fullPath = path.join(searchDir, entry.name);
 						isDirectory = (await fs.promises.stat(fullPath)).isDirectory();
 					} catch {
-						// Broken symlink, file deleted between readdir and stat, or permission error
 						continue;
 					}
 				}
@@ -866,10 +771,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 						const dir = path.dirname(homeRelativeDir);
 						relativePath = `~/${dir === "." ? name : path.join(dir, name)}`;
 					} else if (path.isAbsolute(displayPrefix)) {
-						// Absolute path — covers both /unix/paths and Windows C:/drive/paths.
-						// Use string concat with / instead of path.join (which uses platform-native
-						// separators and produces drive-relative results like "C:alpha" when
-						// dirname returns "C:" without a trailing slash).
 						const dir = displayPrefix.slice(0, displayPrefix.lastIndexOf("/"));
 						relativePath = dir === "" || dir === "/" ? `/${name}` : `${dir}/${name}`;
 					} else {
@@ -886,9 +787,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 					}
 				}
 
-				// Normalize backslashes to forward slashes so suggestions are consistent
-				// with the user's input (which uses / on all platforms) and work correctly
-				// when inserted back into the editor. Forward slashes are valid on Windows.
 				relativePath = relativePath.replace(/\\/g, "/");
 				const pathValue = isDirectory ? `${relativePath}/` : relativePath;
 				const value = buildCompletionValue(pathValue, {
@@ -937,8 +835,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 				}
 				filteredMatches.push(entry);
 			}
-			// `fuzzyFind` is already capped via `maxResults` in
-			// `buildAutocompleteFuzzyDiscoveryProfile`; no extra slice here.
 			const topEntries = filteredMatches;
 			const suggestions: AutocompleteItem[] = [];
 			for (let ti = 0; ti < topEntries.length; ti++) {
@@ -963,9 +859,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			}
 			return suggestions;
 		} catch {
-			// Completion is a suggestion list, not a result: an empty one is how the prompt says "nothing to
-			// offer", and it is what a directory with no matching entries gives too. Silent on purpose here
-			// because this runs on every keystroke, and the command the user is typing reports for itself.
 			return [];
 		}
 	}
@@ -1007,7 +900,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		return true;
 	}
 
-	/** Get inline hint text for slash commands with subcommand hints */
 	getInlineHint(lines: string[], cursorLine: number, cursorCol: number): string | null {
 		const currentLine = lines[cursorLine] || "";
 		const textBeforeCursor = currentLine.slice(0, cursorCol);
@@ -1043,8 +935,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		const matches = buildSlashCommandCompletions(this.#commands, lowerPrefix, this.#categoryOrder);
 
 		if (matches.length === 0) return null;
-		// Mirror `getSuggestions`: preserve leading whitespace so the editor's
-		// sync apply path passes the full text-before-cursor through.
 		return { items: matches, prefix: textBeforeCursor };
 	}
 }

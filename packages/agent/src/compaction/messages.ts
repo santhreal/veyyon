@@ -43,19 +43,16 @@ export interface CustomMessage<T = unknown> {
 	content: string | (TextContent | ImageContent)[];
 	display: boolean;
 	details?: T;
-	/** Who initiated this message for billing/attribution semantics. */
 	attribution?: MessageAttribution;
 	timestamp: number;
 }
 
-/** Legacy hook message type (pre-extensions). Kept for session migration. */
 export interface HookMessage<T = unknown> {
 	role: "hookMessage";
 	customType: string;
 	content: string | (TextContent | ImageContent)[];
 	display: boolean;
 	details?: T;
-	/** Who initiated this message for billing/attribution semantics. */
 	attribution?: MessageAttribution;
 	timestamp: number;
 }
@@ -73,13 +70,9 @@ export interface CompactionSummaryMessage {
 	shortSummary?: string;
 	tokensBefore: number;
 	providerPayload?: ProviderPayload;
-	/** Attribution when the provider compacted server-side, e.g. */
 	compactedBy?: string;
-	/** Legacy runtime-only archive blocks from the removed image-archive engine: */
 	blocks?: (TextContent | ImageContent)[];
-	/** Legacy image-archive blocks, kept for display counts / old-session consumers. */
 	images?: ImageContent[];
-	/** Post-pass dead-end warning attached to this compaction (progress guard). */
 	warning?: string;
 	timestamp: number;
 }
@@ -234,7 +227,6 @@ type CachedConvertedMessage =
 
 const convertedMessageCache = new WeakMap<AgentMessage, CachedConvertedMessage>();
 
-/** Transform a single core-domain agent message to its LLM form; `undefined` */
 export function convertMessageToLlm(message: AgentMessage): Message | undefined {
 	if (isCoreCompactionMessage(message)) {
 		switch (message.role) {
@@ -412,7 +404,6 @@ export function convertMessageToLlm(message: AgentMessage): Message | undefined 
 	}
 }
 
-/** Default compaction-domain transformer. */
 export function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
 	return messages.map(convertMessageToLlm).filter(message => message !== undefined);
 }

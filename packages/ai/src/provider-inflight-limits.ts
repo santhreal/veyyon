@@ -1,38 +1,13 @@
-/**
- * The configured per-provider in-flight request caps: one owner, and nothing else.
- */
-
-/** Per-provider caps as last configured. Empty means "no cap configured for any provider". */
 let configuredLimits: Record<string, number> = {};
 
-/**
- * Replace the configured caps.
- *
- * `undefined` CLEARS them rather than leaving the previous value in place, which is what a settings
- * write of an empty record and a test teardown both need: a stale cap that outlives the configuration
- * that asked for it throttles requests nobody asked to throttle, and it would be invisible.
- */
 export function configureProviderMaxInFlightRequests(limits: Record<string, number> | undefined): void {
 	configuredLimits = limits ?? {};
 }
 
-/** The caps in force, for a reader that wants the record rather than one provider's number. */
 export function configuredProviderMaxInFlightRequests(): Record<string, number> {
 	return configuredLimits;
 }
 
-/**
- * The cap for one provider, or `undefined` when it has none.
- *
- * `perCallLimits` wins ENTIRELY when present, rather than merging with the configured record: a caller
- * passing explicit limits is describing the whole policy for that request, and a merge would silently
- * apply a configured cap the caller had deliberately left out.
- *
- * A value that is not a positive finite number yields `undefined`, meaning uncapped. The harness
- * already refuses such a value loudly at the settings boundary, so anything arriving here is either a
- * direct API caller's mistake or an absent entry, and reading it as a cap of zero would deadlock the
- * request rather than report the problem.
- */
 export function resolveProviderInFlightLimit(
 	provider: string,
 	perCallLimits?: Record<string, number>,

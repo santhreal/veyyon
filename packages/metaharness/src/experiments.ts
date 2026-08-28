@@ -1,8 +1,6 @@
 import type { RunRow, RunStore, TraceRow } from "./store";
 
-/** Linear extrapolation of a running arm to its full task count. */
 export interface ArmProjection {
-	/** Expected finish timestamp (ms epoch), from observed completion rate. */
 	etaMs: number | null;
 	passPct: number;
 	costPerTask: number;
@@ -12,15 +10,11 @@ export interface ArmProjection {
 
 export interface ArmSummary {
 	run: RunRow;
-	/** Arm label: job name minus the experiment prefix. */
 	arm: string;
-	/** Human config line: models plus prewalk description when known. */
 	config: string;
-	/** Observed pass% over decided trials. */
 	passPct: number | null;
 	costPerTask: number | null;
 	meanTrialMs: number | null;
-	/** Present only while the arm is running with at least one decided trial. */
 	projected: ArmProjection | null;
 }
 
@@ -44,19 +38,15 @@ export interface ExperimentDetail {
 	id: string;
 	goal: string;
 	arms: ArmSummary[];
-	/** Union of task ids across arms, sorted. */
 	tasks: string[];
-	/** arm label → task → cell. */
 	matrix: Record<string, Record<string, { status: string; reward: number | null }>>;
 }
 
-/** Experiment id = first `-`-delimited token of the job name. */
 export function experimentOf(jobName: string): string {
 	const dash = jobName.indexOf("-");
 	return dash > 0 ? jobName.slice(0, dash) : jobName;
 }
 
-/** Arm label = job name minus the experiment prefix (falls back to the full name). */
 export function armOf(jobName: string): string {
 	const exp = experimentOf(jobName);
 	return jobName.length > exp.length ? jobName.slice(exp.length + 1) : jobName;
@@ -115,15 +105,10 @@ export function summarizeArm(run: RunRow, traces: TraceRow[]): ArmSummary {
 	};
 }
 
-/** Difficulty-calibrated final pass-rate projection for a running arm. */
 export function calibratedFinalPassPct(options: {
-	/** This arm's reward-decided outcomes. */
 	decided: Array<{ task: string; passed: boolean }>;
-	/** Per-task decided outcomes across sibling arms. */
 	siblings: Map<string, { passes: number; decided: number }>;
-	/** Tasks this arm has not decided yet. */
 	remaining: string[];
-	/** Full sample size to project over. */
 	nTotal: number;
 }): number | null {
 	const { decided, siblings, remaining, nTotal } = options;
@@ -206,10 +191,8 @@ export function buildExperiments(store: RunStore): ExperimentSummary[] {
 	return out;
 }
 
-/** `-fix`/`-backfill`/`-retry` (optionally numbered) re-run suffixes that fold into the base arm. */
 const RERUN_SUFFIX = /-(fix|backfill|refill|retry|rerun|bf)\d*$/i;
 
-/** Arm label with re-run suffixes stripped: `n4p2-fix2` and `n4p2-backfill` both merge into `n4p2`. */
 export function canonicalArmOf(jobName: string): string {
 	let arm = armOf(jobName);
 	for (;;) {
@@ -219,7 +202,6 @@ export function canonicalArmOf(jobName: string): string {
 	}
 }
 
-/** Collapse re-run trials onto one row per task. */
 export function pickMergedTrials(traces: TraceRow[]): TraceRow[] {
 	const byTask = new Map<string, TraceRow>();
 	const decided = (t: TraceRow): boolean => t.status === "pass" || t.status === "fail";

@@ -13,11 +13,7 @@ import {
 } from "../service-tier";
 import { DEFAULT_TOOL_CALL_LOOP_EXEMPT_TOOLS } from "./shared";
 
-/** Model domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const MODEL_SETTINGS = {
-	// Model
-	// Reasoning and prompts
-	/** Default effort per model, the ONE persisted store the user edits. Rows map a model selector (`provider/id`) or `*` (any model) to an effort, */
 	defaultEffort: {
 		type: "record",
 		default: {} as Record<string, string>,
@@ -31,7 +27,6 @@ export const MODEL_SETTINGS = {
 		},
 	},
 
-	/** Retired in favour of {@link defaultEffort}'s `*` row, and still read so an existing settings file keeps its behaviour (see `withLegacyDefaultEffort`). */
 	defaultThinkingLevel: {
 		type: "enum",
 		values: [...THINKING_EFFORTS, AUTO_THINKING],
@@ -177,7 +172,6 @@ export const MODEL_SETTINGS = {
 
 	includeModelInPrompt: {
 		type: "boolean",
-		// Off, because this is the only turn-volatile field in the system prompt and it sits in the PROJECT block, measured here at 14,198 tokens. Anthropic caches a
 		default: false,
 		ui: {
 			tab: "model",
@@ -200,7 +194,6 @@ export const MODEL_SETTINGS = {
 		},
 	},
 
-	// Value is a personality name resolved at runtime against built-ins plus Tier-B `~/.veyyon/personalities/*.md` and `.veyyon/personalities/*.md`
 	personality: {
 		type: "string",
 		default: "default",
@@ -214,11 +207,8 @@ export const MODEL_SETTINGS = {
 		},
 	},
 
-	// Sampling
 	temperature: {
 		type: "number",
-		// Unset is an ABSENT key, not a sentinel: `-1` is a value the provider takes
-		// for the penalties, so it cannot also mean "no value".
 		default: undefined,
 		ui: {
 			tab: "model",
@@ -239,8 +229,6 @@ export const MODEL_SETTINGS = {
 
 	topP: {
 		type: "number",
-		// Unset is an ABSENT key, not a sentinel: `-1` is a value the provider takes
-		// for the penalties, so it cannot also mean "no value".
 		default: undefined,
 		ui: {
 			tab: "model",
@@ -261,8 +249,6 @@ export const MODEL_SETTINGS = {
 
 	topK: {
 		type: "number",
-		// Unset is an ABSENT key, not a sentinel: `-1` is a value the provider takes
-		// for the penalties, so it cannot also mean "no value".
 		default: undefined,
 		ui: {
 			tab: "model",
@@ -281,8 +267,6 @@ export const MODEL_SETTINGS = {
 
 	minP: {
 		type: "number",
-		// Unset is an ABSENT key, not a sentinel: `-1` is a value the provider takes
-		// for the penalties, so it cannot also mean "no value".
 		default: undefined,
 		ui: {
 			tab: "model",
@@ -300,8 +284,6 @@ export const MODEL_SETTINGS = {
 
 	presencePenalty: {
 		type: "number",
-		// Unset is an ABSENT key, not a sentinel: `-1` is a value the provider takes
-		// for the penalties, so it cannot also mean "no value".
 		default: undefined,
 		ui: {
 			tab: "model",
@@ -321,8 +303,6 @@ export const MODEL_SETTINGS = {
 
 	repetitionPenalty: {
 		type: "number",
-		// Unset is an ABSENT key, not a sentinel: `-1` is a value the provider takes
-		// for the penalties, so it cannot also mean "no value".
 		default: undefined,
 		ui: {
 			tab: "model",
@@ -434,7 +414,6 @@ export const MODEL_SETTINGS = {
 		},
 	},
 
-	// Retries
 	"retry.enabled": { type: "boolean", default: true },
 
 	"retry.maxRetries": {

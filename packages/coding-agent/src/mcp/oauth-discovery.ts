@@ -1,5 +1,3 @@
-/** MCP OAuth Auto-Discovery Automatically detects OAuth requirements from MCP server responses */
-
 import * as AIError from "@veyyon/ai/error";
 import type { FetchImpl } from "@veyyon/ai/types";
 import { errorMessage, logger, trimTrailingSlashes } from "@veyyon/utils";
@@ -8,7 +6,6 @@ export interface OAuthEndpoints {
 	authorizationUrl: string;
 	tokenUrl: string;
 	clientId?: string;
-	/** Dynamic client registration endpoint advertised by the authorization server. */
 	registrationUrl?: string;
 	scopes?: string;
 	resource?: string;
@@ -31,7 +28,6 @@ export interface AuthDetectionResult {
 	oauth?: OAuthEndpoints;
 	authServerUrl?: string;
 	resourceMetadataUrl?: string;
-	/** OAuth scopes advertised by the challenge (RFC 6750 `scope=` on `WWW-Authenticate`) or by protected-resource metadata. Passed through */
 	scopes?: string;
 	message?: string;
 }
@@ -43,13 +39,10 @@ export function extractMcpAuthServerUrl(error: Error, serverUrl?: string): strin
 	try {
 		return new URL(match[1], serverUrl).toString();
 	} catch {
-		// The server sent an `Mcp-Auth-Server` value that is not a URL, so there is no auth server to
-		// point at. Discovery continues with its well-known probes and reports if none of them work.
 		return undefined;
 	}
 }
 
-/** Pull the `scope`/`scopes` parameter out of a `WWW-Authenticate` challenge embedded in the error message. RFC 6750 lets servers advertise the missing */
 export function extractOAuthChallengeScopes(error: Error): string | undefined {
 	const entries = error.message.matchAll(/([a-zA-Z_][a-zA-Z0-9_-]*)="([^"]+)"/g);
 	for (const [, rawKey, value] of entries) {
@@ -61,7 +54,6 @@ export function extractOAuthChallengeScopes(error: Error): string | undefined {
 	return undefined;
 }
 
-/** Extract OAuth endpoints from error response. Looks for WWW-Authenticate header format or JSON error bodies. */
 export function extractOAuthEndpoints(error: Error): OAuthEndpoints | null {
 	const errorMsg = error.message;
 
@@ -105,9 +97,6 @@ export function extractOAuthEndpoints(error: Error): OAuthEndpoints | null {
 		try {
 			return new URL(authorizationUrl).searchParams.get("client_id") ?? undefined;
 		} catch {
-			// This only mines an OPTIONAL hint out of the URL. Undefined means "not advertised there",
-			// which is also what a parseable URL without the parameter returns, and the caller then falls
-			// back to dynamic registration. The URL itself is validated where it is used.
 			return undefined;
 		}
 	};
@@ -116,20 +105,15 @@ export function extractOAuthEndpoints(error: Error): OAuthEndpoints | null {
 		try {
 			return new URL(authorizationUrl).searchParams.get("scope") ?? undefined;
 		} catch {
-			// Same as `clientIdFromAuthUrl`: an optional hint, and undefined is indistinguishable from
-			// absent on purpose, because the grant carries whatever scopes the metadata advertises instead.
 			return undefined;
 		}
 	};
 
 	try {
-		// Try to parse as JSON error response
-		// Many MCP servers return JSON with OAuth endpoints in error body
 		const jsonMatch = errorMsg.match(/\{[\s\S]*\}/);
 		if (jsonMatch) {
 			const errorBody = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
 
-			// Check for OAuth endpoints in error body
 			if (errorBody.oauth || errorBody.authorization || errorBody.auth) {
 				const oauthData = (errorBody.oauth || errorBody.authorization || errorBody.auth) as Record<string, unknown>;
 				const endpoints = readEndpointsFromObject(oauthData);
@@ -151,9 +135,7 @@ export function extractOAuthEndpoints(error: Error): OAuthEndpoints | null {
 				};
 			}
 		}
-	} catch {
-		// Not JSON, continue with other detection methods
-	}
+	} catch {}
 
 	const challengeEntries = Array.from(errorMsg.matchAll(/([a-zA-Z_][a-zA-Z0-9_-]*)="([^"]+)"/g));
 	if (challengeEntries.length > 0) {
@@ -187,8 +169,6 @@ export function extractOAuthEndpoints(error: Error): OAuthEndpoints | null {
 		}
 	}
 
-	// Try to extract from WWW-Authenticate header format
-	// Example: Bearer realm="https://auth.example.com/oauth/authorize" token_url="https://auth.example.com/oauth/token"
 	const wwwAuthMatch = errorMsg.match(/realm="([^"]+)".*token_url="([^"]+)"/);
 	if (wwwAuthMatch) {
 		return {
@@ -202,25 +182,20 @@ export function extractOAuthEndpoints(error: Error): OAuthEndpoints | null {
 	return null;
 }
 
-/** Analyze an error to determine authentication requirements. Returns structured info about what auth is needed. */
 export function analyzeAuthError(error: Error, serverUrl?: string): AuthDetectionResult {
-	// No auth required unless the error carries an HTTP auth status / auth-failure phrasing.
 	if (!AIError.is(AIError.classify(error), AIError.Flag.AuthFailed)) {
 		return { requiresAuth: false };
 	}
 
 	const authServerUrl = extractMcpAuthServerUrl(error, serverUrl);
-	// Extract resource_metadata URL from challenge entries in error message
 	const resourceMetaMatch = error.message.match(/resource_metadata\s*=\s*"([^"]+)"/i);
 	const resourceMetadataUrl = resourceMetaMatch?.[1];
 
-	// Try to extract OAuth endpoints
 	const oauth = extractOAuthEndpoints(error);
 	const challengeScopes = extractOAuthChallengeScopes(error);
 
 	if (oauth) {
 		const mergedScopes = oauth.scopes ?? challengeScopes;
-		// Callers on the JSON-error-body path use `authResult.oauth` directly and skip `discoverOAuthEndpoints`; without merging the challenge scope back
 		const mergedOAuth: OAuthEndpoints = mergedScopes === oauth.scopes ? oauth : { ...oauth, scopes: mergedScopes };
 		return {
 			requiresAuth: true,
@@ -233,7 +208,6 @@ export function analyzeAuthError(error: Error, serverUrl?: string): AuthDetectio
 		};
 	}
 
-	// Check if it might be API key based
 	const errorMsg = error.message.toLowerCase();
 	if (
 		errorMsg.includes("api key") ||
@@ -251,7 +225,6 @@ export function analyzeAuthError(error: Error, serverUrl?: string): AuthDetectio
 		};
 	}
 
-	// Unknown auth type
 	return {
 		requiresAuth: true,
 		authType: "unknown",
@@ -262,32 +235,26 @@ export function analyzeAuthError(error: Error, serverUrl?: string): AuthDetectio
 	};
 }
 
-/** Normalize an OAuth issuer URL for RFC 8414 §3.3 comparison: lowercase scheme/host (URL parser already does this), drop fragment/query, strip a */
 function normalizeIssuerUrl(value: string): string | undefined {
 	try {
 		const u = new URL(value);
 		const path = trimTrailingSlashes(u.pathname);
 		return `${u.protocol}//${u.host}${path}`;
 	} catch {
-		// Not a URL, so it has no normal form to compare. Undefined means "cannot be compared", and the
-		// only caller treats that as a failed comparison rather than a passing one.
 		return undefined;
 	}
 }
 
-/** RFC 8414 §3.3: an authorization-server metadata document's `issuer` MUST equal the URL the client used to construct the metadata URL. When a server */
 function issuerMatchesBase(metadataIssuer: unknown, baseUrl: string): boolean {
 	if (typeof metadataIssuer !== "string" || !metadataIssuer.trim()) {
 		return true;
 	}
 	const normalizedIssuer = normalizeIssuerUrl(metadataIssuer);
 	const normalizedBase = normalizeIssuerUrl(baseUrl);
-	// An issuer that cannot be normalized cannot be shown to match, and this check exists to keep a grant from being routed to an authorization server we did not verify. Accepting the document
 	if (!normalizedIssuer || !normalizedBase) return false;
 	return normalizedIssuer === normalizedBase;
 }
 
-/** Read space-separated OAuth scopes off a metadata document. Accepts either an array (RFC 8414 `scopes_supported`) or a space-separated string */
 function readMetadataScopes(metadata: Record<string, unknown>): string | undefined {
 	if (Array.isArray(metadata.scopes_supported)) {
 		const joined = metadata.scopes_supported.filter((scope): scope is string => typeof scope === "string").join(" ");
@@ -298,7 +265,6 @@ function readMetadataScopes(metadata: Record<string, unknown>): string | undefin
 	return undefined;
 }
 
-/** Fetch the RFC 9728 protected-resource metadata document at {@link resourceMetadataUrl} and return any scopes it advertises. Used by */
 export async function fetchResourceMetadataScopes(
 	resourceMetadataUrl: string,
 	opts?: { fetch?: FetchImpl },
@@ -320,9 +286,6 @@ export async function fetchResourceMetadataScopes(
 		const meta = (await resp.json()) as Record<string, unknown>;
 		return readMetadataScopes(meta);
 	} catch (error) {
-		// Undefined also means "this document advertises no scopes", which is normal, so a FAILURE to read
-		// it has to say so: the authorization request then goes out without the scopes the server expects
-		// and comes back as an opaque `invalid_scope` or `server_error` with nothing pointing here.
 		logger.warn("Protected-resource metadata could not be read; the grant will carry no advertised scopes", {
 			url: resourceMetadataUrl,
 			error: errorMessage(error),
@@ -331,7 +294,6 @@ export async function fetchResourceMetadataScopes(
 	}
 }
 
-/** Try to discover OAuth endpoints by querying the server's well-known endpoints. This is a fallback when error responses don't include OAuth metadata. */
 export async function discoverOAuthEndpoints(
 	serverUrl: string,
 	authServerUrl?: string,
@@ -358,8 +320,6 @@ export async function discoverOAuthEndpoints(
 		visitedAuthServers.add(url);
 	};
 
-	// Step 1: If a resource_metadata URL was provided, fetch it to discover auth servers.
-	// This follows the RFC 9728 chain: resource_metadata → authorization_servers.
 	if (resourceMetadataUrl && !visitedAuthServers.has(resourceMetadataUrl)) {
 		visitedAuthServers.add(resourceMetadataUrl);
 		try {
@@ -381,12 +341,9 @@ export async function discoverOAuthEndpoints(
 					addDiscoveryBase(s, true);
 				}
 			}
-		} catch {
-			// Ignore errors, continue to try explicit URLs
-		}
+		} catch {}
 	}
 
-	// Step 2: Add explicit authServerUrl as an issuer candidate, then the resource server fallback.
 	addDiscoveryBase(authServerUrl, true);
 	addDiscoveryBase(serverUrl, false);
 
@@ -443,7 +400,6 @@ export async function discoverOAuthEndpoints(
 
 	for (const base of urlsToQuery) {
 		for (const path of wellKnownPaths) {
-			// Try each well-known path at both the absolute origin and relative
 			const urlsToTry = buildWellKnownUrls(path, base.url);
 			for (const url of urlsToTry) {
 				try {
@@ -455,7 +411,6 @@ export async function discoverOAuthEndpoints(
 
 					if (response.ok) {
 						const metadata = (await response.json()) as Record<string, unknown>;
-						// Authorization-server / OpenID Connect metadata documents carry an `issuer` field that MUST equal the queried base URL only when that
 						const requireIssuerMatch =
 							base.issuerCandidate &&
 							(path === "/.well-known/oauth-authorization-server" ||
@@ -487,9 +442,7 @@ export async function discoverOAuthEndpoints(
 							}
 						}
 					}
-				} catch {
-					// Ignore errors, try next path
-				}
+				} catch {}
 			}
 		}
 	}
@@ -502,9 +455,6 @@ function buildWellKnownUrls(wellKnownPath: string, baseUrl: string): URL[] {
 	try {
 		parsed = new URL(baseUrl);
 	} catch {
-		// No candidate URLs can be built from a base the URL parser rejects. The empty list is not a
-		// "nothing to discover" answer: every caller treats zero candidates as a discovery failure and
-		// reports it, so the operator sees the unusable server URL rather than a silent OAuth skip.
 		return [];
 	}
 
@@ -513,12 +463,8 @@ function buildWellKnownUrls(wellKnownPath: string, baseUrl: string): URL[] {
 
 	const normalizedPath = parsed.pathname.replace(/\/$/, "");
 	const lastSlash = normalizedPath.lastIndexOf("/");
-	// Bare origin (no path beyond "/") — only the origin-root candidate applies.
 	if (lastSlash < 0) return [absUrl];
 
-	// Path-prefixed well-known (common for gateways with sub-path routing).
-	// Multi-segment paths drop the trailing segment (typically the MCP endpoint);
-	// single-segment paths (lastSlash === 0) are themselves the gateway prefix.
 	const prefixPath = lastSlash === 0 ? normalizedPath : normalizedPath.slice(0, lastSlash);
 	const relUrl = new URL(wellKnownPath.slice(1), `${parsed.origin}${prefixPath}/`);
 
@@ -532,8 +478,6 @@ function buildWellKnownUrls(wellKnownPath: string, baseUrl: string): URL[] {
 	};
 	push(relUrl);
 
-	// RFC 8414 §3.1 path-ful issuer form: /.well-known/<suffix>/<issuer-path>.
-	// Only meaningful for well-known metadata documents.
 	if (wellKnownPath.startsWith("/.well-known/")) {
 		const pathfulUrl = new URL(`${wellKnownPath}${normalizedPath}`, parsed.origin);
 		push(pathfulUrl);

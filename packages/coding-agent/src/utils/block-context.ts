@@ -18,7 +18,6 @@ export interface LineSpan {
 	endLine: number;
 }
 
-/** Where the source came from, so tree-sitter can pick a grammar. `text` is the same source `fullLines` was split from, when the caller still has it. The */
 export interface BlockContextSource {
 	path?: string;
 	lang?: string;
@@ -73,16 +72,11 @@ function hasEveryLineVisible(visible: ReadonlySet<number>, totalLines: number): 
 	return totalLines > 0 && visible.size >= totalLines;
 }
 
-/** Ceiling on the source a boundary lookup will scan, in bytes. It mirrors `MAX_CACHED_BYTES` in `crates/veyyon-ast/src/parse_cache.rs`: below it the */
 const SCAN_CEILING_BYTES = 4 * 1024 * 1024;
 
-/** Whether the source is too large for a boundary lookup to scan. Sizing is exact against {@link SCAN_CEILING_BYTES} when the caller kept the source */
 function exceedsScanCeiling(fullLines: readonly string[], source: BlockContextSource): boolean {
 	const text = source.text;
 	if (text !== undefined) {
-		// A character count is checked first because it is free: it can only
-		// undercount bytes, so a source over the ceiling in characters needs no
-		// byte pass, and one well under it needs no byte pass either.
 		if (text.length > SCAN_CEILING_BYTES) return true;
 		if (text.length <= SCAN_CEILING_BYTES / 4) return false;
 		return Buffer.byteLength(text) > SCAN_CEILING_BYTES;
@@ -95,12 +89,10 @@ function exceedsScanCeiling(fullLines: readonly string[], source: BlockContextSo
 	return false;
 }
 
-/** Whether a boundary lookup on this source would be refused for its size, for a caller that would otherwise build the line arrays a lookup needs. A */
 export function exceedsBlockContextScanCeiling(text: string): boolean {
 	return exceedsScanCeiling([], { text });
 }
 
-/** Collapse a set of visible line numbers into sorted, merged inclusive spans. */
 function visibleSetToSpans(visible: ReadonlySet<number>): LineSpan[] {
 	const sorted = Array.from(visible).sort((left, right) => left - right);
 	const spans: LineSpan[] = [];
@@ -115,7 +107,6 @@ function visibleSetToSpans(visible: ReadonlySet<number>): LineSpan[] {
 	return spans;
 }
 
-/** Tree-sitter-backed block boundaries. For each multi-line named node whose span crosses the visible window, the native side returns the boundary line */
 function nativeBlockContext(
 	fullLines: readonly string[],
 	visible: ReadonlySet<number>,
@@ -161,7 +152,6 @@ function isHashCommentStart(line: string, index: number): boolean {
 	return true;
 }
 
-/** Lexical bracket-matching fallback for sources tree-sitter can't parse (unknown extensions, syntax errors). Pairs `()[]{}` while skipping strings */
 function lexicalBracketContext(fullLines: readonly string[], visible: ReadonlySet<number>): Map<number, string> {
 	const context = new Map<number, string>();
 	const stack: StackEntry[] = [];
@@ -266,7 +256,6 @@ function lexicalBracketContext(fullLines: readonly string[], visible: ReadonlySe
 	return context;
 }
 
-/** Resolve the off-window boundary lines for a visible window: tree-sitter syntactic spans first (covers brace and indentation languages), falling back */
 export function findBlockContextLines(
 	fullLines: readonly string[],
 	visibleInput: ReadonlySet<number> | readonly number[],
@@ -278,7 +267,6 @@ export function findBlockContextLines(
 	return nativeBlockContext(fullLines, visible, source) ?? lexicalBracketContext(fullLines, visible);
 }
 
-/** Build display entries for `visibleSpans` plus any off-window block-boundary lines, in source order, with `{ kind: "ellipsis" }` markers inserted across */
 export function buildLineEntriesWithBlockContext(
 	fullLines: readonly string[],
 	visibleSpans: readonly LineSpan[],

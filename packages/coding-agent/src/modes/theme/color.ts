@@ -1,12 +1,9 @@
-// Theme color model: theme JSON schema, the ThemeColor/ThemeBg token unions, variable-reference resolution, and terminal color-mode/ANSI-SGR emission.
-
 import { SGR_BG_RESET, SGR_FG_RESET } from "@veyyon/tui/ansi";
 import { isRecord } from "@veyyon/utils/type-guards";
 import type { SpinnerFramesOverride } from "./symbols";
 
 export type ColorValue = string | number;
 
-/** A theme file, as a custom theme on disk is allowed to be written. Declared rather than inferred from a schema library. The library was reached at module load */
 export interface ThemeJson {
 	$schema?: string;
 	name: string;
@@ -24,7 +21,6 @@ export interface ThemeJson {
 	};
 }
 
-/** Color tokens a theme file may leave out; every other token in `ThemeColor | ThemeBg` is required. A token added to this list stops being required, which is the whole reason the list */
 export const OPTIONAL_THEME_COLOR_TOKENS = [
 	"link",
 	"thinkingMax",
@@ -39,11 +35,9 @@ export const OPTIONAL_THEME_COLOR_TOKENS = [
 type OptionalThemeColorToken = (typeof OPTIONAL_THEME_COLOR_TOKENS)[number];
 type RequiredThemeColorToken = Exclude<ThemeColor | ThemeBg, OptionalThemeColorToken>;
 
-/** A theme file's `colors` object. An alias and not an interface: callers pass it where a `Record<string, ColorValue>` is wanted, */
 export type ThemeJsonColors = Record<RequiredThemeColorToken, ColorValue> &
 	Partial<Record<OptionalThemeColorToken, ColorValue>>;
 
-/** What a theme file got wrong, or nothing. Missing colors are separated from the rest because the reader tells a theme author which */
 export interface ThemeJsonProblems {
 	missingColors: string[];
 	problems: string[];
@@ -65,7 +59,6 @@ function isSpinnerFrameList(value: unknown): boolean {
 	return Array.isArray(value) && value.length >= 1 && value.every(item => typeof item === "string");
 }
 
-/** A frame list, or a named set of them with at least one lane declared. */
 function isSpinnerFramesOverride(value: unknown): value is SpinnerFramesOverride {
 	if (isSpinnerFrameList(value)) {
 		return true;
@@ -80,7 +73,6 @@ function isSpinnerFramesOverride(value: unknown): value is SpinnerFramesOverride
 	return lanes.every(lane => lane === undefined || isSpinnerFrameList(lane));
 }
 
-/** Checks a parsed theme file. Both lists empty means the value is a {@link ThemeJson}. Unknown keys pass, as they did before: a theme written for a newer build carries tokens this */
 export function validateThemeJson(value: unknown): ThemeJsonProblems {
 	const problems: string[] = [];
 	const missingColors: string[] = [];
@@ -222,7 +214,6 @@ export type ThemeColor =
 	| "infoAccent"
 	| "matchHighlight";
 
-/** Set of all valid ThemeColor string values for runtime validation */
 const THEME_COLOR_RECORD = {
 	accent: true,
 	border: true,
@@ -294,7 +285,6 @@ const THEME_COLOR_RECORD = {
 
 const VALID_THEME_COLORS: ReadonlySet<string> = new Set(Object.keys(THEME_COLOR_RECORD));
 
-/** Check if a string is a valid ThemeColor value */
 export function isValidThemeColor(color: string): color is ThemeColor {
 	return VALID_THEME_COLORS.has(color);
 }
@@ -309,7 +299,6 @@ export type ThemeBg =
 	| "statusLineBg"
 	| "composerBg";
 
-/** Set of all valid ThemeBg string values, and the runtime half of the required-token list. */
 const THEME_BG_RECORD = {
 	selectedBg: true,
 	userMessageBg: true,
@@ -321,7 +310,6 @@ const THEME_BG_RECORD = {
 	composerBg: true,
 } satisfies Record<ThemeBg, true>;
 
-/** Every color token a theme file must carry: both unions minus the optional list. Derived from the two `satisfies Record<..., true>` tables rather than written out again, so a */
 export const REQUIRED_THEME_COLOR_TOKENS: readonly RequiredThemeColorToken[] = [
 	...Object.keys(THEME_COLOR_RECORD),
 	...Object.keys(THEME_BG_RECORD),
@@ -336,16 +324,13 @@ export function detectColorMode(): ColorMode {
 	if (colorterm === "truecolor" || colorterm === "24bit") {
 		return "truecolor";
 	}
-	// Windows Terminal supports truecolor
 	if (Bun.env.WT_SESSION) {
 		return "truecolor";
 	}
 	const term = Bun.env.TERM || "";
-	// Only fall back to 256color for truly limited terminals
 	if (term === "dumb" || term === "" || term === "linux") {
 		return "256color";
 	}
-	// Assume truecolor for everything else - virtually all modern terminals support it
 	return "truecolor";
 }
 
@@ -403,16 +388,13 @@ export function resolveThemeColors<T extends Record<string, ColorValue>>(
 	return resolved as Record<keyof T, string | number>;
 }
 
-/** Resolve a theme color value (hex string or 256-color index) to a CSS hex string. Empty string represents the default terminal color. */
 export function resolveToHex(value: string | number, isLight: boolean): string {
 	if (typeof value === "number") return ansi256ToHex(value);
 	if (value === "") return isLight ? "#000000" : "#e5e5e7";
 	return value;
 }
 
-/** Convert a 256-color index to hex string. Indices 0-15: basic colors (approximate) */
 export function ansi256ToHex(index: number): string {
-	// Basic colors (0-15) - approximate common terminal values
 	const basicColors = [
 		"#000000",
 		"#800000",
@@ -435,7 +417,6 @@ export function ansi256ToHex(index: number): string {
 		return basicColors[index];
 	}
 
-	// Color cube (16-231): 6x6x6 = 216 colors
 	if (index < 232) {
 		const cubeIndex = index - 16;
 		const r = Math.floor(cubeIndex / 36);
@@ -445,7 +426,6 @@ export function ansi256ToHex(index: number): string {
 		return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 	}
 
-	// Grayscale (232-255): 24 shades
 	const gray = 8 + (index - 232) * 10;
 	const grayHex = gray.toString(16).padStart(2, "0");
 	return `#${grayHex}${grayHex}${grayHex}`;

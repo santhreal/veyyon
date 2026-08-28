@@ -34,7 +34,6 @@ import { normalizeCustomMessagePayload, USER_INTERRUPT_LABEL } from "../../sessi
 import { ASK_CHAT_OPTION_LABEL, ASK_NEXT_OPTION_LABEL, ASK_OTHER_OPTION_LABEL } from "../../tools/ask-option-labels";
 import { setSessionTerminalTitle, setTerminalTitle } from "../../utils/title-generator";
 
-/** The slice of the interactive context this uses: 31 members of the 215 `InteractiveModeContext` requires. Still a slice, and naming it is what lets a */
 export type ExtensionUiControllerContext = Pick<
 	InteractiveModeContext,
 	| "addAutocompleteProvider"
@@ -81,7 +80,6 @@ interface CollabAskDialogWinner {
 	source: "local" | "remote";
 	value: ExtensionAskDialogResult | undefined;
 }
-/** Tagged result from a guest UI request, distinguishing a real answer (even one whose literal value is "unavailable"), an explicit guest cancel, and a */
 type GuestUiResult = { kind: "answered"; value: string } | { kind: "cancelled" } | { kind: "unavailable" };
 
 function toWireSelectOptions(options: ExtensionUISelectItem[]): CollabUiSelectItem[] {
@@ -98,24 +96,14 @@ export class ExtensionUiController {
 	#extensionTerminalInputUnsubscribers = new Set<() => void>();
 	#hookWidgetsAbove = new Map<string, ExtensionUiComponent>();
 	#hookWidgetsBelow = new Map<string, ExtensionUiComponent>();
-	// Single-file dialog surface (`editorContainer` + focus) is shared by the
-	// selector / input / editor modals, so only one may be presented at a time;
-	// the rest queue. See `#presentDialog`.
 	#dialogActive = false;
 	#dialogQueue: Array<() => void> = [];
-	/** Live overlay for the hook selector card, so `hide` reaches the right one. */
 	#hookSelectorOverlay: OverlayHandle | undefined;
-	/** Live overlay for the hook input card. */
 	#hookInputOverlay: OverlayHandle | undefined;
-	/** Live overlay for the hook editor card. */
 	#hookEditorOverlay: OverlayHandle | undefined;
 	constructor(private ctx: ExtensionUiControllerContext) {}
 
-	/**
-	 * Initialize the hook system with TUI-based UI context.
-	 */
 	async initHooksAndCustomTools(): Promise<void> {
-		// Create and set hook & tool UI context
 		const uiContext: ExtensionUIContext = {
 			timeoutStartsOnPresentation: true,
 			select: (title, options, dialogOptions) => this.showCollabAwareSelector(title, options, dialogOptions),
@@ -150,7 +138,6 @@ export class ExtensionUiController {
 				if (typeof themeArg === "string") {
 					return await setTheme(themeArg, true);
 				}
-				// Theme object passed directly - not supported in current implementation
 				return Promise.resolve({ success: false, error: "Direct theme object not supported" });
 			},
 			setFooter: () => {},
@@ -202,7 +189,6 @@ export class ExtensionUiController {
 		const contextActions: ExtensionContextActions = {
 			getModel: () => this.ctx.session.model,
 			isIdle: () => !this.ctx.session.isStreaming,
-			// `ExtensionContextActions.abort` is `() => void`, so returning `session.abort(...)` here hands a promise into a void slot: the
 			abort: () => {
 				abortDetached(
 					this.ctx.session,
@@ -212,9 +198,6 @@ export class ExtensionUiController {
 			},
 			hasPendingMessages: () => this.ctx.session.queuedMessageCount > 0,
 			shutdown: () => {
-				// Defer the actual teardown to the main loop, which calls
-				// `checkShutdownRequested()` at idle boundaries so any queued
-				// steering / follow-up messages drain first (see issue #1020).
 				this.ctx.shutdownRequested = true;
 			},
 			getContextUsage: () => this.ctx.session.getContextUsage(),
@@ -233,7 +216,6 @@ export class ExtensionUiController {
 			newSession: async options => {
 				this.ctx.clearTransientSessionUi();
 
-				// Create new session
 				this.clearExtensionTerminalInputListeners();
 				this.clearHookWidgets();
 				const success = await this.ctx.session.newSession({ parentSession: options?.parentSession });
@@ -242,12 +224,10 @@ export class ExtensionUiController {
 				}
 				setSessionTerminalTitle(this.ctx.sessionManager.getSessionName(), this.ctx.sessionManager.getCwd());
 
-				// Call setup callback if provided
 				if (options?.setup) {
 					await options.setup(this.ctx.sessionManager);
 				}
 
-				// Reset and update status line
 				this.ctx.statusLine.invalidate();
 				this.ctx.statusLine.resetActiveTime();
 				this.ctx.clearTransientSessionUi();
@@ -268,7 +248,6 @@ export class ExtensionUiController {
 					return { cancelled: true };
 				}
 
-				// Update UI
 				this.ctx.renderInitialMessages({ clearTerminalHistory: true });
 				await this.ctx.reloadTodos();
 				this.ctx.editor.setText(result.selectedText);
@@ -282,7 +261,6 @@ export class ExtensionUiController {
 					return { cancelled: true };
 				}
 
-				// Update UI
 				this.ctx.renderInitialMessages({ clearTerminalHistory: true });
 				await this.ctx.reloadTodos();
 				if (result.editorText && !this.ctx.editor.getText().trim()) {
@@ -308,12 +286,10 @@ export class ExtensionUiController {
 
 		extensionRunner.initialize(actions, contextActions, commandActions, uiContext);
 
-		// Subscribe to extension errors
 		extensionRunner.onError((error: ExtensionError) => {
 			this.showExtensionError(error.extensionPath, error.error);
 		});
 
-		// Emit session_start event
 		await extensionRunner.emit({
 			type: "session_start",
 		});
@@ -344,8 +320,6 @@ export class ExtensionUiController {
 		if (Array.isArray(content)) {
 			const container = new Container();
 			for (const line of content.slice(0, MAX_WIDGET_LINES)) {
-				// A whitespace-only Text renders zero rows, so a deliberate blank separator in
-				// extension-supplied content needs a Spacer to survive.
 				container.addChild(line.trim() === "" ? new Spacer(1) : new Text(line, 1, 0));
 			}
 			if (content.length > MAX_WIDGET_LINES) {
@@ -436,9 +410,6 @@ export class ExtensionUiController {
 			},
 			hasPendingMessages: () => this.ctx.session.queuedMessageCount > 0,
 			shutdown: () => {
-				// Defer the actual teardown to the main loop, which calls
-				// `checkShutdownRequested()` at idle boundaries so any queued
-				// steering / follow-up messages drain first (see issue #1020).
 				this.ctx.shutdownRequested = true;
 			},
 			getContextUsage: () => this.ctx.session.getContextUsage(),
@@ -458,7 +429,6 @@ export class ExtensionUiController {
 			newSession: async options => {
 				this.ctx.clearTransientSessionUi();
 
-				// Create new session
 				this.clearExtensionTerminalInputListeners();
 				this.clearHookWidgets();
 				const success = await this.ctx.session.newSession({ parentSession: options?.parentSession });
@@ -466,12 +436,10 @@ export class ExtensionUiController {
 					return { cancelled: true };
 				}
 
-				// Call setup callback if provided
 				if (options?.setup) {
 					await options.setup(this.ctx.sessionManager);
 				}
 
-				// Clear UI state
 				this.ctx.clearTransientSessionUi();
 				this.ctx.resetTranscript();
 
@@ -490,7 +458,6 @@ export class ExtensionUiController {
 					return { cancelled: true };
 				}
 
-				// Update UI
 				this.ctx.renderInitialMessages({ clearTerminalHistory: true });
 				await this.ctx.reloadTodos();
 				this.ctx.editor.setText(result.selectedText);
@@ -504,7 +471,6 @@ export class ExtensionUiController {
 					return { cancelled: true };
 				}
 
-				// Update UI
 				this.ctx.renderInitialMessages({ clearTerminalHistory: true });
 				await this.ctx.reloadTodos();
 				if (result.editorText && !this.ctx.editor.getText().trim()) {
@@ -530,9 +496,6 @@ export class ExtensionUiController {
 		extensionRunner.initialize(actions, contextActions, commandActions, uiContext);
 	}
 
-	/**
-	 * Emit session event to all extension tools.
-	 */
 	async emitCustomToolSessionEvent(
 		reason: "start" | "switch" | "branch" | "tree" | "shutdown",
 		previousSessionFile?: string,
@@ -564,9 +527,7 @@ export class ExtensionUiController {
 						abort: () => {
 							abortDetached(this.ctx.session, "extension-ui-controller.abort", USER_INTERRUPT_LABEL);
 						},
-						shutdown: () => {
-							// Signal shutdown request
-						},
+						shutdown: () => {},
 						getSystemPrompt: () => this.ctx.session.systemPrompt,
 					});
 				} catch (err) {
@@ -576,17 +537,11 @@ export class ExtensionUiController {
 		}
 	}
 
-	/**
-	 * Show a tool error in the chat.
-	 */
 	showToolError(toolName: string, error: string): void {
 		const errorText = new Text(theme.fg("error", `Tool "${toolName}" error: ${error}`), 1, 0);
 		this.ctx.present(errorText);
 	}
 
-	/**
-	 * Set hook status text in the footer.
-	 */
 	setHookStatus(key: string, text: string | undefined): void {
 		this.ctx.statusLine.setHookStatus(key, text);
 		this.ctx.ui.requestRender();
@@ -648,7 +603,6 @@ export class ExtensionUiController {
 		return winner.value;
 	}
 
-	/** Local ask dialog: a fullscreen ModalShell overlay (the `/copy`/session- picker idiom), not an editor-slot component. A nested custom-answer/note */
 	#showLocalAskDialog(
 		questions: ExtensionAskDialogQuestion[],
 		dialogOptions?: ExtensionUIDialogOptions,
@@ -691,9 +645,6 @@ export class ExtensionUiController {
 					() => finishPrompt(undefined),
 					{ promptStyle: true, onRequestRender: () => this.ctx.ui.requestRender() },
 				);
-				// The question's own card steps aside while its custom answer is
-				// being typed: two cards stacked over the transcript would put the
-				// question's chips under the editor's.
 				overlayHandle?.setHidden(true);
 				promptOverlay = this.ctx.ui.showOverlay(promptEditor, {
 					anchor: "top-left",
@@ -736,7 +687,6 @@ export class ExtensionUiController {
 				askDialog?.dispose();
 				overlayHandle?.hide();
 				overlayHandle = undefined;
-				// A nested prompt card may have been mid-flight when this settled.
 				promptOverlay?.hide();
 				promptOverlay = undefined;
 				promptResolve?.(undefined);
@@ -748,7 +698,6 @@ export class ExtensionUiController {
 		});
 	}
 
-	/** Race the local hook dialog against a mirrored guest ask. First *answer* wins and cancels the other side. A remote `unavailable` settlement */
 	async #raceCollabDialog(
 		request: CollabUiRequestDraft,
 		signal: AbortSignal | undefined,
@@ -804,7 +753,6 @@ export class ExtensionUiController {
 				for (let oi = 0; oi < question.options.length; oi++) {
 					if (selected.has(question.options[oi]!.label)) checkedIndices.push(oi);
 				}
-				// Mirror the local dialog's Next gating: omit the Next option until at least one option is checked or a custom answer exists, so a
 				const hasAnswer = selected.size > 0 || customInput !== undefined;
 				const options = baseOptions.concat([ASK_OTHER_OPTION_LABEL]);
 				if (hasAnswer) options.push(ASK_NEXT_OPTION_LABEL);
@@ -833,8 +781,6 @@ export class ExtensionUiController {
 						signal,
 					);
 					if (input.kind === "unavailable") return "unavailable";
-					// Guest cancelled the Other editor: keep the ask open and
-					// return to the option list instead of cancelling the whole ask.
 					if (input.kind === "cancelled") continue;
 					customInput = input.value;
 					break;
@@ -870,8 +816,6 @@ export class ExtensionUiController {
 						signal,
 					);
 					if (input.kind === "unavailable") return "unavailable";
-					// Guest cancelled the Other editor: re-show the select list
-					// instead of cancelling the whole ask.
 					if (input.kind === "cancelled") continue;
 					customInput = input.value;
 				} else {
@@ -906,7 +850,6 @@ export class ExtensionUiController {
 		return typeof result.value === "string" ? { kind: "answered", value: result.value } : { kind: "cancelled" };
 	}
 
-	/** Show a selector for hooks: a fullscreen ModalShell overlay over the transcript, the same surface the ask dialog and the session pickers use, */
 	showHookSelector(
 		title: string,
 		options: ExtensionUISelectItem[],
@@ -963,12 +906,8 @@ export class ExtensionUiController {
 			return () => this.hideHookSelector();
 		});
 	}
-	/**
-	 * Hide the hook selector.
-	 */
 	hideHookSelector(): void {
 		this.ctx.hookSelector?.dispose();
-		// The overlay only hides; disposing the component is the host's job.
 		this.#hookSelectorOverlay?.hide();
 		this.#hookSelectorOverlay = undefined;
 		this.ctx.hookSelector = undefined;
@@ -976,22 +915,15 @@ export class ExtensionUiController {
 		this.ctx.ui.requestRender();
 	}
 
-	/**
-	 * Show a confirmation dialog for hooks.
-	 */
 	async showHookConfirm(title: string, message: string): Promise<boolean> {
 		const result = await this.showHookSelector(`${title}\n${message}`, ["Yes", "No"]);
 		return result === "Yes";
 	}
 
-	/**
-	 * Show a text input for hooks.
-	 */
 	showHookInput(
 		title: string,
 		placeholder?: string,
 		dialogOptions?: ExtensionUIDialogOptions,
-		/** How the field renders, as opposed to how the dialog behaves. `mask` makes it a credential field. Separate from `dialogOptions` for the same reason */
 		inputOptions?: { mask?: string; hint?: string },
 	): Promise<string | undefined> {
 		return this.#presentDialog(dialogOptions?.signal, settle => {
@@ -1023,12 +955,8 @@ export class ExtensionUiController {
 		});
 	}
 
-	/**
-	 * Hide the hook input.
-	 */
 	hideHookInput(): void {
 		this.ctx.hookInput?.dispose();
-		// The overlay only hides; disposing the component is the host's job.
 		this.#hookInputOverlay?.hide();
 		this.#hookInputOverlay = undefined;
 		this.ctx.hookInput = undefined;
@@ -1036,9 +964,6 @@ export class ExtensionUiController {
 		this.ctx.ui.requestRender();
 	}
 
-	/**
-	 * Show a multi-line editor for hooks (with Ctrl+G support).
-	 */
 	showHookEditor(
 		title: string,
 		prefill?: string,
@@ -1068,11 +993,7 @@ export class ExtensionUiController {
 		});
 	}
 
-	/**
-	 * Hide the hook editor.
-	 */
 	hideHookEditor(): void {
-		// The overlay only hides; disposing what it held is the host's job.
 		this.#hookEditorOverlay?.hide();
 		this.#hookEditorOverlay = undefined;
 		this.ctx.hookEditor = undefined;
@@ -1080,9 +1001,6 @@ export class ExtensionUiController {
 		this.ctx.ui.requestRender();
 	}
 
-	/**
-	 * Show a notification for hooks.
-	 */
 	showHookNotify(message: string, type?: "info" | "warning" | "error"): void {
 		if (type === "error") {
 			this.ctx.showError(message);
@@ -1093,9 +1011,6 @@ export class ExtensionUiController {
 		}
 	}
 
-	/**
-	 * Show a custom component with keyboard focus.
-	 */
 	async showHookCustom<T>(
 		factory: (
 			tui: TUI,
@@ -1152,9 +1067,6 @@ export class ExtensionUiController {
 		return promise;
 	}
 
-	/**
-	 * Show an extension error in the UI.
-	 */
 	addExtensionTerminalInputListener(handler: TerminalInputHandler): () => void {
 		const unsubscribe = this.ctx.ui.addInputListener(handler);
 		this.#extensionTerminalInputUnsubscribers.add(unsubscribe);
@@ -1209,13 +1121,11 @@ export class ExtensionUiController {
 	};
 
 	#applyCustomMessageDisplay(wasStreaming: boolean, shouldDisplay: boolean | undefined): void {
-		// For non-streaming cases with display=true, update UI (streaming cases update via message_end event).
 		if (!wasStreaming && shouldDisplay && this.ctx.initialChatRendered) {
 			this.ctx.rebuildChatFromMessages();
 		}
 	}
 
-	/** Present a modal dialog on the shared editor surface, serializing against any dialog already open. `present` builds the component, swaps it into */
 	#presentDialog<T = string>(
 		signal: AbortSignal | undefined,
 		present: (settle: (value: T | undefined) => void) => () => void,
@@ -1243,7 +1153,6 @@ export class ExtensionUiController {
 
 		const startPresentation = (): void => {
 			if (settled) {
-				// Aborted before its turn arrived — never present, hand off the surface.
 				this.#advanceDialogQueue();
 				return;
 			}

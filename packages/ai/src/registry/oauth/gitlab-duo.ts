@@ -7,16 +7,6 @@ import { credentialExpiryFromExpiresIn } from "./expiry";
 import { generatePKCE } from "./pkce";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./types";
 
-/**
- * Default OAuth client id baked into the bundled GitLab Duo login flow. GitLab
- * authorize requests are rejected outright (`The redirect URI included is not
- * valid`) whenever this client id's registered redirect URI list drifts from
- * `http://localhost:8080/callback`. Users hitting that case can either:
- *
- * - register their own GitLab OAuth application and override the bundled
- *   credentials with `GITLAB_CLIENT_ID` + `GITLAB_REDIRECT_URI`, or
- * - skip OAuth entirely and supply a Personal Access Token via `GITLAB_TOKEN`.
- */
 const DEFAULT_CLIENT_ID = "da4edff2e6ebd2bc3208611e2768bc1c1dd7be791dc5ff26ca34ca9ee44f7d4b";
 const OAUTH_SCOPES = ["api"];
 const DEFAULT_CALLBACK_PORT = 8080;
@@ -27,23 +17,11 @@ interface PKCEPair {
 	challenge: string;
 }
 
-/**
- * Resolve the OAuth client id, preferring `GITLAB_CLIENT_ID` when set so users
- * with their own GitLab OAuth application can bypass the bundled credentials.
- */
 function resolveClientId(): string {
 	const env = process.env.GITLAB_CLIENT_ID?.trim();
 	return env && env.length > 0 ? env : DEFAULT_CLIENT_ID;
 }
 
-/**
- * Resolve callback-server options from `GITLAB_REDIRECT_URI`. When set, the
- * exact string is advertised to GitLab (strict matching), random-port fallback
- * is disabled, and HTTP loopback URIs bind the listener to the URI's host/port
- * so the browser callback lands on us. HTTPS loopback URIs are rejected because
- * the local callback server is plaintext HTTP. Non-loopback URIs bind a random
- * local port — only the paste-code path can complete in that case.
- */
 function resolveCallbackOptions(): OAuthCallbackFlowOptions {
 	const raw = process.env.GITLAB_REDIRECT_URI?.trim();
 	if (!raw) {

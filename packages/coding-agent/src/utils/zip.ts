@@ -1,28 +1,20 @@
-// The single archive boundary for the codebase: ZIP (framed here, over the raw DEFLATE codec in `node:zlib`) and tar / tar.gz (via `Bun.Archive`). This is
 import * as path from "node:path";
 import * as zlib from "node:zlib";
 import { formatBytes } from "@veyyon/utils/format";
 import * as logger from "@veyyon/utils/logger";
 import { ToolError, toolFailure } from "../tools/tool-errors";
 
-/** A ZIP archive decoded to a `path → bytes` map of its file members. */
 export type Unzipped = Record<string, Uint8Array>;
 
 const ENCODER = new TextEncoder();
-// `node:zlib` is only the DEFLATE codec; ZIP container framing is ours (see
-// `unzip` / `zip` below). Entry names use the platform text decoders.
 const UTF8_DECODER = new TextDecoder();
-// ZIP central-directory names without the UTF-8 flag carry no reliable encoding;
-// decode them as their legacy code page (windows-1252) as a stable best effort.
 const LEGACY_NAME_DECODER = new TextDecoder("windows-1252");
 
-/** Read a single ZIP entry as UTF-8 text, or `undefined` when the entry is absent. */
 export function unzipText(entries: Unzipped, entryPath: string): string | undefined {
 	const data = entries[entryPath];
 	return data ? UTF8_DECODER.decode(data) : undefined;
 }
 
-/** Resolve a container-relative reference (an EPUB manifest href, or an OPC relationship `Target`) to the exact {@link Unzipped} key it names, relative to */
 export function resolveArchiveMemberPath(baseDir: string, ref: string): string {
 	const withoutFragment = ref.split("#", 1)[0] ?? ref;
 	let decoded = withoutFragment;
@@ -45,7 +37,6 @@ export function resolveArchiveMemberPath(baseDir: string, ref: string): string {
 	return out.join("/");
 }
 
-/** Decode an in-memory ZIP archive into a `path → bytes` map of its file members (directory entries and `..`-escaping names are dropped). Shares the */
 export function unzip(bytes: Uint8Array): Unzipped {
 	const info = readCentralDirectoryInfoSync(bytes);
 	const centralDirectory = readMemoryRange(bytes, info.offset, info.offset + info.size);
@@ -57,22 +48,17 @@ export function unzip(bytes: Uint8Array): Unzipped {
 	return out;
 }
 
-/** Cap on the on-disk size of tar/tar.gz archives, which are loaded fully into memory (and decompressed by `Bun.Archive`) just to index entries. ZIP is */
 const MAX_TAR_ARCHIVE_BYTES = 256 * 1024 * 1024;
-/** Cap on a single archive member's declared (uncompressed) size. The declared size is attacker-controlled metadata — a crafted ZIP entry can claim */
 const MAX_ARCHIVE_MEMBER_BYTES = 64 * 1024 * 1024;
 
-/** Inflate one raw DEFLATE stream, bounded to its declared uncompressed size. */
 function inflateRaw(bytes: Uint8Array, declaredSize: number): Uint8Array {
 	return zlib.inflateRawSync(bytes, { maxOutputLength: Math.max(declaredSize, 1) });
 }
 
 export type ArchiveFormat = "zip" | "tar" | "tar.gz";
 
-/** Where to read an archive from: a filesystem path (format inferred from the extension; ZIP is read lazily via ranged central-directory access) or */
 export type ArchiveSource = string | { bytes: Uint8Array; format: ArchiveFormat };
 
-/** Content for a member when packing or extracting an archive. */
 export type ArchiveMemberContent = string | Uint8Array | Blob;
 
 export interface ArchivePathCandidate {
@@ -95,7 +81,6 @@ export interface ExtractedArchiveFile extends ArchiveNode {
 	bytes: Uint8Array;
 }
 
-/** A byte window into an archive — file-backed (lazy) or in-memory. */
 interface ByteSource {
 	readonly size: number;
 	read(start: number, end: number): Promise<Uint8Array>;
@@ -107,7 +92,6 @@ function assertValidRange(start: number, end: number): void {
 	}
 }
 
-/** Read an exact in-memory range, throwing (not clamping) when it runs past the buffer. */
 function readMemoryRange(buffer: Uint8Array, start: number, end: number): Uint8Array {
 	assertValidRange(start, end);
 	if (end > buffer.byteLength) {
@@ -164,7 +148,6 @@ interface ArchiveIndexEntry extends ArchiveNode {
 	storage?: EntryStorage;
 }
 
-/** Reduce an archive-internal path to a safe, canonical form, or reject it. This is the archive boundary's containment check, so it is deliberately the */
 function normalizeArchivePath(rawPath: string, options: { allowEmpty: boolean }): string | undefined {
 	const parts = rawPath.replace(/\\/g, "/").split("/");
 	const normalizedParts: string[] = [];
@@ -178,18 +161,15 @@ function normalizeArchivePath(rawPath: string, options: { allowEmpty: boolean })
 	return normalizedParts.join("/");
 }
 
-/** Normalize a caller-supplied path used to look something up inside an archive. */
 function normalizeArchiveLookupPath(rawPath?: string): string | undefined {
 	if (!rawPath) return "";
 	return normalizeArchivePath(rawPath, { allowEmpty: true });
 }
 
-/** Normalize a path read from the archive's own index. */
 function normalizeArchiveEntryPath(rawPath: string): string | undefined {
 	return normalizeArchivePath(rawPath, { allowEmpty: false });
 }
 
-/** Report members skipped because their paths escape the archive. Dropping them is correct and stays. Dropping them SILENTLY is not: the */
 function reportSkippedUnsafeEntries(skipped: readonly string[]): void {
 	if (skipped.length === 0) return;
 	logger.warn("Skipped archive members whose paths point outside the archive", {
@@ -243,7 +223,6 @@ function ensureParentDirectories(map: Map<string, ArchiveIndexEntry>): void {
 	}
 }
 
-/** Infer an archive format from a filesystem path's extension. */
 export function archiveFormatFromPath(filePath: string): ArchiveFormat | undefined {
 	const normalized = filePath.toLowerCase();
 	if (normalized.endsWith(".tar.gz") || normalized.endsWith(".tgz")) return "tar.gz";
@@ -570,7 +549,6 @@ function parseZipCentralDirectory(
 	return entries;
 }
 
-/** Decode a single ZIP member's already-read payload, bounded to its declared size. */
 function decodeZipMember(compressed: Uint8Array, compression: number, declaredSize: number): Uint8Array {
 	if (compression === ZIP_STORED_COMPRESSION) {
 		return compressed;
@@ -645,7 +623,6 @@ async function readZipEntries(source: ByteSource): Promise<ArchiveIndexEntry[]> 
 	return parseZipCentralDirectory(source, centralDirectory, directoryInfo.entries);
 }
 
-/** Split an `archive.ext:inner/path` reference into every plausible `{ archivePath, subPath }` pair, longest archive prefix first. A path may */
 export function parseArchivePathCandidates(filePath: string): ArchivePathCandidate[] {
 	const normalized = filePath.replace(/\\/g, "/");
 	const pattern = /\.(?:tar\.gz|tgz|zip|tar)(?=(?::|$))/gi;
@@ -670,7 +647,6 @@ export function parseArchivePathCandidates(filePath: string): ArchivePathCandida
 	return candidates.sort((left, right) => right.archivePath.length - left.archivePath.length);
 }
 
-/** An indexed, read-only view over a single archive. ZIP archives are indexed from the central directory and members are inflated on demand; tar archives */
 export class ArchiveReader {
 	readonly format: ArchiveFormat;
 	#entries = new Map<string, ArchiveIndexEntry>();
@@ -784,7 +760,6 @@ export class ArchiveReader {
 	}
 }
 
-/** Open an archive for reading. ZIP archives opened from a path are indexed lazily via ranged central-directory reads (members inflate on demand); tar */
 export async function openArchive(source: ArchiveSource): Promise<ArchiveReader> {
 	if (typeof source === "string") {
 		const format = archiveFormatFromPath(source);
@@ -817,7 +792,6 @@ export async function openArchive(source: ArchiveSource): Promise<ArchiveReader>
 	return new ArchiveReader(format, await readTarEntries(bytes));
 }
 
-/** Render the top-level entries of an in-memory archive as one line each. */
 export async function listArchiveRoot(
 	bytes: Uint8Array,
 	format: ArchiveFormat,
@@ -845,7 +819,6 @@ async function memberToBytes(content: ArchiveMemberContent): Promise<Uint8Array>
 	return new Uint8Array(await content.arrayBuffer());
 }
 
-/** Fully materialize every file member into a `path → content` map: ZIP members are inflated in memory, tar members are returned as lazy `File`s. Use this */
 export async function readArchiveEntries(source: ArchiveSource): Promise<Map<string, ArchiveMemberContent>> {
 	const { bytes, format } = await resolveArchiveBytes(source);
 	const entries = new Map<string, ArchiveMemberContent>();
@@ -863,7 +836,6 @@ export async function readArchiveEntries(source: ArchiveSource): Promise<Map<str
 	return entries;
 }
 
-/** Serialize `entries` into an archive of `format` and write it to `destPath`. ZIP is framed in memory, tar / tar.gz via `Bun.Archive` (gzip for tar.gz). */
 export async function writeArchive(
 	destPath: string,
 	format: ArchiveFormat,
@@ -885,7 +857,6 @@ export async function writeArchive(
 	await Bun.Archive.write(destPath, record, format === "tar.gz" ? { compress: "gzip" } : undefined);
 }
 
-/** Extract every file member to `destDir`, creating parent directories as needed. Entries that would escape `destDir` (via `..` or an absolute path) */
 export async function extractArchive(source: ArchiveSource, destDir: string): Promise<number> {
 	const extractRoot = path.resolve(destDir);
 	const entries = await readArchiveEntries(source);
@@ -914,7 +885,6 @@ function writeUInt32LE(buf: Uint8Array, offset: number, value: number): void {
 	buf[offset + 3] = (value >>> 24) & 0xff;
 }
 
-/** Frame a `path → bytes` map into a ZIP archive in memory. Each member is raw DEFLATE unless that would not shrink it, in which case it is stored. ZIP64 is */
 export function zip(entries: Unzipped): Uint8Array {
 	const localParts: Uint8Array[] = [];
 	const centralParts: Uint8Array[] = [];
@@ -931,9 +901,6 @@ export function zip(entries: Unzipped): Uint8Array {
 		const method = stored ? ZIP_STORED_COMPRESSION : ZIP_DEFLATE_COMPRESSION;
 		const payload = stored ? data : deflated;
 
-		// Without ZIP64 the name length is a u16 and offsets/sizes are u32 (with
-		// 0xffff/0xffffffff reserved as ZIP64 sentinels); reject anything that
-		// would silently wrap a header field instead of producing a valid archive.
 		if (
 			count + 1 >= ZIP_UINT16_MAX ||
 			nameBytes.byteLength > ZIP_UINT16_MAX ||
@@ -948,7 +915,6 @@ export function zip(entries: Unzipped): Uint8Array {
 		writeUInt16LE(header, 4, 20);
 		writeUInt16LE(header, 6, ZIP_UTF8_FLAG);
 		writeUInt16LE(header, 8, method);
-		// Fixed 1980-01-01 timestamp keeps the output deterministic.
 		writeUInt16LE(header, 12, 0x21);
 		writeUInt32LE(header, 14, crc);
 		writeUInt32LE(header, 18, payload.byteLength);

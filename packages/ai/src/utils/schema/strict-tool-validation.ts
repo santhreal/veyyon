@@ -1,16 +1,5 @@
 import { isRecord } from "@veyyon/utils/type-guards";
 
-/**
- * Detects tool-parameter schemas that pass structural JSON-Schema validation
- * (so {@link isValidJsonSchema} accepts them) yet make OpenAI-style providers
- * reject the whole request with HTTP 400 — namely an `enum`/`const` whose
- * value(s) cannot satisfy the node's declared `type`. MCP servers emit these
- * when a nullable/array branch is built incorrectly (e.g. a non-null `enum`
- * copied onto a `type: "null"` branch, or an `enum` placed on an `array`
- * schema instead of its `items`). One such tool 400s the entire turn, so
- * callers quarantine just the offending tool. See issue #2652.
- */
-
 type JsonRecord = Record<string, unknown>;
 
 const SCHEMA_TYPE_NAMES: Record<string, true> = {
@@ -40,7 +29,6 @@ function jsonValueMatchesType(value: unknown, type: string): boolean {
 		case "array":
 			return Array.isArray(value);
 		default:
-			// Unknown type keyword — don't flag (forward compatibility).
 			return true;
 	}
 }
@@ -67,11 +55,6 @@ const CHILD_SCHEMA_KEYS = [
 ] as const;
 const CHILD_ARRAY_KEYS = ["anyOf", "oneOf", "allOf", "prefixItems"] as const;
 
-/**
- * Walk a tool parameter schema for OpenAI-strict `enum`/`const`-vs-`type`
- * contradictions. Returns a JSON-pointer-ish path to the first offending node,
- * or `null` when the schema is safe to emit.
- */
 export function findStrictToolSchemaViolation(schema: unknown, path = "#"): string | null {
 	if (Array.isArray(schema)) {
 		for (let i = 0; i < schema.length; i++) {

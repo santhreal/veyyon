@@ -1,10 +1,6 @@
-/** Minimal `@sinclair/typebox` runtime compatibility shim. Historically the coding agent injected the real `@sinclair/typebox` (~5MB */
-
 import { areJsonValuesEqual, isMultipleOf, validateJsonSchemaValue } from "@veyyon/ai/utils/schema";
 import { codePointLength, isDateOnly, isRecord, isUuid } from "@veyyon/utils";
 
-// Type aliases — exported so `import type { Static, TSchema } from "..."`
-// patterns keep compiling at the call site.
 export type TSchema = ArkSchema;
 export type Static<T extends ArkSchema> = T["__infer"];
 export type TAny = ArkSchema;
@@ -22,7 +18,6 @@ export type TOptional<_E extends ArkSchema> = ArkSchema;
 export type TUnion<_T extends readonly ArkSchema[] = readonly ArkSchema[]> = ArkSchema;
 export type TEnum<_T extends readonly (string | number)[] = readonly (string | number)[]> = ArkSchema;
 export type TRecord<_K extends ArkSchema, _V extends ArkSchema> = ArkSchema;
-/** TypeBox-compatible wrapper for raw JSON Schema documents. */
 export type TUnsafe<_T = unknown> = ArkSchema;
 
 const VALIDATION_FAILURE = Symbol("pi.typebox.validationFailure");
@@ -50,7 +45,6 @@ interface SchemaInternals {
 	inner?: ArkSchema;
 }
 
-/** JSON-Schema-shaped object with non-enumerable runtime helpers. Validators return the validated data or a marked `{ message }` failure. */
 interface ArkSchema {
 	__validator: (data: unknown) => unknown;
 	__metadata?: Record<string, unknown>;
@@ -153,8 +147,6 @@ interface Meta {
 	description?: string;
 	default?: unknown;
 	examples?: unknown[];
-	// Real TypeBox accepts arbitrary extra JSON Schema keywords; we tolerate
-	// them silently so callers don't blow up on niche metadata.
 	[key: string]: unknown;
 }
 
@@ -180,7 +172,6 @@ interface ArrayOpts extends Meta {
 }
 
 interface ObjectOpts extends Meta {
-	/** TypeBox default: extra keys are preserved. Set `false` to reject unknowns, `true` to allow any, or a schema to validate them. */
 	additionalProperties?: boolean | ArkSchema;
 }
 
@@ -198,7 +189,6 @@ function createStringValidator(
 	baseValidator: (data: unknown) => unknown,
 	opts?: StringOpts,
 ): (data: unknown) => unknown {
-	// Compile the pattern ONCE per schema, not on every validation call, and do it here rather than inside the returned closure. A pattern that fails to
 	let patternRegex: RegExp | null = null;
 	if (opts?.pattern !== undefined) {
 		try {
@@ -211,7 +201,6 @@ function createStringValidator(
 		const result = baseValidator(data);
 		if (isValidationFailure(result)) return result;
 		if (typeof result !== "string") return validationFailure("Expected string");
-		// Measure in Unicode code points, not UTF-16 units: a `.length` check double-counts an astral character (an emoji is one code point but two
 		const length = opts?.minLength !== undefined || opts?.maxLength !== undefined ? codePointLength(result) : 0;
 		if (opts?.minLength !== undefined && length < opts.minLength) {
 			return validationFailure(`String must have at least ${opts.minLength} characters`);
@@ -229,7 +218,6 @@ function createStringValidator(
 
 const IPV6_HEXTET_RE = /^[0-9a-fA-F]{1,4}$/;
 
-/** Whether `value` is a valid IPv6 address, including the `::` zero-compressed form. The old single regex only matched the fully expanded eight-group form, */
 function isFormatIpv6(value: string): boolean {
 	if (!/^[0-9a-fA-F:]+$/.test(value)) return false;
 	const sides = value.split("::");
@@ -269,14 +257,12 @@ function createFormatStringValidator(format: string): (data: unknown) => unknown
 				return Number.isNaN(date.getTime()) ? validationFailure("Invalid date") : data;
 			}
 			case "date-time": {
-				// RFC 3339 date-time is a full-date, a `T` separator, and a full-time with an optional fraction and offset. `new Date()` alone was far too
 				const dateTimeShape = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/;
 				if (!dateTimeShape.test(data)) return validationFailure("Invalid date-time format");
 				const dateTime = new Date(data);
 				return Number.isNaN(dateTime.getTime()) ? validationFailure("Invalid date-time") : data;
 			}
 			case "time": {
-				// The fractional-seconds separator is a literal dot, so it must be escaped: an unescaped `.` matched any character, wrongly accepting a
 				const timeRegex = /^([01]\d|2[0-3]):[0-5]\d:([0-5]\d|60)(\.\d+)?([+-]([01]\d|2[0-3]):[0-5]\d|Z)?$/;
 				return timeRegex.test(data) ? data : validationFailure("Invalid time format");
 			}
@@ -709,7 +695,6 @@ function tNullable<E extends ArkSchema>(schema: E, opts?: Meta): ArkSchema {
 }
 
 function tReadonly<E extends ArkSchema>(schema: E): ArkSchema {
-	// TypeBox's `Type.Readonly` is purely a marker; runtime validation is identical.
 	return schema;
 }
 
@@ -838,7 +823,6 @@ function tOmit<P extends Record<string, ArkSchema>, K extends keyof P>(obj: ArkS
 }
 
 function tComposite(objects: readonly ArkSchema[], opts?: Meta): ArkSchema {
-	// Composite flattens object schemas into one
 	if (objects.length === 0) {
 		return applyMeta(
 			createArkSchema(
@@ -868,7 +852,6 @@ function tComposite(objects: readonly ArkSchema[], opts?: Meta): ArkSchema {
 	}
 	if (canFlatten) return tObject(properties, opts as ObjectOpts | undefined);
 
-	// Merge all object validators
 	const validator = (data: unknown) => {
 		if (!data || typeof data !== "object") {
 			return validationFailure("Expected object");
@@ -938,5 +921,4 @@ export const Type = {
 
 export type TypeBuilder = typeof Type;
 
-/** Default namespace export so `import * as typebox from "./typebox"` still resolves the `Type` key. */
 export default { Type };

@@ -1,14 +1,6 @@
 import { errorMessage, isRecord } from "@veyyon/utils";
 import { getToolDefinitions, handleToolCall, type ToolArguments, type ToolDefinition } from "./mcp-tools";
 
-/**
- * A JSON-RPC request as this SERVER receives it: every field optional, because a client can send
- * anything and the handler has to answer malformed input rather than trust a shape.
- *
- * The client-side counterpart in `@veyyon/coding-agent/mcp/types` requires `jsonrpc`, `id` and
- * `method`, which is correct for a request this process BUILDS and wrong for one it PARSES. Both
- * were called `JsonRpcRequest`.
- */
 export interface McpServerJsonRpcRequest {
 	readonly jsonrpc?: string;
 	readonly id?: string | number | null;
@@ -16,14 +8,6 @@ export interface McpServerJsonRpcRequest {
 	readonly params?: Record<string, unknown>;
 }
 
-/**
- * A JSON-RPC response as this server SENDS it.
- *
- * `id` admits `null`, which the JSON-RPC 2.0 spec requires for an error the server could not
- * attribute to a request (a parse error, an invalid envelope). The client-side `JsonRpcResponse`
- * in `@veyyon/coding-agent/mcp/types` types `id` as `string | number` only, so the two disagreed
- * about the one case that matters most, under one name.
- */
 export interface McpServerJsonRpcResponse {
 	readonly jsonrpc: "2.0";
 	readonly id: string | number | null;
@@ -31,12 +15,6 @@ export interface McpServerJsonRpcResponse {
 	readonly error?: { readonly code: number; readonly message: string };
 }
 
-/**
- * The old names, kept because `@veyyon/mnemopi` is published.
- *
- * Deprecated: import the `McpServer`-prefixed spellings. Renamed exports rather than alias
- * declarations, so each name keeps exactly one declaration repo-wide.
- */
 export type { McpServerJsonRpcRequest as JsonRpcRequest, McpServerJsonRpcResponse as JsonRpcResponse };
 
 export interface ListToolsResponse {

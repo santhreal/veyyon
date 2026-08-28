@@ -6,24 +6,18 @@ import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 
 const BLOB_PREFIX = "blob:sha256:";
-/** Reference prefix for externalized UTF-8 text (large tool results, text blocks). Distinct from {@link BLOB_PREFIX} so the load path knows to decode the bytes as */
 const TEXT_BLOB_PREFIX = "blobtext:sha256:";
 
 export interface BlobPutOptions {
-	/** Optional file extension for a sidecar hardlink/copy that OS openers can type-detect. */
 	extension?: string;
 }
 
 export interface BlobPutResult {
 	hash: string;
-	/** Canonical content-addressed path, always `<dir>/<sha256-hex>`. */
 	path: string;
-	/** Path with the requested extension when supplied, otherwise the canonical path. */
 	displayPath: string;
 	get ref(): string;
 }
-
-/** Content-addressed blob store for externalizing large binary data (images) from session JSONL files. Files are stored canonically at `<dir>/<sha256-hex>`. Callers may also request */
 
 const IMAGE_EXTENSION_BY_MIME: Record<string, string> = {
 	"image/png": "png",
@@ -89,7 +83,6 @@ export class BlobStore {
 
 	constructor(readonly dir: string) {}
 
-	/** Write binary data to the blob store. @returns SHA-256 hex hash of the data */
 	async put(data: Buffer, options?: BlobPutOptions): Promise<BlobPutResult> {
 		const hash = new Bun.SHA256().update(data).digest("hex");
 		const blobPath = path.join(this.dir, hash);
@@ -109,7 +102,6 @@ export class BlobStore {
 		return result;
 	}
 
-	/** Synchronous variant of {@link put}. Use on persistence hot paths where the caller cannot afford the microtask hops of the async version (e.g. OOM-safe session writes). */
 	putSync(data: Buffer, options?: BlobPutOptions): BlobPutResult {
 		const hash = new Bun.SHA256().update(data).digest("hex");
 		const blobPath = path.join(this.dir, hash);
@@ -129,7 +121,6 @@ export class BlobStore {
 		return result;
 	}
 
-	/** Attempt a {@link putSync}, returning `undefined` when the blob store cannot be written (a full or read-only data directory, a `blobs` path occupied by */
 	tryPutSync(data: Buffer, options?: BlobPutOptions): BlobPutResult | undefined {
 		try {
 			return this.putSync(data, options);
@@ -146,7 +137,6 @@ export class BlobStore {
 		}
 	}
 
-	/** Read blob by hash, returns Buffer or null if not found. */
 	async get(hash: string): Promise<Buffer | null> {
 		const blobPath = path.join(this.dir, hash);
 		try {
@@ -159,7 +149,6 @@ export class BlobStore {
 		}
 	}
 
-	/** Synchronous variant of {@link get}. */
 	getSync(hash: string): Buffer | null {
 		const blobPath = path.join(this.dir, hash);
 		try {
@@ -170,7 +159,6 @@ export class BlobStore {
 		}
 	}
 
-	/** Check if a blob exists. Any failure to reach it counts as absent, including a permission failure on a blob that is */
 	async has(hash: string): Promise<boolean> {
 		try {
 			await fsp.access(path.join(this.dir, hash));
@@ -181,34 +169,28 @@ export class BlobStore {
 	}
 }
 
-/** Check if a data string is a blob reference. */
 export function isBlobRef(data: string): boolean {
 	return data.startsWith(BLOB_PREFIX);
 }
 
-/** Extract the SHA-256 hash from a blob reference string. */
 export function parseBlobRef(data: string): string | null {
 	if (!data.startsWith(BLOB_PREFIX)) return null;
 	return data.slice(BLOB_PREFIX.length);
 }
 
-/** Identify provider transport image data URLs so persistence can externalize and restore them losslessly. */
 export function isImageDataUrl(data: string): boolean {
 	return data.startsWith("data:image/") && data.includes(";base64,");
 }
 
-/** True when a string is an externalized-text blob reference (`blobtext:sha256:…`). */
 export function isTextBlobRef(data: string): boolean {
 	return data.startsWith(TEXT_BLOB_PREFIX);
 }
 
-/** Extract the SHA-256 hash from a text blob reference, or `null` for a non-ref. */
 export function parseTextBlobRef(data: string): string | null {
 	if (!data.startsWith(TEXT_BLOB_PREFIX)) return null;
 	return data.slice(TEXT_BLOB_PREFIX.length);
 }
 
-/** Externalize an oversized UTF-8 text string to the blob store, returning a `blobtext:` reference. Session persistence uses this to keep very large tool */
 export function externalizeTextSync(blobStore: BlobStore, text: string): string {
 	if (isTextBlobRef(text)) return text;
 	const stored = blobStore.tryPutSync(Buffer.from(text, "utf8"));
@@ -216,7 +198,6 @@ export function externalizeTextSync(blobStore: BlobStore, text: string): string 
 	return `${TEXT_BLOB_PREFIX}${stored.hash}`;
 }
 
-/** Resolve a `blobtext:` reference back to its original UTF-8 string. Non-refs pass through unchanged. A missing blob logs a warning and returns the reference as-is */
 export async function resolveTextBlobRef(blobStore: BlobStore, data: string): Promise<string> {
 	const hash = parseTextBlobRef(data);
 	if (!hash) return data;
@@ -228,7 +209,6 @@ export async function resolveTextBlobRef(blobStore: BlobStore, data: string): Pr
 	return buffer.toString("utf8");
 }
 
-/** Synchronous variant of {@link resolveTextBlobRef}. */
 export function resolveTextBlobRefSync(blobStore: BlobStore, data: string): string {
 	const hash = parseTextBlobRef(data);
 	if (!hash) return data;
@@ -240,20 +220,17 @@ export function resolveTextBlobRefSync(blobStore: BlobStore, data: string): stri
 	return buffer.toString("utf8");
 }
 
-/** Externalize a provider image data URL to the blob store, returning a blob reference. The full data URL string is preserved so transport-native history can be reconstructed on resume. */
 export async function externalizeImageDataUrl(blobStore: BlobStore, dataUrl: string): Promise<string> {
 	if (isBlobRef(dataUrl)) return dataUrl;
 	const { ref } = await blobStore.put(Buffer.from(dataUrl, "utf8"));
 	return ref;
 }
 
-/** Synchronous variant of {@link externalizeImageDataUrl}. A blob store that cannot be written returns the data URL unchanged, keeping it inline. */
 export function externalizeImageDataUrlSync(blobStore: BlobStore, dataUrl: string): string {
 	if (isBlobRef(dataUrl)) return dataUrl;
 	return blobStore.tryPutSync(Buffer.from(dataUrl, "utf8"))?.ref ?? dataUrl;
 }
 
-/** Externalize an image's base64 data to the blob store, returning a blob reference. If the data is already a blob reference, returns it unchanged. */
 export async function externalizeImageData(
 	blobStore: BlobStore,
 	base64Data: string,
@@ -267,7 +244,6 @@ export async function externalizeImageData(
 	return ref;
 }
 
-/** Synchronous variant of {@link externalizeImageData}. A blob store that cannot be written returns the base64 data unchanged, keeping it inline. */
 export function externalizeImageDataSync(blobStore: BlobStore, base64Data: string, mimeType?: string): string {
 	if (isBlobRef(base64Data)) return base64Data;
 	const stored = blobStore.tryPutSync(Buffer.from(base64Data, "base64"), {
@@ -276,7 +252,6 @@ export function externalizeImageDataSync(blobStore: BlobStore, base64Data: strin
 	return stored?.ref ?? base64Data;
 }
 
-/** Resolve an externalized provider image data URL back to its original string. If the data is not a blob reference, returns it unchanged. */
 export async function resolveImageDataUrl(blobStore: BlobStore, data: string): Promise<string> {
 	const hash = parseBlobRef(data);
 	if (!hash) return data;
@@ -289,7 +264,6 @@ export async function resolveImageDataUrl(blobStore: BlobStore, data: string): P
 	return buffer.toString("utf8");
 }
 
-/** Resolve a blob reference back to base64 data. If the data is not a blob reference, returns it unchanged. */
 export async function resolveImageData(blobStore: BlobStore, data: string): Promise<string> {
 	const hash = parseBlobRef(data);
 	if (!hash) return data;
@@ -302,7 +276,6 @@ export async function resolveImageData(blobStore: BlobStore, data: string): Prom
 	return buffer.toString("base64");
 }
 
-/** Synchronous variant of {@link resolveImageData}. */
 export function resolveImageDataSync(blobStore: BlobStore, data: string): string {
 	const hash = parseBlobRef(data);
 	if (!hash) return data;

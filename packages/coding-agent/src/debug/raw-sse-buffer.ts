@@ -37,10 +37,8 @@ export interface RawSseDebugSnapshot {
 	lastUpdatedAt?: number;
 }
 
-// Per-record char counts are stored in a parallel array (`#recordChars`) on the buffer rather than stamped onto each record via a symbol property.
 type TrimResult = { raw: string[]; truncated: boolean; originalChars: number; chars: number };
 
-// Single-pass trim. Returns the final `chars` count using the historical formula `reduce(line.length + 1, init = 1)` so the new accounting matches
 function trimRawLines(raw: string[]): TrimResult {
 	let originalChars = 0;
 	for (let i = 0; i < raw.length; i++) originalChars += raw[i].length + 1;
@@ -105,9 +103,7 @@ function metadataTransport(response: ProviderResponseMetadata): string | undefin
 
 export class RawSseDebugBuffer {
 	#records: RawSseDebugRecord[] = [];
-	// Parallel to `#records`: `#recordChars[i]` is the precomputed char count for `#records[i]`. Kept in lockstep by `#append` (push both) and
 	#recordChars: number[] = [];
-	// Head-index ring over `#records`/`#recordChars`: index of the oldest live record. Eviction advances `#head` (amortized O(1)) rather than an O(n)
 	#head = 0;
 	#totalChars = 0;
 	#droppedRecords = 0;
@@ -138,7 +134,6 @@ export class RawSseDebugBuffer {
 		this.#append(record, formatRawSseResponseComment(record).length + 1);
 	}
 
-	// Ownership contract for `event.raw`: The caller (`notifyRawSseEvent` in `packages/ai/src/utils/sse-debug.ts`)
 	recordEvent(event: RawSseEvent, model?: Model): void {
 		const trimmed = trimRawLines(event.raw);
 		this.#totalEvents += 1;
@@ -170,7 +165,6 @@ export class RawSseDebugBuffer {
 	}
 
 	toRawText(): string {
-		// Reads the live window directly: `rawRecordText` only computes a string from each record, so no caller-visible mutation is possible. With a
 		const live = this.#head === 0 ? this.#records : this.#records.slice(this.#head);
 		const body = live.map(rawRecordText).join("\n");
 		if (this.#droppedRecords === 0) return body;
@@ -196,7 +190,6 @@ export class RawSseDebugBuffer {
 			this.#droppedRecords += 1;
 			this.#droppedChars += chars;
 		}
-		// Reclaim the consumed `[0, #head)` prefix once it grows large: one O(n) memmove amortized over many O(1) evictions, bounding the backing arrays
 		const liveCount = this.#records.length - this.#head;
 		if (this.#head >= MAX_RAW_SSE_EVENTS || this.#head > liveCount) {
 			this.#records = this.#records.slice(this.#head);
@@ -208,7 +201,6 @@ export class RawSseDebugBuffer {
 	#emit(): void {
 		const count = this.#listeners.size;
 		if (count === 0) return;
-		// With a single listener (the common case — RawSse debug viewer is the only subscriber), keep eager emit so per-event semantics are
 		if (count === 1) {
 			this.#fanOut();
 			return;
@@ -225,9 +217,7 @@ export class RawSseDebugBuffer {
 		for (const listener of this.#listeners) {
 			try {
 				listener();
-			} catch {
-				// Debug viewers must not be able to break stream capture.
-			}
+			} catch {}
 		}
 	}
 }
@@ -249,8 +239,6 @@ export function resolveRawSseDebugBuffer(owner?: object): RawSseDebugBuffer {
 	const buffer = new RawSseDebugBuffer();
 	try {
 		tagged[kRawSseDebugBuffer] = buffer;
-	} catch {
-		// Non-extensible owner: caller gets a fresh buffer on each call.
-	}
+	} catch {}
 	return buffer;
 }

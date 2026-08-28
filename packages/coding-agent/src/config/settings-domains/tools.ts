@@ -1,10 +1,7 @@
-/** Tools domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 import { DEFAULT_APPROVAL_MODE } from "../../tools/approval-modes";
 import { DEFAULT_INLINE_FLOOR_FRACTION } from "./shared";
 
 export const TOOLS_SETTINGS = {
-	// Tools
-	// Tool approval policies
 	"tools.approval": {
 		type: "record",
 		default: {},
@@ -17,7 +14,6 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// Extra paths the destructive-command guard refuses to delete recursively. ADDITIONS ONLY, BY CONSTRUCTION. The compiled set in src/tools/bash-guard.ts
 	"tools.protectedPaths": {
 		type: "array",
 		default: [] as string[],
@@ -30,11 +26,9 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// Default tool approval mode (interaction tab, but governs the tool wrapper). The rungs and what each one still stops for live in
 	"tools.approvalMode": {
 		type: "enum",
 		values: ["plan", "ask", "ask-command", "auto", "yolo", "always-ask", "write", "auto-edit"] as const,
-		// `DEFAULT_APPROVAL_MODE` is the single place the unset default is decided; `normalizeApprovalMode`, `resolveEffectiveApprovalMode` and the
 		default: DEFAULT_APPROVAL_MODE,
 		ui: {
 			tab: "interaction",
@@ -76,7 +70,6 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// Todo tool
 	"todo.enabled": {
 		type: "boolean",
 		default: true,
@@ -137,7 +130,6 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// Grep, glob, and AST tools
 	"glob.enabled": {
 		type: "boolean",
 		default: true,
@@ -160,7 +152,6 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// How tightly an early tool result is held before it spills to an artifact. A tool result is billed once as fresh input and then re-read as a cache
 	"tools.inlineOutputFloor": {
 		type: "number",
 		default: DEFAULT_INLINE_FLOOR_FRACTION,
@@ -238,8 +229,6 @@ export const TOOLS_SETTINGS = {
 			description: "Enable the ast_edit tool for structural AST rewrites",
 		},
 	},
-
-	// Optional tools
 
 	"debug.enabled": {
 		type: "boolean",
@@ -327,7 +316,6 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// Fetching and browser
 	"fetch.enabled": {
 		type: "boolean",
 		default: true,
@@ -363,9 +351,6 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// The cache and its two TTLs belong to a tool that ships off, so they follow it.
-	// The TTLs read the cache toggle as well: a window on a cache nobody writes to
-	// is a knob with nothing behind it either way.
 	"github.cache.enabled": {
 		type: "boolean",
 		default: true,
@@ -431,9 +416,6 @@ export const TOOLS_SETTINGS = {
 
 	"browser.enabled": {
 		type: "boolean",
-		// Off: it spawns Chromium, and most sessions never touch a page. A tool that ships
-		// on is paid for on every request in the tool array, which Anthropic caches ahead
-		// of the system prompt, so an unused one is rent on every turn of every session.
 		default: false,
 		ui: {
 			tab: "tools",
@@ -443,8 +425,6 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// Headless, cmux and the screenshot directory describe how a Chromium the
-	// session is not running would behave, so they follow the master above.
 	"browser.headless": {
 		type: "boolean",
 		default: true,
@@ -482,7 +462,6 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// Tool execution
 	"tools.intentTracing": {
 		type: "boolean",
 		default: true,
@@ -524,7 +503,6 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// Async jobs
 	"async.enabled": {
 		type: "boolean",
 		default: true,
@@ -636,7 +614,6 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// Tool Discovery
 	"tools.discoveryMode": {
 		type: "enum",
 		values: ["auto", "off", "mcp-only", "all"] as const,
@@ -662,7 +639,6 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// MCP
 	"mcp.discoveryMode": {
 		type: "boolean",
 		default: false,

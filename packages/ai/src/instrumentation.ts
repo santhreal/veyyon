@@ -1,25 +1,19 @@
-/** Session instrumentation for recording tool call and model turn metrics. */
-
 import type { Usage } from "@veyyon/catalog/types";
 import type { ImageContent, ServiceTier, TextContent, ToolChoice } from "./types";
 
-/** Ordered richness levels. */
 export const INSTRUMENTATION_LEVELS = ["off", "basic", "rich", "ultra"] as const;
 
 export type InstrumentationLevel = (typeof INSTRUMENTATION_LEVELS)[number];
 
-/** Numeric rank of a level (`off` = 0). Unknown strings rank as `off`. */
 export function instrumentationRank(level: InstrumentationLevel | undefined): number {
 	const index = level === undefined ? 0 : INSTRUMENTATION_LEVELS.indexOf(level);
 	return index < 0 ? 0 : index;
 }
 
-/** Whether `level` is at least `minimum` in the richness order. */
 export function atLeast(level: InstrumentationLevel | undefined, minimum: InstrumentationLevel): boolean {
 	return instrumentationRank(level) >= instrumentationRank(minimum);
 }
 
-/** Persisted telemetry families governed by InstrumentationLevel. */
 export type SessionTelemetryCategory =
 	| "lifecycle"
 	| "context-breakdown"
@@ -31,7 +25,6 @@ export type SessionTelemetryCategory =
 
 export type SessionTelemetryDetail = "none" | Exclude<InstrumentationLevel, "off">;
 
-/** Canonical minimum level for every persisted telemetry family. */
 export const SESSION_TELEMETRY_POLICY = {
 	lifecycle: "basic",
 	"context-breakdown": "rich",
@@ -42,7 +35,6 @@ export const SESSION_TELEMETRY_POLICY = {
 	"goal-verification": "basic",
 } as const satisfies Record<SessionTelemetryCategory, Exclude<InstrumentationLevel, "off">>;
 
-/** Payload detail permitted for a category at level. */
 export function sessionTelemetryDetail(
 	level: InstrumentationLevel | undefined,
 	category: SessionTelemetryCategory,
@@ -53,7 +45,6 @@ export function sessionTelemetryDetail(
 	return "none";
 }
 
-/** Whether a telemetry family may be persisted at `level`. */
 export function allowsSessionTelemetry(
 	level: InstrumentationLevel | undefined,
 	category: SessionTelemetryCategory,
@@ -61,61 +52,36 @@ export function allowsSessionTelemetry(
 	return sessionTelemetryDetail(level, category) !== "none";
 }
 
-/** Terminal state of a single tool call, mirrored from the loop's own status. */
 export type ToolCallStatus = "ok" | "error" | "aborted" | "blocked" | "skipped";
 
-/** Per-tool-call study record attached to ToolResultMessage as metrics. */
 export interface ToolCallMetrics {
-	/** The level this record was captured at (so a reader knows which fields to expect). */
 	level: InstrumentationLevel;
-	/** Declared unit for all timestamps and durations in this record. */
 	timeUnit?: "ms";
 
-	/** When `tool.execute()` began. */
 	startedAt: number;
-	/** When the result message was emitted (equals the message timestamp). */
 	endedAt: number;
-	/** Execution wall-clock: `endedAt - startedAt`. */
 	durationMs: number;
-	/** Terminal state of the call. */
 	status: ToolCallStatus;
-	/** Why an otherwise successful result was classified as contextually useless. */
 	uselessReason?: "tool-declared";
 
-	/** Time the call waited between batch dispatch and execution start. */
 	queuedMs?: number;
-	/** How the scheduler ran it. */
 	concurrency?: "shared" | "exclusive";
-	/** Id of the tool batch this call ran in. */
 	batchId?: string;
-	/** Zero-based position within the batch. */
 	batchIndex?: number;
-	/** Total calls in the batch. */
 	batchSize?: number;
-	/** UTF-8 byte size of the result's textual content. */
 	resultBytes?: number;
-	/** Number of content blocks in the result. */
 	resultBlocks?: number;
-	/** Number of image blocks in the result. */
 	resultImages?: number;
-	/** Tokens the result adds to context (the weight the model actually pays). */
 	resultTokens?: number;
 
-	/** UTF-8 byte size of the serialized arguments. */
 	argsBytes?: number;
-	/** Stable fingerprint of the arguments, for spotting repeated identical calls. */
 	argsHash?: string;
-	/** Collision-resistant fingerprint used by current study aggregation. */
 	argsDigest?: string;
-	/** Digest algorithm/version for compatibility with legacy 32-bit hashes. */
 	argsDigestAlgorithm?: "sha256-128";
-	/** Whether the tool declared itself interruptible for this run. */
 	interruptible?: boolean;
-	/** Whether this call's own abort signal fired during the run. */
 	signalAborted?: boolean;
 }
 
-/** Input parameters for captureToolCallMetrics. */
 export interface ToolCallMetricsInput {
 	level: InstrumentationLevel;
 	startedAt: number;
@@ -128,11 +94,9 @@ export interface ToolCallMetricsInput {
 	status: ToolCallStatus;
 	interruptible?: boolean;
 	signalAborted?: boolean;
-	/** Whether the tool explicitly marked this successful result as contextually useless. */
 	useless?: boolean;
 	resultContent?: readonly (TextContent | ImageContent)[];
 	args?: Record<string, unknown>;
-	/** Token counter used at rich+ to weigh the result. */
 	countTokens?: (text: string) => number;
 }
 
@@ -142,12 +106,10 @@ function utf8Bytes(text: string): number {
 	return textEncoder.encode(text).length;
 }
 
-/** Stable 128-bit SHA-256 prefix for argument fingerprinting. */
 function stableArgsDigest(text: string): string {
 	return new Bun.CryptoHasher("sha256").update(text).digest("hex").slice(0, 32);
 }
 
-/** Legacy 32-bit fingerprint retained so existing readers keep their field contract. */
 function legacyArgsHash(text: string): string {
 	let hash = 0x811c9dc5;
 	for (let index = 0; index < text.length; index++) {
@@ -157,7 +119,6 @@ function legacyArgsHash(text: string): string {
 	return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-/** Build the level-gated metrics record for one tool call, or undefined at off. */
 export function captureToolCallMetrics(input: ToolCallMetricsInput): ToolCallMetrics | undefined {
 	const { level } = input;
 	if (level === "off") return undefined;
@@ -214,10 +175,7 @@ export function captureToolCallMetrics(input: ToolCallMetricsInput): ToolCallMet
 					metrics.argsDigest = stableArgsDigest(serialized);
 					metrics.argsDigestAlgorithm = "sha256-128";
 				}
-			} catch {
-				// Hooks may mutate valid model JSON into cyclic or non-JSON values.
-				// Instrumentation must never suppress a completed tool result.
-			}
+			} catch {}
 		}
 		if (input.interruptible !== undefined) metrics.interruptible = input.interruptible;
 		if (input.signalAborted !== undefined) metrics.signalAborted = input.signalAborted;
@@ -226,7 +184,6 @@ export function captureToolCallMetrics(input: ToolCallMetricsInput): ToolCallMet
 	return metrics;
 }
 
-/** Re-project tool record at detail permitted by session policy. */
 export function toolCallMetricsForPersistence(
 	metrics: ToolCallMetrics | undefined,
 	level: InstrumentationLevel | undefined,
@@ -271,53 +228,32 @@ export function toolCallMetricsForPersistence(
 	return persisted;
 }
 
-/** Terminal state of a single model turn, mirrored from the assistant message's stop reason. */
 export type AssistantTurnStatus = "ok" | "error" | "aborted";
 
-/** Per-model-turn study record attached to AssistantMessage as turnMetrics. */
 export interface AssistantTurnMetrics {
-	/** The level this record was captured at (so a reader knows which fields to expect). */
 	level: InstrumentationLevel;
 
-	/** When the request was dispatched to the provider (loop-measured request start). */
 	startedAt: number;
-	/** When the turn was finalized (equals the assistant message timestamp). */
 	endedAt: number;
-	/** Turn wall-clock: `endedAt - startedAt`. */
 	durationMs: number;
-	/** Terminal state of the turn. */
 	status: AssistantTurnStatus;
-	/** Time to first token in milliseconds. */
 	ttftMs?: number;
 
-	/** Total conversation output tokens for the turn. */
 	outputTokens?: number;
-	/** Non-cached conversation input tokens. */
 	inputTokens?: number;
-	/** input + output + cache buckets (+ orchestration when reported). */
 	totalTokens?: number;
-	/** Generation window after the first token: `durationMs - ttftMs` (or `durationMs` when ttft is unknown). */
 	generationMs?: number;
-	/** Output tokens per second over the generation window — the streaming throughput. */
 	outputTokensPerSec?: number;
 
-	/** Conversation tokens read from the prompt cache. */
 	cacheReadTokens?: number;
-	/** Conversation tokens written to the prompt cache. */
 	cacheWriteTokens?: number;
-	/** Reasoning/thinking tokens included in `outputTokens`, when the provider reports them. */
 	reasoningTokens?: number;
-	/** Ratio of input tokens served from the prompt cache (0.0 - 1.0). */
 	cacheHitRatio?: number;
-	/** Whether a prompt cache bust occurred on this turn. */
 	isCacheBust?: boolean;
-	/** Number of prompt cache tokens lost on this turn due to cache bust. */
 	cacheBustDeltaTokens?: number;
-	/** Upstream model provider that actually served the turn, when distinct from the gateway. */
 	upstreamProvider?: string;
 }
 
-/** Input parameters for captureAssistantTurnMetrics. */
 export interface AssistantTurnMetricsInput {
 	level: InstrumentationLevel;
 	startedAt: number;
@@ -328,7 +264,6 @@ export interface AssistantTurnMetricsInput {
 	previousCacheReadTokens?: number;
 	upstreamProvider?: string;
 }
-/** Build the level-gated per-turn metrics record, or undefined at off. */
 export function captureAssistantTurnMetrics(input: AssistantTurnMetricsInput): AssistantTurnMetrics | undefined {
 	const { level } = input;
 	if (level === "off") return undefined;
@@ -386,7 +321,6 @@ export function captureAssistantTurnMetrics(input: AssistantTurnMetricsInput): A
 	return metrics;
 }
 
-/** Re-project assistant-turn metrics at current persistence level. */
 export function assistantTurnMetricsForPersistence(
 	metrics: AssistantTurnMetrics | undefined,
 	level: InstrumentationLevel | undefined,
@@ -425,34 +359,22 @@ export function assistantTurnMetricsForPersistence(
 	return persisted;
 }
 
-/** Exact per-turn request parameters as sent, attached to AssistantMessage as request. */
 export interface AssistantTurnRequest {
-	/** Sampling temperature as sent (undefined = provider default). */
 	temperature?: number;
-	/** Nucleus-sampling top_p as sent. */
 	topP?: number;
-	/** Top-k as sent. */
 	topK?: number;
-	/** Max output tokens requested. */
 	maxTokens?: number;
-	/** Presence penalty as sent. */
 	presencePenalty?: number;
-	/** Reasoning/thinking effort level as sent; the numeric budget derives from this + thinkingBudgets. */
 	reasoningEffort?: string;
-	/** Reasoning force-disabled for this turn (overrides the effort). */
 	disableReasoning?: boolean;
-	/** Tool-choice directive as sent (string form or a specific forced tool). */
 	toolChoice?: ToolChoice;
-	/** Service tier as sent. */
 	serviceTier?: ServiceTier;
 }
 
-/** Raw per-turn request values the loop hands to {@link captureAssistantTurnRequest}. */
 export interface AssistantTurnRequestInput extends AssistantTurnRequest {
 	level: InstrumentationLevel;
 }
 
-/** Build the per-turn request record, or undefined at off. */
 export function captureAssistantTurnRequest(input: AssistantTurnRequestInput): AssistantTurnRequest | undefined {
 	if (input.level === "off") return undefined;
 	const request: AssistantTurnRequest = {};
@@ -468,7 +390,6 @@ export function captureAssistantTurnRequest(input: AssistantTurnRequestInput): A
 	return Object.keys(request).length > 0 ? request : undefined;
 }
 
-/** Fail-closed persistence gate for a request captured before a live setting downgrade. */
 export function assistantTurnRequestForPersistence(
 	request: AssistantTurnRequest | undefined,
 	level: InstrumentationLevel | undefined,
@@ -476,7 +397,6 @@ export function assistantTurnRequestForPersistence(
 	return allowsSessionTelemetry(level, "model-request") ? request : undefined;
 }
 
-/** Deterministic JSON serialization with sorted object keys. */
 function stableSerialize(value: unknown): string {
 	return JSON.stringify(sortKeys(value));
 }

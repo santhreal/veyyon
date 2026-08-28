@@ -65,9 +65,6 @@ interface OpenLibraryBooksApiResponse {
 	};
 }
 
-/**
- * Handle Open Library URLs via their API
- */
 export const handleOpenLibrary: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -81,7 +78,6 @@ export const handleOpenLibrary: SpecialHandler = async (
 		const fetchedAt = new Date().toISOString();
 		const path = parsed.pathname;
 
-		// Match URL patterns
 		const workMatch = path.match(/^\/works\/(OL\d+W)/i);
 		const editionMatch = path.match(/^\/books\/(OL\d+M)/i);
 		const isbnMatch = path.match(/^\/isbn\/(\d{10}|\d{13})/i);
@@ -114,7 +110,6 @@ async function fetchWork(workId: string, timeout: number, signal?: AbortSignal):
 
 	let md = `# ${work.title}\n\n`;
 
-	// Fetch author names if we have author keys
 	if (work.authors?.length) {
 		const authorNames = await fetchAuthorNames(
 			work.authors.map(a => a.author.key),
@@ -160,7 +155,6 @@ async function fetchEdition(editionId: string, timeout: number, signal?: AbortSi
 
 	let md = `# ${edition.title}\n\n`;
 
-	// Fetch author names
 	if (edition.authors?.length) {
 		const authorNames = await fetchAuthorNames(
 			edition.authors.map(a => a.key),
@@ -231,7 +225,6 @@ async function fetchByIsbn(isbn: string, timeout: number, signal?: AbortSignal):
 	const key = `ISBN:${isbn}`;
 	const book = data[key];
 	if (!book) {
-		// Fallback: search endpoint still returns docs when api/books misses a key.
 		const searchUrl = `https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&limit=1`;
 		const searchResult = await loadPage(searchUrl, { timeout, signal });
 		if (!searchResult.ok) {
@@ -308,7 +301,6 @@ async function fetchByIsbn(isbn: string, timeout: number, signal?: AbortSignal):
 async function fetchAuthorNames(authorKeys: string[], timeout: number, signal?: AbortSignal): Promise<string[]> {
 	const names: string[] = [];
 
-	// Fetch authors in parallel (limit to first 5)
 	const promises = authorKeys.slice(0, 5).map(async key => {
 		const authorKey = key.startsWith("/authors/") ? key : `/authors/${key}`;
 		const apiUrl = `https://openlibrary.org${authorKey}.json`;
@@ -324,8 +316,6 @@ async function fetchAuthorNames(authorKeys: string[], timeout: number, signal?: 
 			});
 		} catch (error) {
 			if (isCancellation(error)) throw error;
-			// A dropped author is invisible in the output: the book simply appears to have
-			// fewer authors than it has.
 			logger.warn("Open Library author lookup failed; the book renders without that author", {
 				author: authorKey,
 				error: errorMessage(error),

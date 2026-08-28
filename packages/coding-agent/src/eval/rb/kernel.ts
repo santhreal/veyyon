@@ -1,4 +1,3 @@
-/** Subprocess-backed Ruby runner. Speaks NDJSON with `runner.rb` over stdin/stdout. One subprocess per kernel */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -35,8 +34,6 @@ export { renderKernelDisplay } from "../py/display";
 
 const TRACE_IPC = $flag(kernelIpcTraceEnvVar("RUBY"));
 
-// Cache the runner script on disk so the subprocess loads it normally. Cached
-// per script hash so installs don't race across versions.
 const RUNNER_CACHE_DIR = kernelRunnerCacheDir(os.tmpdir(), "ruby");
 let RUNNER_SCRIPT_PATH: string | null = null;
 
@@ -53,19 +50,14 @@ async function ensureRunnerScript(): Promise<string> {
 }
 
 const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS;
-// How long to wait after SIGINT for the runner to emit `done` before escalating
-// to a full subprocess shutdown so the host queue unblocks instead of hanging.
 
 export interface RubyKernelAvailability {
 	ok: boolean;
 	rubyPath?: string;
 	reason?: string;
-	/** The probed-working runtime, when one was found. */
 	runtime?: RubyRuntime;
 }
 
-// Cache successful probes per resolved cwd + explicit interpreter. Failures are
-// not cached so installing Ruby mid-session is picked up on the next attempt.
 const availabilityCache = new Map<string, Promise<RubyKernelAvailability>>();
 
 export async function checkRubyKernelAvailability(cwd: string, interpreter?: string): Promise<RubyKernelAvailability> {
@@ -147,9 +139,6 @@ export class RubyKernel extends BaseKernel<KernelExecuteOptions> {
 			throw new Error(availability.reason ?? "Ruby kernel unavailable");
 		}
 
-		// Reuse the interpreter the availability probe selected. The fallback
-		// computes a runtime only for the skip-check fast path (test runtime /
-		// VEYYON_RUBY_SKIP_CHECK), where no candidate was probed.
 		let runtime = availability.runtime;
 		if (!runtime) {
 			const { env: shellEnv } = (await Settings.init()).getShellConfig();
@@ -200,11 +189,7 @@ export class RubyKernel extends BaseKernel<KernelExecuteOptions> {
 	}
 }
 
-/** The `cd` + env preamble prepended to a Ruby execution request. `null` CLEARS a variable and `undefined` leaves it alone, which is the contract */
 export function buildInitScript(cwd: string, env?: KernelEnvPatch): string {
-	// JSON string literals are valid Ruby string literals. Emit one
-	// `ENV["k"] = "v"` per key — a `{"k":"v"}` object literal would parse as a
-	// SYMBOL-keyed hash in Ruby (`:"k" => "v"`), which `ENV[]=` rejects.
 	const lines = [`__veyyon_init_cwd = ${JSON.stringify(cwd)}`, "Dir.chdir(__veyyon_init_cwd) rescue nil"];
 	for (const key in env) {
 		const value = env[key];

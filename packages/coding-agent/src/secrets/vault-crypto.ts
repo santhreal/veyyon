@@ -1,4 +1,3 @@
-/** Encryption at rest for the secret vault, and the one place the key lives. THREAT MODEL, stated plainly because encryption claims are worthless without one. */
 import * as crypto from "node:crypto";
 import { constants as fsConstants, type Stats } from "node:fs";
 import * as fs from "node:fs/promises";
@@ -14,28 +13,20 @@ import {
 import { moveNoReplace } from "./atomic-path";
 import { noteSecretsCondition } from "./notices";
 
-/** Name of the key file inside the cross-profile config root. */
 export const VAULT_KEY_FILENAME = "vault.key";
 
-/** AES-256 needs exactly 32 bytes. */
 const KEY_BYTES = 32;
 
-/** GCM's standard nonce width. Twelve bytes is the size the mode is defined for. */
 const IV_BYTES = 12;
 
-/** GCM authentication tags are never accepted at a reduced strength. */
 const TAG_BYTES = 16;
 
-/** Owner read and write only. The whole at-rest story rests on this. */
 const KEY_FILE_MODE = 0o600;
 
-/** Opening the checked descriptor closes the lstat/read race and never follows the final link. */
 const KEY_READ_FLAGS = fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
 
-/** Staging is exclusive; the final key is published later with an atomic no-overwrite link. */
 const KEY_CREATE_FLAGS = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW;
 
-/** A live PID is never reaped; dead owners are still detected immediately by the shared lock. */
 const KEY_LOCK_OPTIONS = { staleMs: Number.POSITIVE_INFINITY } as const;
 
 const KEY_STAGE_RE = /^\.vault\.key\.\d+\.[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.tmp$/i;
@@ -61,27 +52,19 @@ interface KeySnapshot {
 	readonly ino: number;
 	readonly size: number;
 	readonly mtimeMs: number;
-	// Deliberately NOT nlink and NOT ctimeMs. BOTH are changed by a peer reaping a recovery link — unlinking a hard link bumps the inode's ctime as surely as it drops the count — so comparing
 	readonly mode: number;
 	readonly uid: number;
 }
 
-/** A sealed vault payload as it sits on disk. Versioned from the first release so a later format change can be detected rather than */
 export interface SealedVault {
-	/** Envelope version. Writers and readers require 2. */
 	v: number;
-	/** Base64 nonce, fresh for every seal. */
 	iv: string;
-	/** Base64 GCM authentication tag. */
 	tag: string;
-	/** Base64 ciphertext. */
 	ct: string;
 }
 
-/** The only envelope version with authenticated scope provenance. */
 const ENVELOPE_VERSION = 2;
 
-/** Absolute path of the key file, given the cross-profile config root. */
 export function vaultKeyPath(globalConfigRoot: string): string {
 	return path.join(globalConfigRoot, VAULT_KEY_FILENAME);
 }
@@ -147,7 +130,6 @@ function assertKeyRootNotExposed(root: string, stat: Stats): void {
 		throw new Error(`The vault key directory at ${safeText(root)} is not owned by the current user.`);
 	}
 	if ((stat.mode & 0o022) !== 0) {
-		// An empty root of this shape was already tightened at `pinKeyRoot`, so reaching here means key bytes have been sitting in a directory other users could write to. Both halves of the
 		throw new Error(
 			`The vault key directory at ${safeText(root)} is writable by other users ` +
 				`(mode ${(stat.mode & 0o777).toString(8)}), and a key is already stored in it. ` +
@@ -158,7 +140,6 @@ function assertKeyRootNotExposed(root: string, stat: Stats): void {
 	}
 }
 
-/** One sentence for an operator whose key directory was loose, and what it means for them. Says what was found and what was done, and nothing about rotating, because this notice is only */
 function describeKeyRootTightened(root: string, previousMode: string): string {
 	return (
 		`Your vault key directory at ${safeText(root)} was writable by other users (mode ${previousMode}). ` +
@@ -167,7 +148,6 @@ function describeKeyRootTightened(root: string, previousMode: string): string {
 	);
 }
 
-/** Tighten a key root this user owns but that others could write to, before the check refuses it. directory, and the refusal is fatal: with `secrets.enabled` set, the whole session fails to start */
 async function hardenLooseKeyRoot(root: string): Promise<void> {
 	if (process.platform === "win32") return;
 	let stat: Stats;
@@ -179,13 +159,9 @@ async function hardenLooseKeyRoot(root: string): Promise<void> {
 	}
 	if (!stat.isDirectory() || stat.isSymbolicLink()) return;
 	if ((stat.mode & 0o022) === 0) return;
-	// Never touch a directory belonging to someone else. That is the operator's to
-	// resolve, the chmod would fail anyway, and silently altering another user's
-	// directory is not a repair this process is entitled to make.
 	const effectiveUid = typeof process.geteuid === "function" ? process.geteuid() : undefined;
 	if (effectiveUid !== undefined && stat.uid !== effectiveUid) return;
 
-	// A key that has already sat in the open directory is not this function's to bless.
 	try {
 		await fs.lstat(vaultKeyPath(root));
 		return;
@@ -239,11 +215,8 @@ async function closeKeyRootPin(pin: KeyRootPin): Promise<void> {
 	await pin.handle.close();
 }
 
-/** Pin the config root inode before any key path or lock operation. */
 async function pinKeyRoot(globalConfigRoot: string, expected?: KeyRootIdentity): Promise<KeyRootPin | null> {
 	await assertNoSymlinkPathComponents(globalConfigRoot);
-	// Repair the one condition this process is entitled to repair, before the
-	// checks below refuse the directory over it. See hardenLooseKeyRoot.
 	await hardenLooseKeyRoot(globalConfigRoot);
 	let before: Stats;
 	try {
@@ -276,7 +249,6 @@ async function pinKeyRoot(globalConfigRoot: string, expected?: KeyRootIdentity):
 				fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0) | fsConstants.O_NOFOLLOW,
 			);
 		} catch (error) {
-			// Parity with the `lstat` branch above, which names the key directory and the reason. Left uncaught this reported `EACCES: permission denied, open '<root>'`, which says nothing
 			throw new Error(
 				`The vault key directory at ${safeText(globalConfigRoot)} could not be opened safely ` +
 					`(${safeError(error)}).`,
@@ -332,7 +304,6 @@ async function verifyKeyRootPin(pin: KeyRootPin): Promise<void> {
 	assertKeyRootNotExposed(pin.root, lexical);
 }
 
-/** Reject aliases and special files before any bytes are consumed. */
 function assertKeyPathSafe(keyPath: string, stat: Stats, fromPath: boolean, allowRecoveryLink = false): void {
 	if (fromPath && stat.isSymbolicLink()) {
 		throw new Error(
@@ -342,7 +313,6 @@ function assertKeyPathSafe(keyPath: string, stat: Stats, fromPath: boolean, allo
 	if (!stat.isFile()) {
 		throw new Error(`The vault key at ${safeText(keyPath)} is not a regular file. Refusing to read it.`);
 	}
-	// A recovery link is allowed to be THERE OR ALREADY GONE, because the peer reaping it can finish between any two stats a reader takes. Pinning this to exactly 2 made a reader that raced a
 	const maxLinks = allowRecoveryLink ? 2 : 1;
 	if (stat.nlink < 1 || stat.nlink > maxLinks) {
 		throw new Error(
@@ -352,7 +322,6 @@ function assertKeyPathSafe(keyPath: string, stat: Stats, fromPath: boolean, allo
 	}
 }
 
-/** Refuse foreign ownership or any group/other permission bits on POSIX. */
 function assertKeyNotExposed(keyPath: string, stat: Stats): void {
 	if (process.platform === "win32") return;
 	const effectiveUid = typeof process.geteuid === "function" ? process.geteuid() : undefined;
@@ -370,7 +339,6 @@ function assertKeyNotExposed(keyPath: string, stat: Stats): void {
 	);
 }
 
-/** Whether the key's second hard link is one that vault recovery itself created. A link count of 2 is AMBIGUOUS and cannot be resolved by comparing inodes, because a recovery */
 async function recoveryLinkAccountedFor(pin: KeyRootPin, published: Stats): Promise<boolean> {
 	let seen = 0;
 	const directory = await fs.opendir(pin.ioRoot);
@@ -392,14 +360,11 @@ async function recoveryLinkAccountedFor(pin: KeyRootPin, published: Stats): Prom
 	} finally {
 		try {
 			await directory.close();
-		} catch {
-			// `for await` closes the directory on normal completion.
-		}
+		} catch {}
 	}
 	return false;
 }
 
-/** Whether `target` still names an entry, distinguishing "already gone" from every other failure. The one question a lockless peer needs answered after losing a removal, and the reason it needs */
 async function pathPresent(target: string): Promise<boolean> {
 	try {
 		await fs.lstat(target);
@@ -474,7 +439,6 @@ async function syncDirectory(pin: KeyRootPin): Promise<void> {
 	await verifyKeyRootPin(pin);
 }
 
-/** Find the single trusted stage link left by a crash after publication, unlink it, and persist the now-single-link final key. No unbounded readdir allocation is permitted on this path. */
 async function recoverPublishedKey(pin: KeyRootPin, keyPath: string, publishedStat: Stats): Promise<boolean> {
 	if (!publishedStat.isFile() || publishedStat.nlink !== 2 || publishedStat.size !== KEY_BYTES) return false;
 	assertKeyPathSafe(keyPath, publishedStat, true, true);
@@ -514,18 +478,15 @@ async function recoverPublishedKey(pin: KeyRootPin, keyPath: string, publishedSt
 			if (!sameInode(finalNow, publishedStat)) {
 				throw new Error("The published vault key changed during orphan recovery.");
 			}
-			// A lockless reader has TWO legal states to find here, not one. Two links means the recovery is still outstanding; ONE link means a peer reader already completed it, which
 			if (finalNow.nlink === 1) return true;
 			await syncDirectory(pin);
 			if (!(await removePathIfSameInode(candidatePath, candidate))) {
-				// `removePathIfSameInode` returns false for two different facts: the path is already GONE, or it now holds SOMETHING ELSE. Only the second is suspicious, and conflating
 				if (await pathPresent(candidatePath)) {
 					const progressed = await fs.lstat(keyPath);
 					if (!sameInode(progressed, publishedStat) || progressed.nlink !== 1) {
 						throw new Error("The published vault key staging link changed during orphan recovery.");
 					}
 				} else {
-					// The staging path went away under a peer that is still mid-CAS, so the link count that peer will publish IS NOT OBSERVABLE YET and asserting it here is the race
 					const watched = await fs.lstat(keyPath);
 					assertKeyNotExposed(keyPath, watched);
 					if (!sameInode(watched, publishedStat)) {
@@ -546,9 +507,7 @@ async function recoverPublishedKey(pin: KeyRootPin, keyPath: string, publishedSt
 	} finally {
 		try {
 			await directory.close();
-		} catch {
-			// `for await` closes the directory on normal completion.
-		}
+		} catch {}
 	}
 	return false;
 }
@@ -590,9 +549,7 @@ async function cleanupUnpublishedStages(pin: KeyRootPin): Promise<void> {
 	} finally {
 		try {
 			await directory.close();
-		} catch {
-			// `for await` closes the descriptor after normal completion.
-		}
+		} catch {}
 	}
 	if (changed) await syncDirectory(pin);
 }
@@ -622,12 +579,10 @@ async function readVaultKeyPinned(pin: KeyRootPin): Promise<Buffer | null> {
 		await recoverPublishedKey(pin, keyPath, pathStat);
 		pathStat = await fs.lstat(keyPath);
 	}
-	// Recovery is a two-step CAS — rename the staging link to a quarantine name, verify the inode, unlink — so a reader can arrive after a peer renamed the link away and before it unlinked it,
 	let recoveryLinkPending = false;
 	if (pathStat.nlink === 2) {
 		recoveryLinkPending = await recoveryLinkAccountedFor(pin, pathStat);
 		if (!recoveryLinkPending) {
-			// The scan can lose to the very reap it is looking for: the entry that explained the second link may be unlinked while this scan walks the directory, leaving an unexplained count of
 			pathStat = await fs.lstat(keyPath);
 		}
 	}
@@ -689,7 +644,6 @@ async function readVaultKeyPinned(pin: KeyRootPin): Promise<Buffer | null> {
 	return key;
 }
 
-/** Read the vault key, creating it on first use by staging complete synced bytes and publishing them with an atomic no-overwrite hard link. The returned bytes are always re-read from the */
 function publicKeyError(error: unknown): Error {
 	const message = escapeTerminalText(errorMessage(error))
 		.replace(/\.vault\.key\.\d+\.[0-9a-f-]{36}\.tmp(?:\.previous)?/gi, "<vault-key-stage>")
@@ -801,9 +755,6 @@ export async function loadOrCreateVaultKey(globalConfigRoot: string): Promise<Bu
 	}
 }
 
-/**
- * Read the vault key, or `null` only when the pinned root or final key is genuinely absent.
- */
 export async function readVaultKey(globalConfigRoot: string): Promise<Buffer | null> {
 	try {
 		const pin = await pinKeyRoot(globalConfigRoot);
@@ -818,7 +769,6 @@ export async function readVaultKey(globalConfigRoot: string): Promise<Buffer | n
 	}
 }
 
-/** Seal a plaintext payload under the vault key. `binding` identifies the intended vault scope and path. It is authenticated, not stored: */
 export function sealVault(key: Buffer, plaintext: string, binding?: string): SealedVault {
 	const iv = crypto.randomBytes(IV_BYTES);
 	const cipher = crypto.createCipheriv("aes-256-gcm", key, iv, { authTagLength: TAG_BYTES });
@@ -832,7 +782,6 @@ export function sealVault(key: Buffer, plaintext: string, binding?: string): Sea
 	};
 }
 
-/** Open a sealed payload, or throw. THROWS RATHER THAN RETURNING EMPTY on any failure: wrong key, truncated file, flipped */
 function decodeCanonicalBase64(value: string, field: string): Buffer {
 	const decoded = Buffer.from(value, "base64");
 	if (decoded.toString("base64") !== value) {
@@ -883,12 +832,10 @@ export function openVault(key: Buffer, sealed: SealedVault, binding?: string): s
 	}
 }
 
-/** Domain-separate the location binding from every other use of the same key. */
 function vaultAssociatedData(binding: string | undefined): Buffer {
 	return Buffer.from(`veyyon:vault:v2\0${binding ?? ""}`, "utf8");
 }
 
-/** Whether a value read from disk has the shape of a sealed vault. */
 export function isSealedVault(value: unknown): value is SealedVault {
 	if (value === null || typeof value !== "object") return false;
 	const v = value as Record<string, unknown>;

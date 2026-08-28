@@ -10,8 +10,6 @@ import type {
 	Tool as ResponsesTool,
 } from "./openai-responses-wire";
 
-// ─── Input content blocks ───────────────────────────────────────────────────
-
 const inputTextSchema = type({
 	type: "'input_text'",
 	text: "string",
@@ -66,8 +64,6 @@ const inputContentBlockSchema = inputTextSchema.or(plainTextSchema).or(inputImag
 
 const outputContentBlockSchema = outputTextSchema.or(plainTextSchema).or(outputRefusalSchema);
 
-// ─── Input items ────────────────────────────────────────────────────────────
-
 const userMessageItemSchema = type({
 	"type?": "'message'",
 	role: "'user' | 'developer'",
@@ -107,7 +103,6 @@ const functionCallItemSchema = type({
 const functionCallOutputItemSchema = type({
 	type: "'function_call_output'",
 	call_id: "string >= 1",
-	// Codex CLI replays multimodal tool results in array form (text + refusal).
 	"output?": type("string").or(outputContentBlockSchema.array()),
 });
 
@@ -116,8 +111,6 @@ const customToolCallItemSchema = type({
 	"id?": "string",
 	call_id: "string >= 1",
 	name: "string >= 1",
-	// Raw input string — NOT JSON.stringified. apply_patch flow streams a
-	// freeform body and reading it as JSON would corrupt it.
 	input: "string",
 });
 
@@ -135,12 +128,8 @@ export const inputItemSchema = userMessageItemSchema
 	.or(functionCallOutputItemSchema)
 	.or(customToolCallItemSchema)
 	.or(customToolCallOutputItemSchema)
-	// Tolerated but not bridged (file_search_call, web_search_call, …).
 	.or(type({ type: "string" }));
 
-// Variant types alias the canonical SDK union members so the walker can
-// narrow them cleanly. The convenience "message" shape (no `type` field) maps
-// to EasyInputMessage; the explicit form maps to ResponseInputItem.Message.
 export type OpenAIResponsesUserItem = EasyInputMessage | ResponseInputItem.Message;
 export type OpenAIResponsesSystemItem = EasyInputMessage | ResponseInputItem.Message;
 export type OpenAIResponsesAssistantItem = EasyInputMessage | ResponseOutputMessage;
@@ -154,8 +143,6 @@ export type OpenAIResponsesInputImageBlock = typeof inputImageBlockSchema.infer;
 export type OpenAIResponsesInputFileBlock = typeof inputFileBlockSchema.infer;
 export type OpenAIResponsesOutputRefusalBlock = typeof outputRefusalSchema.infer;
 
-// ─── Tools ──────────────────────────────────────────────────────────────────
-
 export const toolSchema = type({
 	type: "'function'",
 	name: "string >= 1",
@@ -164,13 +151,9 @@ export const toolSchema = type({
 	"strict?": "boolean",
 });
 
-// Built-in / hosted tool entries (web_search_preview, file_search, …) — accepted
-// but skipped by the walker.
 const builtinToolSchema = type({
 	type: "string",
 });
-
-// ─── Tool choice ────────────────────────────────────────────────────────────
 
 const hostedToolType = type(
 	"'web_search_preview' | 'file_search' | 'computer_use_preview' | 'code_interpreter' | 'image_generation' | 'mcp'",
@@ -207,21 +190,12 @@ export const toolChoiceSchema = type("'auto' | 'none' | 'required'")
 		}),
 	);
 
-// ─── Reasoning config ───────────────────────────────────────────────────────
-
 export const reasoningConfigSchema = type({
 	"effort?": "string",
-	// `none` maps to hideThinkingSummary; auto/concise/detailed mean "show
-	// summary". pi-ai has no per-level plumbing for the latter — walker logs
-	// once and treats them as default.
 	"summary?": "'auto' | 'concise' | 'detailed' | 'none'",
 });
 
-// ─── Stop ───────────────────────────────────────────────────────────────────
-
 export const stopSchema = type("string | string[] | null");
-
-// ─── Top-level request ──────────────────────────────────────────────────────
 
 export const openaiResponsesRequestSchema = type({
 	model: "string >= 1",
@@ -244,8 +218,6 @@ export const openaiResponsesRequestSchema = type({
 	"service_tier?": "string",
 	"presence_penalty?": "number",
 	"frequency_penalty?": "number",
-	// Accepted-but-ignored: include `reasoning.encrypted_content` is the canonical
-	// way to request reasoning replay — silently accept and drop.
 	"background?": "unknown",
 	"include?": "unknown",
 	"prompt?": "unknown",

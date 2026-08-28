@@ -1,8 +1,5 @@
-import { trimTrailingSlashes } from "@veyyon/utils";
-/** SearXNG Web Search Provider Calls a SearXNG instance's JSON search API and maps results into the unified */
-
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
-// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { trimTrailingSlashes } from "@veyyon/utils";
 import { settings } from "../../../config/settings-instance";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
@@ -14,8 +11,6 @@ import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
 const MAX_NUM_RESULTS = 20;
 
-/** Map our recency filter to SearXNG time_range parameter.
- *  SearXNG only supports day/month/year, so week maps to month. */
 const RECENCY_MAP: Record<"day" | "week" | "month" | "year", string> = {
 	day: "day",
 	week: "month",
@@ -23,14 +18,12 @@ const RECENCY_MAP: Record<"day" | "week" | "month" | "year", string> = {
 	year: "year",
 };
 
-/** SearXNG JSON API response types */
 interface SearXNGResult {
 	title?: string;
 	url?: string;
 	content?: string;
 	engine?: string;
 	publishedDate?: string;
-	/** SearXNG sometimes uses publishedDate, sometimes just date */
 	published_date?: string;
 	score?: number;
 }
@@ -49,61 +42,46 @@ interface SearXNGAuth {
 	value: string;
 }
 
-/** Find SearXNG endpoint from settings or environment. */
 function findEndpoint(): string | null {
 	try {
 		const endpoint = settings.get("searxng.endpoint");
 		if (endpoint) return endpoint;
-	} catch {
-		// Settings not initialized yet
-	}
+	} catch {}
 	return process.env.SEARXNG_ENDPOINT ?? null;
 }
 
-/** Find SearXNG bearer token from settings or environment. */
 function findToken(): string | null {
 	try {
 		const token = settings.get("searxng.token");
 		if (token) return token;
-	} catch {
-		// Settings not initialized yet
-	}
+	} catch {}
 	return process.env.SEARXNG_TOKEN ?? null;
 }
 
-/** Find SearXNG Basic auth username from settings or environment. */
 function findBasicUsername(): string | null {
 	try {
 		const username = settings.get("searxng.basicUsername");
 		if (username !== undefined) return username;
-	} catch {
-		// Settings not initialized yet
-	}
+	} catch {}
 	return process.env.SEARXNG_BASIC_USERNAME ?? null;
 }
 
-/** Find SearXNG Basic auth password from settings or environment. */
 function findBasicPassword(): string | null {
 	try {
 		const password = settings.get("searxng.basicPassword");
 		if (password !== undefined) return password;
-	} catch {
-		// Settings not initialized yet
-	}
+	} catch {}
 	return process.env.SEARXNG_BASIC_PASSWORD ?? null;
 }
 
-/** Build the RFC 7617 Basic auth credential using UTF-8 bytes. */
 function buildBasicAuthValue(username: string, password: string): string {
 	return Buffer.from(`${username}:${password}`, "utf-8").toString("base64");
 }
 
-/** RFC 7617 forbids C0 and C1 control characters in Basic auth credentials. */
 function hasControlCharacters(value: string): boolean {
 	return /[\u0000-\u001F\u007F-\u009F]/u.test(value);
 }
 
-/** Find SearXNG authentication from settings or environment. Basic auth takes precedence over bearer tokens. */
 function findAuth(): SearXNGAuth | null {
 	const basicUsername = findBasicUsername();
 	const basicPassword = findBasicPassword();
@@ -126,7 +104,6 @@ function findAuth(): SearXNGAuth | null {
 	return token ? { type: "bearer", value: token } : null;
 }
 
-/** Build the search URL and headers for a SearXNG request */
 function buildRequest(
 	endpoint: string,
 	params: {
@@ -203,7 +180,6 @@ async function callSearXNGSearch(
 	});
 }
 
-/** Execute SearXNG web search. */
 export async function searchSearXNG(params: {
 	query: string;
 	num_results?: number;
@@ -228,9 +204,7 @@ export async function searchSearXNG(params: {
 	try {
 		categories = settings.get("searxng.categories") ?? undefined;
 		language = settings.get("searxng.language") ?? undefined;
-	} catch {
-		// Settings not initialized yet
-	}
+	} catch {}
 
 	const response = await callSearXNGSearch(
 		endpoint,
@@ -277,7 +251,6 @@ export async function searchSearXNG(params: {
 	};
 }
 
-/** Search provider for SearXNG web search. */
 export class SearXNGProvider extends SearchProvider {
 	readonly id = "searxng";
 	readonly label = "SearXNG";
@@ -286,7 +259,6 @@ export class SearXNGProvider extends SearchProvider {
 		try {
 			return !!findEndpoint();
 		} catch {
-			// Defence in depth with no reachable trigger today: `findEndpoint` already catches the one thing that throws (a settings read before the context exists) and falls back to the environment
 			return false;
 		}
 	}

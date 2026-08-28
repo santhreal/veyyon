@@ -1,9 +1,5 @@
-// Adapted from markit-ai (MIT). See ../../NOTICE.
-
-/** Markdown rendering for PDF pages. Converts table grids and free text boxes into markdown, handling: */
 import type { ContentBlock, TableGrid, TextBox } from "./types";
 
-/** A free-text line grouped from horizontally adjacent text boxes. */
 interface RenderLine {
 	text: string;
 	topY: number;
@@ -12,10 +8,8 @@ interface RenderLine {
 	isTabular: boolean;
 }
 
-/** A content block carrying the Y of its last wrapped line during merging. */
 type WrapBlock = ContentBlock & { lastTopY: number };
 
-/** Convert full-width ASCII characters (Ａ→A, ！→! etc.) to normal ASCII. */
 function normalizeFullWidthAscii(text: string): string {
 	return text.replace(/[！-～]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xfee0));
 }
@@ -24,7 +18,6 @@ function escapePipes(text: string): string {
 	return normalizeFullWidthAscii(text).replaceAll("|", "\\|").replaceAll("\n", "<br>");
 }
 
-/** Parse a markdown pipe-delimited row into its cell strings. Splits on cell delimiters only: a `\|` that escapePipes wrote for a literal pipe inside a */
 export function parsePipeRow(line: string): string[] {
 	const trimmed = line.trim();
 	if (!trimmed.startsWith("|") || !trimmed.endsWith("|")) return [];
@@ -34,9 +27,6 @@ export function parsePipeRow(line: string): string[] {
 		.map(cell => cell.trim());
 }
 
-/**
- * Render a TableGrid as a markdown table.
- */
 export function renderTableToMarkdown(table: TableGrid): string {
 	if (table.rows === 0 || table.cols === 0) return "";
 	const matrix = Array.from({ length: table.rows }, () => Array.from({ length: table.cols }, () => ""));
@@ -56,7 +46,6 @@ export function renderTableToMarkdown(table: TableGrid): string {
 	return [header, divider, body].filter(l => l.length > 0).join("\n");
 }
 
-/** Fix tables with ≥5 columns where sparse single-value columns are misaligned. Shifts those values to the adjacent dense column and */
 function normalizeShiftedSparseColumns(matrix: string[][]): string[][] {
 	if (matrix.length === 0 || matrix[0].length < 5) return matrix;
 	const cols = matrix[0].length;
@@ -93,7 +82,6 @@ function normalizeShiftedSparseColumns(matrix: string[][]): string[][] {
 	return copy.map(row => keepCols.map(c => row[c]));
 }
 
-/** When a data row has ≥2 parenthesized qualifiers in non-first columns (and the first column is empty), promote them into the header row. */
 function promoteSubHeaderPrefixes(matrix: string[][]): string[][] {
 	if (matrix.length < 2) return matrix;
 	const PAREN_RE = /^\([^)]{1,40}\)$/;
@@ -135,14 +123,10 @@ function promoteSubHeaderPrefixes(matrix: string[][]): string[][] {
 	return result.filter((_, r) => !rowsToRemove.has(r));
 }
 
-/** Y tolerance for grouping text boxes onto the same visual line. */
 const TEXT_LINE_Y_TOLERANCE = 3;
-/** Minimum X gap between adjacent boxes to mark line as tabular. */
 const TABULAR_X_GAP = 30;
-/** Minimum font size (pts) to consider when computing the modal body font. Tiny labels from diagrams, footnote markers, and superscripts are excluded */
 const MIN_BODY_FONT_SIZE = 7;
 
-/** Compute the most frequent font size among text boxes, ignoring very small text that likely comes from diagrams, footnotes, or superscripts. */
 function modalFontSize(textBoxes: TextBox[]): number {
 	const counts = new Map<number, number>();
 	for (const tb of textBoxes) {
@@ -161,7 +145,6 @@ function modalFontSize(textBoxes: TextBox[]): number {
 	return modal;
 }
 
-/** Group free text boxes into horizontal lines, sorted top-to-bottom. */
 function groupFreeTextIntoLines(textBoxes: TextBox[]): RenderLine[] {
 	if (textBoxes.length === 0) return [];
 	const sorted = textBoxes.slice().sort((a, b) => {
@@ -216,20 +199,15 @@ function groupFreeTextIntoLines(textBoxes: TextBox[]): RenderLine[] {
 	return lines;
 }
 
-/** Determine markdown heading prefix based on font size relative to body. */
 function headingPrefix(fontSize: number, bodyFontSize: number, isBold: boolean): string {
 	if (bodyFontSize <= 0) return "";
 	const ratio = fontSize / bodyFontSize;
-	// Large headings (>2x body size)
 	if (ratio >= 2.0) return "# ";
-	// Medium headings (~1.5x body size)
 	if (ratio >= 1.4) return "## ";
-	// Small headings (bold and slightly larger)
 	if (ratio >= 1.1 && isBold) return "### ";
 	return "";
 }
 
-/** Merge consecutive blocks with the same heading prefix (wrapped headings). */
 function mergeConsecutiveHeadings(blocks: ContentBlock[], bodyFS: number): ContentBlock[] {
 	if (blocks.length === 0) return [];
 	const HEADING_RE = /^(#{1,6} )/;
@@ -256,9 +234,6 @@ function mergeConsecutiveHeadings(blocks: ContentBlock[], bodyFS: number): Conte
 	return merged;
 }
 
-/**
- * Merge consecutive plain-text blocks that are wrapped lines of the same paragraph.
- */
 function mergeParagraphWraps(blocks: ContentBlock[], bodyFS: number): ContentBlock[] {
 	if (blocks.length === 0 || bodyFS <= 0) return blocks;
 	const HEADING_RE = /^#{1,6} /;
@@ -297,7 +272,6 @@ function mergeParagraphWraps(blocks: ContentBlock[], bodyFS: number): ContentBlo
 	return merged;
 }
 
-/** Remove page number blocks near the bottom of the page. */
 function removePageNumbers(blocks: ContentBlock[]): ContentBlock[] {
 	const PAGE_NUM_RE = /^(?:#{1,6}\s*)?\d+\s*$/;
 	const BOTTOM_Y = 120;
@@ -309,7 +283,6 @@ function removePageNumbers(blocks: ContentBlock[]): ContentBlock[] {
 	});
 }
 
-/** Fix tables where the first column was emitted as free text blocks around a markdown table containing only the right-side columns. */
 export function normalizeDetachedFirstColumnTables(blocks: ContentBlock[]): ContentBlock[] {
 	const HEADING_RE = /^#{1,6}\s/;
 	const isTableBlock = (text: string) => text.trimStart().startsWith("|");
@@ -340,7 +313,6 @@ export function normalizeDetachedFirstColumnTables(blocks: ContentBlock[]): Cont
 		if (dataRows.length === 0) continue;
 		const cols = dataRows[0].length;
 		if (cols < 2 || dataRows.some(row => row.length !== cols)) continue;
-		// Expand by <br> count to get logical row count
 		const logicalRows: string[][] = [];
 		for (const row of dataRows) {
 			const splitCells = row.map(cell => cell.split("<br>").map(p => p.trim()));
@@ -350,7 +322,6 @@ export function normalizeDetachedFirstColumnTables(blocks: ContentBlock[]): Cont
 			}
 		}
 		if (logicalRows.length < 2) continue;
-		// Find header with (cols + 1) non-numeric tokens
 		let headerIdx = -1;
 		let headerTokens: string[] = [];
 		for (let i = Math.max(0, tableIdx - 4); i <= tableIdx - 1; i++) {
@@ -363,7 +334,6 @@ export function normalizeDetachedFirstColumnTables(blocks: ContentBlock[]): Cont
 			}
 		}
 		if (headerIdx < 0) continue;
-		// Collect short label lines above/below table
 		const aboveLabels: Array<{ idx: number; text: string }> = [];
 		for (let i = tableIdx - 1; i > headerIdx; i--) {
 			const text = normalizeFullWidthAscii(blocks[i].content).trim();
@@ -379,7 +349,6 @@ export function normalizeDetachedFirstColumnTables(blocks: ContentBlock[]): Cont
 		}
 		const labels = aboveLabels.concat(belowLabels);
 		if (labels.length !== logicalRows.length) continue;
-		// Reconstruct the full table. The header tokens and first-column labels are raw PDF text (splitTokens/block content), so a literal `|` in one would end
 		const normalizedLines: string[] = [];
 		normalizedLines.push(`| ${headerTokens.map(escapePipes).join(" | ")} |`);
 		normalizedLines.push(`| ${Array.from({ length: cols + 1 }, () => "---").join(" | ")} |`);
@@ -404,9 +373,6 @@ export function normalizeDetachedFirstColumnTables(blocks: ContentBlock[]): Cont
 	return out;
 }
 
-/**
- * Render one page's content: free text and tables interleaved top-to-bottom.
- */
 export function renderPageContent(
 	freeTextBoxes: TextBox[],
 	tables: TableGrid[],
@@ -414,10 +380,7 @@ export function renderPageContent(
 	allTextBoxes?: TextBox[],
 ): string {
 	const blocks: ContentBlock[] = [];
-	// Use ALL text boxes (before table/diagram filtering) for modal font size,
-	// so that diagram labels released as free text don't skew the body size.
 	const bodyFS = modalFontSize(allTextBoxes ?? freeTextBoxes);
-	// Free text lines
 	for (const line of groupFreeTextIntoLines(freeTextBoxes)) {
 		const prefix = headingPrefix(line.fontSize, bodyFS, line.isBold);
 		blocks.push({
@@ -426,18 +389,15 @@ export function renderPageContent(
 			isTabular: prefix === "" && line.isTabular,
 		});
 	}
-	// Tables
 	for (const table of tables) {
 		const md = renderTableToMarkdown(table);
 		if (md.length > 0) {
 			blocks.push({ topY: table.topY, content: md });
 		}
 	}
-	// Images
 	for (const img of imageBlocks) {
 		blocks.push({ topY: img.topY, content: img.markdown });
 	}
-	// Sort top-to-bottom (higher Y = higher on page = comes first)
 	blocks.sort((a, b) => b.topY - a.topY);
 	const cleaned = removePageNumbers(blocks);
 	const headingsMerged = mergeConsecutiveHeadings(cleaned, bodyFS);

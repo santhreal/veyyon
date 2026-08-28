@@ -1,14 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Build the standalone share-viewer page the veyyon relay serves at `GET /s/<id>`.
- *
- * Same template as HTML exports, but with no embedded session: share-loader.js
- * (injected right after the empty #session-data tag) fetches the sealed blob
- * (gist or relay store), decrypts it with the `#<key>` fragment in-browser, and
- * hands the JSON to template.js via `window.__OMP_SESSION_DATA__`.
- *
- * The relay repo's build script runs this and embeds the output via go:embed.
- */
 import * as path from "node:path";
 import { generateThemeVars, getTemplate } from "../src/export/html";
 
@@ -19,9 +9,6 @@ if (!outPath) {
 }
 
 const loaderJs = await Bun.file(new URL("../src/export/html/share-loader.js", import.meta.url).pathname).text();
-// Pin the veyyon brand palette (collab-web pink/purple identity) — the viewer is
-// a public artifact matching the live share.veyyon.dev client, not a per-user export
-// that should mirror the host's terminal theme.
 const themeVars = await generateThemeVars("web");
 
 const html = getTemplate()

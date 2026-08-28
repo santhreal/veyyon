@@ -12,7 +12,6 @@ export interface TemporalInfo {
 	primary_signal: string | null;
 }
 
-// Day name -> weekday number (Monday=0, Sunday=6), matching Python datetime.weekday().
 export const DAY_MAP: Readonly<Record<string, number>> = {
 	monday: 0,
 	tuesday: 1,
@@ -210,10 +209,6 @@ export function parseNlDate(text: string, reference?: QueryTime): ParsedNaturalD
 		return [d, "day", [isoDate(d), dayName(d)]];
 	}
 
-	// Compound phrases MUST be matched before the single words they contain:
-	// "day before yesterday" contains "yesterday" and "day after tomorrow"
-	// contains "tomorrow", so a bare yesterday/tomorrow check first would shadow
-	// them and resolve two days off. Order is the contract here.
 	if (/\bday\s+after\s+tomorrow\b/.test(textLower)) {
 		const d = addDays(ref, 2);
 		return [d, "day", [isoDate(d), dayName(d), "day after tomorrow"]];
@@ -340,11 +335,6 @@ export function parseNlDate(text: string, reference?: QueryTime): ParsedNaturalD
 export function extractTemporal(text: string, reference?: QueryTime): TemporalInfo {
 	const result = parseNlDate(text, reference);
 	const tags: string[] = [];
-	// Match named times as whole words, not substrings: every NAMED_TIME_KEYS
-	// entry is a single token, and some are substrings of others ("night" of
-	// "midnight", "noon" of "afternoon"). A bare `includes` check tagged
-	// "midnight" as "night" (the shorter word appears earlier in the key order),
-	// so the real named time was never recorded.
 	const words = new Set(unicodeWordTokens(text.toLowerCase()));
 	for (const timeName of NAMED_TIME_KEYS) {
 		if (words.has(timeName)) {

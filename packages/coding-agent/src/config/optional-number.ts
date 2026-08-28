@@ -1,15 +1,9 @@
-/** The one owner of "this numeric setting is unset". Numeric settings that mean "let the provider decide" encoded that as `-1`, and */
-
-/** The value these settings used to store to mean "unset". Kept only so the UI can still recognise it while rendering a config an older */
 export const UNSET_NUMBER = -1;
 
-/** The submenu value the UI uses for unset. Never the raw number. */
 export const UNSET_NUMBER_OPTION_VALUE = "default";
 
-/** The submenu label for unset. */
 export const UNSET_NUMBER_OPTION_LABEL = "Default";
 
-/** The `Default` row for a numeric setting's submenu. Typed structurally rather than as `SubmenuOption` so this module imports nothing: */
 export function unsetNumberOption(description = "Use the provider default"): {
 	value: string;
 	label: string;
@@ -18,20 +12,17 @@ export function unsetNumberOption(description = "Use the provider default"): {
 	return { value: UNSET_NUMBER_OPTION_VALUE, label: UNSET_NUMBER_OPTION_LABEL, description };
 }
 
-/** A configured numeric setting, or `undefined` when it is unset. Unset is a MISSING value: `undefined`, `null`, or something that is not a finite */
 export function optionalNumber(value: number | undefined | null): number | undefined {
 	if (value === undefined || value === null) return undefined;
 	if (!Number.isFinite(value)) return undefined;
 	return value;
 }
 
-/** A configured numeric setting that must be positive to mean anything (a token count, a timeout, a window size), or `undefined`. */
 export function optionalPositiveNumber(value: number | undefined | null): number | undefined {
 	const configured = optionalNumber(value);
 	return configured !== undefined && configured > 0 ? configured : undefined;
 }
 
-/** The sampling knobs a session can carry, as the agent holds them. Named here rather than in the selector so the settings schema, the SDK's session */
 export interface SamplingKnobs {
 	temperature?: number;
 	topP?: number;
@@ -64,17 +55,14 @@ const SAMPLING_KNOB_SETTERS: { [K in SamplingKnob]-?: (agent: SamplingKnobs, val
 	},
 };
 
-/** True when `id` names one of the sampling knobs. */
 export function isSamplingKnob(id: string): id is SamplingKnob {
 	return id in SAMPLING_KNOB_SETTERS;
 }
 
-/** Apply a sampling knob to a live agent by its setting id. Typed per knob rather than through an index signature, so adding a knob to {@link SamplingKnobs} */
 export function applySamplingKnob(agent: SamplingKnobs, id: SamplingKnob, value: number | undefined): void {
 	SAMPLING_KNOB_SETTERS[id](agent, value);
 }
 
-/** Coerce a settings-selector value to a number, or undefined when it is not one. */
 export function toNumberOrUndefined(value: unknown): number | undefined {
 	if (value === undefined || value === null || value === "") return undefined;
 	const parsed = typeof value === "number" ? value : Number(value);

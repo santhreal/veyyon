@@ -70,9 +70,6 @@ async function writeResponseBody(
 		completed = true;
 	} finally {
 		if (!completed) {
-			// This branch runs only while an error from the loop above is already propagating, and that error
-			// is the one the caller must see. Each teardown step is attempted independently and its own failure
-			// is discarded so it cannot replace the download failure with a misleading cleanup message.
 			await reader.cancel().catch(() => {});
 			await Promise.resolve(sink.end()).catch(() => {});
 			await fs.promises.rm(dest, { force: true }).catch(() => {});
@@ -89,8 +86,6 @@ interface ToolConfig {
 	getAssetName: (version: string, plat: string, architecture: string) => string | null;
 }
 
-// ffmpeg static-binary asset names (eugeneware/ffmpeg-static direct binaries).
-// Maps node arch (arm64|x64) only; everything else is unsupported.
 export function ffmpegAssetName(_version: string, plat: string, architecture: string): string | null {
 	if (architecture !== "arm64" && architecture !== "x64") return null;
 	if (plat === "darwin") return `ffmpeg-darwin-${architecture}`;
@@ -165,7 +160,6 @@ const TOOLS: Record<string, ToolConfig> = {
 	},
 };
 
-// CLI packages installed via uv/pip
 interface PythonPackageToolConfig {
 	name: string;
 	package: string; // PyPI package name
@@ -182,9 +176,7 @@ const PYTHON_TOOLS: Record<string, PythonPackageToolConfig> = {
 
 export type ToolName = "sd" | "sg" | "yt-dlp" | "trafilatura" | "ffmpeg";
 
-// Get the path to a tool (system-wide or in our tools dir)
 export function getToolPath(tool: ToolName): string | null {
-	// Check uv/pip-installed CLI packages first
 	const pythonConfig = PYTHON_TOOLS[tool];
 	if (pythonConfig) {
 		return $which(pythonConfig.binaryName);
@@ -193,29 +185,22 @@ export function getToolPath(tool: ToolName): string | null {
 	const config = TOOLS[tool];
 	if (!config) return null;
 
-	// Check our tools directory first
 	const localPath = path.join(TOOLS_DIR, config.binaryName + (os.platform() === "win32" ? ".exe" : ""));
 	if (fs.existsSync(localPath)) {
 		return localPath;
 	}
 
-	// Check system PATH
 	return $which(config.binaryName);
 }
 
-/** The `sha256:<64 hex>` digest GitHub publishes alongside every release asset, keyed by asset name. Nothing else is accepted: an absent, differently-prefixed or wrong-length digest is */
 const ASSET_DIGEST_RE = /^sha256:([0-9a-f]{64})$/;
 
 interface LatestRelease {
 	version: string;
-	/** Asset name to lowercase hex sha256. An asset with no usable digest is absent. */
 	digests: Record<string, string>;
 }
 
-// Fetch the latest release version and its published asset digests from GitHub
 async function getLatestRelease(repo: string, signal?: AbortSignal): Promise<LatestRelease> {
-	// Scoped so the deadline timer is cleared on settle instead of staying
-	// armed like a bare AbortSignal.timeout; the fence spans the body read.
 	const requestTimeout = scopedTimeoutSignal(TOOL_METADATA_TIMEOUT_MS, signal);
 	try {
 		let response: Response;
@@ -225,7 +210,6 @@ async function getLatestRelease(repo: string, signal?: AbortSignal): Promise<Lat
 				signal: requestTimeout.signal,
 			});
 		} catch (err) {
-			// The scoped signal composes the caller's signal with the deadline, so "the fetch stopped" had two possible causes and only one of them is a
 			if (isCancellation(err)) {
 				throwIfAborted(signal, "tool metadata");
 				throw new Error("GitHub API request timed out");
@@ -253,7 +237,6 @@ async function getLatestRelease(repo: string, signal?: AbortSignal): Promise<Lat
 	}
 }
 
-/** Download a tool asset without handing the streaming Response to Bun.write. `expectedSha256` is the digest the release publishes for this exact asset. It is hashed as the */
 export async function downloadFile(
 	url: string,
 	dest: string,
@@ -290,7 +273,6 @@ export async function downloadFile(
 	throw new Error(`Checksum mismatch for ${url}: expected sha256 ${expectedSha256}, got ${actual}`);
 }
 
-/** Download and install a tool binary from its upstream GitHub release. Exported so the refusal below is reachable without a network: it is the gate that decides */
 export async function downloadTool(tool: ToolName, signal?: AbortSignal): Promise<string> {
 	const config = TOOLS[tool];
 	if (!config) throw new Error(`Unknown tool: ${tool}`);
@@ -298,16 +280,13 @@ export async function downloadTool(tool: ToolName, signal?: AbortSignal): Promis
 	const plat = os.platform();
 	const architecture = os.arch();
 
-	// Get latest version and the digests published with it
 	const { version, digests } = await getLatestRelease(config.repo, signal);
 
-	// Get asset name for this platform
 	const assetName = config.getAssetName(version, plat, architecture);
 	if (!assetName) {
 		throw new Error(`Unsupported platform: ${plat}/${architecture}`);
 	}
 
-	// Fail closed. This binary is chmod'd 0755 and executed as the user, so an asset the release publishes no sha256 for is not "unverified but probably fine", it is a download nobody can
 	const expectedSha256 = digests[assetName];
 	if (!expectedSha256) {
 		throw new Error(
@@ -315,14 +294,12 @@ export async function downloadTool(tool: ToolName, signal?: AbortSignal): Promis
 		);
 	}
 
-	// Create tools directory
 	await fs.promises.mkdir(TOOLS_DIR, { recursive: true });
 
 	const downloadUrl = `https://github.com/${config.repo}/releases/download/${config.tagPrefix}${version}/${assetName}`;
 	const binaryExt = plat === "win32" ? ".exe" : "";
 	const binaryPath = path.join(TOOLS_DIR, config.binaryName + binaryExt);
 
-	// Handle direct binary downloads (no archive extraction needed)
 	if (config.isDirectBinary) {
 		await downloadFile(downloadUrl, binaryPath, signal, expectedSha256);
 		if (plat !== "win32") {
@@ -331,11 +308,9 @@ export async function downloadTool(tool: ToolName, signal?: AbortSignal): Promis
 		return binaryPath;
 	}
 
-	// Download archive
 	const archivePath = path.join(TOOLS_DIR, assetName);
 	await downloadFile(downloadUrl, archivePath, signal, expectedSha256);
 
-	// Extract
 	const tmp = await TempDir.create("@veyyon-tools-extract-");
 
 	try {
@@ -349,8 +324,6 @@ export async function downloadTool(tool: ToolName, signal?: AbortSignal): Promis
 			throw new Error(`Failed to extract ${assetName}: ${errorMessage(err)}`);
 		}
 
-		// Find the binary in extracted files
-		// ast-grep releases the binary directly in the zip, not in a subdirectory
 		let extractedBinary: string;
 		if (tool === "sg") {
 			extractedBinary = path.join(tmp.path(), config.binaryName + binaryExt);
@@ -365,12 +338,10 @@ export async function downloadTool(tool: ToolName, signal?: AbortSignal): Promis
 			throw new Error(`Binary not found in archive: ${extractedBinary}`);
 		}
 
-		// Make executable (Unix only)
 		if (plat !== "win32") {
 			await fs.promises.chmod(binaryPath, 0o755);
 		}
 	} finally {
-		// Cleanup
 		await tmp.remove();
 		await fs.promises.rm(archivePath, { force: true });
 	}
@@ -378,10 +349,8 @@ export async function downloadTool(tool: ToolName, signal?: AbortSignal): Promis
 	return binaryPath;
 }
 
-// Install a Python package via uv (preferred) or pip
 async function installPythonPackage(pkg: string, signal?: AbortSignal): Promise<boolean> {
 	try {
-		// Try uv first (faster, better isolation)
 		const uv = $which("uv");
 		if (uv) {
 			const result = await ptree.exec([uv, "tool", "install", pkg], {
@@ -394,7 +363,6 @@ async function installPythonPackage(pkg: string, signal?: AbortSignal): Promise<
 			if (result.exitCode === 0) return true;
 		}
 
-		// Fall back to pip
 		const pip = $which("pip3") || $which("pip");
 		if (pip) {
 			const result = await ptree.exec([pip, "install", "--user", pkg], {
@@ -416,14 +384,11 @@ async function installPythonPackage(pkg: string, signal?: AbortSignal): Promise<
 	}
 }
 
-// Termux package names for tools
 const TERMUX_PACKAGES: Partial<Record<ToolName, string>> = {
 	sd: "sd",
 	sg: "ast-grep",
 };
 
-// Ensure a tool is available, downloading if necessary
-// Returns the path to the tool, or null if unavailable
 type EnsureToolOptions = {
 	signal?: AbortSignal;
 	silent?: boolean;
@@ -437,8 +402,6 @@ export async function ensureTool(tool: ToolName, silentOrOptions?: EnsureToolOpt
 		return existingPath;
 	}
 
-	// On Android/Termux, Linux binaries don't work due to Bionic libc incompatibility.
-	// Users must install via pkg.
 	if (os.platform() === "android") {
 		const pkgName = TERMUX_PACKAGES[tool] ?? tool;
 		if (!silent) {
@@ -447,7 +410,6 @@ export async function ensureTool(tool: ToolName, silentOrOptions?: EnsureToolOpt
 		return undefined;
 	}
 
-	// Handle uv/pip-installed CLI packages
 	const pythonConfig = PYTHON_TOOLS[tool];
 	if (pythonConfig) {
 		if (!silent) {
@@ -456,7 +418,6 @@ export async function ensureTool(tool: ToolName, silentOrOptions?: EnsureToolOpt
 		notify?.(`Installing ${pythonConfig.name}…`);
 		const success = await installPythonPackage(pythonConfig.package, signal);
 		if (success) {
-			// Re-check for the command after installation
 			const path = $which(pythonConfig.binaryName);
 			if (path) {
 				if (!silent) {
@@ -474,7 +435,6 @@ export async function ensureTool(tool: ToolName, silentOrOptions?: EnsureToolOpt
 	const config = TOOLS[tool];
 	if (!config) return undefined;
 
-	// Tool not found - download it
 	if (!silent) {
 		logger.debug(`${config.name} not found. Downloading...`);
 	}

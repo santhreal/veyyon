@@ -3,14 +3,10 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { RepoFile } from "./generate.js";
 
-/** Read at most this many bytes from any single file; a longer file is truncated to this prefix. */
 export const MAX_FILE_CONTENT_BYTES = 128 * 1024;
-/** Stop reading content once this many total bytes are scanned; remaining files enter path-only. */
 export const TOTAL_CONTENT_BUDGET_BYTES = 8 * 1024 * 1024;
-/** Upper bound on files gathered from a non-git walk, so a huge tree cannot stall startup. */
 export const WALK_FILE_CAP = 5000;
 
-/** Directory/entry names skipped by the non-git walk: VCS, dependencies, and build output. */
 export const WALK_IGNORE_NAMES: ReadonlySet<string> = new Set([
 	".git",
 	"node_modules",
@@ -21,7 +17,6 @@ export const WALK_IGNORE_NAMES: ReadonlySet<string> = new Set([
 	"vendor",
 ]);
 
-/** Machine-generated lockfiles skipped for content scanning. */
 export const CONTENT_SKIP_BASENAMES: ReadonlySet<string> = new Set([
 	"Cargo.lock",
 	"package-lock.json",
@@ -37,7 +32,6 @@ export const CONTENT_SKIP_BASENAMES: ReadonlySet<string> = new Set([
 	"deno.lock",
 ]);
 
-/** File extensions skipped for content scanning (binaries, assets, maps). */
 export const CONTENT_SKIP_SUFFIXES: readonly string[] = [
 	".lock",
 	".lockb",
@@ -76,7 +70,6 @@ export const CONTENT_SKIP_SUFFIXES: readonly string[] = [
 	".snap",
 ];
 
-/** Diagnostic notices emitted during corpus generation. */
 export type CorpusNotice =
 	| {
 			code: "content-budget-reached";
@@ -99,7 +92,6 @@ export type CorpusNotice =
 			data: { path: string; isRoot: boolean };
 	  };
 
-/** Whether a path's content should be scanned for centrality, or only the path itself proposed. */
 export function shouldScanContent(relPath: string): boolean {
 	const slash = relPath.lastIndexOf("/");
 	const base = slash === -1 ? relPath : relPath.slice(slash + 1);
@@ -111,7 +103,6 @@ export function shouldScanContent(relPath: string): boolean {
 	return true;
 }
 
-/** Gather repository files and read bounded content for candidate extraction. */
 export async function gatherRepoFiles(
 	root: string,
 	paths: readonly string[],
@@ -165,7 +156,6 @@ export async function gatherRepoFiles(
 	return files;
 }
 
-/** List project files by walking directory tree up to WALK_FILE_CAP. */
 export async function walkProjectTree(root: string, onNotice?: (notice: CorpusNotice) => void): Promise<string[]> {
 	const out: string[] = [];
 	const stack: string[] = [""];

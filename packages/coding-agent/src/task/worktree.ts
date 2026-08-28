@@ -10,7 +10,6 @@ import { mapWithConcurrencyLimit } from "./parallel";
 
 const { IsoBackendKind } = natives;
 
-/** Branch namespace for task-result branches created in the user's repo. */
 export const TASK_BRANCH_PREFIX = "veyyon/task/";
 
 const TASK_ISOLATION_DIR_PREFIX = "t";
@@ -18,7 +17,6 @@ const TASK_ISOLATION_DIR_DIGEST_CHARS = 9;
 const TASK_ISOLATION_MOUNT_DIR = "m";
 type IsoBackendKind = natives.IsoBackendKind;
 
-/** Baseline state for a single git repository. */
 export interface RepoBaseline {
 	repoRoot: string;
 	headCommit: string;
@@ -28,17 +26,12 @@ export interface RepoBaseline {
 	untrackedPatch: string;
 }
 
-/** Baseline state for the project, including any nested git repos. */
 export interface WorktreeBaseline {
 	root: RepoBaseline;
-	/** Nested git repos (path relative to root.repoRoot). */
 	nested: Array<{ relativePath: string; baseline: RepoBaseline }>;
 }
 
 export async function getRepoRoot(cwd: string): Promise<string> {
-	// Pure-jj check runs first so a jj workspace nested under an unrelated
-	// outer Git checkout is rejected at its own root rather than silently
-	// mutating the surrounding Git tree behind jj's back.
 	if (await jj.isPureJjRepo(cwd)) {
 		throw new Error(
 			"Isolated task execution requires a Git checkout, but this workspace is pure Jujutsu (`.jj/` without a colocated `.git/`). Run `jj git init --colocate` to add a Git checkout, or set `task.isolation.mode: none` to disable task isolation.",
@@ -57,7 +50,6 @@ export function getGitNoIndexNullPath(): string {
 	return GIT_NO_INDEX_NULL_PATH;
 }
 
-/** Whether `dir` is itself a git repository, i.e. whether it holds a `.git` entry. A missing `.git` is the ordinary answer for almost every directory, so ENOENT is a plain "no". Any */
 async function isGitRepoDir(dir: string): Promise<{ isRepo: boolean; inspectable: boolean }> {
 	try {
 		await fs.access(path.join(dir, ".git"));
@@ -72,21 +64,15 @@ async function isGitRepoDir(dir: string): Promise<{ isRepo: boolean; inspectable
 	}
 }
 
-/** Find nested git repositories (non-submodule) under the given root. */
 export async function discoverNestedRepos(repoRoot: string): Promise<string[]> {
-	// Get submodule paths so we can exclude them
 	const submodulePaths = new Set(await git.ls.submodules(repoRoot));
 
-	// Find all .git dirs/files that aren't the root or known submodules
 	const result: string[] = [];
 	async function walk(dir: string): Promise<void> {
 		let entries: Dirent[];
 		try {
 			entries = await fs.readdir(dir, { withFileTypes: true });
 		} catch (error) {
-			// A directory that cannot be listed hides everything under it, including nested repositories
-			// that would then be snapshotted as ordinary files. There is nothing to do about it here --
-			// the walk cannot see inside -- but it must not be invisible (Law 10).
 			logger.warn("Could not list a directory while looking for nested git repositories", {
 				dir,
 				error: errorMessage(error),
@@ -101,11 +87,8 @@ export async function discoverNestedRepos(repoRoot: string): Promise<string[]> {
 			const { isRepo, inspectable } = await isGitRepoDir(full);
 			if (isRepo && !submodulePaths.has(rel)) {
 				result.push(rel);
-				// Don't recurse into nested repos — they manage their own tree
 				continue;
 			}
-			// An uninspectable directory is a boundary too: descending would risk snapshotting a
-			// repository we failed to identify. It is reported by `isGitRepoDir`, not skipped quietly.
 			if (!inspectable) continue;
 			await walk(full);
 		}
@@ -117,8 +100,6 @@ export async function discoverNestedRepos(repoRoot: string): Promise<string[]> {
 async function captureUntrackedPatch(repoRoot: string, untracked: readonly string[]): Promise<string> {
 	if (untracked.length === 0) return "";
 	const nullPath = getGitNoIndexNullPath();
-	// Bound concurrent git spawns; large untracked sets would otherwise fork one
-	// process per file at once.
 	const { results: untrackedDiffs } = await mapWithConcurrencyLimit(untracked.slice(), 8, entry =>
 		git.diff(repoRoot, {
 			allowFailure: true,
@@ -273,14 +254,12 @@ export async function captureDeltaPatch(isolationDir: string, baseline: Worktree
 	return { rootPatch, nestedPatches };
 }
 
-/** Apply nested repo patches directly to their working directories after parent merge. Pre-existing dirty state in a nested repo is stashed before the patch is */
 export async function applyNestedPatches(
 	repoRoot: string,
 	patches: NestedRepoPatch[],
 	commitMessage?: (diff: string) => Promise<string | null>,
 ): Promise<string[]> {
 	const warnings: string[] = [];
-	// Group patches by target repo to apply all at once and commit
 	const byRepo = new Map<string, NestedRepoPatch[]>();
 	for (const p of patches) {
 		if (!p.patch.trim()) continue;
@@ -300,8 +279,6 @@ export async function applyNestedPatches(
 		const combinedDiff = repoPatches.map(p => p.patch).join("\n");
 		const touchedFiles = Array.from(new Set(repoPatches.flatMap(p => patchTouchedFiles(p.patch))));
 
-		// Preserve any pre-existing dirty state (tracked + untracked) so we
-		// commit only the agent delta, not the user's in-flight work.
 		const stashed =
 			(await git.status(nestedDir)).trim().length > 0
 				? await git.stash.push(nestedDir, `veyyon-isolation-${Snowflake.next()}`)
@@ -335,9 +312,6 @@ export async function applyNestedPatches(
 	return warnings;
 }
 
-// Unified isolation lifecycle — picks the best backend via the PAL and
-// returns the merged-view path together with the resolved kind.
-/** User-facing isolation mode names exposed by the `task.isolation.mode` setting. Mapped to a backend-kind hint via {@link parseIsolationMode}; */
 export type TaskIsolationMode =
 	| "none"
 	| "auto"
@@ -349,12 +323,10 @@ export type TaskIsolationMode =
 	| "projfs"
 	| "block-clone"
 	| "rcopy"
-	// Legacy values, accepted for back-compat with pre-PAL settings files.
 	| "worktree"
 	| "fuse-overlay"
 	| "fuse-projfs";
 
-/** Translate a {@link TaskIsolationMode} string to an [`IsoBackendKind`] the PAL can act on. `"none"` returns `null` (caller skips isolation */
 export function parseIsolationMode(mode: TaskIsolationMode): IsoBackendKind | undefined {
 	switch (mode) {
 		case "none":
@@ -383,17 +355,11 @@ export function parseIsolationMode(mode: TaskIsolationMode): IsoBackendKind | un
 }
 
 export interface IsolationHandle {
-	/** Merged view materialised by the backend; pass this to the task. */
 	mergedDir: string;
-	/** Backend the PAL actually used. */
 	backend: IsoBackendKind;
-	/** True when the resolver downgraded from `preferred` to `backend`. */
 	fellBack: boolean;
-	/** Optional reason associated with `fellBack`. */
 	fallbackReason: string | null;
 }
-
-/** Materialise `merged` for a single task. `preferred` is a hint — when its prerequisites are missing the PAL silently falls back, and the */
 
 function getTaskIsolationSegment(repoRoot: string, id: string): string {
 	const key = `${path.resolve(repoRoot)}\0${id}`;
@@ -436,7 +402,6 @@ export async function ensureIsolation(
 	throw new Error(fallbackReason ?? "No isolation backend is available.");
 }
 
-/** Tear down a handle returned by {@link ensureIsolation}. */
 export async function cleanupIsolation(handle: IsolationHandle): Promise<void> {
 	try {
 		try {
@@ -449,7 +414,6 @@ export async function cleanupIsolation(handle: IsolationHandle): Promise<void> {
 			});
 		}
 	} finally {
-		// baseDir is the parent of the merged directory
 		const baseDir = path.dirname(handle.mergedDir);
 		await fs.rm(baseDir, { recursive: true, force: true });
 	}
@@ -458,7 +422,6 @@ export async function cleanupIsolation(handle: IsolationHandle): Promise<void> {
 export interface CommitToBranchResult {
 	branchName?: string;
 	nestedPatches: NestedRepoPatch[];
-	/** SHA of the parent-repo commit the task branch was created on top of, so {@link mergeTaskBranches} can cherry-pick the range `baseSha..branchName` */
 	baseSha?: string;
 }
 
@@ -466,12 +429,10 @@ function baselineHasRootWip(baseline: RepoBaseline): boolean {
 	return !!(baseline.staged.trim() || baseline.unstaged.trim() || baseline.untrackedPatch.trim());
 }
 
-/** Baseline WIP context needed to safely apply a delta patch whose hunks were captured against `HEAD + WIP` (see {@link captureRepoDeltaPatch}). Passed */
 interface BaselineWipContext {
 	readonly staged: string;
 	readonly unstaged: string;
 	readonly untrackedPatch: string;
-	/** Untracked file paths present in the baseline (never in HEAD). */
 	readonly untracked: readonly string[];
 }
 
@@ -488,7 +449,6 @@ async function commitPatchToBranchWorktree(
 	author?: git.CommitAuthor,
 	baselineWip?: BaselineWipContext,
 ): Promise<void> {
-	// Try the two clean paths first — they yield an agent-only commit and are the happy case when the temp worktree can resolve the patch against
 	let plainErr: git.GitCommandError | undefined;
 	try {
 		await git.patch.applyText(tmpDir, patchText);
@@ -519,9 +479,6 @@ async function commitPatchToBranchWorktree(
 				throw new Error(`git apply --3way failed for task ${taskId}: ${stderr}`);
 			}
 			try {
-				// `git apply --3way` leaves conflict markers in `U` files when
-				// it can't resolve; reset the worktree so the WIP-seeded retry
-				// starts from a clean HEAD tree.
 				await git.reset(tmpDir, { hard: true, target: "HEAD" });
 				await applyDeltaOverBaselineWip(tmpDir, taskId, patchText, wipPatches, baselineWip);
 			} catch (wipErr) {
@@ -545,7 +502,6 @@ async function commitPatchToBranchWorktree(
 	await git.commit(tmpDir, message, author ? { author } : {});
 }
 
-/** Replay baseline WIP into the temp worktree so the delta patch's HEAD+WIP context matches, apply the delta, then rewind files WIP touched but the */
 async function applyDeltaOverBaselineWip(
 	tmpDir: string,
 	_taskId: string,
@@ -563,8 +519,6 @@ async function applyDeltaOverBaselineWip(
 	const wipOnly = Array.from(wipFiles).filter(f => !deltaFiles.has(f));
 	if (wipOnly.length === 0) return;
 
-	// Any wipOnly file baselined as untracked cannot be in HEAD.
-	// Everything else may or may not — verify against HEAD's tree.
 	const untrackedSet = new Set(baselineWip.untracked);
 	const candidates = wipOnly.filter(f => !untrackedSet.has(f));
 	const inHead = candidates.length > 0 ? new Set(await git.ls.tree(tmpDir, "HEAD", candidates)) : new Set<string>();
@@ -599,9 +553,6 @@ async function replayFilteredAgentCommits(opts: FilteredAgentReplayOptions): Pro
 		await git.worktree.add(opts.repoRoot, tmpDir, opts.branchName);
 		const agentCommits = await git.revList.range(opts.isolationDir, baselineSha, opts.isolationHead);
 		const baselineWip = [opts.baseline.root.staged, opts.baseline.root.unstaged, opts.baseline.root.untrackedPatch];
-		// Seed the parent ODB with the dirty-side blobs needed by `git apply
-		// --3way`. Isolation repositories can read parent objects, but the parent
-		// cannot read objects created only inside isolation.
 		await writeSyntheticTree(opts.repoRoot, baselineSha, baselineWip);
 		const dirtyBaselineTree = await writeSyntheticTree(opts.isolationDir, baselineSha, baselineWip);
 		let previousFilteredTree = baselineSha;
@@ -633,14 +584,11 @@ async function replayFilteredAgentCommits(opts: FilteredAgentReplayOptions): Pro
 			previousFilteredTree = currentFilteredTree;
 		}
 		if (filteredCommitsApplied === 0) {
-			// No filtered commit landed — tmpDir is still pinned at baselineSha. The `finalFilteredTree = writeSyntheticTree(HEAD, [rootPatch])`
 			if (opts.rootPatch.trim()) {
 				const msg = (opts.commitMessage && (await opts.commitMessage(opts.rootPatch))) || opts.fallbackMessage;
 				await commitPatchToBranchWorktree(tmpDir, opts.taskId, opts.rootPatch, msg, undefined, opts.baseline.root);
 			}
 		} else {
-			// A filtered commit landed; reconstruct the final HEAD-derived tree
-			// with the same dirty-side blobs and 3-way synthesis used above.
 			const finalFilteredTree = await writeSyntheticTree(opts.repoRoot, baselineSha, [opts.rootPatch], {
 				threeWay: true,
 			});
@@ -659,7 +607,6 @@ async function replayFilteredAgentCommits(opts: FilteredAgentReplayOptions): Pro
 	}
 }
 
-/** Capture task-only changes from the isolation worktree onto a parent-repo branch named `veyyon/task/${taskId}`. Only root-repo changes go on the branch; */
 export async function commitToBranch(
 	isolationDir: string,
 	baseline: WorktreeBaseline,
@@ -695,12 +642,8 @@ export async function commitToBranch(
 				taskId,
 			});
 		} else {
-			// Transfer the agent's commit objects (which live in isolation's `.git`, stranded once `cleanupIsolation` tears the overlay down) into the parent
 			await git.fetch(repoRoot, isolationDir, "HEAD", `refs/heads/${branchName}`);
 
-			// Leftover = anything still uncommitted in isolation on top of the
-			// agent's last commit (staged, unstaged, untracked). The agent didn't
-			// commit it, so it goes in as one AI-summarized trailing commit.
 			const leftoverPatch = await captureRepoDeltaPatch(isolationDir, {
 				repoRoot: isolationDir,
 				headCommit: isolationHead,
@@ -749,24 +692,17 @@ export interface MergeBranchResult {
 	merged: string[];
 	failed: string[];
 	conflict?: string;
-	/** Set when cherry-picks landed on HEAD but restoring the stashed working tree failed. */
 	stashConflict?: string;
 }
 
-/** Cherry-pick task branch commits sequentially onto HEAD. When `baseSha` is provided the cherry-pick uses the inclusive range `baseSha..branchName`, */
 export async function mergeTaskBranches(
 	repoRoot: string,
 	branches: Array<{ branchName: string; taskId: string; description?: string; baseSha?: string }>,
 ): Promise<MergeBranchResult> {
-	// Serialize against other in-process git mutations on this repo: concurrent
-	// background merges interleaving stash push/pop + cherry-pick would corrupt
-	// the working tree (lost uncommitted changes, mixed-up stash entries).
 	return git.withRepoLock(repoRoot, async () => {
 		const merged: string[] = [];
 		const failed: string[] = [];
 
-		// Stash dirty working tree so cherry-pick can operate on a clean HEAD.
-		// Without this, cherry-pick refuses to run when uncommitted changes exist.
 		const didStash = await git.stash.push(repoRoot, "veyyon-task-merge");
 
 		let conflictResult: MergeBranchResult | undefined;
@@ -777,7 +713,6 @@ export async function mergeTaskBranches(
 					const target = baseSha ? `${baseSha}..${branchName}` : branchName;
 					await git.cherryPick(repoRoot, target);
 				} catch (initialErr) {
-					// Empty cherry-picks are not conflicts: a commit whose net effect is already on HEAD (redundant change, or 3-way
 					let cursor: unknown = initialErr;
 					while (git.cherryPick.isEmptyError(cursor)) {
 						try {
@@ -794,11 +729,7 @@ export async function mergeTaskBranches(
 					}
 					try {
 						await git.cherryPick.abort(repoRoot);
-					} catch {
-						/* no state to abort */
-					}
-					// The tail was `errorMessage(cursor)` from `@veyyon/utils` written out by hand; only the
-					// GitCommandError branch is specific to this call site.
+					} catch {}
 					const stderr =
 						cursor instanceof git.GitCommandError ? cursor.result.stderr.trim() : errorMessage(cursor);
 					failed.push(branchName);
@@ -816,7 +747,6 @@ export async function mergeTaskBranches(
 			if (didStash) {
 				const restored = await git.stash.tryPop(repoRoot, { index: true });
 				if (!restored) {
-					// Stash pop would leave stage 1/2/3 unmerged entries in `.git/index` that overlay-isolated subsequent tasks inherit through the lower
 					logger.warn("Failed to restore stashed changes after task merge; stash entry preserved");
 					const stashConflict =
 						"stash pop: cherry-picked changes conflict with uncommitted edits. The merged commits are on HEAD; run `git stash pop` and resolve manually.";
@@ -833,7 +763,6 @@ export async function mergeTaskBranches(
 	});
 }
 
-/** Clean up temporary task branches. */
 export async function cleanupTaskBranches(repoRoot: string, branches: string[]): Promise<void> {
 	for (const branch of branches) {
 		await git.branch.tryDelete(repoRoot, branch);

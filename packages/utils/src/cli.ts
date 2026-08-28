@@ -11,7 +11,6 @@ interface ParsedArgs {
 	positionals: string[];
 }
 
-/** Mask negative-number tokens so parseArgs does not treat them as flags. */
 function maskNegativeNumbers(argv: readonly string[]): {
 	args: string[];
 	restore: (parsed: ParsedArgs) => ParsedArgs;
@@ -52,10 +51,8 @@ function maskNegativeNumbers(argv: readonly string[]): {
 	};
 }
 
-/** Exit code for CLI usage mistakes. */
 export const CLI_EXIT_USAGE = 2;
 
-/** Validation error for missing/invalid CLI arguments or flags. */
 export class CliUsageError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -155,7 +152,6 @@ export interface CommandCtor {
 	examples?: string[];
 }
 
-/** Configuration passed to command instances and help renderers. */
 export interface CliConfig {
 	bin: string;
 	version: string;
@@ -230,7 +226,6 @@ function buildFlagParseOptions(flagDefs: Record<string, FlagDescriptor>): {
 	return { options, aliasToCanonical };
 }
 
-/** Minimal Command base matching the oclif surface used by veyyon. */
 export abstract class Command {
 	argv: string[];
 	config: CliConfig;
@@ -242,7 +237,6 @@ export abstract class Command {
 
 	abstract run(): Promise<void>;
 
-	/** Parse argv against the static flags and args declared on the command class. */
 	async parse<C extends CommandCtor>(
 		_Cmd: C,
 	): Promise<
@@ -327,7 +321,6 @@ export abstract class Command {
 	}
 }
 
-/** Split command arguments honoring quotes and backslash escapes. */
 export function tokenizeQuotedArgs(input: string): string[] {
 	const tokens: string[] = [];
 	let current = "";
@@ -389,7 +382,6 @@ function pushWrapped(lines: string[], left: string, description: string, column:
 	for (const line of rest) lines.push(`${indent}${line}`);
 }
 
-/** Lay out a two-column help table wrapped to terminal width. */
 export function renderHelpTable(
 	rows: ReadonlyArray<readonly [name: string, description: string]>,
 	options: { indent?: string; maxGutterFraction?: number } = {},
@@ -405,7 +397,6 @@ export function renderHelpTable(
 	return lines;
 }
 
-/** Wrap a paragraph of help text to the terminal at a given indent. */
 export function renderHelpParagraph(text: string, options: { indent?: string } = {}): string[] {
 	const indent = options.indent ?? "  ";
 	const width = helpWidth();
@@ -415,7 +406,6 @@ export function renderHelpParagraph(text: string, options: { indent?: string } =
 		.map(line => `${indent}${line}`);
 }
 
-/** Render full root help for the CLI. */
 export function renderRootHelp(config: CliConfig): void {
 	const { bin, version, commands, summaries } = config;
 	const lines: string[] = [];
@@ -467,13 +457,11 @@ function formatUsageArgs(Cmd: CommandCtor): string {
 	return ` ${parts.join(" ")}`;
 }
 
-/** Build the usage line for a command. */
 export function commandUsageLine(bin: string, id: string, Cmd: CommandCtor): string {
 	const hasFlags = Object.keys(Cmd.flags ?? {}).length > 0;
 	return `$ ${bin} ${id}${formatUsageArgs(Cmd)}${hasFlags ? " [FLAGS]" : ""}`;
 }
 
-/** Render help for a single command. */
 export function renderCommandHelp(bin: string, id: string, Cmd: CommandCtor): void {
 	const lines: string[] = [];
 	if (Cmd.description) lines.push(`${Cmd.description}\n`);
@@ -541,14 +529,12 @@ function renderCommandBody(lines: string[], Cmd: CommandCtor): void {
 	}
 }
 
-/** Root-help listing metadata for a command. */
 export interface CommandSummary {
 	description?: string;
 	hidden?: boolean;
 	devTool?: boolean;
 }
 
-/** A lazily-loaded command entry. */
 export interface CommandEntry {
 	name: string;
 	load: () => Promise<CommandCtor>;
@@ -572,7 +558,6 @@ function unknownCommandLine(commandId: string): string {
 	return `Error: Unknown command '${commandId}'\n`;
 }
 
-/** Main CLI entry point. */
 export async function run(opts: RunOptions): Promise<void> {
 	const { bin, version, argv } = opts;
 

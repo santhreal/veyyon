@@ -11,7 +11,6 @@ import { PREVIEW_LIMITS, shortenPath } from "../../tools/render-utils";
 import { fileHyperlink, renderCodeCell, tryResolveInternalUrlSync } from "../../tui";
 import type { ToolExecutionHandle } from "./tool-execution";
 
-/** Read calls whose target is resolved through {@link InternalUrlRouter} are rendered as full tool executions (not collapsed into the read group) so the */
 function readArgsTarget(args: unknown): string | undefined {
 	if (!args || typeof args !== "object" || Array.isArray(args)) return undefined;
 	const record = args as Record<string, unknown>;
@@ -82,7 +81,6 @@ type ReadEntry = {
 	codeLineNumbers?: Array<number | null>;
 };
 
-/** Number of code lines to show in collapsed preview mode */
 const COLLAPSED_PREVIEW_LINES = PREVIEW_LIMITS.OUTPUT_COLLAPSED;
 
 type ReadDisplayTarget = {
@@ -102,8 +100,6 @@ type ReadSummaryRow = {
 const READ_STATUS_RANK: Record<ReadEntry["status"], number> = {
 	success: 0,
 	pending: 1,
-	// A read that never ran is not a failed read: it must not outrank a sibling
-	// that really did fail, and it must still be visible above a plain success.
 	notExecuted: 2,
 	warning: 3,
 	error: 4,
@@ -148,8 +144,6 @@ function firstSelectorLine(selector: string | undefined): number | undefined {
 	try {
 		return selectorLineRanges(selector)?.[0].startLine;
 	} catch {
-		// A selector this renderer cannot parse has no first line to link to, so the row links to the file
-		// instead. The read itself parses the same selector and reports it; a renderer must not raise.
 		return undefined;
 	}
 }
@@ -177,8 +171,6 @@ function selectorChunkIsLineRangeList(chunk: string): boolean {
 	try {
 		return parseLineRanges(trimmed) !== null;
 	} catch {
-		// This asks whether a chunk IS a line-range list. A parse failure answers the question with no:
-		// unparseable is not a line-range list, and the caller treats the chunk as something else.
 		return false;
 	}
 }
@@ -303,10 +295,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 	#text: Text;
 	#expanded = false;
 	#showContentPreview: boolean;
-	// A read group accretes entries across multiple assistant completions for as long as the run of reads is uninterrupted. While it is the active group it
 	#finalized = false;
-	// Forced terminal even with a still-pending entry: the turn ended (abort or
-	// completion) so no late result is coming. Set via `seal()`.
 	#sealed = false;
 
 	constructor(options: ReadToolGroupOptions = {}) {
@@ -320,7 +309,6 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 	isTranscriptBlockFinalized(): boolean {
 		if (this.#sealed) return true;
 		if (!this.#finalized) return false;
-		// Closed to new entries, but a still-pending entry means its result is in flight — parallel reads can finalize the group (a sibling tool starts and
 		return !this.#hasPendingEntries();
 	}
 
@@ -335,7 +323,6 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		this.#finalized = true;
 	}
 
-	/** Force the group terminal even if an entry never received its result (the turn aborted or ended). Lets it freeze and stop pinning the transcript live */
 	seal(): void {
 		this.#sealed = true;
 	}
@@ -363,7 +350,6 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		if (!entry) return;
 		if (isPartial) return;
 		if (toolResultNeverRan(result.details)) {
-			// The placeholder's text is written for the MODEL and names the provider fault, not the file. Showing it as this row's content would read as the
 			entry.status = "notExecuted";
 			this.#updateDisplay();
 			return;
@@ -384,8 +370,6 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 			typeof details?.conflictCount === "number" && details.conflictCount > 0 ? details.conflictCount : undefined;
 		entry.conflictCount = conflictCount;
 		entry.status = result.isError ? "error" : suffixResolution ? "warning" : "success";
-		// Store clean display content for preview/expanded display when the read
-		// tool provides it; fall back to model-facing text for legacy results.
 		const displayContent = details?.displayContent;
 		const textContent = result.content?.find(c => c.type === "text")?.text;
 		if (displayContent !== undefined || textContent !== undefined) {
@@ -414,7 +398,6 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		const displayTargets = this.#displayTargetsForEntries(entries);
 		const displayRows = this.#buildSummaryRows(displayTargets);
 
-		// Clear previous children and rebuild the summary and preview blocks.
 		this.clear();
 		this.#text = new Text("", 0, 0);
 
@@ -625,7 +608,6 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		return ` ${theme.fg("warning", `(warn ${formatCount("conflict", conflictCount)})`)}`;
 	}
 
-	/** Add a code-cell content preview below the entry summary. When collapsed: shows first COLLAPSED_PREVIEW_LINES lines with a "… N more lines ⟨<key>: Expand⟩" hint. */
 	#addContentPreview(entry: ReadEntry): void {
 		const split = splitPathAndSel(entry.path);
 		const lang = getLanguageFromPath(split.path);
@@ -650,9 +632,6 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 						code: entry.contentText ?? "",
 						language: lang,
 						title,
-						// `notExecuted` is this group's own row state; the code cell knows only
-						// the four render states, and a read that never ran is a warning there
-						// (dimmed by the row glyph), never an error.
 						status:
 							entry.status === "success"
 								? "complete"
@@ -690,9 +669,6 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 			return theme.fg("warning", theme.status.warning);
 		}
 		if (status === "notExecuted") {
-			// Dim, not red: the turn failed, this read did not. It carries the warning
-			// glyph so the row is not read as a completed read, in the dim register
-			// that says nothing happened here.
 			return theme.fg("dim", theme.status.warning);
 		}
 		if (status === "error") {

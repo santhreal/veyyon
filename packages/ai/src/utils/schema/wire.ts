@@ -1,5 +1,3 @@
-/** Compute the wire (JSON Schema) representation of a tool's parameters. */
-
 import { isRecord } from "@veyyon/utils/type-guards";
 import type { ArkErrors, Type } from "arktype";
 import { type ZodType, z } from "zod/v4";
@@ -7,20 +5,16 @@ import type { Tool, TSchema } from "../../types";
 import { upgradeJsonSchemaTo202012 } from "./draft";
 import { stamp } from "./stamps";
 
-/** True when value is a live Zod schema instance. */
 export function isZodSchema(value: unknown): value is ZodType {
 	return (
 		typeof value === "object" &&
 		value !== null &&
-		// Zod v4 instances expose _zod with a def object.
 		"_zod" in value &&
 		typeof (value as { _zod?: { def?: unknown } })._zod === "object" &&
-		// Real instances have .parse on the prototype chain.
 		typeof (value as { parse?: unknown }).parse === "function"
 	);
 }
 
-/** True when value is a live ArkType schema instance. */
 export function isArkSchema(value: unknown): value is Type {
 	return (
 		typeof value === "function" &&
@@ -29,7 +23,6 @@ export function isArkSchema(value: unknown): value is Type {
 	);
 }
 
-/** True when value is an ArkType ArkErrors rejection result. */
 export function isArkErrors(value: unknown): value is ArkErrors {
 	return Array.isArray(value) && typeof (value as { summary?: unknown }).summary === "string";
 }
@@ -116,13 +109,11 @@ function arkJsonAstToWire(value: unknown): unknown {
 	return {};
 }
 
-/** Symbol-stamped caches keyed by schema object identity. */
 const kZodWireSchema = Symbol("pi.schema.zod.wire");
 const kJsonWireSchema = Symbol("pi.schema.json.wire");
 const kArkWireSchema = Symbol("pi.schema.ark.wire");
 const kStrippedSchema = Symbol("pi.schema.descriptions.stripped");
 
-/** Post-process Zod-emitted JSON Schema for provider compatibility. */
 function postProcess(schema: Record<string, unknown>): Record<string, unknown> {
 	delete schema.$schema;
 	walk(schema, true);
@@ -226,7 +217,6 @@ function rewriteNullableScalarAnyOf(schema: Record<string, unknown>): void {
 	schema.type = [scalarType, "null"];
 }
 
-/** Keys whose values are a single JSON Schema (not an array or map). */
 const SCHEMA_VALUE_KEYS = [
 	"additionalProperties",
 	"unevaluatedProperties",
@@ -240,10 +230,8 @@ const SCHEMA_VALUE_KEYS = [
 	"not",
 ] as const;
 
-/** Keys whose values are a map of `{ key: Schema }` entries. */
 const SCHEMA_MAP_KEYS = ["properties", "patternProperties", "$defs", "definitions"] as const;
 
-/** Keys whose values are an array of schemas. */
 const SCHEMA_ARRAY_KEYS = ["anyOf", "oneOf", "allOf", "prefixItems"] as const;
 
 function normalizeArkPropertyComments(node: unknown): void {
@@ -291,13 +279,11 @@ function normalizeArkPropertyComments(node: unknown): void {
 	}
 }
 
-/** True when `val` is a plain empty object `{}`. */
 function isEmptyObject(val: unknown): val is Record<string, never> {
 	if (!isRecord(val)) return false;
 	return Object.keys(val).length === 0;
 }
 
-/** The single scalar type for a homogeneous primitive enum, or undefined. */
 function homogeneousEnumScalarType(values: readonly unknown[]): string | undefined {
 	if (values.length === 0) return undefined;
 	let inferred: string | undefined;
@@ -322,14 +308,12 @@ function homogeneousEnumScalarType(values: readonly unknown[]): string | undefin
 	return inferred;
 }
 
-/** Infer scalar type for bare enum schemas missing a type property. */
 function inferBareEnumScalarType(obj: Record<string, unknown>): void {
 	if ("type" in obj || !Array.isArray(obj.enum)) return;
 	const inferred = homogeneousEnumScalarType(obj.enum);
 	if (inferred !== undefined) obj.type = inferred;
 }
 
-/** Collapse homogeneous const anyOf union into a typed enum node. */
 function collapseConstUnionAnyOf(obj: Record<string, unknown>): void {
 	if (hasSchemaDefiningSibling(obj) || "type" in obj) return;
 	const variants = obj.anyOf;
@@ -409,7 +393,6 @@ function walk(node: unknown, zodCleanup: boolean): void {
 	for (const k in obj) walk(obj[k], zodCleanup);
 }
 
-/** Normalize empty schema objects ({}) to boolean true in schema positions. */
 export function normalizeEmptySchemas(node: unknown): void {
 	if (Array.isArray(node)) {
 		for (const child of node) normalizeEmptySchemas(child);
@@ -441,7 +424,6 @@ export function normalizeEmptySchemas(node: unknown): void {
 	for (const k in obj) normalizeEmptySchemas(obj[k]);
 }
 
-/** Convert a Zod schema into the JSON Schema shape providers consume. */
 export function zodToWireSchema(schema: ZodType): Record<string, unknown> {
 	return stamp(schema, kZodWireSchema, s => {
 		const raw = z.toJSONSchema(s, { target: "draft-2020-12" }) as Record<string, unknown>;
@@ -449,7 +431,6 @@ export function zodToWireSchema(schema: ZodType): Record<string, unknown> {
 	});
 }
 
-/** Recursively set additionalProperties: false on declared object nodes. */
 function closeDeclaredObjects(node: unknown): void {
 	if (Array.isArray(node)) {
 		for (const child of node) closeDeclaredObjects(child);
@@ -483,12 +464,10 @@ function closeDeclaredObjects(node: unknown): void {
 	}
 }
 
-/** A subschema admitting any JSON value: `{}` or boolean `true` (draft 2020-12 §4.3.1). */
 function isUnconstrainedSchema(val: unknown): boolean {
 	return val === true || isEmptyObject(val);
 }
 
-/** Prune unconstrained undefined union branches emitted by ArkType. */
 function pruneArkUndefinedUnionBranches(node: unknown): void {
 	if (Array.isArray(node)) {
 		for (const child of node) pruneArkUndefinedUnionBranches(child);
@@ -530,7 +509,6 @@ function pruneArkUndefinedUnionBranches(node: unknown): void {
 	}
 }
 
-/** Convert an ArkType schema into provider JSON Schema shape. */
 export function arkToWireSchema(schema: Type): Record<string, unknown> {
 	return stamp(schema, kArkWireSchema, s => {
 		const raw = s.toJsonSchema({ target: "draft-2020-12", fallback: ctx => ctx.base }) as Record<string, unknown>;
@@ -542,7 +520,6 @@ export function arkToWireSchema(schema: Type): Record<string, unknown> {
 	});
 }
 
-/** Resolve tool parameters to a JSON Schema object for the wire. */
 export function toolWireSchema(tool: Tool): Record<string, unknown> {
 	const params: TSchema = tool.parameters;
 	if (isArkSchema(params)) return arkToWireSchema(params);
@@ -554,7 +531,6 @@ export function toolWireSchema(tool: Tool): Record<string, unknown> {
 	});
 }
 
-/** Schema-valued keywords whose value is a single subschema or array. */
 const STRIP_SCHEMA_VALUE_KEYS = [
 	"additionalProperties",
 	"unevaluatedProperties",
@@ -574,10 +550,8 @@ const STRIP_SCHEMA_VALUE_KEYS = [
 	"prefixItems",
 ] as const;
 
-/** Keywords whose value is a `{ name: Schema }` map — names are NOT annotations. */
 const STRIP_SCHEMA_MAP_KEYS = ["properties", "patternProperties", "$defs", "definitions", "dependentSchemas"] as const;
 
-/** Recursively strip description annotations from a JSON Schema. */
 function stripSchemaDescriptionsInPlace(node: unknown): void {
 	if (Array.isArray(node)) {
 		for (const child of node) stripSchemaDescriptionsInPlace(child);
@@ -596,7 +570,6 @@ function stripSchemaDescriptionsInPlace(node: unknown): void {
 	}
 }
 
-/** Deep clone schema with description annotations removed. */
 export function stripSchemaDescriptions(schema: Record<string, unknown>): Record<string, unknown> {
 	return stamp(schema, kStrippedSchema, source => {
 		const clone = structuredClone(source);
@@ -605,7 +578,6 @@ export function stripSchemaDescriptions(schema: Record<string, unknown>): Record
 	});
 }
 
-/** Strip human-readable descriptions from tool parameter schemas. */
 export function stripToolDescriptions(tools: readonly Tool[]): Tool[] {
 	return tools.map(tool => ({
 		...tool,

@@ -1,4 +1,3 @@
-/** The version picker as a `/settings` sub-panel. The picker itself takes rows and draws them. Getting those rows means asking */
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { errorMessage } from "@veyyon/utils";
@@ -7,21 +6,13 @@ import { getAllReleases, readVersionMoves } from "../../cli/update-cli";
 import { theme } from "../theme/theme";
 import { RollbackPickerComponent } from "./rollback-picker";
 
-/** What the panel needs from its host, so none of it is reached for globally. */
 export interface RollbackPanelContext {
-	/** The version running now, marked in the list and never a target. */
 	currentVersion: string;
-	/** Opens a URL in the operator's browser. */
 	openUrl: UrlOpener;
-	/** Performs the move once a version is chosen. */
 	rollback: (version: string) => Promise<void>;
-	/** Reports a failure to the operator, since a panel that closed silently would look like success. */
 	reportError: (message: string) => void;
-	/** Asks the host to repaint after an async state change. */
 	requestRender: () => void;
-	/** Closes the panel. */
 	done: () => void;
-	/** Injected so a test drives the panel without a network. */
 	listReleases?: () => Promise<RollbackRow[]>;
 }
 
@@ -53,14 +44,11 @@ export class RollbackPanelComponent implements Component {
 				}),
 			};
 		} catch (err) {
-			// Named, not swallowed: "could not reach the release source" and "there
-			// are no versions" are different facts and must not look the same.
 			this.#state = { kind: "failed", reason: errorMessage(err) };
 		}
 		this.#context.requestRender();
 	}
 
-	/** Start the move, then close. The panel closes FIRST because the install writes progress to the terminal */
 	#choose(version: string): void {
 		this.#context.done();
 		void this.#context
@@ -68,7 +56,6 @@ export class RollbackPanelComponent implements Component {
 			.catch(err => this.#context.reportError(`Could not move to ${version}: ${errorMessage(err)}`));
 	}
 
-	/** The picker once it exists, for tests and for host-side focus wiring. */
 	picker(): RollbackPickerComponent | null {
 		return this.#state.kind === "ready" ? this.#state.picker : null;
 	}
@@ -78,9 +65,6 @@ export class RollbackPanelComponent implements Component {
 			this.#state.picker.handleInput(data);
 			return;
 		}
-		// Esc closes a panel that is still loading or has failed. Without this the
-		// only way out of a failed fetch would be to close the whole settings
-		// overlay, which loses the operator's place in it.
 		if (data === "\x1b") this.#context.done();
 	}
 
@@ -91,10 +75,7 @@ export class RollbackPanelComponent implements Component {
 		}
 		return new Text(theme.fg("warning", `Could not read the published versions: ${this.#state.reason}`), 1, 1)
 			.render(width)
-			.concat(
-				// Not "check your connection": the commonest failure here is GitHub's per-address API limit, where the connection is fine and the advice
-				new Text(theme.fg("dim", "Esc to go back, then open it again to retry."), 1, 0).render(width),
-			);
+			.concat(new Text(theme.fg("dim", "Esc to go back, then open it again to retry."), 1, 0).render(width));
 	}
 
 	invalidate(): void {

@@ -1,30 +1,16 @@
-/** MCP (Model Context Protocol) Servers Capability Canonical shape for MCP server configurations, regardless of source format. */
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 
-/**
- * Canonical MCP server configuration.
- */
 export interface MCPServer {
-	/** Server name (unique key) */
 	name: string;
-	/** Whether this server is enabled (default: true) */
 	enabled?: boolean;
-	/** Connection timeout in milliseconds */
 	timeout?: number;
-	/** Command to run (for stdio transport) */
 	command?: string;
-	/** Command arguments */
 	args?: string[];
-	/** Environment variables */
 	env?: Record<string, string>;
-	/** Working directory for stdio transport */
 	cwd?: string;
-	/** URL (for HTTP/SSE transport) */
 	url?: string;
-	/** HTTP headers (for HTTP transport) */
 	headers?: Record<string, string>;
-	/** Authentication configuration */
 	auth?: {
 		type: "oauth" | "apikey";
 		credentialId?: string;
@@ -33,7 +19,6 @@ export interface MCPServer {
 		clientSecret?: string;
 		resource?: string;
 	};
-	/** OAuth configuration (clientId, clientSecret, redirectUri, callbackPort, callbackPath, prompt) for servers requiring explicit client credentials */
 	oauth?: {
 		clientId?: string;
 		clientSecret?: string;
@@ -42,9 +27,7 @@ export interface MCPServer {
 		callbackPath?: string;
 		prompt?: string;
 	};
-	/** Transport type */
 	transport?: "stdio" | "sse" | "http";
-	/** Source metadata (added by loader) */
 	_source: SourceMeta;
 }
 
@@ -58,7 +41,6 @@ export const mcpCapability = defineCapability<MCPServer>({
 		if (!server.name) return "Missing server name";
 		if (!server.command && !server.url) return "Must have command or url";
 
-		// Validate transport-endpoint pairing
 		if (server.transport === "stdio" && !server.command) {
 			return "stdio transport requires command field";
 		}

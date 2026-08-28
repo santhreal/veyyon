@@ -1,4 +1,3 @@
-/** /review command - Interactive code review launcher Provides a menu to select review mode: */
 import { errorMessage, isRecord, prompt } from "@veyyon/utils";
 import type { BundledCommandAPI, CustomCommand } from "../../../../extensibility/custom-commands/types";
 import type { HookCommandContext } from "../../../../extensibility/hooks/types";
@@ -48,7 +47,6 @@ type ReviewMenuChoice =
 	| { kind: "custom" };
 
 const EXCLUDED_PATTERNS: { pattern: RegExp; reason: string }[] = [
-	// Lock files
 	{ pattern: /\.lock$/, reason: "lock file" },
 	{ pattern: /-lock\.(json|yaml|yml)$/, reason: "lock file" },
 	{ pattern: /package-lock\.json$/, reason: "lock file" },
@@ -60,7 +58,6 @@ const EXCLUDED_PATTERNS: { pattern: RegExp; reason: string }[] = [
 	{ pattern: /composer\.lock$/, reason: "lock file" },
 	{ pattern: /flake\.lock$/, reason: "lock file" },
 
-	// Generated/build artifacts
 	{ pattern: /\.min\.(js|css)$/, reason: "minified" },
 	{ pattern: /\.generated\./, reason: "generated" },
 	{ pattern: /\.snap$/, reason: "snapshot" },
@@ -71,13 +68,11 @@ const EXCLUDED_PATTERNS: { pattern: RegExp; reason: string }[] = [
 	{ pattern: /node_modules\//, reason: "vendor" },
 	{ pattern: /vendor\//, reason: "vendor" },
 
-	// Binary/assets (usually shown as binary in diff anyway)
 	{ pattern: /\.(png|jpg|jpeg|gif|ico|webp|avif)$/i, reason: "image" },
 	{ pattern: /\.(woff|woff2|ttf|eot|otf)$/i, reason: "font" },
 	{ pattern: /\.(pdf|zip|tar|gz|rar|7z)$/i, reason: "binary" },
 ];
 
-/** Check if a file path should be excluded from review. Returns the exclusion reason if excluded, undefined otherwise. */
 function getExclusionReason(path: string): string | undefined {
 	for (const { pattern, reason } of EXCLUDED_PATTERNS) {
 		if (pattern.test(path)) return reason;
@@ -85,24 +80,20 @@ function getExclusionReason(path: string): string | undefined {
 	return undefined;
 }
 
-/** Parse unified diff output into per-file stats. Splits on file boundaries, counts +/- lines, and filters excluded files. */
 function parseDiff(diffOutput: string): DiffStats {
 	const files: FileDiff[] = [];
 	const excluded: DiffStats["excluded"] = [];
 	let totalAdded = 0;
 	let totalRemoved = 0;
 
-	// Split by file boundary: "diff --git a/... b/..."
 	const fileChunks = diffOutput.split(/^diff --git /m).filter(Boolean);
 
 	for (const chunk of fileChunks) {
-		// Extract file path from "a/path b/path" line
 		const headerMatch = chunk.match(/^a\/(.+?) b\/(.+)/);
 		if (!headerMatch) continue;
 
 		const path = headerMatch[2];
 
-		// Count added/removed lines (lines starting with + or - but not ++ or --)
 		let linesAdded = 0;
 		let linesRemoved = 0;
 
@@ -133,20 +124,14 @@ function parseDiff(diffOutput: string): DiffStats {
 	return { files, totalAdded, totalRemoved, excluded };
 }
 
-/**
- * Get file extension for display purposes.
- */
 function getFileExt(path: string): string {
 	const match = path.match(/\.([^.]+)$/);
 	return match ? match[1] : "";
 }
 
-/** Determine recommended number of reviewer agents based on diff weight. Uses total lines changed as the primary metric. */
 function getRecommendedAgentCount(stats: DiffStats): number {
 	const totalLines = stats.totalAdded + stats.totalRemoved;
 	const fileCount = stats.files.length;
-
-	// Heuristics: - Tiny (<100 lines or 1-2 files): 1 agent
 
 	if (totalLines < 100 || fileCount <= 2) return 1;
 	if (totalLines < 500) return Math.min(2, fileCount);
@@ -155,15 +140,11 @@ function getRecommendedAgentCount(stats: DiffStats): number {
 	return Math.min(16, fileCount);
 }
 
-/**
- * Extract first N lines of actual diff content (excluding headers) for preview.
- */
 function getDiffPreview(hunks: string, maxLines: number): string {
 	const lines = hunks.split("\n");
 	const contentLines: string[] = [];
 
 	for (const line of lines) {
-		// Skip diff headers, keep actual content
 		if (
 			line.startsWith("diff --git") ||
 			line.startsWith("index ") ||
@@ -180,7 +161,6 @@ function getDiffPreview(hunks: string, maxLines: number): string {
 	return contentLines.join("\n");
 }
 
-// Thresholds for diff inclusion
 const MAX_DIFF_CHARS = 50_000; // Don't include diff above this
 const MAX_FILES_FOR_INLINE_DIFF = 20; // Don't include diff if more files than this
 const DEFAULT_LARGE_DIFF_INSTRUCTION = "MUST run `git diff`/`git show` for assigned files";
@@ -189,9 +169,6 @@ const GIT_UNCOMMITTED_DIFF_INSTRUCTION =
 	"MUST run both `git diff -- <path>` and `git diff --cached -- <path>` for assigned files";
 const JJ_UNCOMMITTED_DIFF_INSTRUCTION = "MUST run `jj --ignore-working-copy diff --git -- <path>` for assigned files";
 
-/**
- * Build the full review prompt with diff stats and distribution guidance.
- */
 function buildReviewPrompt(
 	mode: string,
 	stats: DiffStats,
@@ -259,8 +236,6 @@ function parseGithubPrUrl(text: string): ReviewPrRef | undefined {
 	try {
 		url = new URL(text);
 	} catch {
-		// The throw IS the answer: this function is offered every argument the user typed, so text that is not
-		// a URL at all is the common case and "not a PR URL" is exactly what undefined means to the caller.
 		return undefined;
 	}
 
@@ -433,7 +408,6 @@ function findRecentPrRefs(ctx: HookCommandContext, limit: number): ReviewPrRef[]
 export class ReviewCommand implements CustomCommand {
 	name = "review";
 	description = "Launch interactive code review";
-	/** Every prompt this command builds says `agent: "reviewer"`, and `reviewer` is a bundled specialist that ships disabled — so without this declaration `/review` */
 	spawnsAgents = ["reviewer"] as const;
 
 	constructor(private api: BundledCommandAPI) {}
@@ -489,9 +463,6 @@ export class ReviewCommand implements CustomCommand {
 				return buildPrReviewPrompt(this.api, ctx, selectedChoice.ref, extraInstructions ?? "");
 
 			case "base-branch": {
-				// A `git branch` that FAILS is not a repository with no branches, and telling the reader "no git
-				// branches found" sends them looking for the wrong thing. Reported the same way this command already
-				// reports a failed diff, so there is one shape for "git would not answer".
 				const branches = await getGitBranches(this.api).catch(err => {
 					ctx.ui.notify(`Failed to list branches: ${errorMessage(err)}`, "error");
 					return undefined;
@@ -541,8 +512,6 @@ export class ReviewCommand implements CustomCommand {
 			}
 
 			case "commit": {
-				// Same distinction as the branch list above: a failed `git log` is not an empty history, and an
-				// unborn HEAD in a fresh repository is the one case that genuinely has no commits.
 				const commits = await getRecentCommits(this.api, 20).catch(err => {
 					ctx.ui.notify(`Failed to list commits: ${errorMessage(err)}`, "error");
 					return undefined;
@@ -585,9 +554,6 @@ export class ReviewCommand implements CustomCommand {
 				);
 				if (!instructions?.trim()) return undefined;
 
-				// The diff is optional context here, so a custom review still runs without it -- but it runs on
-				// nothing but the instructions, which is a much weaker review than the reader asked for. Said out
-				// loud rather than quietly downgraded, and the review proceeds either way.
 				const reviewDiff = await getUncommittedReviewDiff(this.api).catch(err => {
 					ctx.ui.notify(`Reviewing without a diff: ${errorMessage(err)}`, "warning");
 					return undefined;
@@ -612,12 +578,10 @@ export class ReviewCommand implements CustomCommand {
 	}
 }
 
-/** Branches, newest git first. Failures propagate: the caller tells "git would not answer" apart from "this repository has no branches", and swallowing them here made those the same answer. */
 async function getGitBranches(api: BundledCommandAPI): Promise<string[]> {
 	return git.branch.list(api.cwd, { all: true });
 }
 
-/** The porcelain status, used only to decide whether there is anything to diff. Failures propagate on purpose. Returning `""` here meant an unreadable repository took the */
 async function getGitStatus(api: BundledCommandAPI): Promise<string> {
 	return git.status(api.cwd);
 }
@@ -652,7 +616,6 @@ async function getUncommittedReviewDiff(api: BundledCommandAPI): Promise<Current
 	};
 }
 
-/** Recent commits as `hash subject` lines. Failures propagate, for the reason on {@link getGitBranches}. */
 async function getRecentCommits(api: BundledCommandAPI, count: number): Promise<string[]> {
 	return git.log.onelines(api.cwd, count);
 }

@@ -1,5 +1,3 @@
-/** Recognising a cwd that is not itself a repository but holds exactly one. This is the "you opened the parent directory of your project" case: the agent starts in a folder that */
-
 import * as fs from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
@@ -32,13 +30,11 @@ function buildContext(cwd: string, repoRoot: string): ActiveRepoContext {
 	};
 }
 
-/** The rule, in one place: a context only when EXACTLY ONE direct child is a repository. Both gatherers hand their candidates here rather than deciding for themselves. Ambiguity has to answer */
 function singleChildRepo(cwd: string, repoChildPaths: string[]): ActiveRepoContext | null {
 	const only = repoChildPaths.length === 1 ? repoChildPaths[0] : undefined;
 	return only === undefined ? null : buildContext(cwd, only);
 }
 
-/** Report a cwd that could not be listed, which is the one failure here that changes the answer. An absent directory is silent: a cwd can be removed while a session is open, and the caller's answer */
 function reportUnlistableCwd(cwd: string, error: unknown): void {
 	if (isEnoent(error)) return;
 	logger.warn("The working directory could not be listed; a repository inside it will not be detected", {
@@ -51,9 +47,6 @@ async function resolveRepository(cwd: string): Promise<GitRepository | null> {
 	try {
 		return await repo.resolve(cwd);
 	} catch {
-		// Null means "cwd is not inside a repository", and this resolution is a filesystem walk up the
-		// directory chain, so a failure at any level means the same thing to the caller: keep looking for a
-		// repository BELOW instead. A wrong answer here costs nothing, since the child scan is next.
 		return null;
 	}
 }
@@ -62,7 +55,6 @@ function resolveRepositorySync(cwd: string): GitRepository | null {
 	try {
 		return repo.resolveSync(cwd);
 	} catch {
-		// Same verdict as the asynchronous twin above.
 		return null;
 	}
 }
@@ -97,9 +89,6 @@ async function resolveDirectChildDirectory(cwd: string, entry: fs.Dirent): Promi
 		const stat = await fsPromises.stat(childPath);
 		return stat.isDirectory() ? childPath : null;
 	} catch {
-		// A symlink that cannot be followed -- dangling, or pointing somewhere unreadable -- is not a
-		// directory this scan can look inside, which is exactly what null says. Nothing is hidden: a link
-		// that leads nowhere cannot hold the repository the user meant.
 		return null;
 	}
 }
@@ -112,7 +101,6 @@ function resolveDirectChildDirectorySync(cwd: string, entry: fs.Dirent): string 
 		const stat = fs.statSync(childPath);
 		return stat.isDirectory() ? childPath : null;
 	} catch {
-		// Same verdict as the asynchronous twin above.
 		return null;
 	}
 }
@@ -122,9 +110,6 @@ async function hasGitMarker(childPath: string): Promise<boolean> {
 		const stat = await fsPromises.stat(path.join(childPath, ".git"));
 		return stat.isDirectory() || stat.isFile();
 	} catch {
-		// No `.git` entry, so not a repository root. Absence is the ordinary answer here -- most children of
-		// a project folder are not repositories -- and a child whose `.git` cannot be stat'ed is one this
-		// session could not use as a repository anyway.
 		return false;
 	}
 }
@@ -134,7 +119,6 @@ function hasGitMarkerSync(childPath: string): boolean {
 		const stat = fs.statSync(path.join(childPath, ".git"));
 		return stat.isDirectory() || stat.isFile();
 	} catch {
-		// Same verdict as the asynchronous twin above.
 		return false;
 	}
 }
@@ -146,7 +130,6 @@ async function findSingleDirectChildRepo(cwd: string): Promise<ActiveRepoContext
 		if (!childPath) continue;
 		if (!(await hasGitMarker(childPath))) continue;
 		repoChildPaths.push(childPath);
-		// Two is already ambiguous, so there is nothing to learn from a third.
 		if (repoChildPaths.length > 1) break;
 	}
 	return singleChildRepo(cwd, repoChildPaths);

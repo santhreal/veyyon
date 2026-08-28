@@ -1,6 +1,3 @@
-/**
- * CLI handler for `veyyon grievances` — view, clean, and manually push reported tool issues.
- */
 import { existsSync } from "node:fs";
 import { subCellBar } from "@veyyon/tui/sub-cell-bar";
 import { formatCount, getAutoQaDbDir, pluralize } from "@veyyon/utils";
@@ -24,21 +21,15 @@ export interface ListGrievancesOptions {
 }
 
 export interface CleanGrievancesOptions {
-	/** Delete a single grievance by id. */
 	id?: number;
-	/** Delete every grievance recorded for this tool name. */
 	tool?: string;
-	/** Delete every grievance regardless of tool/id. */
 	all?: boolean;
-	/** Output the deletion count as JSON instead of a status message. */
 	json?: boolean;
 }
 
 export interface PushGrievancesOptions {
-	/** Emit the {@link FlushResult} as JSON instead of a status line. */
 	json?: boolean;
 }
-/** The one explanation for a missing database handle, shared by every subcommand. `openAutoQaDb` returns null both when auto-QA has never been used and when the database is there */
 function grievanceDbUnavailable(): { reason: "no_db" | "unreadable_db"; message: string } {
 	const dbPath = getAutoQaDbDir();
 	if (existsSync(dbPath)) {
@@ -53,7 +44,6 @@ function grievanceDbUnavailable(): { reason: "no_db" | "unreadable_db"; message:
 	};
 }
 
-/** Print the explanation above, on stderr in `--json` mode so a machine reader's stdout stays parseable. */
 function reportGrievanceDbUnavailable(json: boolean | undefined, unavailable: { message: string }): void {
 	if (json) console.error(chalk.dim(unavailable.message));
 	else console.log(chalk.dim(unavailable.message));
@@ -103,7 +93,6 @@ export async function listGrievances(options: ListGrievancesOptions): Promise<vo
 	}
 }
 
-/** Delete grievances from the auto-QA database. Selectors are mutually exclusive in intent — exactly one of `id`, `tool`, or */
 export async function cleanGrievances(options: CleanGrievancesOptions): Promise<void> {
 	const selectors = [options.id !== undefined, !!options.tool, !!options.all].filter(Boolean).length;
 	if (selectors === 0) {
@@ -135,13 +124,9 @@ export async function cleanGrievances(options: CleanGrievancesOptions): Promise<
 		} else {
 			const result = db.prepare("DELETE FROM grievances").run();
 			deleted = Number(result.changes);
-			// Reset the autoincrement counter so a fresh slate starts at #1 again.
-			// `sqlite_sequence` only exists if AUTOINCREMENT was ever used; ignore failures.
 			try {
 				db.prepare("DELETE FROM sqlite_sequence WHERE name = 'grievances'").run();
-			} catch {
-				/* sequence table missing on a brand-new db — nothing to reset */
-			}
+			} catch {}
 		}
 
 		if (options.json) {
@@ -162,7 +147,6 @@ export async function cleanGrievances(options: CleanGrievancesOptions): Promise<
 	}
 }
 
-/** Single-line ANSI progress reporter. `update(done)` rewrites the line via `\r`; `finish()` newlines out so subsequent log lines land cleanly. On a */
 interface ProgressBar {
 	update(done: number): void;
 	finish(): void;
@@ -174,9 +158,6 @@ function makeProgressBar(total: number, width = 30): ProgressBar {
 		return { update: () => undefined, finish: () => undefined };
 	}
 	const render = (done: number): void => {
-		// Eight steps per column through the shared owner. STATIC: a `\r`-rewritten
-		// line driven by the push loop, with no clock and no render loop, so the
-		// value cannot be settled — the resolution is the whole improvement here.
 		const ratio = Math.min(1, done / total);
 		const bar = subCellBar(ratio, width);
 		const pct = `${Math.floor(ratio * 100)
@@ -191,7 +172,6 @@ function makeProgressBar(total: number, width = 30): ProgressBar {
 	};
 }
 
-/** Manually drain every unpushed grievance to the configured backend, ignoring the user-facing consent gate (manual push is the user's */
 export async function pushGrievances(options: PushGrievancesOptions): Promise<void> {
 	const db = openAutoQaDb();
 	if (!db) {

@@ -1,21 +1,12 @@
-/**
- * Built-in model roles and role metadata helpers.
- */
-
-// Import from the leaf color module, not the heavy `theme` barrel. The barrel pulls modes/theme/shimmer -> config/settings -> discovery -> ... -> config/model-resolver,
 import { isValidThemeColor, type ThemeColor } from "../modes/theme/color";
 import type { Settings } from "./settings";
 
-/** Canonical prefix for a configured model role selector. */
 export const MODEL_ROLE_ALIAS_PREFIX = "@";
 
-/** Legacy prefix accepted for backwards-compatible role selectors. */
 export const LEGACY_MODEL_ROLE_ALIAS_PREFIX = "pi/";
 
-/** Shorthand selector for the default model role. */
 export const DEFAULT_MODEL_ROLE_ALIAS = "*";
 
-/** Format a model role as its canonical selector. */
 export function formatModelRoleAlias(role: string): string {
 	return `${MODEL_ROLE_ALIAS_PREFIX}${role}`;
 }
@@ -26,18 +17,13 @@ export interface ModelRoleInfo {
 	tag?: string;
 	name: string;
 	color?: ThemeColor;
-	/** If true, the role is functional but not shown in the model selector UI. */
 	hidden?: boolean;
-	/** What an unset role resolves to, shown in role pickers. EVERY role inherits the live main model when unset (resolveRoleSelectionWithInherit) — no role */
 	unsetLabel?: string;
 }
 
-/** Picker label for roles that follow the live main model when unset. */
 export const ROLE_INHERIT_LABEL = "inherit (follows main model)";
 
-/** There is deliberately NO `task` role. The model a subagent runs lives in the Subagents settings area (`subagent.model`, and `subagent.agents.<name>.model` */
 export const MODEL_ROLES: Record<ModelRole, ModelRoleInfo> = {
-	/** Legacy only — not selectable; interactive model is the session model, not a role. */
 	default: { tag: "DEFAULT", name: "Default", color: "success", hidden: true },
 	smol: { tag: "SMOL", name: "Fast", color: "warning" },
 	slow: { tag: "SLOW", name: "Thinking", color: "accent" },
@@ -51,28 +37,22 @@ export const MODEL_ROLES: Record<ModelRole, ModelRoleInfo> = {
 
 export const MODEL_ROLE_IDS: ModelRole[] = ["smol", "slow", "vision", "plan", "designer", "commit", "tiny", "advisor"];
 
-/** Built-in roles that may appear in settings-backed role assignment UI. */
 export const SELECTABLE_MODEL_ROLE_IDS: ModelRole[] = MODEL_ROLE_IDS;
 
-/** The slot every interactive model choice persists to, and the ONE name for it. It is not a selectable role: pickers list the named roles (smol, slow, plan, …) */
 export const DEFAULT_MODEL_SLOT = "default" as const;
 
-/** Every spelling a CALLER may pass to mean {@link DEFAULT_MODEL_SLOT}. The slot accumulated names — `default` in storage, `interactive` in `setModel`'s */
 export const DEFAULT_MODEL_SLOT_ALIASES: readonly string[] = ["default", "interactive"];
 
-/** True when `role` is any spelling of the default slot. */
 export function isDefaultModelSlot(role: string): boolean {
 	return DEFAULT_MODEL_SLOT_ALIASES.includes(role);
 }
 
-/** The slot a role name refers to: any alias of the default slot collapses to {@link DEFAULT_MODEL_SLOT}, and every named role passes through unchanged. */
 export function resolveModelSlot(role: string): string {
 	return isDefaultModelSlot(role) ? DEFAULT_MODEL_SLOT : role;
 }
 
 export type RoleInfo = ModelRoleInfo;
 
-/** Return the canonical set of known roles for selector/carousel UI. Built-ins always come first. Configured cycle order, model assignments, and */
 export function getKnownRoleIds(settings: Settings): string[] {
 	const roles = SELECTABLE_MODEL_ROLE_IDS.filter(role => !MODEL_ROLES[role as ModelRole]?.hidden) as string[];
 	const seen = new Set<string>(roles);
@@ -95,7 +75,6 @@ export function getKnownRoleIds(settings: Settings): string[] {
 	return roles;
 }
 
-/** Get role info for a role name (built-in or custom). Configured metadata overrides built-in defaults when present. */
 export function getRoleInfo(role: string, settings: Settings): RoleInfo {
 	const builtIn = role in MODEL_ROLES ? MODEL_ROLES[role as ModelRole] : undefined;
 	const configured = settings.get("modelTags")[role];

@@ -1,9 +1,6 @@
 import type { Component } from "../tui";
 import { padding, truncateToWidth } from "../utils";
 
-/**
- * Text component that truncates to fit viewport width
- */
 export class TruncatedText implements Component {
 	#text: string;
 	#paddingX: number;
@@ -28,45 +25,28 @@ export class TruncatedText implements Component {
 		}
 		const result: string[] = [];
 
-		// Empty line padded to width
 		const emptyLine = padding(width);
 
-		// Add vertical padding above
 		for (let i = 0; i < this.#paddingY; i++) {
 			result.push(emptyLine);
 		}
 
-		// Calculate available width after horizontal padding.
-		//
-		// The floor is 0, not 1: at zero columns `truncateToWidth` still returns the
-		// ellipsis, so a `Math.max(1, …)` floor made this one cell WIDER than the
-		// space it was given, and a component that overruns its width corrupts the
-		// row. Zero columns means draw nothing.
 		const availableWidth = Math.max(0, width - this.#paddingX * 2);
 
-		// Take only the first line. Cut at the first CR or LF: cutting on `\n`
-		// alone leaves a stray `\r` from a CRLF source in the output, which moves
-		// the terminal cursor to column 0 and corrupts the rendered row; a bare
-		// `\r` (no `\n`) would slip through entirely. Cutting before either keeps
-		// the line a single clean row.
 		let singleLineText = this.#text;
 		const breakIndex = this.#text.search(/[\r\n]/);
 		if (breakIndex !== -1) {
 			singleLineText = this.#text.slice(0, breakIndex);
 		}
 
-		// Truncate text if needed (accounting for ANSI codes)
 		const displayText = truncateToWidth(singleLineText, availableWidth);
 
-		// Add horizontal padding
 		const leftPadding = padding(this.#paddingX);
 		const rightPadding = padding(this.#paddingX);
 		const lineWithPadding = leftPadding + displayText + rightPadding;
 
-		// Don't pad to full width - avoids trailing spaces when copying
 		result.push(lineWithPadding);
 
-		// Add vertical padding below
 		for (let i = 0; i < this.#paddingY; i++) {
 			result.push(emptyLine);
 		}

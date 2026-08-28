@@ -1,13 +1,8 @@
-/** The markdown renderer's view of the active theme. roles `@veyyon/tui`'s `Markdown` component asks for, and it binds a mermaid renderer to those */
-
 import { supportsLanguage as nativeSupportsLanguage } from "@veyyon/natives";
 import type { MarkdownTheme } from "@veyyon/tui";
-// The slot leaf, not the store: this file only REGISTERS teardown, which is a `Set.add`.
 import { registerSettingsTestResetHook } from "../../config/settings-instance";
 import { highlightCached } from "./highlight";
 import { resolveMermaidAscii } from "./mermaid-cache";
-// The leaf, not `./theme`: the engine is 144 marginal modules on this graph and this file needs one
-// symbol set. `./theme-binding` and `./symbol-theme` are the two leaves that answer "what is active now".
 import { getSymbolTheme } from "./symbol-theme";
 import { theme } from "./theme-binding";
 import type { Theme } from "./theme-class";
@@ -28,9 +23,6 @@ export function getMarkdownTheme(): MarkdownTheme {
 	}
 	const mermaid = markdownMermaidRendering
 		? (() => {
-				// Mermaid ASCII diagrams render with the active palette so they read as
-				// content rather than raw monochrome. Roles mirror the SVG renderer's
-				// mapping; `text`/`muted`/`border`/`borderMuted`/`accent` exist in every theme.
 				const mermaidColorMode =
 					theme.getColorMode() === "truecolor" ? ("truecolor" as const) : ("ansi256" as const);
 				const mermaidTheme = {
@@ -51,7 +43,6 @@ export function getMarkdownTheme(): MarkdownTheme {
 		code: (text: string) => theme.fg("mdCode", text),
 		codeBlock: (text: string) => theme.fg("mdCodeBlock", text),
 		codeBlockBorder: (text: string) => theme.fg("mdCodeBlockBorder", text),
-		// Designed fence rows: literal ``` markers read as UNRENDERED markdown (the "this is rendering raw" report), so fenced blocks open with a
 		codeBlockFence: (lang, pos) =>
 			theme.fg(
 				"mdCodeBlockBorder",
@@ -90,7 +81,6 @@ export function getMarkdownTheme(): MarkdownTheme {
 	cachedMarkdownThemeRef = theme;
 	return markdownTheme;
 }
-/** Put `markdownMermaidRendering` back to what a freshly started process has. `SelectorController.handleSettingChange("tui.renderMermaid", false)` turned diagram rendering off */
 registerSettingsTestResetHook(() => {
 	setMarkdownMermaidRendering(true);
 });

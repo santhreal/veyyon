@@ -19,12 +19,10 @@ import {
 export type { Env };
 export { envBool, envDisabled, envFloat, envInt, envOneOf, envOptionalString, envString, envTruthy };
 
-/** Derive base home directory for mnemopi. */
 export function mnemopiHome(env: Env = process.env): string {
 	return envOptionalString("MNEMOPI_HOME", env) ?? envOptionalString("HOME", env) ?? homedir();
 }
 
-/** The `.hermes` root: data, models, blobs, plugins and the embedding cache live under it. */
 export function hermesRoot(env: Env = process.env): string {
 	return join(mnemopiHome(env), ".hermes");
 }
@@ -40,7 +38,6 @@ export function modelCacheDir(env: Env = process.env): string {
 }
 
 export const DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5";
-/** Default embedding API URL. */
 export const DEFAULT_EMBEDDING_API_URL = OPENROUTER_API_ENDPOINT;
 export const DEFAULT_LLM_MODEL_REPO = "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF";
 export const DEFAULT_LLM_MODEL_FILE = "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf";
@@ -48,9 +45,7 @@ export const HOST_LLM_TIMEOUT_SECONDS = 15.0;
 
 export type VecType = "float32" | "int8" | "bit";
 
-/** Fallback embedding dimension. */
 export const FALLBACK_EMBEDDING_DIM = 384;
-/** Dimension by embedding model name. */
 export const EMBEDDING_DIMS: Readonly<Record<string, number>> = {
 	"BAAI/bge-small-en-v1.5": 384,
 	"BAAI/bge-base-en-v1.5": 768,
@@ -91,21 +86,18 @@ export function beamOptimizationsEnabled(env: Env = process.env): boolean {
 	return envTruthy("MNEMOPI_BEAM_OPTIMIZATIONS", env);
 }
 
-/** The embedding model in force right now. */
 export function embeddingModel(env: Env = process.env): string {
 	const scoped = getMnemopiRuntimeOptions()?.embeddings?.model;
 	if (scoped !== undefined) return scoped;
 	return envString("MNEMOPI_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL, env);
 }
 
-/** Dimension for named embedding model. */
 export function embeddingDimFor(modelName: string, env: Env = process.env): number {
 	const explicit = envInt("MNEMOPI_EMBEDDING_DIM", NaN, env);
 	if (Number.isFinite(explicit)) return explicit;
 	return EMBEDDING_DIMS[modelName] ?? FALLBACK_EMBEDDING_DIM;
 }
 
-/** The width the model in force produces. Scope-aware, because {@link embeddingModel} is. */
 export function embeddingDim(env: Env = process.env): number {
 	return embeddingDimFor(embeddingModel(env), env);
 }
@@ -126,12 +118,10 @@ export function embeddingsViaApi(env: Env = process.env): boolean {
 	return envTruthy("MNEMOPI_EMBEDDINGS_VIA_API", env);
 }
 
-/** Check if embeddings are explicitly disabled. */
 export function embeddingsDisabled(env: Env = process.env): boolean {
 	return envTruthy("MNEMOPI_NO_EMBEDDINGS", env);
 }
 
-/** Per-input character cap applied before embedding. */
 export function embeddingMaxInputChars(env: Env = process.env): number {
 	return Math.max(0, envInt("MNEMOPI_EMBEDDING_MAX_INPUT_CHARS", 8192, env));
 }
@@ -175,7 +165,6 @@ export function scratchpadMaxItems(env: Env = process.env): number {
 	return envInt("MNEMOPI_SP_MAX", 1000, env);
 }
 
-/** SHMR configuration accessors. */
 export function shmrBatchSize(env: Env = process.env): number {
 	return envInt("MNEMOPI_SHMR_BATCH_SIZE", 50, env);
 }
@@ -271,10 +260,8 @@ export function vecType(env: Env = process.env): VecType {
 	return envOneOf("MNEMOPI_VEC_TYPE", ["float32", "int8", "bit"] as const, "int8", env);
 }
 
-/** The three recall scoring weights, in the order recall applies them. */
 export type HybridWeights = readonly [vecWeight: number, ftsWeight: number, importanceWeight: number];
 
-/** Default recall weights (vector, fts, importance). */
 export const DEFAULT_RECALL_WEIGHTS: HybridWeights = [0.5, 0.3, 0.2];
 
 const NORMALIZED_WEIGHT_EPSILON = 1e-6;
@@ -290,12 +277,10 @@ export function importanceWeight(env: Env = process.env): number {
 	return envFloat("MNEMOPI_IMPORTANCE_WEIGHT", DEFAULT_RECALL_WEIGHTS[2], env);
 }
 
-/** Sanitize weight value to finite non-negative number. */
 function usableWeight(value: number): number {
 	return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
-/** Normalized recall weights summing to 1. */
 export function normalizedRecallWeights(
 	vec: number | null | undefined = vectorWeight(),
 	fts: number | null | undefined = ftsWeight(),
@@ -324,7 +309,6 @@ let polyphonicRecallDefault = false;
 let enhancedRecallDefault = false;
 let proactiveLinkingDefault = false;
 
-/** Configure default recall feature flags. */
 export function configureRecallFeatures(flags: RecallFeatureFlags): void {
 	if (flags.polyphonicRecall !== undefined) polyphonicRecallDefault = flags.polyphonicRecall;
 	if (flags.enhancedRecall !== undefined) enhancedRecallDefault = flags.enhancedRecall;
@@ -358,20 +342,16 @@ export function llmMaxTokens(env: Env = process.env): number {
 	return envInt("MNEMOPI_LLM_MAX_TOKENS", 2048, env);
 }
 
-/** `MNEMOPI_FORCE_LOCAL`: keep extraction on the local tier even when a remote endpoint is configured. */
 export function forceLocalLlm(env: Env = process.env): boolean {
 	return envBool("MNEMOPI_FORCE_LOCAL", false, env);
 }
 
-/** `MNEMOPI_EXTRACTION_PROMPT`: replaces the bundled extraction template when set. */
 export function extractionPromptOverride(env: Env = process.env): string {
 	return envString("MNEMOPI_EXTRACTION_PROMPT", "", env);
 }
 
-/** The model the cloud extraction tier asks for when nothing names another one. */
 export const BUNDLED_EXTRACTION_MODEL = "google/gemini-2.5-flash";
 
-/** `MNEMOPI_EXTRACTION_MODEL`: the model the cloud extraction tier asks for first. */
 export function extractionModel(env: Env = process.env): string {
 	return envString("MNEMOPI_EXTRACTION_MODEL", BUNDLED_EXTRACTION_MODEL, env);
 }

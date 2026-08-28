@@ -9,7 +9,6 @@ export interface HistoryEntry {
 	prompt: string;
 	created_at: number;
 	cwd?: string;
-	/** ID of the session the prompt was submitted from, if known. */
 	sessionId?: string;
 }
 
@@ -27,15 +26,12 @@ export class HistoryStorage {
 	#drain = new AsyncDrain<Pick<HistoryEntry, "prompt" | "cwd" | "sessionId">>(100);
 	#sessionResolver?: () => string | undefined;
 
-	// Prepared statements
 	#insertRowStmt: Statement;
 	#recentStmt: Statement;
 	#searchStmt: Statement;
 	#lastPromptStmt: Statement;
-	// Cache substring-fallback prepared statements keyed by token count.
 	#substringStmts = new Map<number, Statement>();
 
-	// In-memory cache of last prompt to avoid sync DB reads on add
 	#lastPromptCache: string | null = null;
 
 	private constructor(dbPath: string) {
@@ -43,7 +39,6 @@ export class HistoryStorage {
 
 		this.#db = new Database(dbPath);
 
-		// Install the busy handler BEFORE any lock-taking statement. See #2421.
 		this.#db.run("PRAGMA busy_timeout = 5000");
 
 		const hasFts = tableExists(this.#db, "history_fts");
@@ -104,7 +99,6 @@ CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
 		return HistoryStorage.#instance;
 	}
 
-	/** @internal Reset the singleton and close its database — test-only. */
 	static resetInstance(): void {
 		const instance = HistoryStorage.#instance;
 		HistoryStorage.#instance = undefined;
@@ -129,7 +123,6 @@ CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
 		})(rows);
 	}
 
-	/** Register a resolver that supplies the current session ID for prompts added without an explicit `sessionId`. Evaluated synchronously at `add()` time so */
 	setSessionResolver(resolver: () => string | undefined): void {
 		this.#sessionResolver = resolver;
 	}
@@ -165,21 +158,14 @@ CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
 		const tokens = this.#tokenize(query);
 		if (tokens.length === 0) return [];
 
-		// 1. FTS5 prefix match (token AND, prefix-wildcard per token).
-		//    Handles punctuation by tokenizing query the same way unicode61 tokenizer
-		//    indexed the stored text, so "git-commit" -> "git"* "commit"*.
 		const ftsQuery = tokens.map(tok => `"${tok.replace(/"/g, '""')}"*`).join(" ");
 		let ftsRows: HistoryRow[] = [];
 		try {
 			ftsRows = this.#searchStmt.all(ftsQuery, safeLimit) as HistoryRow[];
 		} catch (error) {
-			// Malformed FTS expression - fall through to substring path.
 			logger.debug("HistoryStorage FTS query failed, using substring only", { error: String(error) });
 		}
 
-		// 2. Substring fallback (token-AND LIKE). Catches infix matches FTS5's
-		//    prefix-only wildcard cannot reach (e.g. "mit" -> "commit"). Bounded
-		//    by safeLimit, ordered by recency - no full-table load into JS.
 		let subRows: HistoryRow[] = [];
 		try {
 			subRows = this.#searchSubstring(tokens, safeLimit);
@@ -205,7 +191,6 @@ CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
 			.map(row => this.#toEntry(row));
 	}
 
-	/** IDs of the sessions whose stored prompts match `query`, ordered by prompt recency and de-duplicated. Used to augment session ranking in the resume */
 	matchingSessionIds(query: string, limit = 500): string[] {
 		const seen = new Set<string>();
 		const ids: string[] = [];
@@ -270,7 +255,6 @@ END;
 		return Math.min(clamped, 1000);
 	}
 
-	/** Split on non-alphanumeric runs, mirroring FTS5's `unicode61` tokenizer so query tokens align with how stored prompts were indexed. Lowercases for */
 	#tokenize(query: string): string[] {
 		return query
 			.toLowerCase()

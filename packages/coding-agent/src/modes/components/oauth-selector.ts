@@ -10,7 +10,6 @@ import {
 	type SgrMouseEvent,
 	truncateToWidth,
 } from "@veyyon/tui";
-// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
 import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
@@ -18,10 +17,8 @@ import type { AuthStorage, CredentialOriginKind } from "../../session/auth-stora
 import { pointerMotionEnabled } from "./modal-shell";
 import { hoverBandAt, renderScrollableList } from "./selector-helpers";
 
-/** Default visible provider rows when the host does not size the selector. */
 const OAUTH_SELECTOR_MAX_VISIBLE = 10;
 
-/** Provider ids the user has disabled via settings. The sign-in list hides these so a disabled provider's models stay out of reach end-to-end, mirroring */
 function getDisabledProviderIds(): ReadonlySet<string> {
 	try {
 		return new Set(settings.get("disabledProviders"));
@@ -30,7 +27,6 @@ function getDisabledProviderIds(): ReadonlySet<string> {
 	}
 }
 
-/** Compact, human-readable tag for each credential-origin leg. */
 const ORIGIN_LABELS: Record<CredentialOriginKind, string> = {
 	runtime: "--api-key",
 	config: "config",
@@ -40,21 +36,16 @@ const ORIGIN_LABELS: Record<CredentialOriginKind, string> = {
 	fallback: "custom provider",
 };
 
-/** Component that renders an OAuth provider selector for signing IN. Content-only rows, no chrome: the one host is the setup wizard's Sign-in tab, which supplies its */
 export class OAuthSelectorComponent implements Component {
 	#allProviders: OAuthProviderInfo[] = [];
 	#filteredProviders: OAuthProviderInfo[] = [];
 	#searchQuery = "";
-	/** True while {@link #searchQuery} is something the user typed here. {@link #isSearchEnabled} is a function of the CURRENT row budget, and the */
 	#searchTypedByUser = false;
 	#selectedIndex: number = 0;
 	#hoveredIndex: number | null = null;
-	/** The cross-fade between the provider the pointer left and the one it arrived at, when the host gave this card a repaint. Absent, the band is switched. */
 	#hoverFade: HoverFade | undefined;
-	/** First provider index of the visible ScrollView window (last #buildBody). */
 	#scrollStart = 0;
 	#visibleCount = 0;
-	/** Visible provider rows. Instance state, not the module constant, so a host that owns the viewport can size the selector to it: inside the setup */
 	#maxVisible = OAUTH_SELECTOR_MAX_VISIBLE;
 	#authStorage: AuthStorage;
 	#onSelectCallback: (providerId: string) => void;
@@ -81,8 +72,6 @@ export class OAuthSelectorComponent implements Component {
 		this.#onCancelCallback = onCancel;
 		this.#validateAuthCallback = options?.validateAuth;
 		this.#requestRenderCallback = options?.requestRender;
-		// The band fades only when the host lends a repaint: the frames between two mouse reports
-		// have no input to hang off. Same ambient gate as a card's open unfold.
 		if (this.#requestRenderCallback !== undefined) {
 			const requestRender = this.#requestRenderCallback;
 			this.#hoverFade = new HoverFade({ requestRender, enabled: pointerMotionEnabled() });
@@ -91,12 +80,10 @@ export class OAuthSelectorComponent implements Component {
 		this.#startValidation();
 	}
 
-	/** Size the provider list to the rows the host can actually show. */
 	setMaxVisible(rows: number): void {
 		this.#maxVisible = Math.max(1, Math.floor(rows));
 	}
 
-	/** Whether the cancel key clears a live search instead of closing the selector. A host that owns Escape (the setup wizard, whose Escape leaves onboarding) */
 	hasActiveSearch(): boolean {
 		return this.#searchQuery.length > 0 && (this.#searchTypedByUser || this.#isSearchEnabled());
 	}
@@ -106,7 +93,6 @@ export class OAuthSelectorComponent implements Component {
 		this.#stopSpinner();
 	}
 
-	/** Settle the pointer band so no timer outlives a card the host has finished with. */
 	dispose(): void {
 		this.stopValidation();
 		this.#hoverFade?.dispose();
@@ -114,9 +100,7 @@ export class OAuthSelectorComponent implements Component {
 		this.#hoveredIndex = null;
 	}
 
-	invalidate(): void {
-		// No cached state to invalidate currently
-	}
+	invalidate(): void {}
 
 	#hasSelectableAuth(providerId: string): boolean {
 		return this.#authStorage.hasAuth(providerId);
@@ -124,9 +108,6 @@ export class OAuthSelectorComponent implements Component {
 
 	#loadProviders(): void {
 		const disabled = getDisabledProviderIds();
-		// Hide a login entry when either its own id or the provider id it stores credentials under is
-		// disabled, so alias logins (e.g. `openai-codex-device` ⇒ `openai-codex`) disappear alongside
-		// the model provider they authenticate.
 		this.#allProviders = getOAuthProviders().filter(
 			provider =>
 				!disabled.has(provider.id) && !(provider.storeCredentialsAs && disabled.has(provider.storeCredentialsAs)),
@@ -198,7 +179,6 @@ export class OAuthSelectorComponent implements Component {
 		}
 	}
 
-	/** Muted provenance suffix (" (env: COPILOT_GITHUB_TOKEN)", " (login)", …) so the list distinguishes a real login from an env var aliasing the provider. */
 	#getSourceLabel(providerId: string): string {
 		const origin = this.#authStorage.getCredentialOrigin(providerId);
 		if (!origin) return "";
@@ -263,9 +243,6 @@ export class OAuthSelectorComponent implements Component {
 	}
 
 	#handleSearchInput(keyData: string): boolean {
-		// Backspace is judged by whether the query is CLEARABLE, not by whether a
-		// new one could be started: a resize that grows the window past the
-		// provider count must not strand the query the user already typed.
 		if (matchesKey(keyData, "backspace")) {
 			if (!this.hasActiveSearch()) return false;
 			const chars = [...this.#searchQuery];
@@ -316,8 +293,6 @@ export class OAuthSelectorComponent implements Component {
 								const text = isAvailable ? `  ${provider.name}` : theme.fg("dim", `  ${provider.name}`);
 								line = text + statusIndicator;
 							}
-							// The cursor row answers the pointer like any other: its accent prefix is not a band,
-							// so suppressing the band here left the row the eye was already on feeling dead.
 							const strength = this.#hoverStrength(i);
 							rows.push(strength > 0 ? hoverBandAt(line, rowWidth, strength) : truncateToWidth(line, rowWidth));
 						}
@@ -327,7 +302,6 @@ export class OAuthSelectorComponent implements Component {
 			);
 		}
 
-		// Search status line (scrollbar covers overflow indication)
 		if (this.#shouldRenderSearchStatus()) {
 			body.push(this.#renderStatusLine(total));
 		}
@@ -347,7 +321,6 @@ export class OAuthSelectorComponent implements Component {
 	}
 
 	handleInput(keyData: string): void {
-		// Escape or Ctrl+C. Cancel-key ladder, the same one SelectList and the model browser use: a live search query is cleared first, and only a
 		if (matchesSelectCancel(keyData)) {
 			if (this.hasActiveSearch()) {
 				this.#setSearchQuery("");
@@ -363,43 +336,33 @@ export class OAuthSelectorComponent implements Component {
 			return;
 		}
 
-		// Up arrow
 		if (matchesSelectUp(keyData)) {
 			if (this.#filteredProviders.length > 0) {
 				this.#selectedIndex =
 					this.#selectedIndex === 0 ? this.#filteredProviders.length - 1 : this.#selectedIndex - 1;
 			}
 			this.#statusMessage = undefined;
-		}
-		// Down arrow
-		else if (matchesSelectDown(keyData)) {
+		} else if (matchesSelectDown(keyData)) {
 			if (this.#filteredProviders.length > 0) {
 				this.#selectedIndex =
 					this.#selectedIndex === this.#filteredProviders.length - 1 ? 0 : this.#selectedIndex + 1;
 			}
 			this.#statusMessage = undefined;
-		}
-		// Page up - jump up by one visible page
-		else if (matchesKey(keyData, "pageUp")) {
+		} else if (matchesKey(keyData, "pageUp")) {
 			if (this.#filteredProviders.length > 0) {
 				this.#selectedIndex = Math.max(0, this.#selectedIndex - this.#maxVisible);
 			}
 			this.#statusMessage = undefined;
-		}
-		// Page down - jump down by one visible page
-		else if (matchesKey(keyData, "pageDown")) {
+		} else if (matchesKey(keyData, "pageDown")) {
 			if (this.#filteredProviders.length > 0) {
 				this.#selectedIndex = Math.min(this.#filteredProviders.length - 1, this.#selectedIndex + this.#maxVisible);
 			}
 			this.#statusMessage = undefined;
-		}
-		// Enter
-		else if (matchesKey(keyData, "enter") || matchesKey(keyData, "return") || keyData === "\n") {
+		} else if (matchesKey(keyData, "enter") || matchesKey(keyData, "return") || keyData === "\n") {
 			this.#confirmSelection();
 		}
 	}
 
-	/** Confirm the selected provider (Enter or mouse click). */
 	#confirmSelection(): void {
 		const selectedProvider = this.#filteredProviders[this.#selectedIndex];
 		if (selectedProvider?.available) {
@@ -411,7 +374,6 @@ export class OAuthSelectorComponent implements Component {
 		}
 	}
 
-	/** Move the selection one step for a wheel notch (clamped, no wrap). */
 	handleWheel(delta: -1 | 1): void {
 		if (this.#filteredProviders.length === 0) return;
 		const next = clampLow(this.#selectedIndex + delta, 0, this.#filteredProviders.length - 1);
@@ -420,7 +382,6 @@ export class OAuthSelectorComponent implements Component {
 		this.#statusMessage = undefined;
 	}
 
-	/** Route an SGR mouse report at component-local coordinates. Embedded hosts (the setup wizard's sign-in tab) call this directly at a line/col offset */
 	routeMouse(event: SgrMouseEvent, line: number, _col: number): void {
 		if (event.wheel !== null) {
 			this.handleWheel(event.wheel);
@@ -441,7 +402,6 @@ export class OAuthSelectorComponent implements Component {
 		this.#confirmSelection();
 	}
 
-	/** Band strength for a provider row; without a fade the hovered row is at 1 and the rest at 0. */
 	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;

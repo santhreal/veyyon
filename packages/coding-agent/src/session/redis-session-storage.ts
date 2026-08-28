@@ -6,7 +6,6 @@ import {
 } from "./indexed-session-storage";
 import type { SessionTitleUpdate } from "./session-title-slot";
 
-/** Minimal subset of the `bun:redis` `RedisClient` surface used by {@link RedisSessionStorage}. Keeping the contract narrow (and accepting any */
 export interface RedisSessionStorageClient {
 	get(key: string): Promise<string | null>;
 	getrange(key: string, start: number, end: number): Promise<string>;
@@ -22,15 +21,11 @@ export interface RedisSessionStorageClient {
 }
 
 export interface RedisSessionStorageOptions {
-	/** A connected `bun:redis` RedisClient (or any compatible adapter). */
 	client: RedisSessionStorageClient;
-	/** Key prefix applied to every Redis key this storage owns. Default `veyyon:sessions:`. Trailing colon is preserved verbatim — set to a project-scoped prefix to share */
 	prefix?: string;
-	/** Maximum number of keys returned per SCAN batch when warming the metadata index. Default 500. */
 	scanCount?: number;
 }
 
-// Override via `prefix` when a deployment needs its own key namespace.
 const DEFAULT_PREFIX = "veyyon:sessions:";
 const DEFAULT_SCAN_COUNT = 500;
 
@@ -52,15 +47,11 @@ function decodeTitleMeta(raw: string | undefined): SessionTitleUpdate | undefine
 			updatedAt: record.updatedAt,
 		};
 	} catch {
-		// The stored value is not JSON, so there is no remembered title. Reported by no one on purpose:
-		// a title is decoration, the session loads without it, and the next rename overwrites the value.
 		return undefined;
 	}
 }
 
-/** Redis-backed implementation of {@link SessionStorage}. Each session JSONL file maps to a Redis STRING key, with per-key metadata (mtime) tracked in a */
 export class RedisSessionStorage extends IndexedSessionStorage {
-	/** Warm the metadata index with every existing session key under the configured prefix and return the ready-to-use storage. Must be awaited before passing */
 	static async create(options: RedisSessionStorageOptions): Promise<RedisSessionStorage> {
 		const storage = new RedisSessionStorage(new RedisSessionStorageBackend(options));
 		await storage.initialize();

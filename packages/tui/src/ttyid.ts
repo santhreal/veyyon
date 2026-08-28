@@ -2,19 +2,14 @@ import { CString, dlopen, FFIType } from "bun:ffi";
 import * as fs from "node:fs";
 import * as os from "node:os";
 
-/** Resolve the TTY device path for stdin (fd 0) via POSIX `ttyname(3)`. */
 export function getTtyPath(): string | null {
 	if (os.platform() === "linux") {
-		// Linux: /proc/self/fd/0 is a symlink to /dev/pts/N
 		try {
 			const ttyPath = fs.readlinkSync("/proc/self/fd/0");
 			if (ttyPath.startsWith("/dev/")) {
 				return ttyPath;
 			}
 		} catch {
-			// No readable /proc/self/fd/0 means stdin is not a tty we can name (a pipe, a container without
-			// /proc). Null is the documented "no tty path" answer and every caller has a non-tty path
-			// already, because that is also what Windows and a redirected stdin give.
 			return null;
 		}
 	} else if (os.platform() !== "win32") {
@@ -30,17 +25,12 @@ export function getTtyPath(): string | null {
 				lib.close();
 			}
 		} catch {
-			// `ttyname(3)` was unavailable or failed: no libc to dlopen, no tty on fd 0. Null is the same
-			// "no tty path" answer as the Linux branch above, and it is what the caller expects when stdin
-			// is not a terminal.
 			return null;
 		}
 	}
 	return null;
 }
-/** Get a stable identifier for the current terminal. */
 export function getTerminalId(): string | null {
-	// TTY device path — most reliable, unique per terminal tab
 	if (process.stdin.isTTY) {
 		try {
 			const ttyPath = getTtyPath();
@@ -50,12 +40,8 @@ export function getTerminalId(): string | null {
 		} catch {}
 	}
 
-	// Fallback to terminal-specific env vars
-	// Prefer inner multiplexers over host terminal emulators when stdin has no TTY path.
 	const zellijPane = process.env.ZELLIJ_PANE_ID;
 	if (zellijPane) {
-		// Session names are user-chosen (`zellij -s …`) and the id is used as a
-		// breadcrumb filename — normalize path separators like the TTY branch does.
 		const zellijSession = process.env.ZELLIJ_SESSION_NAME?.replace(/[\\/]/g, "-");
 		return zellijSession ? `zellij-${zellijSession}-${zellijPane}` : `zellij-${zellijPane}`;
 	}
@@ -66,9 +52,6 @@ export function getTerminalId(): string | null {
 	const cmuxSurface = process.env.CMUX_SURFACE_ID;
 	if (cmuxSurface) return `cmux-${cmuxSurface}`;
 
-	// Kitty before WezTerm/others, matching terminal-capabilities.ts detection
-	// order. Inherited env makes either order wrong for some nesting; staying
-	// consistent with the capability detector keeps the two answers aligned.
 	const kittyId = process.env.KITTY_WINDOW_ID;
 	if (kittyId) return `kitty-${kittyId}`;
 

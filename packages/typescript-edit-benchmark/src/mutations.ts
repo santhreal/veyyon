@@ -10,13 +10,6 @@ import {
 } from "regexp-tree";
 import type { AstRegExp, Quantifier as RegexQuantifier } from "regexp-tree/ast";
 
-/**
- * Code mutations for edit benchmark generation.
- *
- * Each mutation introduces a subtle bug that tests edit precision, not bug-finding
- * ability. The mutation can be trivial - what matters is whether the model can
- * surgically apply the patch in difficult contexts.
- */
 export interface MutationInfo {
 	lineNumber: number;
 	originalSnippet: string;
@@ -117,11 +110,6 @@ function parseCode(code: string): Parsed | null {
 	return null;
 }
 
-/*
- * Babel parser 7.29 emits TSTypeCastExpression but generator/types don't define it.
- * Register it in VISITOR_KEYS (so the printer's isLastChild doesn't crash) and in
- * generatorInfosMap with a custom handler that unwraps the TSTypeAnnotation wrapper.
- */
 t.VISITOR_KEYS.TSTypeCastExpression = ["expression", "typeAnnotation"];
 {
 	const { generatorInfosMap } = require("@babel/generator/lib/nodes") as {
@@ -130,7 +118,6 @@ t.VISITOR_KEYS.TSTypeCastExpression = ["expression", "typeAnnotation"];
 	if (!generatorInfosMap.has("TSTypeCastExpression")) {
 		const tsAs = generatorInfosMap.get("TSAsExpression");
 		if (tsAs) {
-			// Custom handler: like TSAsExpression but unwraps TSTypeAnnotation → TSType
 			function TSTypeCastExpression(
 				this: {
 					print: (node: unknown, printComments?: boolean) => void;
@@ -144,7 +131,6 @@ t.VISITOR_KEYS.TSTypeCastExpression = ["expression", "typeAnnotation"];
 				this.word("as");
 				this.space();
 				const annot = node.typeAnnotation as Record<string, unknown> | undefined;
-				// TSTypeCastExpression.typeAnnotation is TSTypeAnnotation {typeAnnotation: TSType}
 				this.print(annot && "typeAnnotation" in annot ? annot.typeAnnotation : annot);
 			}
 			generatorInfosMap.set("TSTypeCastExpression", [TSTypeCastExpression, tsAs[1], tsAs[2]]);
@@ -188,8 +174,6 @@ function snippetFromNode(node: t.Node): string {
 	try {
 		return trimSnippet(generate(node, { comments: false, compact: false, retainLines: false }).code);
 	} catch {
-		// An empty snippet means "no printable source for this node", and the caller treats an empty snippet as
-		// no candidate rather than mutating with it, so a failed print cannot produce a nonsense case.
 		return "";
 	}
 }

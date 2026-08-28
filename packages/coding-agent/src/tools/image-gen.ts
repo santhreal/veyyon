@@ -32,7 +32,6 @@ import { type } from "arktype";
 import packageJson from "../../package.json" with { type: "json" };
 import { isAuthenticated } from "../config/auth-state";
 import type { ModelRegistry } from "../config/model-registry";
-// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
 import type { CustomTool } from "../extensibility/custom-tools/types";
 import { missingXAICredentialsMessage, resolveXAIHttpCredentials, veyyonXAIUserAgent } from "../lib/xai-http";
@@ -96,30 +95,24 @@ export const imageGenSchema = type({
 export type ImageGenParams = typeof imageGenSchema.infer;
 export type GeminiResponseModality = typeof responseModalitySchema.infer;
 
-/** Assembles a structured prompt from the provided parameters. For generation: builds "subject, action, scene. composition. lighting. camera. style." */
 function assemblePrompt(params: ImageGenParams): string {
 	const parts: string[] = [];
 
-	// Core subject line: subject + action + scene
 	const subjectParts = [params.subject];
 	if (params.action) subjectParts.push(params.action);
 	if (params.scene) subjectParts.push(params.scene);
 	parts.push(subjectParts.join(", "));
 
-	// Technical details as separate sentences
 	if (params.composition) parts.push(params.composition);
 	if (params.lighting) parts.push(params.lighting);
 	if (params.style) parts.push(params.style);
 
-	// Join with periods for sentence structure
 	let prompt = `${parts.map(p => p.replace(/[.!,;:]+$/, "")).join(". ")}.`;
 
-	// Text rendering specs
 	if (params.text) {
 		prompt += `\n\nText: ${params.text}`;
 	}
 
-	// Edit mode: changes and preserve directives
 	if (params.changes?.length) {
 		prompt += `\n\nChanges:\n${params.changes.map(c => `- ${c}`).join("\n")}`;
 	}
@@ -303,7 +296,6 @@ interface AntigravityRequest {
 }
 
 interface XAIImageReference {
-	// OpenAI-compat discriminator. Every code example at docs.x.ai/developers/rest-api-reference/inference/images sends this
 	readonly type: "image_url";
 	readonly url: string;
 }
@@ -317,7 +309,6 @@ interface XAIImageRequestBase {
 	readonly response_format: "b64_json" | "url";
 }
 
-// xAI image request body. Three shapes: 1. text-only generation → POST /v1/images/generations
 type XAIImageRequestBody =
 	| (XAIImageRequestBase & { readonly image?: never; readonly images?: never })
 	| (XAIImageRequestBase & { readonly image: XAIImageReference; readonly images?: never })
@@ -411,8 +402,6 @@ async function loadImageFromUrl(
 	if (!contentType?.startsWith("image/")) {
 		throw new Error(`Unsupported image type from URL: ${imageUrl}`);
 	}
-	// Bun's `Response.bytes()` returns a Uint8Array but is absent from the Response
-	// type here (same lib-types gap handled in @veyyon/utils ptree.ts).
 	const buffer = await (response as Response & { bytes(): Promise<Uint8Array> }).bytes();
 	return { data: buffer.toBase64(), mimeType: contentType };
 }
@@ -456,14 +445,12 @@ function extractOpenRouterImageUrls(message: OpenRouterMessage | undefined): str
 	return urls;
 }
 
-/** Preferred provider set via settings (default: auto) */
 let preferredImageProvider: ImageProviderPreference = "auto";
 
 export function isImageProviderPreference(value: unknown): value is ImageProviderPreference {
 	return typeof value === "string" && IMAGE_PROVIDER_PREFERENCES.has(value);
 }
 
-/** Set the preferred image provider from settings */
 export function setPreferredImageProvider(provider: ImageProviderPreference): void {
 	preferredImageProvider = provider;
 }
@@ -487,9 +474,7 @@ function parseAntigravityCredentials(raw: string): ParsedAntigravityCredentials 
 		if (parsed.token && parsed.projectId) {
 			return { accessToken: parsed.token, projectId: parsed.projectId };
 		}
-	} catch {
-		// Invalid JSON
-	}
+	} catch {}
 	return null;
 }
 
@@ -528,7 +513,6 @@ async function findOpenRouterImageCredentials(
 	sessionId?: string,
 ): Promise<ImageApiKey | null> {
 	if (modelRegistry) {
-		// AuthStorage.getApiKey already falls back to env keys, so this covers OPENROUTER_API_KEY too.
 		const apiKey = await modelRegistry.getApiKeyForProvider("openrouter", sessionId);
 		if (apiKey) return { provider: "openrouter", apiKey: modelRegistry.resolver("openrouter", { sessionId }) };
 		return null;
@@ -543,8 +527,6 @@ async function findGeminiImageCredentials(
 	sessionId?: string,
 ): Promise<ImageApiKey | null> {
 	if (modelRegistry) {
-		// AuthStorage.getApiKey already falls back to env keys (GEMINI_API_KEY), so only
-		// GOOGLE_API_KEY needs the explicit check below.
 		const apiKey = await modelRegistry.getApiKeyForProvider("google", sessionId);
 		if (apiKey) return { provider: "gemini", apiKey: modelRegistry.resolver("google", { sessionId }) };
 	} else {
@@ -576,30 +558,23 @@ async function findImageApiKey(
 	activeModel?: Model,
 	sessionId?: string,
 ): Promise<ImageApiKey | null> {
-	// If a specific provider is preferred, try it first.
 	if (preferredImageProvider === "openai") {
 		const openAI = await findOpenAIHostedImageCredentials(modelRegistry, activeModel, sessionId);
 		if (openAI) return openAI;
-		// Fall through to auto-detect if preferred provider key not found.
 	} else if (preferredImageProvider === "antigravity" && modelRegistry) {
 		const antigravity = await findAntigravityCredentials(modelRegistry, sessionId);
 		if (antigravity) return antigravity;
-		// Fall through to auto-detect if preferred provider key not found.
 	} else if (preferredImageProvider === "gemini") {
 		const gemini = await findGeminiImageCredentials(modelRegistry, sessionId);
 		if (gemini) return gemini;
-		// Fall through to auto-detect if preferred provider key not found.
 	} else if (preferredImageProvider === "openrouter") {
 		const openRouter = await findOpenRouterImageCredentials(modelRegistry, sessionId);
 		if (openRouter) return openRouter;
-		// Fall through to auto-detect if preferred provider key not found.
 	} else if (preferredImageProvider === "xai") {
 		const xai = await findXAIImageCredentials(modelRegistry);
 		if (xai) return xai;
-		// Fall through to auto-detect if preferred provider key not found.
 	}
 
-	// Auto-detect: GPT hosted image generation, then Antigravity, xAI, OpenRouter, Gemini.
 	const openAI = await findOpenAIHostedImageCredentials(modelRegistry, activeModel, sessionId);
 	if (openAI) return openAI;
 
@@ -689,7 +664,6 @@ function buildResponseSummary(
 	return lines.join("\n");
 }
 
-/** The one owner of "the request came back carrying no image". Every provider branch used to return this as an ordinary success result: plain */
 export function buildNoImageResult(args: {
 	provider: ImageProvider;
 	model: string;
@@ -1015,18 +989,13 @@ function buildAntigravityRequest(
 	};
 }
 
-// xAI image-edit cap per docs.x.ai (POST /v1/images/edits supports up to 3
-// source images for multi-reference editing).
 const XAI_MAX_EDIT_IMAGES = 3;
 
-// Map the OpenAI-style pixel-size enum (image_size) to xAI's discrete tier. "1024x1024" → "1k"; anything wider (1536x... or ...x1536) → "2k". Absent
 function resolveXAIResolution(imageSize: string | undefined): "1k" | "2k" {
 	if (!imageSize || imageSize === "1024x1024") return "1k";
 	return "2k";
 }
 
-// Build the discriminated edit body. Caller must ensure images.length is in
-// [1, XAI_MAX_EDIT_IMAGES]; the bound check fires earlier in execute().
 function buildXAIEditPayload(base: XAIImageRequestBase, images: readonly InlineImageData[]): XAIImageRequestBody {
 	const refs: readonly XAIImageReference[] = images.map(img => ({
 		type: "image_url",
@@ -1119,9 +1088,6 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 				}
 			}
 
-			// Scoped so the deadline timer is cleared on settle instead of staying
-			// armed like a bare AbortSignal.timeout; the fence spans every provider
-			// request and image download below.
 			const requestTimeout = scopedTimeoutSignal(IMAGE_TIMEOUT, signal);
 			const requestSignal = requestTimeout.signal;
 			try {
@@ -1129,9 +1095,6 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 				const assembleProviderPrompt = (): string => {
 					const transform = ctx.obfuscateProviderText;
 					if (!transform) return assemblePrompt(params);
-					// Each raw field is transformed before assemblePrompt strips
-					// punctuation, then the final physical payload is transformed
-					// again to catch secrets introduced by a concurrent refresh.
 					return transform(assemblePrompt(sanitizeImageGenParams(params, transform)));
 				};
 
@@ -1200,9 +1163,6 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 					const response = await withAuth(
 						antigravityKey,
 						async key => {
-							// On a retry the resolver yields the raw stored credential JSON
-							// ({ token, projectId }); the initial seed is the already-parsed
-							// access token. Tolerate both, falling back to the seed projectId.
 							const rotated = parseAntigravityCredentials(key);
 							const bearer = rotated?.accessToken ?? key;
 							const projectId = rotated?.projectId ?? apiKey.projectId!;
@@ -1215,9 +1175,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 								} else if (mode === "sandbox") {
 									endpoints = [ANTIGRAVITY_SANDBOX_ENDPOINT];
 								}
-							} catch {
-								// Ignored
-							}
+							} catch {}
 
 							let resp: Response | undefined;
 							let lastError: Error | undefined;
@@ -1226,8 +1184,6 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 								const endpoint = endpoints[i];
 								const isLastEndpoint = i === endpoints.length - 1;
 								try {
-									// Endpoint failover is a second physical attempt. Resolve the
-									// live sanitizer again instead of replaying a stale prompt.
 									const requestBody = buildAntigravityRequest(
 										assembleProviderPrompt(),
 										model,
@@ -1257,9 +1213,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 									try {
 										const parsedErr = JSON.parse(errorText) as { error?: { message?: string } };
 										message = parsedErr.error?.message ?? message;
-									} catch {
-										// Keep raw text.
-									}
+									} catch {}
 
 									lastError = new ProviderHttpError(
 										`Antigravity image request failed (${resp.status}): ${message}`,
@@ -1369,9 +1323,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 								try {
 									const parsedErr = JSON.parse(rawText) as { error?: { message?: string } };
 									message = parsedErr.error?.message ?? message;
-								} catch {
-									// Keep raw text.
-								}
+								} catch {}
 								throw new ProviderHttpError(
 									`xAI image request failed (${resp.status}): ${message}`,
 									resp.status,
@@ -1449,9 +1401,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 								try {
 									const parsed = JSON.parse(text) as { error?: { message?: string } };
 									message = parsed.error?.message ?? message;
-								} catch {
-									// Keep raw text.
-								}
+								} catch {}
 								throw new ProviderHttpError(
 									`OpenRouter image request failed (${resp.status}): ${message}`,
 									resp.status,
@@ -1537,9 +1487,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 							try {
 								const parsed = JSON.parse(text) as { error?: { message?: string } };
 								message = parsed.error?.message ?? message;
-							} catch {
-								// Keep raw text.
-							}
+							} catch {}
 							throw new ProviderHttpError(
 								`Gemini image request failed (${resp.status}): ${message}`,
 								resp.status,

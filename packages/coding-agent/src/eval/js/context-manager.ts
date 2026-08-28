@@ -1,6 +1,4 @@
 import { errorMessage, isAbortError, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
-// Coding-agent binary/bundle workers route through the CLI entrypoint with a
-// hidden argv mode, so compiled/npm builds only need one JavaScript entry.
 import { registerOwnedResourceDisposer } from "../../session/owned-resources";
 import {
 	createWorkerHandle,
@@ -62,30 +60,24 @@ interface JsSession {
 	worker: WorkerHandle;
 	state: "alive" | "dead";
 	pending: Map<string, PendingRun>;
-	/** Agent-session owners keeping this VM context alive. A context is disposed when its LAST owner detaches (see {@link disposeVmContextsByOwner}), mirroring */
 	ownerIds: Set<string>;
-	/** True while the only owner is the fallback `sessionKey` (no real owner attached yet). */
 	hasFallbackOwner: boolean;
 }
 
 const sessions = new Map<string, JsSession>();
 const startingSessions = new Map<string, Promise<JsSession>>();
 const resettingSessions = new Map<string, Promise<void>>();
-// Worker startup (module-graph import + WorkerCore construction) is infrastructure cost, not user compute. Floor it independently of Bun's 5s default per-test timeout
 const WORKER_INIT_TIMEOUT_MS = 15_000;
 const WORKER_CLOSE_TIMEOUT_MS = 1_000;
-// Active graceful-close grace period before a worker that ack'd `close` but never emitted its `close` event is force-terminated. Defaults to the production floor;
 let workerCloseTimeoutMs: number = WORKER_CLOSE_TIMEOUT_MS;
 let useWorkerThreadForTests = false;
 
-/** Test-only seam: override the graceful-close grace period (ms). Returns the previous value so callers can restore it. Production always uses */
 export function setWorkerCloseTimeoutMsForTests(ms: number): number {
 	const previous = workerCloseTimeoutMs;
 	workerCloseTimeoutMs = ms;
 	return previous;
 }
 
-/** Test-only seam for the legacy Worker lifecycle mocks. */
 export function setJsEvalWorkerThreadForTests(enabled: boolean): boolean {
 	const previous = useWorkerThreadForTests;
 	useWorkerThreadForTests = enabled;
@@ -104,17 +96,10 @@ export async function executeInVmContext(options: {
 	filename: string;
 	timeoutMs?: number;
 	runState: VmRunState;
-	/** Agent-session that owns this context. When set, the context is reaped when that owner's session ends (see {@link disposeVmContextsByOwner}); when unset, */
 	ownerId?: string;
 }): Promise<{ value: unknown }> {
 	if (options.reset) {
-		// Coalesce concurrent resets: an existing in-flight reset already
-		// produces a fresh context, so a follow-up `reset: true` cell should
-		// just wait for it rather than failing the user-visible call.
 		const inFlight = resettingSessions.get(options.sessionKey);
-		// Another caller owns this reset and is awaiting `resetPromise` itself, so its failure is reported
-		// there. Here the only thing that matters is that the reset has SETTLED before running on the
-		// context: if it failed, `acquireSession` below starts a fresh one and fails with its own reason.
 		if (inFlight) await inFlight.catch(() => undefined);
 		else {
 			const resetPromise = resetVmContext(options.sessionKey);
@@ -129,12 +114,7 @@ export async function executeInVmContext(options: {
 			}
 		}
 	} else {
-		// Internal coordination: wait for any in-flight reset to settle and
-		// then run on the freshly-rebuilt context.
 		const inFlight = resettingSessions.get(options.sessionKey);
-		// Another caller owns this reset and is awaiting `resetPromise` itself, so its failure is reported
-		// there. Here the only thing that matters is that the reset has SETTLED before running on the
-		// context: if it failed, `acquireSession` below starts a fresh one and fails with its own reason.
 		if (inFlight) await inFlight.catch(() => undefined);
 	}
 	const session = await acquireSession(
@@ -147,14 +127,11 @@ export async function executeInVmContext(options: {
 		},
 		options.timeoutMs,
 	);
-	// Record which agent session owns this context so it can be reaped on that
-	// session's end (ONE PLACE with py/rb/jl via the shared attachSessionOwner).
 	attachSessionOwner(session, options.sessionId, options.ownerId);
 	return await runOnce(session, options);
 }
 
 export async function resetVmContext(sessionKey: string): Promise<void> {
-	// A start that failed leaves nothing to reset, and its failure belongs to the caller awaiting the start.
 	const session = sessions.get(sessionKey) ?? (await startingSessions.get(sessionKey)?.catch(() => undefined));
 	if (!session) return;
 	sessions.delete(sessionKey);
@@ -174,7 +151,6 @@ export async function disposeAllVmContexts(): Promise<void> {
 	await Promise.all(all.map(session => killSession(session, new ToolError("JS context disposed"), { force: false })));
 }
 
-/** Dispose the JS VM contexts owned by `ownerId`, reaping the underlying eval worker/subprocess. A context is killed only when `ownerId` is its LAST owner; */
 export async function disposeVmContextsByOwner(ownerId: string): Promise<void> {
 	const toKill: JsSession[] = [];
 	for (const session of Array.from(sessions.values())) {
@@ -193,7 +169,6 @@ export async function disposeVmContextsByOwner(ownerId: string): Promise<void> {
 	);
 }
 
-/** Smoke probe: spawn the JS evaluator through the worker-host entry and prove it answers the `init` handshake in a real isolated subprocess (not the inline */
 export async function smokeTestJsEvalWorker(): Promise<void> {
 	const worker = spawnJsWorker();
 	const session: JsSession = {
@@ -216,7 +191,6 @@ export async function smokeTestJsEvalWorker(): Promise<void> {
 	}
 }
 
-/** Terminate a JS eval worker, in one place. Every caller is tearing the session down: the startup smoke test in its `finally`, a forced kill, and the */
 async function terminateJsWorker(worker: Pick<WorkerHandle, "terminate">, context: string): Promise<void> {
 	try {
 		await worker.terminate();
@@ -254,9 +228,7 @@ async function runOnce(
 	const onAbort = (): void => {
 		const reason = options.runState.signal?.reason;
 		const abortError = reasonToError(reason, "Execution aborted");
-		// Cancel any in-flight tool calls first.
 		for (const ctrl of pending.toolCalls.values()) ctrl.abort(abortError);
-		// Hard-kill the worker — only way to interrupt synchronous user code.
 		void killSessionFor(session, abortError, { force: true });
 	};
 
@@ -297,8 +269,6 @@ async function acquireSession(sessionKey: string, snapshot: SessionSnapshot, tim
 	if (starting) return await starting;
 
 	const startup = (async (): Promise<JsSession> => {
-		// Attach the message listener before sending init. Both Bun Worker messages
-		// and subprocess IPC can arrive immediately after the evaluator loads.
 		const worker = spawnJsWorker();
 		const session: JsSession = {
 			sessionKey,
@@ -310,17 +280,12 @@ async function acquireSession(sessionKey: string, snapshot: SessionSnapshot, tim
 			ownerIds: new Set(),
 			hasFallbackOwner: false,
 		};
-		// Init headroom is the fixed infrastructure floor; the caller's per-cell timeout
-		// dominates when larger so users can grant more by raising `timeout` on a cell.
 		const readyTimeoutMs = Math.max(WORKER_INIT_TIMEOUT_MS, timeoutMs ?? 0);
 		while (true) {
 			try {
 				await initWorker(session, snapshot, readyTimeoutMs);
 				break;
 			} catch (error) {
-				// Runtime crash/load failures surface asynchronously via the runtime's
-				// error callback, after the synchronous spawn try/catch has returned.
-				// Preserve the full process -> Worker -> inline ladder for those failures.
 				const failed = session.worker;
 				await failed.terminate().catch(() => undefined);
 				if (failed.mode === "inline") throw error;
@@ -372,20 +337,12 @@ async function initWorker(session: JsSession, snapshot: SessionSnapshot, timeout
 			rejectReady(error);
 			return;
 		}
-		// Worker died after a successful handshake: tear the session down so the
-		// in-flight run (and the next acquire) fail fast instead of hanging on a
-		// worker that will never reply.
 		void killSessionFor(session, error, { force: true });
 	});
 	try {
-		// Attach listeners and send init before awaiting ready. The worker now
-		// emits ready only in response to init, so this ordering is race-free.
 		worker.send({ type: "init", snapshot });
 		await raceWithTimeout(readyPromise, timeoutMs, () => new ToolError("Timed out initializing JS eval worker"));
 	} catch (error) {
-		// Handshake failed (timeout, init-failed, or worker error): drop both listeners
-		// so the abandoned worker can't keep routing messages into a session the caller
-		// is about to discard or retry on the inline fallback.
 		unsubscribeMessage();
 		unsubscribeError();
 		throw error;
@@ -481,9 +438,6 @@ async function killSession(session: JsSession, error: Error, options: { force: b
 		await terminateJsWorker(session.worker, "kill-forced");
 		return;
 	}
-	// `close()` resolving false means the worker declined to shut down cleanly, which is an expected outcome
-	// and not a failure; a THROW means the close could not be attempted, and both lead to the same terminate
-	// below, so the distinction changes nothing here. The terminate reports for both.
 	const closed = await session.worker.close().catch(() => false);
 	if (closed) return;
 	await terminateJsWorker(session.worker, "kill-graceful-fallback");
@@ -535,9 +489,6 @@ function spawnJsWorker(): WorkerHandle {
 		try {
 			return spawnJsProcess();
 		} catch (err) {
-			// Fall through to the Bun Worker rung: a worker thread still interrupts
-			// synchronous infinite loops via terminate(), which the inline fallback
-			// cannot.
 			logger.warn("JS eval subprocess spawn failed; falling back to a Bun Worker", {
 				error: errorMessage(err),
 			});
@@ -671,7 +622,6 @@ function errorFromWorkerEvent(event: ErrorEvent): Error {
 	return new Error("Unknown JS eval worker error");
 }
 
-/** Inline fallback for environments where Bun cannot spawn the worker entry (e.g. some test runners). Preserves behavior but cannot interrupt synchronous */
 function spawnInlineWorker(): WorkerHandle {
 	const hostListeners = new Set<(message: EvalWorkerOutbound) => void>();
 	const workerListeners = new Set<(message: EvalWorkerInbound) => void>();
@@ -730,7 +680,6 @@ function spawnInlineWorker(): WorkerHandle {
 	};
 }
 
-/** Wire this subsystem into the session's owner-scoped cleanup. Registered at module scope rather than called by name from `agent-session.dispose()`, which is */
 registerOwnedResourceDisposer({
 	name: "js-eval-contexts",
 	scope: "eval-kernel-owner",

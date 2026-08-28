@@ -1,4 +1,3 @@
-/** Agent class that uses the agent-loop directly. */
 import { isPromise } from "node:util/types";
 import type {
 	ApiKey,
@@ -56,7 +55,6 @@ import type {
 import { isSoftToolRequirement } from "./types";
 import { EventLoopKeepalive } from "./utils/yield";
 
-/** Default convertToLlm: Keep only LLM-compatible replay messages. */
 function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
 	return messages.filter((m): m is Message => {
 		if (m.role === "assistant") return !isProviderRefusalMessage(m);
@@ -99,125 +97,80 @@ export class AgentBusyError extends Error {
 export interface AgentOptions {
 	initialState?: Partial<AgentState>;
 
-	/** Converts AgentMessage[] to LLM-compatible Message[] before each LLM call. */
 	convertToLlm?: (messages: AgentMessage[]) => Message[] | Promise<Message[]>;
 
-	/** Optional transform applied to context before convertToLlm. */
 	transformContext?: (messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>;
 
-	/** Optional transform applied after provider context assembly and before */
 	transformProviderContext?: (context: Context, model: Model) => Context | Promise<Context>;
 
-	/** Steering mode: "all" = send all steering messages at once, "one-at-a-time" = one per turn */
 	steeringMode?: "all" | "one-at-a-time";
 
-	/** Follow-up mode: "all" = send all follow-up messages at once, "one-at-a-time" = one per turn */
 	followUpMode?: "all" | "one-at-a-time";
 
-	/** When to interrupt tool execution for steering messages. */
 	interruptMode?: "immediate" | "wait";
 
-	/** API format for Kimi Code provider: "openai" or "anthropic" (default: "anthropic") */
 	kimiApiFormat?: "openai" | "anthropic";
 
-	/** Hint that websocket transport should be preferred when supported by the provider implementation. */
 	preferWebsockets?: boolean;
 
-	/** Custom stream function (for proxy backends, etc.). Default uses streamSimple. */
 	streamFn?: StreamFn;
-	/** Absolute wall-clock deadline in Unix epoch milliseconds. */
 	deadline?: number;
 
-	/** Optional session identifier forwarded to LLM providers. */
 	sessionId?: string;
-	/** Optional prompt cache key forwarded to LLM providers. */
 	promptCacheKey?: string;
-	/** Shared provider state map for session-scoped transport/session caches. */
 	providerSessionState?: Map<string, ProviderSessionState>;
 
-	/** Resolves an API key or resolver dynamically for each LLM call. */
 	getApiKey?: (model: Model) => Promise<ApiKey | undefined> | ApiKey | undefined;
 
-	/** Inspect or replace provider payloads before they are sent. */
 	onPayload?: SimpleStreamOptions["onPayload"];
-	/** Inspect provider response metadata after headers arrive and before streaming body consumption. */
 	onResponse?: SimpleStreamOptions["onResponse"];
-	/** Inspect raw Server-Sent Events from HTTP streaming providers. */
 	onSseEvent?: SimpleStreamOptions["onSseEvent"];
-	/** Inspect assistant streaming events before they are emitted to subscribers. */
 	onAssistantMessageEvent?: (message: AssistantMessage, event: AssistantMessageEvent) => void;
 
-	/** Called when GPT-5 Harmony protocol leakage is detected and mitigated. */
 	onHarmonyLeak?: (event: HarmonyAuditEvent) => void | Promise<void>;
-	/** Custom token budgets for thinking levels (token-based providers only). */
 	thinkingBudgets?: ThinkingBudgets;
 
-	/** Sampling temperature for LLM calls. `undefined` uses provider default. */
 	temperature?: number;
 
-	/** Additional sampling controls for providers that support them. */
 	topP?: number;
 	topK?: number;
 	minP?: number;
 	presencePenalty?: number;
 	repetitionPenalty?: number;
 	serviceTier?: ServiceTier;
-	/** What to do when a turn's prompt-cache markers demonstrably did not take */
 	cacheEnforcement?: CacheEnforcement;
-	/** Per-call effective service-tier resolver. When set, it authoritatively */
 	serviceTierResolver?: (model: Model) => ServiceTier | undefined;
-	/** If true, request that the underlying provider omit reasoning/thinking summaries */
 	hideThinkingSummary?: boolean;
 
-	/** Maximum delay in milliseconds to wait for a retry when the server requests a long wait. */
 	maxRetryDelayMs?: number;
 
-	/** Provides tool execution context, resolved per tool call. */
 	getToolContext?: (toolCall?: ToolCallContext) => AgentToolContext | undefined;
 
-	/** Optional transform applied to tool call arguments before execution. Use for */
 	transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => ToolCallArgumentTransform;
 
-	/** Enable intent tracing schema injection/stripping in the harness. */
 	intentTracing?: boolean | (() => boolean);
-	/** How densely each tool call records a study record on its result message. */
 	instrumentation?: InstrumentationLevel;
-	/** Strip tool descriptions from provider-bound tool specs (top-level + nested */
 	pruneToolDescriptions?: boolean | ((model: Model) => boolean);
-	/** Owned tool-calling dialect. Undefined keeps provider-native tool calling. */
 	dialect?: ConfiguredDialect;
-	/** When owned tool calling is active and the model fabricates a tool result */
 	abortOnFabricatedToolResult?: boolean;
-	/** Dynamic tool-choice directive (hard {@link ToolChoice} or {@link SoftToolRequirement}), resolved once per turn. */
 	getToolChoice?: () => ToolChoiceDirective | undefined;
 
-	/** Cursor exec handlers for local tool execution. */
 	cursorExecHandlers?: CursorExecHandlers;
 
-	/** Cursor tool result callback for exec tool responses. */
 	cursorOnToolResult?: CursorToolResultHandler;
 
-	/** Operator-owned instruction files for Cursor's `requestContext.rules` channel, */
 	cursorRulesResolver?: () => CursorRuleInput[];
 
-	/** Current working directory used by local tool execution. */
 	cwd?: string;
-	/** Resolver for the live working directory, re-read on every turn. When set, it */
 	cwdResolver?: () => string | undefined;
-	/** Schema-based repair for malformed tool arguments, run before validation. */
 	repairToolCallArguments?: AgentLoopConfig["repairToolCallArguments"];
-	/** Called after a tool call has been validated and is about to execute. */
 	beforeToolCall?: AgentLoopConfig["beforeToolCall"];
 
-	/** Called after a tool finishes executing, before `tool_execution_end` and the tool-result */
 	afterToolCall?: AgentLoopConfig["afterToolCall"];
 
-	/** Called once an assistant message is finalized, before it reaches the */
 	transformAssistantMessage?: AgentLoopConfig["transformAssistantMessage"];
 
-	/** Opt-in OpenTelemetry instrumentation. Passing `{}` enables the loop's */
 	telemetry?: AgentLoopConfig["telemetry"];
-	/** Immutable context mode — stabilizes system prompt + tool spec bytes */
 	appendOnlyContext?: AppendOnlyContextManager;
 }
 
@@ -225,7 +178,6 @@ export interface AgentPromptOptions {
 	toolChoice?: ToolChoice;
 }
 
-/** Buffered Cursor exec-channel tool result waiting to be emitted after the assistant message. */
 interface CursorToolResultEntry {
 	toolResult: ToolResultMessage;
 }
@@ -302,18 +254,13 @@ export class Agent {
 	#telemetry?: AgentLoopConfig["telemetry"];
 	#appendOnlyContext?: AppendOnlyContextManager;
 
-	/** Buffered Cursor tool results with text length at time of call (for correct ordering) */
 	#cursorToolResultBuffer: CursorToolResultEntry[] = [];
 
 	streamFn: StreamFn;
 	getApiKey?: (model: Model) => Promise<ApiKey | undefined> | ApiKey | undefined;
-	/** Hook invoked after tool arguments are validated and before execution. */
 	beforeToolCall?: AgentLoopConfig["beforeToolCall"];
-	/** Hook invoked after tool execution and before `tool_execution_end` / tool-result */
 	afterToolCall?: AgentLoopConfig["afterToolCall"];
-	/** Hook invoked once an assistant message is finalized, before context append, */
 	transformAssistantMessage?: AgentLoopConfig["transformAssistantMessage"];
-	/** Hook that peeks whether interrupting IRC asides are queued for the next boundary. */
 	hasIrcInterrupts?: AgentLoopConfig["hasIrcInterrupts"];
 
 	constructor(opts: AgentOptions = {}) {
@@ -377,32 +324,26 @@ export class Agent {
 		this.#transformProviderContext = opts.transformProviderContext;
 	}
 
-	/** Get the current session ID used for provider caching. */
 	get sessionId(): string | undefined {
 		return this.#sessionId;
 	}
 
-	/** Set the session ID for provider caching. */
 	set sessionId(value: string | undefined) {
 		this.#sessionId = value;
 	}
 
-	/** Set the telemetry level used when the next model loop starts. An in-flight */
 	set instrumentation(value: InstrumentationLevel) {
 		this.#instrumentation = value;
 	}
 
-	/** Get the prompt cache key forwarded to providers. */
 	get promptCacheKey(): string | undefined {
 		return this.#promptCacheKey;
 	}
 
-	/** Set the prompt cache key forwarded to providers. */
 	set promptCacheKey(value: string | undefined) {
 		this.#promptCacheKey = value;
 	}
 
-	/** Static metadata forwarded to every API request when no resolver is installed */
 	get metadata(): Record<string, unknown> | undefined {
 		return this.#metadata;
 	}
@@ -412,53 +353,43 @@ export class Agent {
 		this.#metadataResolver = undefined;
 	}
 
-	/** Resolve request metadata for the given provider at call time. When a */
 	metadataForProvider(provider: string): Record<string, unknown> | undefined {
 		if (this.#metadataResolver) return this.#metadataResolver(provider);
 		return this.#metadata;
 	}
 
-	/** Install a function that resolves request metadata at call time. The */
 	setMetadataResolver(resolver: ((provider: string) => Record<string, unknown> | undefined) | undefined): void {
 		this.#metadataResolver = resolver;
 	}
 
-	/** Read the active OpenTelemetry configuration. Returns `undefined` when */
 	get telemetry(): AgentLoopConfig["telemetry"] | undefined {
 		return this.#telemetry;
 	}
 
-	/** Replace the active OpenTelemetry configuration. Pass `undefined` to */
 	setTelemetry(telemetry: AgentLoopConfig["telemetry"] | undefined): void {
 		this.#telemetry = telemetry;
 	}
 
-	/** Get provider-scoped mutable session state store. */
 	get providerSessionState(): Map<string, ProviderSessionState> | undefined {
 		return this.#providerSessionState;
 	}
 
-	/** Set provider-scoped mutable session state store. */
 	set providerSessionState(value: Map<string, ProviderSessionState> | undefined) {
 		this.#providerSessionState = value;
 	}
 
-	/** Get the current thinking budgets. */
 	get thinkingBudgets(): ThinkingBudgets | undefined {
 		return this.#thinkingBudgets;
 	}
 
-	/** Set custom thinking budgets for token-based providers. */
 	set thinkingBudgets(value: ThinkingBudgets | undefined) {
 		this.#thinkingBudgets = value;
 	}
 
-	/** Get the current sampling temperature. */
 	get temperature(): number | undefined {
 		return this.#temperature;
 	}
 
-	/** Set sampling temperature for LLM calls. `undefined` uses provider default. */
 	set temperature(value: number | undefined) {
 		this.#temperature = value;
 	}
@@ -535,12 +466,10 @@ export class Agent {
 		this.#hideThinkingSummary = value;
 	}
 
-	/** Get the current max retry delay in milliseconds. */
 	get maxRetryDelayMs(): number | undefined {
 		return this.#maxRetryDelayMs;
 	}
 
-	/** Set the maximum delay to wait for server-requested retries. */
 	set maxRetryDelayMs(value: number | undefined) {
 		this.#maxRetryDelayMs = value;
 	}
@@ -557,7 +486,6 @@ export class Agent {
 		this.#appendOnlyContext = manager;
 	}
 
-	/** Assemble the provider Context for a side-channel (no-loop) request, mirroring */
 	async buildSideRequestContext(
 		llmMessages: Message[],
 		systemPrompt: string[] = this.#state.systemPrompt,
@@ -588,7 +516,6 @@ export class Agent {
 		this.#onResponse = fn;
 	}
 
-	/** Replace the provider-context transform (e.g. AgentSession wrapping for */
 	setTransformProviderContext(fn: ((context: Context, model: Model) => Context | Promise<Context>) | undefined): void {
 		this.#transformProviderContext = fn;
 	}
@@ -614,7 +541,6 @@ export class Agent {
 		this.#onTurnEnd = fn;
 	}
 
-	/** Provide a source of non-interrupting "aside" messages (e.g. background-job */
 	setAsideMessageProvider(fn: (() => AsideMessage[] | Promise<AsideMessage[]>) | undefined): void {
 		this.#asideMessageProvider = fn;
 	}
@@ -685,8 +611,6 @@ export class Agent {
 	}
 
 	replaceMessages(ms: AgentMessage[]) {
-		// New array assignment is intentional: caller-owned `ms` may be mutated
-		// after handoff; snapshot it so external mutations cannot leak in.
 		this.#state.messages = ms.slice();
 	}
 
@@ -707,12 +631,10 @@ export class Agent {
 		return removed;
 	}
 
-	/** Queue a steering message to interrupt the agent mid-run. */
 	steer(m: AgentMessage) {
 		this.#steeringQueue.push(m);
 	}
 
-	/** Queue a follow-up message to be processed after the agent finishes. */
 	followUp(m: AgentMessage) {
 		this.#followUpQueue.push(m);
 	}
@@ -734,12 +656,10 @@ export class Agent {
 		return this.#steeringQueue.length > 0 || this.#followUpQueue.length > 0;
 	}
 
-	/** Non-consuming view of the pending steering queue (insertion order, newest */
 	peekSteeringQueue(): readonly AgentMessage[] {
 		return this.#steeringQueue;
 	}
 
-	/** Non-consuming view of the pending follow-up queue. See */
 	peekFollowUpQueue(): readonly AgentMessage[] {
 		return this.#followUpQueue;
 	}
@@ -776,12 +696,10 @@ export class Agent {
 		return followUp;
 	}
 
-	/** Remove and return the last steering message from the queue (LIFO). */
 	popLastSteer(): AgentMessage | undefined {
 		return this.#steeringQueue.pop();
 	}
 
-	/** Remove and return the last follow-up message from the queue (LIFO). */
 	popLastFollowUp(): AgentMessage | undefined {
 		return this.#followUpQueue.pop();
 	}
@@ -808,7 +726,6 @@ export class Agent {
 		this.#followUpQueue = [];
 	}
 
-	/** Send a prompt with an AgentMessage */
 	async prompt(message: AgentMessage | AgentMessage[], options?: AgentPromptOptions): Promise<void>;
 	async prompt(input: string, options?: AgentPromptOptions): Promise<void>;
 	async prompt(input: string, images?: ImageContent[], options?: AgentPromptOptions): Promise<void>;
@@ -857,7 +774,6 @@ export class Agent {
 		await this.#runLoop(msgs, promptOptions);
 	}
 
-	/** Continue from current context (used for retries and resuming queued messages). */
 	async continue() {
 		if (this.#state.isStreaming) {
 			throw new AgentBusyError();
@@ -886,7 +802,6 @@ export class Agent {
 		await this.#runLoop(undefined);
 	}
 
-	/** Run the agent loop. */
 	async #runLoop(messages?: AgentMessage[], options?: AgentPromptOptions & { skipInitialSteeringPoll?: boolean }) {
 		const model = this.#state.model;
 		if (!model) throw new Error("No model configured");
@@ -902,7 +817,6 @@ export class Agent {
 		this.#state.streamMessage = null;
 		this.#state.error = undefined;
 
-		// Clear Cursor tool result buffer at start of each run
 		this.#cursorToolResultBuffer = [];
 
 		const reasoning = this.#state.thinkingLevel;
@@ -1039,7 +953,6 @@ export class Agent {
 				: agentLoopContinue(context, config, this.#abortController.signal, this.streamFn);
 
 			for await (const event of stream) {
-				// Update internal state based on events
 				switch (event.type) {
 					case "message_start":
 						partial = event.message;
@@ -1085,11 +998,9 @@ export class Agent {
 						break;
 				}
 
-				// Emit to listeners
 				this.#emit(event);
 			}
 
-			// Handle any remaining partial message
 			if (partial && partial.role === "assistant" && Array.isArray(partial.content) && partial.content.length > 0) {
 				const onlyEmpty = !partial.content.some(
 					c =>
@@ -1172,7 +1083,6 @@ export class Agent {
 		}
 	}
 
-	/** Emit a Cursor assistant message with buffered exec-channel toolResults. */
 	#emitCursorSplitAssistantMessage(assistantMessage: AssistantMessage): void {
 		const buffer = this.#cursorToolResultBuffer;
 		this.#cursorToolResultBuffer = [];

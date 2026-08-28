@@ -1,9 +1,3 @@
-/**
- * Display metadata for a `TimeRange` — keeps chart labels, sparkline bucket
- * counts, and x-axis date formatting in sync with the server-side bucketing
- * defined in `aggregator.ts`.
- */
-
 import { DAY_MS, HOUR_MS, MINUTE_MS } from "@veyyon/utils/time";
 import { format } from "date-fns";
 import type { TimeRange } from "../types";
@@ -11,15 +5,10 @@ import type { TimeRange } from "../types";
 const FIVE_MIN_MS = 5 * MINUTE_MS;
 
 export interface RangeMeta {
-	/** Human label used in chart subtitles ("the last 24 hours"). */
 	windowLabel: string;
-	/** Short prefix used in compact column headers ("24h Trend"). */
 	trendLabel: string;
-	/** Bucket size matching the server query for this range. */
 	bucketMs: number;
-	/** Number of buckets the server is expected to return for this range. */
 	bucketCount: number;
-	/** date-fns format string for x-axis labels and tooltip headings. */
 	tickFormat: string;
 }
 
@@ -66,7 +55,6 @@ export function rangeMeta(range: TimeRange): RangeMeta {
 	return RANGE_META[range];
 }
 
-/** Format a bucket timestamp using the active range's tick format. */
 export function formatRangeTick(timestamp: number, range: TimeRange): string {
 	return format(new Date(timestamp), RANGE_META[range].tickFormat);
 }

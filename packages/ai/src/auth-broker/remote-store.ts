@@ -1,4 +1,3 @@
-/** Client-side AuthCredentialStore mirroring a remote broker snapshot. */
 import { scheduler } from "node:timers/promises";
 import * as logger from "@veyyon/utils/logger";
 import {
@@ -24,7 +23,6 @@ import type {
 	SnapshotStreamEvent,
 } from "./types";
 
-/** Client-side TTL for aggregate /v1/usage response (15s). */
 const USAGE_CACHE_TTL_MS = 15_000;
 const CREDENTIAL_BLOCK_RECONCILE_DELAY_MS = 5 * 60_000;
 const WAIT_THRESHOLD_MS = 1_000;
@@ -118,12 +116,6 @@ interface CacheEntry {
 }
 
 interface UsageCacheEntry {
-	/**
-	 * `null` means the last aggregate `/v1/usage` fetch failed. Callers treat
-	 * this the same as a successful empty-report response ("no usage signal
-	 * for this cycle"), and the same 15s TTL applies so transient broker
-	 * outages don't turn every ranking pass into a broker retry storm.
-	 */
 	reports: UsageReport[] | null;
 	fetchedAt: number;
 }
@@ -132,12 +124,6 @@ function usageOverlayKey(
 	provider: Provider,
 	ids: { accountId?: string; email?: string; projectId?: string; orgId?: string },
 ): string | undefined {
-	// Org first: one account email can hold several organizations (Anthropic
-	// Team seat + personal Max), each with its own limit pools. Keying the
-	// overlay by account/email would merge the two pools' header ingests.
-	// But the org alone is not enough either: two Team members share the org
-	// id while drawing on per-user pools, so the key stays qualified by the
-	// member's own base identity whenever one is known.
 	let base: string | undefined;
 	const accountId = ids.accountId?.trim().toLowerCase();
 	const email = ids.email?.trim().toLowerCase();
@@ -181,11 +167,8 @@ function mergeUsageReports(base: UsageReport, overlay: UsageReport): UsageReport
 
 export interface RemoteAuthCredentialStoreOptions {
 	client: AuthBrokerClient;
-	/** Initial snapshot before first read. */
 	initialSnapshot?: SnapshotResponse;
-	/** Subscribe to broker SSE snapshot stream when available. */
 	streamSnapshots?: boolean;
-	/** Called after broker-sourced full snapshots are applied. */
 	onSnapshot?: (snapshot: SnapshotResponse, generation: number) => void;
 }
 
@@ -204,11 +187,8 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 	#credentialBlockReconcileAfter: Map<string, number> = new Map();
 	#usageCacheEpoch = 0;
 	#closed = false;
-	/** True once SSE consumer received first frame without drops. */
 	#streamingActive = false;
-	/** Latched once the broker has answered 404 — never try the stream again. */
 	#streamingUnsupported = false;
-	/** Stale-view causes already warned about, so each one is shouted exactly once. */
 	#reportedStaleSnapshotCauses = new Set<string>();
 
 	constructor(opts: RemoteAuthCredentialStoreOptions) {
@@ -289,9 +269,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 						continue;
 					}
 					logger.debug("auth-broker snapshot stream failed; backing off", { error: String(error) });
-					// This sleep rejects for exactly one reason: the background abort fired, meaning shutdown. The
-					// loop re-checks `#closed` and the signal at the top and exits, so there is nothing to report --
-					// and the failure that caused the backoff has already been recorded above.
 					await scheduler.wait(backoffMs, { signal: this.#backgroundAbort.signal }).catch(() => {});
 					backoffMs = Math.min(BACKGROUND_BACKOFF_MAX_MS, backoffMs * 2);
 					continue;
@@ -308,8 +285,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 			} catch (error) {
 				if (this.#closed || this.#backgroundAbort.signal.aborted) break;
 				this.#reportStaleSnapshot("background-sync", error, { backoffMs });
-				// As above: the sleep rejects only on the shutdown abort, which the loop's own checks handle, and
-				// the fetch failure that caused this backoff was just reported.
 				await scheduler.wait(backoffMs, { signal: this.#backgroundAbort.signal }).catch(() => {});
 				backoffMs = Math.min(BACKGROUND_BACKOFF_MAX_MS, backoffMs * 2);
 			}
@@ -332,7 +307,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 	#applyStreamEvent(event: SnapshotStreamEvent): void {
 		switch (event.kind) {
 			case "snapshot": {
-				// Strip the discriminator so we store the wire-shape SnapshotResponse.
 				const { kind: _kind, ...snapshot } = event;
 				if (snapshot.generation < this.#generation) {
 					logger.debug("auth-broker stream snapshot older than local; ignoring", {
@@ -387,7 +361,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		this.#snapshotReceivedAt = Date.now();
 	}
 
-	/** Re-hydrate the in-memory snapshot from the broker. */
 	async refreshSnapshot(): Promise<SnapshotResponse> {
 		const result = await this.#client.fetchSnapshot();
 		if (result.status === 200) this.#applySnapshot(result.snapshot, result.generation);
@@ -498,7 +471,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		}
 	}
 
-	/** In-memory update from a successful refresh through the broker. */
 	updateAuthCredential(id: number, credential: AuthCredential): void {
 		for (const entry of this.#snapshot.credentials) {
 			if (entry.id !== id) continue;
@@ -576,7 +548,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		);
 	}
 
-	/** Upsert a single credential through the broker. */
 	async upsertAuthCredentialRemote(provider: string, credential: AuthCredential): Promise<StoredAuthCredential[]> {
 		const { entries } = await this.#client.uploadCredential(provider, credential);
 		this.#applyProviderEntries(provider, entries);
@@ -584,7 +555,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		return this.listAuthCredentials(provider);
 	}
 
-	/** Disable active credentials and upload replacement set. */
 	async replaceAuthCredentialsRemote(
 		provider: string,
 		credentials: AuthCredential[],
@@ -610,7 +580,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		return this.listAuthCredentials(provider);
 	}
 
-	/** Disable all credentials for provider on broker and drop locally. */
 	async deleteAuthCredentialsRemote(provider: string, disabledCause: string): Promise<void> {
 		const existing = this.listAuthCredentials(provider);
 		for (const entry of existing) {
@@ -629,9 +598,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 	}
 
 	#applyProviderEntries(provider: string, entries: AuthCredentialSnapshotEntry[]): void {
-		// `entries` is the broker's authoritative post-upsert list of rows for
-		// `provider`. Drop our existing rows for the same provider and splice in
-		// the fresh set — preserving every other provider's rows in place.
 		const existingBlocks = new Map(
 			this.#snapshot.credentials
 				.filter(entry => entry.provider === provider && entry.blocks !== undefined)
@@ -732,7 +698,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		if (changed) this.#snapshot = { ...this.#snapshot, credentials };
 	}
 
-	/** Report that local view of broker credentials has gone stale. */
 	#reportStaleSnapshot(cause: string, error: unknown, fields: Record<string, unknown> = {}): void {
 		const detail = { cause, error: String(error), ...fields };
 		if (this.#reportedStaleSnapshotCauses.has(cause)) {
@@ -767,7 +732,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		this.#cache.set(key, { value, expiresAtSec });
 	}
 
-	/** Drop all cache rows whose keys start with the supplied prefix. */
 	deleteCachePrefix(prefix: string): void {
 		for (const key of this.#cache.keys()) {
 			if (key.startsWith(prefix)) this.#cache.delete(key);
@@ -794,7 +758,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		this.#usageCacheEpoch += 1;
 	}
 
-	/** Route OAuth refresh through broker so refresh token stays on broker host. */
 	async refreshOAuthCredential(
 		_provider: Provider,
 		credentialId: number,
@@ -822,13 +785,11 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		};
 	}
 
-	/** Proxy usage report fetch to broker's /v1/usage endpoint. */
 	async fetchUsageReports(signal?: AbortSignal): Promise<UsageReport[] | null> {
 		const reports = await this.#raceWithSignal(this.#loadUsageReports(), signal);
 		return reports ? this.#applyUsageOverlays(reports) : null;
 	}
 
-	/** Fetch per-credential usage report from broker with client overlays. */
 	async getUsageReport(
 		provider: Provider,
 		credential: OAuthCredential,
@@ -878,7 +839,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		return merged;
 	}
 
-	/** Race promise against signal without cancelling shared inflight request. */
 	#raceWithSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
 		if (!signal) return promise;
 		if (signal.aborted) return Promise.reject(new AIError.RequestAbortError("auth-broker request aborted"));
@@ -917,9 +877,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 			})
 			.catch(error => {
 				logger.warn("auth-broker usage fetch failed", { error: String(error) });
-				// Documented 15s TTL fallback: cache the null so sequential callers
-				// don't re-hit the broker while it's still down. See
-				// docs/internal/auth-broker-gateway.md § "Client-side single-flight".
 				if (epoch !== this.#usageCacheEpoch) return this.#loadUsageReports();
 				this.#usageCache = { reports: null, fetchedAt: Date.now() };
 				return null;
@@ -940,16 +897,9 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 	}
 }
 
-/** Match broker usage report to specific OAuth credential identity. */
 function matchUsageReport(reports: UsageReport[], provider: Provider, credential: OAuthCredential): UsageReport | null {
 	const all = reports.filter(report => report.provider === provider);
 	if (all.length === 0) return null;
-	// Org precedence, decisive on EITHER side: an org-scoped credential may
-	// only take its own org's report, and an org-less (legacy) credential may
-	// only take org-less reports — the shared email/account would otherwise
-	// hand one subscription the OTHER subscription's pool (e.g. mark healthy
-	// Max exhausted via Team's report, or rank a legacy row on a sibling's
-	// numbers).
 	const orgId = credential.orgId?.trim().toLowerCase();
 	const accountId = credential.accountId?.trim().toLowerCase();
 	const email = credential.email?.trim().toLowerCase();
@@ -964,13 +914,6 @@ function matchUsageReport(reports: UsageReport[], provider: Provider, credential
 				if (metaOrg.toLowerCase() === orgId) sameOrg.push(report);
 			}
 		}
-		// Org-attributed reports exist: the shared org is a GATE, not a match.
-		// Two Team members share the org id while drawing on per-user pools,
-		// so the credential's own base identity must still line up inside the
-		// same-org subset — a lone sibling report is NOT ours. An org-only
-		// credential (no base identifiers) takes the lone same-org report and
-		// treats several as ambiguous. None in our org → "no usage data"
-		// rather than mis-attributing another org's pool.
 		if (sawReportOrg) {
 			if (accountId || email || projectId) {
 				for (const report of sameOrg) {
@@ -980,10 +923,6 @@ function matchUsageReport(reports: UsageReport[], provider: Provider, credential
 			}
 			return sameOrg.length === 1 ? sameOrg[0]! : null;
 		}
-		// No surviving report carries an org at all: presence mismatch is a
-		// non-match too — the sole org-less report may be a legacy sibling
-		// row's pool, and handing it to a scoped credential would rank/block
-		// on the wrong quota. "No usage data" degrades gracefully instead.
 		return null;
 	}
 	const candidates = all.filter(
@@ -1003,11 +942,6 @@ function findMatchingReportIndex(reports: UsageReport[], overlay: UsageReport): 
 		.filter(candidate => candidate.report.provider === overlay.provider);
 	if (all.length === 0) return -1;
 	const metadata = (overlay.metadata ?? {}) as Record<string, unknown>;
-	// Org precedence — mirror matchUsageReport: an org-attributed overlay may
-	// only merge into a report of the SAME org, and an org-less overlay may
-	// only merge into an org-less report. Within the same org the overlay's
-	// base identity must still match — two Team members' reports share the
-	// org id but must not swallow each other's header ingests.
 	const overlayOrg = readMetadataString(metadata, "orgId")?.toLowerCase();
 	const accountId = readMetadataString(metadata, "accountId")?.toLowerCase();
 	const email = readMetadataString(metadata, "email")?.toLowerCase();
@@ -1031,8 +965,6 @@ function findMatchingReportIndex(reports: UsageReport[], overlay: UsageReport): 
 			}
 			return sameOrg.length === 1 ? sameOrg[0]!.index : -1;
 		}
-		// Presence mismatch — mirror matchUsageReport: an org-scoped overlay
-		// never merges into an org-less report; it becomes its own report row.
 		return -1;
 	}
 	const candidates = all.filter(

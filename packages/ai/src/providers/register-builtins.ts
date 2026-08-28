@@ -32,8 +32,6 @@ import type { OpenAICodexResponsesOptions } from "./openai-codex-responses";
 import type { OpenAICompletionsOptions } from "./openai-completions";
 import type { OpenAIResponsesOptions } from "./openai-responses";
 
-// Lazy provider module shape
-
 export interface LazyProviderModule<TApi extends Api> {
 	stream: (model: Model<TApi>, context: Context, options: OptionsForApi<TApi>) => AsyncIterable<AssistantMessageEvent>;
 }
@@ -130,8 +128,6 @@ interface BedrockProviderModule {
 	) => AssistantMessageEventStream;
 }
 
-// Module-level lazy promise caches
-
 const providerModuleOverrides = new Map<Api, LazyProviderModule<Api>>();
 
 export function providerModuleOverrideSnapshot(): ReadonlyMap<Api, LazyProviderModule<Api>> {
@@ -218,8 +214,6 @@ export function setCursorProviderModule(module?: CursorProviderModule): void {
 	setProviderModuleOverride("cursor-agent", module ? { stream: module.streamCursor } : undefined);
 }
 
-// Stream forwarding / error helpers
-
 const LAZY_STREAM_IDLE_TIMEOUT_ERROR = "Provider stream stalled while waiting for the next event";
 const LAZY_STREAM_FIRST_EVENT_TIMEOUT_ERROR = "Provider stream timed out while waiting for the first event";
 
@@ -283,9 +277,6 @@ function forwardStream<TApi extends Api>(
 	(async () => {
 		try {
 			const { idleTimeoutMs, firstItemTimeoutMs } = resolveLazyStreamBudget(options, limits);
-			// Providers with a server-driven local tool bridge (e.g. the Cursor
-			// exec channel) mark their stream busy while a local tool runs; the
-			// watchdog must not read that silence as a provider stall (#4593).
 			const localWorkSource = source instanceof EventStreamImpl ? source : undefined;
 			const watchedSource = iterateWithIdleTimeout(source, {
 				idleTimeoutMs,
@@ -296,11 +287,6 @@ function forwardStream<TApi extends Api>(
 				onFirstItemTimeout: () =>
 					abortTracker.abortLocally(new AIError.StreamTimeoutError(LAZY_STREAM_FIRST_EVENT_TIMEOUT_ERROR)),
 				abortSignal: options.signal,
-				// The synthetic `start` event is yielded immediately by every provider before
-				// the upstream model has emitted any tokens. Treating it as the first "real"
-				// item would flip the watchdog from `firstItemTimeoutMs` to the much shorter
-				// `idleTimeoutMs` while we're still legitimately waiting on the model's
-				// first response (slow first-token from reasoning models, cold proxies, etc.).
 				isProgressItem: event => (event as AssistantMessageEvent).type !== "start",
 				hasPendingLocalWork: localWorkSource ? () => localWorkSource.hasPendingLocalWork : undefined,
 			});
@@ -340,8 +326,6 @@ function createLazyLoadErrorMessage<TApi extends Api>(
 	};
 }
 
-// Generic lazy stream factory
-
 function createLazyStream<TApi extends Api>(
 	loadModule: () => Promise<LazyProviderModule<TApi>>,
 	limits?: LazyStreamLimits,
@@ -366,8 +350,6 @@ function createLazyStream<TApi extends Api>(
 		return outer;
 	};
 }
-
-// Module loaders (one per provider, cached via ||=)
 
 function loadAnthropicProviderModule(): Promise<LazyProviderModule<"anthropic-messages">> {
 	const override = providerModuleOverride("anthropic-messages");
@@ -488,8 +470,6 @@ function loadBedrockProviderModule(): Promise<LazyProviderModule<"bedrock-conver
 	});
 	return bedrockProviderModulePromise;
 }
-
-// providers, the lazy loading will take effect on the main code path.
 
 export const streamAnthropic = createLazyStream(loadAnthropicProviderModule, PROVIDER_HANDLED_STREAM_TIMEOUTS);
 export const streamAzureOpenAIResponses = createLazyStream(

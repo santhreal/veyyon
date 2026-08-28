@@ -1,4 +1,3 @@
-/** Compact session-model picker (alt+p / `/switch`): a floating ModalShell hosting just a {@link ModelBrowser} — no provider sidebar. */
 import type { Model } from "@veyyon/ai";
 import {
 	type Component,
@@ -34,31 +33,23 @@ import {
 import type { ScopedModelItem } from "./model-hub";
 
 export interface ModelPickerCallbacks {
-	/** A model was chosen for a session-only switch. `selector` is `provider/id`. */
 	onPick: (model: Model, selector: string) => void;
-	/** The picker was dismissed. */
 	onCancel: () => void;
 }
 
 export interface ModelPickerOptions {
-	/** Session token count; models with smaller context windows are disabled. */
 	currentContextTokens?: number;
-	/** `provider/id` of the session's active model; highlighted and preselected. */
 	currentSelector?: string;
 }
 
-/** Rows the browser renders around its list window (search + blank, blank + two detail rows). */
 const BROWSER_FRAME_ROWS = 5;
-/** Minimum rows for the browser list window on short terminals. */
 const MIN_VISIBLE = 5;
 
 const STATUS_HINT = "Interactive model — role / subagent / compaction slots stay unchanged";
-/** The list is only ever as new as the cached catalog. Opening the picker calls `refresh("online-if-uncached")`, which answers from a cache that stays fresh */
 const REFRESH_HINT = "Don't see a model? ctrl+r reloads the catalog from your providers and models.dev";
 const REFRESH_HINT_SHORT = "Don't see a model? ctrl+r reloads the catalog";
 const REFRESHING_HINT = "Reloading the model catalog…";
 
-/** The alt+p picker. Hosted fullscreen; ModalShell paints a floating medium card with clear underpaint so the transcript stays visible around it. */
 export class ModelPickerComponent implements Component {
 	#tui: TUI;
 	#settings: Settings;
@@ -69,7 +60,6 @@ export class ModelPickerComponent implements Component {
 	#currentSelector: string | undefined;
 	#modelItems: ModelBrowserItem[] = [];
 	#shellGeometry: ModalShellGeometry | null = null;
-	/** Frame row where the browser's first rendered row (its search row) sits. */
 	#browserRowStart = 0;
 	#hoveredShortcutId: string | null = null;
 	#refreshing = false;
@@ -99,8 +89,6 @@ export class ModelPickerComponent implements Component {
 		};
 		this.#browser.onCancel = () => callbacks.onCancel();
 		this.#browser.onQueryChange = () => this.#syncFromRegistryState();
-		// The browser paints inside this card's frame and owns no repaint, so its band fades on the
-		// card's clock or not at all. Same ambient gate as the open unfold.
 		this.#browser.setHoverMotion({
 			requestRender: () => this.#tui.requestRender(),
 			enabled: pointerMotionEnabled(),
@@ -122,7 +110,6 @@ export class ModelPickerComponent implements Component {
 		}
 	}
 
-	/** Settle the browser's pointer band so no timer outlives a dismissed picker. */
 	dispose(): void {
 		this.#browser.disposeHoverMotion();
 	}
@@ -163,7 +150,6 @@ export class ModelPickerComponent implements Component {
 			routeSgrMouseInput(data, event => this.#routeMouse(event));
 			return;
 		}
-		// Ahead of the browser, which takes every key it does not claim as query text.
 		if (matchesKey(data, "ctrl+r")) {
 			this.#refreshCatalog();
 			return;
@@ -171,7 +157,6 @@ export class ModelPickerComponent implements Component {
 		this.#browser.handleInput(data);
 	}
 
-	/** Re-fetch every provider past the cache TTL. This is the only strategy that ignores a fresh cache, so it is the difference between "the catalog I was */
 	#refreshCatalog(): void {
 		if (this.#refreshing) return;
 		this.#refreshing = true;
@@ -203,13 +188,10 @@ export class ModelPickerComponent implements Component {
 			return true;
 		}
 		if (chrome.kind === "close" || chrome.kind === "outside") {
-			// The [x] and an outside click are hard closes regardless of query.
 			this.#onCancel();
 			return true;
 		}
 		if (chrome.kind === "shortcut" && chrome.id === "close") {
-			// The esc chip performs exactly what its label promises: the same
-			// cancel ladder as the esc key (clear a live query, then close).
 			this.#browser.handleCancel();
 			return true;
 		}
@@ -221,8 +203,6 @@ export class ModelPickerComponent implements Component {
 			this.#refreshCatalog();
 			return true;
 		}
-		// The body is [status, ...browser, hint]: the browser owns the rows
-		// between the status line and the trailing hint.
 		const line = event.row - this.#browserRowStart;
 		if (event.wheel !== null || event.motion || event.leftClick) {
 			this.#browser.routeMouse(event, line);
@@ -246,12 +226,8 @@ export class ModelPickerComponent implements Component {
 			{ label: "enter use", clickable: true, id: "confirm" },
 			{ label: "type to search" },
 			{ label: "ctrl+r refresh", clickable: true, id: "refresh" },
-			// The esc chip mirrors the browser's cancel ladder: with a live
-			// query esc clears the search (close comes on the next press), so
-			// the chip must not advertise "close" it will not perform.
 			{ label: this.#browser.query.length > 0 ? "esc clear" : "esc close", clickable: true, id: "close" },
 		];
-		// The body is the status line, the browser, and the refresh hint, so the list gets whatever the card shows minus those. The old `- 8` was right
 		const chrome = planModalChrome({
 			sizing,
 			modalHeight: dims.modalHeight,
@@ -283,7 +259,6 @@ export class ModelPickerComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		// The body leads with the status line; the browser starts one row later.
 		this.#browserRowStart = (shell.geometry?.bodyRowStart ?? 0) + 1;
 		return shell.lines;
 	}

@@ -39,13 +39,10 @@ interface RecallOutcome {
 }
 
 export interface HindsightSessionStateOptions {
-	/** Session id used for retain-queue metadata. */
 	sessionId: string;
 	client: HindsightApi;
 	bankId: string;
-	/** Tags applied to every retain — non-empty in per-project-tagged mode. */
 	retainTags?: string[];
-	/** Tag filter applied to every recall/reflect — non-empty in per-project-tagged mode. */
 	recallTags?: string[];
 	recallTagsMatch?: "any" | "all" | "any_strict" | "all_strict";
 	config: HindsightConfig;
@@ -53,11 +50,9 @@ export interface HindsightSessionStateOptions {
 	banksSet: Set<string>;
 	lastRetainedTurn?: number;
 	hasRecalledForFirstTurn?: boolean;
-	/** When set, this entry is a subagent alias that reuses the parent's bank, scope, config, client, and banksSet. Aliases skip auto-recall and */
 	aliasOf?: HindsightSessionState;
 }
 
-/** Debounced batch queue for tool-initiated `retain` calls owned by one Hindsight session state instance. */
 export class HindsightRetainQueue {
 	readonly #state: HindsightSessionState;
 	#items: PendingRetainItem[] = [];
@@ -72,7 +67,6 @@ export class HindsightRetainQueue {
 		this.#state = state;
 	}
 
-	/** Pending plus in-flight items; this is the actual retained-memory high-water. */
 	get depth(): number {
 		return this.#residentItems;
 	}
@@ -85,7 +79,6 @@ export class HindsightRetainQueue {
 		this.enqueueMany([{ content, context }]);
 	}
 
-	/** Atomically accept a tool call. Capacity is checked before timestamps or queue entries are allocated, so rejection retains none of the input. */
 	enqueueMany(items: ReadonlyArray<{ content: string; context?: string }>): void {
 		if (this.#closed) throw new Error("Hindsight retain queue is closed.");
 		if (items.length === 0) return;
@@ -162,10 +155,7 @@ export class HindsightRetainQueue {
 			() => {
 				this.#timer = undefined;
 				this.#timerReady = false;
-				void this.#startDrain().catch(() => {
-					// #drainLoop already emitted one actionable notice. Scheduled
-					// drains have no direct caller to receive the same error.
-				});
+				void this.#startDrain().catch(() => {});
 			},
 			ready ? 0 : RETAIN_FLUSH_INTERVAL_MS,
 		);
@@ -244,15 +234,11 @@ export class HindsightRetainQueue {
 	}
 }
 
-/** Per-session Hindsight runtime state owned by its AgentSession. */
 export class HindsightSessionState {
-	/** Session id used for retain-queue metadata. */
 	sessionId: string;
 	client: HindsightApi;
 	bankId: string;
-	/** Tags applied to every retain — non-empty in per-project-tagged mode. */
 	retainTags?: string[];
-	/** Tag filter applied to every recall/reflect — non-empty in per-project-tagged mode. */
 	recallTags?: string[];
 	recallTagsMatch?: "any" | "all" | "any_strict" | "all_strict";
 	config: HindsightConfig;
@@ -261,16 +247,11 @@ export class HindsightSessionState {
 	lastRetainedTurn: number;
 	hasRecalledForFirstTurn: boolean;
 	lastRecallSnippet?: string;
-	/** Cached `<mental_models>` block injected into developer instructions. */
 	mentalModelsSnippet?: string;
-	/** When the cached snippet was last refreshed; gates the agent_end re-list. */
 	mentalModelsLoadedAt?: number;
-	/** In-flight ensure+load promise. `beforeAgentStartPrompt` awaits this on the first turn so the MM block lands in the system prompt before the */
 	mentalModelsLoadPromise?: Promise<void>;
 	unsubscribe?: () => void;
-	/** Releases the `onHindsightScopeChanged` subscription that drives live rebuilds when `hindsight.bankId` / `bankIdPrefix` / `scoping` change. */
 	unsubscribeScope?: () => void;
-	/** Alias states delegate persistence config to a primary parent state. */
 	aliasOf?: HindsightSessionState;
 	readonly retainQueue: HindsightRetainQueue;
 	readonly #unregisterProviderTextTransform: () => void;
@@ -320,7 +301,6 @@ export class HindsightSessionState {
 		try {
 			return this.session.obfuscateProviderText(text);
 		} catch {
-			// The thrown diagnostic may contain the secret-bearing input.
 			throw new Error("Hindsight confidentiality transform failed.");
 		}
 	}
@@ -370,8 +350,6 @@ export class HindsightSessionState {
 			documentId = `${this.sessionId}-${retainedAt.getTime()}`;
 		}
 
-		// Transform raw fields before tag stripping/framing can split a secret;
-		// the client transforms the resulting payload again at physical send.
 		const { transcript } = prepareRetentionTranscript(this.#transformProviderMessages(target), true);
 		if (!transcript) return;
 
@@ -488,10 +466,8 @@ export class HindsightSessionState {
 	async runMentalModelLoad(scope: BankScope): Promise<void> {
 		if (!this.config.mentalModelsEnabled) return;
 
-		// Create/ensure the bank BEFORE the first mental-model POST so we don't land `createMentalModel` against a bank the server has never seen —
 		await ensureBankExists(this.client, this.bankId, this.config, this.banksSet);
 
-		// Seeding is opt-in (`hindsight.mentalModelAutoSeed`). Default behaviour is read-only: we surface whatever models the operator has curated on the
 		if (this.config.mentalModelAutoSeed) {
 			const seeds = resolveSeedsForScope(scope, this.config.scoping);
 			if (seeds.length > 0) {
@@ -529,12 +505,7 @@ export class HindsightSessionState {
 				this.#runDetached("auto-recall", () => this.maybeRecallOnAgentStart());
 			} else if (event.type === "agent_end") {
 				this.#runDetached("auto-retain", () => this.maybeRetainOnAgentEnd());
-				// Drain any queued tool-initiated retain calls now that the turn
-				// is settled. The queue is also debounced/size-bounded, but
-				// flushing here keeps the bank fresh between turns.
 				this.#runDetached("retain-queue flush", () => this.flushRetainQueue());
-				// MM TTL refresh: re-list once we're past the cache deadline. List
-				// is cheap (no reflect call); the LLM doesn't see this happen.
 				if (
 					this.config.mentalModelsEnabled &&
 					this.mentalModelsLoadedAt !== undefined &&
@@ -549,7 +520,6 @@ export class HindsightSessionState {
 		});
 	}
 
-	/** Run background memory work started from a session event without letting it reject into nowhere. */
 	#runDetached(what: string, work: () => Promise<void>): void {
 		const report = (error: unknown): void => {
 			logger.warn(`Hindsight: background ${what} failed`, {
@@ -574,7 +544,6 @@ export class HindsightSessionState {
 		this.retainQueue.dispose();
 	}
 
-	/** Publish the new recall / mental-model text to the context tail. This used to rebuild the system prompt, which is the provider's cache prefix: */
 	async #publishVolatileContextAfter(reason: "recall" | "MM load" | "MM reload" | "MM TTL reload"): Promise<void> {
 		try {
 			await this.session.publishVolatileMemoryContext(`hindsight:${reason}`);

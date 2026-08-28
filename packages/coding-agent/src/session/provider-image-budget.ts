@@ -9,7 +9,6 @@ import type {
 } from "@veyyon/ai";
 import { replaceLlmImagesWithText } from "./messages";
 
-/** Per-provider cap on the number of images allowed in one request, measured against each provider's documented/observed vision limit. Unknown providers */
 const PROVIDER_IMAGE_BUDGETS: Record<string, number> = {
 	anthropic: 90,
 	"amazon-bedrock": 90,
@@ -22,10 +21,8 @@ const PROVIDER_IMAGE_BUDGETS: Record<string, number> = {
 	umans: 10,
 };
 
-/** Safe floor for unknown providers (strictest mainstream measured: Groq ~5). */
 const DEFAULT_PROVIDER_IMAGE_BUDGET = 5;
 
-/** Per-request image budget for `provider`; unknown providers get the floor. */
 export function providerImageBudget(provider: string | undefined): number {
 	return (provider !== undefined ? PROVIDER_IMAGE_BUDGETS[provider] : undefined) ?? DEFAULT_PROVIDER_IMAGE_BUDGET;
 }
@@ -63,7 +60,6 @@ function clampContent(
 	return changed ? clamped : undefined;
 }
 
-/** Clamp content parts, then substitute the omission placeholder when the clamp would otherwise leave an empty content array. Providers (Anthropic / Bedrock */
 function clampContentPreservingNonEmpty(
 	content: readonly (TextContent | ImageContent)[],
 	state: { remainingDrops: number },
@@ -92,7 +88,6 @@ function clampToolResultMessage(message: ToolResultMessage, state: { remainingDr
 	return { ...message, content };
 }
 
-/** Drops oldest transient image blocks so outgoing vision requests fit the active provider's image cap. */
 export function clampProviderContextImages(context: Context, model: Model): Context {
 	if (!model.input.includes("image")) return context;
 	const limit = providerImageBudget(model.provider);
@@ -116,19 +111,14 @@ export function clampProviderContextImages(context: Context, model: Model): Cont
 	return { ...context, messages };
 }
 
-/** Sentence a request carries where the operator turned image reading off. */
 const IMAGES_BLOCKED_TEXT = "Image reading is disabled.";
 
-/** Sentence a request carries where the model serving it has no vision input. Names the request rather than "the active model": a side request, an advisor */
 const NO_VISION_TEXT = "[image omitted: the model serving this request does not support image input]";
 
-/** Operator state the policy reads; one field, read live per request. */
 export interface ProviderImagePolicy {
-	/** `images.blockImages`: no image reaches any provider while this is on. */
 	blockImages: boolean;
 }
 
-/** Shape `context` for what `model` can actually read, in one place. Three rules, strictest first: */
 export function applyProviderImagePolicy(context: Context, model: Model, policy: ProviderImagePolicy): Context {
 	if (policy.blockImages) {
 		return withMessages(context, replaceLlmImagesWithText(context.messages, IMAGES_BLOCKED_TEXT));

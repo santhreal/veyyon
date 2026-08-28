@@ -1,12 +1,9 @@
-/** Custom share script loader. Allows users to define a custom share handler at ~/.veyyon/agent/share.ts */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage, getAgentDir } from "@veyyon/utils";
 
 export interface CustomShareResult {
-	/** URL to display/open (optional - script may handle everything itself) */
 	url?: string;
-	/** Additional message to show the user */
 	message?: string;
 }
 
@@ -19,9 +16,6 @@ export interface LoadedCustomShare {
 
 const SHARE_SCRIPT_CANDIDATES = ["share.ts", "share.js", "share.mjs"];
 
-/**
- * Get the path to the custom share script if it exists.
- */
 export function getCustomSharePath(): string | null {
 	const agentDir = getAgentDir();
 
@@ -35,9 +29,6 @@ export function getCustomSharePath(): string | null {
 	return null;
 }
 
-/**
- * Load the custom share script if it exists.
- */
 export async function loadCustomShare(): Promise<LoadedCustomShare | null> {
 	const scriptPath = getCustomSharePath();
 	if (!scriptPath) {

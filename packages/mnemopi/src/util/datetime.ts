@@ -3,10 +3,6 @@ import { LRUCache } from "lru-cache/raw";
 import { recencyHalflifeHours } from "../config";
 
 const TZ_RE = /(?:Z|[+-]\d\d:?\d\d)$/;
-// IXDTF named-zone suffix, e.g. the `[Asia/Kolkata]` in
-// `2026-01-02T03:04:05+05:30[Asia/Kolkata]` that `Temporal.ZonedDateTime.toString()`
-// emits. The numeric offset before it already fixes the instant, so drop the
-// bracket to let `new Date` parse the rest.
 const IXDTF_ZONE_RE = /\[[^\]]*\]$/;
 const TS_CACHE = new LRUCache<string, Date>({ max: 2000 });
 
@@ -42,8 +38,6 @@ export function parseTsFast(value: string): Date | undefined {
 		TS_CACHE.set(value, parsed);
 		return parsed;
 	} catch {
-		// Undefined means "not a timestamp", which is what this asks. The caller decides what an undated row
-		// means; parsing cannot. Not cached, so a fix to the parser takes effect without a restart.
 		return undefined;
 	}
 }
@@ -52,14 +46,6 @@ export function toUtcIso(value: Date = new Date()): string {
 	return normalizeDateTimeUtc(value).toISOString();
 }
 
-/**
- * Exponential recency weight for a timestamp: 1 at zero age, halving every
- * {@link halflifeHours}. A future timestamp is clamped to age 0 (weight 1) so
- * the result stays in (0, 1]. When the timestamp is missing or unparseable the
- * caller chooses the neutral value through {@link fallback}: recall scoring
- * passes 0 (an untimestamped row earns no recency credit) while the default
- * 0.5 keeps a memory mid-ranked.
- */
 export function recencyDecay(
 	timestamp: string | Date | null | undefined,
 	halflifeHours = recencyHalflifeHours(),

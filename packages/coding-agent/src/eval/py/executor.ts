@@ -31,86 +31,50 @@ import {
 } from "./kernel";
 import { resolveExplicitPythonRuntime } from "./runtime";
 
-/** Kept as an alias of the shared {@link KernelMode} rather than its own union: the type is exported and `python.kernelMode` reads it in `py/index.ts`, so removing the name would break callers for nothing, */
 export type PythonKernelMode = KernelMode;
 
 export interface PythonExecutorOptions {
-	/** Working directory for command execution */
 	cwd?: string;
-	/** Timeout in milliseconds */
 	timeoutMs?: number;
-	/** Absolute wall-clock deadline in milliseconds since epoch */
 	deadlineMs?: number;
-	/** Runtime-work budget (ms). Used only for timeout-annotation text when the caller drives cancellation via the eval watchdog `signal` instead of a */
 	idleTimeoutMs?: number;
-	/** Callback for streaming output chunks (already sanitized) */
 	onChunk?: (chunk: string) => Promise<void> | void;
-	/** AbortSignal for cancellation */
 	signal?: AbortSignal;
-	/** Session identifier for kernel reuse */
 	sessionId?: string;
-	/** Logical owner identifier for retained kernel cleanup */
 	kernelOwnerId?: string;
-	/** Kernel mode (session reuse vs per-call) */
 	kernelMode?: PythonKernelMode;
-	/** Explicit interpreter path (`python.interpreter` resolved from the session's settings). Skips automatic runtime discovery when set. */
 	interpreter?: string;
-	/** Restart the kernel before executing */
 	reset?: boolean;
-	/** Session file path for accessing task outputs */
 	sessionFile?: string;
-	/** Effective artifacts directory for the current session. Subagents share the parent's directory, so this can differ from `sessionFile`'s sibling */
 	artifactsDir?: string;
-	/** Artifact path/id for full output storage */
 	artifactPath?: string;
 	artifactId?: string;
-	/** On-disk roots the prelude helpers (`read`/`write`) substitute for internal-URL schemes (e.g. `{ local: "/…/artifacts/local" }`). Exported to */
 	localRoots?: Record<string, string>;
-	/** ToolSession used to resolve host-side `tool.<name>(args)` calls made from the Python prelude's bridge proxy. When omitted, the bridge env vars are */
 	toolSession?: ToolSession;
-	/** Callback for status events emitted by tool bridge invocations. */
 	emitStatus?: (event: JsStatusEvent) => void;
-	/** Live status events streamed as they are emitted (both host-side bridge helpers like `agent()` and kernel-side `display`/`log`/`phase`). Mirrors */
 	onStatus?: (event: JsStatusEvent) => void;
-	/** @internal Bridge session id, set by `executePython` before delegating. */
 	bridgeSessionId?: string;
-	/** @internal Bridge endpoint info, set by `executePython` before delegating. */
 	bridge?: { url: string; token: string };
 }
 
 export interface PythonResult {
-	/** Combined stdout + stderr output (sanitized, possibly truncated) */
 	output: string;
-	/** Execution exit code (0 ok, 1 error, undefined if cancelled) */
 	exitCode: number | undefined;
-	/** Whether the execution was cancelled via signal */
 	cancelled: boolean;
-	/** Whether the output was truncated */
 	truncated: boolean;
-	/** Artifact ID if full output was saved to artifact storage */
 	artifactId?: string;
-	/** Total number of lines in the output stream */
 	totalLines: number;
-	/** Total number of bytes in the output stream */
 	totalBytes: number;
-	/** Number of lines included in the output text */
 	outputLines: number;
-	/** Number of bytes included in the output text */
 	outputBytes: number;
-	/** Rich display outputs captured from display_data/execute_result */
 	displayOutputs: KernelDisplayOutput[];
-	/** Whether stdin was requested */
 	stdinRequested: boolean;
 }
 
-// Session bookkeeping One PythonKernel subprocess per (session id, cwd, interpreter) tuple. The
 interface PythonSession {
 	sessionKey: string;
 	sessionId: string;
 	cwd: string;
-	// The CONTRACT, not the concrete class: session bookkeeping only ever executes,
-	// checks liveness, and shuts down. Typing it this way is also what lets a test fake
-	// stand in without an `as unknown as PythonKernel` cast that checks nothing.
 	kernel: SessionKernel<KernelExecuteOptions>;
 	ownerIds: Set<string>;
 	hasFallbackOwner: boolean;
@@ -221,7 +185,6 @@ async function replaceSessionKernel(
 }
 
 async function resetSession(sessionKey: string): Promise<void> {
-	// A start that failed leaves nothing to reset, and its failure belongs to the caller awaiting the start.
 	const existing = sessions.get(sessionKey) ?? (await startingSessions.get(sessionKey)?.catch(() => undefined));
 	if (!existing) return;
 	sessions.delete(sessionKey);
@@ -355,13 +318,7 @@ async function executeOnSession(code: string, cwd: string, options: PythonExecut
 		options.bridgeSessionId = sessionId;
 	}
 	if (options.reset) {
-		// Coalesce concurrent resets: if another reset is in flight for this
-		// session, await it instead of throwing — the caller's intent ("start
-		// from a clean kernel") is satisfied once that reset settles.
 		const inFlight = resettingSessions.get(sessionKey);
-		// Another caller owns this reset and is awaiting `resetPromise` itself, so its failure is reported
-		// there. Here the only thing that matters is that the reset has SETTLED before running on the
-		// context: if it failed, `acquireSession` below starts a fresh one and fails with its own reason.
 		if (inFlight) await inFlight.catch(() => undefined);
 		else {
 			const resetPromise = resetSession(sessionKey);
@@ -376,13 +333,7 @@ async function executeOnSession(code: string, cwd: string, options: PythonExecut
 			}
 		}
 	} else {
-		// A reset already in progress is an internal coordination state, not a
-		// user-visible failure. Wait for it to clear, then proceed with the
-		// requested execution on the freshly-restarted kernel.
 		const inFlight = resettingSessions.get(sessionKey);
-		// Another caller owns this reset and is awaiting `resetPromise` itself, so its failure is reported
-		// there. Here the only thing that matters is that the reset has SETTLED before running on the
-		// context: if it failed, `acquireSession` below starts a fresh one and fails with its own reason.
 		if (inFlight) await inFlight.catch(() => undefined);
 	}
 	const session = await acquireSession(sessionKey, sessionId, cwd, options);
@@ -409,8 +360,6 @@ async function executeOnSession(code: string, cwd: string, options: PythonExecut
 		if (sessions.get(session.sessionKey) !== session) {
 			throw new PythonExecutionCancelledError(false);
 		}
-		// Shared kernels are keyed by cwd, so a dead kernel can be recreated in place
-		// without risking cross-directory state bleed.
 		await replaceSessionKernel(session, cwd, options);
 		if (sessions.get(session.sessionKey) !== session) {
 			throw new PythonExecutionCancelledError(false);
@@ -466,7 +415,6 @@ export async function executePython(code: string, options?: PythonExecutorOption
 	}
 }
 
-/** Wire this subsystem into the session's owner-scoped cleanup. Registered at module scope rather than called by name from `agent-session.dispose()`, which is */
 registerOwnedResourceDisposer({
 	name: "python-kernels",
 	scope: "eval-kernel-owner",

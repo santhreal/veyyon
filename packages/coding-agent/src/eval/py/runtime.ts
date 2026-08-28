@@ -1,4 +1,3 @@
-/** Python runtime resolution utilities. Centralizes environment filtering, venv detection, and Python executable resolution */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -11,8 +10,6 @@ import {
 	SECRET_ENV_DENYLIST,
 } from "../runtime-env";
 
-// Python-specific runtime-state vars not shared by the other language
-// sandboxes (venv/conda layout, import path).
 const PYTHON_ENV_ALLOWLIST = ["CONDA_PREFIX", "CONDA_DEFAULT_ENV", "VIRTUAL_ENV", "PYTHONPATH"];
 
 const WINDOWS_ENV_ALLOWLIST = [
@@ -44,8 +41,6 @@ const WINDOWS_ENV_ALLOWLIST = [
 	"WINDIR",
 ];
 
-// Python needs no prefixes beyond the shared base: its venv/conda layout is
-// carried by named variables in PYTHON_ENV_ALLOWLIST, not by a namespace.
 const PYTHON_ENV_ALLOW_PREFIXES = [...BASE_ENV_ALLOW_PREFIXES];
 
 function resolvePathKey(env: Record<string, string | undefined>): string {
@@ -66,11 +61,8 @@ function resolveManagedPythonCandidate(): { venvPath: string; pythonPath: string
 }
 
 export interface PythonRuntime {
-	/** Path to python executable */
 	pythonPath: string;
-	/** Filtered environment variables */
 	env: Record<string, string | undefined>;
-	/** Path to virtual environment, if detected */
 	venvPath?: string;
 }
 
@@ -81,9 +73,6 @@ export const filterEnv = createEnvFilter({
 	allowPrefixes: PYTHON_ENV_ALLOW_PREFIXES,
 });
 
-/**
- * Detect virtual environment path from VIRTUAL_ENV or common locations.
- */
 export function resolveVenvPath(cwd: string): string | undefined {
 	if ($env.VIRTUAL_ENV) return $env.VIRTUAL_ENV;
 	if ($env.CONDA_PREFIX) return $env.CONDA_PREFIX;
@@ -96,7 +85,6 @@ export function resolveVenvPath(cwd: string): string | undefined {
 	return undefined;
 }
 
-/** Apply a venv-style PATH/VIRTUAL_ENV layout onto a fresh copy of `baseEnv` for the interpreter living in `binDir`. */
 function applyVenvEnv(
 	baseEnv: Record<string, string | undefined>,
 	venvPath: string,
@@ -123,7 +111,6 @@ function detectExplicitVenv(pythonPath: string): { venvPath: string; binDir: str
 	return undefined;
 }
 
-/** Resolve an explicitly configured interpreter (`python.interpreter`) into a runtime, bypassing discovery. Does not probe or validate the executable — */
 export function resolveExplicitPythonRuntime(
 	interpreter: string,
 	cwd: string,
@@ -143,7 +130,6 @@ export function resolveExplicitPythonRuntime(
 	return { pythonPath, env: { ...baseEnv } };
 }
 
-/** Enumerate candidate Python runtimes in priority order: an active/project venv, the managed `~/.veyyon/python-env`, then the system interpreter on PATH. Every */
 export function enumeratePythonRuntimes(cwd: string, baseEnv: Record<string, string | undefined>): PythonRuntime[] {
 	const runtimes: PythonRuntime[] = [];
 	const seen = new Set<string>();
@@ -180,7 +166,6 @@ export function enumeratePythonRuntimes(cwd: string, baseEnv: Record<string, str
 	return runtimes;
 }
 
-/** Resolve the highest-priority Python runtime. Prefer {@link enumeratePythonRuntimes} when you can probe candidates; this returns only the first one and throws when */
 export function resolvePythonRuntime(cwd: string, baseEnv: Record<string, string | undefined>): PythonRuntime {
 	const [runtime] = enumeratePythonRuntimes(cwd, baseEnv);
 	if (!runtime) {

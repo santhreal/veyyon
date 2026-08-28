@@ -1,10 +1,8 @@
-/** `veyyon __complete <kind> [-- <prefix>]` — dynamic completion candidates. Hidden helper invoked by the generated shell completion scripts to resolve */
 import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 import { Command } from "@veyyon/utils/cli";
 import { SETTINGS_SCHEMA } from "../config/settings-schema";
 import { SessionManager } from "../session/session-manager";
 
-/** Every kind this helper answers. Shared with the completion generator. */
 export const COMPLETE_KINDS = ["models", "sessions", "settings", "setting-values"] as const;
 
 export default class Complete extends Command {
@@ -22,12 +20,8 @@ export default class Complete extends Command {
 		} else if (kind === "settings") {
 			completeSettings(prefix);
 		} else if (kind === "setting-values") {
-			// `<key> <prefix>`: the key names the setting whose values to offer.
 			completeSettingValues(argv[1] ?? "", argv.length > 2 ? prefix : "");
 		} else {
-			// A kind nobody serves must not look like a kind with no matches. The
-			// generated scripts discard stderr, so this is for whoever runs the
-			// helper by hand while working out why completion is empty.
 			process.stderr.write(
 				`Error: unknown completion kind ${kind ? `"${kind}"` : "(missing)"}; expected one of ${COMPLETE_KINDS.join(", ")}\n`,
 			);
@@ -36,7 +30,6 @@ export default class Complete extends Command {
 	}
 }
 
-/** Strip control chars that would corrupt the tab-separated line protocol. */
 function clean(text: string): string {
 	return text.replace(/[\t\r\n]+/g, " ").trim();
 }
@@ -47,8 +40,6 @@ function completeModels(prefix: string): void {
 	const lines: string[] = [];
 	for (const provider of getBundledProviders()) {
 		for (const model of getBundledModels(provider as GeneratedProvider)) {
-			// Offer both the fully-qualified `provider/id` and the bare `id`
-			// (matches the fuzzy resolution `--model` accepts).
 			const candidates = [`${model.provider}/${model.id}`, model.id];
 			for (const candidate of candidates) {
 				if (seen.has(candidate)) continue;
@@ -73,21 +64,16 @@ async function completeSessions(prefix: string): Promise<void> {
 	if (lines.length > 0) process.stdout.write(`${lines.join("\n")}\n`);
 }
 
-/** The schema read structurally: its literal entries carry readonly tuples. */
 const SCHEMA_ENTRIES = SETTINGS_SCHEMA as unknown as Record<
 	string,
 	{ type?: string; values?: readonly string[]; ui?: { label?: string; description?: string } } | undefined
 >;
 
-/** Setting keys, so `veyyon config set <TAB>` offers the settings that exist. The schema is the one place a setting is declared, so completion cannot drift */
 function completeSettings(prefix: string): void {
-	// Prefix, not substring: a setting is a dotted path the user types from the left, and `up` substring-matching 40 unrelated keys is noise where
 	const needle = prefix.toLowerCase();
 	const lines: string[] = [];
 	for (const key of Object.keys(SETTINGS_SCHEMA)) {
 		if (needle && !key.toLowerCase().startsWith(needle)) continue;
-		// The prose a user reads in the settings panel, so the tooltip a shell
-		// shows says the same thing the UI does. Not every setting has one.
 		const ui = SCHEMA_ENTRIES[key]?.ui;
 		lines.push(`${key}\t${clean(ui?.description ?? ui?.label ?? "")}`);
 	}
@@ -95,7 +81,6 @@ function completeSettings(prefix: string): void {
 	if (lines.length > 0) process.stdout.write(`${lines.join("\n")}\n`);
 }
 
-/** The values a given setting accepts. A boolean setting takes true or false and an enumerated one carries its own */
 function completeSettingValues(key: string, prefix: string): void {
 	const def = SCHEMA_ENTRIES[key];
 	if (!def) return;

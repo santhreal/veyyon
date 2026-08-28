@@ -46,8 +46,6 @@ export function resetServerCompactionRouteCache(): void {
 
 export function resolveServerCompactionTransport(model: Model<Api>): ServerCompactionTransport | undefined {
 	if (!SERVER_COMPACTION_WIRE_APIS[model.api]) return undefined;
-	// Narrowed by the api gate above: every responses-family model carries the
-	// resolved responses compat record.
 	const compat = model.compat as ResolvedOpenAIResponsesCompat;
 	if (compat.supportsServerCompaction !== true) return undefined;
 	if (routeAbsentForModel.has(`${model.provider}/${model.api}/${model.id}`)) return undefined;
@@ -113,8 +111,6 @@ function resolveCompactWireModel(model: Model<Api>): string {
 }
 
 function buildCompactInputItems(model: Model<Api>, messages: Message[]): ResponseInput {
-	// Narrowed by resolveServerCompactionTransport: only responses-family models
-	// reach this encoder, and their compat is the resolved responses record.
 	const compat = model.compat as ResolvedOpenAIResponsesCompat;
 	return buildResponsesInput({
 		model: model as Model<"openai-responses">,
@@ -162,8 +158,6 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 			...(buildCompactInputItems(model, request.messages) as unknown as Array<Record<string, unknown>>),
 		];
 
-		// Body exactly per the compact method reference: model, input,
-		// instructions. No streaming, no store: the endpoint is stateless.
 		const body: Record<string, unknown> = {
 			model: resolveCompactWireModel(model),
 			input,
@@ -172,10 +166,6 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 			body.instructions = request.instructions;
 		}
 		if (isCodex) {
-			// Codex turns carry the canonical metadata blob in the body, and a
-			// lite model moves instructions into a leading developer item —
-			// codex-rs routes the compact call through the same builder, so the
-			// compact body is shaped exactly as a turn body is.
 			const clientMetadata = "clientMetadata" in resolved ? resolved.clientMetadata : undefined;
 			if (clientMetadata) body.client_metadata = clientMetadata;
 			body.store = false;
@@ -192,8 +182,6 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 		};
 		const sanitize = (text: string): string => applyCallerSanitizer(boundProviderErrorDetail(text));
 
-		// The fence spans the body read too; a middlebox can drop the connection
-		// after headers and only the armed signal interrupts response.json().
 		const timeoutMs = request.timeoutMs ?? 0;
 		const requestTimeout = timeoutMs > 0 ? scopedTimeoutSignal(timeoutMs, request.signal) : undefined;
 		try {
@@ -205,14 +193,8 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 			});
 
 			if (!response.ok) {
-				// The body is read under the shared byte ceiling, so an enormous error page is
-				// never allocated whole just to be capped afterwards.
 				const errorText = applyCallerSanitizer(await readProviderErrorDetail(response));
 				const statusText = sanitize(response.statusText);
-				// 404 answers the capability question the compat flag only
-				// predicts: this model's host does not serve the route. Record
-				// it so the next compaction skips the request instead of
-				// repeating it once per compaction for the rest of the run.
 				const routeAbsent = response.status === 404;
 				if (routeAbsent) routeAbsentForModel.add(`${model.provider}/${model.api}/${model.id}`);
 				logger.warn("Server-side compaction failed", {
@@ -240,8 +222,6 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 					"Server-side compaction returned no output items. The history was NOT compacted; the caller falls back to local compaction.",
 				);
 			}
-			// A window without a compaction item is not compacted: it would replay
-			// at full size on every turn while claiming the history was reduced.
 			if (
 				!output.some(
 					item =>

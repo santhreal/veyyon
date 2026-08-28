@@ -1,5 +1,5 @@
-
 /// <reference types="./bun-imports.d.ts" />
+
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { formatHashlineHeader, InMemorySnapshotStore } from "@veyyon/hashline";
@@ -284,7 +284,6 @@ async function collectOriginalFileContents(cwd: string, files: string[]): Promis
 		try {
 			originals.set(fullPath, await Bun.file(fullPath).text());
 		} catch {
-			// Ignore missing files; not all tasks include all paths in every run.
 		}
 	}
 	return originals;
@@ -298,8 +297,6 @@ function buildMutationPreviewAgainstOriginal(original: string, current: string):
 	let origLineNum = 1;
 	let newLineNum = 1;
 
-	// Hashline diff-preview format: `-LINE:TEXT` for removed (pre-edit line
-	// number), `+LINE:TEXT` for added (post-edit line number). No per-line hash.
 	for (const change of changes) {
 		const lines = splitTextLines(change.value);
 		if (!change.added && !change.removed) {
@@ -531,8 +528,6 @@ async function evaluateMutationIntent(
 function buildGuidedHashlinePatch(file: string, actual: string, expected: string): string | null {
 	const changes = diffLines(actual, expected);
 	const actualLines = actual.split("\n");
-	// File-trailing newline produces a phantom empty last entry that is not a
-	// real line; the hashline grammar's line numbers count real lines only.
 	const fileLineCount =
 		actualLines.length > 0 && actualLines[actualLines.length - 1] === ""
 			? actualLines.length - 1
@@ -550,15 +545,12 @@ function buildGuidedHashlinePatch(file: string, actual: string, expected: string
 		if (pendingRemoved === 0 && pendingAdded.length === 0) return;
 
 		if (pendingRemoved === 0) {
-			// Pure insertion at `pendingStart` (line numbers are 1-indexed and
-			// refer to the pre-edit file).
 			if (pendingAdded.length === 0) return;
 			if (pendingStart <= 1) {
 				ops.push(`BOF↓${formatPayload(pendingAdded)}`);
 			} else if (pendingStart > fileLineCount) {
 				ops.push(`EOF↓${formatPayload(pendingAdded)}`);
 			} else {
-				// Insert above `pendingStart` so the new content lands at that line.
 				ops.push(`${pendingStart}↑${formatPayload(pendingAdded)}`);
 			}
 		} else {
@@ -629,7 +621,6 @@ async function buildGuidedContext(
 
 	const patch = buildGuidedHashlinePatch(file, actual, expected);
 	if (patch === null) return null;
-	// Rough complexity guard: too many ops or too long → skip guidance.
 	const opCount = patch.split("\n").filter(l => /[↑↓→]/.test(l)).length;
 	if (opCount === 0 || opCount > 25) return null;
 
@@ -1659,8 +1650,6 @@ async function collectPromptEvents(
 		});
 	});
 
-	// Prevent unhandled rejection if events reject eventsPromise during prompt()
-	// (happens in-process where events fire synchronously within prompt/followUp)
 	eventsPromise.catch(() => {});
 
 	try {
@@ -1671,7 +1660,6 @@ async function collectPromptEvents(
 		}
 	} catch (err) {
 		if (earlyStopTriggered) {
-			// Abort raised inside prompt(); the run already short-circuited successfully.
 			if (timer) {
 				clearTimeout(timer);
 			}
@@ -1689,16 +1677,6 @@ async function collectPromptEvents(
 }
 
 function diffTokenStats(before: SessionTokenStats, after: SessionTokenStats, systemPromptTokens: number): TokenStats {
-	// `input` here is the total prompt tokens delivered to the model on the wire,
-	// summed across all four buckets the providers expose: non-cached input,
-	// cacheRead, cacheWrite. Summing makes the metric comparable across providers
-	// with different caching behavior — Anthropic with a hot cache reports its
-	// prompt entirely under cacheRead/cacheWrite while non-caching providers put
-	// the same content under `input`.
-	//
-	// The system prompt and tool definitions are constant per-call overhead. We
-	// subtract `calls * systemPromptTokens` once per assistant turn so the
-	// reported figure reflects task-driven prompt cost rather than fixed boilerplate.
 	const calls = Math.max(0, after.assistantMessages - before.assistantMessages);
 	const overhead = calls * systemPromptTokens;
 	const beforePrompt = before.tokens.input + before.tokens.cacheRead + before.tokens.cacheWrite;
@@ -1718,8 +1696,6 @@ type SessionTokenStats = {
 function isTransportFailure(r: TaskRunResult): boolean {
 	if (r.success) return false;
 	const err = r.error ?? "";
-	// Provider/transport stalls retried until the cap was hit. These don't reflect
-	// edit-tool quality, so we exclude them from the score denominator.
 	return err.includes("Timeout exhausted");
 }
 
@@ -1882,7 +1858,6 @@ export function buildBenchmarkResult(params: {
 	const endTime = params.endTime ?? new Date().toISOString();
 
 	
-	// report still surfaces ghost/timeout/retry signals.
 	const allRuns = taskResults.flatMap(t => t.runs);
 	const ghostRuns = allRuns.filter(r => isGhostRun(r)).length;
 	const transportFailureRuns = allRuns.filter(r => isTransportFailure(r)).length;
@@ -2074,9 +2049,6 @@ export async function runBenchmark(
 			onResultSnapshot?.(buildBenchmarkResult({ tasks, config, resultsByTask, startTime }));
 		};
 
-		// Each worker takes one task at a time and launches all N runs for that
-		// task concurrently. The best run is chosen later via summarizeTaskRuns;
-		// taskConcurrency caps the number of in-flight tasks (not runs).
 		const runTaskAllRuns = async (task: EditTask): Promise<void> => {
 			const items: TaskRunItem[] = Array.from({ length: runsPerTask }, (_, runIndex) => ({ task, runIndex }));
 			await Promise.all(

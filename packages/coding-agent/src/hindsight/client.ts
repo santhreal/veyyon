@@ -1,5 +1,3 @@
-/** Minimal fetch-based client for the Hindsight HTTP API. Replaces the `@vectorize-io/hindsight-client` SDK with hand-rolled fetch */
-
 import { errorMessage, trimTrailingSlashes, tryParseJson } from "@veyyon/utils";
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
 import type { HindsightConfig } from "./config";
@@ -12,7 +10,6 @@ export type TagsMatch = "any" | "all" | "any_strict" | "all_strict";
 export type UpdateMode = "replace" | "append";
 export type ConsolidationState = "failed" | "pending" | "done";
 
-/** Live string transform applied at the last Hindsight network boundary. */
 export type HindsightProviderTextTransform = (text: string) => string;
 
 export interface HindsightTimeouts {
@@ -26,9 +23,7 @@ export interface HindsightApiOptions {
 	baseUrl: string;
 	apiKey?: string;
 	userAgent?: string;
-	/** Optional final-seam transform for standalone clients. Session-owned clients register their live transforms when the session state is built. */
 	obfuscateProviderText?: HindsightProviderTextTransform;
-	/** Per-operation request deadlines in milliseconds. Each falls back to the constructor's own default when omitted. Reflect gets a far longer budget */
 	timeouts?: {
 		request?: number;
 		reflect?: number;
@@ -37,12 +32,10 @@ export interface HindsightApiOptions {
 	};
 }
 
-/** Caller cancellation shared by Hindsight request option bags. */
 export interface HindsightRequestOptions {
 	signal?: AbortSignal;
 }
 
-/** One memory as the HINDSIGHT service returns it. Nothing to do with `RecallResult` in `@veyyon/mnemopi`, which is veyyon's own memory backend: */
 export interface HindsightRecallResult {
 	id?: string;
 	text: string;
@@ -81,7 +74,6 @@ export interface ListDocumentsResponse {
 	[key: string]: unknown;
 }
 
-/** Mirrors the shape accepted by `POST /v1/default/banks/{bank_id}/memories`. */
 export interface MemoryItemInput {
 	content: string;
 	timestamp?: Date | string;
@@ -89,9 +81,7 @@ export interface MemoryItemInput {
 	metadata?: Record<string, string>;
 	documentId?: string;
 	tags?: string[];
-	/** Scoping policy for observations derived from this item. */
 	observationScopes?: "per_tag" | "combined" | "all_combinations" | string[][];
-	/** Per-item extraction strategy override. */
 	strategy?: string;
 	updateMode?: UpdateMode;
 }
@@ -107,9 +97,7 @@ export interface RetainOptions extends HindsightRequestOptions {
 }
 
 export interface RetainBatchOptions extends HindsightRequestOptions {
-	/** Document id applied to every item that doesn't carry its own. */
 	documentId?: string;
-	/** Tags attached to the resulting document(s), not individual items. */
 	documentTags?: string[];
 	async?: boolean;
 }
@@ -159,7 +147,6 @@ export interface MentalModelTrigger {
 	refresh_after_consolidation?: boolean;
 }
 
-/** Shape returned by list/get on the mental-models endpoint. Fields are populated by `detail`. */
 export interface MentalModelSummary {
 	id: string;
 	bank_id: string;
@@ -227,10 +214,8 @@ type RequestPath = string | ((transform: HindsightProviderTextTransform) => stri
 interface RequestOptions {
 	body?: Record<string, unknown>;
 	query?: Record<string, unknown>;
-	/** Return null instead of throwing on a 404 response. */
 	allow404?: boolean;
 	signal?: AbortSignal;
-	/** This call's deadline; defaults to the client's general request timeout. */
 	timeoutMs?: number;
 }
 
@@ -261,7 +246,6 @@ export class HindsightApi {
 		this.#retainTimeoutMs = options.timeouts?.retain ?? 60_000;
 	}
 
-	/** Register a live session transform. Shared parent/subagent clients keep every active transform so a delayed request is protected by the runtime */
 	registerProviderTextTransform(transform: HindsightProviderTextTransform): () => void {
 		this.#providerTextTransforms.add(transform);
 		return () => {
@@ -292,7 +276,6 @@ export class HindsightApi {
 		);
 	}
 
-	/** Retain multiple memories in a single request. Mirrors the official client's `retainBatch` — items hit `POST /memories` together so the */
 	async retainBatch(bankId: string, items: MemoryItemInput[], options?: RetainBatchOptions): Promise<RetainResponse> {
 		const processed = items.map(item => {
 			const built = buildMemoryItem(item);
@@ -372,7 +355,6 @@ export class HindsightApi {
 		);
 	}
 
-	/** Bulk-list memory units in a bank with optional filters and pagination. Endpoint: `GET /v1/default/banks/{bank_id}/memories/list`. */
 	async listMemories(bankId: string, options?: ListMemoriesOptions): Promise<ListMemoriesResponse> {
 		return this.#request<ListMemoriesResponse>(
 			"GET",
@@ -391,7 +373,6 @@ export class HindsightApi {
 		);
 	}
 
-	/** Bulk-list documents in a bank. */
 	async listDocuments(bankId: string, options?: ListDocumentsOptions): Promise<ListDocumentsResponse> {
 		return this.#request<ListDocumentsResponse>(
 			"GET",
@@ -401,7 +382,6 @@ export class HindsightApi {
 		);
 	}
 
-	/** Fetch a document. Returns `null` on 404 instead of throwing. */
 	async getDocument(bankId: string, documentId: string): Promise<DocumentResponse | null> {
 		return this.#request<DocumentResponse | null>(
 			"GET",
@@ -412,7 +392,6 @@ export class HindsightApi {
 		);
 	}
 
-	/** Update a document's mutable fields (currently just tags). */
 	async updateDocument(bankId: string, documentId: string, options: UpdateDocumentOptions): Promise<DocumentResponse> {
 		return this.#request<DocumentResponse>(
 			"PATCH",
@@ -423,7 +402,6 @@ export class HindsightApi {
 		);
 	}
 
-	/** Delete a document and every memory derived from it. Returns `true` on success, `false` if the document was already gone (404). */
 	async deleteDocument(bankId: string, documentId: string): Promise<boolean> {
 		const result = await this.#request<{ __deleted: boolean } | null>(
 			"DELETE",
@@ -435,7 +413,6 @@ export class HindsightApi {
 		return result !== null;
 	}
 
-	/** List mental models in a bank. Default `detail=content` includes the generated `content` text but excludes the heavyweight `reflect_response` */
 	async listMentalModels(bankId: string, options?: ListMentalModelsOptions): Promise<MentalModelListResponse> {
 		return this.#request<MentalModelListResponse>(
 			"GET",
@@ -445,7 +422,6 @@ export class HindsightApi {
 		);
 	}
 
-	/** Fetch a single mental model. Returns `null` on 404. */
 	async getMentalModel(
 		bankId: string,
 		mentalModelId: string,
@@ -460,7 +436,6 @@ export class HindsightApi {
 		);
 	}
 
-	/** Create a mental model. Asynchronous on the server: returns an `operation_id`; the model's `content` populates after the background */
 	async createMentalModel(
 		bankId: string,
 		name: string,
@@ -485,7 +460,6 @@ export class HindsightApi {
 		);
 	}
 
-	/** Trigger an out-of-band refresh of a mental model. Returns the operation handle. */
 	async refreshMentalModel(bankId: string, mentalModelId: string): Promise<RefreshMentalModelResponse> {
 		return this.#request<RefreshMentalModelResponse>(
 			"POST",
@@ -496,7 +470,6 @@ export class HindsightApi {
 		);
 	}
 
-	/** Delete a mental model. Returns `true` on success, `false` if it was already gone (404). */
 	async deleteMentalModel(bankId: string, mentalModelId: string): Promise<boolean> {
 		const result = await this.#request<{ __deleted: boolean } | null>(
 			"DELETE",
@@ -508,7 +481,6 @@ export class HindsightApi {
 		return result !== null;
 	}
 
-	/** Fetch the change history of a mental model. Each entry captures the content snapshot BEFORE that change; the current content is read via */
 	async getMentalModelHistory(bankId: string, mentalModelId: string): Promise<MentalModelHistoryEntry[]> {
 		const response = await this.#request<MentalModelHistoryEntry[] | { items?: MentalModelHistoryEntry[] }>(
 			"GET",
@@ -522,9 +494,6 @@ export class HindsightApi {
 	}
 
 	async #request<T>(method: string, path: RequestPath, operation: string, opts?: RequestOptions): Promise<T> {
-		// Resolve the live callbacks only at the physical dispatch boundary.
-		// Queued values remain raw in-process, so a runtime swapped while they
-		// waited is authoritative when the request finally leaves the process.
 		const transform = composeProviderTextTransform(this.#providerTextTransforms);
 		const requestPath = typeof path === "function" ? path(transform) : path;
 		let url = `${this.#baseUrl}${requestPath}`;
@@ -537,8 +506,6 @@ export class HindsightApi {
 		const effectiveTimeoutMs = opts?.timeoutMs ?? this.#requestTimeoutMs;
 		const init: RequestInit = {
 			method,
-			// Authentication is transport configuration, not caller payload.
-			// Never feed it through the session's recursive text transform.
 			headers: this.#headers,
 			signal: withTimeoutSignal(effectiveTimeoutMs, opts?.signal),
 		};
@@ -636,8 +603,6 @@ function pad3(value: number): string {
 }
 
 function confidentialityTransformError(): HindsightError {
-	// Intentionally omit the source text and key: either may be the secret that
-	// caused the transform to fail.
 	return new HindsightError("Hindsight request confidentiality transform failed.");
 }
 
@@ -679,8 +644,6 @@ function transformHindsightObject(
 		for (const [rawKey, rawValue] of Object.entries(input)) {
 			const mappedKey = transform(rawKey);
 			if (Object.hasOwn(output, mappedKey)) {
-				// Two source keys mapping to one wire key is ambiguous. Reject
-				// instead of overwriting, and never echo either raw key.
 				throw new HindsightError("Hindsight request rejected: confidentiality key collision.");
 			}
 			Object.defineProperty(output, mappedKey, {
@@ -748,8 +711,6 @@ export function createHindsightClient(config: HindsightConfig & { hindsightApiUr
 		baseUrl: config.hindsightApiUrl,
 		apiKey: config.hindsightApiToken ?? undefined,
 		userAgent: USER_AGENT,
-		// Without this the four hindsight.*TimeoutMs settings and their
-		// HINDSIGHT_*_TIMEOUT_MS env overrides parse and then do nothing.
 		timeouts: {
 			request: config.requestTimeoutMs,
 			reflect: config.reflectTimeoutMs,

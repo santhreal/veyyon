@@ -98,7 +98,6 @@ export function createLogExperimentTool(
 
 			let allModified: string[];
 			try {
-				// On a dedicated autoresearch branch every iteration starts from a clean worktree (init_experiment baseline + previous keep commit / discard reset),
 				if (onAutoresearchBranch) {
 					const statusText = await gitStatusPorcelain(ctx.cwd);
 					const workDirPrefix = await gitWorkDirPrefix(ctx.cwd);
@@ -111,9 +110,6 @@ export function createLogExperimentTool(
 					allModified = modifiedTracked.concat(modifiedUntracked);
 				}
 			} catch (err) {
-				// Refusing to log is the right answer: every field this run would record -- modified paths,
-				// scope deviations, and whether a discard has anything to revert -- is derived from this
-				// status, so logging without it would write an experiment result that is confidently empty.
 				return {
 					content: [
 						{
@@ -212,7 +208,6 @@ export function createLogExperimentTool(
 				loggedAt,
 			});
 
-			// Recompute confidence with this run included
 			const refreshedSession = storage.getSessionById(session.id) ?? session;
 			const loggedRuns = storage.listLoggedRuns(session.id);
 			const stateForConfidence = buildExperimentState(refreshedSession, loggedRuns);
@@ -355,9 +350,6 @@ async function revertFailedExperiment(
 	onAutoresearchBranch: boolean,
 ): Promise<KeepCommitResult> {
 	if (onAutoresearchBranch) {
-		// Discard reverts only the current iteration's uncommitted changes — never
-		// rewinds prior `keep` commits. Reset to HEAD so any kept improvements
-		// already on the branch survive.
 		try {
 			await git.reset(cwd, { hard: true, target: "HEAD" });
 			await git.clean(cwd);
@@ -388,14 +380,11 @@ async function revertFailedExperiment(
 	for (const filePath of untracked) {
 		try {
 			fs.rmSync(path.join(cwd, filePath), { force: true, recursive: true });
-		} catch {
-			// best effort
-		}
+		} catch {}
 	}
 	return { note: `reverted ${formatCount("file", total)}` };
 }
 
-/** The paths this run changed. Failures propagate: an unreadable status used to parse as "nothing changed", which recorded the experiment with an empty modified-path list and made the */
 async function detectModifiedPaths(
 	cwd: string,
 	preRunDirtyPaths: string[],

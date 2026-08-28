@@ -1,12 +1,8 @@
-/** Bundled agent definitions. Agents are embedded at build time via Bun's import with { type: "text" }. */
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
-// The effort ladder from its owner (`@veyyon/catalog/effort`, 1 module) rather than the
-// `@veyyon/ai` barrel that re-exports it (346).
 import { Effort } from "@veyyon/catalog/effort";
 import { parseFrontmatter, prompt } from "@veyyon/utils";
 import { parseAgentFields } from "../discovery/helpers";
 import { agentsPrompts } from "../prompts/agents/rows";
-// Embed agent markdown files at build time
 
 import type { AgentDefinition, AgentSource } from "./types";
 
@@ -60,8 +56,6 @@ const EMBEDDED_AGENT_DEFS: EmbeddedAgentDef[] = [
 	},
 ];
 
-// Computed lazily on first loadBundledAgents() call to avoid eager prompt.render at module load.
-
 export class AgentParsingError extends Error {
 	constructor(
 		error: Error,
@@ -85,9 +79,6 @@ export class AgentParsingError extends Error {
 	}
 }
 
-/**
- * Parse an agent from embedded content.
- */
 export function parseAgent(
 	filePath: string,
 	content: string,
@@ -110,10 +101,8 @@ export function parseAgent(
 	};
 }
 
-/** Cache for bundled agents */
 let bundledAgentsCache: AgentDefinition[] | null = null;
 
-/** Load all bundled agents from embedded content. Results are cached after first load. */
 export function loadBundledAgents(): AgentDefinition[] {
 	if (bundledAgentsCache !== null) {
 		return bundledAgentsCache;
@@ -124,16 +113,10 @@ export function loadBundledAgents(): AgentDefinition[] {
 	return bundledAgentsCache;
 }
 
-/**
- * Get a bundled agent by name.
- */
 export function getBundledAgent(name: string): AgentDefinition | undefined {
 	return loadBundledAgents().find(a => a.name === name);
 }
 
-/**
- * Get all bundled agents as a map keyed by name.
- */
 export function getBundledAgentsMap(): Map<string, AgentDefinition> {
 	const map = new Map<string, AgentDefinition>();
 	for (const agent of loadBundledAgents()) {
@@ -142,12 +125,8 @@ export function getBundledAgentsMap(): Map<string, AgentDefinition> {
 	return map;
 }
 
-/**
- * Clear the bundled agents cache (for testing).
- */
 export function clearBundledAgentsCache(): void {
 	bundledAgentsCache = null;
 }
 
-// Re-export for backward compatibility
 export const BUNDLED_AGENTS = loadBundledAgents;

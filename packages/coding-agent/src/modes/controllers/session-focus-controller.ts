@@ -1,11 +1,8 @@
-/** SessionFocusController - Weak retargeting primitive between the rendering/ input layer and the AgentSession it displays. */
-
 import { AgentLifecycleManager } from "../../registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from "../../registry/agent-registry";
 import type { AgentSession } from "../../session/agent-session";
 import type { InteractiveModeContext } from "../types";
 
-/** The slice of the interactive context this controller uses: 10 members of the 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency */
 export type SessionFocusControllerContext = Pick<
 	InteractiveModeContext,
 	| "clearTransientSessionUi"
@@ -22,7 +19,6 @@ export type SessionFocusControllerContext = Pick<
 
 export class SessionFocusController {
 	#focusedAgentId: string | undefined;
-	/** Session currently attached while focused; undefined when unfocused. */
 	#attachedSession: AgentSession | undefined;
 	#registryUnsubscribe: (() => void) | undefined;
 	#focusGeneration = 0;
@@ -36,18 +32,14 @@ export class SessionFocusController {
 		return this.#focusedAgentId;
 	}
 
-	/** Focused live session, undefined when unfocused. */
 	get target(): AgentSession | undefined {
 		return this.#attachedSession;
 	}
 
-	/** Focus the main view on an agent's live session. Throws an Error with a user-displayable message. */
 	async focusAgent(id: string): Promise<void> {
 		if (this.ctx.collabGuest) throw new Error("Viewing agents is unavailable in a collab session.");
-		// `?.()` because a driving session need not carry a registry id at all (an embedded or render-only host); an absent id falls back to the bare alias,
 		const ownId = this.ctx.session.getAgentId?.() ?? MAIN_AGENT_ID;
 		const scope = this.registry.get(ownId)?.scope;
-		// Focusing the agent already driving this screen is a return to it. The alias means "whoever drives the conversation asking", which here is this
 		if (id === ownId || id === MAIN_AGENT_ID) return this.unfocus();
 		const target = this.registry.get(id);
 		if (target && !AgentRegistry.sameScope(target.scope, scope)) {
@@ -76,18 +68,14 @@ export class SessionFocusController {
 		this.ctx.showStatus(`Viewing agent ${id} — Esc returns to main, ←← hops to parent`);
 	}
 
-	/** Focus the focused agent's parent agent, falling back to the main session. No-op when unfocused. */
 	async focusParent(): Promise<void> {
 		if (!this.#focusedAgentId) return;
 		const parentId = this.registry.get(this.#focusedAgentId)?.parentId;
-		// A driving agent is the top of the chain, so hopping to it is an unfocus
-		// rather than a focus. Recognized by role: its id names its conversation.
 		const parent = parentId ? this.registry.get(parentId) : undefined;
 		if (parent && parent.kind !== "main") return this.focusAgent(parent.id);
 		return this.unfocus();
 	}
 
-	/** Return to the main session. No-op when unfocused. */
 	async unfocus(): Promise<void> {
 		const gen = ++this.#focusGeneration;
 		if (!this.#focusedAgentId) return;
@@ -132,7 +120,6 @@ export class SessionFocusController {
 		}
 	}
 
-	/** Retarget core, both directions: swap subscription, transcript, and status line onto `target`. */
 	async #attach(target: AgentSession): Promise<void> {
 		this.ctx.unsubscribe?.();
 		this.ctx.clearTransientSessionUi();
@@ -140,7 +127,6 @@ export class SessionFocusController {
 		this.ctx.eventController.attachTo(target);
 		this.ctx.statusLine.setSession(target, this.#focusedAgentId);
 		this.ctx.renderInitialMessages({ clearTerminalHistory: true });
-		// Mid-turn attach: no agent_start will arrive; arm the loader/turn state manually.
 		if (target.isStreaming) await this.ctx.eventController.handleEvent({ type: "agent_start" });
 		this.ctx.updateEditorBorderColor();
 		this.ctx.ui.requestRender();

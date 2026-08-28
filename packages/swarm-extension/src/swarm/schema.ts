@@ -1,7 +1,3 @@
-// ============================================================================
-// Raw YAML shape (snake_case, optional fields)
-// ============================================================================
-
 interface RawSwarmAgentConfig {
 	role: string;
 	task: string;
@@ -19,10 +15,6 @@ interface RawSwarmConfig {
 	model?: string;
 	agents: Record<string, RawSwarmAgentConfig>;
 }
-
-// ============================================================================
-// Normalized types (camelCase, defaults applied)
-// ============================================================================
 
 export type SwarmMode = "pipeline" | "parallel" | "sequential";
 
@@ -43,13 +35,8 @@ export interface SwarmDefinition {
 	targetCount: number;
 	model?: string;
 	agents: Map<string, SwarmAgent>;
-	/** Preserves YAML declaration order for implicit pipeline sequencing. */
 	agentOrder: string[];
 }
-
-// ============================================================================
-// Parsing
-// ============================================================================
 
 const VALID_MODES = new Set<string>(["pipeline", "parallel", "sequential"]);
 const VALID_SWARM_NAME = /^[a-zA-Z0-9._-]+$/;
@@ -112,10 +99,6 @@ export function parseSwarmYaml(content: string): SwarmDefinition {
 		agentOrder,
 	};
 }
-
-// ============================================================================
-// Validation (semantic — references, constraints)
-// ============================================================================
 
 export function validateSwarmDefinition(def: SwarmDefinition): string[] {
 	const errors: string[] = [];

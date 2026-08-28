@@ -1,47 +1,37 @@
-/** Personality catalog resolver. Merges the 3 bundled built-in tone specs with Tier-B data-file */
-
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { CONFIG_DIR_NAME, getProjectDir, isEnoent, logger } from "@veyyon/utils";
 import { sessionPrompts } from "../prompts/session/rows";
 
-/** Reserved sentinel that disables the personality block; never a valid file name. */
 export const NONE_PERSONALITY = "none";
 
-/** Name resolved to when a requested personality cannot be found. */
 export const DEFAULT_PERSONALITY_NAME = "default";
 
-/** Built-in tone specs, keyed by name. The seed tier of the merged catalog. */
 export const BUILTIN_PERSONALITIES: Readonly<Record<string, string>> = {
 	default: sessionPrompts["session/personalities/default"].text.trim(),
 	friendly: sessionPrompts["session/personalities/friendly"].text.trim(),
 	pragmatic: sessionPrompts["session/personalities/pragmatic"].text.trim(),
 };
 
-/** Short descriptions for built-in personalities, surfaced in the settings UI. */
 export const BUILTIN_PERSONALITY_DESCRIPTIONS: Readonly<Record<string, string>> = {
 	default: "Terse, evidence-first engineer; dense, action-oriented replies",
 	friendly: "Warm, encouraging collaborator focused on momentum and morale",
 	pragmatic: "Direct, efficient engineer focused on clarity and rigor",
 };
 
-/** Resolve the home directory for Tier-B discovery. Reads `HOME`/`USERPROFILE` directly (falling back to `os.homedir()`) because Bun's `os.homedir()` */
 function resolveHomeDir(): string {
 	return process.env.HOME || process.env.USERPROFILE || os.homedir();
 }
 
-/** User-level personalities directory (`~/.veyyon/personalities`). */
 export function getUserPersonalitiesDir(): string {
 	return path.join(resolveHomeDir(), CONFIG_DIR_NAME, "personalities");
 }
 
-/** Project-level personalities directory (`<cwd>/.veyyon/personalities`). */
 export function getProjectPersonalitiesDir(cwd: string = getProjectDir()): string {
 	return path.join(cwd, CONFIG_DIR_NAME, "personalities");
 }
 
-/** Read `*.md` personality files from `dir` into a name→spec map. Skips the reserved `none` filename (it can never shadow the disable sentinel) and */
 async function readPersonalityDir(dir: string): Promise<Map<string, string>> {
 	const result = new Map<string, string>();
 	let entries: string[];
@@ -80,7 +70,6 @@ async function readPersonalityDir(dir: string): Promise<Map<string, string>> {
 }
 
 export interface PersonalityCatalogOptions {
-	/** Working directory used to resolve the project-level personalities dir. Default: getProjectDir() */
 	cwd?: string;
 }
 
@@ -99,7 +88,6 @@ async function loadTiers(options: PersonalityCatalogOptions): Promise<Personalit
 }
 
 function resolveFromTiers(name: string, tiers: PersonalityTiers): string | undefined {
-	// `Object.hasOwn`, because a bare `BUILTIN_PERSONALITIES[name]` answers every name Object.prototype carries. `personality: "toString"` resolved to a function, `resolvePersonality` then called
 	if (tiers.project.has(name)) return tiers.project.get(name);
 	if (tiers.user.has(name)) return tiers.user.get(name);
 	return Object.hasOwn(BUILTIN_PERSONALITIES, name) ? BUILTIN_PERSONALITIES[name] : undefined;
@@ -112,22 +100,18 @@ function availableNames(tiers: PersonalityTiers): string[] {
 	return Array.from(names).sort((a, b) => a.localeCompare(b));
 }
 
-/** Matches a well-formed tag of any name: an optional slash, a name, optional attributes, a bracket. A Tier-B data file is untrusted content. A project-level `.veyyon/personalities/default.md` arrives */
 const STRUCTURAL_TAG_RE = /<\/?[a-zA-Z][\w.:-]*(?:\s[^<>]*)?>/g;
 
-/** Matches `<personality>` and `</personality>` however they are spaced, case-insensitively. Kept lenient where {@link STRUCTURAL_TAG_RE} is strict, because this is the one tag that terminates */
 const PERSONALITY_TAG_RE = /<\s*\/?\s*personality\s*>/gi;
 
 function escapeAngleBrackets(tag: string): string {
 	return tag.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-/** Neutralize tags inside untrusted spec text so it reads as content, not as prompt structure. */
 function escapeStructuralTags(text: string): string {
 	return text.replace(STRUCTURAL_TAG_RE, escapeAngleBrackets).replace(PERSONALITY_TAG_RE, escapeAngleBrackets);
 }
 
-/** Hard cap on the injected `<personality>` body. Tone specs are meant to be short (built-ins are ~1KB); a Tier-B file has no size limit on disk, so */
 export const MAX_PERSONALITY_CHARS = 4000;
 
 interface BoundedPersonalityText {
@@ -135,7 +119,6 @@ interface BoundedPersonalityText {
 	warning?: string;
 }
 
-/** Sanitize wrapper-breakout tags and enforce {@link MAX_PERSONALITY_CHARS}. */
 function boundPersonalityText(name: string, rawText: string): BoundedPersonalityText {
 	const sanitized = escapeStructuralTags(rawText);
 	if (sanitized.length <= MAX_PERSONALITY_CHARS) return { text: sanitized };
@@ -149,21 +132,16 @@ function boundPersonalityText(name: string, rawText: string): BoundedPersonality
 	return { text: `${sanitized.slice(0, MAX_PERSONALITY_CHARS).trimEnd()}\n[...truncated]`, warning };
 }
 
-/** Resolve the sorted set of personality names available for selection (built-ins + Tier-B overrides), excluding the reserved `none` sentinel. */
 export async function resolveAvailablePersonalities(options: PersonalityCatalogOptions = {}): Promise<string[]> {
 	return availableNames(await loadTiers(options));
 }
 
 export interface ResolvedPersonality {
-	/** Personality name actually rendered. Differs from the request only on fallback. */
 	name: string;
-	/** Trimmed spec text to inject into the `<personality>` block. Empty for `none`. */
 	text: string;
-	/** Set when the requested name could not be resolved and a fallback was used. */
 	warning?: string;
 }
 
-/** Resolve the spec text for `requestedName`, honoring project > user > built-in precedence. `none` always resolves to an empty block without touching disk. */
 export async function resolvePersonality(
 	requestedName: string,
 	options: PersonalityCatalogOptions = {},
@@ -185,8 +163,6 @@ export async function resolvePersonality(
 	const fallbackRaw =
 		resolveFromTiers(DEFAULT_PERSONALITY_NAME, tiers) ?? BUILTIN_PERSONALITIES[DEFAULT_PERSONALITY_NAME];
 	const bounded = boundPersonalityText(DEFAULT_PERSONALITY_NAME, fallbackRaw);
-	// Unknown-name and oversized-fallback are distinct conditions; surface both
-	// rather than letting the size warning silently swallow the fallback one.
 	const combinedWarning = bounded.warning ? `${warning} ${bounded.warning}` : warning;
 	return { name: DEFAULT_PERSONALITY_NAME, text: bounded.text, warning: combinedWarning };
 }

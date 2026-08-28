@@ -9,7 +9,6 @@ interface RoutableSelectList {
 	clickItem(index: number): void;
 }
 
-/** Render a Container's children exactly like Container.render (plain concatenation), recording the 0-based line `tracked` starts at. Pair with */
 export function renderTrackingChild(
 	container: Container,
 	tracked: Component | undefined,
@@ -27,7 +26,6 @@ export function renderTrackingChild(
 	return { lines, trackedLineOffset };
 }
 
-/** Route a mouse event to the interactive child {@link renderTrackingChild} tracked: a SelectList gets wheel/hover/click via the shared */
 export function routeTrackedMouse(
 	target: TrackedMouseTarget | undefined,
 	event: SgrMouseEvent,
@@ -37,8 +35,6 @@ export function routeTrackedMouse(
 ): void {
 	if (!target) return;
 	const localLine = line - trackedLineOffset;
-	// A SettingsList answers the value column and item submenus, which a
-	// SelectList has no notion of, so the two lists take different routes.
 	if ("isValueColumnHit" in target) {
 		routeSettingsListPointer(target as SettingsList, event, localLine, col);
 		return;
@@ -50,17 +46,14 @@ export function routeTrackedMouse(
 	target.routeMouse?.(event, localLine, col);
 }
 
-/** The interactive child a {@link MouseRoutedSubmenu} can point at. */
 export type TrackedMouseTarget =
 	| SelectList
 	| SettingsList
 	| (Component & { routeMouse?: (event: SgrMouseEvent, line: number, col: number) => void });
 
-/** Base for settings submenus whose interactive child is a SelectList or a MouseRoutable panel: render records where that child lands, routeMouse */
 export abstract class MouseRoutedSubmenu extends Container {
 	#mouseTargetLineOffset = 0;
 
-	/** The child pointer events belong to in the current state, or undefined. */
 	abstract mouseTarget(): TrackedMouseTarget | undefined;
 
 	override render(width: number): readonly string[] {
@@ -69,13 +62,11 @@ export abstract class MouseRoutedSubmenu extends Container {
 		return lines;
 	}
 
-	/** A submenu swaps screens by rebuilding its children from scratch, never by detaching one for later reuse, so the children a `clear()` drops are gone. Hand each of them back first: a */
 	override clear(): void {
 		this.dispose();
 		super.clear();
 	}
 
-	/** Mouse routed from the host: wheel steps, hover lights, click confirms. */
 	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
 		routeTrackedMouse(this.mouseTarget(), event, line, this.#mouseTargetLineOffset, col);
 	}
@@ -107,7 +98,6 @@ export function routeSelectListMouseWithTopBorder(
 	}
 }
 
-/** Pointer over a {@link SettingsList} pane, in the list's own coordinates: wheel steps the selection, motion lights the row under the cursor, a click */
 export function routeSettingsListPointer(list: SettingsList, event: SgrMouseEvent, line: number, col: number): boolean {
 	if (list.hasOpenSubmenu()) {
 		list.routeSubmenuMouse(event, line, col);

@@ -15,7 +15,6 @@ import { JAVASCRIPT_PRELUDE_SOURCE } from "./prelude";
 import { wrapCode } from "./rewrite-imports";
 import type { JsDisplayOutput, JsStatusEvent } from "./types";
 
-/** Per-run callbacks. Runtime globals resolve these from AsyncLocalStorage so overlapping async cells can route output/tool calls back to their own run. */
 export interface RuntimeHooks {
 	onText(chunk: string): void;
 	onDisplay(output: JsDisplayOutput): void;
@@ -33,17 +32,11 @@ export interface RunContext {
 export interface RuntimeOptions {
 	initialCwd: string;
 	sessionId: string;
-	/** Extra globals installed alongside `__veyyon_helpers__` / prelude. Use for stable, lifetime- of-the-worker bindings (e.g. browser's `page`, `browser`). Per-run scope should be set */
 	extraGlobals?: Record<string, unknown>;
-	/** On-disk roots the helpers substitute for internal-URL schemes (e.g. `{ local: "/…/artifacts/local" }`). Stable for the worker's lifetime. */
 	localRoots?: Record<string, string>;
-	/** The session's artifacts directory, when the host knows one. The `kv` helper stores under it so a value outlives the kernel; without it `kv` fails with an explicit error. */
 	artifactsDir?: string | null;
 }
 
-// Strict base64: characters from the standard alphabet plus optional `=` padding, and a
-// length that is a multiple of four. URL-safe base64 and embedded whitespace are not
-// accepted — the Anthropic API only honors strict base64 in image sources.
 const BASE64_STRICT_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 const DECIMAL_CSV_RE = /^\d{1,3}(?:,\d{1,3})*$/;
 
@@ -75,7 +68,6 @@ function isStrictBase64(s: string): boolean {
 	return BASE64_STRICT_RE.test(s);
 }
 
-/** Normalize the `data` field of an `{ type: "image", data, mimeType }` display payload into strict base64. Accepts: */
 function coerceImageBase64(data: unknown): string | null {
 	if (typeof data === "string") {
 		if (isStrictBase64(data)) return data;
@@ -122,7 +114,6 @@ function describeDataType(data: unknown): string {
 	return typeof data;
 }
 
-/** Shared JS runtime for the eval worker and the browser tab worker. Owns the prelude, helper bag, console bridge, and indirect-eval execution. Emits text/display/tool-call */
 export class JsRuntime {
 	#globalOwner = Symbol("JsRuntime globals");
 	#ownedGlobalKeys = new Set<string>();
@@ -174,7 +165,6 @@ export class JsRuntime {
 
 	setCwd(cwd: string): void {
 		if (this.#disposed) throw new Error("Cannot set cwd on a disposed JS runtime");
-		// Always stamp the runtime and session state: WorkerCore/browser/cmux call setCwd from init and pre-run paths that may race another same-realm
 		this.#cwd = cwd;
 		this.#session.cwd = cwd;
 		if (activeGlobalRunOwner === null || activeGlobalRunOwner === this.#globalOwner) {
@@ -182,7 +172,6 @@ export class JsRuntime {
 		}
 	}
 
-	/** Install per-run globals. Intended for run-scoped state (browser's `tab`, `display` overrides, etc.). Overwrites previous assignments — caller is responsible for any */
 	setRunScope(scope: Record<string, unknown>): void {
 		this.#activateGlobals("set run scope");
 		Object.assign(globalThis, scope);
@@ -301,7 +290,6 @@ export class JsRuntime {
 	}
 
 	#install(extraGlobals: Record<string, unknown> | undefined): void {
-		// Constructing a runtime while another same-realm runtime is mid-run would silently replace the live runtime's globals (Object.assign + prelude eval
 		assertCanUseGlobalOwner(this.#globalOwner, "initialize a JS runtime");
 		const injected: Record<string, unknown> = {
 			__veyyon_session__: this.#session,
@@ -346,9 +334,6 @@ export class JsRuntime {
 					},
 				});
 				const tableConsole = new Console({ stdout: stream, colorMode: false });
-				// `Console.table` exists at runtime but is missing from the `Console`
-				// instance type under this TS config, so reach it through an object cast
-				// (casting the property access alone still trips TS2339 on the access).
 				(tableConsole as unknown as { table: (...a: unknown[]) => void }).table(...args);
 				hooks.onText(buffer.endsWith("\n") ? buffer : `${buffer}\n`);
 			},
@@ -363,9 +348,6 @@ export class JsRuntime {
 				context.finalExpressionValue = value;
 			},
 			webcrypto: crypto,
-			// `process` is intentionally not overridden — user code gets the host worker's real
-			// `process` object. Subsetting it caused segfaults in workers that share state with
-			// puppeteer/worker_threads internals.
 			require: this.#buildDynamicRequire(),
 			createRequire,
 			fs,
@@ -382,8 +364,6 @@ export class JsRuntime {
 		}
 
 		Object.assign(globalThis, injected, extraGlobals ?? {});
-		// Prelude assigns console bridge + short aliases (`read`, `write`, `tool`, `display`, ...)
-		// onto globalThis. Must run after helpers are in place.
 		indirectEval(JAVASCRIPT_PRELUDE_SOURCE);
 		for (const key of allGlobalKeys) recordGlobalValue(key, this.#globalOwner);
 		RUN_HOOK_RESOLVERS.add(this.#runHookResolver);
@@ -414,9 +394,6 @@ interface GlobalStack {
 	entries: GlobalOwnerEntry[];
 }
 
-// Inline fallback and cmux tabs can create multiple JsRuntime instances in one Bun realm.
-// Track reserved helper globals by owner so disposing one runtime restores the next active
-// owner (or the original process global after the last owner), not a stale snapshot.
 const GLOBAL_STACKS = new Map<string, GlobalStack>();
 
 function snapshotGlobal(key: string): GlobalSnapshot {
@@ -466,9 +443,6 @@ function releaseGlobalKey(key: string, owner: symbol): void {
 	GLOBAL_STACKS.delete(key);
 }
 
-// Plain globalThis cannot safely serve two different runtimes at the same instant:
-// helpers dereference reserved globals on every call. Sequential cmux tab revisits
-// re-activate their owner stack; overlapping cross-runtime runs fail explicitly.
 let activeGlobalRunOwner: symbol | null = null;
 let activeGlobalRunDepth = 0;
 
@@ -503,13 +477,10 @@ function enterGlobalRun(owner: symbol, action: string): () => void {
 	};
 }
 
-/** Resolvers for each live runtime's active-run hooks (one per JsRuntime instance). */
 const RUN_HOOK_RESOLVERS = new Set<() => RuntimeHooks | undefined>();
 
-/** Streams whose `write` the runtime has already wrapped (patch-once guard). */
 const PATCHED_STDIO_STREAMS = new WeakSet<NodeJS.WriteStream>();
 
-/** Hooks for whichever registered runtime currently has an active run, if any. */
 function activeRunHooks(): RuntimeHooks | undefined {
 	for (const resolve of RUN_HOOK_RESOLVERS) {
 		const hooks = resolve();
@@ -518,7 +489,6 @@ function activeRunHooks(): RuntimeHooks | undefined {
 	return undefined;
 }
 
-/** Wrap `process.stdout` / `process.stderr` `write` exactly once per process so user `process.stdout.write(...)` lands in the active run's text sink. Models */
 function patchStdioOnce(): void {
 	const streams: NodeJS.WriteStream[] = [process.stdout, process.stderr];
 	for (const stream of streams) {
@@ -538,7 +508,6 @@ function patchStdioOnce(): void {
 	}
 }
 
-/** Coerce a `write()` chunk to text, honoring an explicit encoding for byte chunks. */
 function chunkToString(chunk: unknown, encoding?: BufferEncoding): string {
 	if (typeof chunk === "string") return chunk;
 	if (chunk instanceof Uint8Array) return Buffer.from(chunk).toString(encoding ?? "utf8");

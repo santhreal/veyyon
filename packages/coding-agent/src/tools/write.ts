@@ -115,7 +115,6 @@ function truncateDirectiveLine(line: string): string {
 	return line.length > 60 ? `${line.slice(0, 57)}…` : line;
 }
 
-/** Parse conflict://* per-id directive content. */
 function parseBulkDirectives(content: string): Map<number, string> | null {
 	const map = new Map<number, string>();
 	const stray: string[] = [];
@@ -135,7 +134,6 @@ function parseBulkDirectives(content: string): Map<number, string> | null {
 		}
 		map.set(id, match[2]);
 	}
-	// No directive lines at all → not a per-id block; caller uses uniform mode.
 	if (!sawDirective) return null;
 	if (stray.length > 0) {
 		const sample = stray[0]!;
@@ -159,18 +157,13 @@ const writeSchema = type({
 
 export type WriteToolInput = typeof writeSchema.infer;
 
-/** Details returned by the write tool for TUI rendering */
 export interface WriteToolDetails {
 	diagnostics?: FileDiagnosticsResult;
 	meta?: OutputMeta;
-	/** Set when the file was auto-chmod'd because content begins with a `#!` shebang. */
 	madeExecutable?: boolean;
-	/** Absolute filesystem path the write resolved to. Used by the renderer to wrap
-	 * the (possibly cwd-relative) header path in an OSC 8 `file://` hyperlink. */
 	resolvedPath?: string;
 }
 
-/** Validate that write content is a raw file body and not a patch fragment or read-output echo. */
 function assertValidWriteContent(content: string): void {
 	if (!content) return;
 	const lines = content.split("\n");
@@ -241,7 +234,6 @@ function assertValidWriteContent(content: string): void {
 	}
 }
 
-/** Record snapshot of freshly written content for hashline mode. */
 function maybeWriteSnapshotHeader(session: ToolSession, absolutePath: string, content: string): string | undefined {
 	if (!resolveFileDisplayMode(session).hashLines) return undefined;
 	const normalized = normalizeToLF(content);
@@ -253,7 +245,6 @@ function maybeWriteSnapshotHeader(session: ToolSession, absolutePath: string, co
 	return formatHashlineHeader(formatPathRelativeToCwd(absolutePath, session.cwd), tag);
 }
 
-/** Append a trailing note line to the first text block of a tool result. Mutates `result` in place (the result object is owned by this call). */
 function appendNoteToResult(result: AgentToolResult<WriteToolDetails>, note: string): void {
 	const firstText = result.content.find(
 		(block): block is { type: "text"; text: string } => block.type === "text" && typeof block.text === "string",
@@ -277,7 +268,6 @@ function emitWriteProgress(
 	});
 }
 
-/** If content begins with a shebang, ensure file is executable. */
 async function maybeMarkExecutableForShebang(absolutePath: string, content: string): Promise<boolean> {
 	if (!content.startsWith("#!")) return false;
 	try {
@@ -363,22 +353,17 @@ function parseSqliteWriteTarget(subPath: string, queryString: string): { table: 
 	return { table, key };
 }
 
-/** Filesystem path a write call targets, for the cwd boundary (cwd-boundary.ts). The hashline `[path#TAG]` wrapper is unwrapped (parity with execute) so it */
 export function writeFilesystemTargets(args: unknown): string[] {
 	const raw = (args as Partial<WriteParams>).path;
 	return typeof raw === "string" ? [unwrapHashlineHeaderPath(raw)] : [];
 }
 
-/** Write tool implementation: creates or overwrites files with optional LSP formatting and diagnostics. */
 export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails> {
 	readonly name = "write";
 	readonly approval = (args: unknown): ToolTier => {
 		const rawPath = (args as Partial<WriteParams>).path;
 		if (typeof rawPath !== "string") return "write";
 		const path = unwrapHashlineHeaderPath(rawPath);
-		// Remote SSH writes open an outbound connection and run a remote shell —
-		// gate them like the exec-tier `ssh` tool, ahead of the handler-write
-		// logic. Substring match also covers selector-suffixed targets.
 		if (pathTargetsSsh(path)) return "exec";
 		if (!isInternalUrlPath(path)) return "write";
 		const scheme = urlScheme(path.trim());
@@ -399,7 +384,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 	readonly concurrency = "exclusive";
 	readonly loadMode = "essential";
 
-	/** Stream matchers should see the real file content, not its JSON-escaped argument encoding. */
 	matcherDigest(args: unknown): string | undefined {
 		const content = (args as Partial<WriteParams>).content;
 		return typeof content === "string" ? content : undefined;
@@ -478,15 +462,9 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		content: string,
 		resolvedArchivePath: ResolvedArchiveWritePath,
 	): Promise<AgentToolResult<WriteToolDetails>> {
-		// Resolve symlinks before the tmp+rename swap: renaming over a symlink
-		// replaces the link itself with a regular file instead of writing
-		// through to its target.
 		const finalPath = resolvedArchivePath.exists
 			? await fs.realpath(resolvedArchivePath.absolutePath).catch(() => resolvedArchivePath.absolutePath)
 			: resolvedArchivePath.absolutePath;
-		// A realpath swap can land on a name without an archive extension; a
-		// whole-archive rewrite then defaults to an uncompressed tar, matching the
-		// previous `isZip`/`isGzip`/else fallthrough.
 		const format = archiveFormatFromPath(finalPath) ?? "tar";
 
 		const entries = new Map<string, ArchiveMemberContent>();
@@ -502,9 +480,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		}
 		entries.set(resolvedArchivePath.archiveSubPath, content);
 
-		// Whole-archive rewrite: writeArchive streams into a temp file that
-		// atomicWriteFileWith renames over the original only on success, so a
-		// crash/disk-full mid-write can't destroy the existing archive.
 		try {
 			await atomicWriteFileWith(finalPath, tmpPath => writeArchive(tmpPath, format, entries));
 		} catch (error) {
@@ -648,7 +623,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		}
 	}
 
-	/** Resolve a single conflict://<N> write by splicing the recorded marker region. */
 	async #resolveConflict(
 		entry: ConflictEntry,
 		replacementContent: string,
@@ -671,7 +645,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		const history = this.session.conflictHistory;
 		history?.invalidate(entry.id);
 		if (history) {
-			// Drop stale duplicate registrations of the same region.
 			for (const other of history.entries()) {
 				if (
 					other.absolutePath === absolutePath &&
@@ -701,7 +674,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		};
 	}
 
-	/** Look up a single conflict entry by id and dispatch to {@link #resolveConflict}. Throws a clear `not found` error when the id has been invalidated. */
 	async #resolveSingleConflictById(
 		id: number,
 		replacementContent: string,
@@ -716,7 +688,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		return this.#resolveConflict(entry, replacementContent, signal);
 	}
 
-	/** Bulk-resolve every registered conflict via conflict://*. */
 	async #resolveAllConflicts(
 		replacementContent: string,
 		signal: AbortSignal | undefined,
@@ -729,7 +700,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			);
 		}
 
-		// Per-id directive mode: resolves each listed conflict with that side.
 		const directives = parseBulkDirectives(replacementContent);
 		if (directives) {
 			const known = new Set(allEntries.map(entry => entry.id));
@@ -791,9 +761,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 					totalEchoTrimmed += splice.trimmedLeading + splice.trimmedTrailing;
 					resolvedEntries.push(entry);
 				} catch (error) {
-					// A locate-miss for a region an earlier entry already spliced
-					// in this pass is a stale duplicate registration (re-read after
-					// an out-of-band shift) — treat it as already resolved.
 					if (resolvedEntries.some(done => conflictRegionsEqual(done, entry))) {
 						staleEntries.push(entry);
 						continue;
@@ -878,7 +845,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		onUpdate?: AgentToolUpdateCallback<WriteToolDetails>,
 		context?: AgentToolContext,
 	): Promise<AgentToolResult<WriteToolDetails>> {
-		// Strip a hashline `[path#TAG]` wrapper up front so every downstream decision (scheme routing, internal-URL handler dispatch, plan-mode
 		const path = peelWriteUrlSelector(unwrapHashlineHeaderPath(rawPath));
 		return untilAborted(signal, async () => {
 			assertValidWriteContent(content);
@@ -888,8 +854,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 				const scheme = parsed.protocol.replace(/:$/, "").toLowerCase();
 				const handler = internalRouter.getHandler(scheme);
 				if (handler?.write) {
-					// Handler-owned writes (vault:// notes, host URIs) mutate user
-					// data outside the local sandbox — plan mode must reject them.
 					enforcePlanModeWrite(this.session, path, { op: "update" });
 					emitWriteProgress(onUpdate, content, path);
 					await handler.write(parsed, content, { cwd: this.session.cwd, signal });
@@ -897,9 +861,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 					return { content: [{ type: "text", text: resultText }], details: {} };
 				}
 				if (scheme !== "local") {
-					// Name the tool that DOES mutate this scheme, so the caller has a
-					// next step instead of a dead end. memory:// is edited with the
-					// memory_edit tool; other read-only schemes have no mutation tool.
 					const mutationTool: Record<string, string> = { memory: "memory_edit" };
 					const tool = mutationTool[scheme];
 					throw new ToolError(
@@ -908,8 +869,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 							: `${scheme}:// URLs are read-only; there is no write path for this scheme.`,
 					);
 				}
-				// local:// is backed by the session-local artifact sandbox and is
-				// resolved by resolvePlanPath below so write/read share the same root.
 			}
 
 			const conflictUri = parseConflictUri(path);
@@ -961,19 +920,15 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			const absolutePath = resolvePlanPath(this.session, path);
 			const batchRequest = getLspBatchRequest(context?.toolCall);
 
-			// Check if file exists and is auto-generated before overwriting
 			const overwritingExistingFile = await fs.exists(absolutePath);
 			if (overwritingExistingFile) {
 				await assertEditableFile(absolutePath, path);
 			}
 
-			// On a case-insensitive filesystem the existing directory entry keeps its own spelling: writing to `Foo.ts` updates `foo.ts` and does NOT
 			const reportedPath = overwritingExistingFile ? resolveStoredPathCase(absolutePath) : absolutePath;
 			const displayPath = formatPathRelativeToCwd(reportedPath, this.session.cwd);
 			emitWriteProgress(onUpdate, content, displayPath, absolutePath);
 
-			// Try ACP bridge first for editor-visible filesystem paths. Internal
-			// artifacts such as local:// plans are owned by veyyon, not the editor.
 			if (await routeWriteThroughBridge(this.session, path, absolutePath, content, signal)) {
 				const madeExecutable = await maybeMarkExecutableForShebang(absolutePath, content);
 				const header = maybeWriteSnapshotHeader(this.session, absolutePath, content);
@@ -1041,7 +996,6 @@ function countLines(text: string): number {
 	return count;
 }
 
-/** Bounded newline scan: whether text spans more than maxLines lines. */
 function exceedsLineCount(text: string, maxLines: number): boolean {
 	if (!text) return false;
 	let lines = 1;
@@ -1072,7 +1026,6 @@ function normalizeDisplayText(text: unknown): string {
 	return displayText.replace(/\r/g, "");
 }
 
-/** Minimum line-number gutter width for write previews. */
 const WRITE_GUTTER_MIN_WIDTH = 3;
 
 function formatStreamingContent(

@@ -1,5 +1,3 @@
-/** Mental-model bootstrap, caching, and rendering for the Hindsight backend. Mental models are persisted, named summaries on the Hindsight server. They */
-
 import { logger, truncate } from "@veyyon/utils";
 import { type BankScope, PROJECT_TAG_PREFIX } from "./bank";
 import type {
@@ -35,12 +33,10 @@ export interface MentalModelSeed {
 	sourceQuery: string;
 	tags: string[];
 	maxTokens?: number;
-	/** Legacy unqualified seed ids accepted as already-present when tags match. */
 	legacyIds?: string[];
 	trigger?: MentalModelTrigger;
 }
 
-/** Resolve the seed list that applies to the active bank scope. Per-project seeds are skipped in `global` mode (where there is no project axis) and */
 export function resolveSeedsForScope(scope: BankScope, scoping: HindsightScoping): MentalModelSeed[] {
 	const out: MentalModelSeed[] = [];
 	for (const seed of BUILTIN_SEEDS) {
@@ -88,7 +84,6 @@ function dedupe<T>(items: T[]): T[] {
 	return Array.from(new Set(items));
 }
 
-/** Idempotently create any seed mental models that don't already exist on the bank. Best-effort: a list/create failure does not throw — mental models are */
 export async function ensureMentalModels(
 	client: HindsightApi,
 	bankId: string,
@@ -124,7 +119,6 @@ export async function ensureMentalModels(
 	}
 }
 
-/** Return whether a seed is already represented by current bank metadata. */
 export function seedAlreadyExists(seed: MentalModelSeed, models: readonly MentalModelSummary[]): boolean {
 	for (const model of models) {
 		if (model.id === seed.id) return true;
@@ -137,10 +131,8 @@ function sameStringSet(left: readonly string[], right: readonly string[]): boole
 	return left.length === right.length && left.every(item => right.includes(item));
 }
 
-/** Default character budget for the rendered `<mental_models>` block. Mental models are injected on every prompt rebuild; an unbounded block can crowd */
 export const MENTAL_MODEL_RENDER_BUDGET_CHARS_DEFAULT = 16_000;
 
-/** Pull the current mental-model snapshot from the server and render it into a `<mental_models>` block ready to be appended to developer instructions. */
 export async function loadMentalModelsBlock(
 	client: HindsightApi,
 	bankId: string,
@@ -180,11 +172,8 @@ const PREAMBLE =
 
 const TRUNCATION_MARKER = "\n\n…[mental-model snapshot truncated at render budget]";
 
-/** Format a sorted list of models into the final `<mental_models>` wrapper, bounded by `budgetChars`. Per-model truncation is divided proportionally */
-/** Minimum room for actual content beyond the wrapper. Below this, no mental-model block can be meaningfully rendered. */
 const MIN_CONTENT_ROOM_CHARS = 64;
 
-/** Smallest budget that can yield a usable block (wrapper + preamble + marker + a few chars of content). */
 function minRenderBudgetChars(): number {
 	const cleanOverhead = `<mental_models>\n${PREAMBLE}\n\n\n</mental_models>`.length;
 	return cleanOverhead + MIN_CONTENT_ROOM_CHARS;
@@ -193,7 +182,6 @@ function minRenderBudgetChars(): number {
 export function renderMentalModelsBlock(models: MentalModelSummary[], budgetChars: number): string {
 	if (models.length === 0) return "";
 
-	// Refuse to render below the minimum: any block we'd emit would either shear the wrapper (breaking `stripMemoryTags`) or carry no real
 	if (budgetChars < minRenderBudgetChars()) return "";
 
 	const truncatedOverhead = `<mental_models>\n${PREAMBLE}\n\n${TRUNCATION_MARKER}\n</mental_models>`.length;
@@ -212,7 +200,6 @@ export function renderMentalModelsBlock(models: MentalModelSummary[], budgetChar
 		const truncatedBody = truncate(body, perModelBudget);
 		if (truncatedBody.length < body.length) truncated = true;
 		const section = `${headerLine}\n${truncatedBody}`;
-		// +2 for the section separator (`\n\n`) when this is not the first.
 		const sectionCost = section.length + (sections.length > 0 ? 2 : 0);
 		if (consumed + sectionCost > innerBudget && sections.length > 0) {
 			truncated = true;
@@ -225,7 +212,6 @@ export function renderMentalModelsBlock(models: MentalModelSummary[], budgetChar
 	const tail = truncated ? TRUNCATION_MARKER : "";
 	let assembled = `<mental_models>\n${PREAMBLE}\n\n${sections.join("\n\n")}${tail}\n</mental_models>`;
 
-	// Final hard-cap: if the careful per-model budgeting still slips past the requested ceiling (small budgets, fat preambles, etc.), brutally truncate
 	if (assembled.length > budgetChars) {
 		const overhead = truncated ? truncatedOverhead : cleanOverhead;
 		const room = Math.max(0, budgetChars - overhead);
@@ -235,15 +221,12 @@ export function renderMentalModelsBlock(models: MentalModelSummary[], budgetChar
 	return assembled;
 }
 
-/** Inventory line used by the `/memory mm list` command. */
 export function summarizeMentalModel(model: MentalModelSummary): string {
 	const tags = model.tags && model.tags.length > 0 ? ` [${model.tags.join(", ")}]` : "";
 	const refreshed = model.last_refreshed_at ? ` (refreshed ${model.last_refreshed_at})` : " (never refreshed)";
 	return `- ${model.id}: ${model.name}${tags}${refreshed}`;
 }
 
-/** Render a unified-style line diff between the previous and current content of a mental model. Hindsight's history endpoint returns the previous */
-/** Hard cap on input line count per side before LCS. Keeps the O(n*m) table tractable. */
 export const MAX_LCS_LINES = 1_000;
 
 export function diffMentalModelContent(previous: string | null, current: string, maxLines = 200): string {
@@ -315,8 +298,6 @@ function longestCommonSubsequence(a: string[], b: string[]): string[] {
 	return out.reverse();
 }
 
-/** Awaited only by the first-turn race in `beforeAgentStartPrompt`. */
 export const MENTAL_MODEL_FIRST_TURN_DEADLINE_MS = 1500;
 
-/** Need-only export of the raw seed list for tests. */
 export const builtinSeedsForTest: ReadonlyArray<Readonly<RawSeed>> = BUILTIN_SEEDS;

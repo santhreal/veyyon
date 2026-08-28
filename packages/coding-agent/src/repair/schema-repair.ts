@@ -1,11 +1,9 @@
-/** Schema-based tool-call repair (A1, extended by U4-01): fix-if-clear, refuse-if-ambiguous. Ordered rule cascade applied before argument */
 import type { Tool, ToolCall } from "@veyyon/ai/types";
 import { isArkSchema, isZodSchema, toolWireSchema } from "@veyyon/ai/utils/schema";
 import { errorMessage } from "@veyyon/utils";
 import { parseJsonWithRepair } from "@veyyon/utils/json-parse";
 import { isRecord } from "@veyyon/utils/type-guards";
 
-/** Hard cap on raw JSON bytes accepted for repair attempts. */
 export const MAX_REPAIR_INPUT_BYTES = 1_048_576;
 
 export type ToolCallRepairStatus = "clean" | "repaired" | "unrepairable";
@@ -58,7 +56,6 @@ function stringCandidateKeys(args: Record<string, unknown>, missingRequired: Rea
 	return candidates;
 }
 
-/** Common alias/typo key names that map to a canonical schema property name. Schema-agnostic and generic across tools: every entry only fires when the */
 const COMMON_KEY_ALIASES: ReadonlyMap<string, string> = new Map([
 	["filepath", "path"],
 	["file", "path"],
@@ -73,12 +70,10 @@ const COMMON_KEY_ALIASES: ReadonlyMap<string, string> = new Map([
 	["folder", "directory"],
 	["q", "query"],
 	["searchquery", "query"],
-	// `op` is the declared name on the tools that take one (`todo`, `goal`), and a model reaching for it writes the whole word. An undeclared key is not
 	["operation", "op"],
 	["action", "op"],
 ]);
 
-/** Case/separator-insensitive normalization used to match typo'd key names. */
 function normalizeKeyName(key: string): string {
 	return key.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -88,7 +83,6 @@ export type AliasKeyRepairPlan =
 	| { kind: "renamed"; renames: ReadonlyMap<string, string> }
 	| { kind: "ambiguous"; reason: string; hints: readonly string[] };
 
-/** Plan alias/typo key renames: for each key not declared on the schema, find at most one canonical declared property it could rename to, via a */
 export function planAliasKeyRepairs(
 	schema: Record<string, unknown>,
 	args: Record<string, unknown>,
@@ -103,9 +97,6 @@ export function planAliasKeyRepairs(
 	for (const key of declaredKeys) {
 		const normalized = normalizeKeyName(key);
 		if (declaredByNormalized.has(normalized)) {
-			// Two declared properties normalize to the same form: a schema
-			// authoring ambiguity, not a call-shape one. Skip matching against it
-			// rather than guessing which declared property was meant.
 			collidedNormalized.add(normalized);
 			continue;
 		}
@@ -187,7 +178,6 @@ function applyAliasKeyRenames(
 	return next;
 }
 
-/** Refuse leftover keys that are neither declared schema properties nor resolved by {@link planAliasKeyRepairs}, when the schema explicitly closes */
 export function detectStrictUnknownKeyRepair(
 	schema: Record<string, unknown>,
 	args: Record<string, unknown>,
@@ -207,7 +197,6 @@ export function detectStrictUnknownKeyRepair(
 	};
 }
 
-/** Refuse when a missing required string field could be filled from more than one plausible source, or when one source could satisfy multiple missing fields. */
 export function detectAmbiguousRequiredStringRepair(
 	schema: Record<string, unknown>,
 	args: Record<string, unknown>,
@@ -311,9 +300,6 @@ function recoverFromStringArguments(raw: string): ToolCallRepairOutcome | undefi
 	}
 }
 
-/**
- * Attempt deterministic repair of malformed tool-call arguments before schema validation.
- */
 export function repairToolCallArguments(tool: Tool, toolCall: ToolCall): ToolCallRepairOutcome {
 	if (isToolCallRepairDisabled()) {
 		const passthrough = asObjectArgs(toolCall.arguments) ?? (isRecord(toolCall.arguments) ? toolCall.arguments : {});
@@ -322,7 +308,6 @@ export function repairToolCallArguments(tool: Tool, toolCall: ToolCall): ToolCal
 
 	const wireSchema = toolWireSchema(tool);
 
-	// Whether `wireSchema.additionalProperties === false` reflects the tool author's real intent, or is merely wire-conversion boilerplate. Zod and
 	const schemaAuthoredAsPlainJsonSchema = !isZodSchema(tool.parameters) && !isArkSchema(tool.parameters);
 
 	let workingArgs: Record<string, unknown>;
@@ -393,7 +378,6 @@ export function repairToolCallArguments(tool: Tool, toolCall: ToolCall): ToolCal
 	return { status: "clean", arguments: workingArgs, hints: [] };
 }
 
-/** Format coaching hints for model-visible tool results. */
 export function formatRepairCoachingHints(hints: readonly string[]): string | undefined {
 	if (hints.length === 0) return undefined;
 	return ["[Tool argument repair]", ...hints.map(h => `- ${h}`)].join("\n");

@@ -1,8 +1,3 @@
-/**
- * Antigravity OAuth flow (Gemini 3, Claude, GPT-OSS via Google Cloud)
- * Uses different OAuth credentials than google-gemini-cli for access to additional models.
- */
-
 import { CLOUD_CODE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { getAntigravityUserAgent } from "@veyyon/catalog/wire/gemini-headers";
 import {
@@ -24,8 +19,6 @@ const CLIENT_SECRET = decode("R09DU1BYLUs1OEZXUjQ4NkxkTEoxbUxCOHNYQzR6NnFEQWY=")
 const CALLBACK_PORT = 51121;
 const CALLBACK_PATH = "/oauth-callback";
 
-// The shared trio plus the two scopes only Antigravity needs, which stay here because no other flow asks
-// for them. Appended rather than interleaved: the order is part of the grant's identity.
 const SCOPES = [
 	...GOOGLE_BASE_OAUTH_SCOPES,
 	"https://www.googleapis.com/auth/cclog",
@@ -181,9 +174,6 @@ export async function loginAntigravity(ctrl: OAuthController): Promise<OAuthCred
 	});
 }
 
-/**
- * Refresh Antigravity token
- */
 export async function refreshAntigravityToken(refreshToken: string, projectId: string): Promise<OAuthCredentials> {
 	const response = await fetch(TOKEN_URL, {
 		method: "POST",
@@ -197,8 +187,6 @@ export async function refreshAntigravityToken(refreshToken: string, projectId: s
 	});
 
 	if (!response.ok) {
-		// A refresh endpoint's error body can echo the credential it refused, so it is read
-		// through the shared bounded reader and its redactor.
 		const error = await AIError.readProviderErrorDetail(response);
 		throw new AIError.OAuthError(`Antigravity token refresh failed: ${error}`, { kind: "token-refresh" });
 	}

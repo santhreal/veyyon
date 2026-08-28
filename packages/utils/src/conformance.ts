@@ -1,50 +1,24 @@
-/**
- * Language-neutral conformance harness (TS-SUITE-2).
- *
- * Behavior is recorded once as JSON vector files and replayed against any
- * implementation of the same module: today the TS oracle, later the Rust
- * port, both consuming the identical files. The format and the canonical
- * serialization are specified in `docs/migration/conformance-format.md`; the
- * Rust runner must implement that document, not this file.
- *
- * Failure policy (Law 10): a malformed vector file, an unknown function, an
- * empty directory, or a missing expectation is a LOUD error, never a skip. A
- * corpus that silently shrinks is indistinguishable from a passing one.
- */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { errorMessage, isRecord } from "./type-guards";
 
-/** Version stamp of the vector file format. Bump only with a documented
- * migration in conformance-format.md; the Rust runner refuses unknown versions. */
 export const CONFORMANCE_SCHEMA_VERSION = 1;
 
-/** One recorded call: `function(...input)` must produce `expected`, or throw
- * an error whose message contains `expectedError`. Exactly one of the two. */
 export interface ConformanceVector {
-	/** Unique within its file; names the behavior, not the input bytes. */
 	name: string;
-	/** Positional arguments, JSON-encodable. */
 	input: unknown[];
-	/** The exact return value (canonical-compared). Absent for error vectors. */
 	expected?: unknown;
-	/** Substring the thrown error's message must contain. Absent for value vectors. */
 	expectedError?: string;
-	/** Free-form provenance/notes; never affects the verdict. */
 	meta?: Record<string, unknown>;
 }
 
-/** One vector file: all calls target a single exported function of the module. */
 export interface ConformanceFile {
 	schemaVersion: number;
-	/** The module under test, e.g. "hashline/tokenizer". Documentation only. */
 	module: string;
-	/** The exported function every vector in this file calls. */
 	function: string;
 	vectors: ConformanceVector[];
 }
 
-/** A single vector's failure, with enough context to reproduce by hand. */
 export interface ConformanceFailure {
 	file: string;
 	vector: string;
@@ -57,26 +31,10 @@ export interface ConformanceReport {
 	failures: ConformanceFailure[];
 }
 
-/**
- * Canonicalize a JSON-encodable value to a deterministic string: object keys
- * sorted, arrays in order, `-0` folded to `0`, non-finite numbers encoded as
- * NUL-prefixed tagged strings (JSON has no NaN/Infinity; the NUL prefix
- * cannot collide with real recorded text). Two values are conformance-equal
- * exactly when their canonical strings are byte-equal — this is the ONE
- * comparison the Rust runner must reproduce.
- */
 export function canonicalizeConformanceValue(value: unknown): string {
 	return JSON.stringify(sortValue(value));
 }
 
-/**
- * Encode a value for STORAGE in a vector file: same mapping the comparison
- * uses (sorted keys, -0 folded, non-finite numbers and undefined as the
- * NUL-tagged strings), returned as a JSON-encodable value instead of a
- * string. Recorders must pass oracle results through this before
- * JSON.stringify, because a raw NaN/Infinity would otherwise serialize as
- * null and silently corrupt the recorded expectation.
- */
 export function encodeConformanceValue(value: unknown): unknown {
 	return sortValue(value);
 }
@@ -105,7 +63,6 @@ function fail(file: string, message: string): never {
 	throw new Error(`Conformance corpus error in ${file}: ${message}`);
 }
 
-/** Parse and validate one vector file. Every structural defect is fatal. */
 export function parseConformanceFile(path: string, raw: string): ConformanceFile {
 	let data: unknown;
 	try {
@@ -142,8 +99,6 @@ export function parseConformanceFile(path: string, raw: string): ConformanceFile
 	return file as ConformanceFile;
 }
 
-/** Load every `*.json` vector file in `vectorDir`. An unreadable directory or
- * a directory with no vector files is fatal — an empty corpus must never pass. */
 export function loadConformanceDir(vectorDir: string): Array<{ path: string; file: ConformanceFile }> {
 	let names: string[];
 	try {
@@ -161,13 +116,6 @@ export function loadConformanceDir(vectorDir: string): Array<{ path: string; fil
 	});
 }
 
-/**
- * Replay every vector in `vectorDir` against `module` (the implementation's
- * public boundary: exported name -> function) and return a full report. Every
- * mismatch is collected — one run surfaces all of what diverges. A vector file
- * naming a function the module does not export is fatal (the corpus and the
- * boundary drifted; that is a contract break, not a test to skip).
- */
 export function runConformance(
 	module: Record<string, (...args: never[]) => unknown>,
 	vectorDir: string,
@@ -219,8 +167,6 @@ export function runConformance(
 	return { files: files.length, vectors, failures };
 }
 
-/** Run and throw a precise multi-line error unless every vector passes. This
- * is what a test suite calls to turn the corpus into a hard verdict. */
 export function assertConformance(
 	module: Record<string, (...args: never[]) => unknown>,
 	vectorDir: string,

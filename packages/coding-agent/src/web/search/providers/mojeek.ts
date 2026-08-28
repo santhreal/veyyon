@@ -15,11 +15,9 @@ import { classifyProviderHttpError, resolveExternalResultUrl, withHardTimeout } 
 const MOJEEK_ORIGIN = "https://www.mojeek.de";
 const MOJEEK_HOME_URL = `${MOJEEK_ORIGIN}/?arc=none&lang=en&lb=en&theme=dark`;
 
-/** Hosts that belong to the engine itself, so a link back into it is not a result. Matched as the host or any subdomain. */
 const MOJEEK_OWN_HOSTS: readonly string[] = ["mojeek.com", "mojeek.co.uk", "mojeek.fr", "mojeek.de"];
 const MOJEEK_SEARCH_URL = `${MOJEEK_ORIGIN}/search`;
 const MAX_NUM_RESULTS = 20;
-/** ALTCHA can complete quickly, but its verified redirect is occasionally delayed by queueing on the challenge backend. */
 const CAPTCHA_SOLVE_TIMEOUT_MS = 45_000;
 
 interface ParsedResult {
@@ -28,12 +26,10 @@ interface ParsedResult {
 	snippet?: string;
 }
 
-/** Validate a result href. Mojeek links results directly to the target site (no redirect wrapper), so this only filters out non-HTTP schemes and */
 function normalizeResultUrl(href: string): string | undefined {
 	return resolveExternalResultUrl(href, MOJEEK_HOME_URL, MOJEEK_OWN_HOSTS);
 }
 
-/** Pull result blocks out of a Mojeek results page in document order. Each organic result renders as `ul.results-standard > li` with the title in */
 function parseHtmlResults(html: string): ParsedResult[] {
 	const { document } = parseHTML(html);
 	const results: ParsedResult[] = [];
@@ -75,23 +71,17 @@ function buildSearchAttempt(params: SearchParams, numResults: number): { url: st
 	};
 }
 
-/** Solve Mojeek's ALTCHA interstitial and wait for its verified redirect to populate results. */
 async function solveCaptcha(page: Page, signal: AbortSignal): Promise<void> {
 	if (await untilAborted(signal, () => page.$("ul.results-standard li"))) return;
 
 	const checkbox = await untilAborted(signal, () => page.$("altcha-widget input[type=checkbox]"));
 	if (!checkbox) return;
 
-	// Subscribed before the click so the navigation cannot be missed. A captcha that resolves without
-	// navigating is a normal outcome, so a timeout here is not a failure; the selector wait below is what
-	// decides whether results actually appeared.
 	const navigation = page
 		.waitForNavigation({ waitUntil: "domcontentloaded", timeout: CAPTCHA_SOLVE_TIMEOUT_MS })
 		.catch(() => null);
 	await untilAborted(signal, () => checkbox.click());
 	await untilAborted(signal, () => navigation);
-	// Last chance for results to render after the captcha; a timeout leaves the page as it is and the caller's
-	// `isRobotPage` check reports the captcha as unsolved.
 	await untilAborted(signal, () =>
 		page.waitForSelector("ul.results-standard li", { timeout: CAPTCHA_SOLVE_TIMEOUT_MS }).catch(() => null),
 	);
@@ -108,7 +98,6 @@ function isRobotPage(page: LoadedHtmlPage): boolean {
 
 async function callMojeekHtml(params: SearchParams, numResults: number): Promise<string> {
 	return withHardTimeout(params.signal, async signal => {
-		// The attempt builder retains the raw query and rebuilds after browser acquisition and retry delays.
 		let page: LoadedHtmlPage;
 		try {
 			page = await browserFetch(() => buildSearchAttempt(params, numResults), {
@@ -135,7 +124,6 @@ async function callMojeekHtml(params: SearchParams, numResults: number): Promise
 			throw new SearchProviderError("mojeek", `Mojeek search failed: ${message}`, 503);
 		}
 
-		// Robot walls: the ALTCHA proof-of-work captcha page arrives as HTTP 200 (`<title>Captcha</title>`, `altcha-widget`) and the "automated queries"
 		if (isRobotPage(page)) {
 			throw new SearchProviderError(
 				"mojeek",
@@ -152,7 +140,6 @@ async function callMojeekHtml(params: SearchParams, numResults: number): Promise
 	});
 }
 
-/** Execute a Mojeek web search against the standard HTML results page. */
 export async function searchMojeek(params: SearchParams): Promise<SearchResponse> {
 	const numResults = clampNumResults(
 		params.numSearchResults ?? params.limit,
@@ -174,7 +161,6 @@ export async function searchMojeek(params: SearchParams): Promise<SearchResponse
 	return { provider: "mojeek", sources };
 }
 
-/** Search provider for Mojeek (independent index, no API key required). */
 export class MojeekProvider extends SearchProvider {
 	readonly id = "mojeek";
 	readonly label = "Mojeek";

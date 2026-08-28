@@ -1,23 +1,3 @@
-/**
- * Everything the memory LLM client decides BEFORE it calls anything.
- *
- * WHY THIS FILE EXISTS. `local-llm.ts` answers two different questions. "Is an LLM configured, what
- * is its context budget, how do I build the prompt, how do I clean the output" is configuration and
- * text. "Send this prompt to a provider" is a network round trip through `completeSimple`, which is
- * the streaming engine and reaches 299 modules.
- *
- * They were one module, so every consumer of the first question paid for the second, and the memory
- * engine is full of consumers: `core/extraction.ts` asks `llmAvailable()` and `cleanOutput()` on
- * paths that may never call a model at all, and `core/beam/consolidate.ts` sits behind extraction,
- * and `core/beam/index.ts` sits behind consolidate. One provider import was reaching the whole
- * memory subsystem through three hops.
- *
- * WHAT BELONGS HERE. Anything that reads configuration, formats a prompt, budgets tokens or cleans a
- * response. Nothing that performs a call. The helpers below are exported rather than module-private
- * because the calling half needs them too, and a second copy of "which model is configured" is the
- * one thing this split must not produce.
- */
-
 import type { Api, ApiKey, Model } from "@veyyon/ai";
 import { estimateTokensFromText, trimTrailingSlashes } from "@veyyon/utils";
 import {
@@ -33,12 +13,6 @@ import {
 } from "../config";
 import { getHostLlmBackend } from "./llm-backends";
 import { getMnemopiRuntimeOptions, isPiAiModel, type MnemopiLlmCompletion } from "./runtime-options";
-
-/**
- * Every function below answers "what did the CALLER configure", and falls back to
- * "what does the environment say" by asking `../config`, which is the one module
- * that reads a `MNEMOPI_*` variable and the one place a default is written.
- */
 
 export function activeLlmOptions() {
 	return getMnemopiRuntimeOptions()?.llm;
@@ -140,11 +114,9 @@ export function formatSleepPrompt(memories: readonly string[], source = ""): str
 	return rendered;
 }
 
-/** The instruction preamble shared by every summarization prompt and the budget estimate. */
 const SUMMARY_HEADER =
 	"Summarize the following memories into 1-3 concise sentences. Preserve facts, names, preferences, and decisions. Discard fluff.";
 
-/** {@link SUMMARY_HEADER} with an optional ` Source: <source>.` suffix when a source is named. */
 export function summaryHeader(source: string): string {
 	return source === "" ? SUMMARY_HEADER : `${SUMMARY_HEADER} Source: ${source}.`;
 }

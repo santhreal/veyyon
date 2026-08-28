@@ -1,15 +1,3 @@
-/**
- * Background OAuth refresh loop for the auth-broker server.
- *
- * Iterates active OAuth credentials at `refreshIntervalMs` cadence, refreshing
- * any whose `expires - Date.now() < refreshSkewMs`. Refresh single-flight
- * lives in {@link AuthStorage} so manual and background refreshes share the
- * same upstream attempt.
- * Definitively-failed credentials (invalid_grant / bare 401, not a network
- * blip) are torn down inside {@link AuthStorage.refreshCredentialById} via a
- * compare-and-set disable — only when no peer/login rotated the row first — so
- * the next snapshot pull surfaces a clean delete on the client.
- */
 import * as logger from "@veyyon/utils/logger";
 import { type AuthStorage, withAuthHttpConcurrency } from "../auth-storage";
 import { isDefinitiveOAuthFailure } from "../error/flags";
@@ -17,11 +5,8 @@ import { DEFAULT_REFRESH_INTERVAL_MS, DEFAULT_REFRESH_SKEW_MS } from "./types";
 
 export interface AuthBrokerRefresherOptions {
 	storage: AuthStorage;
-	/** Refresh credentials expiring within this window. Default 5 min. */
 	refreshSkewMs?: number;
-	/** Loop cadence. Default 60s. */
 	refreshIntervalMs?: number;
-	/** Override clock (tests). */
 	now?: () => number;
 }
 
@@ -50,8 +35,6 @@ export class AuthBrokerRefresher {
 
 	start(): void {
 		if (this.#timer !== undefined) return;
-		// Refresh sweep is best-effort; kick once immediately so freshly-booted
-		// brokers don't hand out near-expired tokens for the first interval.
 		this.#nextSweepAt = this.#now();
 		void this.tick();
 		this.#timer = setInterval(() => {
@@ -75,7 +58,6 @@ export class AuthBrokerRefresher {
 		};
 	}
 
-	/** Run one sweep. Exposed for tests. */
 	async tick(): Promise<void> {
 		if (this.#running) return;
 		this.#running = true;
@@ -106,9 +88,6 @@ export class AuthBrokerRefresher {
 		} catch (error) {
 			const errorMsg = String(error);
 			if (isDefinitiveOAuthFailure(errorMsg)) {
-				// AuthStorage.refreshCredentialById already CAS-disabled the row
-				// (unless a peer/login rotated it first, in which case the live
-				// credential is intentionally kept). Nothing to do here but record it.
 				logger.warn("auth-broker refresh failed definitively", { id, error: errorMsg });
 			} else {
 				logger.debug("auth-broker refresh failed (transient)", { id, error: errorMsg });

@@ -1,80 +1,44 @@
-/** Rules Capability Project-specific rules from Cursor (.mdc), Windsurf (.md), and Cline formats. */
-
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 
 const CONDITION_GLOB_SCOPE_TOOLS = ["edit", "write"] as const;
 
-/** Provider id for the bundled default rules shipped with the agent. Lowest priority, so any user/project/tool rule of the same name overrides */
 export const BUILTIN_DEFAULTS_PROVIDER_ID = "builtin-defaults";
 
-/**
- * Parsed frontmatter from rule files.
- */
 export interface RuleFrontmatter {
 	description?: string;
 	globs?: string[];
 	alwaysApply?: boolean;
-	/** New key for TTSR match conditions. */
 	condition?: string | string[];
-	/** TTSR match condition(s) expressed as ast-grep patterns (edit/write streams only). */
 	astCondition?: string | string[];
-	/** New key for TTSR stream scope. */
 	scope?: string | string[];
-	/** Per-rule TTSR interrupt mode override. */
 	interruptMode?: "never" | "prose-only" | "tool-only" | "always";
-	/** Restrict matching to paths outside / inside the session working directory. */
 	pathScope?: "outside-cwd" | "inside-cwd";
-	/** Per-rule repeat policy, overriding `ttsr.repeatMode`. */
 	repeatMode?: "once" | "after-gap" | "per-compact";
-	/** Messages before this rule may fire again, overriding `ttsr.repeatGap`. */
 	repeatGap?: number;
-	/** Transcript resets a `per-compact` rule waits out before firing again. */
 	repeatCompactions?: number;
-	/** Distinct matching streams the rule stays silent through before it fires. */
 	warmupMatches?: number;
 	[key: string]: unknown;
 }
 
-/**
- * A rule providing project-specific guidance and constraints.
- */
 export interface Rule {
-	/** Rule name (derived from filename) */
 	name: string;
-	/** Absolute path to rule file */
 	path: string;
-	/** Rule content (after frontmatter stripped) */
 	content: string;
-	/** Globs this rule applies to (if any) */
 	globs?: string[];
-	/** Whether to always include this rule */
 	alwaysApply?: boolean;
-	/** Description (for agent-requested rules) */
 	description?: string;
-	/** Regex condition(s) that can trigger TTSR interruption. */
 	condition?: string[];
-	/** ast-grep pattern condition(s) that can trigger TTSR interruption (edit/write streams only). */
 	astCondition?: string[];
-	/** Optional stream scope tokens (for example: text, thinking, tool:edit(*.ts)). */
 	scope?: string[];
-	/** Per-rule TTSR interrupt mode override (falls back to global ttsr.interruptMode). */
 	interruptMode?: "never" | "prose-only" | "tool-only" | "always";
-	/** Require the text the condition matched to name a path outside (or inside) the session working directory. */
 	pathScope?: "outside-cwd" | "inside-cwd";
-	/** Per-rule repeat policy, overriding the global `ttsr.repeatMode`. The global default retires a rule after one injection per session, which suits a rule stating */
 	repeatMode?: "once" | "after-gap" | "per-compact";
-	/** Messages before this rule may fire again, overriding the global `ttsr.repeatGap`. */
 	repeatGap?: number;
-	/** Transcript resets a `per-compact` rule waits out before it may fire again. Defaults to 1, which is what `per-compact` meant on its own. A rule whose */
 	repeatCompactions?: number;
-	/** Distinct matching streams (tool calls, prose turns) this rule stays silent through before it fires at all. */
 	warmupMatches?: number;
-	/** Which group this rule belongs to on screen. A bundled rule gets the directory it ships in; anything discovered has no */
 	section?: string;
-	/** Ships off until the operator names it in `ttsr.experimentalRules`. Set from the section rather than from frontmatter: a rule file cannot be */
 	experimental?: boolean;
-	/** Source metadata */
 	_source: SourceMeta;
 }
 

@@ -1,4 +1,3 @@
-/** RPC protocol types for headless operation. Commands are sent as JSON lines on stdin. */
 import type { AgentMessage, AgentToolResult, ThinkingLevel } from "@veyyon/agent-core";
 import type { CompactionResult } from "@veyyon/agent-core/compaction";
 import type { Effort, ImageContent, Model, ToolExample } from "@veyyon/ai";
@@ -16,15 +15,12 @@ import type {
 import type { TodoPhase } from "../../tools/todo";
 
 export type RpcCommand =
-	// Prompting
 	| { id?: string; type: "prompt"; message: string; images?: ImageContent[]; streamingBehavior?: "steer" | "followUp" }
 	| { id?: string; type: "steer"; message: string; images?: ImageContent[] }
 	| { id?: string; type: "follow_up"; message: string; images?: ImageContent[] }
 	| { id?: string; type: "abort" }
 	| { id?: string; type: "abort_and_prompt"; message: string; images?: ImageContent[] }
 	| { id?: string; type: "new_session"; parentSession?: string }
-
-	// State
 	| { id?: string; type: "get_state" }
 	| { id?: string; type: "get_available_commands" }
 	| { id?: string; type: "set_todos"; phases: TodoPhase[] }
@@ -33,34 +29,20 @@ export type RpcCommand =
 	| { id?: string; type: "set_subagent_subscription"; level: RpcSubagentSubscriptionLevel }
 	| { id?: string; type: "get_subagents" }
 	| { id?: string; type: "get_subagent_messages"; subagentId?: string; sessionFile?: string; fromByte?: number }
-
-	// Model
 	| { id?: string; type: "set_model"; provider: string; modelId: string }
 	| { id?: string; type: "cycle_model" }
 	| { id?: string; type: "get_available_models" }
-
-	// Thinking
 	| { id?: string; type: "set_thinking_level"; level: ThinkingLevel }
 	| { id?: string; type: "cycle_thinking_level" }
-
-	// Queue modes
 	| { id?: string; type: "set_steering_mode"; mode: "all" | "one-at-a-time" }
 	| { id?: string; type: "set_follow_up_mode"; mode: "all" | "one-at-a-time" }
 	| { id?: string; type: "set_interrupt_mode"; mode: "immediate" | "wait" }
-
-	// Compaction
 	| { id?: string; type: "compact"; customInstructions?: string }
 	| { id?: string; type: "set_auto_compaction"; enabled: boolean }
-
-	// Retry
 	| { id?: string; type: "set_auto_retry"; enabled: boolean }
 	| { id?: string; type: "abort_retry" }
-
-	// Bash
 	| { id?: string; type: "bash"; command: string }
 	| { id?: string; type: "abort_bash" }
-
-	// Session
 	| { id?: string; type: "get_session_stats" }
 	| { id?: string; type: "export_html"; outputPath?: string }
 	| { id?: string; type: "switch_session"; sessionPath: string }
@@ -69,11 +51,7 @@ export type RpcCommand =
 	| { id?: string; type: "get_last_assistant_text" }
 	| { id?: string; type: "set_session_name"; name: string }
 	| { id?: string; type: "handoff"; customInstructions?: string }
-
-	// Messages
 	| { id?: string; type: "get_messages" }
-
-	// Login
 	| { id?: string; type: "get_login_providers" }
 	| { id?: string; type: "login"; providerId: string };
 
@@ -92,10 +70,8 @@ export interface RpcSessionState {
 	messageCount: number;
 	queuedMessageCount: number;
 	todoPhases: TodoPhase[];
-	/** For session dump / export (plain-text parity with /dump). */
 	systemPrompt?: string[];
 	dumpTools?: Array<{ name: string; description: string; parameters: unknown; examples?: readonly ToolExample[] }>;
-	/** Current context window usage. */
 	contextUsage?: ContextUsage;
 }
 
@@ -149,17 +125,13 @@ export interface RpcSubagentMessagesResult {
 	messages: AgentMessage[];
 }
 
-// Success responses with data
 export type RpcResponse =
-	// Prompting (async - events follow)
 	| { id?: string; type: "response"; command: "prompt"; success: true; data?: { agentInvoked: boolean } }
 	| { id?: string; type: "response"; command: "steer"; success: true }
 	| { id?: string; type: "response"; command: "follow_up"; success: true }
 	| { id?: string; type: "response"; command: "abort"; success: true }
 	| { id?: string; type: "response"; command: "abort_and_prompt"; success: true }
 	| { id?: string; type: "response"; command: "new_session"; success: true; data: { cancelled: boolean } }
-
-	// State
 	| { id?: string; type: "response"; command: "get_state"; success: true; data: RpcSessionState }
 	| {
 			id?: string;
@@ -192,8 +164,6 @@ export type RpcResponse =
 			success: true;
 			data: RpcSubagentMessagesResult;
 	  }
-
-	// Model
 	| {
 			id?: string;
 			type: "response";
@@ -215,8 +185,6 @@ export type RpcResponse =
 			success: true;
 			data: { models: Model[] };
 	  }
-
-	// Thinking
 	| { id?: string; type: "response"; command: "set_thinking_level"; success: true }
 	| {
 			id?: string;
@@ -225,25 +193,15 @@ export type RpcResponse =
 			success: true;
 			data: { level: Effort } | null;
 	  }
-
-	// Queue modes
 	| { id?: string; type: "response"; command: "set_steering_mode"; success: true }
 	| { id?: string; type: "response"; command: "set_follow_up_mode"; success: true }
 	| { id?: string; type: "response"; command: "set_interrupt_mode"; success: true }
-
-	// Compaction
 	| { id?: string; type: "response"; command: "compact"; success: true; data: CompactionResult }
 	| { id?: string; type: "response"; command: "set_auto_compaction"; success: true }
-
-	// Retry
 	| { id?: string; type: "response"; command: "set_auto_retry"; success: true }
 	| { id?: string; type: "response"; command: "abort_retry"; success: true }
-
-	// Bash
 	| { id?: string; type: "response"; command: "bash"; success: true; data: BashResult }
 	| { id?: string; type: "response"; command: "abort_bash"; success: true }
-
-	// Session
 	| { id?: string; type: "response"; command: "get_session_stats"; success: true; data: SessionStats }
 	| { id?: string; type: "response"; command: "export_html"; success: true; data: { path: string } }
 	| { id?: string; type: "response"; command: "switch_session"; success: true; data: { cancelled: boolean } }
@@ -264,11 +222,7 @@ export type RpcResponse =
 	  }
 	| { id?: string; type: "response"; command: "set_session_name"; success: true }
 	| { id?: string; type: "response"; command: "handoff"; success: true; data: RpcHandoffResult | null }
-
-	// Messages
 	| { id?: string; type: "response"; command: "get_messages"; success: true; data: { messages: AgentMessage[] } }
-
-	// Login
 	| {
 			id?: string;
 			type: "response";
@@ -277,8 +231,6 @@ export type RpcResponse =
 			data: { providers: Array<{ id: string; name: string; available: boolean; authenticated: boolean }> };
 	  }
 	| { id?: string; type: "response"; command: "login"; success: true; data: { providerId: string } }
-
-	// Error response (any command can fail)
 	| { id?: string; type: "response"; command: string; success: false; error: string };
 
 export interface RpcSubagentLifecycleFrame {
@@ -300,7 +252,6 @@ export type RpcSubagentFrame = RpcSubagentLifecycleFrame | RpcSubagentProgressFr
 
 export type RpcSessionEventFrame = AgentSessionEvent | RpcSubagentFrame;
 
-/** Emitted when an extension needs user input */
 export type RpcExtensionUIRequest =
 	| { type: "extension_ui_request"; id: string; method: "select"; title: string; options: string[]; timeout?: number }
 	| { type: "extension_ui_request"; id: string; method: "confirm"; title: string; message: string; timeout?: number }
@@ -311,7 +262,6 @@ export type RpcExtensionUIRequest =
 			title: string;
 			placeholder?: string;
 			timeout?: number;
-			/** The answer is a credential, so a client MUST NOT echo it. Set by a login flow asking for a key or a pasted authorization code; absent for ordinary extension input, which is not */
 			secret?: boolean;
 	  }
 	| {
@@ -352,7 +302,6 @@ export type RpcExtensionUIRequest =
 			id: string;
 			method: "open_url";
 			url: string;
-			/** Short loopback URL that 302-redirects to {@link url}. When present, hosts SHOULD surface it as the copy target so terminal viewport */
 			launchUrl?: string;
 			instructions?: string;
 	  };
@@ -365,7 +314,6 @@ export interface RpcHostToolDefinition {
 	hidden?: boolean;
 }
 
-/** Emitted by the RPC server when it needs the host to execute a registered tool. */
 export interface RpcHostToolCallRequest {
 	type: "host_tool_call";
 	id: string;
@@ -374,21 +322,18 @@ export interface RpcHostToolCallRequest {
 	arguments: Record<string, unknown>;
 }
 
-/** Emitted by the RPC server when a pending host tool call should be aborted. */
 export interface RpcHostToolCancelRequest {
 	type: "host_tool_cancel";
 	id: string;
 	targetId: string;
 }
 
-/** Sent by the host to stream partial tool updates back to the RPC server. */
 export interface RpcHostToolUpdate {
 	type: "host_tool_update";
 	id: string;
 	partialResult: AgentToolResult<unknown>;
 }
 
-/** Sent by the host to complete a pending tool call. */
 export interface RpcHostToolResult {
 	type: "host_tool_result";
 	id: string;
@@ -397,54 +342,39 @@ export interface RpcHostToolResult {
 }
 
 export interface RpcHostUriSchemeDefinition {
-	/** URL scheme without trailing `://` (e.g. `db`, `notion`). */
 	scheme: string;
-	/** Optional human-readable description for logs/diagnostics. */
 	description?: string;
-	/** When true, the write tool is allowed to dispatch writes to this scheme. */
 	writable?: boolean;
-	/** When true, downstream callers suppress hashline anchors for resolved content. */
 	immutable?: boolean;
 }
 
 export type RpcHostUriOperation = "read" | "write";
 
-/** Emitted by the RPC server when it needs the host to satisfy a URI operation. */
 export interface RpcHostUriRequest {
 	type: "host_uri_request";
 	id: string;
 	operation: RpcHostUriOperation;
 	url: string;
-	/** Present for write operations. */
 	content?: string;
 }
 
-/** Emitted by the RPC server when a pending URI request should be aborted. */
 export interface RpcHostUriCancelRequest {
 	type: "host_uri_cancel";
 	id: string;
 	targetId: string;
 }
 
-/** Sent by the host to complete a pending URI request. */
 export interface RpcHostUriResult {
 	type: "host_uri_result";
 	id: string;
-	/** Required for successful `read` results. Ignored for `write` success. Set on errors when a textual explanation accompanies `isError`. */
 	content?: string;
-	/** Defaults to `text/plain` when omitted. */
 	contentType?: "text/markdown" | "application/json" | "text/plain";
-	/** Optional resolution notes propagated to the read tool. */
 	notes?: string[];
-	/** Overrides the scheme-level `immutable` flag for this single resolution. */
 	immutable?: boolean;
-	/** When true, surface the result content as an error to the caller. */
 	isError?: boolean;
-	/** Optional error message; preferred over `content` for error surfacing. */
 	error?: string;
 }
 
-/** Response to an extension UI request */
 export type RpcExtensionUIResponse =
 	| { type: "extension_ui_response"; id: string; value: string }
 	| { type: "extension_ui_response"; id: string; confirmed: boolean }

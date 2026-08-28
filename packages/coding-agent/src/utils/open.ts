@@ -27,19 +27,12 @@ function getExistingWslLocalPath(urlOrPath: string): string | undefined {
 
 		return result.stdout.toString().trim() || undefined;
 	} catch {
-		// Best effort by design: this only translates a path for a Windows helper when running under WSL, and
-		// undefined means "no Windows path for this", which the caller answers by opening the original path
-		// with the Linux handler. Nothing is lost that the fallback does not cover.
 		return undefined;
 	}
 }
 
-/** Resolve the Windows opener used to hand a URL/path to the user's registered protocol handler. PowerShell's `Start-Process` goes through ShellExecute */
 function windowsOpenerCommand(target: string): string[] {
 	const systemRoot = process.env.SystemRoot?.trim() || process.env.SYSTEMROOT?.trim() || "C:\\Windows";
-	// `path.win32` (not the platform-adaptive `path.join`) keeps Windows path
-	// separators when tests run under a POSIX host and matches Windows call
-	// conventions on the real target.
 	const absolute = path.win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 	const powershell = fs.existsSync(absolute) ? absolute : "powershell.exe";
 	const script = `$ErrorActionPreference='Stop';Start-Process '${target.replaceAll("'", "''")}'`;
@@ -53,7 +46,6 @@ function windowsOpenerCommand(target: string): string[] {
 		Buffer.from(script, "utf16le").toString("base64"),
 	];
 }
-/** Open a URL or file path in the default browser/application. Best-effort, never throws. */
 export function openPath(urlOrPath: string): void {
 	let cmd: string[];
 	switch (process.platform) {
@@ -73,9 +65,6 @@ export function openPath(urlOrPath: string): void {
 	try {
 		child = Bun.spawn(cmd, { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
 	} catch (error) {
-		// Spawn threw synchronously (missing binary, denied exec, sandbox
-		// restriction, …). Best-effort: log so the failure isn't invisible while
-		// still letting the caller advertise a copy-URL fallback.
 		logger.warn("Failed to open external URL/path", {
 			command: cmd[0],
 			target: urlOrPath,
@@ -83,7 +72,6 @@ export function openPath(urlOrPath: string): void {
 		});
 		return;
 	}
-	// Detect delayed failures (exec succeeded but the opener exited non-zero) without blocking the caller. Recording them makes silent misconfigurations
 	child.exited.then(
 		exitCode => {
 			if (typeof exitCode === "number" && exitCode !== 0) {
@@ -94,8 +82,6 @@ export function openPath(urlOrPath: string): void {
 				});
 			}
 		},
-		() => {
-			// Ignore — awaiting the subprocess is best-effort telemetry.
-		},
+		() => {},
 	);
 }

@@ -8,7 +8,6 @@ import { actionKeyHint } from "../../modes/utils/key-hint";
 import type { BranchSummaryMessage, CompactionSummaryMessage, CustomMessage } from "../../session/messages";
 import { renderTranscriptDivider } from "./transcript-divider";
 
-/** Whether the next compaction pass will go to the provider's own compaction endpoint. This mirrors the admission half of the engine's gate */
 export function willCompactRemotely(session: {
 	settings: { get(key: "compaction.remote"): unknown };
 	model: Model<Api> | undefined;
@@ -17,7 +16,6 @@ export function willCompactRemotely(session: {
 	return !!session.model && resolveServerCompactionTransport(session.model) !== undefined;
 }
 
-/** The action part of the compaction loader label. A remote pass compacts on the provider's side, so naming it ("openai remote compaction") keeps the */
 export function compactionActionLabel(isAuto: boolean, remote: boolean): string {
 	const base = isAuto ? "Auto-compacting context" : "Compacting context...";
 	return remote ? `${base} (openai remote compaction)` : base;
@@ -44,7 +42,6 @@ class SummaryDividerComponent implements Component {
 
 	invalidate(): void {
 		this.#cache = undefined;
-		// Theme may have changed — rebuild the detail box lazily on next render.
 		this.#detail = undefined;
 	}
 
@@ -74,14 +71,11 @@ class SummaryDividerComponent implements Component {
 	}
 }
 
-/** Compaction point in the transcript, rendered as the house divider: ────────── 📷 compacted · ctrl+o */
 export class CompactionSummaryMessageComponent implements Component {
 	#divider: SummaryDividerComponent;
 
 	constructor(private readonly message: CompactionSummaryMessage) {
 		this.#divider = new SummaryDividerComponent({
-			// A dead-end warning stamped by the progress guard badges the bar;
-			// the full text lives in the ctrl+o detail block below.
 			label: () =>
 				this.message.warning
 					? withIcon(theme.icon.camera, `compacted ${theme.fg("warning", theme.icon.warning)}`)
@@ -105,8 +99,6 @@ export class CompactionSummaryMessageComponent implements Component {
 
 	#detailMarkdown(): string {
 		const tokenStr = this.message.tokensBefore.toLocaleString();
-		// A server-side compaction names the provider model that did it; a
-		// configured local compaction model did not apply to that compaction.
 		const attribution = this.message.compactedBy ? ` · server-side by ${this.message.compactedBy}` : "";
 		const warningNote = this.message.warning
 			? `\n\n${withIcon(theme.icon.warning, `**Warning:** ${this.message.warning}`)}`
@@ -115,7 +107,6 @@ export class CompactionSummaryMessageComponent implements Component {
 	}
 }
 
-/** A manual handoff is persisted as a custom message so the replacement session receives its developer context. Render it with the same divider affordance as */
 export class HandoffSummaryMessageComponent implements Component {
 	#divider: SummaryDividerComponent;
 
@@ -155,7 +146,6 @@ export function createHandoffSummaryMessageComponent(
 	return component;
 }
 
-/** A branch summary collapses a side branch back into the main line. Render it with the same slim divider as `/compact` and handoff rather than a `[branch]` */
 export class BranchSummaryMessageComponent implements Component {
 	#divider: SummaryDividerComponent;
 

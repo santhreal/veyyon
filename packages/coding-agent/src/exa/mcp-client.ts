@@ -20,12 +20,10 @@ export interface ProviderMcpCallOptions extends CallMcpOptions {
 	resolveProviderTextTransform?: ProviderTextTransformResolver;
 }
 
-/** Find EXA_API_KEY from Bun.env or .env files */
 export function findApiKey(): string | null {
 	return $env.EXA_API_KEY;
 }
 
-/** Normalize tools/call payloads across MCP servers. Exa currently returns different shapes depending on deployment/environment: */
 function normalizeMcpToolPayload(payload: unknown): unknown {
 	const candidates: unknown[] = [];
 	const root = asRecord(payload);
@@ -60,7 +58,6 @@ function normalizeMcpToolPayload(payload: unknown): unknown {
 	return payload;
 }
 
-/** Fetch available tools from Exa MCP */
 export async function fetchExaTools(apiKey: string | null, toolNames: string[]): Promise<MCPTool[]> {
 	const params = new URLSearchParams();
 	if (apiKey) params.set("exaApiKey", apiKey);
@@ -75,7 +72,6 @@ export async function fetchExaTools(apiKey: string | null, toolNames: string[]):
 	return response.result?.tools ?? [];
 }
 
-/** Fetch available tools from Websets MCP */
 export async function fetchWebsetsTools(apiKey: string): Promise<MCPTool[]> {
 	const url = `https://websetsmcp.exa.ai/mcp?exaApiKey=${encodeURIComponent(apiKey)}`;
 	const response = (await callMCP(url, "tools/list")) as MCPToolsResponse;
@@ -87,7 +83,6 @@ export async function fetchWebsetsTools(apiKey: string): Promise<MCPTool[]> {
 	return response.result?.tools ?? [];
 }
 
-/** Call a tool on Exa MCP (simplified: toolName as first arg for easier use) */
 export async function callExaTool(
 	toolName: string,
 	args: Record<string, unknown>,
@@ -117,7 +112,6 @@ export async function callExaTool(
 	return normalizeMcpToolPayload(response.result);
 }
 
-/** Call a tool on Websets MCP */
 export async function callWebsetsTool(
 	apiKey: string,
 	toolName: string,
@@ -144,7 +138,6 @@ export async function callWebsetsTool(
 	return normalizeMcpToolPayload(response.result);
 }
 
-/** Format search results for LLM */
 export function formatSearchResults(data: ExaSearchResponse): string {
 	const results = data.results ?? [];
 	if (results.length === 0) return "No results found.";
@@ -175,7 +168,6 @@ export function formatSearchResults(data: ExaSearchResponse): string {
 
 	return output.trim();
 }
-/** Format a non-search MCP response as human-readable text. Handles objects, arrays, primitives, and common MCP response shapes. */
 export function formatGenericResponse(data: unknown): string {
 	if (data === null || data === undefined) return "No result.";
 	if (typeof data === "string") return data;
@@ -204,7 +196,6 @@ export function formatGenericResponse(data: unknown): string {
 	if (typeof data === "object") {
 		const record = data as Record<string, unknown>;
 		if (record.content && Array.isArray(record.content)) {
-			// MCP-style content array — extract text blocks
 			const texts = record.content
 				.filter(
 					(c: unknown): c is { type: string; text?: string } =>
@@ -246,7 +237,6 @@ function indent(text: string, spaces: number): string {
 		.join("\n");
 }
 
-/** Check if result is a search response */
 export function isSearchResponse(data: unknown): data is ExaSearchResponse {
 	return (
 		typeof data === "object" &&
@@ -255,7 +245,6 @@ export function isSearchResponse(data: unknown): data is ExaSearchResponse {
 	);
 }
 
-/** CustomTool dynamically created from MCP tool metadata. This allows tools to be generated from MCP server schemas without hardcoding, */
 export class MCPWrappedTool implements CustomTool<TSchema, MCPWrappedToolDetails> {
 	readonly name: string;
 	readonly label: string;
@@ -278,7 +267,6 @@ export class MCPWrappedTool implements CustomTool<TSchema, MCPWrappedToolDetails
 	): Promise<CustomToolResult<MCPWrappedToolDetails>> {
 		try {
 			const apiKey = findApiKey();
-			// Websets tools require an API key; basic Exa MCP tools work without one
 			if (!apiKey && this.config.isWebsetsTool) {
 				return {
 					content: [{ type: "text" as const, text: "Error: EXA_API_KEY required for Websets tools" }],

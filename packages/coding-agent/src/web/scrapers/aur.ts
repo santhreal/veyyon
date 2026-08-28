@@ -34,9 +34,6 @@ interface AurResponse {
 	results: AurPackage[];
 }
 
-/**
- * Handle AUR (Arch User Repository) URLs via RPC API
- */
 export const handleAur: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -47,14 +44,12 @@ export const handleAur: SpecialHandler = async (
 		if (!parsed) return null;
 		if (parsed.hostname !== "aur.archlinux.org") return null;
 
-		// Extract package name from /packages/{name}
 		const match = parsed.pathname.match(/^\/packages\/([^/?#]+)/);
 		if (!match) return null;
 
 		const packageName = decodeURIComponent(match[1]);
 		const fetchedAt = new Date().toISOString();
 
-		// Fetch from AUR RPC API
 		const apiUrl = `https://aur.archlinux.org/rpc/?v=5&type=info&arg=${encodeURIComponent(packageName)}`;
 		const result = await loadPage(apiUrl, { timeout, signal });
 
@@ -70,7 +65,6 @@ export const handleAur: SpecialHandler = async (
 		let md = `# ${pkg.Name}\n\n`;
 		if (pkg.Description) md += `${pkg.Description}\n\n`;
 
-		// Package info
 		md += `**Version:** ${pkg.Version}`;
 		if (pkg.OutOfDate) {
 			const outOfDateDate = formatIsoDate(pkg.OutOfDate * 1000);
@@ -86,7 +80,6 @@ export const handleAur: SpecialHandler = async (
 
 		md += `**Votes:** ${formatNumber(pkg.NumVotes)} · **Popularity:** ${pkg.Popularity.toFixed(2)}\n`;
 
-		// Timestamps
 		const lastModified = formatIsoDate(pkg.LastModified * 1000);
 		const firstSubmitted = formatIsoDate(pkg.FirstSubmitted * 1000);
 		md += `**Last Updated:** ${lastModified} · **First Submitted:** ${firstSubmitted}\n`;
@@ -95,7 +88,6 @@ export const handleAur: SpecialHandler = async (
 		if (pkg.URL) md += `**Upstream:** ${pkg.URL}\n`;
 		if (pkg.Keywords?.length) md += `**Keywords:** ${pkg.Keywords.join(", ")}\n`;
 
-		// Dependencies
 		if (pkg.Depends?.length) {
 			md += `\n## Dependencies (${pkg.Depends.length})\n\n`;
 			for (const dep of pkg.Depends) {
@@ -124,7 +116,6 @@ export const handleAur: SpecialHandler = async (
 			}
 		}
 
-		// Package relationships
 		if (pkg.Provides?.length) {
 			md += `\n## Provides\n\n`;
 			for (const p of pkg.Provides) {
@@ -146,7 +137,6 @@ export const handleAur: SpecialHandler = async (
 			}
 		}
 
-		// Installation instructions
 		md += `\n---\n\n## Installation\n\n`;
 		md += "```bash\n";
 		md += `# Using an AUR helper (e.g., yay, paru)\n`;

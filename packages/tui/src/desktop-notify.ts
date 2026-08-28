@@ -1,14 +1,9 @@
-// Linux desktop notification delivery via D-Bus (notify-send / gdbus).
-
 import { APP_DISPLAY_NAME } from "@veyyon/utils/app-identity";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { $which } from "@veyyon/utils/which";
 import type { TerminalId, TerminalNotification } from "./terminal-capabilities";
 
-/** Application name surfaced as the notification source. */
-
-/** Resolved notifier binary used to fan a notification out to D-Bus. */
 export type DesktopNotifierKind = "notify-send" | "gdbus";
 
 export interface DesktopNotifier {
@@ -16,11 +11,6 @@ export interface DesktopNotifier {
 	path: string;
 }
 
-/**
- * Whether the current process can reach a freedesktop notification daemon:
- * Linux platform + a session bus address in env. Caller is still responsible
- * for resolving a delivery binary via {@link resolveDesktopNotifier}.
- */
 export function hasLinuxDesktopSession(
 	platform: NodeJS.Platform = process.platform,
 	env: NodeJS.ProcessEnv = Bun.env,
@@ -29,7 +19,6 @@ export function hasLinuxDesktopSession(
 	return Boolean(env.DBUS_SESSION_BUS_ADDRESS);
 }
 
-/** Whether desktop notification should be dispatched via D-Bus for this terminal. */
 export function shouldDeliverDesktopNotification(
 	_terminalId: TerminalId,
 	notifyProtocolIsBell: boolean,
@@ -44,12 +33,10 @@ export function shouldDeliverDesktopNotification(
 
 let cachedNotifier: DesktopNotifier | null | undefined;
 
-/** Reset the cached notifier resolution. Tests only. */
 export function resetDesktopNotifierCache(): void {
 	cachedNotifier = undefined;
 }
 
-/** Locate a libnotify delivery binary on PATH (notify-send or gdbus). */
 export function resolveDesktopNotifier(): DesktopNotifier | null {
 	if (cachedNotifier !== undefined) return cachedNotifier;
 	const notifySend = $which("notify-send");
@@ -88,7 +75,6 @@ const URGENCY_BYTE: Record<ResolvedNotificationFields["urgency"], number> = {
 	critical: 2,
 };
 
-/** Build command arguments to deliver message through the resolved notifier. */
 export function buildDesktopNotifyCommand(notifier: DesktopNotifier, message: string | TerminalNotification): string[] {
 	const { title, body, urgency } = resolveFields(message);
 	if (notifier.kind === "notify-send") {
@@ -116,17 +102,10 @@ export function buildDesktopNotifyCommand(notifier: DesktopNotifier, message: st
 	];
 }
 
-/** Fire-and-forget D-Bus desktop notification. */
 export function sendDesktopNotification(message: string | TerminalNotification): void {
 	const notifier = resolveDesktopNotifier();
 	if (!notifier) return;
 	try {
-		// `.unref()` lets the event loop exit while the notifier is still running.
-		// Without it, an unresponsive D-Bus activation (slow `notify-send`, hung
-		// `gdbus` waiting on a stalled session bus) would keep `veyyon` alive past
-		// the renderer's shutdown — a completion toast must never delay process
-		// exit. Ignored stdio alone does not detach the child from the parent's
-		// reference count.
 		const child = Bun.spawn({
 			cmd: buildDesktopNotifyCommand(notifier, message),
 			stdin: "ignore",
@@ -135,9 +114,6 @@ export function sendDesktopNotification(message: string | TerminalNotification):
 		});
 		child.unref();
 	} catch (error) {
-		// Best-effort — a broken notifier must not crash rendering — but say
-		// so: a silent failure means the user never learns why attention
-		// pings stopped arriving.
 		logger.warn("desktop notification spawn failed; notifications will not appear", {
 			error: errorMessage(error),
 		});

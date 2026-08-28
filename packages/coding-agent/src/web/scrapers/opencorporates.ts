@@ -78,7 +78,6 @@ interface ApiResponse {
 	};
 }
 
-/** Render the two-column basic-info table for a company. registry free-text (status, type, branch) or an external id/date, any of which */
 export function renderCompanyInfoTable(company: CompanyData): string {
 	let md = "| Field | Value |\n|-------|-------|\n";
 	md += `| **Company Number** | ${escapeMarkdownTableCell(company.company_number)} |\n`;
@@ -105,9 +104,6 @@ export function renderCompanyInfoTable(company: CompanyData): string {
 	return md;
 }
 
-/**
- * Handle OpenCorporates URLs via API
- */
 export const handleOpenCorporates: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -118,7 +114,6 @@ export const handleOpenCorporates: SpecialHandler = async (
 		if (!parsed) return null;
 		if (!parsed.hostname.includes("opencorporates.com")) return null;
 
-		// Extract jurisdiction and company number from /companies/{jurisdiction}/{number}
 		const match = parsed.pathname.match(/^\/companies\/([^/]+)\/([^/]+)/);
 		if (!match) return null;
 
@@ -127,7 +122,6 @@ export const handleOpenCorporates: SpecialHandler = async (
 
 		const fetchedAt = new Date().toISOString();
 
-		// Fetch from OpenCorporates API
 		const apiUrl = `https://api.opencorporates.com/v0.4/companies/${jurisdiction}/${companyNumber}`;
 		const result = await loadPage(apiUrl, {
 			timeout,
@@ -172,7 +166,6 @@ export const handleOpenCorporates: SpecialHandler = async (
 		md += renderCompanyInfoTable(company);
 		md += "\n";
 
-		// Registered address
 		if (company.registered_address_in_full) {
 			md += `## Registered Address\n\n${company.registered_address_in_full}\n\n`;
 		} else if (company.registered_address) {
@@ -185,7 +178,6 @@ export const handleOpenCorporates: SpecialHandler = async (
 			}
 		}
 
-		// Agent info
 		if (company.agent_name) {
 			md += `## Registered Agent\n\n**${company.agent_name}**`;
 			if (company.agent_address) {
@@ -194,7 +186,6 @@ export const handleOpenCorporates: SpecialHandler = async (
 			md += "\n\n";
 		}
 
-		// Officers/Directors
 		if (company.officers && company.officers.length > 0) {
 			const activeOfficers = company.officers.filter(o => !o.officer.inactive && !o.officer.end_date);
 			const inactiveOfficers = company.officers.filter(o => o.officer.inactive || o.officer.end_date);
@@ -231,7 +222,6 @@ export const handleOpenCorporates: SpecialHandler = async (
 			}
 		}
 
-		// Industry codes
 		if (company.industry_codes && company.industry_codes.length > 0) {
 			md += `## Industry Codes\n\n`;
 			for (const ic of company.industry_codes) {
@@ -243,7 +233,6 @@ export const handleOpenCorporates: SpecialHandler = async (
 			md += "\n";
 		}
 
-		// Identifiers
 		if (company.identifiers && company.identifiers.length > 0) {
 			md += `## Identifiers\n\n`;
 			for (const id of company.identifiers) {
@@ -252,7 +241,6 @@ export const handleOpenCorporates: SpecialHandler = async (
 			md += "\n";
 		}
 
-		// Previous names
 		if (company.previous_names && company.previous_names.length > 0) {
 			md += `## Previous Names\n\n`;
 			for (const pn of company.previous_names) {
@@ -263,7 +251,6 @@ export const handleOpenCorporates: SpecialHandler = async (
 			md += "\n";
 		}
 
-		// Alternative names
 		if (company.alternative_names && company.alternative_names.length > 0) {
 			md += `## Alternative Names\n\n`;
 			for (const an of company.alternative_names) {
@@ -274,7 +261,6 @@ export const handleOpenCorporates: SpecialHandler = async (
 			md += "\n";
 		}
 
-		// Source info
 		md += "---\n\n";
 		if (company.source?.publisher) {
 			md += `**Source:** ${company.source.publisher}`;

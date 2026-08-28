@@ -1,5 +1,3 @@
-/** Generate an AGENTS.dict vocabulary from corpus samples. */
-
 import {
 	DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO,
 	DEFAULT_SAVINGS_COVERAGE,
@@ -14,95 +12,47 @@ import type { Vocabulary } from "./types.js";
 
 const utf8 = new TextEncoder();
 
-/** How to name generated handles. */
-export type HandleNaming =
-	/** Short mnemonics derived from each expansion (readable in a diff). The default. */
-	| "mnemonic"
-	/** Sequential numbers (`§1`, `§2`, …): the densest handles, least self-documenting. */
-	| "numeric"
-	/** A readable stem plus a hash of the expansion. The name is a pure function of */
-	| "content";
+export type HandleNaming = "mnemonic" | "numeric" | "content";
 
-/** Options for {@link generateDict}. Every field has a sensible default. */
 export interface GenerateOptions {
-	/** Token budget for the generated dictionary. */
 	tokenBudget?: number;
-	/** Sigil for the emitted file. Default {@link DEFAULT_SIGIL}. */
 	sigil?: string;
-	/** Minimum frequency required for consideration. */
 	minFrequency?: number;
-	/** Minimum expansion length in characters. */
 	minExpansionLength?: number;
-	/** Optional maximum number of handles to emit. */
 	maxHandles?: number;
-	/** Stop admitting handles once the selected set reaches this fraction of the */
 	savingsCoverage?: number;
-	/** How to name handles. Default `"mnemonic"`. */
 	naming?: HandleNaming;
-	/** Token counter function. */
 	countTokens?: (text: string) => number;
-	/** Candidate extractor function. */
 	extract?: (text: string) => Iterable<string>;
-	/** The share of line structure this harness's agent emits inside tool-call */
 	toolCallStructureShare?: number;
-	/** Existing bindings to preserve, for MONOTONIC regeneration. Pass the current */
 	pinned?: Vocabulary;
 }
 
-/** One handle chosen by {@link generateDict}, with the accounting behind it. */
 export interface GeneratedHandle {
-	/** The handle name (without the sigil), matching `[a-z0-9_]+`. */
 	name: string;
-	/** The full string the handle stands for. */
 	expansion: string;
-	/** How many times the expansion occurred in the corpus (raw occurrence count). */
 	frequency: number;
-	/**
-	 * In how many distinct corpus samples (files) the expansion occurred: its
-	 * centrality. This is the signal scoring is based on, not {@link frequency};
-	 * see {@link scoringFrequency}. Always `<= frequency`.
-	 */
 	documentFrequency: number;
-	/** Estimated output tokens saved across the corpus by using this handle. */
 	savedTokens: number;
-	/** Effective frequency used for scoring. */
 	dictTokens: number;
 }
 
-/** The frequency scoring multiplies by: document frequency plus a damped bonus for */
 export function scoringFrequency(rawFrequency: number, documentFrequency: number): number {
 	const within = Math.max(0, rawFrequency - documentFrequency);
 	return documentFrequency + Math.floor(Math.log2(1 + within));
 }
 
-/** The result of {@link generateDict}. */
 export interface GeneratedDict {
-	/**
-	 * The selected vocabulary. Its `handles` map is empty when nothing in the
-	 * corpus was worth encoding; in that case {@link GeneratedDict.toml} is `""`.
-	 */
 	vocab: Vocabulary;
-	/**
-	 * The `AGENTS.dict` file text, ready to write. Always re-parses through
-	 * `parseDict` to `vocab`. `""` when no handles were selected (an empty
-	 * `[handles]` table is not a valid dictionary).
-	 */
 	toml: string;
-	/** The chosen handles, highest value first. */
 	handles: GeneratedHandle[];
-	/** Total estimated dictionary token cost. Never exceeds */
 	dictTokens: number;
-	/** Total estimated output tokens saved per full pass over the corpus. */
 	estimatedSavings: number;
-	/** How many turns of carrying this dictionary its estimated savings would pay */
 	breakEvenTurns: number;
-	/** The token budget the generation ran under. */
 	tokenBudget: number;
-	/** How many distinct candidates were considered before selection. */
 	candidatesConsidered: number;
 }
 
-/** A tokenizer-agnostic token estimate. Approximates a byte-pair tokenizer well */
 export function estimateTokens(text: string): number {
 	if (text.length === 0) {
 		return 0;
@@ -112,18 +62,15 @@ export function estimateTokens(text: string): number {
 	for (const word of words) {
 		tokens += Math.max(1, Math.ceil(word.length / 4));
 	}
-	// Every non-alphanumeric, non-whitespace character tends to be its own token.
 	const symbols = text.replace(/[A-Za-z0-9\s]/g, "").length;
 	tokens += symbols;
 	return Math.max(1, tokens);
 }
 
-/** A candidate is LINE STRUCTURE when it begins with a newline: the line break, the */
 function isLineStructure(expansion: string): boolean {
 	return expansion.startsWith("\n");
 }
 
-/** The line-structure candidates for one line: its indentation prefix, and (when it */
 function lineStructureCandidates(rawLine: string, trimmed: string, previousLine: string | undefined): string[] {
 	const firstWord = /^[A-Za-z_][A-Za-z0-9_]{0,15}/.exec(trimmed)?.[0];
 	if (firstWord === undefined) {
@@ -133,7 +80,6 @@ function lineStructureCandidates(rawLine: string, trimmed: string, previousLine:
 	const indent = /^[\t ]+/.exec(rawLine)?.[0];
 	if (indent !== undefined) {
 		out.push(`\n${indent}${firstWord}`);
-		// Indentation runs without keywords.
 		out.push(`\n${indent}`);
 	} else if (previousLine !== undefined && previousLine.trim().length === 0) {
 		out.push(`\n\n${firstWord}`);
@@ -141,7 +87,6 @@ function lineStructureCandidates(rawLine: string, trimmed: string, previousLine:
 	return out;
 }
 
-/** What one use of `expansion` actually costs the model in output tokens. */
 export function emittedTokenCost(
 	expansion: string,
 	countTokens: (text: string) => number,
@@ -160,15 +105,12 @@ export function emittedTokenCost(
 	return toolCallStructureShare * escaped + (1 - toolCallStructureShare) * raw;
 }
 
-/** Trim wrapping punctuation a candidate is likely surrounded by in prose or code. */
 function trimWrapping(token: string): string {
 	return token.replace(/^[["'`(<{]+/, "").replace(/[\]"'`)>},;]+$/, "");
 }
 
-/** Code-expression punctuation. A genuinely re-typed token — a path, filename, */
 const CODE_PUNCTUATION = /[(){}[\]`'"$;,=<>!?*|&]/;
 
-/** True when a token is worth encoding as a handle. A string a coding agent */
 function isReusableToken(token: string): boolean {
 	if (CODE_PUNCTUATION.test(token)) {
 		return false;
@@ -179,7 +121,6 @@ function isReusableToken(token: string): boolean {
 	return /[/\\]/.test(token) || /::/.test(token);
 }
 
-/** True when a whole line is REFERENCE NOISE — text whose payload is a hyperlink or */
 function isReferenceNoiseLine(line: string): boolean {
 	if (/\[!\[/.test(line) || /\]\(\s*<?https?:\/\//.test(line)) {
 		return true;
@@ -190,12 +131,10 @@ function isReferenceNoiseLine(line: string): boolean {
 	return false;
 }
 
-/** Check if token looks like a path, command, URL, or domain. */
 function isStructured(token: string): boolean {
 	return /[/\\]/.test(token) || /\w\.\w/.test(token) || /::/.test(token) || /:\/\//.test(token);
 }
 
-/** True when a whole line reads like a command rather than a prose sentence: it */
 function looksLikeCommand(tokens: string[]): boolean {
 	if (!tokens.some(t => isStructured(t) || /^-{1,2}\w/.test(t) || /^\w[\w-]*=/.test(t))) {
 		return false;
@@ -203,7 +142,6 @@ function looksLikeCommand(tokens: string[]): boolean {
 	return !looksLikeProse(tokens);
 }
 
-/** True when a line is a natural-language sentence rather than something an agent */
 function looksLikeProse(tokens: string[]): boolean {
 	if (tokens.some(t => /^[A-Za-z0-9][\w-]*,$/.test(t))) {
 		return true;
@@ -221,7 +159,6 @@ function looksLikeProse(tokens: string[]): boolean {
 	return /^[A-Z][a-z]+$/.test(tokens[0] ?? "");
 }
 
-/** True when a line is a SOURCE-CODE statement, not a re-emittable command. This is */
 function looksLikeSourceCode(line: string): boolean {
 	if (/[;`{}]/.test(line) || /=>/.test(line) || /\w\(/.test(line)) {
 		return true;
@@ -239,7 +176,6 @@ function looksLikeSourceCode(line: string): boolean {
 	return SOURCE_KEYWORDS.has(firstWord);
 }
 
-/** Statement keyword openers. */
 const SOURCE_KEYWORDS = new Set([
 	"if",
 	"else",
@@ -282,12 +218,10 @@ const SOURCE_KEYWORDS = new Set([
 	"this",
 ]);
 
-/** Check if line opens with a comment marker. */
 function isCommentLine(line: string): boolean {
 	return /^(#|\/\/|\/\*|\*|<!--|--)/.test(line);
 }
 
-/** The default candidate extractor. Pulls two kinds of recurring string out of a */
 export function extractCandidates(text: string): string[] {
 	const out: string[] = [];
 	const lines = text.split(/\r?\n/);
@@ -320,12 +254,10 @@ export function extractCandidates(text: string): string[] {
 	return out;
 }
 
-/** The longest handle name the generator will mint. */
 const MAX_NAME_LENGTH = 4;
 
 const CONTENT_NAME_STEM_LENGTH = 6;
 
-/** A short readable stem from an expansion's last path segment, for handle names. */
 function nameStem(expansion: string, maxLength: number = MAX_NAME_LENGTH): string {
 	const segment = expansion.split(/[/\\]/).filter(Boolean).pop() ?? expansion;
 	let base = segment
@@ -341,7 +273,6 @@ function nameStem(expansion: string, maxLength: number = MAX_NAME_LENGTH): strin
 	return base.length === 0 ? "h" : base;
 }
 
-/** 32-bit FNV-1a hash of a string. */
 function fnv1a(text: string, seed: number): number {
 	let hash = seed >>> 0;
 	for (let i = 0; i < text.length; i++) {
@@ -351,13 +282,11 @@ function fnv1a(text: string, seed: number): number {
 	return hash >>> 0;
 }
 
-/** A content-addressed handle name: a readable stem plus a hash of the whole */
 function contentName(expansion: string): string {
 	const hash = fnv1a(expansion, 0x811c9dc5).toString(36) + fnv1a(expansion, 0x9e3779b1).toString(36);
 	return `${nameStem(expansion, CONTENT_NAME_STEM_LENGTH)}_${hash.slice(0, 8)}`;
 }
 
-/** Assign a short, deterministic handle name to every expansion in a set. */
 function buildMnemonicNames(allExpansions: Iterable<string>, reserved: Iterable<string> = []): Map<string, string> {
 	const byStem = new Map<string, Set<string>>();
 	for (const expansion of allExpansions) {
@@ -406,7 +335,6 @@ function buildMnemonicNames(allExpansions: Iterable<string>, reserved: Iterable<
 	return names;
 }
 
-/** Escape a string for TOML basic string format. */
 function escapeTomlBasic(value: string): string {
 	let out = "";
 	for (const ch of value) {
@@ -430,7 +358,6 @@ function escapeTomlBasic(value: string): string {
 	return out;
 }
 
-/** Serialize vocabulary to AGENTS.dict TOML format. */
 function toToml(sigil: string, handles: GeneratedHandle[]): string {
 	const lines: string[] = [];
 	lines.push("# Generated by argot. Review before committing: a handle must stand");
@@ -450,26 +377,16 @@ function toToml(sigil: string, handles: GeneratedHandle[]): string {
 
 interface Candidate {
 	expansion: string;
-	/** Raw occurrence count across all samples. */
 	frequency: number;
-	/** Number of distinct samples the string appeared in (centrality). */
 	documentFrequency: number;
 	firstSeen: number;
 }
 
-/** One repository file for {@link generateDictFromRepo}. */
 export interface RepoFile {
-	/**
-	 * The repo-relative path, e.g. a line from `git ls-files`. Always enters as a
-	 * candidate, so a path the agent will type is proposed even if no other file
-	 * mentions it.
-	 */
 	path: string;
-	/** The file's text, if you have it. Scanned for the structured tokens and */
 	content?: string;
 }
 
-/** Generate an `AGENTS.dict` from a corpus. */
 export function generateDict(corpus: string | string[], options: GenerateOptions = {}): GeneratedDict {
 	const tokenBudget = options.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
 	const pinnedEntries: Array<[string, string]> = options.pinned ? Array.from(options.pinned.handles) : [];
@@ -543,7 +460,6 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 		if (perUse <= 0) {
 			continue; // the handle is not shorter than what it replaces
 		}
-		// Value is driven by document frequency centrality.
 		let value: number;
 		if (isLineStructure(candidate.expansion)) {
 			if (candidate.documentFrequency < 2) {
@@ -556,8 +472,6 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 		scored.push({ candidate, savedTokens: perUse * value, handleTokens });
 	}
 
-	// Highest savings first; tie-break by density, then stable by first-seen so
-	// generation is deterministic.
 	scored.sort((a, b) => {
 		if (b.savedTokens !== a.savedTokens) {
 			return b.savedTokens - a.savedTokens;
@@ -570,7 +484,6 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 		return a.candidate.firstSeen - b.candidate.firstSeen;
 	});
 
-	// Fill the dictionary highest value first, stopping before the budget breaks.
 	const headerTokens = countTokens(
 		sigil !== DEFAULT_SIGIL
 			? `version = ${SUPPORTED_VERSION}\nsigil = "${sigil}"\n\n[handles]\n`
@@ -615,7 +528,6 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 		}
 	}
 
-	// Admit candidates fitting remaining budget and savings coverage.
 	const feasible: GeneratedHandle[] = [];
 	let feasibleTokens = 0;
 	for (const entry of scored) {
@@ -698,15 +610,11 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 	};
 }
 
-/** Generate an `AGENTS.dict` from a repository — the recommended starting point. */
 export function generateDictFromRepo(files: RepoFile[], options: GenerateOptions = {}): GeneratedDict {
 	const samples: string[] = [];
-	// Each path on its own line so it is enumerated as a candidate token.
 	for (const file of files) {
 		samples.push(file.path);
 	}
-	// Contents contribute frequency: a path referenced across many files, or a
-	// command repeated in scripts, is counted every time it appears.
 	for (const file of files) {
 		if (file.content !== undefined) {
 			samples.push(file.content);

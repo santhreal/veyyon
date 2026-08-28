@@ -14,15 +14,12 @@ const AGENT_DIR = path.join(PKG_DIR, "agent");
 const CODING_AGENT_DIR = path.join(REPO_ROOT, "packages", "coding-agent");
 const AGENT_IMPORT_PATH = "veyyon_local:VeyyonLocal";
 
-/** Container-side mount points for `--install source` (must match veyyon_local.py defaults). */
 const SOURCE_SRC_MOUNT = "/opt/veyyon/src";
 const SOURCE_BIN_MOUNT = "/opt/veyyon/bin";
 
-/** Host address containers see on Apple Container's vmnet (bridge) network. */
 const VMNET_HOST_IP = "192.168.64.1";
 const DOCKER_GATEWAY_URL = "http://host.docker.internal:4000";
 const VMNET_GATEWAY_URL = `http://${VMNET_HOST_IP}:4000`;
-/** Resolver injected into Apple Container runs. */
 const CONTAINER_DNS = process.env.VEYYON_BENCH_CONTAINER_DNS || "1.1.1.1";
 
 export interface Config {
@@ -34,7 +31,6 @@ export interface Config {
 	include: string[];
 	exclude: string[];
 	thinking: string | null;
-	/** Extra args forwarded verbatim to the in-container veyyon CLI invocation (repeatable). */
 	agentArgs: string[];
 
 	agent: string;
@@ -58,11 +54,8 @@ export interface Config {
 	cleanup: boolean;
 	cleanupForce: boolean;
 	hostNetwork: boolean;
-	/** Job name (or job dir path) to resume via `harbor job resume` instead of starting a new run. */
 	resume: string | null;
-	/** With resume: evict+re-run completed trials that errored with these exception types. */
 	filterErrorTypes: string[];
-	/** Harbor environment backend running the task containers. */
 	envType: "docker" | "apple-container";
 	passthrough: string[];
 	env: Record<string, string>;
@@ -350,14 +343,12 @@ export function parseArgs(argv: string[]): Config {
 	return cfg;
 }
 
-/** manager.json launch record written by RunStore.registerLaunch. */
 interface ManagerRecord {
 	benchmark?: string;
 	dataset?: string;
 	config?: LaunchRequest;
 }
 
-/** Recover the original launch Config for `--resume <job>`. */
 export function resolveResumeConfig(cli: Config): Config {
 	const spec = cli.resume as string;
 	const jobsDir = spec.includes(path.sep) ? path.dirname(path.resolve(spec)) : cli.jobsDir;
@@ -405,7 +396,6 @@ export function resolveResumeConfig(cli: Config): Config {
 
 const isTTY = Boolean(process.stdout.isTTY);
 const useColor = isTTY && !process.env.NO_COLOR;
-/** Control Sequence Introducer (ESC [). */
 const CSI = "\x1b[";
 function c(code: string, s: string): string {
 	return useColor ? `${CSI}${code}m${s}${CSI}0m` : s;
@@ -491,13 +481,9 @@ function readJson(file: string): unknown {
 	}
 }
 
-/** Running usage totals for one live trial's transcript, plus the parse cursor. */
 interface CostProbe {
-	/** Bytes of the transcript already consumed. */
 	offset: number;
-	/** Trailing partial line carried to the next read (bytes, so multi-byte chars survive chunking). */
 	remainder: Buffer;
-	/** True while discarding an oversized line (resync at the next newline). */
 	discarding: boolean;
 	costUsd: number;
 	tokIn: number;
@@ -511,7 +497,6 @@ const COST_PROBE_FIRST_SCAN_BYTES = 16 * 1024 * 1024;
 const COST_PROBE_MAX_LINE_BYTES = 4 * 1024 * 1024;
 const COST_PROBE_CHUNK_BYTES = 1024 * 1024;
 
-/** Accumulate assistant `message_end` usage from one complete transcript line. */
 function probeLine(line: string, probe: CostProbe): void {
 	const trimmed = line.trim();
 	if (!trimmed) return;
@@ -527,12 +512,9 @@ function probeLine(line: string, probe: CostProbe): void {
 		probe.tokCache += num(usage.cacheRead);
 		const cost = usage.cost;
 		if (cost && typeof cost === "object") probe.costUsd += num(cost.total);
-	} catch {
-		/* Ignore malformed lines from incomplete writes */
-	}
+	} catch {}
 }
 
-/** Realtime usage for a still-running trial, read incrementally from JSONL. */
 function probeTrialCost(ompLogPath: string): CostProbe | null {
 	let size: number;
 	try {
@@ -542,7 +524,6 @@ function probeTrialCost(ompLogPath: string): CostProbe | null {
 	}
 	let probe = costProbes.get(ompLogPath);
 	if (!probe || size < probe.offset) {
-		// New (or truncated/rotated) transcript. Skip a pre-existing giant head.
 		probe = {
 			offset: Math.max(0, size - COST_PROBE_FIRST_SCAN_BYTES),
 			remainder: Buffer.alloc(0),
@@ -583,23 +564,19 @@ function probeTrialCost(ompLogPath: string): CostProbe | null {
 			}
 		}
 	} catch {
-		/* keep whatever was accumulated; retry next tick */
 	} finally {
 		fs.closeSync(fd);
 	}
 	return probe;
 }
 
-/** Parse one trial directory into a Trial, or null if it isn't a trial dir yet. */
 function parseTrial(dir: string, name: string): Trial | null {
 	const resultPath = path.join(dir, "result.json");
 	if (!fs.existsSync(resultPath)) {
 		let started = Date.now();
 		try {
 			started = fs.statSync(dir).mtimeMs;
-		} catch {
-			/* ignore */
-		}
+		} catch {}
 
 		const probe = probeTrialCost(path.join(dir, "agent", "veyyon.txt"));
 		const costUsd = probe?.costUsd ?? 0;
@@ -697,12 +674,10 @@ export function readTrials(jobDir: string): Trial[] {
 	return trials;
 }
 
-/** Authoritative job-level totals from <jobDir>/result.json (written incrementally). */
 export interface JobInfo {
 	nTotal: number;
 	running: number | null;
 	pending: number | null;
-	/** Harbor sets this only when the job reached a terminal state. */
 	finishedAt: number | null;
 }
 
@@ -859,7 +834,6 @@ function render(st: RenderState): void {
 	}
 }
 
-/** Emoji-tagged status label for a trial's result column. */
 function trialStatusLabel(status: TrialStatus): string {
 	switch (status) {
 		case "pass":
@@ -873,7 +847,6 @@ function trialStatusLabel(status: TrialStatus): string {
 	}
 }
 
-/** Render one trial as a Markdown results-table row. */
 export function renderTrialRow(t: Trial): string {
 	const reward = t.reward !== null ? t.reward.toFixed(2) : "—";
 	return `| ${escapeMarkdownTableCell(t.name)} | ${trialStatusLabel(t.status)} | ${reward} | ${fmtUsd(t.costUsd)} | ${fmtDur(t.durationMs)} | ${escapeMarkdownTableCell(t.detail)} |`;
@@ -965,16 +938,12 @@ function newestTarball(benchDir: string): string | null {
 	}
 }
 
-/** Linux deps tree + mount plan for running veyyon straight from the mounted repo. */
 export interface SourceMount {
 	arch: "arm64" | "x64";
-	/** Host dir holding the linux `bin/bun` + skeleton `node_modules` trees. */
 	depsDir: string;
-	/** Repo-relative node_modules dirs to shadow-mount over the darwin ones. */
 	nodeModules: string[];
 }
 
-/** Bun version pinned by the repo's `packageManager` field. */
 function repoBunVersion(): string {
 	const raw = readJson(path.join(REPO_ROOT, "package.json"));
 	if (raw && typeof raw === "object") {
@@ -984,7 +953,6 @@ function repoBunVersion(): string {
 	return "1.4.0";
 }
 
-/** Native arch of the docker daemon (what non-emulated task containers run as). */
 function dockerServerArch(): "arm64" | "x64" {
 	const r = spawnSync("docker", ["version", "--format", "{{.Server.Arch}}"], { encoding: "utf8" });
 	const a = (r.stdout ?? "").trim();
@@ -993,7 +961,6 @@ function dockerServerArch(): "arm64" | "x64" {
 	throw new Error(`cannot detect docker server arch (got ${a || "nothing"}); is docker running?`);
 }
 
-/** Workspace member dirs (repo-relative), expanded from root package.json `workspaces.packages`. */
 function workspacePackageDirs(): string[] {
 	const raw = readJson(path.join(REPO_ROOT, "package.json")) as {
 		workspaces?: { packages?: string[] };
@@ -1007,7 +974,6 @@ function workspacePackageDirs(): string[] {
 	return [...dirs].sort();
 }
 
-/** Manifest files (repo-relative) that fully determine a `bun install` result. */
 function sourceManifestFiles(pkgDirs: string[]): string[] {
 	const files = ["package.json", "bun.lock"];
 	if (fs.existsSync(path.join(REPO_ROOT, "bunfig.toml"))) files.push("bunfig.toml");
@@ -1031,7 +997,6 @@ function sourceDepsStamp(manifests: string[], bunVersion: string): string {
 	return h.digest("hex");
 }
 
-/** Ensure cached linux deps tree for source mode. */
 export function prepareSourceDeps(cfg: Config): SourceMount {
 	const arch = cfg.envType === "apple-container" ? "arm64" : dockerServerArch();
 	const bunVersion = repoBunVersion();
@@ -1043,9 +1008,7 @@ export function prepareSourceDeps(cfg: Config): SourceMount {
 	let current: string | null = null;
 	try {
 		current = fs.readFileSync(stampFile, "utf8").trim();
-	} catch {
-		/* no stamp yet */
-	}
+	} catch {}
 	if (current !== stamp) {
 		process.stdout.write(dim(`building linux-${arch} deps tree for source mount (one-time per lockfile change)…\n`));
 		fs.rmSync(depsDir, { recursive: true, force: true });
@@ -1113,10 +1076,6 @@ export function prepareSourceDeps(cfg: Config): SourceMount {
 	return { arch, depsDir, nodeModules };
 }
 
-/**
- * Compose overlay applied to every trial's `main` service: host networking and/or the
- * read-only source + linux-deps mounts. Returns null when nothing needs overlaying.
- */
 function writeComposeOverlay(benchDir: string, cfg: Config, source: SourceMount | null): string | null {
 	const lines: string[] = [];
 	if (cfg.hostNetwork) lines.push('    network_mode: "host"');
@@ -1134,7 +1093,6 @@ function writeComposeOverlay(benchDir: string, cfg: Config, source: SourceMount 
 	return file;
 }
 
-/** Mounts JSON for non-compose environments (apple-container). */
 function buildMountsJson(source: SourceMount | null): string | null {
 	if (!source) return null;
 	const mounts: Array<{ type: "bind"; source: string; target: string; read_only: true }> = [
@@ -1189,7 +1147,6 @@ function gatewayHealthOk(url: string): boolean {
 	return r.status === 0 && (r.stdout ?? "").includes('"ok":true');
 }
 
-/** HTTP forward from vmnet host address to loopback auth gateway. */
 function startVmnetGatewayForward(cfg: Config): { stop(): void } | null {
 	if (cfg.envType !== "apple-container" || !cfg.gateway) return null;
 	const url = new URL(cfg.gatewayUrl);
@@ -1257,7 +1214,6 @@ function buildHarborArgs(
 	for (let pi = 0; pi < cfg.passthrough.length; pi++) a.push(cfg.passthrough[pi]!);
 	return a;
 }
-/** Resume argv for an existing job dir. */
 export function buildResumeArgs(cfg: Config, jobDir: string): string[] {
 	const a: string[] = ["job", "resume", "-p", jobDir];
 	if (cfg.filterErrorTypes.length > 0) {
@@ -1281,7 +1237,6 @@ const FORWARD_ENV_DENYLIST = new Set([
 	"VEYYON_EVAL_LOCAL_ROOTS",
 ]);
 
-/** Env vars injected into in-container veyyon run. */
 export function collectForwardEnv(cfg: Config): Record<string, string> {
 	const out: Record<string, string> = {};
 	for (const [k, v] of Object.entries(process.env)) {
@@ -1332,7 +1287,6 @@ export function buildHarborEnv(
 	return env;
 }
 
-/** Harbor names each trial's compose project `<task>__<7-char-suffix>`. */
 const HARBOR_PROJECT_RE = /^[a-z0-9_.-]+__[a-zA-Z0-9]{7}$/;
 
 interface DockerContainer {
@@ -1342,7 +1296,6 @@ interface DockerContainer {
 	workingDir: string;
 }
 
-/** All containers belonging to a Harbor trial (by compose project or task working_dir). */
 function listHarborContainers(): DockerContainer[] {
 	const res = spawnSync(
 		"docker",
@@ -1366,7 +1319,6 @@ function listHarborContainers(): DockerContainer[] {
 	return out;
 }
 
-/** Remove leftover Harbor trial Docker resources. */
 function runDockerCleanup(force: boolean): void {
 	try {
 		process.stdout.write(dim("Running harbor-targeted Docker cleanup...\n"));
@@ -1521,7 +1473,6 @@ async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 		return { exitCode: 0, jobName, jobDir, benchDir, tarball, elapsedMs: 0, totals: null, reportPath: null };
 	}
 
-	// Pre-run cleanup of leftover Harbor resources, if requested.
 	if ((cfg.cleanup || cfg.cleanupForce) && cfg.envType === "docker" && which("docker")) {
 		runDockerCleanup(cfg.cleanupForce);
 	}
@@ -1551,9 +1502,7 @@ async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 	const onSig = (): void => {
 		try {
 			proc.kill("SIGINT");
-		} catch {
-			/* ignore */
-		}
+		} catch {}
 	};
 	process.on("SIGINT", onSig);
 	process.on("SIGTERM", onSig);
@@ -1570,14 +1519,11 @@ async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 		if (isTTY) process.stdout.write(`${CSI}?25h${CSI}?1049l`); // restore cursor + screen
 		try {
 			fs.closeSync(logFd);
-		} catch {
-			/* ignore */
-		}
+		} catch {}
 		process.off("SIGINT", onSig);
 		process.off("SIGTERM", onSig);
 	}
 
-	// final summary (printed to the normal screen)
 	const trials = readTrials(jobDir);
 	const totals = aggregate(trials, readJobResult(jobDir), expected);
 	const successPct = totals.done > 0 ? (totals.pass / totals.done) * 100 : 0;

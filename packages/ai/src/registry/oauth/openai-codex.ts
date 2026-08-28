@@ -1,7 +1,3 @@
-/**
- * OpenAI Codex (ChatGPT OAuth) flow — browser and device-code flows.
- */
-
 import { type CodexTokenIdentity, OPENAI_HEADER_VALUES, readCodexTokenIdentity } from "@veyyon/catalog/wire/codex";
 import { withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import * as AIError from "../../error";
@@ -24,11 +20,9 @@ const DEVICE_REDIRECT_URI = "https://auth.openai.com/deviceauth/callback";
 const DEVICE_AUTH_URL = "https://auth.openai.com/codex/device";
 const DEVICE_POLL_INTERVAL_MS = 5_000;
 const DEVICE_POLL_SAFETY_MARGIN_MS = 3_000;
-/** Upper bound on device-code polling to avoid infinite loops on server errors. */
 const DEVICE_MAX_POLLS = 120;
 
 function getTokenProfile(accessToken: string): CodexTokenIdentity {
-	// Claim namespaces and empty-claim rules from @veyyon/catalog/wire/codex.
 	return readCodexTokenIdentity(accessToken);
 }
 
@@ -50,7 +44,6 @@ function describeTokenEndpointValue(value: unknown): string | undefined {
 	return code ?? message ?? JSON.stringify(value);
 }
 
-/** Formats OpenAI Codex OAuth token endpoint errors for login and refresh failures. */
 export function formatOpenAICodexTokenEndpointError(status: number, bodyText: string): string {
 	const trimmed = bodyText.trim();
 	if (trimmed.length === 0) return `${status}`;
@@ -67,7 +60,6 @@ export function formatOpenAICodexTokenEndpointError(status: number, bodyText: st
 		return `${status} ${trimmed}`;
 	}
 }
-/** Builds the Codex browser OAuth URL used by browser login; exported for auth regression tests. */
 export function createOpenAICodexAuthorizationUrl(args: {
 	state: string;
 	redirectUri: string;
@@ -100,10 +92,6 @@ class OpenAICodexOAuthFlow extends OAuthCallbackFlow {
 		super(ctrl, {
 			preferredPort: CALLBACK_PORT,
 			callbackPath: CALLBACK_PATH,
-			// Enforce the fixed port: OpenAI only allows http://localhost:1455/auth/callback.
-			// Without this, a busy port 1455 falls back to a random port, and the token
-			// exchange would fail with 403 because the redirect_uri no longer matches the
-			// registered allowlist entry.
 			redirectUri: `http://localhost:${CALLBACK_PORT}${CALLBACK_PATH}`,
 		} satisfies OAuthCallbackFlowOptions);
 		this.#pkce = pkce;
@@ -132,8 +120,6 @@ async function exchangeCodeForToken(
 	redirectUri: string,
 	fetchImpl: FetchImpl = fetch,
 ): Promise<OAuthCredentials> {
-	// The fence spans the body read and its timer is cleared on settle
-	// (a bare AbortSignal.timeout stays armed for the full timeout).
 	const tokenData = await withScopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS, async signal => {
 		const tokenResponse = await fetchImpl(TOKEN_URL, {
 			method: "POST",
@@ -181,11 +167,7 @@ async function exchangeCodeForToken(
 	};
 }
 
-/**
- * Login with OpenAI Codex OAuth
- */
 export type OpenAICodexLoginOptions = OAuthController & {
-	/** Optional originator value for OpenAI Codex OAuth. Default matches Veyyon Codex request headers. */
 	originator?: string;
 };
 
@@ -197,17 +179,9 @@ export async function loginOpenAICodex(options: OpenAICodexLoginOptions): Promis
 	return flow.login();
 }
 
-/**
- * Login with OpenAI Codex using the device-code (headless) flow.
- *
- * Avoids a local callback server entirely — useful when port 1455 is unavailable
- * or when the browser callback flow fails with 403 (e.g. network/proxy issues).
- */
 export async function loginOpenAICodexDevice(ctrl: OAuthController): Promise<OAuthCredentials> {
 	ctrl.onProgress?.("Initiating device authorization…");
 
-	// The fence spans the body read and its timer is cleared on settle
-	// (a bare AbortSignal.timeout stays armed for the full timeout).
 	const initData = await withScopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS, async signal => {
 		const initResponse = await fetch(DEVICE_USERCODE_URL, {
 			method: "POST",
@@ -256,9 +230,6 @@ export async function loginOpenAICodexDevice(ctrl: OAuthController): Promise<OAu
 			throw new AIError.LoginCancelledError("Device authorization cancelled");
 		}
 
-		// The fence spans the body read and its timer is cleared on settle
-		// (a bare AbortSignal.timeout stays armed for the full timeout).
-		// `null` = authorization still pending, keep polling.
 		const pollData = await withScopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS, async signal => {
 			const pollResponse = await fetch(DEVICE_TOKEN_URL, {
 				method: "POST",
@@ -270,7 +241,6 @@ export async function loginOpenAICodexDevice(ctrl: OAuthController): Promise<OAu
 				signal,
 			});
 
-			// 403/404 = authorization pending, keep polling
 			if (pollResponse.status === 403 || pollResponse.status === 404) {
 				return null;
 			}
@@ -306,12 +276,7 @@ export async function loginOpenAICodexDevice(ctrl: OAuthController): Promise<OAu
 	});
 }
 
-/**
- * Refresh OpenAI Codex OAuth token
- */
 export async function refreshOpenAICodexToken(refreshToken: string): Promise<OAuthCredentials> {
-	// The fence spans the body read and its timer is cleared on settle
-	// (a bare AbortSignal.timeout stays armed for the full timeout).
 	const tokenData = await withScopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS, async signal => {
 		const response = await fetch(TOKEN_URL, {
 			method: "POST",

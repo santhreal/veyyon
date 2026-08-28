@@ -22,17 +22,13 @@ import {
 	sizingForArea,
 } from "./modal-shell";
 
-/** What a login flow is currently asking the operator to paste. */
 interface PromptState {
 	message: string;
 	placeholder?: string;
-	/** Mask the value and take the paste byte for byte: the answer is a credential. */
 	secret: boolean;
-	/** The verb Enter performs in this prompt ("submit" a credential, "save" a name). */
 	submitVerb: string;
 }
 
-/** Where the operator has to go to authorize, once a flow knows. */
 interface AuthState {
 	url: string;
 	launchUrl?: string;
@@ -50,7 +46,6 @@ function loginPromptChips(submitVerb: string, cancelVerb: string): readonly Moda
 	];
 }
 
-/** The login surface: one floating ModalShell card, rebuilt from state, hosted as a fullscreen overlay while a provider flow runs. */
 export class LoginDialogComponent implements Component {
 	#input: Input;
 	#tui: TUI;
@@ -61,7 +56,6 @@ export class LoginDialogComponent implements Component {
 	#auth?: AuthState;
 	#status?: string;
 	#prompt?: PromptState;
-	/** What Esc does to the prompt on screen. `cancel` aborts the whole login, which is right while a flow is still waiting for a credential. `skip` answers the question with nothing, for the */
 	#escapeMode: "cancel" | "skip" = "cancel";
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
@@ -74,9 +68,6 @@ export class LoginDialogComponent implements Component {
 		options?: { getTerminalRows?: () => number },
 	) {
 		this.#tui = tui;
-		// One label owner for provider names, the same one the status line, the account card and the
-		// logout dialog use. Reading the browser-login table here printed a raw slug (`Login to groq`)
-		// for every provider that authenticates with a pasted key, since that table has no row for one.
 		this.#title = `Login to ${formatProviderName(providerId)}`;
 		this.#getTerminalRows = options?.getTerminalRows ?? (() => process.stdout.rows || 40);
 		this.#input = new Input();
@@ -92,7 +83,6 @@ export class LoginDialogComponent implements Component {
 		return this.#abortController.signal;
 	}
 
-	/** Hand the pending prompt its answer and take the question off the card. */
 	#settlePrompt(value: string): void {
 		const resolve = this.#inputResolver;
 		this.#inputResolver = undefined;
@@ -105,7 +95,6 @@ export class LoginDialogComponent implements Component {
 
 	#escape(): void {
 		if (this.#escapeMode === "skip") {
-			// The credential is already stored; this question was optional.
 			this.#settlePrompt("");
 			return;
 		}
@@ -128,15 +117,10 @@ export class LoginDialogComponent implements Component {
 		return loginPromptChips(prompt.submitVerb, this.#escapeMode === "skip" ? "skip" : "cancel");
 	}
 
-	invalidate(): void {
-		// Stateless: the card is laid out from fields on every render.
-	}
+	invalidate(): void {}
 
 	render(width: number): string[] {
 		const termHeight = Math.max(14, this.#getTerminalRows());
-		// LARGE, not MEDIUM: the authorize URL is a copy target and a narrow card
-		// wraps it mid-token, so the card takes the wider sizing to keep a typical
-		// URL on one row.
 		const sizing = sizingForArea(MODAL_SIZING_LARGE, termHeight);
 		const dims = computeModalDims(width, termHeight, sizing);
 		if (!dims) {
@@ -144,7 +128,6 @@ export class LoginDialogComponent implements Component {
 			return new Array(termHeight).fill(padding(width));
 		}
 
-		// Lay the card out from state: where to go, what is happening, what is being asked. One blank line between blocks and none inside one, so the
 		const body: string[] = [];
 		const say = (line: string): void => {
 			body.push(...wrapTextWithAnsi(line, dims.contentWidth));
@@ -232,32 +215,26 @@ export class LoginDialogComponent implements Component {
 		return true;
 	}
 
-	/** Called by the OAuth `onAuth` callback. Renders the full authorization URL as the primary copy target: that works from any machine, including SSH/WSL/headless sessions where the veyyon-hosted */
 	showAuth(url: string, instructions?: string, launchUrl?: string): void {
 		this.#auth = { url, ...(launchUrl ? { launchUrl } : {}), ...(instructions ? { instructions } : {}) };
 		this.#tui.requestRender();
-		// Best-effort: a relayout must never open a second tab.
 		openPath(url);
 	}
 
-	/** Called by the `onProgress` callback. One status line, replaced rather than appended: three validation attempts are three states of one login, not three things to read. */
 	showProgress(message: string): void {
 		this.#status = message;
 		this.#tui.requestRender();
 	}
 
-	/** Ask for a credential (or a pasted code) and wait. Replaces any question already on screen. */
 	showPrompt(prompt: { message: string; placeholder?: string; secret?: boolean }): Promise<string> {
 		return this.#ask({
 			message: prompt.message,
 			...(prompt.placeholder ? { placeholder: prompt.placeholder } : {}),
-			// Absent means masked: a flow that wants a readable field says so.
 			secret: prompt.secret !== false,
 			submitVerb: "submit",
 		});
 	}
 
-	/** Ask what to call the account that was just stored, where Esc means "leave it unnamed". Naming belongs at creation: the operator has just watched a login land and knows which account */
 	askOptionalName(message: string, placeholder?: string): Promise<string | undefined> {
 		const answered = this.#ask({
 			message,
@@ -285,7 +262,6 @@ export class LoginDialogComponent implements Component {
 		return promise;
 	}
 
-	/** Route non-bracketed paste transports into the active login input. */
 	pasteText(text: string): void {
 		this.#input.pasteText(text);
 	}

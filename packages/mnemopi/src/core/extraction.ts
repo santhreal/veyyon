@@ -11,7 +11,6 @@ import {
 	llmMaxTokens,
 } from "./local-llm-config";
 
-/** Dynamically import LLM client. */
 function llmClient() {
 	return import("./local-llm");
 }
@@ -69,14 +68,12 @@ const INSTRUCTION_TEXT_FIELD_KEYS = ["instruction", "rule", ...FACT_TEXT_FIELD_K
 const PREFERENCE_TEXT_FIELD_KEYS = ["preference", ...FACT_TEXT_FIELD_KEYS] as const;
 const TIMELINE_TEXT_FIELD_KEYS = ["description", "event", "timeline", "date", ...FACT_TEXT_FIELD_KEYS] as const;
 
-/** Parsed knowledge-graph edge emitted by the extractor LLM. */
 export interface ExtractedKgTriple {
 	subject: string;
 	predicate: string;
 	object: string;
 }
 
-/** Category-preserving extraction result used by background memory routing. */
 export interface ExtractedFactCategories {
 	facts: string[];
 	instructions: string[];
@@ -168,7 +165,6 @@ function normalizeKgArray(items: unknown): ExtractedKgTriple[] {
 	return out;
 }
 
-/** Flatten extracted string categories for legacy fact callers. */
 export function flattenExtractedFactCategories(extracted: ExtractedFactCategories): string[] {
 	const out: string[] = [];
 	for (const category of STRING_CATEGORY_KEYS) {
@@ -179,7 +175,6 @@ export function flattenExtractedFactCategories(extracted: ExtractedFactCategorie
 	return out;
 }
 
-/** Count string facts plus KG triples in a category-preserving extraction result. */
 export function countExtractedFactCategories(extracted: ExtractedFactCategories): number {
 	return (
 		extracted.facts.length +
@@ -190,7 +185,6 @@ export function countExtractedFactCategories(extracted: ExtractedFactCategories)
 	);
 }
 
-/** Parse extractor output without discarding MEMORIA categories or KG triples. */
 export function parseExtractedFactCategories(rawOutput: string | null | undefined): ExtractedFactCategories {
 	if (rawOutput === null || rawOutput === undefined) {
 		return emptyFactCategories();
@@ -239,7 +233,6 @@ export function parseExtractedFactCategories(rawOutput: string | null | undefine
 	return { ...emptyFactCategories(), facts: cleaned };
 }
 
-/** Parse extractor output into the legacy flat string fact list. */
 export function parseFacts(rawOutput: string | null | undefined): string[] {
 	return flattenExtractedFactCategories(parseExtractedFactCategories(rawOutput)).slice(0, FLAT_FACT_LIMIT);
 }
@@ -301,7 +294,6 @@ async function tryHostExtraction(prompt: string): Promise<[boolean, string | nul
 	return [true, text === "" ? null : text];
 }
 
-/** Run pattern extraction fallback. */
 function patternFallback(
 	sourceText: string,
 	diag = extractionDiagnostics(),
@@ -323,7 +315,6 @@ function patternFallback(
 	return emptyFactCategories();
 }
 
-/** Extract fact categories from text using configured, host, local, or remote LLMs. */
 export async function extractFactCategories(
 	text: string | null | undefined,
 	options: RemoteLlmOptions = {},
@@ -406,13 +397,11 @@ export async function extractFactCategories(
 	return patternFallback(text, diag);
 }
 
-/** Extract legacy flat fact strings from text. */
 export async function extractFacts(text: string | null | undefined, options: RemoteLlmOptions = {}): Promise<string[]> {
 	const extracted = await extractFactCategories(text, options);
 	return flattenExtractedFactCategories(extracted).slice(0, FLAT_FACT_LIMIT);
 }
 
-/** Safely extract category-preserving facts, swallowing best-effort failures. */
 export async function extractFactCategoriesSafe(text: string | null | undefined): Promise<ExtractedFactCategories> {
 	try {
 		return await extractFactCategories(text);
@@ -425,7 +414,6 @@ export async function extractFactCategoriesSafe(text: string | null | undefined)
 	}
 }
 
-/** Safely extract legacy flat fact strings, swallowing best-effort failures. */
 export async function extractFactsSafe(text: string | null | undefined): Promise<string[]> {
 	const extracted = await extractFactCategoriesSafe(text);
 	return flattenExtractedFactCategories(extracted).slice(0, FLAT_FACT_LIMIT);

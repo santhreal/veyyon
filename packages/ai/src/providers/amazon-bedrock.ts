@@ -52,11 +52,8 @@ export interface BedrockOptions extends StreamOptions {
 	profile?: string;
 	bearerToken?: string;
 	toolChoice?: "auto" | "any" | "none" | { type: "tool"; name: string };
-	/* See https://docs.aws.amazon.com/bedrock/latest/userguide/inference-reasoning.html for supported models. */
 	reasoning?: Effort;
-	/* Custom token budgets per thinking level. Overrides default budgets. */
 	thinkingBudgets?: ThinkingBudgets;
-	/* Only supported by Claude 4.x models, see https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-extended-thinking.html#claude-messages-extended-thinking-tool-use-interleaved */
 	interleavedThinking?: boolean;
 	thinkingDisplay?: BedrockThinkingDisplay;
 }
@@ -194,7 +191,6 @@ interface ConverseStreamRequest {
 	additionalModelRequestFields?: Record<string, unknown>;
 }
 
-// Streaming events (snake_case matches the JSON envelope key, but Bedrock uses camelCase).
 interface MessageStartEvent {
 	role: "user" | "assistant";
 }
@@ -265,7 +261,6 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 				accept: "application/vnd.amazon.eventstream",
 			};
 
-			// Clear the pre-response timer the instant headers arrive.
 			const firstEventTimeoutMs = options.streamFirstEventTimeoutMs ?? getStreamFirstEventTimeoutMs();
 			const watchdog = armPreResponseTimeout(options.signal, firstEventTimeoutMs);
 			const transportFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
@@ -308,7 +303,6 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 				sentinelInjected = toolPlan.sentinelInjected;
 				let additionalModelRequestFields = buildAdditionalModelRequestFields(model, options);
 
-				// Disable thinking if tool_choice forces tool use.
 				if (toolConfig?.toolChoice && additionalModelRequestFields) {
 					const tc = toolConfig.toolChoice;
 					if (tc.any || tc.tool) additionalModelRequestFields = undefined;
@@ -337,7 +331,6 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 					method: "POST",
 					url,
 				};
-				// Retain exact sent bytes for diagnostic dumps on 400/413.
 				wireBodyJson = JSON.stringify(commandInput);
 				const body = new TextEncoder().encode(wireBodyJson);
 
@@ -364,7 +357,6 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 			};
 			let response: Response;
 			try {
-				// Capture payload for aborted requests.
 				if (watchdog.signal?.aborted) await prepareRequest();
 				response = await fetchProviderWithRetry(url, {
 					method: "POST",
@@ -381,10 +373,8 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 
 			if (!response.ok) {
 				if (!bearerToken && (response.status === 401 || response.status === 403)) {
-					// Invalidate credential cache on auth failure.
 					invalidateAwsCredentialCache({ profile: options.profile, region });
 				}
-				// Read bounded error detail from response.
 				const detail = await AIError.readProviderErrorDetail(response);
 				throw new AIError.BedrockApiError(`Bedrock HTTP ${response.status}: ${detail}`, response.status, {
 					headers: response.headers,
@@ -415,7 +405,6 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 
 				switch (eventType) {
 					case "messageStart": {
-						// no-op: first event marker is implicit by stream entry.
 						const ev = payload as MessageStartEvent;
 						if (ev.role !== "assistant") {
 							throw new AIError.BedrockApiError(
@@ -443,7 +432,6 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 					case "messageStop": {
 						sawMessageStop = true;
 						const ev = payload as MessageStopEvent;
-						// Sentinel-only requests do not surface tool_use stop.
 						output.stopReason =
 							sentinelInjected && ev.stopReason === "tool_use" ? "stop" : mapStopReason(ev.stopReason);
 						if (output.stopReason === "error") {
@@ -456,7 +444,6 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 						break;
 					}
 					default:
-						// Unknown event types (Bedrock may add new ones) — ignore.
 						break;
 				}
 			}
@@ -490,7 +477,6 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 				if (block.type === "toolCall") clearStreamingPartialJson(block);
 			}
 			const baseMessage = error instanceof Error ? error.message : JSON.stringify(error);
-			// Enrich error with thinking block diagnostics for signature-related failures
 			let diagnostics = "";
 			if (baseMessage.includes("signature") || baseMessage.includes("thinking")) {
 				const thinkingBlocks = context.messages
@@ -548,7 +534,6 @@ function handleContentBlockStart(
 	const index = event.contentBlockIndex;
 	const start = event.start;
 
-	// Drop sentinel call if injected.
 	if (sentinelInjected && start?.toolUse?.name === NO_TOOLS_SENTINEL_NAME) return;
 
 	if (start?.toolUse) {
@@ -577,7 +562,6 @@ function handleContentBlockDelta(
 	let block = blocks[index];
 
 	if (delta?.text !== undefined) {
-		// If no text block exists yet, create one — `handleContentBlockStart` is not sent for text blocks
 		if (!block) {
 			const newBlock: Block = { type: "text", text: "", [kStreamingBlockIndex]: contentBlockIndex };
 			output.content.push(newBlock);
@@ -711,7 +695,6 @@ function convertMessages(
 			case "developer":
 			case "user":
 				if (typeof m.content === "string") {
-					// Skip empty user messages
 					if (!m.content || m.content.trim() === "") continue;
 					result.push({ role: "user", content: [{ text: m.content.toWellFormed() }] });
 				} else {
@@ -731,20 +714,16 @@ function convertMessages(
 								throw new AIError.ValidationError("Unknown user content type");
 						}
 					}
-					// Skip message if all blocks filtered out
 					if (contentBlocks.length === 0) continue;
 					result.push({ role: "user", content: contentBlocks });
 				}
 				break;
 			case "assistant": {
-				// Skip assistant messages with empty content (e.g., from aborted requests)
-				// Bedrock rejects messages with empty content arrays
 				if (m.content.length === 0) continue;
 				const contentBlocks: AssistantContent[] = [];
 				for (const c of m.content) {
 					switch (c.type) {
 						case "text":
-							// Skip empty text blocks
 							if (c.text.trim().length === 0) continue;
 							contentBlocks.push({ text: c.text.toWellFormed() });
 							break;
@@ -758,7 +737,6 @@ function convertMessages(
 							});
 							break;
 						case "thinking":
-							// Skip empty thinking blocks
 							if (c.thinking.trim().length === 0) continue;
 							if (supportsThinkingSignature(model) && c.thinkingSignature) {
 								contentBlocks.push({
@@ -767,12 +745,10 @@ function convertMessages(
 									},
 								});
 							} else if (!supportsThinkingSignature(model)) {
-								// Model doesn't support signatures at all — send as unsigned reasoning
 								contentBlocks.push({
 									reasoningContent: { reasoningText: { text: c.thinking.toWellFormed() } },
 								});
 							} else {
-								// Model requires signature but we don't have one — demote to text
 								contentBlocks.push({ text: renderDemotedThinking(model.id, c.thinking) });
 							}
 							break;
@@ -780,14 +756,11 @@ function convertMessages(
 							throw new AIError.ValidationError("Unknown assistant content type");
 					}
 				}
-				// Skip if all content blocks were filtered out
 				if (contentBlocks.length === 0) continue;
 				result.push({ role: "assistant", content: contentBlocks });
 				break;
 			}
 			case "toolResult": {
-				// Collect all consecutive toolResult messages into a single user message —
-				// Bedrock requires all tool results to be in one message.
 				const toolResults: ToolResultBlockWire[] = [];
 				toolResults.push({
 					toolResult: {
@@ -827,7 +800,6 @@ function convertMessages(
 		}
 	}
 
-	// Add cache point to the last user message for supported Claude models
 	if (cacheRetention !== "none" && supportsBedrockPromptCaching(model) && result.length > 0) {
 		const lastMessage = result[result.length - 1];
 		if (lastMessage.role === "user" && lastMessage.content) {

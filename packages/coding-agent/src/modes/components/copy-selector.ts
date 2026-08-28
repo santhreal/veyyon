@@ -36,61 +36,47 @@ import {
 } from "./modal-shell";
 import { hoverBandAt } from "./selector-helpers";
 
-/** Minimum rows reserved for the tree even on short terminals. */
 const MIN_TREE_ROWS = 3;
 
 export interface CopySelectorCallbacks {
-	/** A copy target was chosen — copy its `content`. */
 	onPick: (target: CopyTarget) => void;
-	/** The picker was dismissed. */
 	onCancel: () => void;
 }
 
 interface FlatNode {
 	target: CopyTarget;
 	depth: number;
-	/** Last among its siblings (drives └─ vs ├─). */
 	isLast: boolean;
-	/** Per-ancestor flag: does ancestor at that level have a following sibling? */
 	ancestorHasNext: boolean[];
 }
 
-/** Render one tree connector as exactly three cells (e.g. "├─ ", "└─ ", "|--"). */
 function connectorCells(symbol: string): string {
 	return (symbol[0] ?? " ") + (symbol[1] ?? theme.tree.horizontal) + (symbol[2] ?? " ");
 }
 
-/** The 3-cell ancestor gutter: a vertical guide when the ancestor continues. */
 function gutterCells(hasNext: boolean): string {
 	return `${hasNext ? theme.tree.vertical : " "}  `;
 }
 
-/** ModalShell footer chips. One array so the chrome plan is computed from the chips the card renders. */
 const COPY_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "up/down move" },
 	{ label: "enter copy", clickable: true, id: "confirm" },
 	{ label: "esc close", clickable: true, id: "close" },
 ];
 
-/** `/copy` picker: tree of copy targets inside a floating ModalShell card with live preview and shortcut chips. */
 export class CopySelectorComponent implements Component {
 	#roots: CopyTarget[];
 	#cursorId: string;
 	#lastSourceTarget?: CopyTarget;
 	#lastSource?: string;
 	#treeRows = MIN_TREE_ROWS;
-	// Reused across renders to wrap preview content to the pane width.
 	#previewText = new Text("", 0, 0);
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
-	/** Frame row where the tree rows begin (shell body start). */
 	#listRowStart = 0;
-	/** Pointer-highlighted tree row (never the cursor row; the cursor owns its row). */
 	#hoveredIndex: number | null = null;
-	/** Per-render map of 0-based tree line → flat-node index. */
 	#hitRows: (number | undefined)[] = [];
 	#onRequestRender?: () => void;
-	/** The cross-fade between the row the pointer left and the one it arrived at, once a host lends this card a repaint. Absent, the band is switched. */
 	#hoverFade: HoverFade | undefined;
 
 	constructor(
@@ -103,22 +89,17 @@ export class CopySelectorComponent implements Component {
 
 	setOnRequestRender(cb: () => void): void {
 		this.#onRequestRender = cb;
-		// The band fades only once the card has a repaint to lend it: the frames
-		// between two mouse reports have no input to hang off. Same ambient gate as
-		// the open unfold; without it the band is switched.
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: pointerMotionEnabled() });
 		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
 	}
 
-	/** Settle the pointer band so no timer outlives a dismissed card. */
 	dispose(): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = undefined;
 		this.#hoveredIndex = null;
 	}
 
-	/** Band strength for a tree row; without a fade the hovered row is at 1 and the rest at 0. */
 	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;
@@ -226,8 +207,6 @@ export class CopySelectorComponent implements Component {
 		if (event.leftClick) {
 			const index = this.#hitRows[line];
 			if (index !== undefined) {
-				// Click mirrors the cursor + Enter: move to the row, then pick it
-				// when it carries copyable content.
 				const node = this.#flatten()[index];
 				if (node) {
 					this.#cursorId = node.target.id;
@@ -329,7 +308,6 @@ export class CopySelectorComponent implements Component {
 		);
 		const selected = flat[cursorIdx]?.target;
 
-		// Tree + one blank separator + preview, so the two panes share the body budget minus that separator. `modalHeight - 8` put the body TWO rows over
 		const chrome = planModalChrome({
 			sizing,
 			modalHeight: dims.modalHeight,

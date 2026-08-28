@@ -30,16 +30,8 @@ import {
 } from "./db";
 import { getSessionEntryWithContext, listAllSessionFiles, type ParseSessionResult, parseSessionFile } from "./parser";
 import type { SyncWorkerRequest, SyncWorkerResponse } from "./sync-worker";
-// Coding-agent binary/bundle workers route through the CLI entrypoint with a
-// hidden argv mode, so the compiled binary and npm bundle only need one
-// JavaScript entry. Standalone source `veyyon-stats` keeps using this package's
-// own sync-worker source file.
 import type { BehaviorDashboardStats, DashboardStats, MessageStats, RequestDetails, ToolDashboardStats } from "./types";
 
-/**
- * Apply a freshly parsed result to the database. Runs entirely on the
- * main thread so the single SQLite handle owns every write.
- */
 function applyParseResult(sessionFile: string, lastModified: number, result: ParseSessionResult): number {
 	if (result.stats.length > 0) insertMessageStats(result.stats);
 	if (result.userStats.length > 0) insertUserMessageStats(result.userStats);
@@ -50,12 +42,6 @@ function applyParseResult(sessionFile: string, lastModified: number, result: Par
 	return result.stats.length + result.userStats.length;
 }
 
-/**
- * Progress event emitted after each session file is fully processed.
- * `current` is the number of files completed (skipped + parsed),
- * `total` is the size of the work set. `processed` is the running total
- * of inserted rows.
- */
 export interface SyncProgress {
 	current: number;
 	total: number;
@@ -64,26 +50,14 @@ export interface SyncProgress {
 }
 
 export interface SyncOptions {
-	/** Called after each file completes. Synchronous; keep it cheap. */
 	onProgress?: (event: SyncProgress) => void;
-	/**
-	 * Worker pool size. Defaults to a sensible value derived from the host
-	 * (capped to avoid drowning a small machine in workers). Set to `1` to
-	 * force serial parsing without spawning workers.
-	 */
 	workers?: number;
 }
 
 function defaultWorkerCount(): number {
-	// Bun 1.3.x can abort the macOS process when stats sync workers re-enter
-	// the compiled `veyyon` binary. Keep macOS on the documented serial path.
 	if (process.platform === "darwin") return 1;
-	// `navigator.hardwareConcurrency` is the portable answer in Bun; fall
-	// back to a small fixed pool if it's somehow unavailable.
 	const hw = typeof navigator !== "undefined" ? (navigator.hardwareConcurrency ?? 0) : 0;
 	const raw = hw > 0 ? hw : 4;
-	// Cap at 8 - parse is JSON-bound, and SQLite writes serialize on main
-	// thread anyway, so more workers stop helping.
 	return Math.min(8, Math.max(2, Math.floor(raw)));
 }
 
@@ -94,13 +68,6 @@ interface WorkerHandle {
 	reject: ((err: Error) => void) | null;
 }
 
-/**
- * Create a fresh sync worker. When the process was started from a
- * self-dispatching CLI entry (veyyon in source, npm-bundle, or compiled form),
- * re-enter that entry with a worker argv selector; otherwise (standalone
- * veyyon-stats, bun test, SDK embedding) load the worker module directly, so this
- * package keeps zero runtime dependency on `@veyyon/coding-agent`.
- */
 function createSyncWorker(): Worker {
 	const hostEntry = workerHostEntry();
 	if (hostEntry) {
@@ -151,21 +118,6 @@ function dispatch(handle: WorkerHandle, request: SyncWorkerRequest): Promise<Par
 	return promise;
 }
 
-/**
- * Smoke test: spawns one sync worker, pings it, asserts the pong response,
- * then terminates. Used by `veyyon --smoke-test` so the install-method CI jobs
- * catch the silent worker-load failure that hit compiled binaries in #1011
- * and #1027 — neither `--version` nor `stats --summary` exercises the worker
- * spawn path on a fresh install (no session files = early return), so a
- * dedicated probe is the only reliable signal.
- *
- * No-op on darwin: `syncAllSessions` keeps macOS on the serial parser path
- * (see {@link defaultWorkerCount}), so the worker spawn surface is unreachable
- * from the CLI. Probing it directly would re-enter the Bun-worker abort surface
- * that motivated the darwin serial default in the first place.
- *
- * Rejects on transport error, error response, or timeout.
- */
 export async function smokeTestSyncWorker({ timeoutMs = 5_000 }: { timeoutMs?: number } = {}): Promise<void> {
 	if (process.platform === "darwin") return;
 	const worker = createSyncWorker();
@@ -195,15 +147,6 @@ export async function smokeTestSyncWorker({ timeoutMs = 5_000 }: { timeoutMs?: n
 	}
 }
 
-/**
- * Sync all session files to the database.
- *
- * `workers: 1` parses inline. Larger pools fan parsing out across workers
- * (one in-flight job per worker) while DB writes and offset bookkeeping stay on
- * the calling thread so the single SQLite handle stays uncontended.
- * `onProgress` fires once per completed file (skipped files included so the
- * bar walks at a steady rate).
- */
 export async function syncAllSessions(opts?: SyncOptions): Promise<{ processed: number; files: number }> {
 	await initDb();
 
@@ -233,10 +176,6 @@ export async function syncAllSessions(opts?: SyncOptions): Promise<{ processed: 
 		try {
 			fileStats = await fs.promises.stat(sessionFile);
 		} catch (err) {
-			// The file was listed a moment ago, so it going away is a race worth noting and anything
-			// else is a real fault. Either way this file contributes nothing to the totals, and the
-			// progress bar still counts it as done, so without this line a sync that read none of your
-			// sessions looks exactly like a sync that had nothing to read.
 			if (!isEnoent(err)) {
 				logger.warn("Session file could not be examined; it is missing from every statistic", {
 					path: sessionFile,
@@ -383,9 +322,6 @@ export function getTimeRangeConfig(range?: string | null): TimeRangeConfig {
 	};
 }
 
-/**
- * Get all dashboard stats.
- */
 export async function getDashboardStats(range?: string | null): Promise<DashboardStats> {
 	await initDb();
 	const {
@@ -464,10 +400,6 @@ export async function getRequestDetails(id: number): Promise<RequestDetails | nu
 	const resolved = await getSessionEntryWithContext(msg.sessionFile, msg.entryId);
 	if (!resolved) return null;
 
-	// `context` is the turn walked back to its triggering user prompt, oldest
-	// first with the requested entry last; `output` is that requested entry's
-	// message. Callers that only want the response read `output`; callers that
-	// want the prompt and the intervening tool cycle read `messages`.
 	return {
 		...msg,
 		messages: resolved.context,
@@ -475,9 +407,6 @@ export async function getRequestDetails(id: number): Promise<RequestDetails | nu
 	};
 }
 
-/**
- * Get the current message count in the database.
- */
 export async function getTotalMessageCount(): Promise<number> {
 	await initDb();
 	return getMessageCount();
@@ -493,10 +422,6 @@ export async function getBehaviorDashboardStats(range?: string | null): Promise<
 	};
 }
 
-/**
- * Get the tools dashboard payload: per-tool totals, per-(tool, model)
- * breakdown, and the call time series (bucketed like the model series).
- */
 export async function getToolDashboardStats(range?: string | null): Promise<ToolDashboardStats> {
 	await initDb();
 	const { modelSeriesDays, modelSeriesBucketMs, cutoff } = getTimeRangeConfig(range);

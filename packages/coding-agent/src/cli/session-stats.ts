@@ -1,7 +1,4 @@
-/** Session study analysis — the pure core behind `veyyon session stats`. Given a session's loaded entries, this walks the messages once and reduces */
-
 import type { AssistantMessage, ToolCallMetrics, ToolResultMessage } from "@veyyon/ai";
-// The rank from the module that defines it (1 module) rather than the barrel (346).
 import { type InstrumentationLevel, instrumentationRank } from "@veyyon/ai/instrumentation";
 import { clamp, isRecord } from "@veyyon/utils";
 
@@ -9,48 +6,38 @@ import type { FileEntry, SessionHeader, SessionLifecycleReason, SessionMessageEn
 
 const COMPACTION_ENTRY_ID_SAMPLE_LIMIT = 16;
 
-/** One assistant request and the tool calls it drove, with token cost. */
 export interface TurnStat {
-	/** 1-based order of the assistant turn within the session. */
 	index: number;
 	model: string;
 	timestamp: number;
-	/** Provider-reported request wall-clock, when the turn recorded it. */
 	requestMs?: number;
 	input: number;
 	output: number;
 	cacheRead: number;
 	cacheWrite: number;
 	totalTokens: number;
-	/** Tool results attributed to this turn (calls it requested). */
 	toolCalls: number;
 }
 
-/** Latency profile for one tool across every call in the session. */
 export interface ToolLatencyStat {
 	tool: string;
 	calls: number;
-	/** Calls that carried a `durationMs` metric (the p-values are over these). */
 	timed: number;
 	totalDurationMs: number;
 	p50DurationMs: number;
 	p95DurationMs: number;
 	maxDurationMs: number;
-	/** Total scheduler wait across this tool's calls (from `queuedMs`). */
 	queueWaitMs: number;
 	errors: number;
 }
 
-/** How much context weight one tool added, for cost ranking. */
 export interface ToolCostStat {
 	tool: string;
 	calls: number;
-	/** Sum of `resultTokens` (the weight the model pays to keep these results). */
 	resultTokens: number;
 	resultBytes: number;
 }
 
-/** A tool called more than once with byte-identical arguments. */
 export interface RepeatedCall {
 	tool: string;
 	argsHash: string;
@@ -106,9 +93,7 @@ export interface ContextAttributionStats {
 		storedMessagesTokens?: BooleanRollup;
 		tailTokens?: BooleanRollup;
 	};
-	/** Total distinct compaction entries observed across the session. */
 	compactionEntries?: number;
-	/** Bounded tail sample, oldest to newest, for JSON diagnostics. */
 	compactionEntryIds?: string[];
 }
 
@@ -185,7 +170,6 @@ export interface SessionStatsTotals {
 	assistantTurns: number;
 	userMessages: number;
 	toolCalls: number;
-	/** Tool calls that carried a metrics record (instrumentation was on). */
 	instrumentedToolCalls: number;
 	toolErrors: number;
 	input: number;
@@ -193,16 +177,11 @@ export interface SessionStatsTotals {
 	cacheRead: number;
 	cacheWrite: number;
 	totalTokens: number;
-	/** Sum of provider request durations across turns that reported one. */
 	requestMs: number;
-	/** Sum of tool execution durations (from `durationMs`). */
 	toolDurationMs: number;
-	/** Sum of scheduler wait across all calls (from `queuedMs`). */
 	queueWaitMs: number;
-	/** Sum of `resultTokens` across all instrumented calls. */
 	resultTokens: number;
 	resultBytes: number;
-	/** Span from the first to the last message timestamp. */
 	wallClockMs: number;
 }
 
@@ -210,26 +189,19 @@ export interface SessionStatsReport {
 	sessionId: string;
 	cwd: string;
 	messages: number;
-	/** Highest instrumentation level observed on any tool result, or `off`. */
 	instrumentationLevel: InstrumentationLevel;
 	totals: SessionStatsTotals;
 	turns: TurnStat[];
 	toolLatency: ToolLatencyStat[];
 	toolCost: ToolCostStat[];
 	repeatedCalls: RepeatedCall[];
-	/** Present only when lifecycle telemetry entries were persisted. */
 	lifecycle?: LifecycleStats;
-	/** Present only when assistant turns carry a persisted context snapshot. */
 	context?: ContextAttributionStats;
-	/** Present only when tool calls carry instrumentation metrics. */
 	toolSpans?: ToolSpanStats;
-	/** Present only when persisted IRC delivery records exist. */
 	ircDelivery?: IrcDeliveryStats;
-	/** Present only when todo results carry task-state telemetry. */
 	taskState?: TaskStateStats;
 }
 
-/** Nearest-rank percentile of an ascending-sorted array. Deterministic and dependency-free so tests assert exact values: `p` of 50 over `[10,20,30,40]` */
 export function percentile(sortedAsc: readonly number[], p: number): number {
 	if (sortedAsc.length === 0) return 0;
 	const rank = Math.ceil((p / 100) * sortedAsc.length);
@@ -241,7 +213,6 @@ function isMessageEntry(entry: FileEntry): entry is SessionMessageEntry {
 	return entry.type === "message";
 }
 
-/** Per-tool mutable accumulator, resolved to the exported stats at the end. */
 interface ToolAccumulator {
 	calls: number;
 	errors: number;
@@ -390,7 +361,6 @@ function activeBranchEntryIds(entries: readonly FileEntry[]): Set<string> {
 	return active;
 }
 
-/** Reduce a session's loaded entries to its study report. Tool results are attributed to the most recent assistant turn, matching how a turn drives the */
 export function computeSessionStats(entries: readonly FileEntry[]): SessionStatsReport {
 	const header = entries[0]?.type === "session" ? (entries[0] as SessionHeader) : undefined;
 	const totals: SessionStatsTotals = {
@@ -813,7 +783,6 @@ function resolveToolLatency(tools: Map<string, ToolAccumulator>): ToolLatencySta
 			errors: acc.errors,
 		});
 	}
-	// Slowest tool first; ties broken by name so the order is stable.
 	stats.sort((a, b) => b.totalDurationMs - a.totalDurationMs || a.tool.localeCompare(b.tool));
 	return stats;
 }
@@ -829,7 +798,6 @@ function resolveToolCost(tools: Map<string, ToolAccumulator>): ToolCostStat[] {
 
 function resolveRepeats(repeats: Map<string, RepeatedCall>): RepeatedCall[] {
 	const stats = Array.from(repeats.values()).filter(r => r.count > 1);
-	// Most-repeated first; ties by total time spent, then tool name.
 	stats.sort((a, b) => b.count - a.count || b.totalDurationMs - a.totalDurationMs || a.tool.localeCompare(b.tool));
 	return stats;
 }

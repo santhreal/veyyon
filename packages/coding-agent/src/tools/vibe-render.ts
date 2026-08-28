@@ -1,4 +1,3 @@
-/** TUI renderers for the vibe tools — the mini composer (spawn/send) and the "TV wall" (wait/list). */
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -62,12 +61,10 @@ interface VibeRenderArgs {
 	sessions?: string[];
 }
 
-/** One-line, escape-stripped fragment for embedding in a frame row. */
 function frameText(text: string, max: number): string {
 	return oneLineLabel(replaceTabs(text), max);
 }
 
-/** Draw one screen's rows. The transcript frame supplies the block's single left edge, so these rows carry indentation and no border glyph of their own: */
 function miniFrame(header: string, body: string[], footer?: string): string[] {
 	const lines = [header];
 	for (const row of body) {
@@ -77,7 +74,6 @@ function miniFrame(header: string, body: string[], footer?: string): string[] {
 	return lines;
 }
 
-/** The `>` composer rows of the mini CLI: the director's message being typed in. */
 function composerRows(uiTheme: Theme, message: string, options: { cursor: boolean; expanded: boolean }): string[] {
 	const promptGlyph = uiTheme.fg("accent", ">");
 	const rawAll = message.split(/\r?\n/);
@@ -107,7 +103,6 @@ function composerRows(uiTheme: Theme, message: string, options: { cursor: boolea
 	return result;
 }
 
-/** Render one worker "TV": header + live tool calls + streamed text tail. */
 function tvScreen(
 	uiTheme: Theme,
 	screen: VibeScreenSnapshot,
@@ -135,8 +130,6 @@ function tvScreen(
 	if (screen.model) headParts.push(uiTheme.fg("muted", frameText(screen.model, 40)));
 
 	const body: string[] = [];
-	// A screen's trace is a flat tail, not a hierarchy, and the block already has
-	// its one left edge, so each row carries a mark rather than a connector.
 	const hook = uiTheme.symbol("format.bullet");
 	if (live) {
 		if (screen.turnMessage) {
@@ -174,7 +167,6 @@ function tvScreen(
 	return miniFrame(headParts.join(" "), body, footer);
 }
 
-/** Width-aware component over prebuilt lines, or — given a builder — lines recomputed on every paint. Spinner ticks repaint the tool block WITHOUT */
 function linesComponent(lines: string[] | (() => string[])): Component {
 	return {
 		render(width: number): readonly string[] {
@@ -206,7 +198,6 @@ function describeCall(op: VibeOp, args: VibeRenderArgs | undefined): string {
 	}
 }
 
-/** Build the shared vibe renderer for one tool name. */
 export function createVibeToolRenderer(op: VibeOp) {
 	const composerOp = op === "spawn" || op === "send";
 	return {
@@ -287,7 +278,6 @@ export function createVibeToolRenderer(op: VibeOp) {
 				return new Text(header, 0, 0);
 			}
 
-			// wait/list: the TV wall.
 			const screens = details.screens;
 			if (screens.length === 0) {
 				const fallback = result.content.find(part => part.type === "text")?.text ?? "no sessions";

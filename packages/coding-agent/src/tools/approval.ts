@@ -1,12 +1,9 @@
-/** Tool approval resolution. Approval policy is declared by each tool. This module only knows how to: */
-
 import type { AgentTool, ToolApprovalDecision, ToolTier } from "@veyyon/agent-core";
 import { isRecord, truncate } from "@veyyon/utils";
 import type { ApprovalMode, AutonomyLevel } from "./approval-modes";
 import { APPROVAL_MODE_VALUES, DEFAULT_APPROVAL_MODE, isKnownApprovalMode } from "./approval-modes";
 
 export type { ToolApproval, ToolApprovalDecision, ToolTier } from "@veyyon/agent-core";
-// Re-export the zero-dependency mode set so tool code keeps one import site.
 export {
 	APPROVAL_MODE_VALUES,
 	type ApprovalMode,
@@ -19,9 +16,7 @@ export {
 export type ApprovalPolicy = "allow" | "deny" | "prompt";
 
 export interface ApprovalResolutionOptions {
-	/** When plan-mode session is active, write-tier tools may run (plan-file guard at execute). */
 	planModeActive?: boolean;
-	/** Full bypass (the `/yolo` command): every approval that would prompt is allowed instead, including per-tool `prompt` overrides and a tool's own */
 	bypassAllApprovals?: boolean;
 }
 
@@ -32,11 +27,9 @@ export interface ResolvedApproval {
 	tier: ToolTier;
 	reason?: string;
 	override: boolean;
-	/** True when the tool judged this specific call dangerous enough to prompt even in yolo. Carried on the result so the `/yolo` bypass can tell a */
 	critical?: boolean;
 }
 
-/** Every value `tools.approval.<tool>` accepts, in one place. Exported because a policy is a security control and its member list is what a */
 export const APPROVAL_POLICY_VALUES: readonly ApprovalPolicy[] = ["allow", "deny", "prompt"];
 
 const POLICY_VALUES: ReadonlySet<ApprovalPolicy> = new Set(APPROVAL_POLICY_VALUES);
@@ -48,7 +41,6 @@ const TIER_RANK: Record<ToolTier, number> = {
 	exec: 2,
 };
 
-/** The highest tier each rung runs unasked, or `"none"` for a rung that runs nothing unasked. */
 const AUTONOMY_MAX_TIER: Record<AutonomyLevel, ToolTier | "none"> = {
 	plan: "read",
 	ask: "none",
@@ -59,31 +51,22 @@ const AUTONOMY_MAX_TIER: Record<AutonomyLevel, ToolTier | "none"> = {
 
 const DEFAULT_PROMPT_TRUNCATE_CHARS = 2000;
 
-/** The rung each ACCEPTED `tools.approvalMode` value maps to. Exhaustive over `ApprovalMode` on purpose: the accepted set */
 const RUNG_BY_ACCEPTED_MODE: Record<ApprovalMode, AutonomyLevel> = {
 	plan: "plan",
 	ask: "ask",
 	"ask-command": "ask-command",
 	auto: "auto",
 	yolo: "yolo",
-	// `always-ask` named the ask rung before it did.
 	"always-ask": "ask",
-	// `auto-edit` and `write` named the same rung before it did: reads and
-	// writes run, commands ask.
 	write: "ask-command",
 	"auto-edit": "ask-command",
 };
 
-/** Map a stored setting / CLI value to the shipped autonomy ladder. `undefined` (no configured mode) maps to `DEFAULT_APPROVAL_MODE`, the one */
 export function normalizeApprovalMode(mode: string | undefined): AutonomyLevel {
 	if (mode === undefined) return DEFAULT_APPROVAL_MODE;
-	// Only a value OUTSIDE the accepted set may reach the fail-closed branch.
-	// The mapping of every accepted value is exhaustive by construction (see
-	// RUNG_BY_ACCEPTED_MODE), so a known value can never land here by drift.
 	return isKnownApprovalMode(mode) ? RUNG_BY_ACCEPTED_MODE[mode] : "ask";
 }
 
-/** Validate a stored `tools.approvalMode` value. Returns a loud warning string when the value is a non-empty string that is not a recognized mode (so the */
 export function validateApprovalModeSetting(configured: unknown): string | undefined {
 	if (configured === undefined || configured === null) return undefined;
 	if (isKnownApprovalMode(configured)) return undefined;
@@ -93,7 +76,6 @@ export function validateApprovalModeSetting(configured: unknown): string | undef
 	);
 }
 
-/** Convert a stored `tools.approval.<tool>` value to a policy. An ABSENT key is unconfigured and returns `undefined`, which is what lets the rung decide. */
 function normalizePolicy(value: unknown): ApprovalPolicy | undefined {
 	if (value === undefined) return undefined;
 	if (typeof value === "string") {
@@ -103,7 +85,6 @@ function normalizePolicy(value: unknown): ApprovalPolicy | undefined {
 	return "deny";
 }
 
-/** Validate a stored `tools.approval` record, one diagnostic per malformed entry. Returns the warnings the caller surfaces at startup (`configWarnings`, and the log), so a */
 export function validateApprovalPolicySettings(configured: unknown): string[] {
 	if (configured === undefined || configured === null) return [];
 	const allowed = `Valid values: ${[...POLICY_VALUES].join(", ")}.`;
@@ -138,9 +119,6 @@ function normalizeDecision(value: unknown): Omit<ResolvedApproval, "policy"> {
 		const record = value as Record<string, unknown>;
 		const tier = isToolTier(record.tier) ? record.tier : "exec";
 		const reason = typeof record.reason === "string" && record.reason.length > 0 ? record.reason : undefined;
-		// `critical` implies `override`: a decision that must survive yolo must
-		// also beat a per-tool allow, and requiring both flags at every call site
-		// is a way to eventually forget one.
 		const critical = record.critical === true;
 		return {
 			tier,
@@ -175,7 +153,6 @@ function planAutonomyBlocksMutation(
 	return true;
 }
 
-/** Resolve approval policy for a tool call. Resolution order: */
 export function resolveApproval(
 	tool: ApprovalSubject,
 	args: unknown,
@@ -184,9 +161,6 @@ export function resolveApproval(
 	options?: ApprovalResolutionOptions,
 ): ResolvedApproval {
 	const resolved = resolveApprovalInner(tool, args, mode, userConfig, options);
-	// A critical prompt is a floor, not a prompt the bypass may lift. `/yolo`
-	// is a statement about routine friction, not consent to delete a home
-	// directory unasked.
 	if (options?.bypassAllApprovals && resolved.policy === "prompt" && !resolved.critical) {
 		return { ...resolved, policy: "allow" };
 	}
@@ -205,7 +179,6 @@ function resolveApprovalInner(
 	const userPolicy = Object.hasOwn(userConfig, tool.name) ? normalizePolicy(userConfig[tool.name]) : undefined;
 
 	if (level === "yolo") {
-		// A critical decision has a floor: yolo used to return here before ever looking at `decision.override`, which inverted the severity ordering.
 		if (decision.critical && userPolicy === undefined) {
 			return {
 				policy: "prompt",
@@ -215,7 +188,6 @@ function resolveApprovalInner(
 				...(decision.reason ? { reason: decision.reason } : {}),
 			};
 		}
-		// A configured policy on a critical decision keeps the critical flag. The flag is what the `/yolo` bypass reads to know which prompts it may lift,
 		return {
 			policy: userPolicy ?? "allow",
 			tier: decision.tier,
@@ -228,9 +200,6 @@ function resolveApprovalInner(
 		if (userPolicy === "deny") {
 			return { policy: "deny", tier: decision.tier, override: true };
 		}
-		// `critical` has to travel with the result, not just be acted on above:
-		// this is the branch the non-yolo modes take, and the `/yolo` bypass
-		// reads the flag off the result to know which prompts it may lift.
 		return {
 			policy: "prompt",
 			tier: decision.tier,
@@ -240,7 +209,6 @@ function resolveApprovalInner(
 		};
 	}
 
-	// An ACTIVE plan-mode session is a cap, not a default, and the cap outranks a per-tool `allow`. `resolveEffectiveApprovalMode` already forces the level to
 	const planCapBlocks = options?.planModeActive === true && planAutonomyBlocksMutation(level, decision.tier, options);
 	if (userPolicy && !(planCapBlocks && userPolicy !== "deny")) {
 		return { policy: userPolicy, tier: decision.tier, override: false };
@@ -269,7 +237,6 @@ function resolveApprovalInner(
 	};
 }
 
-/** The rung actually in force, before any per-tool policy is consulted. `--yolo` / `--auto-approve` is an explicit operator instruction and wins */
 export function resolveEffectiveApprovalMode(
 	configured: ApprovalMode | string | undefined,
 	options?: { planModeActive?: boolean; cliAutoApprove?: boolean },
@@ -279,7 +246,6 @@ export function resolveEffectiveApprovalMode(
 	return (configured ?? DEFAULT_APPROVAL_MODE) as ApprovalMode;
 }
 
-/** Check if a tool call requires user approval. `critical` travels with the answer because it changes WHO may dismiss the */
 export function requiresApproval(
 	tool: ApprovalSubject,
 	args: unknown,
@@ -308,9 +274,6 @@ export function truncateForPrompt(value: string, maxChars = DEFAULT_PROMPT_TRUNC
 	return `${truncate(value, maxChars, "")}[…${chars.length - maxChars}ch elided…]`;
 }
 
-/**
- * Format the approval prompt body shown to the user.
- */
 export function formatApprovalPrompt(tool: ApprovalSubject, args: unknown, reason?: string): string {
 	const lines = [`Allow tool: ${tool.name}`];
 
@@ -327,7 +290,6 @@ export function formatApprovalPrompt(tool: ApprovalSubject, args: unknown, reaso
 	return lines.join("\n");
 }
 
-/** Format the richer interactive card without breaking prompt-text consumers. `requester` names the agent the call belongs to, and is set only for a spawned */
 export function formatApprovalCard(tool: ApprovalSubject, args: unknown, reason?: string, requester?: string): string {
 	const lines = ["## Permission required", `**Tool:** \`${tool.name}\``];
 	if (requester) lines.push(`**Requested by:** \`${requester}\``);

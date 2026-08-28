@@ -1,17 +1,12 @@
-/** Optional remote summarizer endpoint for the `summary` compaction strategy. */
-
 import { ProviderHttpError } from "@veyyon/ai/error/classes";
 import { parseAzureDeploymentNameMap } from "@veyyon/ai/providers/openai-shared";
 import type { FetchImpl, Model } from "@veyyon/ai/types";
 import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils";
 
-/** Re-exported for callers that already import compaction transports from here. */
 export * from "./legacy-provider-native";
 
-/** Hard ceiling on a remote summarizer call. A hung connection or a body a */
 export const REMOTE_COMPACTION_TIMEOUT_MS = 180_000;
 
-/** Bound the non-2xx body written into the log line below. */
 const MAX_REMOTE_ERROR_DETAIL_CHARS = 4096;
 
 export interface RemoteCompactionRequest {
@@ -24,14 +19,12 @@ export interface RemoteCompactionResponse {
 	shortSummary?: string;
 }
 
-/** Wire model id for a chat-completions summarizer, honoring Azure deployment mapping. */
 function resolveRemoteSummarizerModel(model: Model): string {
 	const requestModel = model.requestModelId ?? model.id;
 	if (model.api !== "azure-openai-responses") return requestModel;
 	return parseAzureDeploymentNameMap($env.AZURE_OPENAI_DEPLOYMENT_NAME_MAP).get(requestModel) ?? requestModel;
 }
 
-/** POST a conversation to a remote summarizer and return its summary text. */
 export async function requestRemoteCompaction(
 	endpoint: string,
 	request: RemoteCompactionRequest,
@@ -47,9 +40,7 @@ export async function requestRemoteCompaction(
 	let endpointPath = endpoint;
 	try {
 		endpointPath = new URL(endpoint).pathname;
-	} catch {
-		// Keep the raw endpoint for relative/custom fetch implementations.
-	}
+	} catch {}
 	const isChatCompletions = /\/chat\/completions\/?$/.test(endpointPath);
 	const headers: Record<string, string> = { "content-type": "application/json" };
 	if (isChatCompletions) {
@@ -68,8 +59,6 @@ export async function requestRemoteCompaction(
 			}
 		: { systemPrompt: request.systemPrompt, prompt: request.prompt };
 
-	// Cap first, then sanitize: the redactor scans the string it is given, so
-	// bounding the input also bounds that scan on a multi-megabyte HTML body.
 	const sanitizeErrorText = (text: string): string => {
 		const capped =
 			text.length <= MAX_REMOTE_ERROR_DETAIL_CHARS
@@ -84,9 +73,6 @@ export async function requestRemoteCompaction(
 		}
 	};
 
-	// The fence spans the body read too — a middlebox can drop the connection
-	// after headers and only the armed signal interrupts `response.json()`. The
-	// scoped handle clears its timer on settle; `timeoutMs <= 0` disables it.
 	const timeoutMs = opts?.timeoutMs ?? REMOTE_COMPACTION_TIMEOUT_MS;
 	const requestTimeout = timeoutMs > 0 ? scopedTimeoutSignal(timeoutMs, signal) : undefined;
 	try {
@@ -98,10 +84,6 @@ export async function requestRemoteCompaction(
 		});
 
 		if (!response.ok) {
-			// The STATUS is the failure being reported, and the body is extra context for it. A body that
-			// cannot be read (already consumed, connection dropped mid-read) must not replace an HTTP 500 with
-			// a read error, so it degrades to empty -- and the warning below still names the endpoint and the
-			// status, so nothing about the failure is lost, only the detail that was never readable.
 			const errorText = sanitizeErrorText(await response.text().catch(() => ""));
 			const statusText = sanitizeErrorText(response.statusText);
 			logger.warn("Remote summarizer failed", {
@@ -134,9 +116,6 @@ export async function requestRemoteCompaction(
 					.map(part => part.text)
 					.join("");
 			}
-			// Whitespace counts as empty. The summary REPLACES the history it
-			// summarizes, so a blank one deletes the conversation and reports
-			// success. Same rule the local summarizer applies in `generateSummary`.
 			if (typeof summary !== "string" || summary.trim().length === 0) {
 				throw new Error(
 					"Remote compaction returned an empty summary in choices[0].message.content. The history was NOT compacted.",

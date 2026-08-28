@@ -33,17 +33,6 @@ export function joinTextWithImagePlaceholder(text: string, omittedImages: boolea
 	return parts.join("\n");
 }
 
-/**
- * Detect known text-only Qwen models served via Alibaba DashScope's consumer
- * `compatible-mode` endpoint that the upstream chat-completions API rejects
- * multimodal content arrays for. The compatible-mode endpoint also serves
- * multimodal Qwen SKUs without `vl` in the id (e.g. `qwen3.7-plus`), so this
- * guard only covers families verified to be text-only for issue #1859:
- * `qwen*-max` and `qwen*-coder*`.
- *
- * Used as a defensive override in `convertMessages` so a misconfigured custom
- * provider (issue #1859) can't drive the request into an unrecoverable 400.
- */
 export function isDashscopeCompatibleModeTextOnlyQwen(model: Model<"openai-completions">): boolean {
 	if (!isDashscopeCompatibleModeUrl(model.baseUrl)) {
 		return false;

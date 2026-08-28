@@ -1,31 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Narrative trace report for a metaharness run trace.
- *
- * Two-stage map/reduce over the normalized trace JSON served by the
- * metaharness server (`GET /api/runs/:run/traces/:trace`):
- *
- *   1. Map — every assistant turn (its prose, tool calls, and full tool
- *      result bodies) is handed to a very cheap "tiny" model which returns a
- *      single grounded sentence describing what the agent did and what the
- *      results showed. Turns are independent, so this fans out in parallel.
- *   2. Reduce — the deterministic numbered Turn Log (tool names come from the
- *      trace itself, only the grounded sentence is model-written) plus run
- *      metadata, harness notices, error excerpts, and the final assistant
- *      prose go to a slightly smarter (still cheap) model which writes the
- *      Story Arc and, for failed runs, the failure analysis.
- *
- * Usage:
- *   bun scripts/trace-report.ts <run> <trace>
- *   bun scripts/trace-report.ts "<run>|<trace>"            # or run/trace
- *   ... --focus "known-correct fix is X; compare"          # reviewer notes
- *   ... --out report.md
- *   ... --tiny openrouter/inclusionai/ling-2.6-flash
- *   ... --synth openrouter/openai/gpt-oss-120b
- *
- * Auth: provider API keys resolve through veyyon's auth storage
- * (~/.veyyon/agent/agent.db: stored key, OAuth, or env var fallback).
- */
 
 import { parseArgs } from "node:util";
 import { type Api, AuthStorage, completeSimple, type Model, SqliteAuthCredentialStore } from "@veyyon/ai";
@@ -35,9 +8,6 @@ import { collapseWhitespace, getAgentDbPath } from "@veyyon/utils";
 const DEFAULT_TINY = "openrouter/inclusionai/ling-2.6-flash";
 const DEFAULT_SYNTH = "openrouter/openai/gpt-oss-120b";
 const DEFAULT_BASE = "http://localhost:4700";
-
-// --------------------------------------------------------------------------
-// Trace API types (mirror packages/metaharness/src/store.ts normalization)
 
 interface TraceAssistantEntry {
 	kind: "assistant";
@@ -81,10 +51,6 @@ interface RunResponse {
 	traces: RunTraceRow[];
 }
 
-// --------------------------------------------------------------------------
-// Turn grouping
-
-/** One numbered item of the Turn Log: an assistant turn or a harness notice. */
 type LogItem =
 	| { kind: "turn"; model: string; text: string; tools: string[]; results: TraceToolResultEntry[] }
 	| { kind: "notice"; text: string };
@@ -105,9 +71,6 @@ function groupItems(entries: TraceEntry[]): LogItem[] {
 	}
 	return items;
 }
-
-// --------------------------------------------------------------------------
-// Model + auth
 
 interface OpenedModel {
 	model: Model<Api>;
@@ -130,7 +93,6 @@ async function openModel(modelSpec: string, storage: AuthStorage): Promise<Opene
 	return { model, apiKey, spec: modelSpec, usage: { input: 0, output: 0, calls: 0 } };
 }
 
-/** One retried oneshot text completion. Throws after `attempts` failures. */
 async function ask(opened: OpenedModel, system: string, user: string, maxTokens: number): Promise<string> {
 	let lastError = "";
 	for (let attempt = 0; attempt < 4; attempt++) {
@@ -160,9 +122,6 @@ async function ask(opened: OpenedModel, system: string, user: string, maxTokens:
 	}
 	throw new Error(`completion failed on ${opened.spec}: ${lastError}`);
 }
-
-// --------------------------------------------------------------------------
-// Map phase: one grounded sentence per assistant turn
 
 const TINY_SYSTEM = `You annotate one turn of an AI coding-agent transcript.
 Reply with exactly ONE sentence (at most 35 words). Plain text only: no markdown, no bullet, no quotes around the whole reply, no preamble. Write in third person ("The agent …").
@@ -200,7 +159,6 @@ function turnPrompt(turn: Extract<LogItem, { kind: "turn" }>): string {
 	return parts.join("\n\n");
 }
 
-/** Map `items` through `worker` with at most `limit` in flight, order preserved. */
 async function mapPool<T, R>(items: T[], limit: number, worker: (item: T, index: number) => Promise<R>): Promise<R[]> {
 	const results = new Array<R>(items.length);
 	let next = 0;
@@ -213,9 +171,6 @@ async function mapPool<T, R>(items: T[], limit: number, worker: (item: T, index:
 	await Promise.all(lanes);
 	return results;
 }
-
-// --------------------------------------------------------------------------
-// Turn Log assembly (deterministic scaffolding + tiny sentences)
 
 function toolsLine(tools: string[]): string {
 	if (tools.length === 0) return "prose only (no tool calls)";
@@ -240,9 +195,6 @@ function renderTurnLog(items: LogItem[], sentences: (string | undefined)[]): str
 	});
 	return lines.join("\n");
 }
-
-// --------------------------------------------------------------------------
-// Reduce phase: story arc + failure analysis
 
 const SYNTH_SYSTEM = `You write the "Story Arc" section of a trace-analysis report for one AI coding-agent benchmark run.
 You are given run metadata, a numbered Turn Log (already final — never rewrite or renumber it), the run's final assistant message, and optional reviewer focus notes.
@@ -275,13 +227,6 @@ function synthPrompt(options: {
 	return parts.filter(Boolean).join("\n\n");
 }
 
-// --------------------------------------------------------------------------
-// Run
-
-// Fixed mm:ss trace-row duration (zero-padded seconds), distinct from
-// @veyyon/utils formatDuration's compact multi-scale format — this file imports
-// that module, so the local formatter takes an honest name to avoid a same-name
-// shadow. "?" marks a row whose duration was never recorded.
 function formatTraceDuration(ms: number | null): string {
 	if (ms == null) return "?";
 	const seconds = Math.round(ms / 1000);
@@ -341,9 +286,7 @@ async function main(): Promise<void> {
 				.filter(Boolean)
 				.join("\n");
 		}
-	} catch {
-		// Report still works from the trace alone.
-	}
+	} catch {}
 
 	const items = groupItems(traceData.entries);
 	const turnCount = items.filter(item => item.kind === "turn").length;
@@ -355,7 +298,6 @@ async function main(): Promise<void> {
 	const tiny = await openModel(values.tiny, storage);
 	const synth = values.synth === values.tiny ? tiny : await openModel(values.synth, storage);
 
-	// Map: one grounded sentence per assistant turn.
 	let completed = 0;
 	const sentences = await mapPool(items, Number(values.concurrency), async item => {
 		if (item.kind !== "turn") return undefined;
@@ -370,7 +312,6 @@ async function main(): Promise<void> {
 
 	const turnLog = renderTurnLog(items, sentences);
 
-	// Reduce: story arc + failure analysis.
 	const finalTurn = [...items].reverse().find(item => item.kind === "turn" && item.text.trim());
 	const finalProse = finalTurn?.kind === "turn" ? finalTurn.text : "";
 	const storyArc = await ask(

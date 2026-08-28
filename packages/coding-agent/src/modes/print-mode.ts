@@ -1,4 +1,3 @@
-/** Print mode (single-shot): Send prompts, output result, exit. */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent } from "@veyyon/ai";
 import { logger, sanitizeText } from "@veyyon/utils";
@@ -11,35 +10,23 @@ import type { SlashCommandRuntime } from "../slash-commands/types";
 import { flushTelemetryExport } from "../telemetry-export";
 import { initializeExtensions } from "./runtime-init";
 
-/**
- * Options for print mode.
- */
 export interface PrintModeOptions {
-	/** Output mode: "text" for final response only, "json" for all events */
 	mode: "text" | "json";
-	/** Array of additional prompts to send after initialMessage */
 	messages?: string[];
-	/** First message to send (may contain @file content) */
 	initialMessage?: string;
-	/** Images to attach to the initial message */
 	initialImages?: ImageContent[];
-	/** If true, include thinking blocks in text output */
 	printThoughts?: boolean;
-	/** Headless slash-command runtime supplied by the CLI entrypoint. Optional only for narrow unit-test sessions that cannot execute builtins. */
 	commandRuntime?: Omit<SlashCommandRuntime, "output">;
 }
 
-/** Drop the provider-opaque replay payload (e.g. encrypted reasoning items) before printing. */
 function stripProviderPayload<T extends AgentMessage>(message: T): T {
 	if (!("providerPayload" in message) || message.providerPayload === undefined) return message;
 	const { providerPayload: _providerPayload, ...rest } = message;
 	return rest as T;
 }
 
-/** Named so a failed redaction says which sink refused to emit. */
 const JSON_OUTPUT_BOUNDARY = "print mode --mode json output";
 
-/** Shape an event for `--mode json` output. Removes two classes of bloat so transcripts grow linearly with conversation */
 export function printableEvent(event: AgentSessionEvent): unknown {
 	switch (event.type) {
 		case "message_update": {
@@ -69,7 +56,6 @@ export function printableEvent(event: AgentSessionEvent): unknown {
 	}
 }
 
-/** The session surface print mode uses. */
 export type PrintModeSession =
 	| AgentSession
 	| (Pick<AgentSession, "subscribe" | "prompt" | "dispose" | "displayAssistantContent" | "obfuscateProviderText"> & {
@@ -78,11 +64,9 @@ export type PrintModeSession =
 			extensionRunner?: undefined;
 	  });
 
-/** Run in print (single-shot) mode. Sends prompts to the agent and outputs the result. */
 export async function runPrintMode(session: PrintModeSession, options: PrintModeOptions): Promise<void> {
 	const { mode, messages = [], initialMessage, initialImages, printThoughts, commandRuntime } = options;
 
-	// Redact secrets before writing to JSON stream.
 	const writeJsonLine = (payload: unknown): void => {
 		const redacted = transformProviderPayload(
 			payload,
@@ -92,14 +76,12 @@ export async function runPrintMode(session: PrintModeSession, options: PrintMode
 		process.stdout.write(`${JSON.stringify(redacted)}\n`);
 	};
 
-	// Emit session header for JSON mode
 	if (mode === "json") {
 		const header = session.sessionManager.getHeader();
 		if (header) {
 			writeJsonLine(header);
 		}
 	}
-	// Set up extensions for print mode (no UI, no command context).
 	if (session.extensionRunner !== undefined) {
 		await initializeExtensions(session, {
 			reportSendError: (action, err) => {
@@ -113,14 +95,11 @@ export async function runPrintMode(session: PrintModeSession, options: PrintMode
 		});
 	}
 
-	// Always subscribe to enable session persistence via _handleAgentEvent
 	session.subscribe(event => {
-		// In JSON mode, output all events
 		if (mode === "json") {
 			writeJsonLine(printableEvent(event));
 			return;
 		}
-		// In text mode, emit notices to stderr.
 		if (event.type === "notice" && event.source === SECRET_SPEND_NOTICE_SOURCE) {
 			process.stderr.write(`${sanitizeText(event.message)}\n`);
 		}
@@ -165,7 +144,6 @@ export async function runPrintMode(session: PrintModeSession, options: PrintMode
 		await logger.time("print:prompt:next", () => dispatchPromptOrCommand(message));
 	}
 
-	// In text mode, output final response
 	if (mode === "text" && promptedModel) {
 		const state = session.state;
 		const lastMessage = state.messages[state.messages.length - 1];
@@ -173,13 +151,11 @@ export async function runPrintMode(session: PrintModeSession, options: PrintMode
 		if (lastMessage?.role === "assistant") {
 			const assistantMsg = lastMessage as AssistantMessage;
 
-			// Check for error/aborted — skip silent-abort (plan-mode compaction transition)
 			if (
 				(assistantMsg.stopReason === "error" || assistantMsg.stopReason === "aborted") &&
 				!isSilentAbort(assistantMsg)
 			) {
 				const errorLine = sanitizeText(assistantMsg.errorMessage || `Request ${assistantMsg.stopReason}`);
-				// Flush telemetry before hard exit.
 				await flushTelemetryExport();
 				const flushed = process.stderr.write(`${errorLine}\n`);
 				if (flushed) {
@@ -197,7 +173,6 @@ export async function runPrintMode(session: PrintModeSession, options: PrintMode
 				process.stderr.write(`${sanitizeText(assistantMsg.errorMessage)}\n`);
 			}
 
-			// Output text content through session display seam.
 			for (const content of session.displayAssistantContent(assistantMsg.content)) {
 				if (content.type === "text") {
 					process.stdout.write(`${sanitizeText(content.text)}\n`);

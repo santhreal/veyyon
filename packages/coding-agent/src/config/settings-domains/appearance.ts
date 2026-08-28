@@ -1,10 +1,7 @@
 import type { StatusLineSegmentId } from "../settings-schema";
 import { DEFAULT_ARTIFACT_SPILL_THRESHOLD_KB } from "./shared";
 
-/** Appearance domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const APPEARANCE_SETTINGS = {
-	// Appearance
-	// Theme
 	"theme.dark": {
 		type: "string",
 		default: "titanium",
@@ -57,8 +54,6 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
-	// Status line
-	/** The composer footline ships ON. It shipped off for one release on the argument that everything on it is either already known */
 	"statusLine.enabled": {
 		type: "boolean",
 		default: true,
@@ -89,12 +84,10 @@ export const APPEARANCE_SETTINGS = {
 				{ value: "ascii", label: "ASCII", description: "No special characters" },
 				{ value: "custom", label: "Custom", description: "User-defined segments" },
 			],
-			// Hidden while the footline is off: a preset is a layout for a row that is not on screen. `statusLine.sessionAccent` deliberately keeps its row — it colors
 			condition: "statusLineEnabled",
 		},
 	},
 
-	/** NO UI ROW: nothing renders a separator any more. The separator styles belonged to the filled powerline bar the editor's top */
 	"statusLine.separator": {
 		type: "enum",
 		values: ["powerline", "powerline-thin", "slash", "pipe", "block", "none", "ascii"] as const,
@@ -113,7 +106,6 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
-	/** NO UI ROW: there is no painted bar left to make transparent. Same story as `statusLine.separator` above — the theme's `statusLineBg` */
 	"statusLine.transparent": {
 		type: "boolean",
 		default: true,
@@ -132,7 +124,6 @@ export const APPEARANCE_SETTINGS = {
 			advanced: true,
 		},
 	},
-	// The one answer to "how many bytes of tool output stay in the conversation". It reaches BOTH paths that ask: the centralised spill that runs after a tool
 	"tools.artifactSpillThreshold": {
 		type: "number",
 		default: DEFAULT_ARTIFACT_SPILL_THRESHOLD_KB,
@@ -252,7 +243,6 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
-	/** Whether the footline names the account serving the next request. OFF. The chip answers a question most sessions never ask: it is silent for a provider with one */
 	"statusLine.showAccount": {
 		type: "boolean",
 		default: false,
@@ -262,7 +252,6 @@ export const APPEARANCE_SETTINGS = {
 			label: "Show Serving Account",
 			description:
 				"Name the account serving the next request on the composer footline, when the active provider stores more than one. Off: /account answers it on demand",
-			// Behind the Advanced fold, beside the other footline display details. The curated rows of this tab are the ones every session has an opinion about; this one is for
 			advanced: true,
 			condition: "statusLineEnabled",
 		},
@@ -274,7 +263,6 @@ export const APPEARANCE_SETTINGS = {
 
 	"statusLine.segmentOptions": { type: "record", default: {} as Record<string, unknown> },
 
-	// Images and terminal
 	"terminal.showImages": {
 		type: "boolean",
 		default: true,
@@ -299,8 +287,6 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
-	// Moved from appearance/Images: blocking images is a privacy control
-	// (prevents images reaching providers), not a display preference.
 	"images.blockImages": {
 		type: "boolean",
 		default: false,
@@ -517,8 +503,6 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
-	// Moved from appearance/Display: governs post-compaction transcript
-	// display, so it lives with the rest of the Compaction knobs on model.
 	"display.collapseCompacted": {
 		type: "boolean",
 		default: true,
@@ -531,7 +515,6 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
-	/** Whether tool calls start expanded, showing their full input and output rather than a short preview. */
 	"display.toolOutputExpanded": {
 		type: "boolean",
 		default: false,

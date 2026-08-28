@@ -69,37 +69,25 @@ export interface GlobToolDetails {
 	truncation?: TruncationResult;
 	resultLimitReached?: number;
 	meta?: OutputMeta;
-	// Fields for TUI rendering
 	scopePath?: string;
 	fileCount?: number;
 	files?: string[];
 	truncated?: boolean;
 	error?: string;
-	/** Working directory at search time. Used by the renderer to resolve relative
-	 * file paths to absolute paths for OSC 8 hyperlinks. */
 	cwd?: string;
-	/** User-supplied paths whose base directory was missing on disk. The tool
-	 * skipped these and continued with the surviving entries; surfaced as a
-	 * non-fatal warning in the renderer and in the model-facing text. */
 	missingPaths?: string[];
 }
 
-/** Pluggable operations for the find tool. Override these to delegate file search to remote systems (e.g., SSH). */
 export interface GlobOperations {
-	/** Check if path exists */
 	exists: (absolutePath: string) => Promise<boolean> | boolean;
-	/** Optional stat for distinguishing files vs directories. */
 	stat?: (
 		absolutePath: string,
 	) => Promise<{ isFile(): boolean; isDirectory(): boolean }> | { isFile(): boolean; isDirectory(): boolean };
-	/** Find files matching glob pattern. Returns relative paths. */
 	glob: (pattern: string, cwd: string, options: { ignore: string[]; limit: number }) => Promise<string[]> | string[];
 }
 
 export interface GlobToolOptions {
-	/** Custom operations for find. Default: local filesystem + rg */
 	operations?: GlobOperations;
-	/** Remap slash-only paths to the session cwd before root-search validation. */
 	rootPathAlias?: boolean;
 }
 
@@ -129,7 +117,6 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 	];
 	readonly strict = true;
 
-	// A glob reads directory listings/contents under each pattern's base dir, so an out-of-cwd base must prompt in non-yolo modes like a point read does. Reduce
 	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] =>
 		searchPathFilesystemTargets(args, cwd);
 
@@ -200,7 +187,6 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 				throw new ToolError("`path` must contain non-empty globs or paths");
 			}
 
-			// Tolerate missing entries in a multi-path call: skip ones whose base directory is gone, and only error if every entry is missing. Single
 			let missingPaths: string[] = [];
 			let effectivePatterns = normalizedPatterns;
 			if (normalizedPatterns.length > 1 && !this.#customOps) {
@@ -274,14 +260,9 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 						cwd: this.session.cwd,
 						missingPaths: missingPaths.length > 0 ? missingPaths : undefined,
 					};
-					// A timed-out empty result is an incomplete scan, not a verified
-					// absence — never emit the definitive "No files found" claim next
-					// to a timeout notice (the two statements contradict each other).
 					const parts = opts?.timedOut ? [] : ["No files found matching pattern"];
 					if (notice) parts.push(notice);
 					if (missingPathsNote) parts.push(missingPathsNote);
-					// Zero results is useless regardless of notices: the follow-up
-					// call has already corrected course by the time compaction runs.
 					return toolResult(details).text(parts.join("\n")).useless().done();
 				}
 
@@ -316,7 +297,6 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 				return resultBuilder.done();
 			};
 
-			// Walk each user path as its own root and run the globs concurrently. Collapsing multiple paths to a shared base would force the walker to
 			if (this.#customOps?.glob) {
 				const customOps = this.#customOps;
 				const perTarget = await Promise.all(
@@ -411,7 +391,6 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 								maxResults: effectiveLimit,
 								sortByMtime: true,
 								gitignore: useGitignore,
-								// parseFindPattern explicitly prepends "**/" when the user's pattern begins with a glob (so `*.ts` becomes `**/*.ts`).
 								recursive: false,
 								signal: combinedSignal,
 							},
@@ -429,14 +408,10 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 					}
 					return out;
 				} catch (error) {
-					// A deadline yields the partial matches gathered so far; a real cancellation propagates with its reason.
 					if (isTimeoutError(error) && !signal?.aborted) {
 						timedOut = true;
 						return [];
 					}
-					// `toolAbort`, not a bare mint: callers downstream test
-					// `instanceof ToolAbortError`, so the type has to be preserved,
-					// but the reason has to survive with it.
 					if (isCancellation(error)) throw toolAbort(error, "glob");
 					throw error;
 				}
@@ -450,14 +425,10 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 			}
 
 			if (timedOut) {
-				// Drain the partial matches accumulated during streaming and return them
-				// instead of throwing — empty results after a multi-second wait force the
-				// caller to retry blind, which is the worst possible outcome.
 				const partial = onUpdateMatches.map((entry, index) => ({ p: entry, m: onUpdateMtimes[index] ?? 0 }));
 				partial.sort((a, b) => b.m - a.m);
 				const sortedPaths = partial.map(entry => entry.p);
 				const seconds = timeoutMs % 1000 === 0 ? `${timeoutMs / 1000}` : (timeoutMs / 1000).toFixed(1);
-				// Walk cost tracks directory-tree size, not pattern specificity: a mtime-ranked scan cannot early-exit, so a "narrow" pattern over a
 				const notice =
 					sortedPaths.length > 0
 						? `glob timed out after ${seconds}s; returning ${sortedPaths.length} partial matches — results are incomplete, scope to a deeper directory instead of retrying blindly`
@@ -465,9 +436,6 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 				return buildResult(sortedPaths, { notice, forceTruncated: true, timedOut: true });
 			}
 
-			// Merge per-target results: native glob already ranks each target's own
-			// matches by mtime and caps them at the limit, so a global mtime re-sort
-			// plus dedup yields the correct top-N across all roots.
 			const seen = new Set<string>();
 			const merged: Array<{ path: string; mtime: number }> = [];
 			for (const group of perTarget) {
@@ -485,7 +453,6 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 
 interface GlobRenderArgs {
 	path?: string | string[];
-	/** Legacy pre-`path` argument name; kept so historical transcripts still render a scope. */
 	paths?: string | string[];
 	limit?: number;
 }
@@ -590,8 +557,6 @@ export const globToolRenderer = {
 			missingPaths.length > 0 ? uiTheme.fg("warning", `skipped missing: ${missingPaths.join(", ")}`) : undefined;
 
 		if (fileCount === 0) {
-			// `truncated` on an empty result means the scan timed out mid-walk —
-			// render "incomplete", not a definitive "No files found".
 			const emptyLabel = truncated ? "No matches before timeout (scan incomplete)" : "No files found";
 			const header = renderStatusLine(
 				{
@@ -622,8 +587,6 @@ export const globToolRenderer = {
 		);
 
 		const truncationReasons: string[] = [];
-		// One reason for the result cap: details and limits both carry the same
-		// number, and pushing both rendered "limit 200 results, limit 200 results".
 		const resultLimit = details?.resultLimitReached ?? limits?.resultLimit?.reached;
 		if (resultLimit) truncationReasons.push(`limit ${resultLimit} results`);
 		if (truncation) truncationReasons.push(truncation.truncatedBy === "lines" ? "line limit" : "size limit");
