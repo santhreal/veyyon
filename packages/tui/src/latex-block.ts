@@ -1,4 +1,4 @@
-import { latexColorScope, latexToUnicode, MATH_FONT_COMMANDS } from "./latex-to-unicode";
+import { latexToUnicode } from "./latex-to-unicode";
 import { clamp, padding, visibleWidth } from "./utils";
 
 interface Box {

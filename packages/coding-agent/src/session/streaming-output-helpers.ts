@@ -1,9 +1,7 @@
 import type { AgentToolUpdateCallback } from "@veyyon/agent-core";
-import { capTextBytes, truncateHeadBytes, truncateTailBytes } from "@veyyon/utils/byte-truncate";
+import { truncateHeadBytes, truncateTailBytes } from "@veyyon/utils/byte-truncate";
 import { clampLow } from "@veyyon/utils/math";
 import { sanitizeText, splitTrailingPartialEscape } from "@veyyon/utils/sanitize-text";
-
-import { DEFAULT_INLINE_FLOOR_FRACTION, DEFAULT_INLINE_OUTPUT_MAX_BYTES } from "../config/settings-domains/shared";
 import { formatBytes } from "../tools/render-utils";
 import { sanitizeWithOptionalSixelPassthrough } from "../utils/sixel";
 
@@ -18,11 +16,11 @@ import type {
 import {
 	ARTIFACT_DEFAULT_HEAD_BYTES,
 	ARTIFACT_DEFAULT_MAX_BYTES,
+	countNewlines,
 	DEFAULT_MAX_BYTES,
 	ELLIPSIS,
-	NL,
-	countNewlines,
 	formatMiddleElisionMarker,
+	NL,
 } from "./streaming-output";
 
 export class OutputSink {

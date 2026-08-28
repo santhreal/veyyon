@@ -1,37 +1,27 @@
 import type { SQLQueryBindings } from "bun:sqlite";
-import { collapseWhitespace, DAY_MS, errorMessage, HOUR_MS, logger } from "@veyyon/utils";
-import { degradeBatchSize, sleepBatchSize, tier2Days, tier3Days, tier3MaxChars } from "../../config";
-import { generateId, stableMemoryId } from "../../util/ids";
-import { unicodeWordTokens, WORD_TOKEN_DOT_HYPHEN_RE } from "../../util/regex";
+import { DAY_MS, errorMessage, HOUR_MS, logger } from "@veyyon/utils";
 import { escapeLike, sqlPlaceholders } from "../../util/sqlite";
-import { aaakEncode } from "../aaak";
-import { REGEX_EXTRACTION_MAX_INPUT_CHARS } from "../entities";
-import { EpisodicGraph } from "../episodic-graph";
-import { type ExtractedFactCategories, heuristicExtractFacts } from "../extraction";
-import { clampVeracity } from "../veracity-consolidation";
-import { scheduleEmbedding } from "./helpers";
-import type { BeamMemoryState, BeamStats, JsonValue, MemoriaRetrieveResult, Metadata, SleepResult } from "./types";
-
 import type { Row } from "./consolidate";
 import {
-	CONTAMINATED_VERACITY,
-	DEGRADE_BATCH_SIZE,
-	SLEEP_BATCH_SIZE,
-	TIER2_DAYS,
-	TIER3_DAYS,
-	TIER3_MAX_CHARS,
 	aggregateEpisodicVeracity,
 	asRows,
 	buildSleepSummary,
+	CONTAMINATED_VERACITY,
 	classifyAbility,
 	consolidateToEpisodic,
 	cutoffIso,
+	DEGRADE_BATCH_SIZE,
 	isoNow,
 	makeQuestionTokens,
 	rowValue,
+	SLEEP_BATCH_SIZE,
 	sourceSession,
 	splitSleepItems,
+	TIER2_DAYS,
+	TIER3_DAYS,
+	TIER3_MAX_CHARS,
 } from "./consolidate";
+import type { BeamMemoryState, BeamStats, JsonValue, MemoriaRetrieveResult, Metadata, SleepResult } from "./types";
 
 function factRetrieve(beam: BeamMemoryState, query: string, topK: number): MemoriaRetrieveResult {
 	const tokens = makeQuestionTokens(query);

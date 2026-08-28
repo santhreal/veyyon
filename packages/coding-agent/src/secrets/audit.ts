@@ -1,18 +1,6 @@
-import { constants as fsConstants, type Stats } from "node:fs";
-import type { FileHandle } from "node:fs/promises";
-import * as fs from "node:fs/promises";
+import type { Stats } from "node:fs";
 import * as path from "node:path";
-import {
-	applyOwnerOnlyWindowsAcl,
-	clamp,
-	errorMessage,
-	escapeTerminalText,
-	isEnoent,
-	isRecord,
-	verifyOwnerOnlyWindowsAcl,
-	withFileLock,
-} from "@veyyon/utils";
-import type { OperatorNotices } from "../session/operator-notices";
+import { clamp, escapeTerminalText, isRecord } from "@veyyon/utils";
 import { PLACEHOLDER_RE } from "./placeholder";
 import type { VaultLocations } from "./vault";
 

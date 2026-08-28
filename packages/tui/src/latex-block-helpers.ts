@@ -1,22 +1,22 @@
 import type { CellAlign, Ctx, Span } from "./latex-block";
 import {
-	BINOM_COMMANDS,
-	DISPLAY_ROW_ENVIRONMENTS,
-	FRAC_COMMANDS,
-	GRID_ENVIRONMENTS,
-	INTEGRAL_OPERATORS,
-	LIMIT_OPERATORS,
-	ROOT_CTX,
 	attachScripts,
+	BINOM_COMMANDS,
 	binomBox,
+	DISPLAY_ROW_ENVIRONMENTS,
 	delimBox,
 	delimColumn,
 	delimKey,
+	FRAC_COMMANDS,
 	fracBox,
+	GRID_ENVIRONMENTS,
 	gridBox,
 	hconcat,
+	INTEGRAL_OPERATORS,
+	LIMIT_OPERATORS,
 	limitsBox,
 	matchDelim,
+	ROOT_CTX,
 	radicalBox,
 	readArg,
 	readBraceGroup,
@@ -27,6 +27,7 @@ import {
 	vconcat,
 } from "./latex-block";
 import { latexColorScope, latexToUnicode, MATH_FONT_COMMANDS } from "./latex-to-unicode";
+
 interface Box {
 	lines: string[];
 	baseline: number;

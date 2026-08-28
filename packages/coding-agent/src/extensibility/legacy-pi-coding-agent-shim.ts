@@ -3,25 +3,10 @@ import * as path from "node:path";
 import type { AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { TSchema } from "@veyyon/ai";
 import { Text } from "@veyyon/tui";
-import {
-	errorMessage,
-	escapeRegExp,
-	getAgentDir,
-	getProjectDir,
-	parseFrontmatter as parseOmpFrontmatter,
-} from "@veyyon/utils";
-import type { PromptTemplate } from "../config/prompt-templates";
+import { escapeRegExp, parseFrontmatter as parseOmpFrontmatter } from "@veyyon/utils";
 import { type SettingPath, Settings } from "../config/settings";
 import { EditTool } from "../edit";
 import { formatExitCodeNotice } from "../exec/exit-notice";
-import type { CreateAgentSessionOptions, CreateAgentSessionResult, LoadExtensionsResult } from "../sdk";
-import {
-	discoverContextFiles,
-	discoverPromptTemplates,
-	discoverSessionExtensionPaths,
-	discoverSkills,
-	createAgentSession as ompCreateAgentSession,
-} from "../sdk";
 import {
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
@@ -36,13 +21,8 @@ import { GrepTool } from "../tools/grep";
 import { ReadTool } from "../tools/read";
 import { formatBytes } from "../tools/render-utils";
 import { WriteTool } from "../tools/write";
-import { EventBus } from "../utils/event-bus";
-import { loadExtensionFromFactory, loadExtensions } from "./extensions";
-import { ExtensionRuntime } from "./extensions/loader";
-import type { ExtensionFactory, ToolDefinition } from "./extensions/types";
+import type { ToolDefinition } from "./extensions/types";
 import { LEGACY_TOOL_DEFINITION_MARKER } from "./legacy-tool-marker";
-import type { Skill } from "./skills";
-import { loadSkillsFromDir } from "./skills";
 import { Type } from "./typebox";
 
 export const LEGACY_BUILTIN_TOOL_MARKER = "__veyyonLegacyBuiltinTool";
@@ -595,19 +575,19 @@ export function createLsTool(cwd: string, options?: LsToolOptions): ToolDefiniti
 	return createLsToolDefinition(cwd, options);
 }
 
+export type {
+	AgentsFile,
+	DefaultResourceLoaderOptions,
+	LegacyPiCreateAgentSessionOptions,
+	ResourceDiagnostic,
+	ResourceLoader,
+	Theme,
+} from "./legacy-pi-coding-agent-shim-helpers";
 // circular import: functions moved to helpers
 export {
+	createAgentSession,
 	createCodingTools,
 	createReadOnlyTools,
-	SettingsManager,
 	DefaultResourceLoader,
-	createAgentSession,
-} from "./legacy-pi-coding-agent-shim-helpers";
-export type {
-	ResourceDiagnostic,
-	AgentsFile,
-	Theme,
-	DefaultResourceLoaderOptions,
-	ResourceLoader,
-	LegacyPiCreateAgentSessionOptions,
+	SettingsManager,
 } from "./legacy-pi-coding-agent-shim-helpers";

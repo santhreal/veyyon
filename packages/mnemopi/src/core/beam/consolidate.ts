@@ -1,16 +1,14 @@
-import type { SQLQueryBindings } from "bun:sqlite";
-import { collapseWhitespace, DAY_MS, errorMessage, HOUR_MS, logger } from "@veyyon/utils";
+import { collapseWhitespace, errorMessage, logger } from "@veyyon/utils";
 import { degradeBatchSize, sleepBatchSize, tier2Days, tier3Days, tier3MaxChars } from "../../config";
 import { generateId, stableMemoryId } from "../../util/ids";
 import { unicodeWordTokens, WORD_TOKEN_DOT_HYPHEN_RE } from "../../util/regex";
-import { escapeLike, sqlPlaceholders } from "../../util/sqlite";
 import { aaakEncode } from "../aaak";
 import { REGEX_EXTRACTION_MAX_INPUT_CHARS } from "../entities";
 import { EpisodicGraph } from "../episodic-graph";
 import { type ExtractedFactCategories, heuristicExtractFacts } from "../extraction";
 import { clampVeracity } from "../veracity-consolidation";
 import { scheduleEmbedding } from "./helpers";
-import type { BeamMemoryState, BeamStats, JsonValue, MemoriaRetrieveResult, Metadata, SleepResult } from "./types";
+import type { BeamMemoryState, Metadata } from "./types";
 
 export type Row = Record<string, unknown>;
 
@@ -606,13 +604,13 @@ export function classifyAbility(query: string): string {
 
 // circular import: functions moved to helpers
 export {
-	memoriaRetrieve,
+	degradeEpisodic,
+	getConsolidationLog,
+	getContaminated,
 	getEpisodicStats,
 	getMemoriaStats,
-	degradeEpisodic,
-	getContaminated,
 	health,
+	memoriaRetrieve,
 	sleep,
 	sleepAllSessions,
-	getConsolidationLog,
 } from "./consolidate-helpers";

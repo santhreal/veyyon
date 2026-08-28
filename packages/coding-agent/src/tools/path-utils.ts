@@ -1,11 +1,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as url from "node:url";
-import { isEnoent, isMissingPath } from "@veyyon/utils/fs-error";
+import { isMissingPath } from "@veyyon/utils/fs-error";
 import { tryParseJson } from "@veyyon/utils/json";
 import { expandTilde, stripWindowsExtendedLengthPathPrefix } from "@veyyon/utils/path";
 import { READ_SELECTOR_RANGE_LIST_SRC, splitReadSelector } from "@veyyon/utils/read-selector";
-import { trimTrailingSlashes, URL_SCHEME_PREFIX_RE } from "@veyyon/utils/url";
+import { URL_SCHEME_PREFIX_RE } from "@veyyon/utils/url";
 import { ToolError } from "./tool-errors";
 
 export { expandTilde };
@@ -525,27 +525,28 @@ export function hasGlobPathChars(filePath: string): boolean {
 
 // circular import: functions moved to helpers
 import { normalizePosixPath, resolveReadPath } from "./path-utils-helpers";
-export {
-	splitDelimitedPathEntrySync,
-	expandDelimitedPathEntriesSync,
-	splitDelimitedPathEntry,
-	expandDelimitedPathEntries,
-	parseSearchPath,
-	parseSearchPathPreferringLiteral,
-	parseFindPattern,
-	combineSearchGlobs,
-	resolveExplicitSearchPaths,
-	resolveExplicitFindPatterns,
-	partitionExistingPaths,
-	resolveReadPath,
-} from "./path-utils-helpers";
+
 export type {
 	DelimitedPathSplitOptions,
-	ParsedSearchPath,
 	ParsedFindPattern,
-	ResolvedSearchTarget,
-	ResolvedMultiSearchPath,
+	ParsedSearchPath,
+	PartitionedPaths,
 	ResolvedFindTarget,
 	ResolvedMultiFindPattern,
-	PartitionedPaths,
+	ResolvedMultiSearchPath,
+	ResolvedSearchTarget,
+} from "./path-utils-helpers";
+export {
+	combineSearchGlobs,
+	expandDelimitedPathEntries,
+	expandDelimitedPathEntriesSync,
+	parseFindPattern,
+	parseSearchPath,
+	parseSearchPathPreferringLiteral,
+	partitionExistingPaths,
+	resolveExplicitFindPatterns,
+	resolveExplicitSearchPaths,
+	resolveReadPath,
+	splitDelimitedPathEntry,
+	splitDelimitedPathEntrySync,
 } from "./path-utils-helpers";

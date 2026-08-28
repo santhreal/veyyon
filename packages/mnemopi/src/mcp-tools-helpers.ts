@@ -5,12 +5,10 @@ import { DEFAULT_DB_FILENAME, dataDir } from "./config";
 import { BankManager } from "./core/banks";
 import { BeamMemory, type RecallOptions } from "./core/beam";
 import { addTriple, queryTriples } from "./core/triples";
-import { clampVeracity, VERACITY_DESCRIPTION, VERACITY_VALUES } from "./core/veracity";
-
-import type { JsonValue } from "./types";
-
+import { clampVeracity } from "./core/veracity";
 import type { ToolArguments, ToolDefinition, ToolResult } from "./mcp-tools";
 import { TOOLS } from "./mcp-tools";
+import type { JsonValue } from "./types";
 
 function stringArg(args: ToolArguments, key: string, fallback = ""): string {
 	const value = args[key];

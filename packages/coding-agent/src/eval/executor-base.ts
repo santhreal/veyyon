@@ -1,23 +1,15 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { errorMessage, getProjectDir, isCancellation, isTimeoutError, logger } from "@veyyon/utils";
+import { isCancellation, isTimeoutError, logger } from "@veyyon/utils";
 import { Settings } from "../config/settings";
-import { gateSessionCpuSpawn } from "../session/cpu-limit";
-import { registerOwnedResourceDisposer } from "../session/owned-resources";
 import { OutputSink } from "../session/streaming-output";
 import type { ToolSession } from "../tools";
 import { inlineBudgetFor } from "../tools/output-artifact";
 import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/output-meta";
 import { EVAL_TIMEOUT_PAUSE_OP, EVAL_TIMEOUT_RESUME_OP, isEvalTimeoutControlEvent } from "./bridge-timeout";
 import type { JsStatusEvent } from "./js/shared/types";
-import {
-	KERNEL_SHUTDOWN_GRACE_MS,
-	type KernelEnvPatch,
-	type KernelExecutor,
-	releaseKernel,
-	type SessionKernel,
-} from "./kernel-base";
-import { ensureKernelToolBridge, type KernelToolBridgeInfo, registerKernelToolBridge } from "./kernel-tool-bridge";
+import type { KernelEnvPatch, KernelExecutor } from "./kernel-base";
+import { type KernelToolBridgeInfo, registerKernelToolBridge } from "./kernel-tool-bridge";
 import type { KernelDisplayOutput } from "./py/display";
 
 /**
@@ -638,13 +630,13 @@ export async function executeWithKernelBase<
 	}
 }
 
-// circular import: types and class moved to helpers
-export { KernelSessionPool, createKernelExecutionDriver } from "./executor-base-helpers";
 export type {
-	SessionOwnerState,
-	ManagedKernelSession,
-	StartingManagedKernelSession,
-	KernelSessionPoolOptions,
-	KernelExecutionDriverOptions,
 	KernelExecutionDriver,
+	KernelExecutionDriverOptions,
+	KernelSessionPoolOptions,
+	ManagedKernelSession,
+	SessionOwnerState,
+	StartingManagedKernelSession,
 } from "./executor-base-helpers";
+// circular import: types and class moved to helpers
+export { createKernelExecutionDriver, KernelSessionPool } from "./executor-base-helpers";

@@ -1,13 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as url from "node:url";
 import { isEnoent, isMissingPath } from "@veyyon/utils/fs-error";
-import { tryParseJson } from "@veyyon/utils/json";
-import { expandTilde, stripWindowsExtendedLengthPathPrefix } from "@veyyon/utils/path";
-import { READ_SELECTOR_RANGE_LIST_SRC, splitReadSelector } from "@veyyon/utils/read-selector";
-import { trimTrailingSlashes, URL_SCHEME_PREFIX_RE } from "@veyyon/utils/url";
-import { ToolError } from "./tool-errors";
-
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import {
 	fileExists,
 	formatPathRelativeToCwd,

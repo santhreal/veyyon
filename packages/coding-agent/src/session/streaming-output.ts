@@ -1,11 +1,7 @@
-import type { AgentToolUpdateCallback } from "@veyyon/agent-core";
-import { capTextBytes, truncateHeadBytes, truncateTailBytes } from "@veyyon/utils/byte-truncate";
+import { capTextBytes, truncateTailBytes } from "@veyyon/utils/byte-truncate";
 import { clampLow } from "@veyyon/utils/math";
-import { sanitizeText, splitTrailingPartialEscape } from "@veyyon/utils/sanitize-text";
 
 import { DEFAULT_INLINE_FLOOR_FRACTION, DEFAULT_INLINE_OUTPUT_MAX_BYTES } from "../config/settings-domains/shared";
-import { formatBytes } from "../tools/render-utils";
-import { sanitizeWithOptionalSixelPassthrough } from "../utils/sixel";
 
 export { type ByteTruncationResult, truncateHeadBytes, truncateTailBytes } from "@veyyon/utils/byte-truncate";
 export const DEFAULT_MAX_LINES = 3000;
@@ -486,8 +482,8 @@ export class TailBuffer {
 
 // circular import: class and functions moved to helpers
 export {
-	OutputSink,
-	formatTailTruncationNotice,
 	formatHeadTruncationNotice,
+	formatTailTruncationNotice,
+	OutputSink,
 	streamTailUpdates,
 } from "./streaming-output-helpers";

@@ -1,28 +1,8 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { errorMessage, getProjectDir, isCancellation, isTimeoutError, logger } from "@veyyon/utils";
-import { Settings } from "../config/settings";
+import { errorMessage, getProjectDir, logger } from "@veyyon/utils";
 import { gateSessionCpuSpawn } from "../session/cpu-limit";
 import { registerOwnedResourceDisposer } from "../session/owned-resources";
-import { OutputSink } from "../session/streaming-output";
-import type { ToolSession } from "../tools";
-import { inlineBudgetFor } from "../tools/output-artifact";
-import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/output-meta";
-import { EVAL_TIMEOUT_PAUSE_OP, EVAL_TIMEOUT_RESUME_OP, isEvalTimeoutControlEvent } from "./bridge-timeout";
-import type { JsStatusEvent } from "./js/shared/types";
-import {
-	KERNEL_SHUTDOWN_GRACE_MS,
-	type KernelEnvPatch,
-	type KernelExecutor,
-	releaseKernel,
-	type SessionKernel,
-} from "./kernel-base";
-import { ensureKernelToolBridge, type KernelToolBridgeInfo, registerKernelToolBridge } from "./kernel-tool-bridge";
-import type { KernelDisplayOutput } from "./py/display";
-
 import type { CancelledErrorClass, KernelExecutionResult, KernelExecutorBaseOptions } from "./executor-base";
 import {
-	KernelExecutionCancelledError,
 	attachSessionOwner,
 	buildEvalSessionKey,
 	buildManagedKernelEnvPatch,
@@ -34,10 +14,13 @@ import {
 	getRemainingTimeoutMs,
 	isCancellationError,
 	isTimedOutCancellation,
+	KernelExecutionCancelledError,
 	normalizeSessionCwd,
 	requireRemainingTimeoutMs,
 	waitForPromiseWithCancellation,
 } from "./executor-base";
+import { KERNEL_SHUTDOWN_GRACE_MS, type KernelExecutor, releaseKernel, type SessionKernel } from "./kernel-base";
+import { ensureKernelToolBridge } from "./kernel-tool-bridge";
 
 export interface SessionOwnerState {
 	ownerIds: Set<string>;
