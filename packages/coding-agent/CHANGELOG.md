@@ -56,6 +56,7 @@
 - `#buildSegmentContext` in `status-line/component.ts` reuses a single `SegmentContext` object across frames (updated in-place) instead of allocating a new ~25-field object every frame; the object is consumed synchronously by `renderSegment` and never stored.
 - `#gatherQuietSegments` in `status-line/component.ts` pre-allocates the `location`, `capLeft`, `capRight`, `contextFromLeft`, and `badgeParts` arrays and the return object as fields, clearing and refilling them in-place instead of allocating new arrays every frame.
 - `renderQuietLine` in `status-line/component.ts` pre-allocates the `locationContents`, `rightParts`, `bounds`, and `shifted` arrays as fields, clearing and refilling them in-place; `rightParts` is filled via index loop instead of `capLeft.concat(capRight)`.
+- `#backgroundJobBadgeCount` in `status-line/component.ts` calls the new `getRunningNonTaskJobCount` on `AgentSession` (backed by `countRunningJobsExcludingType` on `AsyncJobManager`) instead of `getAsyncJobSnapshot()`, eliminating ~10+ per-frame allocations (ownerFilter, 2 filter arrays, 2 map arrays, N job objects, delivery state, return object) that were created just to count non-task running jobs.
 
 
 
