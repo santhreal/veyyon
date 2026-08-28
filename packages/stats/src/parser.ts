@@ -1,8 +1,5 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-// The owner, not the barrel. These three functions and every type beside them are
-// declared in `@veyyon/ai/types`, which reaches 5 modules; the barrel reaches 363,
-// and a session-file parser has no use for the streaming engine behind it.
 import {
 	type AssistantMessage,
 	coerceServiceTierByFamily,
@@ -42,16 +39,7 @@ import type {
 } from "./types";
 import { computeUserMessageMetrics } from "./user-metrics";
 
-/**
- * Classify which agent produced a transcript from its path within the sessions
- * directory. Layout: `<sessionsDir>/<project>/<file>.jsonl` is the `main`
- * agent; subagent and advisor transcripts live nested one level deeper inside
- * the session's artifacts dir (`<project>/<session>/<id>.jsonl`,
- * `<project>/<session>/__advisor.jsonl`). Any advisor transcript
- * (`__advisor.jsonl` or `__advisor.<slug>.jsonl`) — at any depth, including a
- * subagent's own advisor — counts as `advisor`; every other nested transcript
- * is a task `subagent`.
- */
+/** Classify agent type from session file path. */
 export function classifyAgentType(sessionPath: string): AgentType {
 	const base = path.basename(sessionPath);
 	if (isAdvisorTranscriptName(base)) {
@@ -62,12 +50,7 @@ export function classifyAgentType(sessionPath: string): AgentType {
 	return rel.split(path.sep).length <= 2 ? "main" : "subagent";
 }
 
-/**
- * Extract folder name from session filename.
- * Session files are named like: --work--veyyon/timestamp_uuid.jsonl
- * The folder part encodes each `/` of the original path as `--`, so there is
- * no trailing separator (a trailing `--` would decode to a stray trailing `/`).
- */
+/** Extract folder name from session path. */
 function extractFolderFromPath(sessionPath: string): string {
 	const sessionsDir = getSessionsDir();
 	const rel = path.relative(sessionsDir, sessionPath);
@@ -76,31 +59,15 @@ function extractFolderFromPath(sessionPath: string): string {
 	return projectDir.replace(/^--/, "/").replace(/--/g, "/");
 }
 
-/**
- * Check if an entry is an assistant message.
- */
-/**
- * Whether a session-log entry is an assistant message that can be linked to.
- *
- * TWO requirements, not one. Beyond the assistant role, the entry needs a non-empty `id`:
- * legacy sessions recorded message entries before id tracking, and those rows would
- * violate the `messages.entry_id NOT NULL` constraint downstream. Named for the linkable
- * part because that is the half a reader would otherwise miss; it was called
- * `isAssistantMessage`, as were three unrelated predicates elsewhere.
- */
+/** Check if an entry is a linkable assistant message. */
 function isLinkableAssistantEntry(entry: SessionLogEntry): entry is SessionMessageEntry {
 	if (entry.type !== "message") return false;
 	const msgEntry = entry as SessionMessageEntry;
-	// Legacy sessions (pre-id tracking) recorded message entries without an `id`.
-	// They're not linkable and would violate the messages.entry_id NOT NULL
-	// constraint, so skip them at the parser boundary.
 	if (typeof msgEntry.id !== "string" || msgEntry.id.length === 0) return false;
 	return msgEntry.message?.role === "assistant";
 }
 
-/**
- * Check if an entry is a user message (non-toolResult).
- */
+/** Check if an entry is a user message. */
 function isUserMessage(entry: SessionLogEntry): entry is SessionMessageEntry {
 	if (entry.type !== "message") return false;
 	const msgEntry = entry as SessionMessageEntry;
@@ -108,38 +75,24 @@ function isUserMessage(entry: SessionLogEntry): entry is SessionMessageEntry {
 	return msgEntry.message?.role === "user";
 }
 
-/**
- * Check if an entry is a service-tier change.
- */
+/** Check if an entry is a service-tier change. */
 function isServiceTierChange(entry: SessionLogEntry): entry is SessionServiceTierChangeEntry {
 	return entry.type === "service_tier_change";
 }
 
-/**
- * Check if an entry is a tool-result message.
- */
+/** Check if an entry is a tool-result message. */
 function isToolResultMessage(entry: SessionLogEntry): entry is SessionMessageEntry {
 	if (entry.type !== "message") return false;
 	return (entry as SessionMessageEntry).message?.role === "toolResult";
 }
 
-/**
- * The non-empty `parentId` of any entry, or null. Read defensively because the
- * `{ type: string }` catch-all in {@link SessionLogEntry} means a value that is not
- * a known entry shape still reaches here; a missing, empty, or non-string
- * `parentId` yields null so the caller stops walking the chain.
- */
+/** Get parentId of entry or null. */
 function entryParentId(entry: SessionLogEntry): string | null {
 	const parentId = (entry as { parentId?: unknown }).parentId;
 	return typeof parentId === "string" && parentId.length > 0 ? parentId : null;
 }
 
-/**
- * Extract plain text from a user message content payload.
- */
-/**
- * Build user-message stats from an entry. Returns null for empty/synthetic content.
- */
+/** Build user-message stats from an entry. */
 function extractUserStats(sessionFile: string, folder: string, entry: SessionMessageEntry): UserMessageStats | null {
 	const msg = entry.message as { role: "user"; content?: unknown; synthetic?: boolean };
 	if (msg.role !== "user" || msg.synthetic) return null;
@@ -165,17 +118,7 @@ function extractUserStats(sessionFile: string, folder: string, entry: SessionMes
 	};
 }
 
-/**
- * Extract stats from an assistant message entry.
- *
- * Session JSONL on disk is not guaranteed to match the current
- * `AssistantMessage` shape: crash-truncated turns, sessions written by older
- * versions, and foreign producers all flow through this parser. Every field
- * returned here feeds a NOT NULL column in stats.db, so malformed entries are
- * coerced (missing `stopReason`, token counts, `timestamp`) or skipped
- * (missing `model`/`provider`/`api`/`usage`) instead of crashing the whole
- * sync with a constraint violation.
- */
+/** Extract stats from an assistant message entry. */
 function extractStats(
 	sessionFile: string,
 	folder: string,
@@ -189,12 +132,6 @@ function extractStats(
 	const rawUsage = msg.usage as Partial<Usage> | undefined;
 	if (!rawUsage || typeof rawUsage !== "object") return null;
 
-	// Backfill: when the session recorded `priority` as the active service tier
-	// at this point but the AI usage payload was captured before priority
-	// requests were folded into `premiumRequests`, derive the count here so the
-	// "Premium Reqs" stat aggregates priority traffic on re-sync. Trust any
-	// non-zero value already in `usage.premiumRequests` (Copilot multipliers or
-	// the new AI code path) and only synthesise when the field is missing/zero.
 	const recorded = rawUsage.premiumRequests ?? 0;
 	const model = { provider: msg.provider, api: msg.api, id: msg.model };
 	const tier = resolveModelServiceTier(currentServiceTier, model);
@@ -257,8 +194,6 @@ function extractToolCalls(
 ): ToolCallStats[] {
 	const msg = entry.message as AssistantMessage;
 	if (msg?.role !== "assistant" || !Array.isArray(msg.content)) return [];
-	// `tool_calls` columns are NOT NULL: skip turns that can't be attributed
-	// (malformed persisted entries — see extractStats) and blocks missing ids.
 	if (typeof msg.model !== "string" || typeof msg.provider !== "string") return [];
 
 	const blocks = msg.content.filter(
@@ -290,10 +225,7 @@ function extractToolCalls(
 	});
 }
 
-/**
- * Build the result linkage for a `toolResult` entry: text characters fed back
- * into context plus the error flag, keyed to the originating call.
- */
+/** Build result linkage for a toolResult entry. */
 function extractToolResultLink(sessionFile: string, entry: SessionMessageEntry): ToolResultLink | null {
 	const msg = entry.message as ToolResultMessage;
 	if (msg.role !== "toolResult" || typeof msg.toolCallId !== "string" || msg.toolCallId.length === 0) return null;
@@ -311,36 +243,16 @@ function extractToolResultLink(sessionFile: string, entry: SessionMessageEntry):
 	};
 }
 
-/**
- * A session line is usable only if it decoded to an OBJECT.
- *
- * `visitJsonlBytes` treats any successfully parsed value as an item, which is right in general and
- * wrong here: a line holding `null`, a number or a string is valid JSON and is not a session entry,
- * and visiting it would push a non-entry into every downstream sum. Reporting it as a skip is the
- * truthful outcome, and it preserves the behaviour this parser had before the walk moved to
- * `@veyyon/utils`.
- */
+/** Decode a session log entry line. */
 function decodeSessionEntry(text: string): SessionLogEntry | undefined {
 	const parsed = tryParseJson<SessionLogEntry>(text);
 	return parsed !== null && typeof parsed === "object" ? parsed : undefined;
 }
 
-/**
- * A complete line that did not parse, so its message is missing from every statistic.
- *
- * A trailing PARTIAL line is not one of these: the session file is appended to while the
- * dashboard reads it, so a cut-off last line is the ordinary case and is picked up on the next
- * pass at the same offset. Only a line that ended in a newline and still failed is data loss.
- */
+/** Skipped line representation. */
 type SkippedLine = JsonlByteSkip;
 
-/**
- * Walk the session entries in a byte buffer whose tail may be a partial line.
- *
- * The byte-level walk itself lives in `@veyyon/utils` as `visitJsonlBytes`; this is the session-shaped
- * wrapper over it. It used to be a fourth hand-written JSONL loop here, which is how it came to drop a
- * malformed line with no report while the two string-based readers in utils both had one.
- */
+/** Lenient session entry visitor. */
 function visitSessionEntriesLenient(
 	bytes: Uint8Array,
 	visit: (entry: SessionLogEntry) => void,
@@ -360,14 +272,7 @@ function parseSessionEntriesLenient(
 /** Longest list of skipped-line offsets reported, so one corrupt file cannot flood the log. */
 const REPORTED_SKIPS_MAX = 20;
 
-/**
- * Report the lines a session file lost, once per file rather than once per line.
- *
- * Every number the stats dashboard shows — token counts, cost, tool-call totals — is a sum over
- * the entries that parsed. A dropped line silently lowers all of them, and the result still looks
- * like a complete session, so nobody has a reason to doubt it. The count is the part that matters;
- * the offsets are there so the line can actually be found.
- */
+/** Log warning for unparseable session lines. */
 function reportSkippedLines(sessionPath: string, skips: SkippedLine[], start: number): void {
 	if (skips.length === 0) return;
 	logger.warn("Session file has unparseable lines; their messages are missing from every statistic", {
@@ -385,22 +290,7 @@ function scanLastServiceTier(bytes: Uint8Array): ServiceTierByFamily | undefined
 	});
 	return currentServiceTier;
 }
-/**
- * Parse a session file and extract all assistant message stats.
- * Uses incremental reading with offset tracking.
- *
- * Service-tier carry-over: `currentServiceTier` is a session-scoped piece of
- * state derived from `service_tier_change` entries that affects whether
- * subsequent OpenAI assistant replies count as premium requests. Incremental
- * syncs that resume past the most-recent tier change would otherwise lose
- * that state and silently record `premiumRequests = 0` for priority traffic
- * (the coding-agent stopped folding the tier into `usage.premiumRequests`
- * after 13f59162e — the parser is now the sole source of truth). When
- * `fromOffset > 0` we therefore scan the bytes preceding `fromOffset`
- * for the latest service-tier value before parsing the unprocessed tail.
- * The scan only keeps the current tier and does not materialize prefix
- * entries, preserving offset-based memory behavior for large sessions.
- */
+/** Parse session file incrementally from offset and extract statistics. */
 export interface ParseSessionResult {
 	stats: MessageStats[];
 	userStats: UserMessageStats[];
@@ -464,12 +354,6 @@ export async function parseSessionFile(sessionPath: string, fromOffset = 0): Pro
 			if (parentId) {
 				const msg = entry.message as AssistantMessage;
 				if (msg.model && msg.provider) {
-					// Emit unconditionally. The aggregator's UPDATE is guarded by
-					// `model IS NULL` so this is idempotent: a no-op for already
-					// linked rows, a fix-up for fresh inserts (which start NULL
-					// because the user row is recorded before its reply lands) and
-					// for cross-pass orphans whose parent was committed by an
-					// earlier incremental sync.
 					userLinks.push({
 						sessionFile: sessionPath,
 						entryId: parentId,
@@ -484,15 +368,7 @@ export async function parseSessionFile(sessionPath: string, fromOffset = 0): Pro
 	return { stats, userStats, userLinks, toolCalls, toolResults, newOffset: start + read };
 }
 
-/**
- * List all session directories (folders).
- *
- * An absent sessions directory returns an empty list, because that is the truth: nothing has been
- * recorded yet. Any OTHER failure is reported. Both used to return the same empty list, and every
- * number the dashboard shows is a sum over the files under these folders, so a directory that
- * exists but cannot be read presented as a user who has never run a session, with the totals to
- * match and nothing to say otherwise.
- */
+/** List all session directories. */
 export async function listSessionFolders(): Promise<string[]> {
 	const sessionsDir = getSessionsDir();
 	try {
@@ -508,14 +384,7 @@ export async function listSessionFolders(): Promise<string[]> {
 	}
 }
 
-/**
- * List all session files in a folder.
- *
- * Same rule as {@link listSessionFolders}, applied per folder: a folder that has gone away between
- * the listing and the walk is not an anomaly and stays quiet, while a folder that is there and
- * unreadable drops every session inside it from every total, so it is reported and the sync
- * continues with the folders it could read.
- */
+/** List all session files in a folder. */
 export async function listSessionFiles(folderPath: string): Promise<string[]> {
 	try {
 		const entries = await fs.readdir(folderPath, { recursive: true, withFileTypes: true });
@@ -530,9 +399,7 @@ export async function listSessionFiles(folderPath: string): Promise<string[]> {
 	}
 }
 
-/**
- * List all session files across all folders.
- */
+/** List all session files across all folders. */
 export async function listAllSessionFiles(): Promise<string[]> {
 	const folders = await listSessionFolders();
 	const allFiles: string[] = [];
@@ -545,26 +412,10 @@ export async function listAllSessionFiles(): Promise<string[]> {
 	return allFiles;
 }
 
-/**
- * The most turn entries `getSessionEntryWithContext` will walk back through. A
- * normal turn is at most a few hundred entries (two per tool round plus the
- * prompt), so this only bounds a corrupted or self-referential `parentId` chain;
- * it is a safety cap against unbounded work, not a product-visible limit.
- */
+/** Maximum turn entries to walk back through for context. */
 const MAX_CONTEXT_ENTRIES = 500;
 
-/**
- * Return the entry with `entryId` from a session file together with its turn
- * context: the ancestor entries walked up the `parentId` chain, stopping at and
- * including the nearest user prompt. Entries come back oldest-first with the
- * requested entry last, so `context[context.length - 1]` is always that entry
- * and `context[0]` is the triggering user message (or the oldest reachable
- * ancestor when no user prompt is on the chain).
- *
- * This is what lets a request-detail view show the user prompt and the
- * intervening tool-call/result cycle, not just the isolated assistant reply.
- * Returns null when the id is absent or the file is missing.
- */
+/** Return entry with turn context walking back to triggering prompt. */
 export async function getSessionEntryWithContext(
 	sessionPath: string,
 	entryId: string,
