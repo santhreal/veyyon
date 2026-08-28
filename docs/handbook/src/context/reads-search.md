@@ -169,6 +169,11 @@ returned in `also_matched`, and a query naming it activates it. Rank order alone
 tail: "keep track of what is left to do" activated `todo`, `set_cwd`, `task` and `web_search`, and
 an activated tool's schema is carried by every later request of the session.
 
+Discovery ranks a tool on its full description and its one-line summary together. Ranking on the
+summary alone left 96 to 99 percent of each tool's text out of the corpus, so `launch` scored zero
+for "tail the output of a server" and `eval` scored zero for "evaluate javascript". A compound word
+is indexed whole and in parts, so `sqlite` reaches `SQLite` and `java script` reaches `JavaScript`.
+
 ## Why these are grouped with context
 
 A read that bounds and a search that bounds its output are both about keeping the working context

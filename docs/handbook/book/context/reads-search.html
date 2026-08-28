@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-94cd4798.js";
+            window.path_to_searchindex_js = "../searchindex-0fe0b1bc.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -362,6 +362,10 @@ needs it, so the setting trades a fixed per-request cost for an occasional one.
 returned in <code>also_matched</code>, and a query naming it activates it. Rank order alone activated the whole
 tail: “keep track of what is left to do” activated <code>todo</code>, <code>set_cwd</code>, <code>task</code> and <code>web_search</code>, and
 an activated tool’s schema is carried by every later request of the session.</p>
+<p>Discovery ranks a tool on its full description and its one-line summary together. Ranking on the
+summary alone left 96 to 99 percent of each tool’s text out of the corpus, so <code>launch</code> scored zero
+for “tail the output of a server” and <code>eval</code> scored zero for “evaluate javascript”. A compound word
+is indexed whole and in parts, so <code>sqlite</code> reaches <code>SQLite</code> and <code>java script</code> reaches <code>JavaScript</code>.</p>
 <h2 id="why-these-are-grouped-with-context"><a class="header" href="#why-these-are-grouped-with-context">Why these are grouped with context</a></h2>
 <p>A read that bounds and a search that bounds its output are both about keeping the working context
 <em>small and relevant</em>. Long trajectories degrade when context fills with raw file dumps; these tools plus
