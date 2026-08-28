@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
+import { visibleWidth } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
 import { fileSearchRenderer } from "../../src/tools/file-search";
 import { searchToolRenderer } from "../../src/tools/search-renderer";
@@ -133,5 +134,94 @@ describe("fileSearchRenderer truncation reasons", () => {
 			.render(240);
 		const plain = sanitizeText(renderedLines.join("\n"));
 		expect(plain.match(/limit 200 results/g)!.length).toBe(1);
+	});
+});
+
+/** WHY: these three visual contracts were asserted against the retired `glob`
+ * renderer and were not carried over when the tool became `search files`. The
+ * rendering shape they defend — the collapsed/expanded item budget, the
+ * directory-versus-file indent, and the body width budget that keeps a row from
+ * wrapping — is unchanged by the rename, so a regression in any of them was
+ * unobserved. They do not cover the text or structure renderers, which own
+ * their own row shapes. */
+describe("fileSearchRenderer row layout", () => {
+	useFullColor();
+
+	it("respects collapsed vs expanded line budgets with a railed overflow indicator", async () => {
+		const uiTheme = (await getThemeByName("dark"))!;
+		const files = Array.from({ length: 15 }, (_, i) => `src/file_${i}.ts`);
+		const result = { content: [{ type: "text", text: "" }], details: { fileCount: 15, files } };
+		const rail = uiTheme.symbol("block.rail");
+
+		const plainCollapsed = sanitizeText(
+			fileSearchRenderer
+				.renderResult(result as never, { expanded: false, isPartial: false }, uiTheme, { input: "src/**/*.ts" })
+				.render(240)
+				.join("\n"),
+		).split("\n");
+		expect(plainCollapsed[0]!).toContain("15 files");
+		expect(plainCollapsed.length).toBe(10); // header + 8 files + overflow
+		for (const line of plainCollapsed.slice(1)) {
+			expect(line.startsWith(`${rail} `)).toBe(true);
+			expect(line).not.toMatch(/[├└│]/);
+		}
+		expect(plainCollapsed[9]!).toContain("… 7 more files");
+
+		const plainExpanded = sanitizeText(
+			fileSearchRenderer
+				.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "src/**/*.ts" })
+				.render(240)
+				.join("\n"),
+		).split("\n");
+		expect(plainExpanded[0]!).toContain("15 files");
+		expect(plainExpanded.length).toBe(16); // header + 15 files
+		for (const line of plainExpanded.slice(1)) {
+			expect(line.startsWith(`${rail} `)).toBe(true);
+			expect(line).not.toMatch(/[├└│]/);
+		}
+		expect(plainExpanded.some(line => line.includes("more file"))).toBe(false);
+	});
+
+	it("formats directory headers without the file indent and files with it", async () => {
+		const uiTheme = (await getThemeByName("dark"))!;
+		const result = {
+			content: [{ type: "text", text: "" }],
+			details: { fileCount: 3, files: ["src/", "src/index.ts", "src/util.ts"] },
+		};
+
+		const plainLines = sanitizeText(
+			fileSearchRenderer
+				.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "src/**" })
+				.render(240)
+				.join("\n"),
+		).split("\n");
+
+		const rail = uiTheme.symbol("block.rail");
+		expect(plainLines[0]!).toContain("3 files");
+		expect(plainLines[1]!).toContain(`${rail}  `);
+		expect(plainLines[1]!).toContain("src/");
+		expect(plainLines[2]!).toContain(`${rail}    `);
+		expect(plainLines[2]!).toContain("src/index.ts");
+		expect(plainLines[3]!).toContain(`${rail}    `);
+		expect(plainLines[3]!).toContain("src/util.ts");
+	});
+
+	it("budgets body width against the block content width so a row never wraps", async () => {
+		const uiTheme = (await getThemeByName("dark"))!;
+		const longPath =
+			"src/very/deep/nested/directory/structure/that/is/exceptionally/long/and/will/overflow/if/not/budgeted/correctly/index.ts";
+		const result = { content: [{ type: "text", text: "" }], details: { fileCount: 1, files: [longPath] } };
+
+		const targetWidth = 40;
+		const renderedLines = fileSearchRenderer
+			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "src/**" })
+			.render(targetWidth);
+
+		// One header row and one truncated body row. Budgeted against the outer
+		// width instead of the block content width, the body row re-wraps to two.
+		expect(renderedLines.length).toBe(2);
+		for (const line of renderedLines) {
+			expect(visibleWidth(line)).toBeLessThanOrEqual(targetWidth);
+		}
 	});
 });
