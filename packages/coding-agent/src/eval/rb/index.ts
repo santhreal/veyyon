@@ -14,6 +14,6 @@ export default createKernelBackend<RubyExecutorOptions>({
 	highlightLang: "ruby",
 	settingPrefix: "ruby",
 	sessionPrefix: RUBY_SESSION_PREFIX,
-	checkAvailability: checkRubyKernelAvailability,
-	execute: executeRuby,
+	checkAvailability: (cwd, interpreter) => checkRubyKernelAvailability(cwd, interpreter),
+	execute: (code, options) => executeRuby(code, options),
 });

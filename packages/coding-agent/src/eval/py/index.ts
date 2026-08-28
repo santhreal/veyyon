@@ -9,12 +9,16 @@ import { PYTHON_SESSION_PREFIX } from "./session-namespace";
  */
 export { namespaceSessionId, PYTHON_SESSION_PREFIX } from "./session-namespace";
 
+// The descriptor is built once, when this module is evaluated. Naming the kernel
+// functions inside a call rather than passing the references keeps the kernel and
+// executor modules the single definition of each: the descriptor holds a call, not a
+// snapshot of whichever binding existed at import time.
 export default createKernelBackend<PythonExecutorOptions>({
 	id: "python",
 	label: "Python",
 	highlightLang: "python",
 	settingPrefix: "python",
 	sessionPrefix: PYTHON_SESSION_PREFIX,
-	checkAvailability: checkPythonKernelAvailability,
-	execute: executePython,
+	checkAvailability: (cwd, interpreter) => checkPythonKernelAvailability(cwd, interpreter),
+	execute: (code, options) => executePython(code, options),
 });

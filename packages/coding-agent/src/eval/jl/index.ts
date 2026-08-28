@@ -14,6 +14,6 @@ export default createKernelBackend<JuliaExecutorOptions>({
 	highlightLang: "julia",
 	settingPrefix: "julia",
 	sessionPrefix: JULIA_SESSION_PREFIX,
-	checkAvailability: checkJuliaKernelAvailability,
-	execute: executeJulia,
+	checkAvailability: (cwd, interpreter) => checkJuliaKernelAvailability(cwd, interpreter),
+	execute: (code, options) => executeJulia(code, options),
 });
