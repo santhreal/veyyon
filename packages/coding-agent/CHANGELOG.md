@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- 6 rendering functions and types extracted from `tools/read.ts` (2,966→2,684 lines) into `tools/read-render-helpers.ts`.
 - 10 setup functions and types extracted from `sdk.ts` (3,134→567 lines) into `sdk-post-helpers.ts`.
 - 49 type definitions, constants, and signal instances extracted from `config/settings.ts` (2,004→1,706 lines) into `config/settings-helpers.ts`.
 - 15 type definitions and constants extracted from `modes/components/model-hub.ts` (1,904→1,846 lines) into `modes/components/model-hub-helpers.ts`.
