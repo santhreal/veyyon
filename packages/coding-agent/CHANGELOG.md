@@ -50,6 +50,12 @@
 - `#gatherQuietSegments` in `status-line/component.ts` caches the `quietOptions` segment-options spread by `(segmentOptions ref, pathBudget)`, avoiding 3 nested object allocations per frame; the object is reused across frames when only the path budget is unchanged (the common case outside the ~300ms expansion animation).
 - `#buildSegmentContext` in `status-line/component.ts` caches the `git` sub-object (`{ branch, status, pr }`) by reference identity of its three values, avoiding a wrapper object allocation per frame when git state is unchanged.
 - `#subagentBadgeText` in `status-line/component.ts` caches the themed badge string by subagent count, avoiding a `theme.fg()` + template literal allocation per frame when the count is unchanged. `prewalk` in `#buildSegmentContext` uses a constant `PREWALK_ENABLED` object instead of allocating `{ enabled: true }` per frame.
+- `stateSeparator()` and `segmentSeparator()` in `status-line/state-grammar.ts` cache their `theme.fg("dim", …)` strings by theme epoch, avoiding 2–3 SGR string concatenations per frame; the cache invalidates automatically on theme swap.
+- `renderQuietLine` in `status-line/component.ts` inlines the `fitToTheRoomLeft` arrow closure at all 4 call sites, eliminating a per-frame function allocation.
+- `#gatherQuietSegments` in `status-line/component.ts` extracts the `push` closure to a module-level `pushQuietPart` function, eliminating a per-frame closure allocation.
+- `#buildSegmentContext` in `status-line/component.ts` reuses a single `SegmentContext` object across frames (updated in-place) instead of allocating a new ~25-field object every frame; the object is consumed synchronously by `renderSegment` and never stored.
+- `#gatherQuietSegments` in `status-line/component.ts` pre-allocates the `location`, `capLeft`, `capRight`, `contextFromLeft`, and `badgeParts` arrays and the return object as fields, clearing and refilling them in-place instead of allocating new arrays every frame.
+- `renderQuietLine` in `status-line/component.ts` pre-allocates the `locationContents`, `rightParts`, `bounds`, and `shifted` arrays as fields, clearing and refilling them in-place; `rightParts` is filled via index loop instead of `capLeft.concat(capRight)`.
 
 
 
