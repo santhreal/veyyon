@@ -5,7 +5,7 @@
  * unconditionally, and the compact strip zeroed that margin at 24 rows and under.
  * The two rules met in the middle of ordinary window sizes and produced a cliff: a
  * 24-row terminal gave a full-screen card, and a 25-row terminal gave an 11-row
- * card whose body had no room for a single list row. The Agent Control Center on
+ * card whose body had no room for a single list row. The subagent dashboard on
  * a 25-row terminal, which is an ordinary split pane, showed an EMPTY box. That
  * is what "I opened /agents and it is useless" looks like from the inside.
  *

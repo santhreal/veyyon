@@ -3,7 +3,7 @@
  *
  * These began as three constants declared twice, once in the Agent Hub overlay and once in the Subagent Inbox,
  * with the inbox's own comment on the gesture window reading "matching the hub", which names the coupling
- * without doing anything about it. Both views are gone: the Agent Control Center replaced them. The module
+ * without doing anything about it. Both views are gone: the subagent dashboard replaced them. The module
  * stays because the coupling did. The card owns two of the numbers and the input controller owns the third, so
  * the same three values still span more than one file, and a card whose age column advanced at one rate while
  * the gesture that opens it used a different rhythm would be the same felt inconsistency one level over.
@@ -33,7 +33,7 @@ export const AGENT_VIEW_AGE_TICK_MS = 5_000;
 export const AGENT_VIEW_DATA_CHANGE_COALESCE_MS = 100;
 
 /**
- * How long after a left-arrow press a second one counts as the double tap that opens the Agent Control Center,
+ * How long after a left-arrow press a second one counts as the double tap that opens the subagent dashboard,
  * or that leaves a focused subagent for the main session.
  *
  * One window for both, because a user who learns the rhythm going in uses the same rhythm coming out, and a

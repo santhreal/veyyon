@@ -253,7 +253,7 @@ export const SUBAGENTS_SETTINGS = {
 	 *
 	 * Rendered as a table of discovered agents rather than one control, so the
 	 * settings row is a summary that opens the per-agent editor. This is the ONLY
-	 * surface that edits these rows: the Agent Control Center (`/agents`) used to
+	 * surface that edits these rows: the subagent dashboard (`/agents`) used to
 	 * carry a second copy of the same table, and two editors over one setting is
 	 * how the surfaces drifted apart before. The blanket depth limit each row
 	 * inherits from sits in this same section for that reason: a spawn ceiling

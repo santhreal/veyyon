@@ -1,5 +1,5 @@
 /**
- * The Live roster of the Agent Control Center, scoped to one conversation.
+ * The Live roster of the subagent dashboard, scoped to one conversation.
  *
  * WHY THESE TESTS. The registry is process-global, so a session that re-roots
  * to a different transcript (`/new`, `/resume`) left the previous

@@ -42,7 +42,8 @@
 - Reading a file or fetching a URL no longer loads the document converters, and a web search no longer loads the browser fingerprint generator, because the constants those paths wanted are separated from the libraries that sat behind them, taking about 40ms off session startup.
 - The launch card is painted and flushed before the agent runtime graph is loaded, taking an interactive launch from a blank terminal for 760ms to a typable composer at 111ms.
 - The agent runtime is loaded in stages that hand the event loop back between them, so a character typed while the launch card is up is drawn in 6ms instead of 198ms; the load itself takes the same time.
-- The Agent Control Center no longer opens across every conversation the process is running: `/process-manager` and the `a` scope toggle are removed, and the card is scoped to the conversation on screen.
+- `/agents` is the subagent dashboard: the surface is named that in its title, its `/agents` description, its keybinding descriptions, `/hotkeys` and the handbook, in place of "Agent Control Center".
+- The subagent dashboard no longer opens across every conversation the process is running: `/process-manager` and the `a` scope toggle are removed, and the card is scoped to the conversation on screen.
 - A locally built binary minifies identifiers the way the released one does, cutting it from 310.7MB to 303.4MB and its launch card from 143ms to 131ms; function names are still kept, so stack traces are unchanged.
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
 - The CPU model is read once per process instead of on every system prompt build, removing about 30ms from the window before the composer accepts input.

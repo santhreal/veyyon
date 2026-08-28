@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-89f274d4.js";
+            window.path_to_searchindex_js = "searchindex-d51f25b3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -1644,7 +1644,7 @@ OpenAI-compatible endpoints.</li>
 <h2 id="interactive-surfaces"><a class="header" href="#interactive-surfaces">Interactive surfaces</a></h2>
 <p>These are the parts of the TUI you touch every session:</p>
 <ul>
-<li><a href="#multi-agent-monitoring">Status line and multi-agent UI</a> covers the status segments, the Agent Control Center (<code>/agents</code>), jobs, and the swarm view.</li>
+<li><a href="#multi-agent-monitoring">Status line and multi-agent UI</a> covers the status segments, the subagent dashboard (<code>/agents</code>), jobs, and the swarm view.</li>
 <li><a href="#keybindings-1">Keybindings</a> covers the chords.</li>
 <li>The composer gives you prompt history, <code>@</code> and <code>/</code> completion, and <code>Esc</code> to interrupt. See <a href="#quickstart">Quickstart</a> and <a href="#keybindings-1">Keybindings</a>.</li>
 <li><a href="#web-search">Web search</a> covers searching from inside a session.</li>
@@ -3003,52 +3003,54 @@ header is bare.</p>
 (<code>subagent.maxConcurrency</code>), how deeply they may nest (<code>subagent.maxNestedSpawnDepth</code>),
 per-run wall clock and request budgets, how long a finished subagent stays live
 before parking (<code>subagent.idleTtlMs</code>) and how long it stays listed after that
-(<code>subagent.autoClose.*</code>), and whether its edits land in an isolated
+(<code>subagent.prune.*</code>), and whether its edits land in an isolated
 copy of the tree first (<code>subagent.isolation.*</code>, see <a href="#safety-1">Safety</a>).</p>
-<p><code>subagent.idleTtlMs</code> defaults to five minutes for every model and provider. Set
-a positive millisecond value to override it. Set <code>0</code> to keep idle agents live
-until exit. Parking releases the live session but keeps its transcript, so
-messaging or opening the agent can revive it.</p>
-<p>A parked subagent is eventually closed, which drops it from the roster so a long
-session does not accumulate every agent it ever spawned. Closing removes the
-revivable reference; it does not touch the transcript, which stays readable at
-<code>history://&lt;name&gt;</code>.</p>
-<p>Four settings in the Auto Close group control the whole lifecycle, in the order they
-happen. <code>subagent.idleTtlMs</code> (“Park After”) is stage one: how long a finished subagent
-stays live before parking, five minutes by default. <code>subagent.autoClose.enabled</code> is on by
+<p>Park and prune are two stages, and they do different things.</p>
+<p><strong>Park</strong> releases the live session, the process, its MCP clients and its memory. The
+roster row and the transcript stay, and messaging or opening the agent revives it.
+<code>subagent.idleTtlMs</code> (“Park After”) is the budget, five minutes by default for every
+model and provider. Set a positive millisecond value to override it, or <code>0</code> to keep
+idle agents live until exit.</p>
+<p><strong>Prune</strong> drops the roster row and with it the ability to wake the agent, so a long
+session does not accumulate every agent it ever spawned. It deletes nothing: the
+transcript stays readable at <code>history://&lt;name&gt;</code>.</p>
+<p>Three settings in the Prune group control stage two. <code>subagent.prune.enabled</code> is on by
 default; turn it off to keep every parked subagent listed and revivable until you exit.
-<code>subagent.autoClose.parkedMs</code> (“Close After”) is how long a parked subagent stays listed,
-counted from the moment it parked, and defaults to five minutes.
-<code>subagent.autoClose.waitingMs</code> (“Close After (Waiting)”) is the same budget for a subagent
-whose last message reported waiting on another agent, and defaults to thirty minutes:
+<code>subagent.prune.afterMs</code> (“Prune After”) is how long a parked subagent keeps its row,
+counted from the moment it parked, and defaults to one hour.
+<code>subagent.prune.waitingAfterMs</code> (“Prune After While Waiting”) is the same budget for a
+subagent whose last message reported waiting on another agent, and defaults to two hours:
 it stopped on purpose to let a peer finish, so it is the agent you are most likely to
 message next. Set the two equal to treat both the same.</p>
-<p>Turning auto-close off does not turn parking off. Parking is what releases the session, and
-it happens either way; the toggle only sets whether the parked reference is eventually
-dropped. That is why “Park After” sits in this group but is not hidden when the toggle is
-off.</p>
+<p>Turning pruning off does not turn parking off. Parking is what releases the session, and
+it happens either way; the prune switch only sets whether the parked row is eventually
+dropped. “Park After” sits in its own Park group for that reason, and the prune switch
+never hides it.</p>
+<p>A subagent read back from a previous run is judged on the same budgets. Its age comes
+from when its transcript was last written, not from when this session found it, so
+resuming a session does not reset every old agent’s clock to zero.</p>
 <h3 id="when-each-budget-starts-counting"><a class="header" href="#when-each-budget-starts-counting">When each budget starts counting</a></h3>
 <p>Both budgets count from the agent’s last transition, not from when it was spawned. An
-idle agent’s park budget starts when it went idle. A parked agent’s close budget starts
+idle agent’s park budget starts when it went idle. A parked agent’s prune budget starts
 at the moment it parked. A revived agent starts its park budget again from the revival,
 so messaging a parked agent gives it a fresh five minutes rather than resuming a clock
 that was already half spent.</p>
-<p>That is why a long-lived session does not slowly close everything at once: each agent’s
+<p>That is why a long-lived session does not prune everything at once: each agent’s
 deadline moves with its own activity.</p>
 <h3 id="only-idle-and-parked-agents-have-a-deadline"><a class="header" href="#only-idle-and-parked-agents-have-a-deadline">Only idle and parked agents have a deadline</a></h3>
 <p>A <code>running</code> agent has no deadline at all, and neither does an <code>aborted</code> one. Nothing
-parks or closes an agent that is mid-turn.</p>
+parks or prunes an agent that is mid-turn.</p>
 <p>This matters when an agent looks stuck. A subagent waiting for you to answer an approval
-prompt is still mid-turn, so it stays <code>running</code> and no park or close timer applies to it.
+prompt is still mid-turn, so it stays <code>running</code> and no park or prune timer applies to it.
 If a finished agent is not being cleaned up, check its status first: the lifecycle only
 acts on <code>idle</code> and <code>parked</code>, so an agent stuck in <code>running</code> is a different problem and the
-auto-close settings will not affect it.</p>
+prune settings will not affect it.</p>
 <h3 id="turning-it-off"><a class="header" href="#turning-it-off">Turning it off</a></h3>
-<p>Set <code>subagent.autoClose.parkedMs</code> to <code>0</code> and no parked agent is ever closed. That also
-forces the waiting budget to <code>0</code>, whatever <code>subagent.autoClose.waitingMs</code> is.</p>
+<p>Set <code>subagent.prune.afterMs</code> to <code>0</code> and no parked agent is ever pruned. That also
+forces the waiting budget to <code>0</code>, whatever <code>subagent.prune.waitingAfterMs</code> is.</p>
 <p>That coupling is deliberate. If a zero parked budget still honoured a separate waiting
-budget, the only agents that ever closed would be the ones that stopped to wait on a peer,
-which are the agents you are most likely to message next. Zero means never close, for
+budget, the only agents that were ever pruned would be the ones that stopped to wait on a
+peer, which are the agents you are most likely to message next. Zero means never prune, for
 both kinds.</p>
 <h3 id="if-the-session-cannot-be-saved"><a class="header" href="#if-the-session-cannot-be-saved">If the session cannot be saved</a></h3>
 <p>Parking flushes the agent’s session to disk before releasing it. If that flush fails, the
@@ -3084,7 +3086,7 @@ your own session instead when you want that project’s configuration to apply.<
 <p>The full key list is in the <a href="#subagents-2">settings reference</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="multi-agent-monitoring"><a class="header" href="#multi-agent-monitoring">Multi-agent monitoring</a></h1>
-<p>The interactive TUI is the main surface for one session. Status line, session tree, background jobs, the Agent Control Center, and optional swarm orchestration cover multi-agent work.</p>
+<p>The interactive TUI is the main surface for one session. Status line, session tree, background jobs, the subagent dashboard, and optional swarm orchestration cover multi-agent work.</p>
 <h2 id="status-line"><a class="header" href="#status-line">Status line</a></h2>
 <p>Configure under <strong>Settings → Appearance → Status Line</strong> (<code>/statusline</code> jumps to this group), or in <code>config.yml</code>:</p>
 <div class="table-wrapper">
@@ -3165,28 +3167,22 @@ with <code>e</code> in <code>/secret</code> still helps; a deadline further out 
 <tr><td><code>/branch</code></td><td>Branch a new session file from an earlier user message</td></tr>
 <tr><td><code>/fork</code></td><td>Duplicate the current session into a new file</td></tr>
 <tr><td><code>/session info</code></td><td>Session metadata and stats</td></tr>
-<tr><td><code>/agents</code></td><td>Agent Control Center: the live roster (agent type, status, activity; Enter opens one agent’s session) and the Comms stream of agent-to-agent messages</td></tr>
-<tr><td><code>/process-manager</code></td><td>The same Agent Control Center, opened across every conversation this process is running</td></tr>
+<tr><td><code>/agents</code></td><td>Subagent dashboard: the live roster (agent type, status, activity; Enter opens one agent’s session) and the Comms stream of agent-to-agent messages</td></tr>
 <tr><td><code>/jobs</code></td><td>List background async tool jobs</td></tr>
 </tbody>
 </table>
 </div>
 <p><code>/cockpit</code> and <code>/hub</code> are aliases of <code>/agents</code>, as is the <code>app.agents.hub</code> keybinding and a double-tap of the left arrow on an empty composer. They used to open a separate screen with its own roster and its own drill-in, which meant “which agents are running” had two answers that could disagree with each other. They all open the one card now.</p>
-<h3 id="one-conversation-or-every-conversation"><a class="header" href="#one-conversation-or-every-conversation">One conversation, or every conversation</a></h3>
+<h3 id="one-conversation-at-a-time"><a class="header" href="#one-conversation-at-a-time">One conversation at a time</a></h3>
 <p>A process runs more than one conversation at a time. <code>/new</code> stops the previous one
 unless <code>session.newKeepsBackground</code> is on, and an ACP client keeps every
-open session in the same process.</p>
-<p><code>/agents</code> opens on the conversation on screen. <code>/process-manager</code> opens on all of
-them. Press <code>a</code> in either card to switch: the roster, the Comms stream and the
-transcripts you can open all move together, and the title reads
-<code>Agent Control Center — all conversations</code> at the wider scope. A card with no
-conversation of its own, which is what a collab guest has, already shows everything
-it can reach, so <code>a</code> does nothing there and no chip offers it.</p>
-<p>Regenerate the capture pair for this behavior with:</p>
-<pre><code class="language-sh">SCENE_COMMAND='bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b --no-tools' \
-  PROOF_LLM_BASE_URL=http://veyyon-proof-llm:8080/v1 SCENE_MOTION_FLOOR=1 \
-  proof/docker/record-x11.sh proof/scenes/process-manager-scope.sh
-</code></pre>
+open session in the same process. Changing <code>session.newKeepsBackground</code> takes
+effect on the next launch; the running session keeps the value it started with
+(<a href="https://github.com/santhreal/veyyon/issues/928">#928</a>).</p>
+<p>The card is scoped to the conversation on screen: the roster, the Comms stream and
+the transcripts it opens are that conversation’s. A conversation this process is
+still running off-screen is counted by the status line’s background chip and has no
+card of its own.</p>
 <h3 id="the-live-roster"><a class="header" href="#the-live-roster">The Live roster</a></h3>
 <p>Each row is one agent that exists right now: a status glyph, its call sign, the TYPE of agent it was spawned from (<code>reviewer</code>, <code>scout</code>), its status, how long since it last did anything, and what it is doing. Rows sit in spawn order, oldest first, with your own session at the top. The row you are on is marked two ways, a cursor glyph in the first column and a band across the whole row, so it stays readable on a terminal that renders no colour. Agents from earlier runs of the same session appear too, marked <code>parked</code>, because their transcripts are still on disk even though this process never started them.</p>
 <p>Press Enter on a row and the main view becomes that agent’s session: the transcript, the composer, and the status line all point at it, so you read what it is doing and then answer it. Press Esc there to come back to your own session. While you are focused on an agent, the composer footline contains a persistent <code>&lt;agent-id&gt; · esc to go back</code> badge at the left, and the inline <code>Subagents</code> block above the composer lists that session’s own spawns, so inside a leaf agent with no spawns of its own the block disappears. Opening a parked agent revives it on the way in.</p>
@@ -3280,7 +3276,7 @@ web_search:
 </code></pre>
 <h2 id="provider-support"><a class="header" href="#provider-support">Provider support</a></h2>
 <p>The tool queries a configurable search backend, API-backed providers (using keys you have
-configured) or credential-free engines (Startpage, Google, DuckDuckGo, Ecosia, Mojeek, or <code>public</code>, which fans out
+configured) or credential-free engines (Startpage, Google, DuckDuckGo, Mojeek, or <code>public</code>, which fans out
 to every credential-free engine and consolidates deduplicated results). <code>auto</code> resolves the
 first available provider in the built-in priority order; <code>providers.webSearchExclude</code> removes
 providers from that chain entirely.</p>
@@ -3524,7 +3520,7 @@ https://web.example/collab/#relay.example.com/r/&lt;roomId&gt;.&lt;key&gt;   →
 <li>read the entire session (including the back-transcript at join time),</li>
 <li>prompt the agent (rendered with their name badge on every participant’s transcript; the LLM sees the prompt text verbatim: names are display-only),</li>
 <li>interrupt the agent (Esc),</li>
-<li>use the Agent Control Center against the host’s subagents: live roster and progress, chat (steers the host’s subagent), kill, and transcript viewing (fetched from the host on demand). A guest reads a transcript rather than taking over a session, because the sessions live on the host.</li>
+<li>use the subagent dashboard against the host’s subagents: live roster and progress, chat (steers the host’s subagent), kill, and transcript viewing (fetched from the host on demand). A guest reads a transcript rather than taking over a session, because the sessions live on the host.</li>
 </ul>
 <p>Guests with a view-only link can read everything live, back-transcript, streaming text, tool cards, subagent transcripts, but the host rejects prompting, interrupting, and agent control from them.</p>
 <p>Everything that mutates the host session or machine is host-only: <code>/model</code>, <code>/compact</code>, <code>/resume</code>, <code>/branch</code>, bash (<code>!</code>), python (<code>$</code>), skills, etc. Guests keep a small local allowlist (<code>/dump</code>, <code>/export</code>, <code>/copy</code>, <code>/welcome</code> (aliased <code>/help</code>), <code>/hotkeys</code>, <code>/settings</code>, <code>/leave</code>, <code>/collab</code>, <code>/exit</code>, <code>/quit</code>).</p>
@@ -3582,7 +3578,7 @@ reasons; a code outside the table tells a client to come back.</p>
 <li><code>event</code> frames: live agent events, fed straight into the guest’s normal event controller; rendering is events-only to prevent double-render.</li>
 <li><code>state</code> frames: debounced footer snapshots: streaming flag, the host’s full model object and thinking level (applied to the guest’s replica agent state, so model display and context-window math are native), host context numbers, and participants.</li>
 <li><code>bus</code> frames: mirrored task-subagent lifecycle/progress EventBus traffic, republished on the guest’s local bus so the subagent HUD and status-line count work natively.</li>
-<li><code>agents</code> frames: agent-registry snapshots feeding a guest-local registry, so the Agent Control Center roster renders host subagents.</li>
+<li><code>agents</code> frames: agent-registry snapshots feeding a guest-local registry, so the subagent dashboard roster renders host subagents.</li>
 </ol>
 <p>Guest→host: <code>hello</code>, <code>prompt</code>, <code>abort</code>, <code>agent-cmd</code> (hub chat/kill/revive), and <code>fetch-transcript</code> (incremental subagent-transcript reads answered by targeted <code>transcript</code> frames). The replica loads through the regular <code>/resume</code> machinery, so theming, ctrl+o, and transcript behavior are native by construction; the guest process never chdirs to host paths.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -6321,10 +6317,10 @@ advisors:
 <p>Why a file:</p>
 <ul>
 <li><strong>Usage attribution.</strong> <code>veyyon stats</code> scans each session folder recursively, so advisor assistant turns (with their usage/cost) are attributed to the same project/session like any other subagent. Advisor “session update” prompts are persisted as <code>synthetic</code>, agent-attributed user messages so they never inflate user-message metrics.</li>
-<li><strong>Observability.</strong> The Agent Control Center discovers <code>__advisor.jsonl</code> on open and shows it as a read-only <code>advisor</code>-kind transcript under its owning session. Opening it there shows the transcript rather than handing the main view over, because an advisor is not a session you can talk to.</li>
+<li><strong>Observability.</strong> The subagent dashboard discovers <code>__advisor.jsonl</code> on open and shows it as a read-only <code>advisor</code>-kind transcript under its owning session. Opening it there shows the transcript rather than handing the main view over, because an advisor is not a session you can talk to.</li>
 </ul>
 <p>The file follows session switches: on <code>/new</code>, resume/switch, and branch the recorder reopens at the new session’s path on the next advisor turn; before a <code>/drop</code> deletes the old artifacts dir the recorder feed is detached and drained so a queued write cannot recreate the deleted file. The on-disk log is append-only and independent of the in-memory context, re-primes and compaction never truncate it.</p>
-<p>The advisor is never a peer. The <code>advisor</code>-kind registry ref is excluded from every agent-facing surface, the <code>irc</code> peer roster and broadcast targets, the subagent peer prompt, and the <code>history://</code> index/lookup/completions, and cannot be messaged (<code>irc send</code> and collab chat reject it) or revived/killed from the Agent Control Center or collab. It is not addressable as a peer, regardless of what tools it has been granted.</p>
+<p>The advisor is never a peer. The <code>advisor</code>-kind registry ref is excluded from every agent-facing surface, the <code>irc</code> peer roster and broadcast targets, the subagent peer prompt, and the <code>history://</code> index/lookup/completions, and cannot be messaged (<code>irc send</code> and collab chat reject it) or revived/killed from the subagent dashboard or collab. It is not addressable as a peer, regardless of what tools it has been granted.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="eval-tool-python-backend"><a class="header" href="#eval-tool-python-backend">Eval Tool Python Backend</a></h1>
 <p>The Python execution stack in <code>packages/coding-agent</code>: tool behavior, runner lifecycle,
@@ -8263,8 +8259,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/mcp notifications</code></td><td>Show notification capabilities and subscriptions</td></tr>
 <tr><td><code>/plugins …</code></td><td>Plugin browser</td></tr>
 <tr><td><code>/extensions</code>, <code>/status</code></td><td>Extension Control Center dashboard. <code>/status</code> is an alias for it, not a session-status view</td></tr>
-<tr><td><code>/agents</code> (aliases <code>/cockpit</code>, <code>/hub</code>)</td><td>Open the Agent Control Center: live agent roster and the agent-to-agent comms stream</td></tr>
-<tr><td><code>/process-manager</code></td><td>Open the Agent Control Center across every conversation this process is running, not only the one on screen. Press <code>a</code> in the card to switch between the two scopes</td></tr>
+<tr><td><code>/agents</code> (aliases <code>/cockpit</code>, <code>/hub</code>)</td><td>Open the subagent dashboard: live agent roster and the agent-to-agent comms stream</td></tr>
 <tr><td><code>/ssh …</code></td><td>SSH host setup. <code>add</code> takes the name and host by position, then <code>user &lt;user&gt;</code>, a plain port, and <code>key &lt;keyPath&gt;</code> in any order: see <a href="#every-argument-is-a-plain-word-1">Every argument is a plain word</a></td></tr>
 <tr><td><code>/hotkeys</code></td><td>Active keybinding chords</td></tr>
 <tr><td><code>/collab …</code>, <code>/join</code>, <code>/leave</code></td><td>Live collab sessions</td></tr>
@@ -8454,7 +8449,7 @@ live list after your remaps. For the full guide on customizing, see
 <tr><td><code>alt+r</code></td><td>Retry the last failed assistant turn (<code>app.retry</code>)</td></tr>
 <tr><td><code>alt+up</code></td><td>Dequeue a queued message back into the editor (<code>app.message.dequeue</code>)</td></tr>
 <tr><td><code>alt+shift+p</code></td><td>Toggle plan mode (<code>app.plan.toggle</code>)</td></tr>
-<tr><td><code>alt+a</code></td><td>Open the Agent Control Center (<code>app.agents.hub</code>)</td></tr>
+<tr><td><code>alt+a</code></td><td>Open the subagent dashboard (<code>app.agents.hub</code>)</td></tr>
 <tr><td><code>ctrl+r</code></td><td>Search prompt history (<code>app.history.search</code>)</td></tr>
 <tr><td><code>alt+shift+l</code></td><td>Copy the current line (<code>app.clipboard.copyLine</code>)</td></tr>
 <tr><td><code>alt+shift+c</code></td><td>Copy the whole prompt (<code>app.clipboard.copyPrompt</code>)</td></tr>
@@ -8596,7 +8591,7 @@ app.plan.toggle: Alt+Shift+P
 </thead>
 <tbody>
 <tr><td>Down arrow</td><td>A goal is active or paused</td><td>Open the goal detail menu (same as <code>/goal</code>): objective, tokens against budget, completed turns, time spent, and pause/resume/adjust-budget/drop</td></tr>
-<tr><td>Double-tap ← (left)</td><td>Composer empty</td><td>Open the Agent Control Center, or return a focused subagent view to the main session</td></tr>
+<tr><td>Double-tap ← (left)</td><td>Composer empty</td><td>Open the subagent dashboard, or return a focused subagent view to the main session</td></tr>
 </tbody>
 </table>
 </div>
@@ -10064,7 +10059,7 @@ setting that decided, and the agent editor repeats it as a read-only line pointi
 <strong>Subagent Model</strong> and <strong>Subagent Effort</strong>. What decided is visible, in one place, so
 an agent running something you did not expect is a question you can answer.</p>
 <h4 id="the-two-views-in-agents"><a class="header" href="#the-two-views-in-agents">The two views in <code>/agents</code></a></h4>
-<p><code>/agents</code> opens the Agent Control Center, which is about a run in progress and
+<p><code>/agents</code> opens the subagent dashboard, which is about a run in progress and
 configures nothing. Move between its two views with the left and right arrows, with
 <code>tab</code>, or by clicking a name in the strip at the top of the card:</p>
 <div class="table-wrapper">
@@ -10179,7 +10174,7 @@ lsp:
   fuzzyMatch: true
   fuzzyThreshold: 0.95
   blockAutoGenerated: true
-  critiqueCodeMutations: false
+  afterEdit: verify         # verify, review, off
 
 read:
   defaultLimit: 300
@@ -10199,7 +10194,7 @@ read:
 <tr><td><code>edit.fuzzyThreshold</code></td><td>number</td><td><code>0.95</code></td><td>Similarity threshold for fuzzy matching.</td></tr>
 <tr><td><code>edit.blockAutoGenerated</code></td><td>boolean</td><td><code>true</code></td><td>Refuse to edit generated/lockfile-like files.</td></tr>
 <tr><td><code>edit.streamingAbort</code></td><td>boolean</td><td><code>false</code></td><td>Abort on streaming edit mismatch.</td></tr>
-<tr><td><code>edit.critiqueCodeMutations</code></td><td>boolean</td><td><code>false</code></td><td>Prompt a bounded self-review after one turn modifies at least two distinct code files.</td></tr>
+<tr><td><code>edit.afterEdit</code></td><td>enum</td><td><code>verify</code></td><td><code>verify</code> runs one check when none followed the last edit, <code>review</code> reads back every file the turn changed, <code>off</code> neither.</td></tr>
 <tr><td><code>read.defaultLimit</code></td><td>number</td><td><code>300</code></td><td>Default line count for <code>read</code> without a selector.</td></tr>
 <tr><td><code>read.summarize.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Structural summaries for code reads.</td></tr>
 <tr><td><code>read.summarize.prose</code></td><td>boolean</td><td><code>false</code></td><td>Summarize prose files too.</td></tr>
@@ -10208,7 +10203,7 @@ read:
 </tbody>
 </table>
 </div>
-<p><code>edit.critiqueCodeMutations</code> applies to the main agent. Documentation, lockfiles, binary files, media, archives, and databases do not count toward the two-file threshold. Repeated tool calls for the same normalized path count once. If the assistant ends with a question, delivery occurs after the answer instead of replacing the question. Subagents remain exempt.</p>
+<p><code>edit.afterEdit</code> applies to the main agent; subagents are exempt from every value. <code>verify</code> continues once when the turn’s last successful edit has no later successful <code>bash</code>, <code>eval</code>, <code>debug</code> or <code>browser</code> result, and asks for one to be run. <code>review</code> continues once naming every code file changed since the last user message, and asks for a correctness, maintainability and cross-file contract pass; a file whose edit has left the context window is listed apart with an instruction to read it first. Documentation, lockfiles, binary files, media, archives and databases are not code files. Repeated calls for the same normalized path count once. A reply that ends with a question to the user defers both, and the window moves with the next user message, so changes made before a question are not reviewed after it. A configuration written before this setting existed carries a <code>critiqueCodeMutations</code> boolean under <code>edit</code>, which migrates on load: true becomes <code>review</code>, false becomes <code>verify</code>.</p>
 <h3 id="automatic-tool-issue-reports"><a class="header" href="#automatic-tool-issue-reports">Automatic tool issue reports</a></h3>
 <p>Auto QA records a model’s report when a built-in tool behaves differently from its contract. Recording
 is local to the active profile. Automatic upload is a separate setting and is off by default.</p>
@@ -10362,7 +10357,7 @@ searxng:
 <tr><th>Key</th><th>Type</th><th>Default</th><th>Values / notes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>providers.webSearch</code></td><td>enum</td><td><code>auto</code></td><td><code>auto</code> plus the configured search providers (<code>perplexity</code>, <code>gemini</code>, <code>anthropic</code>, <code>codex</code>, <code>xai</code>, <code>zai</code>, <code>exa</code>, <code>tinyfish</code>, <code>jina</code>, <code>kagi</code>, <code>tavily</code>, <code>firecrawl</code>, <code>brave</code>, <code>kimi</code>, <code>parallel</code>, <code>synthetic</code>, <code>searxng</code>, <code>startpage</code>, <code>duckduckgo</code>, <code>ecosia</code>, <code>google</code>, <code>mojeek</code>, <code>public</code>).</td></tr>
+<tr><td><code>providers.webSearch</code></td><td>enum</td><td><code>auto</code></td><td><code>auto</code> plus the configured search providers (<code>perplexity</code>, <code>gemini</code>, <code>anthropic</code>, <code>codex</code>, <code>xai</code>, <code>zai</code>, <code>exa</code>, <code>tinyfish</code>, <code>jina</code>, <code>kagi</code>, <code>tavily</code>, <code>firecrawl</code>, <code>brave</code>, <code>kimi</code>, <code>parallel</code>, <code>synthetic</code>, <code>searxng</code>, <code>startpage</code>, <code>duckduckgo</code>, <code>google</code>, <code>mojeek</code>, <code>public</code>).</td></tr>
 <tr><td><code>providers.webSearchGeminiModel</code></td><td>string</td><td><em>(unset)</em></td><td>Gemini model ID for Google Search grounding when <code>web_search</code> uses Gemini; defaults to <code>gemini-2.5-flash</code>, overridden by <code>GEMINI_SEARCH_MODEL</code>.</td></tr>
 <tr><td><code>providers.image</code></td><td>enum</td><td><code>auto</code></td><td><code>auto</code>, <code>openai</code>, <code>antigravity</code>, <code>xai</code>, <code>gemini</code>, <code>openrouter</code>.</td></tr>
 <tr><td><code>providers.fetch</code></td><td>enum</td><td><code>auto</code></td><td><code>auto</code>, <code>native</code>, <code>trafilatura</code>, <code>lynx</code>, <code>parallel</code>, <code>jina</code>.</td></tr>
@@ -10572,7 +10567,7 @@ veyyon config get compaction.threshold
 <tr><td><code>model.loopGuard.toolCallReminder</code></td><td>Loop Guard Tool-Call Reminder</td><td>boolean</td><td><code>true</code></td><td>When a Gemini reasoning stream emits many consecutive planning headers without calling a tool, interrupt it and inject a reminder to issue a tool call (requires Loop Guard).</td></tr>
 <tr><td><code>model.toolCallLoopGuard.enabled</code></td><td>Tool-Call Loop Guard</td><td>boolean</td><td><code>true</code></td><td>Detect consecutive identical tool calls across turns and inject a corrective steer.</td></tr>
 <tr><td><code>model.toolCallLoopGuard.threshold</code></td><td>Tool-Call Loop Threshold</td><td>number</td><td><code>5</code></td><td>Consecutive identical tool calls required before the corrective steer is injected.</td></tr>
-<tr><td><code>model.toolCallLoopGuard.readSubsumptionThreshold</code></td><td>Read Subsumption Loop Threshold</td><td>number</td><td><code>2</code></td><td>Consecutive fully-subsumed or redundant read calls on unchanged files before the corrective steer is injected.</td></tr>
+<tr><td><code>model.toolCallLoopGuard.readSubsumptionThreshold</code></td><td>Read Subsumption Loop Threshold</td><td>number</td><td><code>3</code></td><td>Consecutive fully-subsumed or redundant read calls on unchanged files before the corrective steer is injected.</td></tr>
 <tr><td><code>model.toolCallLoopGuard.exemptTools</code></td><td>Tool-Call Loop Exempt Tools</td><td>array</td><td><code>["job","irc"]</code></td><td>Tool names that may repeat consecutively without triggering the cross-turn loop guard.</td></tr>
 <tr><td><code>providers.autoThinkingModel</code></td><td>Auto Thinking Model</td><td>enum</td><td><code>online</code></td><td>Difficulty classifier for the <code>auto</code> thinking level: online (the TINY role from /models, else smol) by default, or a local on-device model. Values: <code>online</code>, <code>qwen3-1.7b</code>, <code>llama3.2:3b</code>, <code>gemma-3-1b</code>, <code>qwen2.5-1.5b</code>, <code>lfm2-1.2b</code>.</td></tr>
 </tbody>
@@ -10696,7 +10691,7 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>session.newKeepsBackground</code></td><td>/new Keeps The Old Session</td><td>boolean</td><td><code>false</code></td><td>On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations and /process-manager opens them. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen.</td></tr>
+<tr><td><code>session.newKeepsBackground</code></td><td>/new Keeps The Old Session</td><td>boolean</td><td><code>false</code></td><td>Requires a restart: switching this on or off changes nothing in the running session. On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen.</td></tr>
 </tbody>
 </table>
 </div>
@@ -11021,7 +11016,7 @@ veyyon config get compaction.threshold
 <tr><td><code>edit.fuzzyThreshold</code></td><td>Fuzzy Match Threshold</td><td>number</td><td><code>0.95</code></td><td>Similarity threshold (0-1) for accepting fuzzy matches.</td></tr>
 <tr><td><code>edit.streamingAbort</code></td><td>Abort on Failed Preview</td><td>boolean</td><td><code>false</code></td><td>Abort streaming edit tool calls when patch preview fails.</td></tr>
 <tr><td><code>edit.blockAutoGenerated</code></td><td>Block Auto-Generated Files</td><td>boolean</td><td><code>true</code></td><td>Prevent editing of files that appear to be auto-generated (protoc, sqlc, swagger, etc.).</td></tr>
-<tr><td><code>edit.critiqueCodeMutations</code></td><td>Post-Edit Code Review</td><td>boolean</td><td><code>false</code></td><td>Prompt the model to review multi-file code changes for correctness, maintainability, and idioms before finalizing.</td></tr>
+<tr><td><code>edit.afterEdit</code></td><td>After an Edit</td><td>enum</td><td><code>verify</code></td><td>What happens when a turn ends having changed files: verify runs one check when none followed the last edit, review reads back every file the turn changed and judges correctness, maintainability and cross-file contracts, off ends the turn where the model ends it. Values: <code>verify</code>, <code>review</code>, <code>off</code>.</td></tr>
 </tbody>
 </table>
 </div>
@@ -11328,17 +11323,27 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<h3 id="auto-close"><a class="header" href="#auto-close">Auto Close</a></h3>
+<h3 id="park"><a class="header" href="#park">Park</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>subagent.idleTtlMs</code></td><td>Park After</td><td>number</td><td><code>300000</code></td><td>How long a finished subagent stays live before parking (ms). The default is 5 minutes. Parking releases the live session and keeps the transcript, so a parked agent revives automatically when messaged or resumed. Set ‘Until exit’ to keep idle agents live for the whole session. Counted from the agent’s last activity, so a revived agent starts this budget again from the revival.</td></tr>
-<tr><td><code>subagent.autoClose.enabled</code></td><td>Close Parked Subagents</td><td>boolean</td><td><code>true</code></td><td>Close a parked subagent for good once it has been quiet long enough, instead of keeping it in the roster for the whole session. Parking already released the session; this decides whether the revivable reference is eventually dropped too. Turn it off to keep every finished subagent listed and revivable until you exit.</td></tr>
-<tr><td><code>subagent.autoClose.parkedMs</code></td><td>Close After</td><td>number</td><td><code>300000</code></td><td>How long a parked subagent stays listed and revivable before it is closed (ms). Counted from the moment it parked, not from when it started. Its transcript survives either way and stays readable through <code>history://</code>.</td></tr>
-<tr><td><code>subagent.autoClose.waitingMs</code></td><td>Close After (Waiting)</td><td>number</td><td><code>1800000</code></td><td>The same budget for a subagent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it gets a longer grace than one that simply went quiet: closing it on the ordinary timer would drop the agent you are most likely to message next. Set it equal to Close After to treat both the same.</td></tr>
+<tr><td><code>subagent.idleTtlMs</code></td><td>Park After</td><td>number</td><td><code>300000</code></td><td>Stage one. How long a finished subagent stays live before it parks (ms). Parking releases the live session — the process, its MCP clients, its memory — and keeps everything else: the row stays in the roster and the agent rebuilds itself when messaged or opened. Counted from the agent’s last activity, so a revived agent starts this budget again from the revival. ‘Until exit’ keeps idle agents live for the whole session.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="prune"><a class="header" href="#prune">Prune</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>subagent.prune.enabled</code></td><td>Prune Parked Subagents</td><td>boolean</td><td><code>true</code></td><td>Stage two, and a different thing from parking. Pruning takes a parked subagent out of the roster and gives up the ability to wake it; parking only released its session. Nothing on disk is touched: the transcript stays where it is and stays readable at <code>history://\&lt;agent&gt;</code>. Off keeps every parked subagent listed and wakeable until you exit.</td></tr>
+<tr><td><code>subagent.prune.afterMs</code></td><td>Prune After</td><td>number</td><td><code>3600000</code></td><td>How long a parked subagent stays in the roster before it is pruned (ms). Counted from its last activity, so a subagent read back from a previous run is judged on when its transcript was last written rather than on when this session found it.</td></tr>
+<tr><td><code>subagent.prune.waitingAfterMs</code></td><td>Prune After While Waiting</td><td>number</td><td><code>7200000</code></td><td>The same budget for a subagent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it keeps its row longer than one that simply went quiet: pruning it on the ordinary budget would drop the agent you are most likely to message next. Set it equal to Prune After to treat both the same; a shorter value is raised to it.</td></tr>
 </tbody>
 </table>
 </div>
@@ -11388,7 +11393,7 @@ veyyon config get compaction.threshold
 <tbody>
 <tr><td><code>providers.maxInFlightRequests</code></td><td>Max In-Flight Requests</td><td>record</td><td><code>{}</code></td><td>Maximum concurrent LLM requests per provider id (for example “openai” or “anthropic”), shared across local veyyon processes with this config root. Omitted providers are unlimited.</td></tr>
 <tr><td><code>providers.ollama-cloud.maxConcurrency</code></td><td>Ollama Cloud Max Concurrency</td><td>number</td><td><code>3</code></td><td>Maximum concurrent Ollama Cloud subagent runs per process; 0 disables the provider-specific limit.</td></tr>
-<tr><td><code>providers.webSearch</code></td><td>Web Search Provider</td><td>enum</td><td><code>auto</code></td><td>The provider web_search uses; auto tries each in turn. Values: <code>auto</code>, <code>perplexity</code>, <code>gemini</code>, <code>anthropic</code>, <code>codex</code>, <code>xai</code>, <code>zai</code>, <code>exa</code>, <code>tinyfish</code>, <code>jina</code>, <code>kagi</code>, <code>tavily</code>, <code>firecrawl</code>, <code>brave</code>, <code>kimi</code>, <code>parallel</code>, <code>synthetic</code>, <code>searxng</code>, <code>startpage</code>, <code>duckduckgo</code>, <code>ecosia</code>, <code>google</code>, <code>mojeek</code>, <code>public</code>.</td></tr>
+<tr><td><code>providers.webSearch</code></td><td>Web Search Provider</td><td>enum</td><td><code>auto</code></td><td>The provider web_search uses; auto tries each in turn. Values: <code>auto</code>, <code>perplexity</code>, <code>gemini</code>, <code>anthropic</code>, <code>codex</code>, <code>xai</code>, <code>zai</code>, <code>exa</code>, <code>tinyfish</code>, <code>jina</code>, <code>kagi</code>, <code>tavily</code>, <code>firecrawl</code>, <code>brave</code>, <code>kimi</code>, <code>parallel</code>, <code>synthetic</code>, <code>searxng</code>, <code>startpage</code>, <code>duckduckgo</code>, <code>google</code>, <code>mojeek</code>, <code>public</code>.</td></tr>
 <tr><td><code>providers.webSearchExclude</code></td><td>Excluded Web Search Providers</td><td>array</td><td><code>[]</code></td><td>Providers that web_search should never use, even as fallbacks.</td></tr>
 <tr><td><code>providers.webSearchGeminiModel</code></td><td>Gemini web_search model</td><td>string</td><td><em>(unset)</em></td><td>Model ID for Gemini Google Search grounding. Defaults to gemini-2.5-flash.</td></tr>
 <tr><td><code>providers.antigravityEndpoint</code></td><td>Antigravity Endpoint Mode</td><td>enum</td><td><code>auto</code></td><td>Endpoint routing strategy for google-antigravity providers (chat, search, image, discovery). Values: <code>auto</code>, <code>production</code>, <code>sandbox</code>.</td></tr>

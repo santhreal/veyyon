@@ -35,7 +35,7 @@ These are genuinely good patterns. Refactors must preserve behavior.
    steering-hint prompt text lives in
    `packages/coding-agent/src/prompts/steering/{parent-irc,user-interjection}.md`. A richer IRC-style,
    full multi-agent **dashboard** (channels, not just the message bus) remains **Spec, not shipped**
-   (BACKLOG `U4-10`), beyond the single `/agents` Agent Control Center card that `/cockpit` and
+   (BACKLOG `U4-10`), beyond the single `/agents` subagent dashboard card that `/cockpit` and
    `/hub` are aliases of. The messaging primitive itself is built; the dashboard UI around it is not.
 4. **Subagent + todo-list interaction model**: the `todo` tool
    (`packages/coding-agent/src/tools/todo.ts`) plus plan-mode guardrails

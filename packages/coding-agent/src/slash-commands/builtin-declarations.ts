@@ -563,7 +563,7 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		// command, one description, one screen.
 		name: "agents",
 		aliases: ["cockpit", "hub"],
-		description: "Agent Control Center: live agent roster and comms stream",
+		description: "Subagent dashboard: live agent roster and comms stream",
 	},
 	{
 		name: "branch",

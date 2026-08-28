@@ -1,7 +1,7 @@
 /**
  * Fullscreen transcript viewer.
  *
- * The Agent Control Center mounts this as a `fullscreen` overlay
+ * The subagent dashboard mounts this as a `fullscreen` overlay
  * (`ui.showOverlay(..., { fullscreen: true })`), so it borrows the terminal's
  * alternate screen buffer (the vim/less idiom) and paints the whole screen — no
  * compositing into the live transcript's scrollback.
@@ -735,7 +735,7 @@ export class AgentTranscriptViewer implements Component {
 		parentId: string | undefined,
 	): string[] {
 		// "Transcript", not the name of the screen that opened it. This viewer is
-		// reached from the Agent Control Center, and titling it with the surface it
+		// reached from the subagent dashboard, and titling it with the surface it
 		// came from told the reader where they had been rather than what they were
 		// looking at. It said "Agent Hub" for months after that screen was gone.
 		const lines = [theme.fg("accent", `Transcript ${theme.sep.dot} ${this.deps.agentId}`)];

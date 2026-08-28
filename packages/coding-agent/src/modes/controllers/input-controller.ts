@@ -134,7 +134,7 @@ const TINY_TITLE_PROGRESS_DONE_TTL_MS = 3_000;
 // events for seconds. Only reveal the bar once a still-incomplete event arrives after
 // this grace window, so an already-downloaded model never flashes the bar.
 const TINY_TITLE_PROGRESS_REVEAL_DELAY_MS = 1_000;
-// Double-tap ← on an empty editor opens the Agent Control Center (and, in a
+// Double-tap ← on an empty editor opens the subagent dashboard (and, in a
 // focused subagent view, ←← returns to the main session). The upper bound is
 // AGENT_VIEW_LEFT_TAP_WINDOW_MS, imported rather than restated: it is the same
 // gesture window the agent views were built around, and a second copy of the
@@ -585,7 +585,7 @@ export class InputController {
 			this.ctx.editor.setCustomKeyHandler(key, () => this.ctx.showAgentsDashboard());
 		}
 
-		// Double-tap left arrow on an empty editor: opens the Agent Control Center
+		// Double-tap left arrow on an empty editor: opens the subagent dashboard
 		// from the main session, or returns the focused subagent view to the main
 		// session. Focused ←← intentionally matches Esc. From the main session the
 		// gesture stays inert when there are no subagents (requireContent); the
@@ -632,7 +632,7 @@ export class InputController {
 	 * (`[LEFT_DOUBLE_TAP_MIN_GAP_MS, AGENT_VIEW_LEFT_TAP_WINDOW_MS)`). Taps closer
 	 * than the lower bound, or any third-and-later tap before a quiet gap, are a
 	 * burst and never fire — so a stray click that makes the terminal emit a run
-	 * of ← keys can no longer pop the Agent Control Center.
+	 * of ← keys can no longer pop the subagent dashboard.
 	 */
 	#detectLeftDoubleTap(): boolean {
 		const now = Date.now();

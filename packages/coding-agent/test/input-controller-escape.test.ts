@@ -778,7 +778,7 @@ describe("InputController double-tap ← gesture", () => {
 		};
 	}
 
-	it("opens the Agent Control Center on a deliberate double-tap", () => {
+	it("opens the subagent dashboard on a deliberate double-tap", () => {
 		const now = vi.spyOn(Date, "now");
 		const { showAgentsDashboard, tap } = setup();
 		now.mockReturnValue(1_000);

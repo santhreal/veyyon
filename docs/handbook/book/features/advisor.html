@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-89f274d4.js";
+            window.path_to_searchindex_js = "../searchindex-d51f25b3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -435,10 +435,10 @@ advisors:
 <p>Why a file:</p>
 <ul>
 <li><strong>Usage attribution.</strong> <code>veyyon stats</code> scans each session folder recursively, so advisor assistant turns (with their usage/cost) are attributed to the same project/session like any other subagent. Advisor “session update” prompts are persisted as <code>synthetic</code>, agent-attributed user messages so they never inflate user-message metrics.</li>
-<li><strong>Observability.</strong> The Agent Control Center discovers <code>__advisor.jsonl</code> on open and shows it as a read-only <code>advisor</code>-kind transcript under its owning session. Opening it there shows the transcript rather than handing the main view over, because an advisor is not a session you can talk to.</li>
+<li><strong>Observability.</strong> The subagent dashboard discovers <code>__advisor.jsonl</code> on open and shows it as a read-only <code>advisor</code>-kind transcript under its owning session. Opening it there shows the transcript rather than handing the main view over, because an advisor is not a session you can talk to.</li>
 </ul>
 <p>The file follows session switches: on <code>/new</code>, resume/switch, and branch the recorder reopens at the new session’s path on the next advisor turn; before a <code>/drop</code> deletes the old artifacts dir the recorder feed is detached and drained so a queued write cannot recreate the deleted file. The on-disk log is append-only and independent of the in-memory context, re-primes and compaction never truncate it.</p>
-<p>The advisor is never a peer. The <code>advisor</code>-kind registry ref is excluded from every agent-facing surface, the <code>irc</code> peer roster and broadcast targets, the subagent peer prompt, and the <code>history://</code> index/lookup/completions, and cannot be messaged (<code>irc send</code> and collab chat reject it) or revived/killed from the Agent Control Center or collab. It is not addressable as a peer, regardless of what tools it has been granted.</p>
+<p>The advisor is never a peer. The <code>advisor</code>-kind registry ref is excluded from every agent-facing surface, the <code>irc</code> peer roster and broadcast targets, the subagent peer prompt, and the <code>history://</code> index/lookup/completions, and cannot be messaged (<code>irc send</code> and collab chat reject it) or revived/killed from the subagent dashboard or collab. It is not addressable as a peer, regardless of what tools it has been granted.</p>
 
                     </main>
 

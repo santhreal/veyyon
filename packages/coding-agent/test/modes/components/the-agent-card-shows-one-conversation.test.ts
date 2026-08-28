@@ -1,5 +1,5 @@
 /**
- * The Agent Control Center is scoped to the conversation that opened it.
+ * The subagent dashboard is scoped to the conversation that opened it.
  *
  * WHY THESE TESTS. A process runs several conversations at once: `/new` can
  * leave the previous one streaming in the background, and ACP keeps every open
@@ -200,7 +200,7 @@ describe("There is no process-wide scope to switch to", () => {
 		expect(before).not.toContain("bravoscout");
 		expect(before).not.toContain("all conversations");
 		expect(before).not.toContain("this conversation");
-		expect(before).toContain("Agent Control Center");
+		expect(before).toContain("Subagent Dashboard");
 		dashboard.dispose();
 	});
 });
