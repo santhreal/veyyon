@@ -1,11 +1,3 @@
-/**
- * Pure helpers shared by tool renderers. Host-agnostic; no DOM beyond
- * `globalThis` feature probes, no host-framework imports. `stripAnsi` is
- * re-exported from the dependency-free `@veyyon/utils/strip-ansi` subpath
- * (bypasses the Node-heavy package barrel) so this file stays safe to bundle
- * for the browser — see BACKLOG SPEC-ONE-PLACE-AUDIT F6.
- */
-
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { truncate as truncateChars } from "@veyyon/utils/format";
 import { stringifyJsonSafe } from "@veyyon/utils/json";
@@ -13,8 +5,6 @@ import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { isRecord } from "@veyyon/utils/type-guards";
 import type { ToolResultImage, ToolResultLike } from "./types";
 
-// Re-exported from the dependency-free type-guards subpath for the same
-// bundle-safety reason as stripAnsi above.
 export { isRecord, stripAnsi };
 
 /** String passthrough; anything else (including null/undefined) → null. */
@@ -31,27 +21,10 @@ export function display(value: unknown): string {
 	if (value == null) return "";
 	if (typeof value === "string") return value;
 	if (typeof value === "number" || typeof value === "boolean") return String(value);
-	// The shared owner, so a cyclic or bigint value renders its contents rather
-	// than the literal text "[object Object]".
 	return stringifyJsonSafe(value);
 }
 
-/**
- * Replace the `/Users/<x>` / `/home/<x>` home prefix with `~` for display.
- *
- * Browser-safe: this package bundles for the web, where `os.homedir()` is
- * unavailable, so the home directory is matched by the `/Users/<user>` and
- * `/home/<user>` conventions rather than the real `$HOME`. The coding-agent
- * TUI has its own `shortenPath` in `coding-agent/src/tools/render-utils.ts`
- * that collapses the real home dir (it runs under Node, where `$HOME` is
- * known); the two are a deliberate runtime split, not an accidental
- * duplicate. This is the single owner for every browser surface: collab-web
- * re-exports it from here rather than keeping its own copy.
- *
- * Pass `collapseAfter` to also elide a long middle: a path with more than
- * `collapseAfter` slash-separated segments renders as `first/…/last-two`.
- * Omit it (the default) to shorten only the home prefix.
- */
+/** Replace the `/Users/<x>` or `/home/<x>` prefix with `~` for display. */
 export function shortenPath(p: string, opts?: { collapseAfter?: number }): string {
 	let out = p;
 	for (const prefix of ["/Users/", "/home/"]) {
@@ -72,12 +45,7 @@ export function shortenPath(p: string, opts?: { collapseAfter?: number }): strin
 	return out;
 }
 
-/**
- * Search scope for display: the current `path` argument (else the legacy
- * `paths`), normalized from a single string, a JSON-encoded string array
- * (`'["a.ts","b.ts"]'`), or an actual array into a flat `string[]`. Mirrors the
- * coding-agent `toPathList` so web cards render the same scope the tool searched.
- */
+/** Search scope for display, normalized to a string array. */
 export function scopePaths(args: Record<string, unknown>): string[] {
 	const raw = args.path ?? args.paths;
 	if (typeof raw === "string") {
@@ -98,13 +66,7 @@ export function scopePaths(args: Record<string, unknown>): string[] {
 	return [];
 }
 
-/**
- * Truncate to `maxLen` code points, appending an ellipsis when cut. Delegates
- * to the single owner in `@veyyon/utils/format`, which cuts by code point (so an
- * astral character — emoji, rare CJK — is never split into a lone surrogate)
- * and reserves the ellipsis width so the result never exceeds `maxLen`. This
- * wrapper only supplies the historical default of 100 that the owner omits.
- */
+/** Truncate to `maxLen` code points, appending an ellipsis when cut. */
 export function truncate(s: string, maxLen = 100): string {
 	return truncateChars(s, maxLen);
 }
@@ -216,11 +178,7 @@ interface HljsLike {
 	highlight(code: string, options: { language: string; ignoreIllegals?: boolean }): { value: string };
 }
 
-/**
- * Optional syntax highlighter seam. The HTML export page ships highlight.js as
- * a global; the collab-web app does not bundle it. Renderers degrade to plain
- * text when absent.
- */
+/** Optional syntax highlighter seam; returns global hljs when present. */
 export function getHljs(): HljsLike | null {
 	const candidate = (globalThis as { hljs?: HljsLike }).hljs;
 	return candidate && typeof candidate.highlight === "function" ? candidate : null;
