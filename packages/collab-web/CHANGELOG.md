@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The shared React tool-call renderers are `src/tool-render/lib` here instead of the separate `@veyyon/tool-render` package; the rendered output, the `<vey-tool-view>` web component and the HTML session export bundle are unchanged.
+
 ## [16.5.1] - 2026-07-14
 
 ### Fixed

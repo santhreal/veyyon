@@ -35,7 +35,7 @@ import { prompt } from "@veyyon/utils";
 // The benchmark harness is private and has no exports map, so its descriptor is reached
 // by relative path. The alternative is spelling its directory out here as a literal, and
 // a hand-maintained copy of this list is exactly the defect below: it went stale.
-import { editBenchmarkPrompts } from "../../metaharness/adapters/edit/prompts/registry";
+import { editBenchmarkPrompts } from "../../bench/src/metaharness/adapters/edit/prompts/registry";
 import { codingAgentPrompts } from "../src/prompts/registry";
 
 /**

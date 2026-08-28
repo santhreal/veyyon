@@ -1,13 +1,15 @@
-# @veyyon/tool-render
+# Shared tool-call renderers
 
-Shared React components for rendering tool calls in transcripts. Consumed by:
+Shared React components for rendering tool calls in transcripts. They were the `@veyyon/tool-render`
+package until they became this directory. Consumed by:
 
-- `packages/coding-agent` HTML session exports (`<vey-tool-view>` web component)
+- `packages/coding-agent` HTML session exports, through the `<vey-tool-view>` web component in
+  `../element.tsx`, bundled by `packages/collab-web/scripts/build-tool-views.ts`
 - `packages/collab-web` live web transcript
 
 ## Writing a renderer
 
-A renderer lives in `src/tools/` and exports `Summary` and an optional `Body` React component:
+A renderer lives in `tools/` and exports `Summary` and an optional `Body` React component:
 
 ```tsx
 import type { ToolRenderer } from "../types";
@@ -61,4 +63,4 @@ Tool aliases map legacy names to current renderers:
 
 ## Styling
 
-Styles are defined in `src/tool-render.css` and published as `@veyyon/tool-render/tool-render.css`. CSS rules use `tv-` class prefixes and CSS variables (`--tv-*`) that fall back to host theme definitions.
+Styles are defined in `tool-render.css`, which `ToolView.tsx` imports so the bundler inlines it. CSS rules use `tv-` class prefixes and CSS variables (`--tv-*`) that fall back to host theme definitions.

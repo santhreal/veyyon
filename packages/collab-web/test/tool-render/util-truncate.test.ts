@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { argsDigest, truncate } from "../src/util";
+import { argsDigest, truncate } from "../../src/tool-render/lib/util";
 
 // tool-render's `truncate` used to be a local implementation that sliced by
 // UTF-16 code unit (splitting emoji/astral chars into a lone surrogate) and

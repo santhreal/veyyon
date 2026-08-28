@@ -1,7 +1,7 @@
 /**
  * SPEC-ONE-PLACE-AUDIT F6: single canonical `stripAnsi` (CSI+OSC superset)
  * imported by `tiny/message-preproc.ts` and the browser-bundled
- * `@veyyon/tool-render` (via `src/util.ts`), replacing two divergent copies
+ * the shared web renderers (via `packages/collab-web/src/tool-render/lib/util.ts`), replacing two divergent copies
  * (one SGR-only, two byte-identical CSI+OSC forks).
  *
  * The repo cannot have a single implementation: this one runs in the TUI and in

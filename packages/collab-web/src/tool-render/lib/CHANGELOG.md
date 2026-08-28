@@ -1,8 +1,14 @@
-# Changelog
+# Changelog — @veyyon/tool-render (closed)
 
-> This package shipped for several releases without a changelog, so the release gate skipped it: a publishable package with no `CHANGELOG.md` is simply not checked. Entries start here rather than being backfilled from git, and the gate covers this package from now on.
-
-## [Unreleased]
+> **Closed history.** These renderers were the `@veyyon/tool-render` package, versioned on its own
+> line, until they became `packages/collab-web/src/tool-render/lib`. The entries below are that
+> package's release history and the version numbers are its own; they never described
+> `@veyyon/collab-web`. Nothing is added here — a change to these files goes under `## [Unreleased]`
+> in [`packages/collab-web/CHANGELOG.md`](../../../CHANGELOG.md).
+>
+> The package also shipped for several releases without a changelog, so the release gate skipped it:
+> a publishable package with no `CHANGELOG.md` was simply not checked. Entries start at 1.0.38 rather
+> than being backfilled from git.
 
 ## [1.2.0] - 2026-08-23
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { resolveToolRenderer } from "../src/registry";
-import { stripAnsi } from "../src/util";
+import { resolveToolRenderer } from "../../src/tool-render/lib/registry";
+import { stripAnsi } from "../../src/tool-render/lib/util";
 
 /**
  * Every wire name the coding-agent can emit must resolve to a renderer with a
@@ -74,7 +74,7 @@ const ALIASES: Array<[string, string]> = [
 	["search", "grep"],
 ];
 
-describe("@veyyon/tool-render registry", () => {
+describe("the shared tool-renderer registry", () => {
 	it("resolves known tools and falls back to generic for unknown names", () => {
 		const bash = resolveToolRenderer("bash");
 		const unknown = resolveToolRenderer("definitely-not-a-real-tool-xyz");

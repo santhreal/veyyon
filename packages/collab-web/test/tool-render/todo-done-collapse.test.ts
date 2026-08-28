@@ -27,8 +27,8 @@ import { describe, expect, it } from "bun:test";
 import { isTerminalTodoStatus, isTodoListDone, TODO_DONE_SUMMARY, TODO_STATUSES, type TodoStatus } from "@veyyon/wire";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { resolveToolRenderer } from "../src/registry";
-import type { ToolRenderProps } from "../src/types";
+import { resolveToolRenderer } from "../../src/tool-render/lib/registry";
+import type { ToolRenderProps } from "../../src/tool-render/lib/types";
 
 type RawTask = { content: string; status: string };
 type RawPhase = { name: string; tasks: RawTask[] };

@@ -773,7 +773,7 @@ export function truncateDiffByHunk(
 // Node-side path shortener: collapses the *real* home dir (`os.homedir()`, or
 // an explicit `homeDir`) to `~`, normalizes Win32 separators, and tolerates
 // non-string input. The browser packages cannot call `os.homedir()`, so they
-// share a separate `/Users|/home`-heuristic owner in `@veyyon/tool-render`
+// share a separate `/Users|/home`-heuristic owner in `packages/collab-web/src/tool-render/lib/util.ts`
 // (`src/util.ts`). Two owners, one per runtime boundary, is deliberate here —
 // not an accidental duplicate.
 export function shortenPath(filePath: unknown, homeDir?: string): string {

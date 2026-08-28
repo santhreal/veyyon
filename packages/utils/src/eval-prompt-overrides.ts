@@ -139,7 +139,7 @@ export function applyEvalPromptOverrides<Entry extends { text: string }>(
  * copying a fact its registry owns. `veyyon prompt --prompts` maps an id to its package.
  *
  * WHY `console.warn` AND NOT `logger.warn`: this module is reached by browser-bundled
- * packages (collab-web, tool-render) through the registry contract, and
+ * packages (collab-web) through the registry contract, and
  * `@veyyon/utils/logger` pulls in `node:fs` and winston. `console.warn` is a portable
  * global on browser, Node and Bun.
  */

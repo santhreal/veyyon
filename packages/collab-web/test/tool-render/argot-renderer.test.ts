@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { resolveToolRenderer } from "../src/registry";
-import type { ToolRenderProps, ToolResultLike } from "../src/types";
+import { resolveToolRenderer } from "../../src/tool-render/lib/registry";
+import type { ToolRenderProps, ToolResultLike } from "../../src/tool-render/lib/types";
 
 /**
  * The web view of arming and disarming a project's shorthand dictionary.

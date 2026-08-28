@@ -12,7 +12,7 @@
  * disagreement was a defect rather than a difference of taste.
  *
  * Dependency-free by design: imported both from Node/Bun contexts and from
- * browser-bundled renderers (`@veyyon/tool-render`, via its `src/util.ts`), so
+ * browser-bundled renderers (`packages/collab-web/src/tool-render/lib`, via its `util.ts`), so
  * this file must never pull in Node built-ins.
  *
  * 8-bit C1 control characters (0x90 DCS, 0x98 SOS, 0x9B CSI, 0x9C ST, 0x9D OSC,

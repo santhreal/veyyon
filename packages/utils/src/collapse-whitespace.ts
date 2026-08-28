@@ -9,7 +9,7 @@
  *
  * Dependency-free by design: it lives in its own module (not `sanitize-text`,
  * which references `Bun.stripANSI`) so browser-bundle-safe consumers such as
- * `@veyyon/tool-render` can import it from the `@veyyon/utils/collapse-whitespace`
+ * the shared web tool renderers can import it from the `@veyyon/utils/collapse-whitespace`
  * subpath without dragging a Bun reference into the bundle.
  */
 export function collapseWhitespace(value: string | null | undefined): string {

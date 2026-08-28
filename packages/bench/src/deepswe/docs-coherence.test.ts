@@ -36,7 +36,7 @@ import { promptOverrideIdError } from "./arm-prompts";
 import { DEFAULT_MODEL } from "./system-comparison";
 
 const BENCH_DIR = import.meta.dir;
-const REPO_ROOT = path.join(BENCH_DIR, "..", "..");
+const REPO_ROOT = path.join(BENCH_DIR, "..", "..", "..", "..");
 const README = fs.readFileSync(path.join(BENCH_DIR, "README.md"), "utf8");
 const RUN_TS = fs.readFileSync(path.join(BENCH_DIR, "run.ts"), "utf8");
 const SKILL_PATH = path.join(REPO_ROOT, ".veyyon", "skills", "evals", "SKILL.md");
@@ -131,50 +131,83 @@ describe("every task set the docs name exists on disk", () => {
 	);
 });
 
-describe("the declared test script does not scan the vendored trees", () => {
+describe("test discovery does not scan the vendored trees", () => {
 	/**
-	 * Same thesis as the rest of this file, applied to `package.json` instead of
-	 * prose: the command the project TELLS you to run has to actually work.
+	 * Same thesis as the rest of this file, applied to the runner's configuration
+	 * instead of prose: the command the project TELLS you to run has to actually
+	 * work.
 	 *
 	 * `"test": "bun test"` did not. Bun's test runner walks the package looking for
-	 * test files and does not respect `.gitignore`, and this package carries about
+	 * test files and does not respect `.gitignore`, and this subtree carries about
 	 * 4GB of ignored working data (`repo-cache/` ~1.9G, `runs/` ~2.1G, `deep-swe/`
-	 * ~38M). Every one of the 7 test files sits at the package root, so the walk
-	 * found nothing extra and cost everything: the bare command blew a 120 second
-	 * timeout while `bun test ./*.test.ts` ran the identical 287 tests in 0.14s.
+	 * ~38M). The bare command blew a 120 second timeout while a scoped glob ran the
+	 * identical 287 tests in 0.14s.
 	 *
-	 * That is a ~1000x difference on the innermost loop of working in this package,
-	 * and it silently gets worse every time a bench run writes another gigabyte
-	 * into `runs/`, which is the insidious part: the command degrades as the
-	 * package is used, so it works fine on a fresh clone and is unusable on the
-	 * machine that actually runs benches.
+	 * That is a ~1000x difference on the innermost loop of working here, and it
+	 * silently gets worse every time a bench run writes another gigabyte into
+	 * `runs/`, which is the insidious part: the command degrades as the subtree is
+	 * used, so it works fine on a fresh clone and is unusable on the machine that
+	 * actually runs benches.
+	 *
+	 * The scoping used to be a root-only glob in this subtree's own `package.json`.
+	 * There is no such manifest now — the four benchmark harnesses are subtrees of
+	 * one `@veyyon/bench` package — so the walk is bounded by `pathIgnorePatterns`
+	 * instead, which is strictly better: it survives a test file being added in a
+	 * subdirectory, which the glob silently skipped.
+	 *
+	 * BOTH configs are asserted, because Bun reads `bunfig.toml` from the working
+	 * directory only and both directories are real entry points: the CI bucket runs
+	 * from `packages/bench`, and anyone typing `bun test packages/bench/src` runs
+	 * from the repository root. Covering one and not the other is the same hole
+	 * with half the surface.
+	 *
+	 * WHAT THIS DOES NOT CATCH. Whether Bun's glob semantics actually prune the
+	 * tree. This asserts that the pattern for each ignored directory is present,
+	 * not that the walk honours it.
 	 */
-	const pkg = JSON.parse(fs.readFileSync(path.join(BENCH_DIR, "package.json"), "utf8")) as {
-		scripts?: Record<string, string>;
-	};
+	const BENCH_ROOT = path.join(BENCH_DIR, "..", "..");
+	const REPO_PREFIX = "packages/bench/";
 
-	it("scopes test discovery to root TypeScript tests and Pier agent unit tests", () => {
-		expect(pkg.scripts?.test).toBe(
-			"bun test ./*.test.ts && python3 -m unittest discover -s pier_agent -p '*_test.py'",
-		);
+	/** The `pathIgnorePatterns` entries of one `bunfig.toml`, and only those: the
+	 * `preload` array beside them is a list of quoted paths too, and reading the
+	 * whole file would let a preload entry satisfy a pattern assertion. */
+	function ignorePatterns(file: string): string[] {
+		const text = fs.readFileSync(file, "utf8");
+		const array = /pathIgnorePatterns\s*=\s*\[([^\]]*)\]/.exec(text);
+		if (!array) return [];
+		return [...(array[1] as string).matchAll(/"([^"]+)"/g)].map(m => m[1] as string);
+	}
+
+	const CONFIGS: Array<[label: string, patterns: string[], prefix: string]> = [
+		["packages/bench/bunfig.toml", ignorePatterns(path.join(BENCH_ROOT, "bunfig.toml")), ""],
+		["bunfig.toml (repository root)", ignorePatterns(path.join(REPO_ROOT, "bunfig.toml")), REPO_PREFIX],
+	];
+
+	/** The directories `.gitignore` prunes, which is what a walk that does not read
+	 * it has to be told about. Derived rather than listed, because a list of trees
+	 * to skip is one more thing to drift: a fifth ignored directory added to the
+	 * benchmark would otherwise be walked with nothing saying so. */
+	const IGNORED_TREES = fs
+		.readFileSync(path.join(BENCH_DIR, ".gitignore"), "utf8")
+		.split("\n")
+		.map(line => line.trim())
+		.filter(line => line.endsWith("/") && !line.startsWith("#"))
+		.map(line => line.slice(0, -1));
+
+	it("finds the working-data directories to prune", () => {
+		expect(IGNORED_TREES).toEqual(["repo-cache", "runs", "deep-swe"]);
 	});
 
-	/** The scoping is only safe while every test file IS at the root. A future test
-	 * in a subdirectory would be silently skipped by the glob, which is a worse
-	 * failure than a slow run, so it fails here instead. */
-	it("has every test file at the package root", () => {
-		const rootTests = fs.readdirSync(BENCH_DIR).filter(f => f.endsWith(".test.ts"));
-		expect(rootTests.length).toBeGreaterThan(5);
+	it.each(CONFIGS)("%s ignores every working-data directory this subtree gitignores", (_label, patterns, prefix) => {
+		const uncovered = IGNORED_TREES.filter(tree => !patterns.includes(`${prefix}src/deepswe/${tree}/**`));
+		expect(uncovered).toEqual([]);
+	});
 
-		const strays: string[] = [];
-		for (const entry of fs.readdirSync(BENCH_DIR, { withFileTypes: true })) {
-			// The ignored working-data trees are exactly what must not be walked.
-			if (!entry.isDirectory() || ["repo-cache", "runs", "deep-swe", "node_modules"].includes(entry.name)) continue;
-			for (const nested of fs.readdirSync(path.join(BENCH_DIR, entry.name))) {
-				if (nested.endsWith(".test.ts")) strays.push(`${entry.name}/${nested}`);
-			}
-		}
-		expect(strays).toEqual([]);
+	/** `node_modules` is not in this subtree's `.gitignore` — the repository root
+	 * ignores it — so the derivation above cannot see it, and a cached upstream
+	 * checkout's dependencies are exactly what must not be walked. */
+	it.each(CONFIGS)("%s ignores node_modules at any depth", (_label, patterns) => {
+		expect(patterns).toContain("**/node_modules/**");
 	});
 });
 
