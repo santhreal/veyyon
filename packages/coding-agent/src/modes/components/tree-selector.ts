@@ -34,34 +34,22 @@ import {
 } from "./modal-shell";
 import { centeredWindow, hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
 
-/** Gutter info: position (displayIndent where connector was) and whether to show │ */
 interface GutterInfo {
 	position: number; // displayIndent level where the connector was shown
 	show: boolean; // true = show │, false = show spaces
 }
 
-/** Flattened tree node for navigation */
 interface FlatNode {
 	node: SessionTreeNode;
-	/** Indentation level (each level = 3 chars) */
 	indent: number;
-	/** Whether to show connector (├─ or └─) - true if parent has multiple children */
 	showConnector: boolean;
-	/** If showConnector, true = last sibling (└─), false = not last (├─) */
 	isLast: boolean;
-	/** Gutter info for each ancestor branch point */
 	gutters: GutterInfo[];
-	/** True if this node is a root under a virtual branching root (multiple roots) */
 	isVirtualRootChild: boolean;
 }
 
-/** Filter mode for tree display */
 type FilterMode = TreeFilterMode;
 
-/**
- * Tree list component with selection and ASCII art visualization
- */
-/** Tool call info for lookup */
 interface ToolCallInfo {
 	name: string;
 	arguments: Record<string, unknown>;
@@ -77,13 +65,9 @@ class TreeList implements Component {
 	#multipleRoots = false;
 	#activePathIds: Set<string> = new Set();
 	#lastSelectedId: string | null = null;
-	/** Rows the card can spare for tree entries; the shell decides it per frame. */
 	#maxVisibleLines: number;
-	/** Pointer-highlighted entry (never the selected one; selection owns its row). */
 	#hoveredIndex: number | null = null;
-	/** The cross-fade, once the card has lent this list a repaint ({@link setHoverMotion}). Absent, the band is switched. */
 	#hoverFade?: HoverFade;
-	/** Per-render map of 0-based rendered line → filtered-node index. */
 	#hitRows: (number | undefined)[] = [];
 
 	onSelect?: (entryId: string) => void;
@@ -104,24 +88,20 @@ class TreeList implements Component {
 		this.#buildActivePath();
 		this.#applyFilter();
 
-		// Start with initialSelectedId if provided, otherwise current leaf
 		const targetId = initialSelectedId ?? currentLeafId;
 		this.#selectedIndex = this.#findNearestVisibleIndex(targetId);
 		this.#lastSelectedId = this.#filteredNodes[this.#selectedIndex]?.node.entry.id ?? null;
 	}
 
-	/** Build the set of entry IDs on the path from root to current leaf */
 	#buildActivePath(): void {
 		this.#activePathIds.clear();
 		if (!this.currentLeafId) return;
 
-		// Build a map of id -> entry for parent lookup
 		const entryMap = new Map<string, FlatNode>();
 		for (let fi = 0; fi < this.#flatNodes.length; fi++) {
 			entryMap.set(this.#flatNodes[fi]!.node.entry.id, this.#flatNodes[fi]!);
 		}
 
-		// Walk from leaf to root
 		let currentId: string | null = this.currentLeafId;
 		while (currentId) {
 			this.#activePathIds.add(currentId);
@@ -131,20 +111,16 @@ class TreeList implements Component {
 		}
 	}
 
-	/** Find the index of the nearest visible entry, walking up the parent chain if needed. Returns the index in filteredNodes, or the last index as fallback. */
 	#findNearestVisibleIndex(entryId: string | null): number {
 		if (this.#filteredNodes.length === 0) return 0;
 
-		// Build a map for parent lookup
 		const entryMap = new Map<string, FlatNode>();
 		for (let fi = 0; fi < this.#flatNodes.length; fi++) {
 			entryMap.set(this.#flatNodes[fi]!.node.entry.id, this.#flatNodes[fi]!);
 		}
 
-		// Build a map of visible entry IDs to their indices in filteredNodes
 		const visibleIdToIndex = new Map<string, number>(this.#filteredNodes.map((node, i) => [node.node.entry.id, i]));
 
-		// Walk from entryId up to root, looking for a visible entry
 		let currentId = entryId;
 		while (currentId !== null) {
 			const index = visibleIdToIndex.get(currentId);
@@ -154,7 +130,6 @@ class TreeList implements Component {
 			currentId = node.node.entry.parentId ?? null;
 		}
 
-		// Fallback: last visible entry
 		return this.#filteredNodes.length - 1;
 	}
 
@@ -162,29 +137,21 @@ class TreeList implements Component {
 		const result: FlatNode[] = [];
 		this.#toolCallMap.clear();
 
-		// Indentation rules: - At indent 0: stay at 0 unless parent has >1 children (then +1)
-
-		// Stack items: [node, indent, justBranched, showConnector, isLast, gutters, isVirtualRootChild]
 		type StackItem = [SessionTreeNode, number, boolean, boolean, boolean, GutterInfo[], boolean];
 		const stack: StackItem[] = [];
 
-		// Determine which subtrees contain the active leaf (to sort current branch first)
-		// Use iterative post-order traversal to avoid stack overflow
 		const containsActive = new Map<SessionTreeNode, boolean>();
 		const leafId = this.currentLeafId;
 		{
-			// Build list in pre-order, then process in reverse for post-order effect
 			const allNodes: SessionTreeNode[] = [];
 			const preOrderStack: SessionTreeNode[] = roots.slice();
 			while (preOrderStack.length > 0) {
 				const node = preOrderStack.pop()!;
 				allNodes.push(node);
-				// Push children in reverse so they're processed left-to-right
 				for (let i = node.children.length - 1; i >= 0; i--) {
 					preOrderStack.push(node.children[i]);
 				}
 			}
-			// Process in reverse (post-order): children before parents
 			for (let i = allNodes.length - 1; i >= 0; i--) {
 				const node = allNodes[i];
 				let has = leafId !== null && node.entry.id === leafId;
@@ -197,8 +164,6 @@ class TreeList implements Component {
 			}
 		}
 
-		// Add roots in reverse order, prioritizing the one containing the active leaf
-		// If multiple roots, treat them as children of a virtual root that branches
 		const multipleRoots = roots.length > 1;
 		const orderedRoots = roots.slice().sort((a, b) => Number(containsActive.get(b)) - Number(containsActive.get(a)));
 		for (let i = orderedRoots.length - 1; i >= 0; i--) {
@@ -209,7 +174,6 @@ class TreeList implements Component {
 		while (stack.length > 0) {
 			const [node, indent, justBranched, showConnector, isLast, gutters, isVirtualRootChild] = stack.pop()!;
 
-			// Extract tool calls from assistant messages for later lookup
 			const entry = node.entry;
 			if (entry.type === "message" && entry.message.role === "assistant") {
 				const content = (entry.message as { content?: unknown }).content;
@@ -229,7 +193,6 @@ class TreeList implements Component {
 			const children = node.children;
 			const multipleChildren = children.length > 1;
 
-			// Order children so the branch containing the active leaf comes first
 			const orderedChildren = (() => {
 				const prioritized: SessionTreeNode[] = [];
 				const rest: SessionTreeNode[] = [];
@@ -244,32 +207,22 @@ class TreeList implements Component {
 				return prioritized.concat(rest);
 			})();
 
-			// Calculate child indent
 			let childIndent: number;
 			if (multipleChildren) {
-				// Parent branches: children get +1
 				childIndent = indent + 1;
 			} else if (justBranched && indent > 0) {
-				// First generation after a branch: +1 for visual grouping
 				childIndent = indent + 1;
 			} else {
-				// Single-child chain: stay flat
 				childIndent = indent;
 			}
 
-			// Build gutters for children
-			// If this node showed a connector, add a gutter entry for descendants
-			// Only add gutter if connector is actually displayed (not suppressed for virtual root children)
 			const connectorDisplayed = showConnector && !isVirtualRootChild;
-			// When connector is displayed, add a gutter entry at the connector's position
-			// Connector is at position (displayIndent - 1), so gutter should be there too
 			const currentDisplayIndent = this.#multipleRoots ? Math.max(0, indent - 1) : indent;
 			const connectorPosition = Math.max(0, currentDisplayIndent - 1);
 			const childGutters: GutterInfo[] = connectorDisplayed
 				? gutters.concat([{ position: connectorPosition, show: !isLast }])
 				: gutters;
 
-			// Add children in reverse order
 			for (let i = orderedChildren.length - 1; i >= 0; i--) {
 				const childIsLast = i === orderedChildren.length - 1;
 				stack.push([
@@ -288,8 +241,6 @@ class TreeList implements Component {
 	}
 
 	#applyFilter(): void {
-		// Update lastSelectedId only when we have a valid selection (non-empty list)
-		// This preserves the selection when switching through empty filter results
 		if (this.#filteredNodes.length > 0) {
 			this.#lastSelectedId = this.#filteredNodes[this.#selectedIndex]?.node.entry.id ?? this.#lastSelectedId;
 		}
@@ -300,21 +251,16 @@ class TreeList implements Component {
 			const entry = flatNode.node.entry;
 			const isCurrentLeaf = entry.id === this.currentLeafId;
 
-			// Skip assistant messages with only tool calls (no text) unless error/aborted
-			// Always show current leaf so active position is visible
 			if (entry.type === "message" && entry.message.role === "assistant" && !isCurrentLeaf) {
 				const msg = entry.message as { stopReason?: string; content?: unknown };
 				const hasText = this.#hasTextContent(msg.content);
 				const isErrorOrAborted = msg.stopReason && msg.stopReason !== "stop" && msg.stopReason !== "toolUse";
-				// Only hide if no text AND not an error/aborted message
 				if (!hasText && !isErrorOrAborted) {
 					return false;
 				}
 			}
 
-			// Apply filter mode
 			let passesFilter = true;
-			// Entry types hidden in default view (settings/bookkeeping)
 			const isSettingsEntry =
 				entry.type === "label" ||
 				entry.type === "custom" ||
@@ -323,30 +269,24 @@ class TreeList implements Component {
 
 			switch (this.#filterMode) {
 				case "user-only":
-					// Just user messages
 					passesFilter = entry.type === "message" && entry.message.role === "user";
 					break;
 				case "no-tools":
-					// Default minus tool results
 					passesFilter = !isSettingsEntry && !(entry.type === "message" && entry.message.role === "toolResult");
 					break;
 				case "labeled-only":
-					// Just labeled entries
 					passesFilter = flatNode.node.label !== undefined;
 					break;
 				case "all":
-					// Show everything
 					passesFilter = true;
 					break;
 				default:
-					// Default mode: hide settings/bookkeeping entries
 					passesFilter = !isSettingsEntry;
 					break;
 			}
 
 			if (!passesFilter) return false;
 
-			// Apply fuzzy search filter
 			if (searchTokens.length > 0) {
 				const nodeText = this.#getSearchableText(flatNode.node);
 				return searchTokens.every(token => fuzzyMatch(token, nodeText).matches);
@@ -355,21 +295,17 @@ class TreeList implements Component {
 			return true;
 		});
 
-		// Try to preserve cursor on the same node, or find nearest visible ancestor
 		if (this.#lastSelectedId) {
 			this.#selectedIndex = this.#findNearestVisibleIndex(this.#lastSelectedId);
 		} else if (this.#selectedIndex >= this.#filteredNodes.length) {
-			// Clamp index if out of bounds
 			this.#selectedIndex = Math.max(0, this.#filteredNodes.length - 1);
 		}
 
-		// Update lastSelectedId to the actual selection (may have changed due to parent walk)
 		if (this.#filteredNodes.length > 0) {
 			this.#lastSelectedId = this.#filteredNodes[this.#selectedIndex]?.node.entry.id ?? this.#lastSelectedId;
 		}
 	}
 
-	/** Get searchable text content from a node */
 	#getSearchableText(node: SessionTreeNode): string {
 		const entry = node.entry;
 		const parts: string[] = [];
@@ -429,17 +365,14 @@ class TreeList implements Component {
 		return this.#searchQuery;
 	}
 
-	/** Size the viewport to the rows the card can spare this frame. */
 	setMaxVisibleLines(rows: number): void {
 		this.#maxVisibleLines = Math.max(1, rows);
 	}
 
-	/** Resolve a rendered line (0-based within this list) to a filtered-node index. */
 	hitTest(line: number): number | undefined {
 		return this.#hitRows[line];
 	}
 
-	/** Band the entry under the pointer (null clears). Returns true on change. The band paints on every row, the cursor row included: the pointer does not move the cursor, so */
 	setHoverIndex(index: number | null): boolean {
 		if (this.#hoveredIndex === index) return false;
 		this.#hoveredIndex = index;
@@ -447,28 +380,24 @@ class TreeList implements Component {
 		return true;
 	}
 
-	/** Fade the pointer band instead of switching it. The frames between two mouse reports have no input to hang off, so the card lends its repaint. */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade(options);
 		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
 	}
 
-	/** Drop the fade and forget the pointer, so no timer outlives the card. */
 	disposeHoverMotion(): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = undefined;
 		this.#hoveredIndex = null;
 	}
 
-	/** Band strength for a row: 0 for the selected one, which owns its own styling. */
 	#hoverStrength(index: number, isSelected: boolean): number {
 		if (isSelected) return 0;
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
-	/** Move the selection one step for a wheel notch (wraps like the arrow keys). */
 	handleWheel(delta: -1 | 1): void {
 		const total = this.#filteredNodes.length;
 		if (total === 0) return;
@@ -482,7 +411,6 @@ class TreeList implements Component {
 					: this.#selectedIndex + 1;
 	}
 
-	/** Move to the entry under the pointer and jump to it, exactly as Enter does. */
 	clickItem(index: number): void {
 		const target = this.#filteredNodes[index];
 		if (!target) return;
@@ -516,13 +444,9 @@ class TreeList implements Component {
 
 	render(width: number): readonly string[] {
 		const lines: string[] = [];
-		// Cleared here, not only in `#buildRows`: an empty filter result returns
-		// before the rows are built, and a stale map would answer clicks with the
-		// entries the previous filter showed.
 		this.#hitRows = [];
 
 		if (this.#filteredNodes.length === 0) {
-			// Three empty-state shapes: - flatNodes empty → no entries at all (truly fresh session).
 			if (this.#flatNodes.length === 0) {
 				lines.push(truncateToWidth(theme.fg("muted", "  No entries found"), width));
 				lines.push(truncateToWidth(theme.fg("muted", `  (0/0)${this.#getFilterLabel()}`), width));
@@ -574,9 +498,7 @@ class TreeList implements Component {
 		return lines;
 	}
 
-	/** Paint the rows for the window `[startIndex, endIndex)` at `rowWidth`. `rowWidth` comes from the ScrollView that will render these rows, so a */
 	#buildRows(startIndex: number, endIndex: number, rowWidth: number): readonly string[] {
-		// Cap the per-row gutter prefix so a content budget is always preserved. Each indent level renders as 3 cells; deep branching would otherwise eat the
 		const MIN_CONTENT_COLS = 24;
 		const OVERHEAD_COLS = 4; // cursor (2) + a touch of breathing room
 		const contentReserve = Math.max(MIN_CONTENT_COLS, Math.floor(rowWidth / 2));
@@ -590,24 +512,19 @@ class TreeList implements Component {
 			const entry = flatNode.node.entry;
 			const isSelected = i === this.#selectedIndex;
 
-			// Build line: cursor + prefix + path marker + label + content
 			const cursor = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
 
-			// If multiple roots, shift display (roots at 0, not 1)
 			const displayIndent = this.#multipleRoots ? Math.max(0, flatNode.indent - 1) : flatNode.indent;
 
-			// Build prefix with gutters at their correct positions, clamped to `maxIndentLevels` cells so the content always fits. When clamped, the
 			const hasConnector = flatNode.showConnector && !flatNode.isVirtualRootChild;
 			const connectorSymbol = hasConnector ? (flatNode.isLast ? theme.tree.last : theme.tree.branch) : "";
 			const connectorChars = hasConnector ? connectorSymbol : "";
 			const renderedIndent = Math.min(displayIndent, maxIndentLevels);
 			const scrollOffset = displayIndent - renderedIndent;
 			const connectorPositionDisplay = hasConnector ? renderedIndent - 1 : -1;
-			// Chain rows (no connector of their own) under a last-sibling (`└─`) branch stay anchored by a vertical drawn one level RIGHT of the
 			const nearestGutter = !hasConnector ? flatNode.gutters[flatNode.gutters.length - 1] : undefined;
 			const chainAnchorLevel = nearestGutter && !nearestGutter.show ? nearestGutter.position + 1 : -1;
 
-			// Build prefix char by char, placing gutters and connector at their positions
 			const totalChars = renderedIndent * 3;
 			const prefixChars: string[] = [];
 			for (let i = 0; i < totalChars; i++) {
@@ -615,21 +532,16 @@ class TreeList implements Component {
 				const originalLevel = level + scrollOffset;
 				const posInLevel = i % 3;
 
-				// Check if there's a gutter at this level (translated to original tree depth)
 				const gutter = flatNode.gutters.find(g => g.position === originalLevel);
 				if (gutter) {
-					// Gutters follow standard tree semantics: `│` only while more
-					// siblings continue below (`show`), space below a `└─`.
 					if (posInLevel === 0) {
 						prefixChars.push(gutter.show ? theme.tree.vertical : " ");
 					} else {
 						prefixChars.push(" ");
 					}
 				} else if (originalLevel === chainAnchorLevel) {
-					// Chain anchor for rows under a `└─` branch head.
 					prefixChars.push(posInLevel === 0 ? theme.tree.vertical : " ");
 				} else if (hasConnector && level === connectorPositionDisplay) {
-					// Connector at this level
 					if (posInLevel === 0) {
 						prefixChars.push(connectorChars[0] ?? " ");
 					} else if (posInLevel === 1) {
@@ -641,13 +553,11 @@ class TreeList implements Component {
 					prefixChars.push(" ");
 				}
 			}
-			// Mark the leftmost cell when ancestors were compressed off-screen.
 			if (scrollOffset > 0 && prefixChars.length > 0) {
 				prefixChars[0] = "…";
 			}
 			const prefix = prefixChars.join("");
 
-			// Active path marker - shown right before the entry text
 			const isOnActivePath = this.#activePathIds.has(entry.id);
 			const pathMarker = isOnActivePath ? theme.fg("accent", `${theme.md.bullet} `) : "";
 
@@ -655,7 +565,6 @@ class TreeList implements Component {
 			const content = this.#getEntryDisplayText(flatNode.node, isSelected);
 
 			const line = cursor + theme.fg("dim", prefix) + pathMarker + label + content;
-			// The selection band is the ROW, not the text: pad to the full row width before tinting so the highlight has the same shape on every entry. The
 			const hoverStrength = this.#hoverStrength(i, isSelected);
 			this.#hitRows[i - startIndex] = i;
 			if (isSelected) rows.push(selectionBand(line, rowWidth));
@@ -845,7 +754,6 @@ class TreeList implements Component {
 				return `[ls: ${path}]`;
 			}
 			default: {
-				// Custom tool - show name and truncated JSON args
 				const rawArgs = typeof args === "string" ? args : JSON.stringify(args ?? {});
 				const argsStr = truncateToWidth(rawArgs ?? "{}", TRUNCATE_LENGTHS.SHORT);
 				return `[${name}: ${argsStr}]`;
@@ -859,10 +767,8 @@ class TreeList implements Component {
 		} else if (matchesSelectDown(keyData)) {
 			this.#selectedIndex = this.#selectedIndex === this.#filteredNodes.length - 1 ? 0 : this.#selectedIndex + 1;
 		} else if (matchesKey(keyData, "left")) {
-			// Page up
 			this.#selectedIndex = Math.max(0, this.#selectedIndex - this.#maxVisibleLines);
 		} else if (matchesKey(keyData, "right")) {
-			// Page down
 			this.#selectedIndex = Math.min(this.#filteredNodes.length - 1, this.#selectedIndex + this.#maxVisibleLines);
 		} else if (matchesKey(keyData, "enter") || matchesKey(keyData, "return") || keyData === "\n") {
 			const selected = this.#filteredNodes[this.#selectedIndex];
@@ -879,13 +785,11 @@ class TreeList implements Component {
 		} else if (matchesKey(keyData, "ctrl+c")) {
 			this.onCancel?.();
 		} else if (matchesKey(keyData, "shift+ctrl+o") || matchesKey(keyData, "ctrl+shift+o")) {
-			// Cycle filter backwards
 			const modes: FilterMode[] = ["default", "no-tools", "user-only", "labeled-only", "all"];
 			const currentIndex = modes.indexOf(this.#filterMode);
 			this.#filterMode = modes[(currentIndex - 1 + modes.length) % modes.length];
 			this.#applyFilter();
 		} else if (matchesKey(keyData, "ctrl+o")) {
-			// Cycle filter forwards: default → no-tools → user-only → labeled-only → all → default
 			const modes: FilterMode[] = ["default", "no-tools", "user-only", "labeled-only", "all"];
 			const currentIndex = modes.indexOf(this.#filterMode);
 			this.#filterMode = modes[(currentIndex + 1) % modes.length];
@@ -925,7 +829,6 @@ class TreeList implements Component {
 	}
 }
 
-/** ModalShell footer chips. One array, so the chrome plan matches the chips the card paints. */
 const TREE_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "move", keybindings: ["tui.select.up", "tui.select.down"] },
 	{ label: "left/right page" },
@@ -935,10 +838,8 @@ const TREE_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "esc close", clickable: true, id: "close" },
 ];
 
-/** Rows the tree keeps even on a short terminal. */
 const MIN_TREE_ROWS = 3;
 
-/** Label input component shown when editing a label */
 class LabelInput implements Component {
 	#input: Input;
 	onSubmit?: (entryId: string, label: string | undefined) => void;
@@ -979,13 +880,11 @@ class LabelInput implements Component {
 	}
 }
 
-/** `/tree` picker: the session tree inside a floating ModalShell card, with the label editor taking the body while it is open. */
 export class TreeSelectorComponent implements Component {
 	#treeList: TreeList;
 	#labelInput: LabelInput | null = null;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
-	/** Frame row where the tree's own rows begin (shell body start). */
 	#listRowStart = 0;
 	#onRequestRender?: () => void;
 
@@ -997,8 +896,6 @@ export class TreeSelectorComponent implements Component {
 		private readonly onLabelChangeCallback?: (entryId: string, label: string | undefined) => void,
 		initialFilterMode: FilterMode = "default",
 	) {
-		// The viewport is re-sized from the chrome plan on every frame; this seed
-		// only has to be positive for the first centered window.
 		this.#treeList = new TreeList(tree, currentLeafId, MIN_TREE_ROWS, initialFilterMode);
 		this.#treeList.onSelect = onSelect;
 		this.#treeList.onCancel = onCancel;
@@ -1011,13 +908,9 @@ export class TreeSelectorComponent implements Component {
 
 	setOnRequestRender(cb: () => void): void {
 		this.#onRequestRender = cb;
-		// The pointer band fades only once the card has a repaint to lend it: the
-		// frames between two mouse reports have no input to hang off. Same ambient
-		// gate as the open unfold; without it the band is switched.
 		this.#treeList.setHoverMotion({ requestRender: cb, enabled: pointerMotionEnabled() });
 	}
 
-	/** Settle the pointer band so no timer outlives a dismissed card. */
 	dispose(): void {
 		this.#treeList.disposeHoverMotion();
 	}
@@ -1070,8 +963,6 @@ export class TreeSelectorComponent implements Component {
 			chrome.kind === "outside" ||
 			(chrome.kind === "shortcut" && chrome.id === "close")
 		) {
-			// While the label editor owns the body, close means "abandon the edit"
-			// — the same thing Esc does there — and the tree stays up.
 			if (this.#labelInput) {
 				this.#hideLabelInput();
 				this.#onRequestRender?.();
@@ -1084,7 +975,6 @@ export class TreeSelectorComponent implements Component {
 			this.handleInput("\n");
 			return true;
 		}
-		// The label editor has no rows to hit-test; only the chrome answers.
 		if (this.#labelInput) return true;
 		if (event.wheel !== null) {
 			this.#treeList.handleWheel(event.wheel);
@@ -1132,9 +1022,6 @@ export class TreeSelectorComponent implements Component {
 		if (this.#labelInput) {
 			body = this.#labelInput.render(dims.contentWidth);
 		} else {
-			// The tree owns the whole body minus the filter footer line the list
-			// appends for a non-default filter; the shell truncates an overrun
-			// silently, and the row it would eat is the one under the cursor.
 			this.#treeList.setMaxVisibleLines(Math.max(MIN_TREE_ROWS, chrome.maxBodyRows - 1));
 			body = this.#treeList.render(dims.contentWidth);
 		}

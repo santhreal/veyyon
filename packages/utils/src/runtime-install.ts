@@ -6,39 +6,10 @@ import { tryParseJson } from "./json";
 import { readPipeText } from "./stream";
 import { isRecord } from "./type-guards";
 
-/**
- * On-demand runtime dependency support for native-heavy optional packages
- * (Transformers.js, fastembed) that are never bundled into the CLI or the
- * compiled binary. Consumers `bun install` a pinned dependency set into a
- * cache directory on first use ({@link ensureRuntimeInstalled}) and load the
- * entrypoint via `createRequire`.
- *
- * Bun's compiled-binary module resolver only finds `<pkg>/index.js` for bare
- * specifiers loaded from the *real* filesystem — it ignores `main`/`exports`
- * (issue #1763). Runtime-installed graphs (`@huggingface/transformers` →
- * `onnxruntime-node` → `onnxruntime-common`, `fastembed` →
- * `@anush008/tokenizers` → platform binding) all point `main`/`exports` at
- * nested files, so the stock resolver cannot load any of them. We patch
- * `Module._resolveFilename` to resolve those bare specifiers against the
- * registered runtime caches ourselves, honoring `main`/`exports`.
- *
- * This module is filesystem-pure aside from {@link installRuntimeModuleResolver}
- * mutating the `node:module` resolver, so the resolution logic is unit-testable
- * without a compiled binary.
- */
-
-/** Conditions honored when resolving an `exports` map for a CommonJS `require`. */
 const RUNTIME_CONDITIONS: Record<string, true> = { node: true, require: true, default: true };
 
-/** Extension probes appended to a `main`/`exports` target that lacks one. */
 const RUNTIME_EXTENSIONS: readonly string[] = [".js", ".cjs", ".mjs", ".json", ".node"];
 
-/**
- * Walk a conditional `exports` target (string, array of fallbacks, or a
- * condition object) and return the first relative path that matches a runtime
- * condition in declaration order. Returns `null` when nothing applies (e.g.
- * an `import`-only entry).
- */
 export function selectConditionalTarget(target: unknown): string | null {
 	if (typeof target === "string") return target;
 	if (Array.isArray(target)) {
@@ -58,7 +29,6 @@ export function selectConditionalTarget(target: unknown): string | null {
 	return null;
 }
 
-/** Resolve a relative target inside a package to a concrete file path, probing extensions and `index`. */
 function resolveFileTarget(pkgDir: string, relative: string): string | null {
 	const base = path.join(pkgDir, relative);
 	const candidates = [base, ...RUNTIME_EXTENSIONS.map(ext => base + ext)];
@@ -70,9 +40,7 @@ function resolveFileTarget(pkgDir: string, relative: string): string | null {
 				const indexed = resolveFileTarget(candidate, "index");
 				if (indexed) return indexed;
 			}
-		} catch {
-			// missing candidate — keep probing
-		}
+		} catch {}
 	}
 	return null;
 }
@@ -93,17 +61,11 @@ function resolveExportsEntry(
 		const target = selectConditionalTarget(exports[key]);
 		return target ? resolveFileTarget(pkgDir, target) : null;
 	}
-	// A bare condition map only describes the package root, so a subpath
-	// request falls through to plain path joining at the call site.
 	if (subpath) return null;
 	const target = selectConditionalTarget(exports);
 	return target ? resolveFileTarget(pkgDir, target) : null;
 }
 
-/**
- * Split a bare specifier into its package name and optional subpath, handling
- * scoped packages (`@scope/name/sub` → `@scope/name` + `sub`).
- */
 export function splitBareSpecifier(specifier: string): { packageName: string; subpath: string | undefined } {
 	const segments = specifier.split("/");
 	const take = specifier.startsWith("@") ? 2 : 1;
@@ -112,11 +74,6 @@ export function splitBareSpecifier(specifier: string): { packageName: string; su
 	return { packageName, subpath };
 }
 
-/**
- * Resolve a bare specifier against an installed `node_modules` directory,
- * honoring `exports` (CommonJS conditions), then `main`, then `index.js`.
- * Returns an absolute file path, or `null` when the package/entry is absent.
- */
 export function resolveRuntimeModule(runtimeNodeModules: string, specifier: string): string | null {
 	const { packageName, subpath } = splitBareSpecifier(specifier);
 	const pkgDir = path.join(runtimeNodeModules, ...packageName.split("/"));
@@ -142,7 +99,6 @@ function readManifest(pkgDir: string): Record<string, unknown> | null {
 		const parsed = tryParseJson(fs.readFileSync(path.join(pkgDir, "package.json"), "utf8"));
 		return isRecord(parsed) ? parsed : null;
 	} catch {
-		// Missing/unreadable package.json (readFileSync throws) — no manifest.
 		return null;
 	}
 }
@@ -158,15 +114,8 @@ interface ResolverRegistration {
 
 const REGISTRY = Symbol.for("veyyon.runtimeModuleResolver.registry");
 const PATCHED = Symbol.for("veyyon.runtimeModuleResolver.patched");
-/** Stock `_resolveFilename`, kept so the patch can be taken back off. */
 const ORIGINAL = Symbol.for("veyyon.runtimeModuleResolver.original");
 
-/**
- * The registration list lives on `globalThis` so a bundled copy and a
- * source copy of this module in one process share the same registry — the
- * resolver is patched once per process, and the patched closure must see
- * every registration.
- */
 function resolverRegistry(): ResolverRegistration[] {
 	const holder = globalThis as { [REGISTRY]?: ResolverRegistration[] };
 	holder[REGISTRY] ??= [];
@@ -184,44 +133,10 @@ function parentFilename(parent: unknown): string | null {
 }
 
 export interface RuntimeResolverOptions {
-	/** Absolute path to the runtime cache's `node_modules`. */
 	runtimeNodeModules: string;
-	/** Bare specifier → absolute file path overrides (e.g. `sharp` → no-op stub). */
 	stubs?: Record<string, string>;
 }
 
-/**
- * Patch `node:module`'s resolver (idempotently) so bare specifiers that the
- * stock compiled-binary resolver cannot find fall back to the registered
- * runtime caches. Stock resolution is tried first and kept for anything
- * outside the registered roots (bundled imports, node builtins, host or
- * extension trees). Multiple runtime roots may register; they are consulted
- * in registration order.
- *
- * One stock "success" is distrusted: the compiled-binary resolver ignores
- * `main`/`exports` for real-FS packages (Bun #1763), so a package shipping
- * its TS source next to `dist/` (e.g. `@huggingface/hub`'s root `index.ts`)
- * resolves to the wrong file. When the stock hit lands inside a registered
- * runtime root, the manifest-aware resolution wins.
- *
- * COST OF INSTALLING THIS, which is not local to bare specifiers. Patching
- * `Module._resolveFilename` at all changes how Bun resolves RELATIVE requires
- * made through `createRequire(import.meta.url)`: unpatched, Bun resolves them
- * against the importing module; with any JS hook present it calls the hook with
- * `parent === undefined`, and stock resolution then falls back to
- * `process.cwd()`. A legacy Pi extension doing
- * `createRequire(import.meta.url)` then `require("./config.js")` therefore
- * resolves the CWD's `./config.js`, or fails with `Cannot find module
- * './config.js' from ''` when the CWD has no such file. Verified with a
- * minimal script: a pass-through hook that does nothing but call the original
- * reproduces it, so the fault is the hook's existence, not this logic. The hook
- * cannot repair it, because Bun hands it no importer to resolve against.
- *
- * So install this only when a runtime cache is actually in use, and use
- * {@link uninstallRuntimeModuleResolver} to take it back off when it is not —
- * in particular in tests, where leaving a process-global patch installed
- * silently changes module resolution for every suite that runs afterwards.
- */
 export function installRuntimeModuleResolver({ runtimeNodeModules, stubs = {} }: RuntimeResolverOptions): void {
 	const registry = resolverRegistry();
 	const existing = registry.find(entry => entry.runtimeNodeModules === runtimeNodeModules);
@@ -231,11 +146,6 @@ export function installRuntimeModuleResolver({ runtimeNodeModules, stubs = {} }:
 	const resolver = (Module as unknown as { default?: ModuleResolver } & ModuleResolver).default ?? Module;
 	const target = resolver as unknown as ModuleResolver & { [PATCHED]?: boolean };
 	if (target[PATCHED]) return;
-	// Two references to the same function, deliberately. The BOUND copy is what the
-	// hook calls; the UNBOUND one is what `uninstallRuntimeModuleResolver` puts
-	// back. Restoring the bound copy would look like a restore and not be one: it
-	// is still a replacement function, so Bun keeps treating the resolver as hooked
-	// and relative `createRequire` requires keep resolving against the CWD.
 	const stock = target._resolveFilename;
 	const original = stock.bind(target);
 	target._resolveFilename = (request: string, parent: unknown, isMain: boolean, options?: unknown): string => {
@@ -260,11 +170,6 @@ export function installRuntimeModuleResolver({ runtimeNodeModules, stubs = {} }:
 					}
 				}
 				if (stockResolved) {
-					// Correct a stock hit only inside the top-level package the
-					// request names. A hit in a nested node_modules (e.g. tar's
-					// minizlib resolving its own minipass@3 under
-					// <root>/minizlib/node_modules/) is version-correct — overriding
-					// it with the top-level instance would cross major versions.
 					const { packageName } = splitBareSpecifier(request);
 					const pkgDir = path.join(registration.runtimeNodeModules, ...packageName.split("/"));
 					if (!stockResolved.startsWith(pkgDir + path.sep)) continue;
@@ -286,22 +191,6 @@ export function installRuntimeModuleResolver({ runtimeNodeModules, stubs = {} }:
 	(target as { [ORIGINAL]?: ModuleResolver["_resolveFilename"] })[ORIGINAL] = stock;
 }
 
-/**
- * Remove the resolver patch and every registration, restoring stock resolution.
- *
- * The patch is process-global and, before this existed, permanent: the `PATCHED`
- * guard made a second install a no-op and nothing could take the first one off.
- * That is a problem for the reason described on {@link installRuntimeModuleResolver}
- * — the hook's mere presence redirects relative `createRequire` resolution to the
- * CWD — and it is how `runtime-install.test.ts` came to break an unrelated suite
- * three packages away: it installed the patch against a temp `node_modules`,
- * deleted the temp tree, and left the hook in place for the rest of the process.
- * `legacy-pi-inplace-load.test.ts` then failed to load a CommonJS helper, passed
- * when run alone, and blamed itself.
- *
- * Returns `true` when a patch was actually removed, so a caller can assert that
- * its cleanup did something rather than assuming it did.
- */
 export function uninstallRuntimeModuleResolver(): boolean {
 	resolverRegistry().length = 0;
 	const resolver = (Module as unknown as { default?: ModuleResolver } & ModuleResolver).default ?? Module;
@@ -317,24 +206,18 @@ export function uninstallRuntimeModuleResolver(): boolean {
 	return true;
 }
 
-/** Pinned dependency set materialized into a runtime cache directory. */
 export interface RuntimeInstallSpec {
 	dependencies: Record<string, string>;
-	/** Version pins forced across the whole runtime tree (bun `overrides`), e.g. dislodging a transitive dep. */
 	overrides?: Record<string, string>;
-	/** Packages whose lifecycle scripts bun may run during the install. */
 	trustedDependencies?: string[];
 }
 
 export type RuntimeInstallPhase = "initiate" | "download" | "done";
 
 export interface EnsureRuntimeInstalledOptions {
-	/** Directory owning the runtime `package.json` + `node_modules`. */
 	runtimeDir: string;
 	install: RuntimeInstallSpec;
-	/** Package whose installed manifest marks the runtime complete; defaults to the first dependency. */
 	probePackage?: string;
-	/** Phase notifications (progress UI); not emitted when already installed. */
 	onPhase?: (phase: RuntimeInstallPhase) => void;
 	lockAttempts?: number;
 	lockSleepMs?: number;
@@ -374,8 +257,6 @@ export async function writeRuntimeManifest(runtimeDir: string, install: RuntimeI
 }
 
 async function runRuntimeInstall(runtimeDir: string): Promise<void> {
-	// `process.execPath` is plain bun in source/bundle mode and the compiled
-	// binary otherwise; BUN_BE_BUN makes the compiled binary act as bun.
 	const proc = Bun.spawn([process.execPath, "install", "--cwd", runtimeDir, "--production"], {
 		env: { ...Bun.env, BUN_BE_BUN: "1" },
 		stdout: "pipe",
@@ -393,10 +274,6 @@ async function runRuntimeInstall(runtimeDir: string): Promise<void> {
 	);
 }
 
-/**
- * Materialize a pinned dependency set into `runtimeDir` (idempotent,
- * cross-process safe via a lock directory). Returns `runtimeDir`.
- */
 export async function ensureRuntimeInstalled(options: EnsureRuntimeInstalledOptions): Promise<string> {
 	const { runtimeDir, install, onPhase, lockAttempts = 240, lockSleepMs = 250 } = options;
 	let probePackage = options.probePackage;

@@ -10,13 +10,10 @@ import { formatBytes } from "../tools/render-utils";
 import { sanitizeWithOptionalSixelPassthrough } from "../utils/sixel";
 
 export const DEFAULT_MAX_LINES = 3000;
-/** The compiled inline output budget, 50KB. The number itself is owned by `DEFAULT_INLINE_OUTPUT_MAX_BYTES` in the */
 export const DEFAULT_MAX_BYTES = DEFAULT_INLINE_OUTPUT_MAX_BYTES;
 export const DEFAULT_MAX_COLUMN = 512; // Max chars per grep match line
 
-/** Default artifact-on-disk cap for {@link OutputSink}. `0` means unbounded: by default, `artifact://<id>` references preserve the */
 export const ARTIFACT_DEFAULT_MAX_BYTES = 0;
-/** Default head budget; the remainder becomes the rolling tail window. */
 export const ARTIFACT_DEFAULT_HEAD_BYTES = 3 * 1024 * 1024; // 3 MiB
 
 const NL = "\n";
@@ -29,33 +26,22 @@ export interface OutputSummary {
 	totalBytes: number;
 	outputLines: number;
 	outputBytes: number;
-	/** Bytes elided from the middle when head-retain mode is active. */
 	elidedBytes?: number;
-	/** Lines elided from the middle when head-retain mode is active. */
 	elidedLines?: number;
-	/** Bytes dropped by the per-line column cap (sum across all lines). */
 	columnDroppedBytes?: number;
-	/** Number of distinct lines that hit the per-line column cap. */
 	columnTruncatedLines?: number;
-	/** Artifact ID for internal URL access (artifact://<id>) when truncated */
 	artifactId?: string;
 }
 
 export interface OutputSinkOptions {
 	artifactPath?: string;
 	artifactId?: string;
-	/** Tail buffer budget (bytes). Default DEFAULT_MAX_BYTES. */
 	spillThreshold?: number;
-	/** When > 0, the sink keeps the first `headBytes` of output in addition to the rolling tail window. Output between the two windows is elided */
 	headBytes?: number;
-	/** Per-line byte cap. When > 0, lines wider than `maxColumns` bytes are truncated with an ellipsis at write time; remaining bytes up to the next */
 	maxColumns?: number;
 	onChunk?: (chunk: string) => void;
-	/** Minimum ms between onChunk calls. 0 = every chunk (default). */
 	chunkThrottleMs?: number;
-	/** Optional cap on bytes written to the artifact-on-disk file. When the cap is hit, the head window is preserved verbatim and subsequent output feeds */
 	artifactMaxBytes?: number;
-	/** Bytes reserved for the head window of the capped artifact file. The tail window receives `artifactMaxBytes - artifactHeadBytes`. Default */
 	artifactHeadBytes?: number;
 }
 
@@ -67,26 +53,18 @@ export interface TruncationResult {
 	totalBytes: number;
 	outputLines?: number;
 	outputBytes?: number;
-	/** Bytes elided from the middle (truncateMiddle only). */
 	elidedBytes?: number;
-	/** Lines elided from the middle (truncateMiddle only). */
 	elidedLines?: number;
-	/** Kept head-window line count (truncateMiddle only). The head and tail windows are sized by independent byte and line budgets, so this is NOT half of the */
 	headLines?: number;
-	/** Kept tail-window line count (truncateMiddle only). See {@link headLines}. */
 	tailLines?: number;
 	lastLinePartial?: boolean;
 	firstLineExceedsLimit?: boolean;
 }
 
 export interface TruncationOptions {
-	/** Maximum number of lines (default: 3000) */
 	maxLines?: number;
-	/** Maximum number of bytes (default: 50KB) */
 	maxBytes?: number;
-	/** For `truncateMiddle`: bytes reserved for the head window. The tail window receives `maxBytes - maxHeadBytes`. Default `floor(maxBytes/2)`. */
 	maxHeadBytes?: number;
-	/** For `truncateMiddle`: lines reserved for the head window. The tail window receives `maxLines - maxHeadLines`. Default `floor(maxLines/2)`. */
 	maxHeadLines?: number;
 }
 
@@ -101,7 +79,6 @@ export interface HeadTruncationNoticeOptions {
 	totalFileLines?: number;
 }
 
-/** Count newline characters via native substring search. */
 function countNewlines(text: string): number {
 	let count = 0;
 	let pos = text.indexOf(NL);
@@ -112,9 +89,6 @@ function countNewlines(text: string): number {
 	return count;
 }
 
-/**
- * Truncate a single line to max characters, appending '…' if truncated.
- */
 export function truncateLine(
 	line: string,
 	maxChars: number = DEFAULT_MAX_COLUMN,
@@ -123,14 +97,12 @@ export function truncateLine(
 	return { text: `${line.slice(0, maxChars)}…`, wasTruncated: true };
 }
 
-/** Shared helper to build a no-truncation result. */
 export function noTruncResult(content: string, totalLines?: number, totalBytes?: number): TruncationResult {
 	if (totalLines == null) totalLines = countNewlines(content) + 1;
 	if (totalBytes == null) totalBytes = Buffer.byteLength(content, "utf-8");
 	return { content, totalLines, totalBytes };
 }
 
-/** Truncate content from the head (keep first N lines/bytes). Never returns partial lines. If the first line exceeds the byte limit, */
 export function truncateHead(content: string, options: TruncationOptions = {}): TruncationResult {
 	const maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
 	const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
@@ -156,14 +128,11 @@ export function truncateHead(content: string, options: TruncationOptions = {}): 
 		const sepBytes = includedLines > 0 ? 1 : 0;
 		const remaining = maxBytes - bytesUsed - sepBytes;
 
-		// No room even for separators / bytes.
 		if (remaining < 0) {
 			truncatedBy = "bytes";
 			break;
 		}
 
-		// Fast reject huge lines without slicing/encoding:
-		// UTF-8 bytes >= UTF-16 code units, so if code units exceed remaining, bytes must exceed too.
 		const lineCodeUnits = lineEnd - cursor;
 		if (lineCodeUnits > remaining) {
 			truncatedBy = "bytes";
@@ -183,7 +152,6 @@ export function truncateHead(content: string, options: TruncationOptions = {}): 
 			break;
 		}
 
-		// Small slice (bounded by remaining <= maxBytes) for exact UTF-8 byte count.
 		const lineText = content.slice(cursor, lineEnd);
 		const lineBytes = Buffer.byteLength(lineText, "utf-8");
 
@@ -205,7 +173,6 @@ export function truncateHead(content: string, options: TruncationOptions = {}): 
 			break;
 		}
 
-		// Include the line (join semantics: no trailing newline after the last included line).
 		bytesUsed += sepBytes + lineBytes;
 		includedLines++;
 
@@ -229,7 +196,6 @@ export function truncateHead(content: string, options: TruncationOptions = {}): 
 	};
 }
 
-/** Truncate content from the tail (keep last N lines/bytes). May return a partial first line if the last line exceeds the byte limit. */
 export function truncateTail(content: string, options: TruncationOptions = {}): TruncationResult {
 	const maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
 	const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
@@ -262,11 +228,9 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
 
 		const lineCodeUnits = end - lineStart;
 
-		// Fast reject huge line without slicing/encoding.
 		if (lineCodeUnits > remaining) {
 			truncatedBy = "bytes";
 			if (includedLines === 0) {
-				// Window the line substring to avoid materializing a giant string.
 				const windowStart = Math.max(lineStart, end - maxBytes);
 				const window = content.substring(windowStart, end);
 				const tail = truncateTailBytes(window, maxBytes);
@@ -330,15 +294,11 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
 	};
 }
 
-/** Format the inline marker substituted for the elided middle region. Returned without surrounding newlines so callers can position it freely. */
 export function formatMiddleElisionMarker(elidedLines: number, elidedBytes: number): string {
-	// A 0/1-line elision (e.g. one giant single line) would read as
-	// "[…0ln elided…]"; fall back to a byte count there.
 	if (elidedLines <= 1) return `[…${elidedBytes}B elided…]`;
 	return `[…${elidedLines}ln elided…]`;
 }
 
-/** Truncate content keeping a head window and a tail window, eliding the middle. The combined output is `<head>\n<marker>\n<tail>` when truncation is needed. */
 export function truncateMiddle(content: string, options: TruncationOptions = {}): TruncationResult {
 	const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
 	const maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
@@ -354,7 +314,6 @@ export function truncateMiddle(content: string, options: TruncationOptions = {})
 		return noTruncResult(content, totalLines, totalBytes);
 	}
 
-	// Degenerate budgets → fall back to one-sided truncation.
 	if (headBytes <= 0 || headLines <= 0) {
 		return truncateTail(content, { maxBytes: tailBytes || maxBytes, maxLines: tailLines || maxLines });
 	}
@@ -370,18 +329,13 @@ export function truncateMiddle(content: string, options: TruncationOptions = {})
 	const headBytesKept = head.outputBytes ?? Buffer.byteLength(head.content, "utf-8");
 	const tailBytesKept = tail.outputBytes ?? Buffer.byteLength(tail.content, "utf-8");
 
-	// Head unusable (first line exceeds budget) → tail-only.
 	if (headLinesKept === 0 || head.firstLineExceedsLimit) return tail;
-	// Tail unusable → head-only.
 	if (tailLinesKept === 0) return head;
-	// Windows overlap → no meaningful elision; return content untruncated.
 	if (headLinesKept + tailLinesKept >= totalLines) {
 		return noTruncResult(content, totalLines, totalBytes);
 	}
 
 	const elidedLines = totalLines - headLinesKept - tailLinesKept;
-	// `totalBytes - headBytesKept - tailBytesKept` includes newline separators
-	// between the kept windows and the elided region; close enough for a notice.
 	const elidedBytes = Math.max(0, totalBytes - headBytesKept - tailBytesKept);
 	const marker = formatMiddleElisionMarker(elidedLines, elidedBytes);
 	const composed = `${head.content}\n${marker}\n${tail.content}`;
@@ -404,20 +358,16 @@ export function truncateMiddle(content: string, options: TruncationOptions = {})
 	};
 }
 
-/** Footer appended to a spilled tool result, pointing at the artifact that holds the full (un-elided) output. One definition so every tool that spills — bash, */
 export function artifactFooter(id: string): string {
 	return `[raw output: artifact://${id}]`;
 }
 
-/** How many more turns a result entering at `turnIndex` is expected to be re-read for, given a typical session length. */
 export function expectedRereads(turnIndex: number, horizon = DEFAULT_SESSION_HORIZON_TURNS): number {
 	return Math.max(1, horizon - Math.max(0, turnIndex));
 }
 
-/** Typical agent session length, in turns, used to price how long a result will sit in context. */
 export const DEFAULT_SESSION_HORIZON_TURNS = 60;
 
-/** The inline budget a result deserves given when it arrives. Early results are held to a TIGHTER cap and spill to an artifact sooner, */
 export function inlineCapForTurn(
 	maxBytes: number,
 	turnIndex: number,
@@ -429,30 +379,22 @@ export function inlineCapForTurn(
 		: DEFAULT_INLINE_FLOOR_FRACTION;
 	const rereads = expectedRereads(turnIndex, horizon);
 	const scaled = Math.round((maxBytes * expectedRereads(horizon, horizon)) / rereads);
-	// `clampLow` rather than a hand-rolled floor-first clamp: one owner for the idiom, and it returns the floor for a non-finite value instead of propagating a NaN cap into every byte
 	return clampLow(scaled, Math.round(maxBytes * floor), maxBytes);
 }
 
-/** Options for {@link enforceInlineByteCap}. */
 export interface InlineByteCapOptions {
-	/** Inline byte budget. Defaults to {@link DEFAULT_MAX_BYTES}. */
 	maxBytes?: number;
-	/** Turn this result arrives on. When given, the effective cap is scaled by {@link inlineCapForTurn} so an early result, which will be re-read for the */
 	turnIndex?: number;
-	/** Smallest share of `maxBytes` an early result may keep inline, passed to {@link inlineCapForTurn}. Only meaningful alongside `turnIndex`, since it */
 	floorFraction?: number;
-	/** Persist the full text as a session artifact. When an artifact id is returned, a `[raw output: artifact://<id>]` footer is appended so the */
 	saveArtifact?: (full: string) => string | undefined | Promise<string | undefined>;
 }
 
-/** The byte budget a result actually gets, given when it arrives. Exported because not every tool bounds its output the same way. */
 export function resolveInlineCap(options: InlineByteCapOptions): number {
 	const budget = options.maxBytes ?? DEFAULT_MAX_BYTES;
 	if (options.turnIndex === undefined) return budget;
 	return inlineCapForTurn(budget, options.turnIndex, DEFAULT_SESSION_HORIZON_TURNS, options.floorFraction);
 }
 
-/** Per-tool inline size guard, with the elided bytes kept as a session artifact. The head/tail windowing itself lives in {@link capTextBytes}; this wrapper */
 export async function enforceInlineByteCap(text: string, options: InlineByteCapOptions): Promise<string> {
 	const capped = capTextBytes(text, resolveInlineCap(options));
 	if (capped.elidedBytes === 0) return capped.text;
@@ -483,7 +425,6 @@ export class TailBuffer {
 
 		const n = Buffer.byteLength(text, "utf-8");
 
-		// If the incoming chunk alone is >= budget, it fully dominates the tail.
 		if (n >= max) {
 			const { text: t, bytes } = truncateTailBytes(text, max);
 			this.#pending[0] = t;
@@ -502,7 +443,6 @@ export class TailBuffer {
 			if (this.#pending.length > MAX_PENDING) this.#compact();
 		}
 
-		// Trim when we exceed 2× budget to amortize cost.
 		if (this.#pos > max * 2) this.#trimTo(max);
 	}
 
@@ -559,11 +499,8 @@ export class OutputSink {
 	#lastChunkTime = 0;
 	#pendingChunk = "";
 	#pendingChunkTimer: Timer | undefined;
-	/** A trailing escape sequence the last chunk ended inside, held until the chunk that finishes it. Sanitizing half a sequence leaks its tail as text, */
 	#partialEscape = "";
 
-	// Per-line column cap streaming state (persists across `push` calls so a
-	// long line split across chunks still trips the same trigger).
 	#currentLineBytes = 0;
 	#columnEllipsisAdded = false;
 	#columnDroppedBytes = 0;
@@ -574,7 +511,6 @@ export class OutputSink {
 		sink: Bun.FileSink;
 	};
 
-	// Queue of chunks waiting for the file sink to be created.
 	#pendingFileWrites?: string[];
 	#fileReady = false;
 
@@ -586,7 +522,6 @@ export class OutputSink {
 	readonly #chunkThrottleMs: number;
 	readonly #maxColumns: number;
 
-	// Optional artifact-on-disk cap. When `#artifactMaxBytes > 0` the file sink owns a head budget + a rolling tail buffer; once the head is closed,
 	readonly #artifactMaxBytes: number;
 	readonly #artifactHeadBudget: number;
 	readonly #artifactTailBudget: number;
@@ -620,14 +555,12 @@ export class OutputSink {
 		this.#artifactTailBudget = Math.max(0, this.#artifactMaxBytes - this.#artifactHeadBudget);
 	}
 
-	/** Push a chunk of output. The buffer management and onChunk callback run synchronously. File sink writes are deferred and serialized internally. */
 	push(chunk: string): void {
 		const { head, partial } = splitTrailingPartialEscape(this.#partialEscape + chunk);
 		this.#partialEscape = partial;
 		if (head.length === 0) return;
 		chunk = sanitizeWithOptionalSixelPassthrough(head, sanitizeText);
 
-		// Throttled onChunk: coalesce chunks arriving inside the throttle window. A timer flushes quiet tails at the throttle boundary; dump() catches a
 		if (this.#onChunk) {
 			const now = Date.now();
 			if (now - this.#lastChunkTime >= this.#chunkThrottleMs) {
@@ -646,25 +579,17 @@ export class OutputSink {
 			this.#totalLines += countNewlines(chunk);
 		}
 
-		// Per-line column cap. State persists across chunks so a mid-line split
-		// still respects the budget. Operates on the sanitized chunk; the cap is
-		// applied before head/tail accounting but after artifact mirroring decides.
 		const capped = this.#maxColumns > 0 ? this.#applyColumnCap(chunk) : chunk;
 		const cappedBytes = capped === chunk ? rawBytes : Buffer.byteLength(capped, "utf-8");
 		const cappedThisChunk = cappedBytes < rawBytes;
 		if (cappedThisChunk) this.#truncated = true;
 
-		// Mirror RAW chunk to the artifact file so the on-disk record is the full
-		// uncapped stream. Mirror triggers on: in-memory overflow OR this chunk's
-		// column cap dropped bytes (otherwise we'd lose data) OR file already open.
 		if (this.#artifactPath && (this.#file != null || cappedThisChunk || this.#willOverflow(cappedBytes))) {
 			this.#writeToFile(chunk);
 		}
 
 		if (cappedBytes === 0) return;
 
-		// Head retention: drain the (capped) chunk into #head until the budget is
-		// exhausted, then forward any leftover to the tail buffer.
 		let tailChunk = capped;
 		let tailBytes = cappedBytes;
 		if (this.#headLimit > 0 && !this.#headRetentionDisabled && this.#headBytes < this.#headLimit) {
@@ -675,7 +600,6 @@ export class OutputSink {
 				this.#headLines += countNewlines(capped);
 				return;
 			}
-			// Split: head takes a UTF-8-safe prefix; remainder flows to tail.
 			const headSlice = truncateHeadBytes(capped, room);
 			if (headSlice.bytes > 0) {
 				this.#head += headSlice.text;
@@ -689,7 +613,6 @@ export class OutputSink {
 		this.#pushTail(tailChunk, tailBytes);
 	}
 
-	/** Apply the per-line byte cap to `chunk`, dropping bytes that would push the current line beyond `#maxColumns`. Emits a single `…` once a line trips the */
 	#applyColumnCap(chunk: string): string {
 		if (chunk.length === 0) return chunk;
 		const max = this.#maxColumns;
@@ -701,7 +624,6 @@ export class OutputSink {
 			if (segEnd > cursor) {
 				const segment = chunk.substring(cursor, segEnd);
 				if (this.#columnEllipsisAdded) {
-					// Past the cap; drop until newline.
 					this.#columnDroppedBytes += Buffer.byteLength(segment, "utf-8");
 				} else {
 					const segBytes = Buffer.byteLength(segment, "utf-8");
@@ -710,8 +632,6 @@ export class OutputSink {
 						parts.push(segment);
 						this.#currentLineBytes += segBytes;
 					} else {
-						// First overflow on this line: keep what fits, append ellipsis,
-						// arm the skip-until-newline flag.
 						const ellipsisBytes = 3; // "…" in UTF-8
 						const headRoom = Math.max(0, remaining - ellipsisBytes);
 						let kept = "";
@@ -740,8 +660,6 @@ export class OutputSink {
 	}
 
 	#willOverflow(dataBytes: number): boolean {
-		// Triggers file mirroring as soon as the next chunk would push us over
-		// the tail budget (head retention does not change spill-to-artifact).
 		return this.#bufferBytes + dataBytes > this.#spillThreshold;
 	}
 
@@ -757,16 +675,13 @@ export class OutputSink {
 			return;
 		}
 
-		// Overflow: keep only a tail window in memory.
 		this.#truncated = true;
 
-		// Avoid creating a giant intermediate string when chunk alone dominates.
 		if (dataBytes >= threshold) {
 			const { text, bytes } = truncateTailBytes(chunk, threshold);
 			this.#buffer = text;
 			this.#bufferBytes = bytes;
 		} else {
-			// Intermediate size is bounded (<= threshold + dataBytes), safe to concat.
 			this.#buffer += chunk;
 			this.#bufferBytes += dataBytes;
 
@@ -776,15 +691,11 @@ export class OutputSink {
 		}
 	}
 
-	/** Write a chunk to the artifact file. Handles the async file sink creation by queuing writes until the sink is ready, then draining synchronously. */
 	#writeToFile(chunk: string): void {
 		if (this.#fileReady && this.#file) {
 			this.#emitToSink(chunk);
 			return;
 		}
-		// File sink not yet created — queue this chunk and kick off creation.
-		// The queue is bounded only by how many chunks arrive before the open
-		// resolves (typically <2). The cap is enforced on drain.
 		if (!this.#pendingFileWrites) {
 			this.#pendingFileWrites = [chunk];
 			void this.#createFileSink();
@@ -793,7 +704,6 @@ export class OutputSink {
 		}
 	}
 
-	/** Cap-aware sink writer. Bytes flow into the head window verbatim until the budget is exhausted; subsequent bytes are diverted into a rolling tail */
 	#emitToSink(chunk: string): void {
 		if (!this.#file || chunk.length === 0) return;
 		if (this.#artifactMaxBytes === 0) {
@@ -814,14 +724,10 @@ export class OutputSink {
 				this.#file.sink.write(headSlice.text);
 				this.#artifactHeadBytesWritten += headSlice.bytes;
 			}
-			// Even when UTF-8 boundary safety leaves a few bytes of nominal room,
-			// this chunk has already overflowed the head window. Close it now so a
-			// later small ASCII chunk cannot be written before this overflow tail.
 			this.#artifactHeadClosed = true;
 			overflow = chunk.substring(headSlice.text.length);
 		}
 		if (overflow.length === 0 || this.#artifactTailBudget === 0) {
-			// No tail budget: count the dropped bytes so the notice reflects them.
 			if (overflow.length > 0) {
 				this.#artifactTailIncomingBytes += Buffer.byteLength(overflow, "utf-8");
 			}
@@ -835,7 +741,6 @@ export class OutputSink {
 		this.#artifactTailIncomingBytes += chunkBytes;
 		const budget = this.#artifactTailBudget;
 		if (chunkBytes >= budget) {
-			// Chunk alone dominates — keep only its tail slice.
 			const { text, bytes } = truncateTailBytes(chunk, budget);
 			this.#artifactTailRing = text;
 			this.#artifactTailRingBytes = bytes;
@@ -857,19 +762,14 @@ export class OutputSink {
 			this.#file = { path: this.#artifactPath, artifactId: this.#artifactId, sink };
 			this.#fileReady = true;
 
-			// Head-retained bytes precede the rolling tail buffer in the capture.
-			// Route through #emitToSink so they count against the artifact head
-			// budget — a direct sink.write would let them escape the cap.
 			if (this.#head.length > 0) {
 				this.#emitToSink(this.#head);
 			}
 
-			// Flush existing buffer to file BEFORE it gets trimmed further.
 			if (this.#buffer.length > 0) {
 				this.#emitToSink(this.#buffer);
 			}
 
-			// Drain any chunks that arrived while the sink was being created.
 			if (this.#pendingFileWrites) {
 				for (const pending of this.#pendingFileWrites) {
 					this.#emitToSink(pending);
@@ -879,9 +779,7 @@ export class OutputSink {
 		} catch {
 			try {
 				await this.#file?.sink?.end();
-			} catch {
-				/* ignore */
-			}
+			} catch {}
 			this.#file = undefined;
 			this.#pendingFileWrites = undefined;
 			this.#fileReady = false;
@@ -902,7 +800,6 @@ export class OutputSink {
 		});
 	}
 
-	/** Replace the in-memory buffer with the given text. Used when an upstream minimizer rewrites the captured output after the raw bytes have already */
 	replace(text: string): void {
 		this.#clearPendingChunkTimer();
 		this.#buffer = text;
@@ -955,7 +852,6 @@ export class OutputSink {
 		}, delay);
 	}
 
-	/** Replay the rolling tail ring back into the artifact sink. When bytes were actually dropped from the middle (the head budget was exhausted */
 	#flushArtifactTailIfCapped(): void {
 		if (!this.#file) return;
 		if (this.#artifactMaxBytes === 0) return;
@@ -981,11 +877,7 @@ export class OutputSink {
 	async dump(notice?: string): Promise<OutputSummary> {
 		const noticeLine = notice ? `[${notice}]\n` : "";
 
-		// Flush any chunk still held back by the throttle so the live preview
-		// ends with the complete stream.
 		this.#flushPendingChunk();
-		// A sequence the stream ended inside never completed, so it is not text:
-		// drop it rather than emitting the fragment the reader happened to see.
 		this.#partialEscape = "";
 		const totalLines = this.#sawData ? this.#totalLines + 1 : 0;
 
@@ -994,16 +886,12 @@ export class OutputSink {
 			await this.#file.sink.end();
 		}
 
-		// Compose the visible output. With head retention, splice head + marker
-		// + tail when content was elided. Otherwise return the rolling buffer.
 		const headBytes = this.#headBytes;
 		const tailBuf = this.#buffer;
 		const tailBytes = this.#bufferBytes;
 		const headLines = this.#headLines + (headBytes > 0 && !this.#head.endsWith("\n") ? 1 : 0);
 		const tailLines = tailBuf.length > 0 ? countNewlines(tailBuf) + 1 : 0;
 
-		// Bytes that survived the column cap. Middle elision operates on these,
-		// so column-dropped bytes don't inflate the "elided from middle" count.
 		const effectiveTotalBytes = Math.max(0, this.#totalBytes - this.#columnDroppedBytes);
 
 		let body: string;
@@ -1013,7 +901,6 @@ export class OutputSink {
 		let elidedLines: number | undefined;
 
 		if (headBytes > 0 && effectiveTotalBytes > headBytes + tailBytes) {
-			// Middle was elided. Emit head + marker + tail.
 			elidedBytes = Math.max(0, effectiveTotalBytes - headBytes - tailBytes);
 			elidedLines = Math.max(0, totalLines - headLines - tailLines);
 			const marker = formatMiddleElisionMarker(elidedLines, elidedBytes);
@@ -1030,7 +917,6 @@ export class OutputSink {
 			outputLines = headLines + 1 + tailLines;
 			this.#truncated = true;
 		} else if (headBytes > 0) {
-			// Head + tail combine into the full buffered output (no overlap or elision).
 			body = `${this.#head}${tailBuf}`;
 			outputBytes = headBytes + tailBytes;
 			outputLines = body.length > 0 ? countNewlines(body) + 1 : 0;
@@ -1056,7 +942,6 @@ export class OutputSink {
 	}
 }
 
-/** Format a truncation notice for tail-truncated output (bash, python, ssh). Returns empty string if not truncated. */
 export function formatTailTruncationNotice(
 	truncation: TruncationResult,
 	options: TailTruncationNoticeOptions = {},
@@ -1084,7 +969,6 @@ export function formatTailTruncationNotice(
 	return `\n\n${notice}`;
 }
 
-/** Format a truncation notice for head-truncated output (read tool). Returns empty string if not truncated. */
 export function formatHeadTruncationNotice(
 	truncation: TruncationResult,
 	options: HeadTruncationNoticeOptions = {},
@@ -1099,7 +983,6 @@ export function formatHeadTruncationNotice(
 	return `\n\n${notice}`;
 }
 
-/** Build an onChunk handler that appends to a TailBuffer and emits a streaming update (when `onUpdate` is defined) with the buffer's current text. */
 export function streamTailUpdates<TDetails, TInput = unknown>(
 	tailBuffer: TailBuffer,
 	onUpdate: AgentToolUpdateCallback<TDetails, TInput> | undefined,

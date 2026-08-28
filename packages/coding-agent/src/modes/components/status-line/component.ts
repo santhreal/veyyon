@@ -46,7 +46,6 @@ import type {
 	StatusLineSettings,
 } from "./types";
 
-/** Gap between the location group and the total-elapsed clock. */
 const SESSION_CLOCK_GAP = "      ";
 const EMPTY_USAGE_STATS: UsageStatistics = {
 	input: 0,
@@ -71,7 +70,6 @@ export { messageFingerprint } from "./context-usage";
 export type { QuietPart, QuietSegmentBounds } from "./location-fit";
 export { CLIP_BOUNDARIES, fitLocation, MIN_LOCATION_PART } from "./location-fit";
 
-/** Join the `content` fields of quiet-line parts with `sep`, without allocating an intermediate array. */
 function joinContents(parts: readonly QuietPart[], sep: string): string {
 	if (parts.length === 0) return "";
 	let result = parts[0]!.content;
@@ -81,8 +79,6 @@ function joinContents(parts: readonly QuietPart[], sep: string): string {
 	return result;
 }
 
-/** Render a segment and push it into the output array if visible. Module-level to avoid
- *  allocating a closure per frame in #gatherQuietSegments. */
 function pushQuietPart(id: StatusLineSegmentId, ctx: SegmentContext, out: QuietPart[]): void {
 	if (id === "subagents") return;
 	const rendered = renderSegment(id, ctx);
@@ -90,7 +86,6 @@ function pushQuietPart(id: StatusLineSegmentId, ctx: SegmentContext, out: QuietP
 	out.push({ id, content: rendered.content, pin: rendered.pin });
 }
 
-/** Shed order rank for the right group: higher ranks survive longer. */
 const RIGHT_PART_SHED_RANK: Record<string, number> = {
 	context_pct: 1,
 	model: 2,
@@ -100,7 +95,6 @@ const RIGHT_PART_SHED_RANK: Record<string, number> = {
 	background: 6,
 };
 
-/** Lowest-ranked part the right group sheds next (from the end). */
 function weakestRightPart(parts: readonly QuietPart[]): { index: number; rank: number } {
 	let index = -1;
 	let rank = Number.POSITIVE_INFINITY;
@@ -114,7 +108,6 @@ function weakestRightPart(parts: readonly QuietPart[]): { index: number; rank: n
 	return { index, rank };
 }
 
-/** Segments that may be shed to maintain minimum location width. */
 export const FLOOR_SPENDABLE: Record<string, true> = {
 	context_pct: true,
 	context_total: true,
@@ -133,7 +126,6 @@ const USAGE_SEGMENT_IDS: Record<string, true> = {
 	cache_hit: true,
 };
 
-/** Next spendable part to maintain minimum location floor. */
 function weakestSpendablePart(parts: readonly QuietPart[]): number {
 	let index = -1;
 	let rank = Number.POSITIVE_INFINITY;
@@ -153,18 +145,14 @@ interface ActiveRepoCache {
 	projectDir: string;
 	activeRepo: ActiveRepoContext | null;
 	effectiveGitCwd: string;
-	/** Project + worktree dir name when `projectDir` is a linked worktree, else null. */
 	worktree: WorktreeContext | null;
 }
 
 interface WorktreeContext {
-	/** Primary-checkout (project) name shown by the path segment. */
 	projectName: string;
-	/** Worktree directory name — suppressed from the path when it equals the branch. */
 	worktreeName: string;
 }
 
-/** Project and worktree directory names when cwd is a linked worktree. */
 function resolveWorktreeContext(cwd: string): WorktreeContext | null {
 	const worktree = git.repo.linkedWorktreeSync(cwd);
 	if (!worktree) return null;
@@ -174,7 +162,6 @@ function resolveWorktreeContext(cwd: string): WorktreeContext | null {
 	return { projectName, worktreeName: path.basename(worktree.root) };
 }
 
-/** Per-session active-processing meter for time_spent segment. */
 interface ActiveMeter {
 	activeMs: number;
 	activeStartedAt: number | null;
@@ -211,11 +198,8 @@ function hasGitBackedSegment(segments: readonly StatusLineSegmentId[]): boolean 
 	return hasGitSegment(segments) || hasPrSegment(segments);
 }
 
-/** How the host paints the footline's motion. */
 export interface StatusLineMotionOptions {
-	/** Repaint hook for the frames between a click and the row it lands on. Without one the expansion is a hard cut, which is what every non-interactive caller wants. */
 	requestRender?: () => void;
-	/** The clock the travel runs on. Tests pass a hand-ticked one. */
 	clock?: MotionClock;
 }
 
@@ -226,7 +210,6 @@ export class StatusLineComponent implements Component {
 	#settings: StatusLineSettings = {};
 	#effectiveSettings: EffectiveStatusLineSettings | undefined;
 	#cachedBranch: string | null | undefined = undefined;
-	/** Plain branch name for lookups, without operation suffix. */
 	#cachedPrBranch: string | null = null;
 	#cachedBranchRepoId: string | null | undefined = undefined;
 	#cachedBranchCwd: string | undefined = undefined;
@@ -239,7 +222,6 @@ export class StatusLineComponent implements Component {
 	#cachedHookSig = "";
 	#subagentCount: number = 0;
 	#backgroundSessionCount: number = 0;
-	/** Active-processing meter keyed per AgentSession. */
 	#activeMeters: WeakMap<AgentSession, ActiveMeter> = new WeakMap();
 	#planModeStatus: { enabled: boolean; paused: boolean } | null = null;
 	#loopModeStatus: { enabled: boolean } | null = null;
@@ -249,13 +231,11 @@ export class StatusLineComponent implements Component {
 	#focusedAgentId: string | undefined;
 	#activeRepoCache: ActiveRepoCache | undefined;
 
-	// Git status caching (1s TTL)
 	#cachedGitStatus: git.GitStatusSummary | null = null;
 	#cachedGitStatusCwd: string | undefined = undefined;
 	#gitStatusLastFetch = 0;
 	#gitStatusInFlightCwd: string | undefined = undefined;
 
-	// PR lookup caching (invalidated on branch/repo context changes)
 	#cachedPr: { number: number; url: string } | null | undefined = undefined;
 	#cachedPrContext: PrCacheContext | undefined = undefined;
 	#prLookupInFlight = false;
@@ -264,7 +244,6 @@ export class StatusLineComponent implements Component {
 	#lastTokensPerSecond: number | null = null;
 	#lastTokensPerSecondMsg: { timestamp: number } | null = null;
 
-	// Provider usage caching (5-min TTL, OAuth/sub only)
 	#cachedUsage: {
 		tier?: string;
 		fiveHour?: { percent: number; resetMinutes?: number };
@@ -274,7 +253,6 @@ export class StatusLineComponent implements Component {
 	#usageFetchedAt = 0;
 	#usageInFlight = false;
 	#usageStartTimer: Timer | null = null;
-	/** Memoized serving account details. */
 	#cachedServingAccount: {
 		key: string;
 		value: { label: string; storedCount: number; isPrediction: boolean } | null;
@@ -296,7 +274,6 @@ export class StatusLineComponent implements Component {
 	#quietBounds: QuietSegmentBounds[] = [];
 	#quietShiftedBounds: QuietSegmentBounds[] = [];
 
-	/** Path expansion animation state. */
 	readonly #expansion: SettleValue | undefined;
 
 	constructor(
@@ -345,7 +322,6 @@ export class StatusLineComponent implements Component {
 		return this.#activeRepoCache;
 	}
 
-	/** Re-point the status line at another session. */
 	setSession(session: AgentSession, focusedAgentId?: string): void {
 		const sessionChanged = this.session !== session;
 		if (!sessionChanged && this.#focusedAgentId === focusedAgentId) return;
@@ -358,7 +334,6 @@ export class StatusLineComponent implements Component {
 		this.invalidate();
 	}
 
-	/** Drop in-flight meter window when newly attached session is no longer streaming. */
 	#closeStaleActiveWindow(): void {
 		const meter = this.#meter();
 		if (meter.activeStartedAt === null) return;
@@ -385,7 +360,6 @@ export class StatusLineComponent implements Component {
 		this.#subagentCount = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
 	}
 
-	/** Currently executing subagents shown on every interactive status surface. */
 	get subagentCount(): number {
 		return this.#subagentCount;
 	}
@@ -397,12 +371,10 @@ export class StatusLineComponent implements Component {
 		this.invalidate();
 	}
 
-	/** Conversations still running that no screen is showing. */
 	get backgroundSessionCount(): number {
 		return this.#backgroundSessionCount;
 	}
 
-	/** Reset active-time accumulators for current session. */
 	resetActiveTime(): void {
 		const meter = this.#meter();
 		meter.activeMs = 0;
@@ -410,14 +382,12 @@ export class StatusLineComponent implements Component {
 		meter.lastRunMs = 0;
 	}
 
-	/** Mark active processing start for current session. */
 	markActivityStart(): void {
 		const meter = this.#meter();
 		if (meter.activeStartedAt !== null) return;
 		meter.activeStartedAt = Date.now();
 	}
 
-	/** Close active processing window for current session. */
 	markActivityEnd(): void {
 		const meter = this.#meter();
 		if (meter.activeStartedAt === null) return;
@@ -427,7 +397,6 @@ export class StatusLineComponent implements Component {
 		meter.activeStartedAt = null;
 	}
 
-	/** Run-clock snapshot (runningMs and lastRunMs). */
 	getRunClock(): { runningMs: number | null; lastRunMs: number } {
 		const meter = this.#meter();
 		return {
@@ -436,14 +405,12 @@ export class StatusLineComponent implements Component {
 		};
 	}
 
-	/** Snapshot of total active-processing time for current session. */
 	getActiveMs(): number {
 		const meter = this.#meter();
 		if (meter.activeStartedAt === null) return meter.activeMs;
 		return meter.activeMs + Math.max(0, Date.now() - meter.activeStartedAt);
 	}
 
-	/** Return or lazily create active meter for current session. */
 	#meter(): ActiveMeter {
 		const currentFile = this.session.sessionFile;
 		let meter = this.#activeMeters.get(this.session);
@@ -532,7 +499,6 @@ export class StatusLineComponent implements Component {
 		this.#disposed = true;
 		this.#onBranchChange = null;
 		this.#clearUsageStartTimer();
-		// A travel with no row left to paint is a repaint loop for a component that is gone.
 		this.#expansion?.dispose();
 		if (this.#gitWatcher) {
 			this.#gitWatcher.close();
@@ -606,7 +572,6 @@ export class StatusLineComponent implements Component {
 		if (this.#defaultBranch === undefined) {
 			this.#defaultBranch = "main";
 			const lookupCwd = effectiveGitCwd;
-			// Wrapped like the status and PR lookups beside it: `git()` REJECTS when the binary is missing rather than returning a non-zero result, and this is the
 			(async () => {
 				try {
 					const resolved = await git.branch.default(lookupCwd);
@@ -617,9 +582,7 @@ export class StatusLineComponent implements Component {
 							this.#onBranchChange();
 						}
 					}
-				} catch {
-					// Keep the `"main"` fallback; a decoration cannot fail a render.
-				}
+				} catch {}
 			})();
 		}
 		return branch === this.#defaultBranch;
@@ -676,8 +639,6 @@ export class StatusLineComponent implements Component {
 			return null;
 		}
 
-		// Don't look up without a plain branch to look up BY (detached, or an
-		// operation in progress), on the default branch, or with one in flight.
 		const lookupBranch = this.#cachedPrBranch;
 		if (!lookupBranch || this.#isDefaultBranch(lookupBranch, gitCwd) || this.#prLookupInFlight) {
 			return stalePr ?? null;
@@ -687,9 +648,7 @@ export class StatusLineComponent implements Component {
 		const lookupContext = currentContext;
 		const lookupCwd = gitCwd;
 
-		// Fire async lookup, keep stale value visible until resolved
 		(async () => {
-			// Helper: only write cache if branch/repo context hasn't changed since launch
 			const setCachedPr = (value: { number: number; url: string } | null) => {
 				const latestBranch = this.#getCurrentBranch(lookupCwd);
 				const latestContext = latestBranch
@@ -701,7 +660,6 @@ export class StatusLineComponent implements Component {
 				}
 			};
 			try {
-				// Route through the shared `gh` helper so the child inherits `GH_NON_INTERACTIVE_ENV` (disables terminal/keychain prompts) and
 				const result = await withScopedTimeoutSignal(git.GIT_COMMAND_TIMEOUT_MS, signal =>
 					git.github.run(lookupCwd, ["pr", "view", "--json", "number,url"], signal),
 				);
@@ -751,13 +709,9 @@ export class StatusLineComponent implements Component {
 		const activeProvider = session.state.model?.provider ?? session.model?.provider ?? "";
 		if (!activeProvider) return "";
 		const identity = session.modelRegistry?.authStorage?.getOAuthAccountIdentity(activeProvider, session.sessionId);
-		// orgId is part of the key: rotating between two same-email Anthropic
-		// subscriptions must invalidate the cached usage immediately instead of
-		// showing the previous org's quota for the rest of the cache TTL.
 		return `${activeProvider}\0${identity?.accountId ?? ""}\0${identity?.email ?? ""}\0${identity?.projectId ?? ""}\0${identity?.orgId ?? ""}`;
 	}
 
-	/** Resolve serving credential details for the active provider. */
 	#servingAccount(session: AgentSession): { label: string; storedCount: number; isPrediction: boolean } | null {
 		if (!settings.get("statusLine.showAccount")) return null;
 		const activeProvider = session.state.model?.provider ?? session.model?.provider;
@@ -787,7 +741,6 @@ export class StatusLineComponent implements Component {
 		return value;
 	}
 
-	/** Refresh provider usage in background. */
 	refreshUsageInBackground(): void {
 		const now = Date.now();
 		const session = this.session;
@@ -903,8 +856,6 @@ export class StatusLineComponent implements Component {
 				const windowId = l.scope?.windowId;
 				const tier = l.scope?.tier;
 				const resetsAt = l.window?.resetsAt;
-				// Accept tiered limits, but prefer untiered (backward compat with Anthropic).
-				// An untiered limit always replaces a tiered one; among same-tieredness, first wins.
 				if (windowId === "5h" && (!fiveHour || (fiveHourTier !== undefined && !tier))) {
 					fiveHour = {
 						percent: fraction * 100,
@@ -924,12 +875,10 @@ export class StatusLineComponent implements Component {
 			}
 		}
 		if (!fiveHour && !sevenDay) return null;
-		// Single compact label; prefer the five-hour tier if displayed windows ever disagree.
 		const effectiveTier = fiveHourTier ?? sevenDayTier;
 		return { tier: effectiveTier, fiveHour, sevenDay };
 	}
 
-	/** Used-tokens and context-window totals for context% segment. */
 	getCachedContextBreakdown(): { usedTokens: number | null; contextWindow: number } {
 		const messages = this.session.messages ?? EMPTY_MESSAGES;
 		const modelContextWindow = this.session.model?.contextWindow ?? 0;
@@ -957,8 +906,6 @@ export class StatusLineComponent implements Component {
 		}
 
 		const usage = this.session.getContextUsage();
-		// `undefined` from the session means "no anchor yet", which is a different fact
-		// from zero tokens and is carried as `null` rather than flattened into a number.
 		const usedTokens = usage?.tokens ?? null;
 		const contextWindow = usage?.contextWindow ?? modelContextWindow;
 		this.#contextUsageCache = {
@@ -987,10 +934,8 @@ export class StatusLineComponent implements Component {
 	): SegmentContext {
 		const state = this.session.state;
 
-		// Trigger background fetch (5-min TTL); render uses cached value
 		this.refreshUsageInBackground();
 
-		// Usage stats (token counts, tokensPerSecond) are only needed when a segment that reads them is configured. The default preset has none,
 		const usageStats = includeUsage
 			? {
 					...(this.session.sessionManager?.getUsageStatistics() ?? EMPTY_USAGE_STATS),
@@ -1006,13 +951,11 @@ export class StatusLineComponent implements Component {
 			const breakdown = this.getCachedContextBreakdown();
 			contextWindow = breakdown.contextWindow || contextWindow;
 			contextLimit = contextWindow;
-			// Measure against the auto-compact fire point, not the raw model window: the question the gauge answers is "when does the context
 			if (this.#autoCompactEnabled) {
 				const limit = resolveContextLimit(contextWindow, this.session.settings.getGroup("compaction"));
 				contextLimit = limit.tokens;
 				contextLimitKind = limit.kind;
 			}
-			// A used-token count of `null` is the session saying it does not know yet -- the anchor is the last assistant's real prompt-token count, and right after
 			contextPercent =
 				breakdown.usedTokens === null
 					? null
@@ -1021,18 +964,10 @@ export class StatusLineComponent implements Component {
 						: null;
 		}
 
-		// Collab guest: context comes from the host's state frames — the local
-		// replica does no accounting of its own.
 		const collabState = this.#collabStatus?.stateOverride;
 		if (collabState?.contextUsage) {
 			contextWindow = collabState.contextUsage.contextWindow || contextWindow;
-			// The host's frame is authoritative, null included: a guest that fell back to
-			// its own number here would paint a percentage the host never sent, and the
-			// local replica does no accounting to base one on.
 			contextPercent = collabState.contextUsage.percent;
-			// The host frame carries a window and a percent, not the host's
-			// compaction trigger, so the guest's limit is the window it was told
-			// about — never a trigger resolved from the guest's own settings.
 			contextLimit = contextWindow;
 			contextLimitKind = "window";
 		}
@@ -1111,9 +1046,6 @@ export class StatusLineComponent implements Component {
 		return ctx;
 	}
 
-	// Git context sub-object cache: { branch, status, pr } are all individually cached, but
-	// the wrapper object was allocated every frame. Cache by reference identity of the three
-	// values so the same object is reused when nothing changed.
 	#cachedGitCtx:
 		| { branch: string | null; status: git.GitStatusSummary | null; pr: { number: number; url: string } | null }
 		| undefined;
@@ -1194,12 +1126,10 @@ export class StatusLineComponent implements Component {
 		return this.#cachedSubagentBadge;
 	}
 
-	/** Running background jobs count excluding task subagents. */
 	#backgroundJobBadgeCount(): number {
 		return this.session.getRunningNonTaskJobCount();
 	}
 
-	/** Gather quiet-zone segments into location, capability-left, and capability-right groups. */
 	#gatherQuietSegments(width: number): { location: QuietPart[]; capLeft: QuietPart[]; capRight: QuietPart[] } {
 		const effectiveSettings = this.#resolveSettings();
 		const gitEnabled = this.#gitEnabled();
@@ -1212,8 +1142,6 @@ export class StatusLineComponent implements Component {
 		const includeUsage = hasUsageSegment(leftCfg) || hasUsageSegment(rightCfg);
 		const expansion = this.#expansionProgress();
 		const collapsedPathBudget = effectiveSettings.segmentOptions?.path?.maxLength ?? 30;
-		// A row narrower than the clamp has nothing to widen INTO, and interpolating toward it
-		// would make the click cut the path shorter than the clamp already had it.
 		const expandedPathBudget = Math.max(collapsedPathBudget, width);
 		const pathBudget = Math.round(collapsedPathBudget + (expandedPathBudget - collapsedPathBudget) * expansion);
 		const quietOptions = this.#quietOptions(effectiveSettings.segmentOptions, pathBudget);
@@ -1276,10 +1204,8 @@ export class StatusLineComponent implements Component {
 	}
 	#quietLineBounds: readonly QuietSegmentBounds[] = EMPTY_BOUNDS;
 	#pathExpanded = false;
-	/** Which segment half the click named. */
 	#expandedHalf: StatusLineSegmentId = "path";
 
-	/** Path expansion progress (0 collapsed, 1 expanded). */
 	#expansionProgress(): number {
 		return this.#expansion?.value ?? (this.#pathExpanded ? 1 : 0);
 	}
@@ -1290,7 +1216,6 @@ export class StatusLineComponent implements Component {
 	#badgeSlotText = "";
 	static readonly #BADGE_ANIM_MS = 240;
 
-	/** Animated badge slot text clipped to easing width. */
 	#animatedBadgeSlot(badgeParts: string[]): string | null {
 		const sep = stateSeparator();
 		const joined = badgeParts.length > 0 ? badgeParts.join(sep) : "";
@@ -1316,7 +1241,6 @@ export class StatusLineComponent implements Component {
 		return Math.round(this.#badgeSlotFromWidth + (this.#badgeSlotTargetWidth - this.#badgeSlotFromWidth) * eased);
 	}
 
-	/** Join location segments and append run clock. */
 	#locationWithRunClock(location: string[], sep: string, gap: string = SESSION_CLOCK_GAP): string {
 		const left = location.join(sep);
 		if (!left) return left;
@@ -1328,7 +1252,6 @@ export class StatusLineComponent implements Component {
 		return `${left}${gap}${theme.fg("dim", readout)}`;
 	}
 
-	/** Render standalone focus badge when statusLine is disabled. */
 	renderFocusBadge(width: number): string | null {
 		this.#quietLineBounds = EMPTY_BOUNDS;
 		if (!this.#focusedAgentId) return null;
@@ -1336,18 +1259,11 @@ export class StatusLineComponent implements Component {
 	}
 
 	renderQuietLine(width: number, extras?: { locationRight?: string | null }): string | null {
-		// The focus badge rides the footline while the view is proxied onto an agent. It was built for `getTopBorder`, but the borderless composer
 		const rawBadge = this.#focusedAgentId ? focusExitBadge(this.#focusedAgentId) : "";
-		// The badge is prefixed verbatim, so it has to be clamped to the row exactly as
-		// `renderFocusBadge` clamps it: an agent id long enough to outrun the terminal wrapped the
-		// footline and pushed the composer up a row on every render.
 		const badge = rawBadge === "" ? "" : truncateToWidth(rawBadge, Math.max(1, width));
 		const badgeWidth = visibleWidth(badge);
 		const { location, capLeft, capRight } = this.#gatherQuietSegments(Math.max(0, width - badgeWidth));
 		const sep = segmentSeparator();
-		// One cell of right margin, always — nothing kisses the terminal edge. Floored at ZERO, not
-		// at one: a badge that already fills the row leaves no room to compete for, and clamping to
-		// one cell is what let a 28-cell badge plus a segment render onto an 8-cell row.
 		const budget = Math.max(0, width - 1 - badgeWidth);
 		if (budget === 0) {
 			this.#quietLineBounds = EMPTY_BOUNDS;
@@ -1363,15 +1279,10 @@ export class StatusLineComponent implements Component {
 		for (let i = 0; i < capRight.length; i++) rightParts.push(capRight[i]!);
 		if (extras?.locationRight) rightParts.push({ id: "location_right", content: extras.locationRight });
 		let right = joinContents(rightParts, sep);
-		// The run clock is comfort chrome; the capability segments (context gauge, mode, badges) are operating data. On a tight width the clock
 		let clockStage = 0;
 		let locationShortened = false;
-		// Painted extents of the location parts once the fitter has had them, or null while
-		// the location is still whole and its parts sit where the join put them.
 		let locationSlots: QuietSegmentBounds[] | null = null;
-		// Whether the fitter had to cut the location below its own floors to fit it.
 		let locationCramped = false;
-		// Fit the location into the room the CURRENT right group leaves, for the caller to take. Asked again every time the group loses a part on the zone's behalf, because the room a
 		const favour = this.#expansionProgress() > 0 ? this.#expandedHalf : undefined;
 		while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + (left && right ? 2 : 0) > budget) {
 			if (clockStage === 0) {
@@ -1384,7 +1295,6 @@ export class StatusLineComponent implements Component {
 				left = locationContents.join(sep);
 				continue;
 			}
-			// Shed the LOWEST-RANKED remaining part, walking from the end so equally ranked parts still go right-to-left. Everything unlisted ranks 0 and goes
 			const weakest = weakestRightPart(rightParts);
 			const dropIndex = weakest.index;
 			const dropRank = weakest.rank;
@@ -1393,8 +1303,6 @@ export class StatusLineComponent implements Component {
 				right = joinContents(rightParts, sep);
 				continue;
 			}
-			// Only ranked parts are left. Shorten the location before touching any of
-			// them: a clipped path still says where you are, and these do not degrade.
 			if (!locationShortened) {
 				locationShortened = true;
 				const fitted = fitLocation(
@@ -1408,7 +1316,6 @@ export class StatusLineComponent implements Component {
 				locationCramped = fitted.cramped;
 				continue;
 			}
-			// The ranked parts still do not fit, so the ranking has to resolve. Shedding the weakest is the whole point of having one: the alternative is what shipped before
 			if (rightParts.length > 1 && dropIndex >= 0) {
 				rightParts.splice(dropIndex, 1);
 				right = joinContents(rightParts, sep);
@@ -1416,7 +1323,6 @@ export class StatusLineComponent implements Component {
 			}
 			break;
 		}
-		// The group has stopped shedding, so the room it leaves is final -- and the shed that ended the loop above freed cells nobody has handed over yet. The zone was fitted
 		if (locationShortened) {
 			const settled = fitLocation(
 				location,
@@ -1428,7 +1334,6 @@ export class StatusLineComponent implements Component {
 			locationSlots = settled.slots;
 			locationCramped = settled.cramped;
 		}
-		// A location squeezed under its floors is a zone that no longer reads: `…izer · …g-path` says neither where the session is nor what it is on. At that point the budget is what
 		while (locationCramped && locationShortened && rightParts.length > 0) {
 			const index = weakestSpendablePart(rightParts);
 			if (index < 0) break;
@@ -1439,10 +1344,8 @@ export class StatusLineComponent implements Component {
 			locationSlots = fitted.slots;
 			locationCramped = fitted.cramped;
 		}
-		// THE CLICK'S TRADE, settled last. A click says "show me this half". So the row shows it WHOLE, and it may spend the rest
 		const expansion = this.#expansionProgress();
 		if (expansion > 0 && rightParts.length > 0) {
-			// What the row is short of showing the CLICKED half whole, with the other half at the width a name still reads at. Targeting both halves whole is the greedier answer and
 			const sepWidth = visibleWidth(sep);
 			let wanted = 0;
 			for (let i = 0; i < location.length; i++) {
@@ -1454,9 +1357,6 @@ export class StatusLineComponent implements Component {
 			}
 			wanted += sepWidth * Math.max(0, location.length - 1);
 			const held = budget - visibleWidth(right) - (right ? 2 : 0);
-			// The chip goes first: it is the biggest single readout and the one the reader is
-			// trading away knowingly. After that the row gives up its weakest, which is the same
-			// order it uses under width pressure.
 			const order: number[] = [];
 			let chip = -1;
 			for (let i = 0; i < rightParts.length; i++) {
@@ -1480,7 +1380,6 @@ export class StatusLineComponent implements Component {
 			for (let i = 0; i < order.length; i++) {
 				onOffer += visibleWidth(rightParts[order[i]!]?.content ?? "") + sepWidth;
 			}
-			// NOT scaled by the progress a second time. `wanted` is measured from the location's CURRENT text, and that text is already on the curve -- the path's own clamp travels
 			const spend = Math.min(Math.max(0, wanted - held), onOffer);
 			if (spend > 0) {
 				let owed = spend;
@@ -1490,7 +1389,6 @@ export class StatusLineComponent implements Component {
 					const part = rightParts[index];
 					if (part === undefined) continue;
 					const width = visibleWidth(part.content);
-					// A part is narrowed cell by cell while the row is travelling, because that is the motion: the readout is visibly standing down. Where it lands is a
 					const floor = expansion >= 1 ? MIN_LOCATION_PART : MIN_READABLE_PART;
 					if (owed >= width - floor) {
 						spent.push(index);
@@ -1500,7 +1398,6 @@ export class StatusLineComponent implements Component {
 					rightParts[index] = { ...part, content: truncateToWidth(part.content, width - owed) };
 					owed = 0;
 				}
-				// Descending, so an earlier removal cannot shift a later index.
 				for (const index of spent.sort((a, b) => b - a)) rightParts.splice(index, 1);
 				right = joinContents(rightParts, sep);
 				const widened = fitLocation(
@@ -1518,12 +1415,10 @@ export class StatusLineComponent implements Component {
 			this.#quietLineBounds = EMPTY_BOUNDS;
 			return badge === "" ? null : badge;
 		}
-		// Record where each surviving segment landed, in 0-based columns of the returned line, so a footer click can be resolved back to a segment id
 		const sepWidth = visibleWidth(sep);
 		const bounds = this.#quietBounds;
 		bounds.length = 0;
 		if (left) {
-			// Once the fitter has run it is the authority on where the parts landed: it is what dropped a part and what clipped the head, so it knows the painted columns
 			if (locationSlots !== null) {
 				bounds.push(...locationSlots);
 			} else {
@@ -1537,7 +1432,6 @@ export class StatusLineComponent implements Component {
 				}
 			}
 		}
-		// The right group is anchored to the right edge whether or not a location shares the row with it. Anchoring it only when a location survived is what left a row of state
 		const rightStart = right ? Math.max(0, budget - visibleWidth(right)) : 0;
 		if (right) {
 			let col = rightStart;
@@ -1547,7 +1441,6 @@ export class StatusLineComponent implements Component {
 				col += partWidth + sepWidth;
 			}
 		}
-		// Single-group lines truncate to the budget: clamp bounds the same way. The badge shifts every segment right by its width; the recorded bounds
 		const shifted = this.#quietShiftedBounds;
 		shifted.length = 0;
 		for (let bi = 0; bi < bounds.length; bi++) {
@@ -1567,7 +1460,6 @@ export class StatusLineComponent implements Component {
 		return badge + padding(rightStart) + truncateToWidth(right, budget);
 	}
 
-	/** Resolve column of last rendered quiet footline to segment id. */
 	quietSegmentAt(col: number): string | null {
 		for (const entry of this.#quietLineBounds) {
 			if (col >= entry.start && col < entry.end) return entry.id;
@@ -1575,7 +1467,6 @@ export class StatusLineComponent implements Component {
 		return null;
 	}
 
-	/** Toggle expanded location zone. */
 	togglePathExpanded(half: StatusLineSegmentId = "path"): boolean {
 		const handOver = this.#pathExpanded && half !== this.#expandedHalf;
 		this.#expandedHalf = half;
@@ -1588,7 +1479,6 @@ export class StatusLineComponent implements Component {
 		return this.#pathExpanded;
 	}
 
-	/** Last rendered quiet-footline layout, for tests and debugging. */
 	getQuietSegmentBounds(): readonly QuietSegmentBounds[] {
 		return this.#quietLineBounds;
 	}
@@ -1605,7 +1495,6 @@ export class StatusLineComponent implements Component {
 		const capRight = new Array<string>(gathered.capRight.length);
 		for (let i = 0; i < gathered.capRight.length; i++) capRight[i] = gathered.capRight[i]!.content;
 		const sep = segmentSeparator();
-		// One cell of right margin, always — nothing kisses the terminal edge.
 		const budget = Math.max(1, width - 1);
 		let locationLine: string | null = null;
 		if (location.length > 0) {
@@ -1616,8 +1505,6 @@ export class StatusLineComponent implements Component {
 			} else if (visibleWidth(left) <= budget) {
 				locationLine = left;
 			} else {
-				// Same fitter as the one-line row: the branch goes before the directory does.
-				// The run clock is dropped with it, since it is chrome and this row is full.
 				locationLine = fitLocation(gathered.location, sep, budget).text;
 			}
 		}
@@ -1625,8 +1512,6 @@ export class StatusLineComponent implements Component {
 		if (capLeft.length > 0 || capRight.length > 0) {
 			const left = capLeft.join(sep);
 			let right = capRight.join(sep);
-			// Free space between the groups is the design; on narrow terminals the
-			// right group sheds parts before the gap closes below breathing room.
 			while (capRight.length > 0 && visibleWidth(left) + visibleWidth(right) + 2 > budget) {
 				capRight.pop();
 				right = capRight.join(sep);
@@ -1641,7 +1526,6 @@ export class StatusLineComponent implements Component {
 	}
 
 	render(width: number): readonly string[] {
-		// Only render hook statuses - main status is in editor's top border
 		const showHooks = this.#settings.showHookStatus ?? true;
 		if (!showHooks || this.#hookStatuses.size === 0) {
 			if (this.#cachedHookRows.length !== 0) {
@@ -1651,8 +1535,6 @@ export class StatusLineComponent implements Component {
 			return this.#cachedHookRows;
 		}
 
-		// Cache by width + hook content signature so the TUI engine's stableRows
-		// tracking can skip re-ingesting this row when hook statuses are unchanged.
 		const entries = new Array<[string, string]>(this.#hookStatuses.size);
 		let ei = 0;
 		for (const entry of this.#hookStatuses) entries[ei++] = entry;

@@ -15,7 +15,6 @@ import {
 	onSymbolPresetChanged,
 	registerSettingsTestResetHook,
 } from "../../config/settings";
-// The bundled theme JSON lives in `./builtin-themes` and the light/dark classifier in `./theme-luminance`, so `config/settings` can reach `isLightTheme` for its legacy theme migration
 import { getBuiltinThemes } from "./builtin-themes";
 import {
 	ansi256ToHex,
@@ -37,12 +36,8 @@ import { setActiveTheme, theme } from "./theme-binding";
 import { Theme } from "./theme-class";
 
 export { getLanguageFromPath } from "../../utils/lang-from-path";
-// Re-exported so this stays the one place callers import theme lookups from, even though the
-// definitions moved out of the cycle. Each comes from its owning leaf rather than through
-// `./builtin-themes`, so this file states where each one actually lives.
 export { getBuiltinThemes } from "./builtin-themes";
 export { isValidThemeColor } from "./color";
-// The memoised native highlighter moved to `./highlight` with the markdown adapter that also needed it, so this module stopped naming `@veyyon/natives` and `lru-cache`. Re-exported because
 export { highlightCode } from "./highlight";
 export type { SpinnerType, SymbolKey, SymbolPreset } from "./symbols";
 export { isLightTheme, isLightThemeJson } from "./theme-luminance";
@@ -59,9 +54,7 @@ export async function getAvailableThemes(): Promise<string[]> {
 				themes.add(file.slice(0, -5));
 			}
 		}
-	} catch {
-		// Directory doesn't exist or isn't readable
-	}
+	} catch {}
 	return Array.from(themes).sort();
 }
 
@@ -73,12 +66,10 @@ export interface ThemeInfo {
 export async function getAvailableThemesWithPaths(): Promise<ThemeInfo[]> {
 	const result: ThemeInfo[] = [];
 
-	// Built-in themes (embedded, no file path)
 	for (const name of Object.keys(getBuiltinThemes())) {
 		result.push({ name, path: undefined });
 	}
 
-	// Custom themes
 	const customThemesDir = getCustomThemesDir();
 	try {
 		const files = await fs.promises.readdir(customThemesDir);
@@ -90,9 +81,7 @@ export async function getAvailableThemesWithPaths(): Promise<ThemeInfo[]> {
 				}
 			}
 		}
-	} catch {
-		// Directory doesn't exist or isn't readable
-	}
+	} catch {}
 
 	return result.sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -140,10 +129,8 @@ interface CreateThemeOptions {
 	colorBlindMode?: boolean;
 }
 
-/** HSV adjustment to shift green toward blue for colorblind mode (red-green colorblindness) */
 const COLORBLIND_ADJUSTMENT = { h: 60, s: 0.71 };
 
-/** Defaults for the optional identity/state accent tokens, keyed by the token, valued by the required token whose resolved color it inherits when a theme */
 const QUIET_TOKEN_DEFAULTS: Partial<Record<ThemeColor, ThemeColor>> = {
 	sessionAccent: "accent",
 	modeAccent: "accent",
@@ -183,21 +170,17 @@ export function createTheme(themeJson: ThemeJson, options: CreateThemeOptions = 
 			fgColors[key as ThemeColor] = value;
 		}
 	}
-	// The identity/state accent tokens are optional in theme JSON (they arrived with the design system's cool arc, long after most themes were authored).
 	for (const [token, fallback] of Object.entries(QUIET_TOKEN_DEFAULTS) as [ThemeColor, ThemeColor][]) {
 		if (fgColors[token] === undefined) {
 			fgColors[token] = fgColors[fallback] ?? fgColors.accent;
 		}
 	}
-	// The composer quiet card (DS-6 layer 0) defaults to UNPAINTED (the empty sentinel, `\x1b[49m`): the inline TUI's ground is the terminal's own
 	if (bgColors.composerBg === undefined) {
 		bgColors.composerBg = "";
 	}
-	// Extract symbol configuration - settings override takes precedence over theme
 	const symbolPreset: SymbolPreset = symbolPresetOverride ?? themeJson.symbols?.preset ?? "unicode";
 	const symbolOverrides = themeJson.symbols?.overrides ?? {};
 	const spinnerFramesOverrides = normalizeSpinnerFramesOverride(themeJson.symbols?.spinnerFrames);
-	// The theme's terminal ground for the painted-ground feature (`tui.paintGround`) comes from `export.pageBg`, the same background HTML export already uses.
 	const rawGround = resolveThemeExportColors(themeJson).pageBg;
 	const groundHex = rawGround !== undefined && parseHexColor(rawGround) !== null ? rawGround : undefined;
 	return new Theme(fgColors, bgColors, colorMode, symbolPreset, symbolOverrides, spinnerFramesOverrides, groundHex);
@@ -212,34 +195,24 @@ export async function getThemeByName(name: string): Promise<Theme | undefined> {
 	try {
 		return await loadTheme(name);
 	} catch (error) {
-		// Undefined is also the answer for a theme that does not exist, and the caller (an extension
-		// asking for a theme by name) cannot tell a typo from a broken theme file. Naming the theme and
-		// the parse error is the difference between fixing your JSON and assuming the name was wrong.
 		logger.warn("Theme could not be loaded", { theme: name, error: errorMessage(error) });
 		return undefined;
 	}
 }
 
-/** Appearance detected via OSC 11 background color query, or undefined if not yet available. */
 var terminalReportedAppearance: "dark" | "light" | undefined;
 
-/** Appearance reported by the macOS fallback observer, or undefined if not yet available. */
 var macOSReportedAppearance: "dark" | "light" | undefined;
 
 function shouldUseMacOSAppearanceFallback(): boolean {
-	// Zellij currently breaks OSC 11 passthrough on macOS, so terminal-derived
-	// appearance cannot be trusted there. Fall back to host macOS appearance
-	// without letting it override valid terminal signals elsewhere.
 	return process.platform === "darwin" && !!Bun.env.ZELLIJ;
 }
 
 function detectTerminalBackground(): "dark" | "light" {
-	// Tier 1: terminal-reported appearance from OSC 11 luminance.
 	if (!shouldUseMacOSAppearanceFallback() && terminalReportedAppearance) {
 		return terminalReportedAppearance;
 	}
 
-	// Tier 2: COLORFGBG env var (static at process start, but still terminal-derived).
 	const colorfgbg = Bun.env.COLORFGBG || "";
 	if (colorfgbg) {
 		const parts = colorfgbg.split(";");
@@ -249,7 +222,6 @@ function detectTerminalBackground(): "dark" | "light" {
 		}
 	}
 
-	// Tier 3: host macOS appearance for known-broken terminal paths only.
 	if (shouldUseMacOSAppearanceFallback()) {
 		const macAppearance = macOSReportedAppearance ?? detectMacOSAppearance();
 		if (macAppearance) return macAppearance;
@@ -263,24 +235,18 @@ function getDefaultTheme(): string {
 	return bg === "light" ? autoLightTheme : autoDarkTheme;
 }
 
-// The binding itself lives in `./theme-binding`, a leaf, so a caller that only
-// needs to READ the active theme does not have to import this engine. Re-exported
-// here because this module has always been where callers import it from.
 export { theme } from "./theme-binding";
 
 var currentThemeName: string | undefined;
 
-/** Get the name of the currently active theme. */
 export function getCurrentThemeName(): string | undefined {
 	return currentThemeName;
 }
 
-/** Returns unstyled `text` before `initTheme()` assigns the global theme; use only for early-render paths. */
 export function fgOrPlain(color: ThemeColor, text: string, styledText: string = text): string {
 	return typeof theme === "undefined" ? text : theme.fg(color, styledText);
 }
 export interface ThemeChangeEvent {
-	/** Preview/presentation-only changes should repaint live UI without replacing native scrollback. */
 	ephemeral?: boolean;
 }
 
@@ -303,31 +269,22 @@ function getCurrentThemeOptions(): CreateThemeOptions {
 	};
 }
 
-/** The theme every fallback lands on. It is compiled into the binary as a built-in, so it is the one theme guaranteed to load no matter what is on disk. */
 export const FALLBACK_THEME_NAME = "dark";
 
-/** Outcome of loading a theme and making it active. */
 export interface ThemeLoadResult {
 	success: boolean;
 	error?: string;
-	/** The requested theme failed and `FALLBACK_THEME_NAME` is now rendering. Callers with a user-visible channel MUST surface this: the user asked for */
 	fellBack?: boolean;
 }
 
 interface ApplyThemeOptions {
-	/** Repaint live UI without replacing native scrollback. */
 	ephemeral?: boolean;
-	/** Start the custom-theme file watcher once the theme loads. */
 	enableWatcher?: boolean;
-	/** Record `name` as the committed theme on success, and the fallback name if it falls back. */
 	commitName?: boolean;
-	/** Leave the active theme untouched when the load fails, instead of falling back. Previewing is browsing: failing to render a candidate is not a reason */
 	keepCurrentOnError?: boolean;
-	/** Result message when a newer request superseded this one. */
 	supersededMessage?: string;
 }
 
-/** The one owner of "load a theme and make it active". Every entry point (init, explicit set, preview, symbol preset, color-blind */
 async function applyTheme(name: string, options: ApplyThemeOptions = {}): Promise<ThemeLoadResult> {
 	const {
 		ephemeral,
@@ -360,9 +317,6 @@ async function applyTheme(name: string, options: ApplyThemeOptions = {}): Promis
 			return { success: false, error: message };
 		}
 
-		// Loud and recorded: the operator is about to be shown a theme they did
-		// not pick. The returned `fellBack` is the user-visible half — the log
-		// alone would be a silent degrade.
 		logger.warn("Theme failed to load; falling back", {
 			requested: name,
 			fallback: FALLBACK_THEME_NAME,
@@ -370,13 +324,8 @@ async function applyTheme(name: string, options: ApplyThemeOptions = {}): Promis
 		});
 
 		if (commitName) currentThemeName = FALLBACK_THEME_NAME;
-		// The fallback is a built-in, so this cannot hit the disk or throw. If it
-		// ever does, the theme system is unusable and the throw is the honest signal.
 		setActiveTheme(await loadTheme(FALLBACK_THEME_NAME, getCurrentThemeOptions()));
-		// Bump the epoch so memoized renderers re-shape with the fallback colors
-		// instead of holding the failed theme's stale styling.
 		notifyThemeChange(event);
-		// Deliberately no watcher on the fallback: it is a built-in with no file.
 		return { success: false, error: message, fellBack: true };
 	}
 }
@@ -401,7 +350,6 @@ export async function initTheme(
 	}
 }
 
-/** Switch to `name` as the committed theme. On failure the fallback renders and the committed name moves with it: the user explicitly asked for this theme, */
 export async function setTheme(name: string, enableWatcher: boolean = false): Promise<ThemeLoadResult> {
 	autoDetectedTheme = false;
 	return applyTheme(name, { enableWatcher, commitName: true });
@@ -418,22 +366,17 @@ export async function previewTheme(
 	});
 }
 
-/**
- * Enable auto-detection mode, switching to the appropriate dark/light theme.
- */
 export function enableAutoTheme(event: ThemeChangeEvent = {}): void {
 	autoDetectedTheme = true;
 	reevaluateAutoTheme("enableAutoTheme", event);
 }
 
-/** Update the theme mappings for auto-detection mode. When a dark/light mapping changes and auto-detection is active, re-evaluate the theme. */
 export function setAutoThemeMapping(mode: "dark" | "light", themeName: string): void {
 	if (mode === "dark") autoDarkTheme = themeName;
 	else autoLightTheme = themeName;
 	reevaluateAutoTheme("setAutoThemeMapping");
 }
 
-/** Called when the terminal detects a dark/light appearance change. The terminal layer queries OSC 11 (background color) and computes luminance; */
 export function onTerminalAppearanceChange(mode: "dark" | "light"): void {
 	if (terminalReportedAppearance === mode) return;
 	terminalReportedAppearance = mode;
@@ -448,35 +391,26 @@ export function setThemeInstance(themeInstance: Theme): void {
 	notifyThemeChange({ ephemeral: true });
 }
 
-/** Set the symbol preset override, recreating the theme with the new preset. Returns the reload outcome so callers can surface a fallback. The preset */
 export async function setSymbolPreset(preset: SymbolPreset): Promise<ThemeLoadResult> {
 	currentSymbolPresetOverride = preset;
 	if (!currentThemeName) return { success: true };
 	return applyTheme(currentThemeName, { ephemeral: true });
 }
 
-/**
- * Get the current symbol preset override.
- */
 export function getSymbolPresetOverride(): SymbolPreset | undefined {
 	return currentSymbolPresetOverride;
 }
 
-/** Set color blind mode, recreating the theme with the new setting. When enabled, uses blue instead of green for diff additions. */
 export async function setColorBlindMode(enabled: boolean): Promise<ThemeLoadResult> {
 	currentColorBlindMode = enabled;
 	if (!currentThemeName) return { success: true };
 	return applyTheme(currentThemeName, { ephemeral: true });
 }
 
-/**
- * Get the current color blind mode setting.
- */
 export function getColorBlindMode(): boolean {
 	return currentColorBlindMode;
 }
 
-/** Apply `theme.dark`, `theme.light`, `symbolPreset` and `colorBlindMode` to the running engine when an operator changes them mid-session. */
 onAutoThemeMappingChanged(
 	(slot, themeName) => {
 		setAutoThemeMapping(slot, themeName);
@@ -484,7 +418,6 @@ onAutoThemeMappingChanged(
 	{ permanent: true },
 );
 
-/** Put this module's ambient state back to what a freshly started process has. survive `resetSettingsForTest`, so one suite writing `symbolPreset: "ascii"` changed what every */
 registerSettingsTestResetHook(() => {
 	currentSymbolPresetOverride = undefined;
 	currentColorBlindMode = false;
@@ -494,8 +427,6 @@ onSymbolPresetChanged(
 	preset => {
 		setSymbolPreset(preset)
 			.then(result => {
-				// The preset applied, but re-rendering the committed theme fell back.
-				// Record which theme is actually on screen now.
 				if (result.fellBack) {
 					logger.warn("Settings: symbolPreset applied but the theme fell back", {
 						preset,
@@ -537,34 +468,25 @@ export function onThemeChange(callback: (event: ThemeChangeEvent) => void): () =
 	};
 }
 
-/** Monotonic counter bumped on any theme-affecting change that should invalidate cached renders: theme swaps and reloads (including the invalid-theme dark */
 export function getThemeEpoch(): number {
 	return themeEpoch;
 }
 
-/** Bump the theme epoch and notify the registered theme-change listener. */
 function notifyThemeChange(event: ThemeChangeEvent = {}): void {
 	themeEpoch++;
 	try {
 		onThemeChangeCallback?.(event);
 	} catch (error) {
-		// The listener is the UI's repaint hook: render-cache invalidation, the editor border, native scrollback replacement. It is invoked inside the
 		logger.warn("Theme change listener threw; the UI may not repaint until the next render", {
 			error: errorMessage(error),
 		});
 	}
 }
 
-/**
- * Get available symbol presets.
- */
 export function getAvailableSymbolPresets(): SymbolPreset[] {
 	return ["unicode", "nerd", "ascii"];
 }
 
-/**
- * Check if a string is a valid symbol preset.
- */
 export function isValidSymbolPreset(preset: string): preset is SymbolPreset {
 	return preset === "unicode" || preset === "nerd" || preset === "ascii";
 }
@@ -572,7 +494,6 @@ export function isValidSymbolPreset(preset: string): preset is SymbolPreset {
 async function startThemeWatcher(): Promise<void> {
 	stopThemeWatcher();
 
-	// Only watch custom themes. Ask the built-in registry rather than naming themes here: `loadThemeJson` resolves built-ins before ever touching the
 	if (!currentThemeName || currentThemeName in getBuiltinThemes()) {
 		return;
 	}
@@ -582,7 +503,6 @@ async function startThemeWatcher(): Promise<void> {
 	const watchedFileName = `${watchedThemeName}.json`;
 	const themeFile = path.join(customThemesDir, watchedFileName);
 
-	// Only watch if the file exists
 	if (!fs.existsSync(themeFile)) {
 		return;
 	}
@@ -594,12 +514,10 @@ async function startThemeWatcher(): Promise<void> {
 		themeReloadTimer = setTimeout(() => {
 			themeReloadTimer = undefined;
 
-			// Ignore stale timers after switching themes or stopping the watcher
 			if (currentThemeName !== watchedThemeName) {
 				return;
 			}
 
-			// Keep the last successfully loaded theme active if the file is temporarily missing
 			if (!fs.existsSync(themeFile)) {
 				return;
 			}
@@ -609,9 +527,7 @@ async function startThemeWatcher(): Promise<void> {
 					setActiveTheme(loadedTheme);
 					notifyThemeChange({ ephemeral: true });
 				})
-				.catch(() => {
-					// Ignore errors (file might be in invalid state while being edited)
-				});
+				.catch(() => {});
 		}, 100);
 	};
 
@@ -630,12 +546,9 @@ async function startThemeWatcher(): Promise<void> {
 			}
 			scheduleReload();
 		});
-	} catch {
-		// Ignore errors starting watcher
-	}
+	} catch {}
 }
 
-/** Shared logic for re-evaluating the auto-detected theme. Called from SIGWINCH, terminal appearance change handler, and macOS fallback observer. */
 function reevaluateAutoTheme(debugLabel: string, event: ThemeChangeEvent = {}): void {
 	if (!autoDetectedTheme) return;
 	const resolved = getDefaultTheme();
@@ -648,11 +561,7 @@ function reevaluateAutoTheme(debugLabel: string, event: ThemeChangeEvent = {}): 
 			notifyThemeChange(event);
 		})
 		.catch(err => {
-			// Put the name back. It was committed before the load so concurrent re-evaluations would not stack, but leaving it committed after a failure
 			currentThemeName = previous;
-			// warn, not debug. The user asked for automatic theme switching, it just
-			// did not happen, and the colours on screen are now wrong in a way they
-			// cannot explain from anything they did.
 			logger.warn(`Theme switch on ${debugLabel} failed; keeping the current theme`, {
 				from: previous,
 				to: resolved,
@@ -665,10 +574,8 @@ var macObserver: { stop(): void } | undefined;
 
 type MacAppearanceObserverStarter = (callback: (err: Error | null, appearance: string) => void) => { stop(): void };
 
-/** Seam over `MacAppearanceObserver.start`. The native export is a lazy Proxy whose property access loads the platform addon, so tests can neither spy on */
 let macAppearanceObserverStarter: MacAppearanceObserverStarter | undefined;
 
-/** Install (or with undefined, remove) a fake observer starter. Test-only. */
 export function setMacAppearanceObserverStarterForTest(starter: MacAppearanceObserverStarter | undefined): void {
 	macAppearanceObserverStarter = starter;
 }
@@ -698,7 +605,6 @@ function stopMacAppearanceObserver(): void {
 	macOSReportedAppearance = undefined;
 }
 
-/** Re-check appearance on SIGWINCH and switch dark/light when using auto-detected theme. */
 function startSigwinchListener(): void {
 	stopSigwinchListener();
 	sigwinchHandler = () => {
@@ -716,7 +622,6 @@ function stopSigwinchListener(): void {
 	stopMacAppearanceObserver();
 }
 
-/** Whether a custom-theme file watcher is currently attached. `startThemeWatcher` returns early for built-in themes and for names with no file on disk, so this */
 export function isThemeWatcherActive(): boolean {
 	return themeWatcher !== undefined;
 }
@@ -767,14 +672,12 @@ function resolveThemeExportColors(themeJson: ThemeJson): {
 	};
 }
 
-/** Get resolved theme colors as CSS-compatible hex strings. Used by HTML export to generate CSS custom properties. */
 export async function getResolvedThemeColors(themeName?: string): Promise<Record<string, string>> {
 	const name = themeName ?? getDefaultTheme();
 	const themeJson = await loadThemeJson(name);
 	const exportColors = resolveThemeExportColors(themeJson);
 	const resolved = resolveThemeColors(themeJson.colors, themeJson.vars);
 
-	// Empty foreground tokens use the terminal default color. In HTML export, that default must contrast the export surface, not the TUI status line:
 	const defaultText = getHtmlDefaultTextForSurface(
 		exportColors.cardBg ?? exportColors.pageBg ?? resolved.userMessageBg,
 	);
@@ -784,7 +687,6 @@ export async function getResolvedThemeColors(themeName?: string): Promise<Record
 		if (typeof value === "number") {
 			cssColors[key] = ansi256ToHex(value);
 		} else if (value === "") {
-			// Empty means default terminal color - use sensible fallback for HTML
 			cssColors[key] = defaultText;
 		} else {
 			cssColors[key] = value;
@@ -793,7 +695,6 @@ export async function getResolvedThemeColors(themeName?: string): Promise<Record
 	return cssColors;
 }
 
-/** Get explicit export colors from theme JSON, if specified. Returns undefined for each color that isn't explicitly set. */
 export async function getThemeExportColors(themeName?: string): Promise<{
 	pageBg?: string;
 	cardBg?: string;
@@ -804,7 +705,6 @@ export async function getThemeExportColors(themeName?: string): Promise<{
 		const themeJson = await loadThemeJson(name);
 		return resolveThemeExportColors(themeJson);
 	} catch (error) {
-		// An empty object means "this theme sets no explicit export colors", which is a normal answer and the reason the caller falls back to its own defaults. A theme file that could not be READ gives
 		logger.warn("Theme could not be read for export colors; the export will use default colors", {
 			theme: name,
 			error: errorMessage(error),
@@ -813,38 +713,25 @@ export async function getThemeExportColors(themeName?: string): Promise<{
 	}
 }
 
-/** The symbol reader lives in `./symbol-theme`, a leaf beside the theme binding, and is re-exported here so the modules that already reach this engine keep taking it from one place. */
 export { getSymbolTheme } from "./symbol-theme";
 
-/** The color an animation resolves a row OUT OF: the ground that is actually on screen behind it. */
 export function visibleGroundHex(): string {
 	return theme.visibleGroundHex();
 }
 
-/** How many columns one span of the ramp covers. A span is a single `48;2;r;g;b`, so this is the knob that trades bytes for smoothness: a per-cell ramp is ~19 bytes of SGR per column on a row */
 const BAND_COLUMNS_PER_SPAN = 8;
-/** Fewest spans worth calling a ramp: below three there is no middle and the band reads as two blocks. */
 const BAND_MIN_SPANS = 3;
-/** Most spans any row gets, whatever its width. */
 const BAND_MAX_SPANS = 10;
-/** How far the trailing end of the band has dissolved into the ground behind it. */
 const BAND_TRAIL_MIX = 0.75;
-/** Ramp easing. Below 1 it front-loads the colour: at a third of the way across, `t ** 0.55` has already covered 55% of the distance to the trailing end, so the strong part of the band sits */
 const BAND_RAMP_EASE = 0.55;
-/** Fraction of the row the lifted label covers — the third the band is strongest under. */
 const BAND_LIFT_SPAN = 1 / 3;
-/** How far the lifted label is pushed toward the theme's own contrast extreme. */
 const BAND_LIFT = 0.4;
 
-/** Every escape shape a rendered row can carry: a CSI (colour, cursor), an OSC (hyperlink, kitty text sizing) with either terminator, and the two-byte forms. Splitting a row on this leaves runs */
 const BAND_ESCAPE_PATTERN = /\x1b(?:\[[0-9;:?]*[ -/]*[@-~]|\][\s\S]*?(?:\x07|\x1b\\)|[@-Z\\-_])/g;
 
-/** Background reset. Spelled out rather than imported for the same reason `Theme` spells it out. */
 const BAND_BG_RESET = "\x1b[49m";
-/** Foreground reset, which closes the lifted label and nothing else. */
 const BAND_FG_RESET = "\x1b[39m";
 
-/** Splice `inserts` into `text` at the visible COLUMN each is keyed by, copying every original byte through untouched. */
 function spliceAtColumns(text: string, inserts: ReadonlyMap<number, string>): string {
 	const columns = Array.from(inserts.keys()).sort((a, b) => a - b);
 	const escapes = BAND_ESCAPE_PATTERN;
@@ -855,7 +742,6 @@ function spliceAtColumns(text: string, inserts: ReadonlyMap<number, string>): st
 	let cursor = 0;
 	let next = 0;
 	while (cursor < text.length || next < columns.length) {
-		// Anything due at the column already reached goes out before the cell that column holds.
 		while (next < columns.length && (columns[next] as number) <= column) {
 			out += inserts.get(columns[next] as number) as string;
 			next += 1;
@@ -870,7 +756,6 @@ function spliceAtColumns(text: string, inserts: ReadonlyMap<number, string>): st
 		const runEnd = ansi === null ? text.length : ansi.index;
 		const run = text.slice(cursor, runEnd);
 		const runWidth = visibleWidth(run);
-		// `take` is at least 1: everything due at or before `column` was flushed above.
 		const take = next < columns.length ? (columns[next] as number) - column : Number.POSITIVE_INFINITY;
 		if (take >= runWidth) {
 			out += run;
@@ -879,8 +764,6 @@ function spliceAtColumns(text: string, inserts: ReadonlyMap<number, string>): st
 			continue;
 		}
 		const piece = sliceWithWidth(run, 0, take, true);
-		// Empty means the boundary lands inside the run's FIRST grapheme, which strict slicing
-		// drops; pulling that grapheme forward whole is what keeps the walk advancing.
 		const cut = piece.text.length === 0 ? sliceWithWidth(run, 0, take + 1, false) : piece;
 		out += cut.text;
 		column += cut.width;
@@ -889,13 +772,11 @@ function spliceAtColumns(text: string, inserts: ReadonlyMap<number, string>): st
 	return out;
 }
 
-/** The band under a selected or pointed-at row: a directional gradient with a hard accent leading edge, at a strength an animation decided. */
 export function paintBand(text: string, background: ThemeBg, strength: number): string {
 	if (strength <= 0) return text;
 	if (theme.getColorMode() !== "truecolor") return strength >= 0.5 ? theme.bg(background, text) : text;
 	if (!colorEnabled()) return text;
 	const width = visibleWidth(text);
-	// No cells is the flat band's empty escape pair, and there is no ramp to put in it.
 	if (width === 0) return theme.bg(background, text);
 
 	const mode = theme.getColorMode();
@@ -903,7 +784,6 @@ export function paintBand(text: string, background: ThemeBg, strength: number): 
 	const fullStrength = strength >= 1;
 	const head = theme.getBgColorHex(background);
 	const inserts = new Map<number, string>();
-	// The leading edge. One cell of accent is what gives the band an end the cursor came from.
 	const accentHex = theme.getAccentColorHex();
 	inserts.set(0, bgAnsi(fullStrength ? accentHex : blendHex(ground, accentHex, strength), mode));
 
@@ -911,7 +791,6 @@ export function paintBand(text: string, background: ThemeBg, strength: number): 
 	const spans = Math.min(bodyWidth, clamp(Math.round(width / BAND_COLUMNS_PER_SPAN), BAND_MIN_SPANS, BAND_MAX_SPANS));
 	for (let index = 0; index < spans; index++) {
 		const t = spans === 1 ? 0 : index / (spans - 1);
-		// The first span at full strength is the switched band's OWN escape, not a recomputation of it: every suite that looks for `theme.getBgAnsi(background)` in a selected row is asking
 		const fill =
 			index === 0 && fullStrength
 				? theme.getBgAnsi(background)
@@ -924,7 +803,6 @@ export function paintBand(text: string, background: ThemeBg, strength: number): 
 		inserts.set(1 + Math.floor((index * bodyWidth) / spans), fill);
 	}
 
-	// The label lift, and the one case it is safe in: a row carrying NO escapes of its own. Lifting the text where the band is strongest needs a foreground colour opened mid-row, and on a row
 	const lifted =
 		width >= 3 && !text.includes("\x1b")
 			? blendHex(theme.getColorHex("text"), theme.isLight ? "#000000" : "#ffffff", BAND_LIFT * strength)
@@ -939,14 +817,11 @@ export function paintBand(text: string, background: ThemeBg, strength: number): 
 	return `${spliceAtColumns(text, inserts)}${tail}`;
 }
 
-/** The pointer band, at a strength an animation decided. The shape is {@link paintBand}'s; a hover differs from a selection only in the strength it asks for, so at full strength the two are the */
 export function hoverBand(text: string, strength: number): string {
 	return paintBand(text, "selectedBg", strength);
 }
 
 export function getSelectListTheme(): SelectListTheme {
-	// Guard against `theme` being undefined (pre-init or cross-module-instance
-	// plugin calls). See #2998.
 	if (typeof theme === "undefined") {
 		return {
 			selectedPrefix: (text: string) => text,
@@ -959,9 +834,6 @@ export function getSelectListTheme(): SelectListTheme {
 		};
 	}
 	return {
-		// The selection cursor is a LIVE warm-arc glyph, so it runs molten
-		// (lava heat cycle) on truecolor terminals and static borderAccent
-		// ember otherwise — the design system's "the one live thing".
 		selectedPrefix: (text: string) => lavaText(text, theme, TERMINAL.trueColor),
 		selectedText: (text: string) => theme.bold(theme.fg("accent", text)),
 		description: (text: string) => theme.fg("muted", text),
@@ -969,18 +841,13 @@ export function getSelectListTheme(): SelectListTheme {
 		noMatch: (text: string) => theme.fg("muted", text),
 		symbols: getSymbolTheme(),
 		hovered: hoverBand,
-		// The found thing is gold: filter-hit characters paint matchHighlight.
 		matchHighlight: (text: string) => theme.fg("matchHighlight", text),
-		// Category headers per the approved / menu design: an ember uppercase
-		// label with a short rule tail, so the list reads as a map of sections.
 		groupHeader: (name: string) =>
 			theme.fg("borderAccent", `  ${name.toUpperCase()} ${"─".repeat(Math.max(4, 30 - name.length))}`),
 	};
 }
 
 export function getEditorTheme(): EditorTheme {
-	// Guard against `theme` being undefined (pre-init or cross-module-instance
-	// plugin calls). See #2998.
 	if (typeof theme === "undefined") {
 		return {
 			borderColor: (text: string) => text,
@@ -998,7 +865,6 @@ export function getEditorTheme(): EditorTheme {
 }
 
 export function getSettingsListTheme(): SettingsListTheme {
-	// Plugins (e.g. pi-rtk-optimizer) may call this before `initTheme()` assigns the global `theme`, or from a separate module instance under npm-global
 	if (typeof theme === "undefined") {
 		return {
 			label: (text: string) => text,

@@ -1,17 +1,3 @@
-/**
- * The classifier: what a failure IS, read once off the whole cause chain.
- *
- * Three files, three jobs. `flag.ts` is the vocabulary — one bit per failure kind and the
- * primitives that read a set of them. `domains/` holds one file per failure family: the rules that
- * recognise it and what each stage does about it. `registry.ts` assembles the domains in the order
- * that decides which family speaks when a failure belongs to several. This file is the walk: it
- * takes an arbitrary thrown value, unwraps its cause chain, asks the registry's identity and signal
- * rules about each link, and returns the flags they set between them.
- *
- * The accessors at the bottom are the public way to ask a yes/no question about a failure. They all
- * go through {@link classify}, which is the point: a call site that re-runs a regex of its own is a
- * second opinion, and the second opinion is always the one that disagrees.
- */
 import { extractHttpStatusFromError } from "@veyyon/utils/fetch-retry";
 import { STREAM_FRAME_LIMIT_ERROR_NAME } from "@veyyon/utils/stream-frame-limit";
 import type { Api, AssistantMessage } from "../types";
@@ -58,23 +44,13 @@ export {
 	vetoesRetry,
 } from "./registry";
 
-/**
- * Local llama.cpp / Ollama deterministic tool-call argument JSON parse failure.
- *
- * The server answers 500, which reads as transient, but the same prompt produces the same
- * malformed output every time, so an agent-level retry loops until the budget is gone.
- */
 export const LLAMA_CPP_TOOL_CALL_PARSE_PATTERN =
 	/failed to parse tool call arguments as json|\[json\.exception\.parse_error\.101\]/i;
 
-/**
- * The HTTP status a failure carries, from a cause chain field or extracted from prose.
- */
 export function status(error: unknown): number | undefined {
 	return extractHttpStatusFromError(error);
 }
 
-/** The machine-readable code a provider sent, from `code` or the SDK's nested `error.code`. */
 function providerCode(link: unknown): string | undefined {
 	if (link === null || typeof link !== "object") return undefined;
 	const info = link as { code?: unknown; error?: { code?: unknown } | null };
@@ -111,29 +87,11 @@ function classifyText(
 	return fallbackStatus ?? 0;
 }
 
-/**
- * The flags a failure states through its status alone, for one that carried no wording at all.
- *
- * Today exactly one family answers: a 429 with nothing to read is a quota wall. A bare 500, 502, 503
- * or 504 states nothing here and stays an unclassified status on purpose — "the peer answered 503"
- * is not the same claim as "this is transient", and the predicate that retries a bare status says so
- * itself.
- */
 function classifyBareStatus(bare: number | undefined, api?: Api, trace?: string[]): number {
 	if (bare === undefined) return 0;
 	return classifySignal({ text: "", status: bare, api, http2: undefined, code: undefined }, trace);
 }
 
-/**
- * The latches that REMOVE {@link Flag.Transient} after the rules ran, rather than setting a flag.
- *
- * Both name a failure whose next attempt reaches the same peer with the same input, so the retry
- * ladder would spend every attempt on a result that cannot change. They live here, called by both
- * {@link classify} and {@link classifyMessage}, because the same body arrives thrown from a request
- * and recorded on an assistant message: llama.cpp's tool-call JSON parse failure used to be latched
- * on the message path only, so the identical 500 was surfaced when it was recorded and retried to
- * the end of the ladder when it was thrown.
- */
 function clearDeterministicTransient(
 	kinds: number,
 	latches: { framingViolation: boolean; llamaCppToolCallParse: boolean },
@@ -145,9 +103,6 @@ function clearDeterministicTransient(
 		cleared &= ~Flag.Transient;
 	}
 	if (latches.llamaCppToolCallParse) {
-		// Deterministic local-model tool-call JSON parse failure: HTTP 500 is misleading because the
-		// same prompt reproduces the same malformed output. Strip Transient so the recovery message
-		// surfaces immediately instead of after the whole ladder.
 		trace?.push("llama-cpp-tool-call-parse-clears-transient");
 		cleared &= ~Flag.Transient;
 	}
@@ -172,17 +127,6 @@ export function classify(error: unknown, api?: Api, trace?: string[]): number {
 
 		kinds |= classifyIdentity(link, trace);
 
-		// A framing violation is the peer's protocol breach, and it decides transience for
-		// the whole chain: whatever a wrapper's sentence says, and whatever else the chain
-		// mentions, the stream ended because the peer would not delimit its frame and the
-		// next attempt reaches the same peer. Its own prose is kept out of the text rules
-		// as well — "a line arrived with no line feed" names no transport and carries no
-		// status, yet an earlier wording matched TRANSIENT_TRANSPORT_PATTERN's /terminated/
-		// through the word "unterminated" and came back retryable.
-		//
-		// A named HTTP/2 refusal is the OTHER structural refusal and works differently on
-		// purpose: it sets Flag.TransportRefused and leaves the description alone, because a
-		// deadline that cancels its own stream still has to say it timed out. See flag.ts.
 		const isFramingViolation =
 			typeof link === "object" && (link as { name?: unknown }).name === STREAM_FRAME_LIMIT_ERROR_NAME;
 		if (isFramingViolation) framingViolation = true;
@@ -210,48 +154,23 @@ export function classify(error: unknown, api?: Api, trace?: string[]): number {
 		link = typeof link === "object" && "cause" in link ? (link as { cause: unknown }).cause : undefined;
 	}
 
-	// Cleared after the walk, not skipped during it: a wrapper's own prose is classified
-	// before the cause carrying the breach is even reached.
 	kinds = clearDeterministicTransient(kinds, { framingViolation, llamaCppToolCallParse }, trace);
-	// A FAILURE THAT ARRIVED AS A STATUS AND NOTHING ELSE. The rules above run per link only when the
-	// link has something to read, so `{ status: 429 }` reached none of them and came back as the raw
-	// number, and the quota family answers a status on its own: an opaque 429 is a wall rather than a
-	// throttle, because the provider gave nothing else to go on. This asks the same rules rather than
-	// letting a call site OR in a second predicate, which is what six of them did.
-	//
-	// Only when NO link carried wording. A body that says `Too many requests` was already read with
-	// its status, and asking again about the status alone would call every throttle a wall.
 	if (kinds === 0 && !carriesText(error)) kinds = classifyBareStatus(status(error), api, trace);
 
 	return kinds !== 0 ? create(kinds) : (status(error) ?? 0);
 }
 
-/** A classification and the rules that produced it. */
 export interface Explanation {
-	/** The id {@link classify} returns for the same failure. */
 	readonly id: number;
-	/** The rule names that fired, in registry order, each once however many links carried it. */
 	readonly rules: readonly string[];
 }
 
-/**
- * Classify a failure AND state which rules said so.
- *
- * The id says what a failure is; it does not say which of the twenty-six rules decided that, so a
- * misclassification was diagnosed by re-running conditions by hand against the provider's sentence.
- * Every rule states a name and the walk collects them, so a failure record can carry the decision
- * instead of only its outcome. Three entries are not rules and say so: `status-401-403` is the
- * status-only fallback in `classifyText`, and `framing-violation-clears-transient` and
- * `llama-cpp-tool-call-parse-clears-transient` are the latches in
- * {@link clearDeterministicTransient}, which remove a flag after the walk rather than setting one.
- */
 export function explain(error: unknown, api?: Api): Explanation {
 	const trace: string[] = [];
 	const id = classify(error, api, trace);
 	return { id, rules: Array.from(new Set(trace)) };
 }
 
-/** Whether any link of the chain carried wording the rules could read. */
 function carriesText(error: unknown): boolean {
 	const seen = new Set<object>();
 	let link: unknown = error;
@@ -267,38 +186,18 @@ function carriesText(error: unknown): boolean {
 	return false;
 }
 
-/**
- * Whether the account's allowance is spent (Flag.UsageLimit).
- */
 export function isUsageLimit(error: unknown, api?: Api): boolean {
 	return is(classify(error, api), Flag.UsageLimit);
 }
 
-/**
- * Strict-tool rejection: grammar too large, schema too complex, or structured
- * outputs unsupported by the model/endpoint.
- * Accessor for {@link Flag.Grammar}.
- */
 export function isGrammarError(error: unknown): boolean {
 	return is(classify(error), Flag.Grammar);
 }
 
-/**
- * Anthropic model/account does not support fast mode / the `speed` parameter.
- * Accessor for {@link Flag.FastModeUnsupported}.
- */
 export function isFastModeUnsupported(error: unknown): boolean {
 	return is(classify(error), Flag.FastModeUnsupported);
 }
 
-/**
- * GitHub Copilot 400 `model_not_supported` routing flap — transient.
- *
- * It had its own copy of the rule, reading `code` and the SDK's nested `error.code` and nothing
- * else, while the classifier read the body text and nothing else. `Signal.code` carries the field
- * into the rules, so the rule is stated once in the network family and this is one reader of it: the
- * Copilot ladder needs the answer on its own to pick a backoff, which is why the accessor stays.
- */
 export function isCopilotTransientModelError(error: unknown): boolean {
 	if (status(error) !== 400) return false;
 	const message = error instanceof Error ? error.message : "";
@@ -319,8 +218,6 @@ export function classifyMessage(
 	const textId = classifyText(message.errorMessage, currentStatus, message.api, undefined, trace);
 
 	let kinds = ((existingId ?? 0) | textId) & KIND_MASK;
-	// A message record carries no error name, so the framing latch cannot fire here; the parse latch
-	// reads the same wording {@link classify} reads off a thrown link.
 	kinds = clearDeterministicTransient(
 		kinds,
 		{
@@ -331,9 +228,6 @@ export function classifyMessage(
 		},
 		trace,
 	);
-	// The same status-with-nothing-to-read case as in `classify`: a terminal error event can carry a
-	// status and no wording, and the flag has to be on the id there too, or the same failure means one
-	// thing thrown and another emitted.
 	if (kinds === 0 && !message.errorMessage) kinds = classifyBareStatus(currentStatus, message.api, trace);
 	const id = kinds !== 0 ? create(kinds) : (statusFromId(textId) ?? statusFromId(existingId) ?? currentStatus ?? 0);
 
@@ -355,16 +249,10 @@ export function isContextOverflow(message: AssistantMessage, contextWindow?: num
 	return message.stopReason === "error" && !!message.errorMessage && matchesOverflowText(message.errorMessage);
 }
 
-// The stream-corruption vocabulary belongs to the transport family, which is the only place that
-// decides what it means; these two predicates are the identity questions the providers ask about a
-// stream they were reading when it broke.
-
-/** Transient stream corruption where the response was truncated mid-JSON. */
 export function isTransientStreamParseError(error: unknown): boolean {
 	return error instanceof Error && STREAM_PARSE_TRUNCATION_PATTERN.test(error.message);
 }
 
-/** Any malformed stream-envelope error (prefix-tagged or out-of-order events). */
 export function isStreamEnvelopeError(error: unknown): boolean {
 	return (
 		error instanceof Error &&
@@ -372,16 +260,6 @@ export function isStreamEnvelopeError(error: unknown): boolean {
 	);
 }
 
-/**
- * A stream that ended before it said anything at all.
- *
- * This is the envelope shape of "nothing arrived", and it belongs to the same
- * class as a first-event stall rather than to the class of failures a server
- * answered with. That distinction is what the declared first-event budget is
- * allowed to end: another attempt against an endpoint that returned an empty
- * body cannot produce an event sooner than this one did, while a 429 the server
- * DID answer with keeps its own retry entitlement.
- */
 export function isEmptyStreamEnvelopeError(error: unknown): boolean {
 	return (
 		error instanceof Error &&

@@ -4,7 +4,6 @@ import * as path from "node:path";
 import { YAML } from "bun";
 import { engines, version } from "../package.json" with { type: "json" };
 import { APP_DIRECTORY_SLUG } from "./app-identity";
-// Side effect: environment scrub and $HOME/.env before first DirResolver is built.
 import "./dotenv-home";
 import { atomicWriteFileSync } from "./atomic-write";
 import { AGENT_DIR_ENV_KEYS, CONFIG_DIR_ENV_KEYS, PROFILE_ENV_KEYS, SANDBOX_MARKER_ENV_KEY } from "./dir-env-keys";
@@ -16,44 +15,34 @@ import { sleepSync } from "./sleep";
 import { errorMessage, isRecord } from "./type-guards";
 import { syncYamlTextToSettings } from "./yaml-sync";
 
-/** App name slug used in filesystem paths. */
 export const APP_NAME: string = APP_DIRECTORY_SLUG;
 
-/** Short launch alias installed next to the binary. */
 export const APP_ALIAS: string = "vey";
 
-/** Canonical marketing/docs site. */
 export const SITE_URL: string = "https://veyyon.dev";
 
-/** Public changelog/releases page. */
 export const CHANGELOG_URL: string = "https://veyyon.dev/changelog";
 
-/** Returns the changelog URL scrolled to a specific version. */
 export function changelogUrlForVersion(version: string): string {
 	const bare = bareVersion(version);
 	return `${CHANGELOG_URL}#v${bare.replace(/\./g, "-")}`;
 }
 
-/** Config directory name. */
 export const CONFIG_DIR_NAME: string = ".veyyon";
 
-/** Ordered main settings filenames (canonical first, legacy YAML fallback second). */
 export const MAIN_CONFIG_FILENAMES = ["config.yml", "config.yaml"] as const;
 
 const GLOBAL_CONFIG_READ_RETRY_ATTEMPTS = 3;
 const GLOBAL_CONFIG_READ_RETRY_DELAY_MS = 5;
 const INSTALL_ID_FILE = "install-id";
 
-/** App version. */
 export const VERSION: string = version;
 
-/** Minimum Bun version. */
 export const MIN_BUN_VERSION: string = engines.bun.replace(/[^0-9.]/g, "");
 
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const WINDOWS_RESERVED_BASENAME_RE = /^(?:CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(?:\..*)?$/i;
 
-/** Validate and normalize a profile name. Returns undefined for default. */
 export function normalizeProfileName(profile: string | undefined): string | undefined {
 	const normalized = profile?.trim();
 	if (!normalized || normalized === "default") return undefined;
@@ -72,7 +61,6 @@ export function normalizeProfileName(profile: string | undefined): string | unde
 	return normalized;
 }
 
-/** Resolve the active profile from the VEYYON_PROFILE env var. */
 export function resolveProfileEnv(value: string | undefined): string | undefined {
 	return normalizeProfileName(value);
 }
@@ -98,7 +86,6 @@ function writeAgentDirEnv(dir: string | undefined): void {
 	}
 }
 
-/** Resolve the active profile from environment variables. */
 export function resolveProfileFromEnv(): string | undefined {
 	for (const key of PROFILE_ENV_KEYS) {
 		const value = process.env[key];
@@ -140,7 +127,6 @@ function isUsableXdgBase(envVar: string, value: string): boolean {
 	return false;
 }
 
-/** Resolve the user's home directory, throwing if empty or filesystem root. */
 export function resolveHomeDirOrThrow(): string {
 	const home = os.homedir();
 	if (!home || !path.isAbsolute(home)) {
@@ -165,17 +151,14 @@ function getBaseConfigRoot(): string {
 	return getConfigRootOverride() ?? path.join(resolveHomeDirOrThrow(), CONFIG_DIR_NAME);
 }
 
-/** Default profile directory name. */
 export const DEFAULT_PROFILE_DIR_NAME = "default";
 
-/** Profiles directory name under the config root. */
 export const PROFILES_DIR_NAME = "profiles";
 
 function getProfileConfigRoot(profile: string | undefined): string {
 	return path.join(getBaseConfigRoot(), PROFILES_DIR_NAME, profile ?? DEFAULT_PROFILE_DIR_NAME);
 }
 
-/** Read defaultProfile from the global config file. */
 export function resolveGlobalDefaultProfile(): string | undefined {
 	const { record, filePath } = readGlobalConfigRecord();
 	const value = record.defaultProfile;
@@ -190,7 +173,6 @@ export function resolveGlobalDefaultProfile(): string | undefined {
 	}
 }
 
-/** Set or clear defaultProfile in the global config file. */
 export function writeGlobalDefaultProfile(profile: string | undefined): string {
 	const normalized = normalizeProfileName(profile);
 	return mutateGlobalConfigKey("defaultProfile", () => normalized);
@@ -280,7 +262,6 @@ function readGlobalConfigRecord(): GlobalConfigRead {
 	};
 }
 
-/** Returns the global config file path used for reads and writes. */
 export function getGlobalConfigFilePath(): string {
 	const root = getBaseConfigRoot();
 	try {
@@ -295,7 +276,6 @@ export interface ShadowedConfigFile {
 	using: string;
 }
 
-/** Find config files that exist but are shadowed by higher-precedence files. */
 export function findShadowedGlobalConfigFiles(root: string = getBaseConfigRoot()): ShadowedConfigFile[] {
 	const present = MAIN_CONFIG_FILENAMES.filter(filename => fs.existsSync(path.join(root, filename)));
 	const usable = present.find(filename => {
@@ -368,7 +348,6 @@ function readAuthBrokerValue(record: Record<string, unknown>, leaf: "url" | "tok
 	return typeof flat === "string" && flat.length > 0 ? flat : undefined;
 }
 
-/** Read the auth-broker url and token presence from the global config. */
 export function readGlobalAuthBrokerSafe(): GlobalAuthBroker {
 	try {
 		const { record } = readGlobalConfigRecord();
@@ -396,19 +375,16 @@ function writeGlobalAuthBrokerLeaf(leaf: "url" | "token", value: string | undefi
 	});
 }
 
-/** Set or clear the global auth-broker URL. */
 export function writeGlobalAuthBrokerUrl(url: string | undefined): string {
 	return writeGlobalAuthBrokerLeaf("url", url);
 }
 
-/** Set or clear the global auth-broker bearer token. */
 export function writeGlobalAuthBrokerToken(token: string | undefined): string {
 	return writeGlobalAuthBrokerLeaf("token", token);
 }
 
 export const PROFILE_SHARING_CONFIG_KEY = "profileSharing";
 
-/** Whether provider credentials are shared across profiles. */
 export function resolveGlobalProfileSharing(): boolean {
 	const { record, filePath } = readGlobalConfigRecord();
 	const value = record[PROFILE_SHARING_CONFIG_KEY];
@@ -422,7 +398,6 @@ export function resolveGlobalProfileSharing(): boolean {
 	return value;
 }
 
-/** Module-load-safe variant of resolveGlobalProfileSharing. */
 export function readGlobalProfileSharingSafe(): boolean {
 	try {
 		return resolveGlobalProfileSharing();
@@ -431,7 +406,6 @@ export function readGlobalProfileSharingSafe(): boolean {
 	}
 }
 
-/** Set the credential-sharing posture in the global config. */
 export function writeGlobalProfileSharing(shared: boolean): string {
 	return mutateGlobalConfigKey(PROFILE_SHARING_CONFIG_KEY, () => (shared ? undefined : false));
 }
@@ -443,7 +417,6 @@ export interface GlobalOnboardingVersion {
 	unreadable: boolean;
 }
 
-/** The onboarding generation this machine has completed. */
 export function resolveGlobalOnboardingVersion(): number | undefined {
 	const { record, filePath, presentButUnusable } = readGlobalConfigRecord();
 	if (presentButUnusable) {
@@ -464,7 +437,6 @@ export function resolveGlobalOnboardingVersion(): number | undefined {
 	return value;
 }
 
-/** Safe variant of resolveGlobalOnboardingVersion reporting if unreadable. */
 export function readGlobalOnboardingVersionSafe(): GlobalOnboardingVersion {
 	try {
 		return { version: resolveGlobalOnboardingVersion(), unreadable: false };
@@ -473,7 +445,6 @@ export function readGlobalOnboardingVersionSafe(): GlobalOnboardingVersion {
 	}
 }
 
-/** Record the onboarding generation in the global config. */
 export function writeGlobalOnboardingVersion(version: number | undefined): string {
 	return mutateGlobalConfigKey(ONBOARDING_VERSION_CONFIG_KEY, () => version);
 }
@@ -485,7 +456,6 @@ export interface LegacyProfileSetupVersion {
 	unreadable: boolean;
 }
 
-/** The highest retired setupVersion recorded by any profile under profiles/. */
 export function readLegacyProfileSetupVersion(): LegacyProfileSetupVersion {
 	const profilesRoot = path.join(getBaseConfigRoot(), PROFILES_DIR_NAME);
 	let entries: fs.Dirent[];
@@ -524,12 +494,10 @@ export function readLegacyProfileSetupVersion(): LegacyProfileSetupVersion {
 	return { version, unreadable };
 }
 
-/** Machine-wide shared credential store directory. */
 export function getSharedAuthDir(): string {
 	return path.join(getBaseConfigRoot(), "shared-auth");
 }
 
-/** Module-load-safe variant of resolveGlobalDefaultProfile. */
 export function readGlobalDefaultProfileSafe(): string | undefined {
 	try {
 		return resolveGlobalDefaultProfile();
@@ -538,12 +506,10 @@ export function readGlobalDefaultProfileSafe(): string | undefined {
 	}
 }
 
-/** Whether any profile environment variable is set. */
 export function profileEnvIsSet(): boolean {
 	return PROFILE_ENV_KEYS.some(key => process.env[key] !== undefined);
 }
 
-/** Startup profile resolution. */
 export function resolveStartupProfile(): string | undefined {
 	if (profileEnvIsSet()) return resolveProfileFromEnv();
 	return resolveGlobalDefaultProfile();
@@ -589,7 +555,6 @@ export function pathIsWithin(root: string, candidate: string): boolean {
 	return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-/** Path from root down to candidate, or null when candidate is not under root. */
 export function relativePathWithinRoot(root: string, candidate: string): string | null {
 	const resolvedRoot = resolveEquivalentPath(root);
 	const resolvedCandidate = resolveEquivalentPath(candidate);
@@ -607,12 +572,10 @@ const PATH_SEPARATORS = /[\\/]+/u;
 
 let projectDir = standardizeMacOSPath(process.cwd());
 
-/** Get the project directory. */
 export function getProjectDir(): string {
 	return projectDir;
 }
 
-/** Move the project directory, and the process working directory with it. */
 export function setProjectDir(dir: string): void {
 	const resolved = standardizeMacOSPath(path.resolve(dir));
 	try {
@@ -628,7 +591,6 @@ export function setProjectDir(dir: string): void {
 	projectDir = resolved;
 }
 
-/** Whether dir resolves to an existing directory. */
 export async function directoryExists(dir: string): Promise<boolean> {
 	try {
 		return (await fs.promises.stat(dir)).isDirectory();
@@ -646,7 +608,6 @@ function isUnderPath(candidate: string, root: string): boolean {
 	return rel === "" || (!rel.startsWith(`..${path.sep}`) && rel !== ".." && !path.isAbsolute(rel));
 }
 
-/** The config root named by VEYYON_CONFIG_DIR, or undefined when unset. */
 export function getConfigRootOverride(): string | undefined {
 	const override = pickProcessEnv(...CONFIG_DIR_ENV_KEYS);
 	if (override === undefined || override === "") return undefined;
@@ -678,20 +639,17 @@ export function getConfigRootOverride(): string | undefined {
 	return resolved;
 }
 
-/** Config root relative to home. */
 export function getConfigDirName(): string {
 	const override = getConfigRootOverride();
 	return override === undefined ? CONFIG_DIR_NAME : path.relative(resolveHomeDirOrThrow(), override);
 }
 
-/** Get the config agent directory name relative to home. */
 export function getConfigAgentDirName(): string {
 	return path.join(getConfigDirName(), PROFILES_DIR_NAME, getActiveProfileOrDefault(), "agent");
 }
 
 type XdgCategory = "data" | "state" | "cache";
 
-/** Resolves and caches all veyyon directory paths. */
 class DirResolver {
 	readonly configRoot: string;
 	readonly agentDir: string;
@@ -801,7 +759,6 @@ let dirs = new DirResolver({
 let preProfileAgentDirEnv: string | undefined = resolvePreProfileAgentDir(activeProfile, readAgentDirEnv());
 const RESOLVER_HOME = os.homedir();
 
-/** Rebuild the dirs resolver from the current environment. */
 export function refreshDirsFromEnv(): void {
 	dirs = new DirResolver({
 		agentDirOverride: resolveActiveAgentDirOverride(),
@@ -809,12 +766,10 @@ export function refreshDirsFromEnv(): void {
 	});
 }
 
-/** Get the active profile's config root (~/.veyyon/profiles/<name>). */
 export function getConfigRootDir(): string {
 	return dirs.configRoot;
 }
 
-/** Get the global config home (~/.veyyon). */
 export function getGlobalConfigRootDir(): string {
 	return getBaseConfigRoot();
 }
@@ -826,7 +781,6 @@ export interface DirOverridesSnapshot {
 	preProfileAgentDir: string | undefined;
 }
 
-/** Capture process-global dir overrides for later restoration. */
 export function captureDirOverrides(): DirOverridesSnapshot {
 	return {
 		agentDirEnv: process.env[AGENT_DIR_ENV_KEYS[0]],
@@ -836,7 +790,6 @@ export function captureDirOverrides(): DirOverridesSnapshot {
 	};
 }
 
-/** Restore environment and active profile from snapshot. */
 export function restoreDirOverrides(snapshot: DirOverridesSnapshot): void {
 	writeSnapshotEnv(snapshot);
 	__resetDirsFromEnvForTests();
@@ -846,7 +799,6 @@ export function restoreDirOverrides(snapshot: DirOverridesSnapshot): void {
 	refreshDirsFromEnv();
 }
 
-/** Test-only: read pre-profile agent-dir baseline. */
 export function __preProfileAgentDirForTests(): string | undefined {
 	return preProfileAgentDirEnv;
 }
@@ -858,7 +810,6 @@ function writeSnapshotEnv(snapshot: DirOverridesSnapshot): void {
 	else process.env.VEYYON_PROFILE = snapshot.profileEnv;
 }
 
-/** Set the coding agent directory. */
 export function setAgentDir(dir: string): void {
 	activeProfile = undefined;
 	dirs = new DirResolver({ agentDirOverride: dir });
@@ -869,19 +820,16 @@ export function setAgentDir(dir: string): void {
 	}
 }
 
-/** Test-only: reset pre-profile agent-dir snapshot from environment. */
 export function __resetProfileSnapshotForTests(): void {
 	preProfileAgentDirEnv = resolvePreProfileAgentDir(activeProfile, readAgentDirEnv());
 }
 
-/** Test-only: rebuild profile and directory state from current process env. */
 export function __resetDirsFromEnvForTests(): void {
 	activeProfile = resolveStartupProfileSafe();
 	__resetProfileSnapshotForTests();
 	refreshDirsFromEnv();
 }
 
-/** Activate a named profile. Passing undefined or "default" returns to default. */
 export function setProfile(profile: string | undefined): void {
 	const next = normalizeProfileName(profile);
 	if (next && !activeProfile) {
@@ -901,22 +849,18 @@ export function setProfile(profile: string | undefined): void {
 	}
 }
 
-/** Get the active named profile. Undefined means the default profile. */
 export function getActiveProfile(): string | undefined {
 	return activeProfile;
 }
 
-/** Get the active profile directory name (or "default"). */
 export function getActiveProfileOrDefault(): string {
 	return getActiveProfile() ?? DEFAULT_PROFILE_DIR_NAME;
 }
 
-/** Resolve the config root that backs a profile without activating it. */
 export function getProfileRootDir(profile: string | undefined): string {
 	return getProfileConfigRoot(normalizeProfileName(profile));
 }
 
-/** Fail-closed guard for recursive profile-directory removal. */
 export function assertRemovableProfileDir(target: string): string {
 	const resolved = path.resolve(target);
 	const profilesRoot = path.resolve(path.join(getBaseConfigRoot(), PROFILES_DIR_NAME));
@@ -938,7 +882,6 @@ export interface ProfileInfo {
 	agentDir: string;
 }
 
-/** Enumerate the default profile plus every named profile under profiles/. */
 export function listProfiles(): ProfileInfo[] {
 	const defaultRoot = getProfileConfigRoot(undefined);
 	const profiles: ProfileInfo[] = [
@@ -976,7 +919,6 @@ export function listProfiles(): ProfileInfo[] {
 	return profiles;
 }
 
-/** Existing legacy per-profile shared-auth directories. */
 export function getLegacyPerProfileSharedAuthDirs(): string[] {
 	const dirsOut: string[] = [];
 	for (const profile of listProfiles()) {
@@ -986,7 +928,6 @@ export function getLegacyPerProfileSharedAuthDirs(): string[] {
 	return dirsOut;
 }
 
-/** Whether a profile root exists on disk. */
 export function profileExists(profile: string | undefined): boolean {
 	const normalized = normalizeProfileName(profile);
 	if (!normalized) {
@@ -1005,7 +946,6 @@ export interface LegacyLayoutMigrationResult {
 
 const LEGACY_MIGRATION_MARKER = ".migration-in-progress";
 
-/** One-time move of legacy bare-root default profile into profiles/default/. */
 export function migrateLegacyDefaultProfileLayout(): LegacyLayoutMigrationResult {
 	const root = getBaseConfigRoot();
 	const legacyAgentDir = path.join(root, "agent");
@@ -1037,32 +977,26 @@ export function migrateLegacyDefaultProfileLayout(): LegacyLayoutMigrationResult
 	return { migrated: true, movedEntries, targetDir };
 }
 
-/** Get the active profile's agent config directory. */
 export function getAgentDir(): string {
 	return dirs.agentDir;
 }
 
-/** Get the project-local config directory (.veyyon). */
 export function getProjectAgentDir(cwd: string = getProjectDir()): string {
 	return path.join(cwd, CONFIG_DIR_NAME);
 }
 
-/** Get the reports directory. */
 export function getReportsDir(): string {
 	return dirs.rootSubdir("reports", "state");
 }
 
-/** Get the logs directory. */
 export function getLogsDir(): string {
 	return dirs.rootSubdir("logs", "state");
 }
 
-/** Get the path to a dated log file. */
 export function getLogPath(date = new Date()): string {
 	return path.join(getLogsDir(), `${APP_NAME}.${date.toISOString().slice(0, 10)}.log`);
 }
 
-/** Get the plugins directory for the active profile. */
 export function getPluginsDir(home?: string): string {
 	if (home !== undefined && home !== RESOLVER_HOME) {
 		return path.join(home, getConfigDirName(), PROFILES_DIR_NAME, getActiveProfileOrDefault(), "plugins");
@@ -1070,22 +1004,18 @@ export function getPluginsDir(home?: string): string {
 	return dirs.rootSubdir("plugins", "data");
 }
 
-/** Plugin node_modules directory under profile plugins dir. */
 export function getPluginsNodeModules(home?: string): string {
 	return path.join(getPluginsDir(home), "node_modules");
 }
 
-/** Plugin package.json path under profile plugins dir. */
 export function getPluginsPackageJson(home?: string): string {
 	return path.join(getPluginsDir(home), "package.json");
 }
 
-/** Plugin lock file path under profile plugins dir. */
 export function getPluginsLockfile(home?: string): string {
 	return path.join(getPluginsDir(home), "veyyon-plugins.lock.json");
 }
 
-/** Get the remote mount directory. */
 export function getRemoteDir(): string {
 	return dirs.rootSubdir("remote", "data");
 }
@@ -1101,13 +1031,11 @@ function resolveWorktreeBase(value: string | undefined): string | undefined {
 
 let worktreesDirOverride: string | undefined;
 
-/** Relocate the base directory for agent-managed worktrees. */
 export function setWorktreesDir(dir: string | undefined): string | undefined {
 	worktreesDirOverride = resolveWorktreeBase(dir);
 	return worktreesDirOverride;
 }
 
-/** Get the agent-managed worktrees directory. */
 export function getWorktreesDir(): string {
 	return (
 		resolveWorktreeBase(pickProcessEnv("VEYYON_WORKTREE_DIR")) ??
@@ -1116,211 +1044,170 @@ export function getWorktreesDir(): string {
 	);
 }
 
-/** Get the SSH control socket directory. */
 export function getSshControlDir(): string {
 	return dirs.rootSubdir("ssh-control", "state");
 }
 
-/** Get the remote host info directory. */
 export function getRemoteHostDir(): string {
 	return dirs.rootSubdir("remote-host", "data");
 }
 
-/** Get the managed Python venv directory. */
 export function getPythonEnvDir(): string {
 	return dirs.rootSubdir("python-env", "data");
 }
 
-/** Get the shared Python gateway state directory. */
 export function getPythonGatewayDir(): string {
 	return dirs.agentSubdir(undefined, "python-gateway", "state");
 }
 
-/** Get the puppeteer sandbox directory. */
 export function getPuppeteerDir(): string {
 	return dirs.rootSubdir("puppeteer", "cache");
 }
 
-/** Get the docs.rs web cache directory. */
 export function getDocsRsCacheDir(): string {
 	return dirs.rootSubdir("webcache", "cache");
 }
 
-/** Get the AutoQA database directory. */
 export function getAutoQaDbDir(): string {
 	return dirs.rootSubdir("autoqa.db", "data");
 }
 
-/** Stable 7-character hex digest of an absolute filesystem path. */
 export function hashPath(absPath: string): string {
 	return Bun.hash(path.resolve(absPath)).toString(16).padStart(16, "0").slice(-7);
 }
 
-/** Get the path to a single worktree directory. */
 export function getWorktreeDir(segment: string): string {
 	return path.join(getWorktreesDir(), segment);
 }
 
-/** Get the GPU cache path. */
 export function getGpuCachePath(): string {
 	return dirs.rootSubdir("gpu_cache.json", "cache");
 }
 
-/** Get the GitHub view cache database path. */
 export function getGithubCacheDbPath(): string {
 	const override = pickProcessEnv("VEYYON_GITHUB_CACHE_DB");
 	if (override) return override;
 	return dirs.rootSubdir(path.join("cache", "github-cache.db"), "cache");
 }
 
-/** Get the encrypted auth-broker snapshot cache path. */
 export function getAuthBrokerSnapshotCachePath(): string {
 	const override = pickProcessEnv("VEYYON_AUTH_BROKER_SNAPSHOT_CACHE");
 	if (override) return override;
 	return dirs.rootSubdir(path.join("cache", "auth-broker-snapshot.enc"), "cache");
 }
 
-/** Get the local FastEmbed model cache directory. */
 export function getFastembedCacheDir(): string {
 	return dirs.rootSubdir(path.join("cache", "fastembed"), "cache");
 }
 
-/** Get the fastembed runtime install directory. */
 export function getFastembedRuntimeDir(): string {
 	return dirs.rootSubdir(path.join("cache", "fastembed-runtime"), "cache");
 }
 
-/** Get the natives directory. */
 export function getNativesDir(): string {
 	return dirs.rootSubdir("natives", "cache");
 }
 
-/** Get the argot shorthand cache directory. */
 export function getArgotCacheDir(): string {
 	return dirs.rootSubdir(path.join("cache", "argot"), "cache");
 }
 
-/** Get the stats database path. */
 export function getStatsDbPath(): string {
 	return dirs.rootSubdir("stats.db", "data");
 }
 
-/** Get the autoresearch state directory. */
 export function getAutoresearchDir(): string {
 	return dirs.rootSubdir("autoresearch", "state");
 }
 
-/** Get the per-project autoresearch state directory. */
 export function getAutoresearchProjectDir(encodedProject: string): string {
 	return path.join(getAutoresearchDir(), encodedProject);
 }
 
-/** Get the per-project autoresearch database path. */
 export function getAutoresearchDbPath(encodedProject: string): string {
 	return path.join(getAutoresearchDir(), `${encodedProject}.db`);
 }
 
-/** Get the path to agent.db. */
 export function getAgentDbPath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "agent.db", "data");
 }
 
-/** Returns the shared auth directory if sharing is enabled. */
 export function getSharedAuthStoreDirIfEnabled(): string | undefined {
 	return readGlobalProfileSharingSafe() ? getSharedAuthDir() : undefined;
 }
 
-/** Get the active agent.db auth path. */
 export function getActiveAuthDbPath(agentDir?: string): string {
 	return getAgentDbPath(getSharedAuthStoreDirIfEnabled() ?? agentDir ?? getAgentDir());
 }
 
-/** Get the last-seen-changelog-version marker file path. */
 export function getLastChangelogVersionPath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "last-changelog-version", "state");
 }
 
-/** Get the automatic-update state file path. */
 export function getAutoUpdateStatePath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "auto-update-state.json", "state");
 }
 
-/** Get the update history file path. */
 export function getUpdateHistoryPath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "update-history.json", "state");
 }
 
-/** Get the session history database path. */
 export function getHistoryDbPath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "history.db", "data");
 }
 
-/** Get the model cache database path. */
 export function getModelDbPath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "models.db", "data");
 }
 
-/** Get the tiny models cache directory. */
 export function getTinyModelsCacheDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, path.join("cache", "tiny-models"), "cache");
 }
 
-/** Get the document conversion cache directory. */
 export function getDocumentConversionCacheDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, path.join("cache", "document-conversions"), "cache");
 }
 
-/** Get the sessions directory. */
 export function getSessionsDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "sessions", "data");
 }
 
-/** Get the content-addressed blob store directory. */
 export function getBlobsDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "blobs", "data");
 }
 
-/** Get the custom themes directory. */
 export function getCustomThemesDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "themes");
 }
 
-/** Get the tools directory. */
 export function getToolsDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "tools");
 }
 
-/** Get the prompts directory. */
 export function getPromptsDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "prompts");
 }
 
-/** Get the memories directory. */
 export function getMemoriesDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "memories", "state");
 }
 
-/** Get the terminal sessions directory. */
 export function getTerminalSessionsDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "terminal-sessions", "state");
 }
 
-/** Get the debug log path. */
 export function getDebugLogPath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, `${APP_NAME}-debug.log`, "state");
 }
 
-/** Get the project-level prompts directory. */
 export function getProjectPromptsDir(cwd: string = getProjectDir()): string {
 	return path.join(getProjectAgentDir(cwd), "prompts");
 }
 
-/** Get the project-level plugin overrides path. */
 export function getProjectPluginOverridesPath(cwd: string = getProjectDir()): string {
 	return path.join(getProjectAgentDir(cwd), "plugin-overrides.json");
 }
 
-/** Get the primary MCP config file path. */
 export function getMCPConfigPath(
 	scope: "user" | "project",
 	cwd: string = getProjectDir(),
@@ -1332,14 +1219,12 @@ export function getMCPConfigPath(
 	return path.join(getProjectAgentDir(cwd), "mcp.json");
 }
 
-/** Get the SSH host config path for a profile. */
 export function getSSHConfigPath(agentDir: string = getAgentDir()): string {
 	return path.join(agentDir, "ssh.json");
 }
 
 let cachedInstallId: string | null = null;
 
-/** Persistent per-install UUID stored at ~/.veyyon/install-id. */
 export function getInstallId(): string {
 	if (cachedInstallId) return cachedInstallId;
 	const filePath = path.join(getBaseConfigRoot(), INSTALL_ID_FILE);
@@ -1404,7 +1289,6 @@ export function getInstallId(): string {
 	return next;
 }
 
-/** Test-only: clear cached install id. */
 export function __resetInstallIdCacheForTests(): void {
 	cachedInstallId = null;
 }

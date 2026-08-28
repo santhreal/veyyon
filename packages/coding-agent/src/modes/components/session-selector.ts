@@ -35,7 +35,6 @@ import {
 } from "./modal-shell";
 import { hoverBandAt, SCROLL_LIST_THEME } from "./selector-helpers";
 
-/** Themed glyph + colored label for a session's lifecycle status, or `undefined` when there is nothing useful to show (`unknown`/unset) so the metadata line */
 function formatSessionStatus(status: SessionStatus | undefined): string | undefined {
 	switch (status) {
 		case "complete":
@@ -53,7 +52,6 @@ function formatSessionStatus(status: SessionStatus | undefined): string | undefi
 	}
 }
 
-/** Returns the IDs of sessions whose recorded prompts match a query, best first. */
 export type SessionHistoryMatcher = (query: string) => string[];
 
 function sessionSearchText(session: SessionInfo): string {
@@ -68,7 +66,6 @@ function sessionSearchText(session: SessionInfo): string {
 	return parts.filter(Boolean).join(" ");
 }
 
-/** Lowercased per-session search haystack, built once and cached on the {@link SessionInfo} itself (so it dies with the listing that produced it). */
 const kSearchTextLower = Symbol("session.searchTextLower");
 
 interface SearchableSessionInfo extends SessionInfo {
@@ -96,14 +93,12 @@ function compareSessionRecency(a: SessionInfo, b: SessionInfo): number {
 
 const MIN_PURE_FUZZY_TOKEN_SCORE = -20;
 
-/** One ranked search hit; `index` is the session's position in the unfiltered list (recency order). */
 interface RankedSessionMatch {
 	session: SessionInfo;
 	score: number;
 	index: number;
 }
 
-/** True when every query token appears verbatim in the haystack. Literal matches rank purely by recency, so they skip fuzzy scoring entirely — a pure */
 function isLiteralMatch(textLower: string, tokens: string[]): boolean {
 	for (const token of tokens) {
 		if (!textLower.includes(token)) return false;
@@ -111,7 +106,6 @@ function isLiteralMatch(textLower: string, tokens: string[]): boolean {
 	return true;
 }
 
-/** Fuzzy-score one non-literal session against every query token. Returns undefined when a token fails to match or the weakest token is pure-fuzzy */
 function scoreFuzzySession(
 	session: SessionInfo,
 	index: number,
@@ -138,7 +132,6 @@ function compareFuzzyRank(a: RankedSessionMatch, b: RankedSessionMatch): number 
 	return a.score - b.score || compareSessionRecency(a.session, b.session) || a.index - b.index;
 }
 
-/** Filter and rank session picker search results. Resume search narrows a recency-sorted list: once every query token appears */
 export function rankSessionSearchMatches(allSessions: SessionInfo[], query: string): SessionInfo[] {
 	const tokens = tokenizeSessionQuery(query);
 	if (tokens.length === 0) return allSessions;
@@ -164,7 +157,6 @@ export function rankSessionSearchMatches(allSessions: SessionInfo[], query: stri
 	return out;
 }
 
-/** Combine metadata matches with prompt-history matches for ranking, using both signals rather than replacing one with the other. */
 export function mergeSessionRanking(
 	allSessions: SessionInfo[],
 	fuzzy: SessionInfo[],
@@ -191,35 +183,23 @@ export function mergeSessionRanking(
 	return historyMatches.concat(metadataOnly);
 }
 
-/** Delay before the prompt-history DB is consulted for the current query. History matching hits SQLite synchronously (an FTS lookup plus a LIKE scan */
 const HISTORY_MERGE_DEBOUNCE_MS = 150;
-/** Minimum query length for history augmentation. A single character matches essentially every stored prompt — the most expensive FTS prefix to expand — */
 const HISTORY_MERGE_MIN_QUERY = 2;
 
-/** Sessions fuzzy-scored synchronously inside the keystroke itself. Small listings finish within it, keeping the complete-in-one-frame behavior; */
 const FUZZY_SCAN_INLINE_COUNT = 100;
-/** Sessions fuzzy-scored per async chunk (~15ms). Each chunk yields back to the event loop so the next keystroke is never blocked behind a long scan; a */
 const FUZZY_SCAN_CHUNK_COUNT = 150;
 
-/**
- * Custom session list component with multi-line items and search
- */
 class SessionList implements Component {
 	#filteredSessions: SessionInfo[] = [];
 	#selectedIndex: number = 0;
-	// Maps a 0-based line within this list's own render to a filtered-session index, or undefined for chrome rows (search line, blanks, scrollbar gap).
 	#hitRows: (number | undefined)[] = [];
-	/** Pointer-highlighted session (never the selected one; selection owns its block). */
 	#hoveredIndex: number | null = null;
-	/** The cross-fade, once the card has lent this list a repaint ({@link setHoverMotion}). Absent, the band is switched: exactly what this */
 	#hoverFade?: HoverFade;
 	readonly #searchInput: Input;
 	onSelect?: (session: SessionInfo) => void;
 	onCancel?: () => void;
 	onExit: () => void = () => {};
 	onToggleScope?: () => void;
-	// Snapshot of the live terminal-row getter; the visible window is derived
-	// from it per render so the picker fits the viewport (and adapts to resize).
 	readonly #getTerminalRows: () => number;
 
 	onDeleteRequest?: (session: SessionInfo) => void;
@@ -228,20 +208,13 @@ class SessionList implements Component {
 	#showCwd: boolean;
 	readonly #historyMatcher?: SessionHistoryMatcher;
 	#historyMergeTimer: NodeJS.Timeout | undefined;
-	/** Re-render hook for async list updates (fuzzy scan chunks, history merge). */
 	onRequestRender?: () => void;
 
-	// ── Incremental search state ────────────────────────────────────────── #filteredSessions is always composed from these three inputs (see
-	/** Recency-ranked sessions whose text contains every query token verbatim. */
 	#literalRanked: RankedSessionMatch[] = [];
-	/** Score-ranked fuzzy-only matches, appended by scan chunks. */
 	#fuzzyRanked: RankedSessionMatch[] = [];
-	/** Prompt-history session IDs for the current query, once the merge landed. */
 	#historyIds: string[] = [];
-	/** Invalidates in-flight scan chunks when the query or dataset changes. */
 	#scanGeneration = 0;
 	#scanTimer: NodeJS.Timeout | undefined;
-	/** True once the user moved the selection for the current query; blocks the history merge from reordering the list under their cursor. (Fuzzy chunks */
 	#selectionMoved = false;
 
 	constructor(
@@ -257,7 +230,6 @@ class SessionList implements Component {
 		this.#filteredSessions = sessions;
 		this.#searchInput = new Input();
 
-		// Handle Enter in search input - select current item
 		this.#searchInput.onSubmit = () => {
 			const selected = this.#filteredSessions[this.#selectedIndex];
 			if (selected) {
@@ -266,7 +238,6 @@ class SessionList implements Component {
 		};
 	}
 
-	/** Number of sessions to show at once, sized so the whole picker fits the current viewport instead of pushing its header/search off the top. */
 	#visibleCount(): number {
 		const CHROME = 12;
 		const PER_SESSION = 4;
@@ -275,7 +246,6 @@ class SessionList implements Component {
 		return Math.max(2, Math.floor(budget / PER_SESSION));
 	}
 
-	/** Replace the visible dataset, e.g. when toggling folder/all-projects scope. */
 	setSessions(sessions: SessionInfo[], showCwd: boolean): void {
 		this.#allSessions = sessions;
 		this.#showCwd = showCwd;
@@ -302,9 +272,6 @@ class SessionList implements Component {
 			return;
 		}
 
-		// Literal pass: one substring scan per token per session, synchronous so
-		// every keystroke gets immediate recency-ranked feedback regardless of
-		// listing size.
 		const literal: RankedSessionMatch[] = [];
 		const rest: number[] = [];
 		const all = this.#allSessions;
@@ -318,15 +285,11 @@ class SessionList implements Component {
 		literal.sort(compareLiteralRank);
 		this.#literalRanked = literal;
 
-		// Fuzzy pass: building a fuzzy index per session is too expensive to run
-		// across a huge listing inside one keystroke, so scan a bounded slice now
-		// and spill the remainder into async chunks.
 		this.#scanFuzzySlice(this.#scanGeneration, tokens, rest, 0, FUZZY_SCAN_INLINE_COUNT);
 		this.#composeFiltered();
 		this.#scheduleHistoryMerge(query);
 	}
 
-	/** Score up to `budget` sessions from `rest[start..]` (indexes into the unfiltered list), then schedule the remainder on a macrotask so pending */
 	#scanFuzzySlice(generation: number, tokens: string[], rest: number[], start: number, budget: number): void {
 		const all = this.#allSessions;
 		const end = Math.min(rest.length, start + budget);
@@ -349,7 +312,6 @@ class SessionList implements Component {
 		}, 0);
 	}
 
-	/** Rebuild {@link #filteredSessions} from the current literal, fuzzy, and history inputs: literal matches first (recency), fuzzy-only matches below */
 	#composeFiltered(): void {
 		this.#fuzzyRanked.sort(compareFuzzyRank);
 		const base: SessionInfo[] = [];
@@ -360,7 +322,6 @@ class SessionList implements Component {
 		this.#selectedIndex = Math.min(this.#selectedIndex, Math.max(0, this.#filteredSessions.length - 1));
 	}
 
-	/** Augment ranked results with prompt-history matches without replacing them. The session-list corpus only sees the first 4KB of each session, so a prompt */
 	#scheduleHistoryMerge(query: string): void {
 		if (this.#historyMergeTimer !== undefined) {
 			clearTimeout(this.#historyMergeTimer);
@@ -381,7 +342,6 @@ class SessionList implements Component {
 		}, HISTORY_MERGE_DEBOUNCE_MS);
 	}
 
-	/** Cancel pending async search work and the pointer band; idempotent, called on every picker exit path. */
 	dispose(): void {
 		this.#scanGeneration++;
 		if (this.#scanTimer !== undefined) {
@@ -399,20 +359,16 @@ class SessionList implements Component {
 		const index = this.#allSessions.findIndex(s => s.path === sessionPath);
 		if (index === -1) return;
 		this.#allSessions.splice(index, 1);
-		// Re-filter to update filteredSessions
 		this.#filterSessions(this.#searchInput.getValue());
-		// Adjust selectedIndex if we deleted the last item or beyond
 		if (this.#selectedIndex >= this.#filteredSessions.length) {
 			this.#selectedIndex = Math.max(0, this.#filteredSessions.length - 1);
 		}
 	}
 
-	/** Resolve a list-local rendered-line index to a filtered-session index. */
 	hitTestSession(line: number): number | undefined {
 		return this.#hitRows[line];
 	}
 
-	/** Band the session under the pointer (null clears). Returns true on change. The band paints on every row, the cursor row included: the pointer does not move the cursor, so */
 	setHoverIndex(index: number | null): boolean {
 		if (this.#hoveredIndex === index) return false;
 		this.#hoveredIndex = index;
@@ -420,34 +376,29 @@ class SessionList implements Component {
 		return true;
 	}
 
-	/** Fade the pointer band instead of switching it. The frames between two mouse reports have no input to hang off, so the card has to lend its repaint. */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade(options);
 		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
 	}
 
-	/** Drop the fade and forget the pointer, so no timer outlives the card. */
 	disposeHoverMotion(): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = undefined;
 		this.#hoveredIndex = null;
 	}
 
-	/** Band strength for a session block. Every row can carry a band, the cursor row included: suppressing it there left the row the keyboard already sat on unable to answer the pointer. */
 	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
-	/** Wheel notch: move the selection one step (clamped, no wrap). */
 	handleWheel(delta: -1 | 1): void {
 		if (this.#filteredSessions.length === 0) return;
 		this.#selectionMoved = true;
 		this.#selectedIndex = clampLow(this.#selectedIndex + delta, 0, this.#filteredSessions.length - 1);
 	}
 
-	/** Mouse click: select the session under the pointer and resume it. */
 	selectAndConfirm(index: number): void {
 		const session = this.#filteredSessions[index];
 		if (!session) return;
@@ -455,25 +406,20 @@ class SessionList implements Component {
 		this.onSelect?.(session);
 	}
 
-	invalidate(): void {
-		// No cached state to invalidate currently
-	}
+	invalidate(): void {}
 
 	render(width: number): readonly string[] {
 		const lines: string[] = [];
 		this.#hitRows = [];
 
-		// Render search input
 		const siLines = this.#searchInput.render(width);
 		for (let li = 0; li < siLines.length; li++) lines.push(siLines[li]!);
 		lines.push(""); // Blank line after search
 
 		if (this.#filteredSessions.length === 0) {
 			if (this.#showCwd) {
-				// "All" scope - no sessions anywhere that match filter
 				lines.push(truncateToWidth(theme.fg("muted", "  No sessions found"), width));
 			} else {
-				// "Current folder" scope - hint to try "all"
 				lines.push(
 					truncateToWidth(theme.fg("muted", "  No sessions in current folder. Press Tab to view all."), width),
 				);
@@ -481,7 +427,6 @@ class SessionList implements Component {
 			return lines;
 		}
 
-		// Format dates
 		const formatDate = (date: Date): string => {
 			const now = new Date();
 			const diffMs = now.getTime() - date.getTime();
@@ -498,8 +443,6 @@ class SessionList implements Component {
 			return date.toLocaleDateString();
 		};
 
-		// Calculate visible range with scrolling. The window is sized to the
-		// current viewport so the picker never overflows past the top.
 		const maxVisible = this.#visibleCount();
 		const startIndex = Math.max(
 			0,
@@ -507,9 +450,6 @@ class SessionList implements Component {
 		);
 		const endIndex = Math.min(startIndex + maxVisible, this.#filteredSessions.length);
 
-		// Render visible sessions (3 lines, or 4 when a title adds a preview line).
-		// Each session block is built into sessionLines, then wrapped by ScrollView
-		// so the right-edge scrollbar is proportional at the physical-line level.
 		const sessionLines: string[] = [];
 		const sessionRowIndex: number[] = [];
 		const overflow = this.#filteredSessions.length > maxVisible;
@@ -520,34 +460,26 @@ class SessionList implements Component {
 			const isSelected = i === this.#selectedIndex;
 			const hoverStrength = this.#hoverStrength(i);
 
-			// Normalize first message to single line
 			const normalizedMessage = session.firstMessage.replace(/\n/g, " ").trim();
 
-			// First line: cursor + title (or first message if no title)
 			const cursorSymbol = `${theme.nav.cursor} `;
 			const cursorWidth = visibleWidth(cursorSymbol);
 			const cursor = isSelected ? theme.fg("accent", cursorSymbol) : padding(cursorWidth);
 			const maxWidth = rowWidth - cursorWidth; // Account for cursor width
 
 			if (session.title) {
-				// Has title: show title on first line, dimmed first message on second line
 				const truncatedTitle = truncateToWidth(session.title, maxWidth);
 				const titleLine = cursor + (isSelected ? theme.bold(truncatedTitle) : truncatedTitle);
 				sessionLines.push(titleLine);
 
-				// Second line: dimmed first message preview
 				const truncatedPreview = truncateToWidth(normalizedMessage, maxWidth);
 				sessionLines.push(`  ${theme.fg("dim", truncatedPreview)}`);
 			} else {
-				// No title: show first message as main line
 				const truncatedMsg = truncateToWidth(normalizedMessage, maxWidth);
 				const messageLine = cursor + (isSelected ? theme.bold(truncatedMsg) : truncatedMsg);
 				sessionLines.push(messageLine);
 			}
 
-			// Metadata line: date + file size + lifecycle status (+ project dir in
-			// all-projects scope). The status segment carries its own color, so each
-			// segment is dimmed individually rather than wrapping the whole line.
 			const dim = (s: string) => theme.fg("dim", s);
 			const dot = dim(theme.sep.dot);
 			const modified = formatDate(session.modified);
@@ -566,7 +498,6 @@ class SessionList implements Component {
 
 			sessionLines.push(metadataLine);
 			if (hoverStrength > 0) {
-				// Pointer hover bands the whole block; the blank separator stays bare.
 				for (let k = blockStart; k < sessionLines.length; k++) {
 					sessionLines[k] = hoverBandAt(sessionLines[k]!, rowWidth, hoverStrength);
 				}
@@ -575,7 +506,6 @@ class SessionList implements Component {
 			for (let k = blockStart; k < sessionLines.length; k++) sessionRowIndex[k] = i;
 		}
 
-		// Wrap the rendered window in a ScrollView for a proportional right-edge bar.
 		const visibleCount = endIndex - startIndex;
 		const linesPerItem = visibleCount > 0 ? sessionLines.length / visibleCount : 1;
 		const sv = new ScrollView(sessionLines, {
@@ -595,7 +525,6 @@ class SessionList implements Component {
 	}
 
 	handleInput(keyData: string): void {
-		// Delete key — or Backspace on an empty search query — request delete confirmation from the parent. macOS laptops have no dedicated Forward
 		if (
 			matchesKey(keyData, "delete") ||
 			(matchesKey(keyData, "backspace") && this.#searchInput.getValue().length === 0)
@@ -606,31 +535,26 @@ class SessionList implements Component {
 			}
 			return;
 		}
-		// Up arrow
 		if (matchesSelectUp(keyData)) {
 			this.#selectionMoved = true;
 			this.#selectedIndex = Math.max(0, this.#selectedIndex - 1);
 			return;
 		}
-		// Down arrow
 		if (matchesSelectDown(keyData)) {
 			this.#selectionMoved = true;
 			this.#selectedIndex = Math.min(this.#filteredSessions.length - 1, this.#selectedIndex + 1);
 			return;
 		}
-		// Page up - jump up by maxVisible items
 		if (matchesKey(keyData, "pageUp")) {
 			this.#selectionMoved = true;
 			this.#selectedIndex = Math.max(0, this.#selectedIndex - this.#visibleCount());
 			return;
 		}
-		// Page down - jump down by maxVisible items
 		if (matchesKey(keyData, "pageDown")) {
 			this.#selectionMoved = true;
 			this.#selectedIndex = Math.min(this.#filteredSessions.length - 1, this.#selectedIndex + this.#visibleCount());
 			return;
 		}
-		// Enter
 		if (matchesKey(keyData, "enter") || matchesKey(keyData, "return") || keyData === "\n") {
 			const selected = this.#filteredSessions[this.#selectedIndex];
 			if (selected && this.onSelect) {
@@ -638,24 +562,20 @@ class SessionList implements Component {
 			}
 			return;
 		}
-		// Escape - cancel
 		if (matchesAppInterrupt(keyData)) {
 			if (this.onCancel) {
 				this.onCancel();
 			}
 			return;
 		}
-		// Ctrl+C - exit
 		if (matchesKey(keyData, "ctrl+c")) {
 			this.onExit();
 			return;
 		}
-		// Tab - toggle folder / all-projects scope
 		if (matchesKey(keyData, "tab")) {
 			this.onToggleScope?.();
 			return;
 		}
-		// Pass everything else to search input
 		this.#searchInput.handleInput(keyData);
 		this.#filterSessions(this.#searchInput.getValue());
 	}
@@ -664,23 +584,15 @@ class SessionList implements Component {
 export interface SessionSelectorOptions {
 	onDelete?: (session: SessionInfo) => Promise<boolean>;
 	historyMatcher?: SessionHistoryMatcher;
-	/** Loads sessions across all projects for the all-projects scope toggle (Tab). */
 	loadAllSessions?: () => Promise<SessionInfo[]>;
-	/** Preloaded all-projects list; cached so the first Tab toggle is instant. */
 	allSessions?: SessionInfo[];
-	/** Reads the live terminal height so the visible window fits the viewport. Omitted only in tests; defaults to a conservative 24 rows. */
 	getTerminalRows?: () => number;
-	/** Fullscreen alternate-screen idiom (the standalone `--resume` picker and the /resume overlay): use the large centered-card sizing. The in-editor */
 	fillHeight?: boolean;
 }
 
-/**
- * Component that renders a session selector with optional confirmation dialog
- */
 export class SessionSelectorComponent extends Container {
 	#sessionList: SessionList;
 	#confirmationDialog: HookSelectorComponent | null = null;
-	// Hosts whichever of `#sessionList` / `#confirmationDialog` is live this frame. The delete dialog REPLACES the list in this slot rather than being
 	#contentSlot: Container;
 	#messageContainer: Container;
 	#headerText: Text;
@@ -691,17 +603,12 @@ export class SessionSelectorComponent extends Container {
 	#globalSessions: SessionInfo[] | null = null;
 	#scope: "folder" | "all" = "folder";
 	#toggling = false;
-	// 0-based line where the session list begins within this component's own render, captured each frame. The fullscreen picker overlay paints from
 	#listLineOffset = 0;
-	// 0-based line where the pinned footer begins; clicks at or below it never
-	// hit-test the list, so a footer click on a cramped (trimmed) frame can't
-	// resume a session scrolled off-screen.
 	#footerStart = 0;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	readonly #getTerminalRows: () => number;
 	readonly #fillHeight: boolean;
-	/** Tallest body this width has drawn, and the width it was measured at. The card is sized to the body so a short list gets a short card, but the */
 	#bodyRowsHighWater = 0;
 
 	constructor(
@@ -723,12 +630,7 @@ export class SessionSelectorComponent extends Container {
 		this.#headerText = new Text(this.#headerLabel(), 1, 0);
 		this.addChild(this.#headerText);
 		this.addChild(this.#messageContainer);
-		// Create session list in folder scope; the empty-state hint invites the
-		// user to Tab into all-projects rather than silently surfacing other
-		// projects' history (issue #3099).
 		this.#sessionList = new SessionList(sessions, false, options.historyMatcher, options.getTerminalRows);
-		// Every exit path cancels the list's pending history merge, so a stale
-		// debounce timer can never run its SQLite lookup after the picker closed.
 		this.#sessionList.onSelect = session => {
 			this.#sessionList.dispose();
 			onSelect(session);
@@ -759,7 +661,6 @@ export class SessionSelectorComponent extends Container {
 		return "";
 	}
 
-	/** Toggle between current-folder and all-projects scope. The global list is loaded lazily on first switch and cached, so the common folder-scope path */
 	async #toggleScope(): Promise<void> {
 		if (this.#toggling || this.#confirmationDialog) return;
 		if (this.#scope === "folder") {
@@ -794,11 +695,9 @@ export class SessionSelectorComponent extends Container {
 
 	setOnRequestRender(callback: () => void): void {
 		this.#onRequestRender = callback;
-		// The pointer band fades only once the card has a repaint to lend it: the frames between two mouse reports have no input to hang off. Same ambient
 		this.#sessionList.setHoverMotion({ requestRender: callback, enabled: pointerMotionEnabled() });
 	}
 
-	/** Dispose the session list explicitly: while the delete-confirmation dialog is mounted the list is detached from the child tree, so Container's */
 	dispose(): void {
 		this.#sessionList.dispose();
 		super.dispose();
@@ -818,9 +717,6 @@ export class SessionSelectorComponent extends Container {
 		const displayName = session.title || session.firstMessage.slice(0, 40) || session.id;
 		const closeDialog = () => {
 			this.#confirmationDialog = null;
-			// Restore the SessionList into the content slot so the picker is back
-			// to its normal layout on the very next render — the same frame the
-			// dialog disappears.
 			this.#contentSlot.clear();
 			this.#contentSlot.addChild(this.#sessionList);
 			this.#onRequestRender?.();
@@ -843,16 +739,13 @@ export class SessionSelectorComponent extends Container {
 				closeDialog();
 			},
 			closeDialog,
-			// Destructive dialog: the cursor starts on "No" so a reflexive Enter (or a buffered keystroke landing after the Del) can't delete a session.
 			{ initialIndex: 1, presentation: "embedded" },
 		);
-		// Swap the SessionList out of the content slot and mount the dialog in its place: the dialog competes only with the SessionList's rendered budget,
 		this.#contentSlot.clear();
 		this.#contentSlot.addChild(this.#confirmationDialog);
 		this.#onRequestRender?.();
 	}
 
-	/** Floating ModalShell card: header + messages + session list, tip gap, and centered shortcut chips. Transcript visible around the card. */
 	render(width: number): readonly string[] {
 		const termHeight = Math.max(14, this.#getTerminalRows());
 		const sizing = sizingForArea(MODAL_SIZING_LARGE, termHeight, !this.#fillHeight);
@@ -872,9 +765,6 @@ export class SessionSelectorComponent extends Container {
 		for (let li = 0; li < slotLines.length; li++) body.push(slotLines[li]!);
 
 		const scopeLabel = this.#scope === "all" ? "current folder" : "all projects";
-		// The confirmation owns the body while it is up, and it takes a different
-		// set of keys than the list under it: chips that still said "del delete"
-		// would name a key the surface no longer answers.
 		const shortcuts: readonly ModalShortcut[] = this.#confirmationDialog
 			? [
 					{ label: "navigate", keybindings: ["tui.select.up", "tui.select.down"] },
@@ -887,7 +777,6 @@ export class SessionSelectorComponent extends Container {
 					{ label: `tab ${scopeLabel}` },
 					{ label: "esc close", clickable: true, id: "close" },
 				];
-		// Card height tracks the content, and the shell is what shrinks it: hand it the WHOLE area and the body's natural row count, exactly as every other
 		const shell = renderModalShell({
 			title: "Resume Session",
 			breadcrumb: this.#scope === "all" ? " · all projects" : " · current folder",
@@ -919,7 +808,6 @@ export class SessionSelectorComponent extends Container {
 		}
 	}
 
-	/** SGR mouse reports, delivered only while the picker holds the alternate screen (the fullscreen overlay enables tracking and paints from screen row */
 	#handleMouse(data: string): void {
 		if (this.#confirmationDialog) {
 			this.#handleConfirmationMouse(data);
@@ -970,9 +858,6 @@ export class SessionSelectorComponent extends Container {
 		});
 	}
 
-	/** Pointer while the delete confirmation is up: chips, wheel, and a click on
-	 *  Yes/No. Cancelling anywhere in the chrome closes the DIALOG, not the
-	 *  picker — the confirmation is the thing in front of the reader. */
 	#handleConfirmationMouse(data: string): void {
 		routeSgrMouseInput(data, event => {
 			const dialog = this.#confirmationDialog;
