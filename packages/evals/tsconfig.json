@@ -1,5 +1,5 @@
 {
 	"extends": "../tsconfig.workspace.json",
-	"include": ["src", "test", "agents"],
-	"exclude": ["src/web", "test/web/*.test.tsx"]
+	"include": ["."],
+	"exclude": ["dashboard", "test/web/*.test.tsx", "runs", ".cache", ".internal", "node_modules"]
 }
