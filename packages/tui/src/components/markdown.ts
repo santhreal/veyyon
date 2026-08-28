@@ -266,7 +266,6 @@ function splitTerminalLines(text: string): string[] {
 // node text — branch glyphs swap to their pass-through form (`├` → `│`,
 // `└` → blank) so the rails of still-open ancestors stay visually joined.
 
-/** Continuation glyph for each guide character a tree prefix may contain. */
 const TREE_GUIDE_CONTINUATION: Record<string, string> = {
 	"│": "│",
 	"┃": "┃",
@@ -284,27 +283,20 @@ const TREE_GUIDE_CONTINUATION: Record<string, string> = {
 	" ": " ",
 };
 
-/** Cheap pre-gate: any guide glyph at all. The structural test is TREE_BRANCH_CONNECTOR_RE. */
 const TREE_GUIDE_ANCHOR_RE = /[│┃║├┣╠└┗╚╰]/;
 
-/** Match tree-guide prefix connectors. */
 const TREE_BRANCH_CONNECTOR_RE = /[├┣╠└┗╚╰][─━═]/;
 
-/** Below this many content cells a hanging wrap degenerates; keep the plain wrap. */
 const MIN_TREE_CONTENT_WIDTH = 8;
 
 const SGR_SEQUENCE_STICKY = sgrSequence("y");
 
 interface TreeGuidePrefix {
-	/** Index of the first char past the guide run (start of the node text). */
 	end: number;
-	/** SGR sequences interleaved with the guides, in order (zero visible width). */
 	codes: string;
-	/** Guide characters with SGR stripped, exactly as they appear on screen. */
 	guides: string;
 }
 
-/** Match leading box-drawing guide run of a rendered line. */
 function matchTreeGuidePrefix(line: string): TreeGuidePrefix | undefined {
 	let codes = "";
 	let guides = "";
@@ -327,7 +319,6 @@ function matchTreeGuidePrefix(line: string): TreeGuidePrefix | undefined {
 	return { end: i, codes, guides };
 }
 
-/** Hanging wrap for box-drawing tree lines inside prose text. */
 function hangWrapTreeGuideLines(text: string, width: number): string[] | undefined {
 	if (width < MIN_TREE_CONTENT_WIDTH || !TREE_GUIDE_ANCHOR_RE.test(text)) return undefined;
 
@@ -638,7 +629,6 @@ function capMarkdownNesting(text: string): string {
 	return text.replace(BLOCKQUOTE_CAP, "$1").replace(INDENT_CAP, "$1");
 }
 
-/** Drop all L2 cache entries. Call on theme change to prevent stale styled output. */
 export function clearRenderCache(): void {
 	renderCache.clear();
 }
@@ -656,7 +646,6 @@ function objectId(o: object): number {
 	return id;
 }
 
-/** Default text styling for markdown content. */
 export interface DefaultTextStyle {
 	color?: (text: string) => string;
 	bgColor?: (text: string) => string;
@@ -666,7 +655,6 @@ export interface DefaultTextStyle {
 	underline?: boolean;
 }
 
-/** Theme functions for markdown elements. */
 export interface MarkdownTheme {
 	heading: (text: string) => string;
 	link: (text: string) => string;
@@ -674,7 +662,6 @@ export interface MarkdownTheme {
 	code: (text: string) => string;
 	codeBlock: (text: string) => string;
 	codeBlockBorder: (text: string) => string;
-	/** Full replacement for a fenced block's opening/closing rows. */
 	codeBlockFence?: (lang: string | undefined, pos: "open" | "close") => string;
 	quote: (text: string) => string;
 	quoteBorder: (text: string) => string;
@@ -685,7 +672,6 @@ export interface MarkdownTheme {
 	strikethrough: (text: string) => string;
 	underline: (text: string) => string;
 	highlightCode?: (code: string, lang?: string) => string[];
-	/** Resolve mermaid ASCII rendering by block source text. */
 	resolveMermaidAscii?: (source: string, maxWidth?: number) => string | null;
 	symbols: SymbolTheme;
 }
@@ -697,12 +683,6 @@ interface InlineStyleContext {
 
 type ListToken = Token & { items: Array<{ tokens?: Token[] }>; ordered: boolean; start?: number };
 type TableCellToken = { tokens?: Token[] };
-/**
- * `align` carries one entry per column, from the delimiter row: `:---:` is
- * `"center"`, `---:` is `"right"`, and both `:---` and a bare `---` are `null`,
- * which GFM defines as the default (left). marked has always produced it; the
- * renderer simply never read it.
- */
 type TableAlign = "left" | "center" | "right" | null;
 type TableToken = Token & {
 	header: TableCellToken[];
@@ -711,7 +691,6 @@ type TableToken = Token & {
 	raw?: string;
 };
 
-/** Pad `text` to `width` according to a column's alignment. */
 function alignCellText(text: string, width: number, align: TableAlign): string {
 	const slack = Math.max(0, width - visibleWidth(text));
 	if (slack === 0) return text;
@@ -767,17 +746,14 @@ function encodeTextSizedHeading(text: string, scale: 1 | 2 | 3): string {
 
 const MATH_NEWLINES = /\n+/g;
 
-/** True for the custom inline `math` token produced by the math extension. */
 function isMathToken(token: Token): token is Token & { text: string; display: boolean } {
 	return (token as { type: string }).type === "math";
 }
 
-/** Convert a `math` token's LaTeX to single-line Unicode for inline rendering. */
 function renderMathToken(text: string): string {
 	return latexToUnicode(text).replace(MATH_NEWLINES, " ");
 }
 
-/** Extract display math LaTeX from a paragraph token if it holds only math. */
 function soleDisplayMath(tokens?: Token[]): (Token & { text: string }) | null {
 	if (!tokens) return null;
 	let math: (Token & { text: string; display: boolean }) | null = null;
@@ -822,7 +798,6 @@ function plainInlineTokens(tokens: Token[]): string {
 	return result;
 }
 
-/** Classify an inline `html` token by tag name. */
 function inlineHtmlTag(token: Token): { name: string; closing: boolean } | null {
 	if ((token as { type: string }).type !== "html") return null;
 	const raw = (token as { raw?: unknown }).raw;
@@ -832,7 +807,6 @@ function inlineHtmlTag(token: Token): { name: string; closing: boolean } | null 
 	return { name, closing: /^<\s*\//.test(raw) };
 }
 
-/** Collapse inline HTML code runs into codespan tokens. */
 function collapseInlineHtml(tokens: Token[]): Token[] {
 	let hasCode = false;
 	for (let i = 0; i < tokens.length; i++) {
@@ -871,7 +845,6 @@ function collapseInlineHtml(tokens: Token[]): Token[] {
 // degrades gracefully; the color itself is exact 24-bit on truecolor terminals
 // and the nearest 256-color cell otherwise (Bun.color quantizes for us).
 
-/** Fallback chip when the theme supplies no `colorSwatch` symbol (Unicode default). */
 const DEFAULT_COLOR_SWATCH_GLYPH = "■";
 
 // `#` + 3-8 hex digits, not glued to a surrounding word/`#`/`&` (avoids HTML
@@ -882,7 +855,6 @@ const DEFAULT_COLOR_SWATCH_GLYPH = "■";
 const HEX_COLOR_REGEX = /(?<![\w#&])#([0-9a-fA-F]{3,8})(?![0-9a-fA-F])/g;
 const HEX_COLOR_EXACT_REGEX = /^#([0-9a-fA-F]{3,8})$/;
 
-/** Decide whether hex digits denote a renderable CSS color. */
 function classifyHexColor(hex: string, strict: boolean): boolean {
 	const n = hex.length;
 	if (n !== 3 && n !== 6 && n !== 8) return false;
@@ -890,7 +862,6 @@ function classifyHexColor(hex: string, strict: boolean): boolean {
 	return true;
 }
 
-/** ANSI-painted `glyph` for `#${hex}`, or "" when the color can't be encoded. */
 function colorSwatch(hex: string, glyph: string): string {
 	const ansi = Bun.color(`#${hex}`, TERMINAL.trueColor ? "ansi-16m" : "ansi-256");
 	// Reset only the foreground (\x1b[39m) so an enclosing background/decoration
@@ -898,7 +869,6 @@ function colorSwatch(hex: string, glyph: string): string {
 	return ansi ? `${ansi}${glyph}\x1b[39m ` : "";
 }
 
-/** Style plain text, inserting color swatches before hex colors. */
 function renderTextWithSwatches(text: string, applySegment: (t: string) => string, glyph: string): string {
 	HEX_COLOR_REGEX.lastIndex = 0;
 	let result = "";
@@ -918,7 +888,6 @@ function renderTextWithSwatches(text: string, applySegment: (t: string) => strin
 	return result;
 }
 
-/** Swatch for a codespan whose entire content is a single hex color, else "". */
 function codespanSwatch(code: string, glyph: string): string {
 	const match = HEX_COLOR_EXACT_REGEX.exec(code.trim());
 	if (!match || !classifyHexColor(match[1], false)) return "";
@@ -1076,7 +1045,6 @@ export class Markdown implements Component {
 		this.invalidate();
 	}
 
-	/** Rows of the most recent render() whose block tokens are frozen. */
 	getLastRenderSettledRows(): number {
 		return this.#lastRenderSettledRows;
 	}
@@ -1267,21 +1235,13 @@ export class Markdown implements Component {
 		}
 		const emptyLines = this.#renderEmptyPaddingLines(signature);
 
-		// Combine top padding, content, and bottom padding. The content array is
-		// this render's own, so with no padding it is handed out as it stands
-		// rather than spread into a third copy of every row.
 		const rawResult = emptyLines.length === 0 ? contentLines : emptyLines.concat(contentLines, emptyLines);
 		const result = rawResult.length > 0 ? rawResult : [""];
 
-		// Update caches and hand the array out by reference. Callers must not
-		// mutate it (Component render contract); the L2 entry is shared across
-		// instances keyed on identical inputs.
 		this.#cachedText = this.#text;
 		this.#cachedWidth = width;
 		this.#cachedLines = result;
 
-		// Update L2 module-level LRU so future instances with the same key skip
-		// the marked.lexer + highlightCode (Rust FFI) work entirely.
 		if (cacheKey !== undefined) {
 			renderCache.set(cacheKey, result);
 		}
@@ -1482,8 +1442,6 @@ export class Markdown implements Component {
 		return contentLines;
 	}
 
-	/** One fence row: the theme's designed chrome when it defines
-	 *  {@link MarkdownTheme.codeBlockFence}, else the literal ``` markers. */
 	#codeFenceRow(lang: string | undefined, pos: "open" | "close"): string {
 		if (this.#theme.codeBlockFence) return this.#theme.codeBlockFence(lang || undefined, pos);
 		return this.#theme.codeBlockBorder(pos === "open" ? `\`\`\`${lang || ""}` : "```");
@@ -1623,7 +1581,6 @@ export class Markdown implements Component {
 		return emptyLines;
 	}
 
-	/** Apply default text style to a string. */
 	#applyDefaultStyle(text: string): string {
 		if (!this.#defaultTextStyle) {
 			return text;
@@ -1706,10 +1663,8 @@ export class Markdown implements Component {
 		return ctx;
 	}
 
-	/** Render one token, bounding recursion depth. */
 	static readonly MAX_RENDER_DEPTH = 20;
 
-	/** Render inline tokens with recursion bounding. */
 	static readonly MAX_INLINE_DEPTH = 32;
 
 	#renderToken(token: Token, width: number, nextTokenType?: string, styleContext?: InlineStyleContext): string[] {
@@ -1831,8 +1786,6 @@ export class Markdown implements Component {
 			case "list": {
 				const listLines = this.#renderList(token as ListToken, 0, styleContext);
 				for (let j = 0; j < listLines.length; j++) lines.push(listLines[j]);
-				// Don't add spacing after lists if a space token follows
-				// (the space token will handle it)
 				break;
 			}
 
@@ -1904,13 +1857,11 @@ export class Markdown implements Component {
 		return lines;
 	}
 
-	/** Render a horizontal rule line themed to `width`, matching `sourceChar` when given. */
 	#renderHrLine(width: number, sourceChar = ""): string {
 		const fillChar = getHrChar(sourceChar, this.#theme.symbols.hrChar);
 		return this.#theme.hr(fillChar.repeat(Math.min(width, 80)));
 	}
 
-	/** Wrap lines in blockquote border and quote styling. */
 	#applyQuoteBorder(renderedLines: string[], width: number): string[] {
 		const quoteStyle = (text: string) => this.#theme.quote(this.#theme.italic(text));
 		const quoteStylePrefix = this.#getStylePrefix(quoteStyle);
@@ -1933,7 +1884,6 @@ export class Markdown implements Component {
 		return lines;
 	}
 
-	/** Render a block-level `html` token to styled lines. */
 	#renderHtmlBlock(raw: string, width: number): string[] {
 		const lines: string[] = [];
 		const state = createHtmlNormalizationState();
@@ -1963,7 +1913,6 @@ export class Markdown implements Component {
 		return lines;
 	}
 
-	/** Render the inner content of an HTML `<blockquote>` with quote styling. */
 	#renderHtmlBlockquote(inner: string, width: number): string[] {
 		const cleaned = normalizeHtmlForTerminal(inner, createHtmlNormalizationState(), text => this.#theme.code(text));
 		const rawLines = splitTerminalLines(cleaned);
@@ -2052,7 +2001,6 @@ export class Markdown implements Component {
 		});
 	}
 
-	/** Render a list with nesting support. */
 	#renderList(token: ListToken, depth: number, styleContext?: InlineStyleContext): string[] {
 		const lines: string[] = [];
 		const indent = padding(depth * 2);
@@ -2093,7 +2041,6 @@ export class Markdown implements Component {
 		return lines;
 	}
 
-	/** Render list item tokens, handling nested lists. */
 	#renderListItem(
 		tokens: Token[],
 		parentDepth: number,
@@ -2104,8 +2051,6 @@ export class Markdown implements Component {
 		for (let ti = 0; ti < tokens.length; ti++) {
 			const token = tokens[ti]!;
 			if (token.type === "list") {
-				// Nested list - render with one additional indent level
-				// These lines carry their own indent, so tag them for pass-through
 				const nestedLines = this.#renderList(token as ListToken, parentDepth + 1, styleContext);
 				for (let ni = 0; ni < nestedLines.length; ni++) {
 					lines.push({ text: nestedLines[ni]!, nested: true });
@@ -2159,7 +2104,6 @@ export class Markdown implements Component {
 		return lines;
 	}
 
-	/** Get the visible width of the longest word in a string. */
 	#getLongestWordWidth(text: string, maxWidth?: number): number {
 		let longest = 0;
 		let wordStart = -1;
@@ -2188,7 +2132,6 @@ export class Markdown implements Component {
 		return widths;
 	}
 
-	/** Wrap a table cell to fit into a column. */
 	#wrapCellText(text: string, maxWidth: number): string[] {
 		const cellWidth = Math.max(1, maxWidth);
 		const cellLines = splitTerminalLines(text);
@@ -2200,7 +2143,6 @@ export class Markdown implements Component {
 		return result;
 	}
 
-	/** Render a table with width-aware cell wrapping. */
 	#renderTable(
 		token: TableToken,
 		availableWidth: number,
@@ -2219,7 +2161,6 @@ export class Markdown implements Component {
 		const borderOverhead = 3 * numCols + 1;
 		const availableForCells = availableWidth - borderOverhead;
 		if (availableForCells < numCols) {
-			// Too narrow to render a stable table. Fall back to raw markdown.
 			const fallbackLines = token.raw ? wrapTextWithAnsi(token.raw, availableWidth) : [];
 			if (nextTokenType && nextTokenType !== "space") {
 				fallbackLines.push("");
@@ -2406,7 +2347,6 @@ export class Markdown implements Component {
 	}
 }
 
-/** Dispatch context for inline token rendering. */
 interface InlineWalkContext {
 	theme: MarkdownTheme;
 	applyText: (text: string) => string;
@@ -2421,7 +2361,6 @@ interface InlineWalkContext {
 	renderNested: (tokens: Token[]) => string;
 }
 
-/** Walk and render inline markdown tokens. */
 function walkInlineTokens(tokens: Token[], ctx: InlineWalkContext): string {
 	let result = "";
 	let trimLeadingWhitespace = false;
@@ -2564,9 +2503,7 @@ function walkInlineTokens(tokens: Token[], ctx: InlineWalkContext): string {
 	return result;
 }
 
-/** Render inline markdown to a styled string. */
 export function renderInlineMarkdown(text: string, mdTheme: MarkdownTheme, baseColor?: (t: string) => string): string {
-	// Guard against undefined/null during streaming — partial JSON can leave fields unpopulated.
 	if (typeof text !== "string") return (baseColor ?? (t => t))(text != null ? String(text) : "");
 	const tokens = markdownParser.lexer(text);
 	const applyText = baseColor ?? ((t: string) => t);

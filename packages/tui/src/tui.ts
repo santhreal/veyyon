@@ -178,7 +178,6 @@ export interface TUIOptions {
 }
 
 export interface TUIStartOptions {
-	/** Clear saved native scrollback before the first paint. */
 	clearScrollback?: boolean;
 }
 
@@ -220,9 +219,6 @@ export interface Component {
 	 */
 	render(width: number): readonly string[];
 
-	/**
-	 * Optional handler for keyboard input when component has focus
-	 */
 	handleInput?(data: string): void;
 
 	/**
@@ -236,9 +232,6 @@ export interface Component {
 	 * Called when theme changes or when component needs to re-render from scratch.
 	 */
 	invalidate?(): void;
-	/**
-	 * Optional hook to set whether this component ignores tight layout mode.
-	 */
 	setIgnoreTight?(ignore: boolean): void;
 
 	/**
@@ -250,9 +243,7 @@ export interface Component {
 	dispose?(): void;
 }
 
-/** Lets an overlay root delegate keyboard focus to components it owns. */
 export interface OverlayFocusOwner {
-	/** Returns true when `component` is a focus target inside this overlay. */
 	ownsOverlayFocusTarget(component: Component): boolean;
 }
 
@@ -419,18 +410,13 @@ function asViewportTailProvider(component: Component): ViewportTailProvider | un
  * changes.
  */
 export interface Focusable {
-	/** Set by TUI when focus changes. Component should emit CURSOR_MARKER when true. */
 	focused: boolean;
-	/** Set by TUI when hardware cursor rendering is enabled or disabled. */
 	setUseTerminalCursor?(useTerminalCursor: boolean): void;
 }
 
-/** Options for scheduling a TUI render. */
 export interface RenderRequestOptions {
-	/** Clear terminal scrollback for intentional transcript replacement. */
 	clearScrollback?: boolean;
 }
-/** Type guard to check if a component implements Focusable */
 export function isFocusable(component: Component | null): component is Component & Focusable {
 	return component !== null && "focused" in component;
 }
@@ -445,9 +431,6 @@ export const CURSOR_MARKER = "\x1b_pi:c\x07";
 
 export { visibleWidth };
 
-/**
- * Anchor position for overlays
- */
 export type OverlayAnchor =
 	| "center"
 	| "top-left"
@@ -459,9 +442,6 @@ export type OverlayAnchor =
 	| "left-center"
 	| "right-center";
 
-/**
- * Margin configuration for overlays
- */
 export interface OverlayMargin {
 	top?: number;
 	right?: number;
@@ -469,14 +449,11 @@ export interface OverlayMargin {
 	left?: number;
 }
 
-/** Value that can be absolute (number) or percentage (string like "50%") */
 export type SizeValue = number | `${number}%`;
 
-/** Parse a SizeValue into absolute value given a reference size */
 function parseSizeValue(value: SizeValue | undefined, referenceSize: number): number | undefined {
 	if (value === undefined) return undefined;
 	if (typeof value === "number") return value;
-	// Parse percentage string like "50%"
 	const match = value.match(/^(\d+(?:\.\d+)?)%$/);
 	if (match) {
 		return Math.floor((referenceSize * parseFloat(match[1])) / 100);
@@ -484,7 +461,6 @@ function parseSizeValue(value: SizeValue | undefined, referenceSize: number): nu
 	return undefined;
 }
 
-/** Detect terminal multiplexers where scrollback clearing and height-change redraws are hostile. */
 function isMultiplexerSession(): boolean {
 	return isInsideTerminalMultiplexer();
 }
@@ -523,26 +499,17 @@ function resizeRepaintsInPlace(): boolean {
  * Values can be absolute numbers or percentage strings (e.g., "50%").
  */
 export interface OverlayOptions {
-	/** Width in columns, or percentage of terminal width (e.g., "50%") */
 	width?: SizeValue;
-	/** Minimum width in columns */
 	minWidth?: number;
-	/** Maximum height in rows, or percentage of terminal height (e.g., "50%") */
 	maxHeight?: SizeValue;
 
-	/** Anchor point for positioning (default: 'center') */
 	anchor?: OverlayAnchor;
-	/** Horizontal offset from anchor position (positive = right) */
 	offsetX?: number;
-	/** Vertical offset from anchor position (positive = down) */
 	offsetY?: number;
 
-	/** Row position: absolute number, or percentage (e.g., "25%" = 25% from top) */
 	row?: SizeValue;
-	/** Column position: absolute number, or percentage (e.g., "50%" = centered horizontally) */
 	col?: SizeValue;
 
-	/** Margin from terminal edges. Number applies to all sides. */
 	margin?: OverlayMargin | number;
 
 	/**
@@ -563,15 +530,9 @@ export interface OverlayOptions {
 	fullscreen?: boolean;
 }
 
-/**
- * Handle returned by showOverlay for controlling the overlay
- */
 export interface OverlayHandle {
-	/** Permanently remove the overlay (cannot be shown again) */
 	hide(): void;
-	/** Temporarily hide or show the overlay */
 	setHidden(hidden: boolean): void;
-	/** Check if overlay is temporarily hidden */
 	isHidden(): boolean;
 }
 
@@ -590,14 +551,10 @@ export interface OverlayExitAnimatable {
 	beginOverlayExit(requestRender: () => void, done: () => void): boolean;
 }
 
-/** Whether `component` can play itself out. */
 export function canAnimateOverlayExit(component: Component): component is Component & OverlayExitAnimatable {
 	return typeof (component as Partial<OverlayExitAnimatable>).beginOverlayExit === "function";
 }
 
-/**
- * Container - a component that contains other components
- */
 export class Container implements Component, MouseRoutable {
 	children: Component[] = [];
 
@@ -644,7 +601,6 @@ export class Container implements Component, MouseRoutable {
 		this.#memoLines = undefined;
 	}
 
-	/** Dispose every child, then detach it from this container. */
 	disposeChildren(): void {
 		this.dispose();
 		this.clear();
@@ -772,7 +728,6 @@ interface FrameSegment {
 	liveLocalStart?: number;
 }
 
-/** Depth-first identity search through `Container`-shaped children. */
 function subtreeContains(root: Component, target: Component): boolean {
 	if (root === target) return true;
 	const children = (root as Partial<Container>).children;
@@ -829,7 +784,6 @@ function endsWithIncompleteExtendedColor(params: string): boolean {
 	let i = 0;
 	const n = params.length;
 	while (i < n) {
-		// Find the next semicolon or end.
 		let j = i;
 		while (j < n && params.charCodeAt(j) !== 0x3b) j++;
 		const tokLen = j - i;
@@ -838,14 +792,12 @@ function endsWithIncompleteExtendedColor(params: string): boolean {
 			params.charCodeAt(i + 1) === 0x38 &&
 			(params.charCodeAt(i) === 0x33 || params.charCodeAt(i) === 0x34 || params.charCodeAt(i) === 0x35)
 		) {
-			// Parse mode token after the semicolon.
 			const p = j + 1;
 			let modeEnd = p;
 			while (modeEnd < n && params.charCodeAt(modeEnd) !== 0x3b) modeEnd++;
 			const modeLen = modeEnd - p;
 			if (modeLen === 0) return true;
 			if (modeLen === 1 && params.charCodeAt(p) === 0x32) {
-				// Need 3 more tokens (r;g;b).
 				let q = modeEnd + 1;
 				for (let s = 0; s < 3; s++) {
 					if (q > n) return true;
@@ -854,7 +806,6 @@ function endsWithIncompleteExtendedColor(params: string): boolean {
 				}
 				i = q - 1;
 			} else if (modeLen === 1 && params.charCodeAt(p) === 0x35) {
-				// Need 1 more token (index).
 				let q = modeEnd + 1;
 				if (q > n) return true;
 				while (q < n && params.charCodeAt(q) !== 0x3b) q++;
@@ -885,21 +836,17 @@ export function coalesceAdjacentSgr(line: string): string {
 			i++;
 			continue;
 		}
-		// Scan a candidate SGR sequence: ESC [ <params> m.
 		let j = i + 2;
 		while (j < n && isSgrParamByte(line.charCodeAt(j))) j++;
 		if (j >= n || line.charCodeAt(j) !== CC_M) {
-			// Not an SGR (e.g. cursor move); leave it in the pending region.
 			i = j;
 			continue;
 		}
-		// Peek ahead: is there a second adjacent SGR? If not, skip the merge.
 		let k = j + 1;
 		if (k >= n || line.charCodeAt(k) !== CC_ESC || line.charCodeAt(k + 1) !== CC_BRACKET) {
 			i = k;
 			continue;
 		}
-		// Collect the run of adjacent SGR sequences starting here.
 		const params: string[] = [line.slice(i + 2, j)];
 		while (k < n && line.charCodeAt(k) === CC_ESC && line.charCodeAt(k + 1) === CC_BRACKET) {
 			let p = k + 2;
@@ -948,7 +895,6 @@ export function coalesceAdjacentSgr(line: string): string {
 	return out + line.slice(copiedUpto);
 }
 
-/** Compare two rows ignoring SGR styling (theme restyles keep alignment). */
 function rowsEquivalent(a: string, b: string): boolean {
 	if (a === b) return true;
 	return a.replace(SGR_SEQUENCE, "") === b.replace(SGR_SEQUENCE, "");
@@ -1035,7 +981,6 @@ export function findCommittedPrefixResync(
 				samples++;
 				if (!rowsEquivalent(row, old)) mismatches++;
 			}
-			// No signal (all-blank tail) or at most one edited row: aligned.
 			if (samples === 0 || mismatches <= 1) return -1;
 		}
 	}
@@ -1049,9 +994,6 @@ export function findCommittedPrefixResync(
 	return limit < hardEnd ? limit : -1;
 }
 
-/**
- * TUI - Main class for managing terminal UI with differential rendering
- */
 export class TUI extends Container {
 	terminal: Terminal;
 	#previousFrameLength = 0;
@@ -1061,7 +1003,6 @@ export class TUI extends Container {
 	#inputListeners = new Set<InputListener>();
 	#startListeners = new Set<StartListener>();
 
-	/** Global callback for debug key (Shift+Ctrl+D). Called before input is forwarded to focused component. */
 	onDebug?: () => void;
 
 	/**
@@ -1076,7 +1017,6 @@ export class TUI extends Container {
 	 * keeps no "already told them" state of its own.
 	 */
 	onSelectionAttempt?: () => void;
-	/** Cell of the left press being tracked for {@link onSelectionAttempt}. */
 	#pressCell: { row: number; col: number } | null = null;
 	#renderRequested = false;
 	#renderTimer: RenderTimer | undefined;
@@ -1432,12 +1372,9 @@ export class TUI extends Container {
 	// the frame never carries them. Returned to render() callers — treated as
 	// immutable by them per the Component render contract.
 	#composedFrame: string[] = [];
-	// Per-root-child segment ledger backing the stable-prefix computation.
 	#frameSegments: FrameSegment[] = [];
 	#composeWidth = -1;
-	// Cursor markers stripped at ingestion, ascending by frame row.
 	#frameCursorMarkers: { row: number; col: number }[] = [];
-	// Leading rows of #composedFrame byte-identical to the previous compose.
 	#renderStablePrefixRows = 0;
 
 	// Component-scoped render accumulation. Targets are the components handed
@@ -1467,7 +1404,6 @@ export class TUI extends Container {
 	#preparedMeta: PreparedLine[] = [];
 	#preparedValidRows = 0;
 
-	// Overlay stack for modal components rendered on top of base content
 	overlayStack: {
 		component: Component;
 		options?: OverlayOptions;
@@ -1497,7 +1433,6 @@ export class TUI extends Container {
 		const children = this.children;
 		const previousSegments = this.#frameSegments;
 		const segments: FrameSegment[] = new Array(children.length);
-		// A width change re-renders every child; nothing carries over.
 		let chainStable = this.#composeWidth === width;
 		this.#composeWidth = width;
 		let offset = 0;
@@ -1631,7 +1566,6 @@ export class TUI extends Container {
 		return frame;
 	}
 
-	/** Drop cached cursor markers at/after `fromRow` (those rows re-ingest). */
 	#pruneFrameCursorMarkers(fromRow: number): void {
 		const markers = this.#frameCursorMarkers;
 		let keep = markers.length;
@@ -1816,12 +1750,10 @@ export class TUI extends Container {
 		return this.#resizeViewportPaintCount;
 	}
 
-	/** Whether a non-multiplexer resize drag is currently in flight. */
 	get resizeViewportActive(): boolean {
 		return this.#resizeViewportActive;
 	}
 
-	/** Shared budget that caps how many inline images render as live graphics. */
 	get imageBudget(): ImageBudget {
 		return this.#imageBudget;
 	}
@@ -1835,9 +1767,6 @@ export class TUI extends Container {
 		this.#imageBudget.setCap(cap);
 	}
 
-	/**
-	 * Get whether scrollback divergence rebuild is enabled.
-	 */
 	getScrollbackRebuild(): boolean {
 		return this.#scrollbackRebuildEnabled;
 	}
@@ -1942,7 +1871,6 @@ export class TUI extends Container {
 		this.#pinnedFooterChildCount = Math.max(0, count);
 	}
 
-	/** True while the transcript region shows a frozen, scrolled-up slice. */
 	get virtualScrollActive(): boolean {
 		return this.#virtualScrollTop !== null;
 	}
@@ -1958,7 +1886,6 @@ export class TUI extends Container {
 		return Math.max(0, this.#scrollSpaceLiveTop() - this.#virtualScrollTop);
 	}
 
-	/** Resume following the live tail (host calls this on message submit). */
 	scrollToLiveTail(): void {
 		if (this.#virtualScrollTop === null) return;
 		this.#resumeLiveTail();
@@ -2064,7 +1991,6 @@ export class TUI extends Container {
 		}
 
 		const previousFocusedComponent = this.#focusedComponent;
-		// Clear focused flag on old component
 		if (isFocusable(previousFocusedComponent)) {
 			previousFocusedComponent.focused = false;
 		}
@@ -2079,7 +2005,6 @@ export class TUI extends Container {
 		}
 	}
 
-	/** Component currently receiving keyboard input, if any. */
 	getFocused(): Component | null {
 		return this.#focusedComponent;
 	}
@@ -2132,7 +2057,6 @@ export class TUI extends Container {
 		this.setFocus(this.#firstAttachedFocusable() ?? null);
 	}
 
-	/** Depth-first search for a focusable component still in the root tree. */
 	#firstAttachedFocusable(): Component | null {
 		const seen = new Set<Component>();
 		const search = (children: readonly Component[]): Component | null => {
@@ -2160,7 +2084,6 @@ export class TUI extends Container {
 		component.setIgnoreTight?.(true);
 		const entry = { component, options, preFocus: this.#focusedComponent, hidden: false, exiting: false };
 		this.overlayStack.push(entry);
-		// Only focus if overlay is actually visible
 		if (this.#isOverlayVisible(entry)) {
 			this.setFocus(component);
 		}
@@ -2168,7 +2091,6 @@ export class TUI extends Container {
 		this.#recordHardwareCursorHidden();
 		this.requestRender();
 
-		/** Drop the entry and hand the terminal back. Idempotent: a second call finds no index. */
 		const remove = (): void => {
 			const index = this.overlayStack.indexOf(entry);
 			if (index === -1) return;
@@ -2180,7 +2102,6 @@ export class TUI extends Container {
 			this.requestRender();
 		};
 
-		// Return handle for controlling this overlay
 		return {
 			hide: () => {
 				if (entry.exiting || this.overlayStack.indexOf(entry) === -1) return;
@@ -2203,7 +2124,6 @@ export class TUI extends Container {
 			setHidden: (hidden: boolean) => {
 				if (entry.hidden === hidden) return;
 				entry.hidden = hidden;
-				// Update focus when hiding/showing
 				if (hidden) {
 					// If this overlay or one of its owned targets had focus, move focus
 					// to the next visible overlay or back to what it captured.
@@ -2211,7 +2131,6 @@ export class TUI extends Container {
 						this.#restoreFocusAfterOverlay(entry.preFocus);
 					}
 				} else {
-					// Restore focus to this overlay when showing (if it's actually visible)
 					if (this.#isOverlayVisible(entry)) {
 						this.setFocus(component);
 					}
@@ -2222,7 +2141,6 @@ export class TUI extends Container {
 		};
 	}
 
-	/** Check if there are any overlays that can still take input. */
 	hasOverlay(): boolean {
 		for (let i = 0; i < this.overlayStack.length; i++) {
 			if (this.#isOverlayInteractive(this.overlayStack[i]!)) return true;
@@ -2230,7 +2148,6 @@ export class TUI extends Container {
 		return false;
 	}
 
-	/** Check if an overlay entry is currently PAINTED. An exiting card is: that is the whole point. */
 	#isOverlayVisible(entry: (typeof this.overlayStack)[number]): boolean {
 		if (entry.hidden) return false;
 		if (entry.options?.visible) {
@@ -2248,7 +2165,6 @@ export class TUI extends Container {
 		return !entry.exiting && this.#isOverlayVisible(entry);
 	}
 
-	/** The topmost overlay that is PAINTED, including one that is playing itself out. */
 	#getTopmostVisibleOverlay(): (typeof this.overlayStack)[number] | undefined {
 		for (let i = this.overlayStack.length - 1; i >= 0; i--) {
 			if (this.#isOverlayVisible(this.overlayStack[i])) {
@@ -2258,7 +2174,6 @@ export class TUI extends Container {
 		return undefined;
 	}
 
-	/** The topmost overlay that can hold focus, which an exiting card cannot. */
 	#getTopmostInteractiveOverlay(): (typeof this.overlayStack)[number] | undefined {
 		for (let i = this.overlayStack.length - 1; i >= 0; i--) {
 			if (this.#isOverlayInteractive(this.overlayStack[i])) {
@@ -2484,7 +2399,6 @@ export class TUI extends Container {
 		this.requestRender(true);
 	}
 	#queryCellSize(): void {
-		// Only query if terminal supports images (cell size is only used for image rendering)
 		if (!TERMINAL.imageProtocol) {
 			return;
 		}
@@ -2657,7 +2571,6 @@ export class TUI extends Container {
 	}
 
 	requestRender(force = false, options?: RenderRequestOptions): void {
-		// Any non-component-scoped request makes the pending frame a full one.
 		this.#pendingRenderComponentsOnly = false;
 		if (force) {
 			// Forced repaints landing inside the multiplexer resize debounce
@@ -2871,7 +2784,6 @@ export class TUI extends Container {
 		this.#commit(this.#composedFrame, previousWindow, width, height, cursorControl);
 	}
 
-	/** Ordinary (non-forced) scheduling shared by full and component-scoped requests. */
 	#requestOrdinaryRender(): void {
 		// Coalesce non-forced renders inside the post-full-paint ConPTY settle
 		// window into one trailing render. Spinner/blink/streaming components
@@ -2933,7 +2845,6 @@ export class TUI extends Container {
 		return roots;
 	}
 
-	/** Root child whose subtree contains `target`, memoized per component. */
 	#resolveComponentRoot(target: Component): Component | null {
 		const cached = this.#componentRootCache.get(target);
 		if (cached !== undefined && this.children.includes(cached) && subtreeContains(cached, target)) {
@@ -3291,7 +3202,6 @@ export class TUI extends Container {
 			data = current;
 		}
 
-		// Consume terminal cell size responses without blocking unrelated input.
 		if (this.#consumeCellSizeResponse(data)) {
 			return;
 		}
@@ -3340,7 +3250,6 @@ export class TUI extends Container {
 					// footer chrome like the status footline can own click targets.
 					this.#routeFooterMouse(event, event.row - footerRowOffset);
 					if (this.#virtualScrollTop !== null) {
-						// Chat idiom: engaging the composer returns to the present.
 						this.scrollToLiveTail();
 					}
 				}
@@ -3373,7 +3282,6 @@ export class TUI extends Container {
 			}
 		}
 
-		// Global debug key handler (Shift+Ctrl+D)
 		if (matchesKey(data, "shift+ctrl+d") && this.onDebug) {
 			this.onDebug();
 			return;
@@ -3392,7 +3300,6 @@ export class TUI extends Container {
 		// Pass input to focused component (including Ctrl+C)
 		// The focused component can decide how to handle Ctrl+C
 		if (this.#focusedComponent?.handleInput) {
-			// Filter out key release events unless component opts in
 			if (isKeyRelease(data) && !this.#focusedComponent.wantsKeyRelease) {
 				return;
 			}
@@ -3402,7 +3309,6 @@ export class TUI extends Container {
 	}
 
 	#consumeCellSizeResponse(data: string): boolean {
-		// Response format: ESC [ 6 ; height ; width t
 		const match = data.match(/^\x1b\[6;(\d+);(\d+)t$/);
 		if (!match) {
 			return false;
@@ -3415,7 +3321,6 @@ export class TUI extends Container {
 		}
 
 		setCellDimensions({ widthPx, heightPx });
-		// Invalidate all components so images re-render with correct dimensions.
 		this.invalidate();
 		this.requestRender();
 		return true;
@@ -3433,7 +3338,6 @@ export class TUI extends Container {
 	): { width: number; row: number; col: number; maxHeight: number } {
 		const opt = options ?? {};
 
-		// Parse margin (clamp to non-negative)
 		const margin =
 			typeof opt.margin === "number"
 				? { top: opt.margin, right: opt.margin, bottom: opt.margin, left: opt.margin }
@@ -3443,16 +3347,13 @@ export class TUI extends Container {
 		const marginBottom = Math.max(0, margin.bottom ?? 0);
 		const marginLeft = Math.max(0, margin.left ?? 0);
 
-		// Available space after margins
 		const availWidth = Math.max(1, termWidth - marginLeft - marginRight);
 		const availHeight = Math.max(1, termHeight - marginTop - marginBottom);
 
 		let width = parseSizeValue(opt.width, termWidth) ?? Math.min(80, availWidth);
-		// Apply minWidth
 		if (opt.minWidth !== undefined) {
 			width = Math.max(width, opt.minWidth);
 		}
-		// Clamp to available space
 		width = clampLow(width, 1, availWidth);
 
 		let maxHeight = parseSizeValue(opt.maxHeight, termHeight) ?? availHeight;
@@ -3467,53 +3368,43 @@ export class TUI extends Container {
 
 		if (opt.row !== undefined) {
 			if (typeof opt.row === "string") {
-				// Percentage: 0% = top, 100% = bottom (overlay stays within bounds)
 				const match = opt.row.match(/^(\d+(?:\.\d+)?)%$/);
 				if (match) {
 					const maxRow = Math.max(0, availHeight - effectiveHeight);
 					const percent = parseFloat(match[1]) / 100;
 					row = marginTop + Math.floor(maxRow * percent);
 				} else {
-					// Invalid format, fall back to center
 					row = this.#resolveAnchorRow("center", effectiveHeight, availHeight, marginTop);
 				}
 			} else {
-				// Absolute row position
 				row = opt.row;
 			}
 		} else {
-			// Anchor-based (default: center)
 			const anchor = opt.anchor ?? "center";
 			row = this.#resolveAnchorRow(anchor, effectiveHeight, availHeight, marginTop);
 		}
 
 		if (opt.col !== undefined) {
 			if (typeof opt.col === "string") {
-				// Percentage: 0% = left, 100% = right (overlay stays within bounds)
 				const match = opt.col.match(/^(\d+(?:\.\d+)?)%$/);
 				if (match) {
 					const maxCol = Math.max(0, availWidth - width);
 					const percent = parseFloat(match[1]) / 100;
 					col = marginLeft + Math.floor(maxCol * percent);
 				} else {
-					// Invalid format, fall back to center
 					col = this.#resolveAnchorCol("center", width, availWidth, marginLeft);
 				}
 			} else {
-				// Absolute column position
 				col = opt.col;
 			}
 		} else {
-			// Anchor-based (default: center)
 			const anchor = opt.anchor ?? "center";
 			col = this.#resolveAnchorCol(anchor, width, availWidth, marginLeft);
 		}
 
-		// Apply offsets
 		if (opt.offsetY !== undefined) row += opt.offsetY;
 		if (opt.offsetX !== undefined) col += opt.offsetX;
 
-		// Clamp to terminal bounds (respecting margins)
 		row = clampLow(row, marginTop, termHeight - marginBottom - effectiveHeight);
 		col = clampLow(col, marginLeft, termWidth - marginRight - width);
 
@@ -3619,7 +3510,6 @@ export class TUI extends Container {
 		}
 	}
 
-	/** Splice overlay content into a base line at a specific column. Single-pass optimized. */
 	#compositeLineAt(
 		baseLine: string,
 		overlayLine: string,
@@ -3629,14 +3519,11 @@ export class TUI extends Container {
 	): string {
 		if (TERMINAL.isImageLine(baseLine)) return baseLine;
 
-		// Single pass through baseLine extracts both before and after segments
 		const afterStart = startCol + overlayWidth;
 		const base = extractSegments(baseLine, startCol, afterStart, totalWidth - afterStart, true);
 
-		// Extract overlay with width tracking (strict=true to exclude wide chars at boundary)
 		const overlay = sliceWithWidth(overlayLine, 0, overlayWidth, true);
 
-		// Pad segments to target widths
 		const beforePad = Math.max(0, startCol - base.beforeWidth);
 		const overlayPad = Math.max(0, overlayWidth - overlay.width);
 		const actualBeforeWidth = Math.max(startCol, base.beforeWidth);
@@ -3644,7 +3531,6 @@ export class TUI extends Container {
 		const afterTarget = Math.max(0, totalWidth - actualBeforeWidth - actualOverlayWidth);
 		const afterPad = Math.max(0, afterTarget - base.afterWidth);
 
-		// Compose result
 		const r = SGR_RESET;
 		const result = padding(beforePad) + r + overlay.text + padding(overlayPad) + r + base.after + padding(afterPad);
 
@@ -3658,7 +3544,6 @@ export class TUI extends Container {
 		if (resultWidth <= totalWidth) {
 			return result;
 		}
-		// Truncate with strict=true to ensure we don't exceed totalWidth
 		return sliceByColumn(result, 0, totalWidth, true);
 	}
 
@@ -4433,7 +4318,6 @@ export class TUI extends Container {
 		return prepared;
 	}
 
-	/** Stateless variant for overlay-composited windows and alt-screen frames. */
 	#prepareLinesArray(lines: readonly string[], width: number): string[] {
 		const prepared: string[] = new Array(lines.length);
 		for (let i = 0; i < lines.length; i++) {
@@ -4532,7 +4416,6 @@ export class TUI extends Container {
 	}
 
 	#ansiSequenceHasVisiblePayload(line: string, start: number): boolean {
-		// OSC 66 (`\x1b]66;META;TEXT\x1b\\`) carries visible cells inside the payload.
 		return (
 			line.charCodeAt(start + 1) === 0x5d &&
 			line.charCodeAt(start + 2) === 0x36 &&
@@ -4986,7 +4869,6 @@ export class TUI extends Container {
 		this.terminal.write(buffer);
 	}
 
-	/** Topmost visible overlay requests the alternate-screen buffer. */
 	#wantsAltScreen(): boolean {
 		for (let i = this.overlayStack.length - 1; i >= 0; i--) {
 			const entry = this.overlayStack[i]!;
@@ -5083,7 +4965,6 @@ export class TUI extends Container {
 			buffer += this.#lineRewriteSequence(fitted[r], width);
 		}
 		if (cursor !== undefined) {
-			// Rows/cols are 0-based internally and 1-based on the wire.
 			const row = clampLow(cursor.row + 1, 1, Math.max(1, height));
 			const col = clampLow(cursor.col + 1, 1, Math.max(1, width));
 			buffer += `\x1b[${row};${col}H`;
@@ -5174,7 +5055,6 @@ export class TUI extends Container {
 				for (let r = height - scroll; r < height; r++) {
 					buffer += `\r\n${this.#lineRewriteSequence(window[r] ?? "", width)}`;
 				}
-				// Rewrite any remaining changed rows after the shift.
 				let firstChanged = -1;
 				let lastChanged = -1;
 				for (let r = 0; r < height - scroll; r++) {
@@ -5308,7 +5188,6 @@ export class TUI extends Container {
 		this.#commit(frame, window, width, height, cursorControl);
 	}
 
-	/** Optional intent log under VEYYON_DEBUG_REDRAW. */
 	#logRedraw(intent: RenderIntent, newLength: number, height: number): void {
 		if (!$flag("VEYYON_DEBUG_REDRAW")) return;
 		const detail =
@@ -5334,13 +5213,11 @@ export class TUI extends Container {
 		totalLines: number,
 		fromRow: number,
 	): CursorControlResult {
-		// No IME target or no content — hide cursor regardless of preference.
 		const target = this.#targetHardwareCursorState(cursorPos, totalLines);
 		if (!target) {
 			return { seq: "\x1b[?25l", toRow: fromRow, toCol: 0, visible: false, state: null };
 		}
 
-		// Move cursor from current position to target.
 		const rowDelta = target.row - fromRow;
 		let seq = "";
 		if (rowDelta > 0) {
@@ -5348,7 +5225,6 @@ export class TUI extends Container {
 		} else if (rowDelta < 0) {
 			seq += `\x1b[${-rowDelta}A`; // Move up
 		}
-		// Move to absolute column (1-indexed)
 		seq += `\x1b[${target.col + 1}G`;
 		seq += target.visible ? "\x1b[?25h" : "\x1b[?25l";
 

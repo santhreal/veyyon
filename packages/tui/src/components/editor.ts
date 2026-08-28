@@ -48,14 +48,12 @@ function sanitizeLoadedText(text: string): string {
 
 const segmenter = getSegmenter();
 
-/** Word-wrap layout chunk. */
 interface TextChunk {
 	text: string;
 	startIndex: number;
 	endIndex: number;
 }
 
-/** Split a line into word-wrapped chunks. */
 export function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
 	if (!line || maxWidth <= 0) {
 		return [{ text: "", startIndex: 0, endIndex: 0 }];
@@ -331,7 +329,6 @@ export interface EditorTheme {
 	selectList: SelectListTheme;
 	symbols: SymbolTheme;
 	editorPaddingX?: number;
-	/** Style function for inline hint/ghost text (dim text after cursor) */
 	hintStyle?: (text: string) => string;
 }
 interface HistoryEntry {
@@ -352,15 +349,12 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		cursorCol: 0,
 	};
 
-	/** Focusable interface - set by TUI when focus changes */
 	focused: boolean = false;
 
 	#theme: EditorTheme;
 	#useTerminalCursor = false;
 
-	/** When set, replaces the normal cursor glyph at end-of-text with this ANSI-styled string. */
 	cursorOverride: string | undefined;
-	/** Display width of the cursorOverride glyph (needed because override may contain ANSI escapes). */
 	cursorOverrideWidth: number | undefined;
 	/** Optional hook that decorates displayed user text after source-text layout.
 	 *  Width-changing output is allowed on lines without the cursor; it is truncated
@@ -440,9 +434,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	onAutocompleteCancel?: () => void;
 	disableSubmit: boolean = false;
 
-	// Border chrome is either drawn or not; there is no status-content slot on
-	// it. The host that wanted one (the coding agent's status line) renders its
-	// own quiet footline below the composer instead.
 	#borderVisible = true;
 
 	constructor(theme: EditorTheme) {
@@ -483,7 +474,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		this.#rowBackground = open === "" ? undefined : open;
 	}
 
-	/** Ghost text shown when the composer is empty (the resting prompt hint). */
 	setPlaceholder(placeholder: string | undefined): void {
 		this.#placeholder = placeholder;
 	}
@@ -510,7 +500,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	setMaxHeight(maxHeight: number | undefined): void {
 		if (this.#maxHeight === maxHeight) return;
 		this.#maxHeight = maxHeight;
-		// Don't reset scrollOffset — #updateScrollOffset will clamp it on next render
 	}
 
 	setPaddingX(paddingX: number): void {
@@ -540,7 +529,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		this.#autocompleteReveal = new BlockReveal(options);
 	}
 
-	/** Drop the popup's grow, so no frame outlives this editor. */
 	disposeAutocompleteMotion(): void {
 		this.#autocompleteReveal?.disarm();
 		this.#autocompleteReveal = undefined;
@@ -553,7 +541,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		this.#historyIndex = -1;
 	}
 
-	/** Add a prompt to history. */
 	addToHistory(text: string): void {
 		const trimmed = text.trim();
 		if (!trimmed) return;
@@ -792,8 +779,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		const layoutWidth = this.#getLayoutWidth(width, paddingX);
 		this.#lastLayoutWidth = layoutWidth;
 
-		// Sharp box-drawing corners: the composer is the most prominent frame and
-		// the brand is sharp-edged everywhere (no rounded chrome).
 		const box = this.#theme.symbols.boxSharp;
 		const borderWidth = this.#getHorizontalChromeWidth(paddingX);
 		const topLeft = this.borderColor(`${box.topLeft}${box.horizontal.repeat(paddingX)}`);
@@ -821,8 +806,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		this.#textColStart = borderVisible ? 1 + paddingX : (promptGutter?.width ?? 0);
 		this.#textScrollOffset = this.#scrollOffset;
 
-		// Render each layout line
-		// Emit hardware cursor marker only when focused and not showing autocomplete
 		const emitCursorMarker = this.focused && !this.#autocompleteState;
 		const lineContentWidth = contentAreaWidth;
 
@@ -914,8 +897,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 				const after = displayText.slice(layoutLine.cursorPos);
 
 				if (after.length > 0) {
-					// Cursor is on a character (grapheme) - replace it with highlighted version
-					// Get the first grapheme from 'after'
 					let firstGrapheme = "";
 					for (const seg of segmenter.segment(after)) {
 						firstGrapheme = seg.segment;
@@ -1198,8 +1179,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 					}
 				}
 			}
-			// For other keys (like regular typing), DON'T return here
-			// Let them fall through to normal character handling
 		}
 
 		if (kb.matches(data, "tui.input.tab") && !this.#autocompleteState) {
@@ -1213,14 +1192,9 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			this.#deleteToStartOfLine();
 		} else if (matchesKey(data, "ctrl+w")) {
 			this.#deleteWordBackwards();
-		}
-		// Option/Alt+Backspace - Delete word backwards.
-		// Ghostty on macOS reports Option+Backspace as super+alt (kitty mod 11) — see #2064.
-		else if (matchesKey(data, "alt+backspace") || matchesKey(data, "super+alt+backspace")) {
+		} else if (matchesKey(data, "alt+backspace") || matchesKey(data, "super+alt+backspace")) {
 			this.#deleteWordBackwards();
-		}
-		// Option/Alt+D and Option+Delete - Delete word forwards. Same Ghostty quirk applies.
-		else if (
+		} else if (
 			matchesKey(data, "alt+d") ||
 			matchesKey(data, "alt+delete") ||
 			matchesKey(data, "super+alt+d") ||
@@ -1256,9 +1230,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 				return;
 			}
 			this.#addNewLine();
-		}
-		// Plain Enter - submit (handles both legacy \r and Kitty protocol with lock bits)
-		else if (kb.matches(data, "tui.input.submit") || isLoneLineFeed(data)) {
+		} else if (kb.matches(data, "tui.input.submit") || isLoneLineFeed(data)) {
 			if (this.disableSubmit) {
 				return;
 			}
@@ -1409,9 +1381,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 					const cursorPos = this.#state.cursorCol;
 					const isLastChunk = chunkIndex === chunks.length - 1;
 
-					// Determine if cursor is in this chunk
-					// For word-wrapped chunks, we need to handle the case where
-					// cursor might be in trimmed whitespace at end of chunk
 					let hasCursorInChunk = false;
 					let adjustedCursorPos = 0;
 
@@ -1461,7 +1430,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		return result;
 	}
 
-	/** Get text with paste markers expanded to actual content. */
 	getExpandedText(): string {
 		return this.#expandPasteMarkers(this.#state.lines.join("\n"));
 	}
@@ -1490,7 +1458,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		this.#moveToMessageEnd();
 	}
 
-	/** Undo the last meaningful edit. */
 	undoPastTransientText(transientText: string): void {
 		if (transientText.length === 0) {
 			this.#applyUndo();
@@ -1820,13 +1787,11 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		const pasteId = this.#pasteCounter;
 		this.#pastes.set(pasteId, content);
 
-		// Insert marker like "[Paste #1, +123 lines]" or "[Paste #1, 1234 chars]".
 		const marker =
 			lineCount > 10 ? `[Paste #${pasteId}, +${lineCount} lines]` : `[Paste #${pasteId}, ${content.length} chars]`;
 		this.#insertTextAtCursor(marker);
 	}
 
-	/** Re-evaluate autocomplete triggers for the text ending at the cursor (used after bulk edits). */
 	#retriggerAutocompleteAtCursor(): void {
 		if (this.#autocompleteState) {
 			this.#debouncedUpdateAutocomplete();
@@ -1893,7 +1858,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		if (this.onSubmit) this.onSubmit(result);
 	}
 
-	/** Resolve the compiled, global copy of `atomicTokenPattern`, rebuilt only when the source changes. */
 	#getAtomicTokenRe(): RegExp | undefined {
 		const pattern = this.atomicTokenPattern;
 		if (pattern === undefined) {
@@ -1911,7 +1875,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		return this.#atomicTokenRe;
 	}
 
-	/** Find an atomic token on `line` whose span contains column `col` (`start <= col < end`). */
 	#atomicTokenAt(line: string, col: number): { start: number; end: number } | undefined {
 		const re = this.#getAtomicTokenRe();
 		if (re === undefined) return undefined;
@@ -1931,8 +1894,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		return undefined;
 	}
 
-	/** Expand the half-open range [start, end) so it never cuts through an atomic
-	 *  placeholder token: a boundary landing inside a token pulls the whole token in. */
 	#expandRangeOverAtomicTokens(line: string, start: number, end: number): { start: number; end: number } {
 		const startToken = this.#atomicTokenAt(line, start);
 		if (startToken !== undefined && startToken.start < start) {
@@ -2264,7 +2225,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		this.#lastAction = "yank";
 	}
 
-	/** Delete the most recently yanked text from the buffer (best-effort). */
 	#deleteYankedText(): boolean {
 		const yankedText = this.#killRing.peek();
 		if (!yankedText) return false;
@@ -2491,7 +2451,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		}
 	}
 
-	/** Build a mapping from visual lines to logical positions. */
 	#buildVisualLineMap(width: number): Array<{ logicalLine: number; startCol: number; length: number }> {
 		const visualLines: Array<{ logicalLine: number; startCol: number; length: number }> = [];
 
@@ -2668,7 +2627,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		return true;
 	}
 
-	// Slash commands execute only when the submitted prompt starts with the command.
 	#isAtStartOfSubmittedMessage(): boolean {
 		const currentLine = this.#state.lines[this.#state.cursorLine] || "";
 		const beforeCursor = currentLine.slice(0, this.#state.cursorCol);
@@ -2696,7 +2654,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		return this.#isInSubmittedSlashCommandContext() || this.#isInMidPromptSkillSlashContext();
 	}
 
-	/** Check if autocomplete prefix is still valid for current text. */
 	#autocompletePrefixMatchesCursorText(currentTextBeforeCursor: string, item?: SelectItem | null): boolean {
 		if (currentTextBeforeCursor === this.#autocompletePrefix) return true;
 
@@ -2735,7 +2692,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		return currentTextBeforeCursor.endsWith(this.#autocompletePrefix);
 	}
 
-	/** Whether current selection is a file path rather than slash command. */
 	#selectedCompletionIsPath(): boolean {
 		const selected = this.#autocompleteList?.getSelectedItem();
 		if (!selected) return false;
@@ -2870,7 +2826,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		}
 	}
 
-	/** Apply one suggestion to the buffer. */
 	#acceptAutocompleteSelection(selected: SelectItem | null): void {
 		const currentLine = this.#state.lines[this.#state.cursorLine] ?? "";
 		const currentTextBeforeCursor = currentLine.slice(0, this.#state.cursorCol);
@@ -2906,7 +2861,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		}
 	}
 
-	/** Handle left click: accept suggestion or place caret. */
 	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
 		if (!event.leftClick) return;
 		const list = this.#autocompleteList;
@@ -2921,7 +2875,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		this.#placeCaretAt(line, col);
 	}
 
-	/** Move caret to click target position. */
 	#placeCaretAt(line: number, col: number): void {
 		const row = line - this.#textRowStart;
 		// Both bounds matter: a row above the text is a negative index, and a row
@@ -3011,7 +2964,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			return selected?.hint ?? null;
 		}
 
-		// The placeholder: ghost text over an empty composer.
 		if (this.#placeholder && this.#state.lines.length === 1 && this.#state.lines[0] === "") {
 			return this.#placeholder;
 		}
