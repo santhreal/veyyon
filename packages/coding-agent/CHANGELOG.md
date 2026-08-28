@@ -377,7 +377,6 @@
 - `read.ts` replaces `.split().map()` closure with split + for loop in error render path.
 - `gh-renderer.ts` replaces `.map()`, `.forEach()`, `for-of`, and `.split().filter()` closures with index loops in `formatRunLine`, `renderRunBlock`, `buildWatchSections`, `renderFailedLogs`, and `extractText`.
 - `vibe-render.ts` replaces `.map()`, `.filter()`, and `.slice().map()` closures with single-pass for loops in `composerRows`, `linesComponent`, and `renderResult` builder.
-- `gh-renderer.ts` replaces `.map()`, `.forEach()`, `for-of`, and `.split().filter()` closures with index loops in `formatRunLine`, `renderRunBlock`, `buildWatchSections`, `renderFailedLogs`, and `extractText`.
 - `search-tool-bm25.ts` replaces `.split().map()` and `.filter().map().filter().join()` with split + for loops in `renderFallbackResult` and `renderResult` fallback.
 - `status-line/component.ts` caches `visibleWidth()` results in `renderQuietLine` and `renderQuietLines`, eliminating redundant width computations in shed loops and final line assembly.
 - `status-line/component.ts` hoists `LOCATION_SEGMENT_IDS` and `CONTEXT_SEGMENT_IDS` lookup tables to module-level constants, eliminating per-frame object literal allocation in `#gatherQuietSegments`.
@@ -496,14 +495,6 @@
 - The `/providers` account card filters its provider sidebar: `ctrl+s` enters search, typing narrows the list by fuzzy match on provider name and id, the arrows move within the matches, and `esc` leaves search before it closes the card ([#922](https://github.com/santhreal/veyyon/pull/922) by [@Crqptx](https://github.com/Crqptx)).
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -709,14 +700,6 @@
 - `proof/zoom.py` holds a recording on one measured region and eases back out, so a row whose subject is a small block of text survives the downsample from the 2560-wide capture to the published 1920.
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -824,14 +807,6 @@
 ## [1.1.1] - 2026-08-21
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -900,14 +875,6 @@
 - Subagent models can be pinned per spawn depth with `subagent.modelByDepth`, a record of depth to model chain: `"1"` decides what direct children run, `"2"` what grandchildren run, and so on, each value in the same string-or-list chain shape as `subagent.model`. A row outranks `subagent.model` for a spawn at exactly that depth; depths without a row resolve as before (`subagent.model`, then the agent definition's `model:`, then the session's live model), and a row whose chain matches no available model refuses the spawn and names `subagent.modelByDepth.<n>` instead of falling through. Keys that are not positive integers are reported by settings validation at load, naming the entry. Settings → Subagents → Models gains a "Models by Depth" row that edits each depth with the same chain picker as Subagent Model.
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -1080,14 +1047,6 @@
 - `veyyon prompt --tools` prices what the tool definitions cost, which no other view could show. The section and statement tables measure the system prompt and nothing else, yet every active tool also ships a description and a parameter schema on every request: in this repository that is 13,277 tokens against the prompt's 23,403, so the answer to "why does a session start expensive" was the smaller half with nothing saying it was partial, and the largest tool descriptions appeared in no table at all. Each row is priced from the bytes the provider receives - the rendered description and the wire schema - split into those two halves, because a description is prose that can be shortened and a schema shrinks only by dropping parameters. The row set is the tool set the configuration loads, so a tool added later is priced without anyone remembering to list it.
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -1417,14 +1376,6 @@
 ## [1.0.39] - 2026-08-01
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -1541,14 +1492,6 @@
 - `release`: derive commit-history notes + gate the generator on CI.
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -2715,14 +2658,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.35] - 2026-07-24
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -2740,14 +2675,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.33] - 2026-07-24
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -2762,14 +2689,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.32] - 2026-07-24
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -2785,14 +2704,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.31] - 2026-07-24
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -2812,14 +2723,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.29] - 2026-07-24
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -2834,14 +2737,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.28] - 2026-07-24
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -2856,14 +2751,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.27] - 2026-07-24
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -2876,14 +2763,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.26] - 2026-07-24
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -2901,14 +2780,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 - `tui`: accelerate repeated wheel ticks in scroll isolation.
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -2927,14 +2798,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 - `coding-agent`: present only alabaster while the light-theme slab class is unfixed.
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -2947,14 +2810,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.23] - 2026-07-24
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -2972,14 +2827,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 - `coding-agent`: unify the run clock, merge model effort, clickable scroll-to-bottom.
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -2999,14 +2846,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.21] - 2026-07-23
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -3019,14 +2858,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.20] - 2026-07-23
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -3039,14 +2870,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.19] - 2026-07-23
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -3066,14 +2889,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.17] - 2026-07-23
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -3103,14 +2918,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 - `tui`: release the mouse when the frame fits the viewport.
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -3130,14 +2937,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.14] - 2026-07-23
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -3171,14 +2970,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 - `tui`: scroll isolation, wheel scrolls the transcript, footer stays pinned.
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -3332,14 +3123,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 - `session`: relativize wire paths under session roots (TW-10).
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -3597,14 +3380,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.11] - 2026-07-18
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -3617,14 +3392,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.10] - 2026-07-18
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -3639,14 +3406,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.9] - 2026-07-18
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -3660,14 +3419,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.8] - 2026-07-18
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -3694,14 +3445,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.5] - 2026-07-18
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -3715,14 +3458,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.4] - 2026-07-18
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -3735,14 +3470,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.3] - 2026-07-17
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -3755,14 +3482,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 ## [1.0.1] - 2026-07-17
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 
@@ -3780,14 +3499,6 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT,
 - `cli`: did-you-mean near-miss subcommand suggestion (blocks bare typo -> paid prompt).
 
 ### Fixed
-- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
-- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
-- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
-- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
-- Reworded test comments that tripped the no-attribution scanner.
-- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
-- Rebuilt stale handbook book.
-- Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
 

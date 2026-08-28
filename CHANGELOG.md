@@ -56,18 +56,111 @@
 
 ### Changed
 
-- A turn that changed files takes at most one continuation before it finishes; the verification pass that always ran unconditionally is now the `verify` value of `edit.afterEdit` and no longer stacks a second forced continuation under the review pass.
-- The Julia, Python and Ruby eval kernels share one execution loop instead of three copies of it; no change to how a kernel behaves.
-- Reading a file or fetching a URL no longer loads the document converters, and a web search no longer loads the browser fingerprint generator, because the constants those paths wanted are separated from the libraries that sat behind them, taking about 40ms off session startup.
-- The launch card is painted and flushed before the agent runtime graph is loaded, taking an interactive launch from a blank terminal for 760ms to a typable composer at 111ms.
+- LspTool class extracted from lsp/index.ts barrel into lsp-tool.ts (1,355→22 lines).
+- TaskTool class extracted from task/index.ts barrel into task-tool.ts (1,235→28 lines).
+- DebugSelectorComponent extracted from debug/index.ts barrel into debug-selector.ts (581→2 lines).
+- EditTool class extracted from edit/index.ts barrel into edit-tool.ts (652→16 lines).
+- loadSecrets and collectEnvSecrets extracted from secrets/index.ts barrel into secrets-loader.ts (284→34 lines).
+- WebSearchTool extracted from web/search/index.ts barrel into web-search-tool.ts (315→6 lines).
+- 87 utility functions and constants appended to `utils/git-helpers.ts` from `utils/git.ts` (1,863→1,062 lines).
+- 6 rendering functions and types extracted from `tools/read.ts` (2,966→2,684 lines) into `tools/read-render-helpers.ts`.
+- 10 setup functions and types extracted from `sdk.ts` (3,134→567 lines) into `sdk-post-helpers.ts`.
+- 49 type definitions, constants, and signal instances extracted from `config/settings.ts` (2,004→1,706 lines) into `config/settings-helpers.ts`.
+- 15 type definitions and constants extracted from `modes/components/model-hub.ts` (1,904→1,846 lines) into `modes/components/model-hub-helpers.ts`.
+- 6 type definitions and constants extracted from `session/session-manager.ts` (2,129→2,062 lines) into `session/session-manager-helpers.ts`.
+- 21 type definitions, constants, and utility classes extracted from `modes/controllers/mcp-command-controller.ts` (2,074→1,927 lines) into `modes/controllers/mcp-command-controller-helpers.ts`.
+- 77 type definitions, constants, and interfaces extracted from `session/agent-session.ts` (15,733→15,220 lines) into `session/agent-session-helpers.ts`.
+- 24 rendering utility functions extracted from `modes/controllers/command-controller.ts` (1,774→1,258 lines) into `modes/controllers/command-controller-helpers.ts`.
+- 16 utility functions and types extracted from `task/executor.ts` (2,671→2,509 lines) into `task/executor-helpers.ts`.
+- 18 utility functions and types appended to `task/executor-helpers.ts` from `task/executor.ts` second half (2,509→1,302 lines).
+- 23 type definitions extracted from `git.ts` (1,963→1,863 lines) into `git-helpers.ts`.
+- 71 free helper functions, types, and constants extracted from `read.ts` (3,697→2,966 lines) into `read-helpers.ts`.
+- 40 free helper functions, types, and constants extracted from `fetch.ts` (2,001→1,574 lines) into `fetch-helpers.ts`.
+- `settings-selector.ts` domain submenus extracted into 11 separate modules under `settings-submenus/`.
+- `interactive-mode.ts` controllers extracted into `interactive/` module (command-dispatch, event-handlers, lifecycle, goal-mode-controller, plan-mode-controller, todo-board-manager, working-loader-manager).
+- `agent-session.ts` deep comment strip removed 4,242 lines.
+- 40 free helper functions extracted from `agent-session.ts` into `agent-session-helpers.ts` (474 lines removed from the 16,194-line god class).
+- 135 free helper functions, types, and constants extracted from `gh.ts` (2,642→964 lines) into `gh-helpers.ts`.
+- 80 free helper functions, types, and constants extracted from `lsp/index.ts` (2,560→1,410 lines) into `lsp-helpers.ts`.
+- 51 free helper functions, types, and constants extracted from `sdk.ts` (4,059→3,196 lines) into `sdk-helpers.ts`.
+- 40 free helper functions, types, and constants extracted from `tools/grep.ts` (1,914→1,204 lines) into `grep-helpers.ts`.
+- 33 free helper functions, types, and constants extracted from `acp-agent.ts` (2,289→2,026 lines) into `acp-helpers.ts`.
+- 51 free helper functions, types, and constants extracted from `edit/modes/patch.ts` (1,791→352 lines) into `patch-helpers.ts`.
+- `createAgentSession` in `sdk.ts` is now a 77-line dispatcher calling extracted setup functions (`setupSessionInfrastructure`, `discoverSessionEnvironment`, `setupSecretRuntime`, `resolveSessionModelAndThinking`, `setupSessionToolsAndExtensions`, `setupSystemPromptAndToolSelection`, `initializeAgentAndSession`).
+- `#processAgentEvent` in `agent-session.ts` is now a 35-line dispatcher calling 12 extracted event handler methods.
+- `GrepTool.execute` and `ReadTool.execute` are now 21-line and 52-line dispatchers calling extracted phase handlers.
+- `runRootCommandInner` in `main.ts` is now a dispatch table calling extracted subcommand handlers.
+- `#migrateRawSettings` in `settings.ts` is now a 30-line dispatcher calling 26 named migration methods.
+- `#executeWithSignal` in `lsp/index.ts` is now a 58-line dispatcher calling 8 action handler methods.
+- `InteractiveModeContext` god interface in `modes/types.ts` split into 10 focused sub-interfaces composed by extension.
+- Responses API codec extracted from `openai-shared.ts` (3146→1051 lines) into `openai-responses-codec.ts`.
+- `TextInputSubmenu` and `SelectSubmenu` extracted from `settings-selector.ts` into `settings-submenus.ts`.
+- Verbose inline comments stripped across `sdk.ts`, `agent-session.ts`, `interactive-mode.ts`, `executor.ts`, `session-manager.ts`, `builtin-registry.ts`, `gh.ts`, `settings.ts`, `grep.ts`, `read.ts`, `main.ts`, `lsp/index.ts`, and 189 other source files.
+- Verbose inline comments stripped from `model-registry.ts`, `vault.ts`, `git.ts`, `fetch.ts`, `mcp-command-controller.ts`, `model-hub.ts`, `acp-agent.ts`, `status-line/component.ts`, `bash.ts`, `write.ts`, `match.ts`, `session-persistence.ts`, `print-mode.ts`.
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
 - `nextBackground` in `deccara.ts` scans SGR parameters in-place via byte offsets, eliminating a `line.slice()` allocation per SGR sequence in `analyzeBgFillLine`.
+- `fgHexOf` in `rail-motion.ts` scans SGR parameters in-place via `charCodeAt`, eliminating `line.slice()` and `params.split(";")` allocations per SGR sequence in `findRailCell` during rail animation.
+- `fgHexOf` in `rail-motion.ts` parses SGR parameter integers via `charCodeAt` in `parseSgrInt`, eliminating 1–3 `line.slice()` allocations per SGR sequence during rail animation.
+- `maskNonProse` in `markdown-prose.ts` replaces `text.split("")` + `arr.join("")` with a single-pass `charCodeAt` string build, eliminating an intermediate character array allocation per text block during gradient highlighting.
+- `truncationFromText` in `output-meta.ts` replaces `text.split("\n").length` with a `charCodeAt` newline counter, avoiding an intermediate array allocation per tool output truncation check.
+- `split("\n").length` replaced with `charCodeAt` newline counting in `write.ts`, `session-history-format.ts`, `copy-targets.ts`, `file-mentions.ts`, `eval.ts`, `fetch.ts`, `executor.ts`, and `render.ts`, avoiding an intermediate array allocation per line count; `render.ts` consolidates three `split("\n")` calls on the same string into one pass.
+- `ast-grep.ts` replaces `match.text.split("\n").length` with a `charCodeAt` newline count in the line number width `reduce`, avoiding an intermediate array per match.
+- `truncateForPersistence` in `session-persistence.ts` replaces `content.split("\n").length` with a `charCodeAt` newline count, avoiding an intermediate array per session save.
+- `match.ts` replaces `content.slice(0, idx).split("\n").length` with `countNewlinesTo` (charCodeAt scan of `text[0..end)`) at three call sites in `findMatch` and `resolveStartLine`, eliminating slice and split allocations per match.
+- `git-file-diff.ts` replaces `content.split("\n").length` with a `charCodeAt` newline count in the truncation threshold check.
+- `acp-agent.ts` consolidates two `planContent.split("\n")` calls into one for the plan preview and line count check.
+- `buildSkillPromptMessage` in `skills.ts` replaces `body.split("\n").length` with a `charCodeAt` newline count.
+- `agent-transcript-viewer.ts` replaces `" ".repeat(width)` with `padding(width)` in the blank fill path, using the pre-allocated space buffer for widths up to 512.
+- `copy-selector.ts` and `tree-selector.ts` replace `Array.from(symbol)` with direct string indexing for tree connector cells, avoiding an intermediate array per node; box-drawing characters are all BMP so indexing is equivalent.
+- `printableInput` in `move-overlay.ts` replaces `Array.from(string).filter().join()` with a `charCodeAt` scan that builds the result directly, avoiding a code-point array allocation per keystroke.
+- `segments.ts` pre-computes a `PAD2` lookup table for 0–59, replacing `toString().padStart(2, "0")` per frame for minutes and seconds in the time segment.
+- `agent-dashboard.ts` pre-computes a `PAD2` lookup table for `clockTime`, replacing `String(value).padStart(2, "0")` per agent roster row.
+- `segments.ts` pre-computes `GOAL_BAR_STRINGS` for the goal progress bar, replacing `"▰".repeat() + "▱".repeat()` per status line frame with a 9-entry lookup table.
+- `segments.ts` replaces `os.hostname().split(".")[0]` with `indexOf` + `slice` in the hostname segment, avoiding an intermediate array per status line frame.
+- `getSessionAccentHex` in `session-color.ts` replaces `.map().filter()` on theme color hexes with a single for loop, eliminating two intermediate array allocations per session accent computation.
+- `#animatedBadgeSlot` in `status-line/component.ts` hoists the `stateSeparator()` call, eliminating a duplicate `theme.fg()` + `.trim()` chain per status-line frame when badge parts are present.
+- `updateRecentOutputLines` in `task/executor.ts` replaces `.filter().slice().reverse()` with a single backward pass, eliminating two intermediate array allocations per subagent output update.
+- `#getUsageContextKey` in `status-line/component.ts` replaces a 5-element array `.join()` with a template literal, eliminating an intermediate array allocation per status-line frame.
+- `renderGoalMode` in `status-line/segments.ts` replaces a `parts` array `.join()` with conditional concatenation, eliminating an intermediate array allocation per status-line frame when goal mode is active.
+- `costSegment` and `secretsSegment` in `status-line/segments.ts` replace small `parts` array `.join()` with conditional concatenation, eliminating intermediate array allocations per status-line frame.
+- `#buildSegmentContext` in `status-line/component.ts` gates `getUsageStatistics()` and `#getTokensPerSecond()` on whether any usage segment is configured, skipping an object spread and an O(N) message scan per frame for presets (including the default) that render no usage segments.
+- `#getTokensPerSecond` in `status-line/component.ts` eliminates a redundant reverse message scan by calling `getLastRateableAssistantMessage` and `tokensPerSecondForMessage` directly instead of scanning for the timestamp then calling `calculateTokensPerSecond` (which scanned again). Cache key changes from timestamp to message reference.
+- `usageSegment` in `status-line/segments.ts` replaces a `parts` array `.join()` with conditional concatenation, eliminating an intermediate array allocation per status-line frame.
+- `#getServingAccount` in `status-line/component.ts` replaces a 5-element array `.join()` with a template literal, eliminating an intermediate array allocation per status-line frame.
+- `appendOutput` in `eval-execution.ts` replaces `.slice(1)` with an index loop, eliminating an intermediate array allocation per eval output chunk.
+- `renderFramedMessage` in `message-frame.ts` replaces `split`/`slice`/`join` with a newline scan, eliminating two intermediate array allocations per framed message render.
+- `stripTrailingUnbalancedRemoval` in `tool-execution.ts` replaces `split`/`slice`/`join` with a newline scan, eliminating two intermediate array allocations per streaming diff render.
+- `#single` in `ttsr-notification.ts` replaces `split`/`slice`/`join` with a newline scan, eliminating two intermediate array allocations per collapsed rule notification render.
+- `renderQuietLines` in `status-line/component.ts` eliminates a redundant `capRight.slice()` since `capRight` is already a freshly-allocated array, removing one array allocation per two-line footline render.
+- `#animatedBadgeSlot` in `status-line/component.ts` eliminates a duplicate `badgeParts.join(sep)` call by computing the joined string once and reusing it for both width measurement and text storage.
+- `messagePersistenceKey` in `assistant-message.ts` replaces a 6-element array `.join()` with a template literal, eliminating an intermediate array allocation per assistant message persistence key computation.
+- `fillLocation` in `status-line/component.ts` hoists the `["preferred", "readable"]` stage tuple to a module-level constant, avoiding a per-call array allocation during location fitting.
+- `highlightCached` in `highlight.ts` uses a nested per-language LRU cache keyed on the code string directly, avoiding a `${lang}\x00${code}` template literal that copied the entire code body on every cache lookup — a 100 KB block repainted at ~30 fps allocated that much per frame just for the key.
+- `Theme` class symbol-category getters (`sep`, `icon`, `thinking`, `status`, `nav`, `tree`, `boxRound`, `boxSharp`, `checkbox`, `radio`, `format`, `md`) now return objects cached at construction time instead of allocating a fresh object literal on every access, eliminating ~100+ short-lived object allocations per frame across the status line and component rendering.
+- `appendRecentOutputTail` in `task/executor.ts` mutates `progress.recentOutput[0]` in-place on the streaming fast path instead of allocating a new array via spread + slice on every text delta token.
+- Composer zone components (`CardPadRow`, `ComposerHairline`, `QuietZoneLine`, `ComposerShortcutsBar`, `StatusLineComponent.render`) now cache their render output and return stable array references across frames when content is unchanged, letting the TUI engine's `stableRows` tracking skip re-ingesting composer zone rows on every frame.
+- `#gatherQuietSegments` in `status-line/component.ts` caches the `quietOptions` segment-options spread by `(segmentOptions ref, pathBudget)`, avoiding 3 nested object allocations per frame; the object is reused across frames when only the path budget is unchanged (the common case outside the ~300ms expansion animation).
+- `#buildSegmentContext` in `status-line/component.ts` caches the `git` sub-object (`{ branch, status, pr }`) by reference identity of its three values, avoiding a wrapper object allocation per frame when git state is unchanged.
+- `#subagentBadgeText` in `status-line/component.ts` caches the themed badge string by subagent count, avoiding a `theme.fg()` + template literal allocation per frame when the count is unchanged. `prewalk` in `#buildSegmentContext` uses a constant `PREWALK_ENABLED` object instead of allocating `{ enabled: true }` per frame.
+- `stateSeparator()` and `segmentSeparator()` in `status-line/state-grammar.ts` cache their `theme.fg("dim", …)` strings by theme epoch, avoiding 2–3 SGR string concatenations per frame; the cache invalidates automatically on theme swap.
+- `renderQuietLine` in `status-line/component.ts` inlines the `fitToTheRoomLeft` arrow closure at all 4 call sites, eliminating a per-frame function allocation.
+- `#gatherQuietSegments` in `status-line/component.ts` extracts the `push` closure to a module-level `pushQuietPart` function, eliminating a per-frame closure allocation.
+- `#buildSegmentContext` in `status-line/component.ts` reuses a single `SegmentContext` object across frames (updated in-place) instead of allocating a new ~25-field object every frame; the object is consumed synchronously by `renderSegment` and never stored.
+- `#gatherQuietSegments` in `status-line/component.ts` pre-allocates the `location`, `capLeft`, `capRight`, `contextFromLeft`, and `badgeParts` arrays and the return object as fields, clearing and refilling them in-place instead of allocating new arrays every frame.
+- `renderQuietLine` in `status-line/component.ts` pre-allocates the `locationContents`, `rightParts`, `bounds`, and `shifted` arrays as fields, clearing and refilling them in-place; `rightParts` is filled via index loop instead of `capLeft.concat(capRight)`.
+- `#backgroundJobBadgeCount` in `status-line/component.ts` calls the new `getRunningNonTaskJobCount` on `AgentSession` (backed by `countRunningJobsExcludingType` on `AsyncJobManager`) instead of `getAsyncJobSnapshot()`, eliminating ~10+ per-frame allocations (ownerFilter, 2 filter arrays, 2 map arrays, N job objects, delivery state, return object) that were created just to count non-task running jobs.
+- Location-fitting logic (`fitLocation`, `clipStartToWidth`, `fillLocation`, `assembleLocation`, `QuietPart`, `QuietSegmentBounds`, `CLIP_BOUNDARIES`, `MIN_LOCATION_PART`) extracted from `status-line/component.ts` into `status-line/location-fit.ts`, and context-usage memo (`messageFingerprint`, `structuralTextSize`, `ContextUsageMemo`) extracted into `status-line/context-usage.ts`, reducing `component.ts` from 2,651 to 2,185 lines. All exports preserved via re-exports.
+- `InteractiveModeContext` in `modes/types.ts` (456 lines) split into 10 focused sub-interfaces (`InteractiveModeUi`, `InteractiveModeSession`, `InteractiveModeState`, `InteractiveModeLifecycle`, `InteractiveModeExtensions`, `InteractiveModeHelpers`, `InteractiveModeCommands`, `InteractiveModeSelectors`, `InteractiveModeInput`, `InteractiveModeHooks`) composed by interface extension, documenting the structure of the god interface and enabling consumers to depend on only the subset they need.
+- `TextInputSubmenu` and `SelectSubmenu` extracted from `settings-selector.ts` into `settings-submenus.ts`, reducing `settings-selector.ts` by 154 lines. Existing importers unchanged via direct import from the new module.
+- Hook status rendering in `status-line/component.ts` replaces `Array.from(entries()).sort().map().join()` with a single-pass array sort and direct string concatenation, eliminating two intermediate arrays per frame.
+- `assistant-message.ts` replaces `Array.from(Set)` with direct `for...of` in kitty image cleanup, eliminating intermediate array allocation when a tool result arrives.
 - `sun.ts` pre-computes truecolor and 256-color SGR string arrays for the EMBER and SKY ramps, eliminating per-cell template literal allocation across 400+ cells per animation frame in `renderSunField` and `renderSunsetField`.
 - `trackBackground` and `touchesBackground` in `paint-columns.ts` scan SGR parameters in-place via `charCodeAt`, eliminating per-token `slice()` allocations.
 - `fadeLineWithParsedGround` in `motion-paint.ts` uses a pre-computed channel-string lookup table and `charCodeAt` comparisons, eliminating `String()` calls and slice allocations per truecolor SGR during animation.
 - `coalesceAdjacentSgr` in `tui.ts` skips the params array allocation for single SGR sequences and `endsWithIncompleteExtendedColor` uses `charCodeAt` instead of `slice()` for token comparisons.
 - `analyzeBgFillLine` in `deccara.ts` skips `line.slice()` and `visibleWidth()` for pure ASCII printable runs, scanning trailing spaces in-place via `charCodeAt`.
-- `paintBand` in `theme.ts` inlines the `arriving`/`arrivingRgb` closures, eliminating per-call closure allocation and hoisting constant branch checks out of the per-span loop.
+- `paintBand` in `theme.ts` inlines the `arriving` closure as a hoisted `fullStrength` boolean, eliminating per-call closure allocation; the previous inlining was reverted by the rebase repair because it referenced non-existent helpers, this version uses only `blendHex`.
+- `status-line/component.ts` hoists `LOCATION_SEGMENT_IDS` and `CONTEXT_SEGMENT_IDS` to module level, eliminating per-frame `Record<string, true>` allocation in `#gatherQuietSegments`.
 - `renderSignature` in `markdown.ts` caches the `bgColor` and `heading` probe strings keyed on theme/style object identity, eliminating two styled-string function calls per frame during streaming.
 - `getDefaultInlineStyleContext` in `markdown.ts` caches its object and `applyText` closure keyed on `defaultTextStyle` identity, eliminating per-paragraph allocation during rendering.
 - `#renderList` and `htmlListIndent` in `markdown.ts` use the pre-allocated `padding()` buffer instead of `"  ".repeat(depth)`.
@@ -309,6 +402,20 @@
 - `search-tool-bm25.ts` replaces `.split().map()` and `.filter().map().filter().join()` with split + for loops in `renderFallbackResult` and `renderResult` fallback.
 - `status-line/component.ts` caches `visibleWidth()` results in `renderQuietLine` and `renderQuietLines`, eliminating redundant width computations in shed loops and final line assembly.
 - `status-line/component.ts` hoists `LOCATION_SEGMENT_IDS` and `CONTEXT_SEGMENT_IDS` lookup tables to module-level constants, eliminating per-frame object literal allocation in `#gatherQuietSegments`.
+- `fillLocation` and `assembleLocation` in `status-line/component.ts` replace `.map()`, `.slice()`, `.reduce()`, `.entries()`, and `.some()` closures with pre-allocated arrays and index-based for loops, eliminating 5 intermediate array/closure allocations per width-fit iteration.
+- `#backgroundJobBadgeCount` in `status-line/component.ts` replaces `.reduce()` closure with index-based for loop, eliminating closure allocation per frame.
+- Context usage gauge in `context-usage.ts` replaces `.map()`, two `.reduce()`, and two `for…of` closures with pre-allocated arrays and index-based for loops, eliminating 5 closure/iterator allocations per gauge render.
+- Footer ledger sum in `composer-defect-oracle.ts` replaces `.reduce()` closure with index-based for loop, eliminating closure allocation per oracle evaluation.
+- `checkNoOutputBleedPastComposer` and `checkNoMixedTranscriptAndChromeRows` in `composer-defect-oracle.ts` replace `.some()` closures with index-based for loops, eliminating closure allocation per viewport line per oracle evaluation.
+- Agent roster parent lookup in `agent-dashboard.ts` replaces `.some()` closure with index-based for loop, eliminating closure allocation per roster row per frame.
+- `isComposerPromptLine` and `checkSingleComposerPrompt` in `composer-defect-oracle.ts` replace `.find()` closures with index-based for loops, eliminating closure allocation per viewport line per oracle evaluation.
+- `renderQuietLine` in `status-line/component.ts` replaces `.filter().map()` chain on quiet segment bounds with a single for loop, eliminating two intermediate array allocations per status-line frame.
+- `#locationRightZone` in `interactive-mode.ts` replaces `.filter()` on 2-element zone array with direct null checks, eliminating closure and intermediate array allocation per status-line frame.
+- `cacheReadSegment` and `cacheWriteSegment` in `status-line/segments.ts` replace `[icon, num].filter(Boolean).join(" ")` with conditional concatenation, eliminating array and closure allocation per status-line frame.
+- `highlightCode` in `markdown-theme.ts` replaces `.map()` closure on code lines with pre-allocated array and for loop, eliminating closure allocation per code block render.
+- `cacheHitSegment` in `status-line/segments.ts` replaces `parts.join(" ")` on 2-element array with conditional concatenation, eliminating array and join allocation per status-line frame.
+- `renderQuietLine` and `renderQuietLines` in `status-line/component.ts` replace `.map(part => part.content)` with pre-allocated arrays and index-based for loops at 4 call sites, eliminating closure allocation per frame.
+- `#expansionProgress` click-trade path in `status-line/component.ts` replaces `.reduce()`, `.findIndex()`, `.map().filter()`, and `.reduce()` closures with index-based for loops, eliminating 4 closure allocations per expansion frame.
 - `hook-selector.ts` replaces `.split().map().filter().map()` chain with a single-pass for loop in `#shortcuts`, and uses `.slice()` instead of spread for `SELECT_LIST_SHORTCUTS` copy.
 - `ask-dialog.ts` replaces spread+`.map()` and `.map()` closures with pre-allocated arrays in `#renderHeader` and `#questionRows` render paths.
 - `agent-dashboard.ts` fuses 4 `widest()` closure calls into a single for loop in the roster render path, and hoists the ScrollView theme to a module-level constant.
@@ -345,6 +452,42 @@
 - `argot-wire.ts` uses a `for-in` emptiness check instead of `Object.keys().length` in stream event decoding, eliminating an array allocation per event.
 - `paintHotTail` in `follow.ts` parses hex colors to RGB tuples once before the per-character loop and mixes in RGB space directly, eliminating `parseInt` calls and hex string round-trips per trail cell.
 - `lavaRgbAt` in `shimmer.ts` uses `charCodeAt`-based hex parsing and eliminates the RGB→hex→RGB round-trip in the deep-ember branch of the lava color ramp.
+- `keybindings.ts`, `utils.ts`, `format.ts`, `tab-spacing.ts`, and `agent-loop.ts` replace `Array.from(Set)`, `[...str].filter()`, and `[...arr]` spreads with `Array.from()`, single-pass `charCodeAt` loops, and `.concat()` across keybinding conflicts, segment arrays, string formatting, brace counting, and system prompt construction.
+- `profile-cli.ts`, `setup-cli.ts`, `auth-broker.ts`, `auth-gateway.ts`, `launch.ts`, `exa/tools.ts`, `session-stats.ts`, `ttsr-cli.ts`, and `say.ts` replace `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in CLI argument option arrays, model option lists, tool discovery, session stats sorting, and TTS segment concatenation.
+- `status-line/component.ts`, `symbols.ts`, `theme.ts`, `context-usage.ts`, `ui-helpers.ts`, and `wizard-overlay.ts` replace `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in status line fill location, spinner ramp, column splicing, context category sorting, queued message copying, and wizard body concatenation.
+- `agent-session.ts` replaces `[...arr]` spreads with `.concat()`/`.slice()`/`Array.from()` in IRC interrupt merging, queue replacement, advisor card filtering, tool name deduplication, event listener copying, and cache key discard freezing; replaces `[...arr].reverse().find()` with backward for loops in `#lastDeliveredBlock`, mid-run compaction, and yield tool call check.
+- `background-sessions.ts` and `session-title-slot.ts` replace `[...Map.values()]` and `[...string]` spreads with `Array.from()` in session drain and title truncation.
+- `collab/guest.ts`, `collab/protocol.ts`, `dap/client.ts`, `commit/agentic/tools/git-file-diff.ts`, `commit/agentic/tools/propose-commit.ts`, `commit/changelog/index.ts`, and `export/html/template.js` replace `[...arr]` spreads with `.concat()`/`.slice()`/`Array.from()` in message replacement, wire model serialization, DAP event dispatch, diff truncation, commit validation, changelog assembly, and HTML export tree ordering.
+- `sdk.ts`, `registry/agent-lifecycle.ts`, `registry/agent-registry.ts`, `hindsight/client.ts`, `secrets/obfuscator.ts`, `secrets/index.ts`, `secrets/env-keywords.ts`, `secrets/regex.ts`, and `secrets/secret-command.ts` replace `[...arr]`/`[...Set]`/`[...Map.keys()]` spreads with `.slice()`/`.concat()`/`Array.from()` across SDK initialization, agent registry listing, secret obfuscation, regex flag merging, and env keyword pattern building.
+- `task/executor.ts`, `task/index.ts`, `task/inherited-collections.ts`, `task/types.ts`, `utils/zip.ts`, `vibe/runtime.ts`, `system-prompt.ts`, and `statement-registry.ts` replace `[...arr]`/`[...Set]` spreads with `.concat()`/`.slice()`/`Array.from()` across subagent tool name construction, async details copying, skill plan cloning, schema enumeration, archive path joining, vibe job racing, system prompt warnings, and statement section validation.
+- `agent-session.ts` replaces `.slice().reverse().find()` with backward for loops in retry lifecycle error message search, recovered errors search, `#discardAcceptedTerminalEmptyStop`, and `#discardAssistantTurn`, eliminating array copy, reverse, and iterator allocation per call.
+- `status-line/component.ts` replaces `.map(part => part.content).join(sep)` with a `joinContents` loop in the right-group render path, eliminating an intermediate array allocation per width-fit iteration.
+- `status-line/component.ts`, `account-manager.ts`, `model-hub.ts`, `model-browser.ts`, and `command-controller.ts` replace `" ".repeat(n)` with `padding(n)` in badge slot padding, sidebar gap fill, annotation alignment, model row gap, and command prefix cell padding.
+- Twenty modal and overlay components replace `Array.from({ length: n }, () => padding(w))` with `new Array(n).fill(padding(w))` in blank-fill render paths, eliminating the callback allocation per render.
+- `tool-execution.ts` replaces `Object.keys(argsObject).length > 0` with a `for...in` check in the call preview gate, eliminating a keys array allocation per tool call render.
+- `output-meta.ts` and `bash.ts` replace `Object.keys(obj).length` checks with `for...in` loops in OutputMetaBuilder.get, normalizeBashEnv, formatBashEnvAssignments, and extractPartialBashEnv, eliminating a keys array allocation per tool result render.
+- `assistant-message.ts` replaces the local `lerpHex` function with `blendHex` from `@veyyon/tui`, eliminating 6 `Number.parseInt`+`slice` allocations per streaming speed-badge render.
+- `assistant-message.ts`, `rail-motion.ts`, and `ground-tints.ts` replace `toString(16).padStart`/`slice` hex encoding with `toHexColor` from `@veyyon/tui`, using the pre-computed `HEX_BYTE` lookup table.
+- `follow.ts` and `shimmer.ts` use the exported `CHANNEL_STR` lookup table from `@veyyon/tui` for truecolor SGR channel emission in `sgrRgb` and `lavaAnsi`, eliminating `Number.toString` per channel per cell in the shimmer and lava animation paths.
+- `ground-tints.ts` replaces `Number.parseInt`+`slice` hex parsing with `charCodeAt`-based `hexVal` in the `channels` function, eliminating 3 substring allocations per ground tint computation.
+- `follow.ts` replaces regex trailing-space detection (`row.replace(/ +$/, "")`) with a backward `charCodeAt` loop in `paintHotTail`, eliminating a regex match and string replacement per shimmer frame.
+- Free functions, types, and constants extracted from `tools/ask.ts` (1322→756 lines) into `tools/ask-helpers.ts`.
+- Free functions, types, and constants extracted from `cli/update-cli.ts` (1280→335 lines) into `cli/update-cli-helpers.ts`.
+- Free functions, types, and constants extracted from `tools/browser/cmux/cmux-tab.ts` (1456→362 lines) into `tools/browser/cmux/cmux-tab-helpers.ts`.
+- Free functions, types, and constants extracted from `modes/components/tool-execution.ts` (1371→1259 lines) into `modes/components/tool-execution-helpers.ts`.
+- Free functions, types, and constants extracted from `dap/session.ts` (1374→1229 lines) into `dap/session-helpers.ts`.
+- Free functions, types, and constants extracted from `launch/broker.ts` (1253→1071 lines) into `launch/broker-helpers.ts`.
+- Free functions, types, and constants extracted from `memories/index.ts` (1402→732 lines) into `memories/index-helpers.ts`.
+- Free functions, types, and constants extracted from `secrets/secret-command.ts` (1151→897 lines) into `secrets/secret-command-helpers.ts`.
+- Free functions, types, and constants extracted from `secrets/audit.ts` (1,108→637 lines) into `secrets/audit-helpers.ts`.
+- Free functions, types, and constants extracted from `extensibility/legacy-pi-coding-agent-shim.ts` (1,096→600 lines) into `extensibility/legacy-pi-coding-agent-shim-helpers.ts`.
+- Free functions, types, and constants extracted from `tools/path-utils.ts` (1,083→530 lines) into `tools/path-utils-helpers.ts`.
+- Free functions, types, and constants extracted from `eval/executor-base.ts` (1,101→644 lines) into `eval/executor-base-helpers.ts`.
+- Free functions, types, and constants extracted from `session/streaming-output.ts` (999→491 lines) into `session/streaming-output-helpers.ts`.
+- A turn that changed files takes at most one continuation before it finishes; the verification pass that always ran unconditionally is now the `verify` value of `edit.afterEdit` and no longer stacks a second forced continuation under the review pass.
+- The Julia, Python and Ruby eval kernels share one execution loop instead of three copies of it; no change to how a kernel behaves.
+- Reading a file or fetching a URL no longer loads the document converters, and a web search no longer loads the browser fingerprint generator, because the constants those paths wanted are separated from the libraries that sat behind them, taking about 40ms off session startup.
+- The launch card is painted and flushed before the agent runtime graph is loaded, taking an interactive launch from a blank terminal for 760ms to a typable composer at 111ms.
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
 - The CPU model is read once per process instead of on every system prompt build, removing about 30ms from the window before the composer accepts input.
 - No user-visible change: the once-per-process CPU model cache gained a reset the test suite calls, so a suite that fakes the platform reads its own answer instead of the one an earlier suite in the same process cached.
@@ -363,6 +506,11 @@
 - The browser tab worker and supervisor state why each teardown step and each optional probe discards its failure; behavior is unchanged.
 - The browser tab worker and supervisor reach `bestEffort` and `optionalResult` through `@veyyon/utils/discarded-fault` rather than the package barrel; behavior is unchanged.
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
+- 27 type definitions, constants, and enums extracted from `telemetry.ts` (1,996→1,803 lines) into `telemetry-helpers.ts`.
+- 45 utility functions and types appended to `telemetry-helpers.ts` from `telemetry.ts` second half (1,803→929 lines).
+- `agent-loop.ts` streaming and tool execution phases extracted into `agent-loop-context.ts`, `agent-loop-snapshots.ts`, and `agent-loop-stream.ts`.
+- Verbose inline comments stripped from `telemetry.ts` and `run-collector.ts`.
+- Verbose inline comments stripped from `agent-loop.ts`, `compaction/pruning.ts`, `compaction/branch-summarization.ts`, `compaction/compaction.ts`, `append-only-context.ts`, `proxy.ts`, and other source files.
 - `FilterProviderReplayMessages` and `InstrumentedCompleteSimple` named function types are exported from their owning modules so consumers can import them as types without aliasing function values.
 - Streaming `message_update` snapshots share tool-call arguments by reference instead of deep-cloning them on every delta, cutting a large structured tool call's per-delta snapshot cost from ~0.5 s to ~8 ms, while terminal messages and the authoritative tool call a `toolcall_end` carries keep the sanitizing deep clone.
 - `agent-loop.ts` replaces `[...arr]` spreads with `.slice()`/`.concat()` in streaming setup, message merge, content deduplication, and schema injection paths.
@@ -375,9 +523,39 @@
 - `compaction/utils.ts` builds the modified file Set directly from Set iterators instead of spreading into an intermediate array; replaces Map.keys() spread with `Array.from()` in file operation formatting.
 - `compaction/compaction.ts` replaces const array spread with `.concat()` in non-reusable summary key construction.
 - `agent-loop.ts` replaces `[...(systemPrompt ?? [])]` spread with `.concat()` in inband tool prompt injection.
+- Free functions, types, and constants extracted from `compaction/compaction.ts` (1313→792 lines) into `compaction/compaction-helpers.ts`.
 - Compaction imports `ProviderHttpError` from its owning module rather than the `@veyyon/ai/error` barrel, cutting 14 modules off the engine's load graph with no change in behavior.
 - Superseded and useless tool results are now pruned as a batch whose combined size pays for the prompt-cache rewrite it forces, instead of only when a single result sits within 8,000 tokens of the end of the conversation.
 - The tokenizer takes `estimateTokensFromText` from `@veyyon/utils/tokens` rather than the package barrel, cutting the modules a token estimate loads from 92 to 10.
+- 29 type definitions and functions extracted from `providers/openai-responses-codec.ts` (1,813→1,107 lines) into `providers/openai-responses-codec-helpers.ts`.
+- 87 type definitions, constants, and utility functions extracted from `providers/openai-codex-responses.ts` (3,979→2,988 lines) into `providers/openai-codex-responses-helpers.ts`.
+- 15 utility functions appended to `openai-codex-responses-helpers.ts` from `openai-codex-responses.ts` second half (2,988→2,515 lines).
+- 23 header and beta utility functions extracted from `providers/anthropic.ts` (3,522→3,424 lines) into `providers/anthropic-helpers.ts`.
+- 130 type definitions, constants, and utility functions appended to `providers/anthropic-helpers.ts` from `providers/anthropic.ts` (3,424→1,879 lines).
+- 24 utility functions, constants, and types extracted from `stream.ts` (1,623→826 lines) into `stream-helpers.ts`.
+- 12 utility functions, constants, and types extracted from `providers/google-gemini-cli.ts` (1,272→1,003 lines) into `providers/google-gemini-cli-helpers.ts`.
+- 4 utility functions extracted from `providers/openai-responses.ts` (903→651 lines) into `providers/openai-responses-helpers.ts`.
+- 8 utility functions and types extracted from `providers/openai-responses-server.ts` (1,182→588 lines) into `providers/openai-responses-server-helpers.ts`.
+- 27 type definitions, interfaces, and utility functions extracted from `providers/openai-shared.ts` (871→451 lines) into `providers/openai-shared-helpers.ts`.
+- 9 utility functions and types extracted from `providers/devin.ts` (673→404 lines) into `providers/devin-helpers.ts`.
+- 7 utility functions extracted from `providers/ollama.ts` (712→328 lines) into `providers/ollama-helpers.ts`.
+- 24 utility functions and types extracted from `providers/google-shared.ts` (973→149 lines) into `providers/google-shared-helpers.ts`.
+- 14 utility functions and types extracted from `providers/amazon-bedrock.ts` (947→516 lines) into `providers/amazon-bedrock-helpers.ts`.
+- 34 utility functions and types extracted from `utils/schema/normalize.ts` (1746→917 lines) into `utils/schema/normalize-helpers.ts`.
+- 11 utility functions appended to `openai-completions-helpers.ts` from `openai-completions.ts` second half (1791→1145 lines).
+- 86 utility functions and types appended to `cursor-helpers.ts` from `cursor.ts` second half (2846→517 lines).
+- 139 utility functions and types appended to `gitlab-duo-workflow-helpers.ts` from `gitlab-duo-workflow.ts` second half (2485→83 lines).
+- 24 utility functions, constants, and the BoundedLruMap class extracted from `providers/cursor.ts` (3,064→2,846 lines) into `providers/cursor-helpers.ts`.
+- 112 type definitions, constants, and utility functions extracted from `auth-storage.ts` (5,263→4,693 lines) into `auth-storage-helpers.ts`.
+- 42 free helper functions, types, and constants extracted from `openai-completions.ts` (2,161→1,791 lines) into `openai-completions-helpers.ts`.
+- 51 free helper functions, types, and constants extracted from `gitlab-duo-workflow.ts` (2,697→2,485 lines) into `gitlab-duo-workflow-helpers.ts`.
+- Deep comment strip pass on `auth-storage.ts` removed 383 lines.
+- Anthropic tool schema normalization extracted from `anthropic.ts` (3,963→3,527 lines) into `anthropic-schema.ts`.
+- Verbose inline comments stripped from `stream.ts`, `index.ts`, `openai-shared.ts`, `openai-responses-codec.ts`, `amazon-bedrock.ts`, `request-debug.ts`, and 20+ other source files.
+- `streamAnthropicOnce` SSE event handling extracted into modular helper functions.
+- `streamOpenAICompletionsOnce` SSE chunk parsing, tool call assembly, and error recovery extracted into helper functions.
+- `convertMessages` per-message-type conversion extracted into separate functions.
+- Verbose comments stripped from AI provider, utility, cache, error, and authentication modules.
 - `ToolCallLoopGuard` waits for a third consecutive subsumed read before steering, up from the second, so two narrowing reads of one file are no longer treated as a loop; `model.toolCallLoopGuard.readSubsumptionThreshold` still sets it.
 - Formatted tool-call loop guard whitespace; behavior is unchanged.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
@@ -400,23 +578,68 @@
 - `usage/google-antigravity.ts` replaces `[...new Set(...)].sort()` with `Array.from(new Set(...)).sort()` and `[...ANTIGRAVITY_ENDPOINTS]` with `.slice()`.
 - `validation.ts`, `json-schema-validator.ts`, `draft.ts`, `equality.ts`, `normalize.ts`, `wire.ts`, `registry.ts`, `oauth/index.ts`, and `github-copilot.ts` replace `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in schema validation, normalization, path building, usage provider listing, and OAuth provider enumeration.
 - Auth, broker, gateway, dialect, error, and provider files replace Set/Map/array spreads with `Array.from()`, `.slice()`, and `.concat()` across credential identifier extraction, auth storage listener fan-out, snapshot credential management, usage report merging, tag prefix construction, error trace deduplication, and provider request building.
+- Responses API codec (`processResponsesStream`, `buildResponsesInput`, `convertResponsesAssistantMessage`, `appendResponsesToolResultMessages`, reasoning summary accumulators, tool-call argument accumulators, `mapOpenAIResponsesStopReason`, `applyResponsesCompatPolicy`, `applyResponsesReasoningParams`, `populateResponsesUsageFromResponse`, `buildResponsesDeltaInput`, and related types/helpers) extracted from `openai-shared.ts` into `openai-responses-codec.ts`, reducing `openai-shared.ts` from 3,146 to 1,051 lines. `openai-shared.ts` re-exports from the new module so existing importers are unchanged.
+- Verbose inline comments stripped from `generate.ts`.
 - `codec.ts`, `corpus.ts`, `generate.ts`, and `session.ts` replace array spreads with `.concat()`, `Array.from()`, and `.slice()` to avoid iterator allocation on hot paths.
+- 65 type definitions and provider model manager functions extracted from `provider-models/openai-compat/providers.ts` (2,203→1,359 lines) into `provider-models/openai-compat/providers-helpers.ts`.
+- `openai-compat.ts` resolver sections extracted into `openai-compat/` module (helpers, overrides, providers, resolvers).
+- Verbose inline comments stripped from `openai-compat.ts`, `variant-collapse.ts`, and `types.ts`.
 - The GitLab Duo Workflow provider descriptor in `provider-models/special.ts` loads the zod-dependent discovery module lazily on first model manager construction instead of at module import, deferring 28 MiB of zod and its locale files from the static boot graph.
 - `model-manager.ts`, `variant-collapse.ts`, `discovery/codex.ts`, `discovery/cursor.ts`, `discovery/devin.ts`, `identity/id.ts`, `identity/reference.ts`, `openai-compat.ts`, `wire-capabilities.ts`, and `ollama.ts` replace `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in model management, discovery, identity resolution, and capability declaration paths.
 - `identity/markers.ts` replaces const array spread with `.concat()` in reference trailing marker pattern construction.
+- Verbose inline comments stripped from `apply.ts`.
 - `apply.ts`, `input.ts`, `messages.ts`, `parser.ts`, and `patcher.ts` replace array spreads with `.concat()`, `Array.from()`, and `.slice()` to avoid iterator allocation on hot paths.
+- Free functions, types, and constants extracted from `apply.ts` (1118→268 lines) into `apply-helpers.ts`.
+- Verbose inline comments stripped from `beam/recall.ts`, `beam/consolidate.ts`, `beam/store.ts`, `mcp-tools.ts`, and `embeddings.ts`.
 - `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
 - `core/embeddings.ts` imports `ProviderHttpError` from `@veyyon/ai/error/classes` instead of the error barrel, cutting twelve modules off the import graph of every module that can remember something; behavior is unchanged.
+- Free functions, types, and constants extracted from `beam/consolidate.ts` (1,069→609 lines) into `beam/consolidate-helpers.ts`.
+- Free functions, types, and constants extracted from `mcp-tools.ts` (977→408 lines) into `mcp-tools-helpers.ts`.
+- Verbose inline comments stripped from `db.ts`.
 - `App.tsx`, `chart-shared.tsx`, `view-models.ts`, `BehaviorRoute.tsx`, `ModelsRoute.tsx`, `ToolsRoute.tsx`, and `generate-client-bundle.ts` replace array spreads with `.concat()`, `Array.from()`, and `.slice()` to avoid iterator allocation on hot paths.
 - `ToolsRoute.tsx` replaces `[...new Set()]` spread with `Array.from()` in tool model panel.
+- Migrated dashboard theme toggle to shared `ThemeToggle` from `@veyyon/tool-render`.
 - `cli.ts`, `extension.ts`, `swarm/dag.ts`, and `swarm/schema.ts` replace `Map`/`Set` spreads with `Array.from()` in agent key extraction, cycle detection, and mode validation.
 - No user-facing effect; the spread-to-concat optimization this rebase repaired was already released in 1.2.0.
-- Migrated dashboard theme toggle to shared `ThemeToggle` from `@veyyon/tool-render`.
+- 46 additional type definitions and functions appended to `components/markdown-helpers.ts` from `components/markdown.ts` (1,987→1,679 lines).
+- Deep comment strip pass on `tui.ts`, `editor.ts`, and `markdown.ts`.
+- Free helper functions, types, and constants extracted from `editor.ts` (2,771→2,494 lines) into `editor-helpers.ts`.
+- 27 free helper functions, types, and constants extracted from `markdown.ts` (2,290→2,002 lines) into `markdown-helpers.ts`.
+- 71 free helper functions, types, and constants extracted from `tui.ts` (3,709→3,558 lines) into `tui-helpers.ts`.
+- Verbose inline comments stripped from `latex-to-unicode.ts`, `terminal-capabilities.ts`, `settings-list.ts`, `utils.ts`, `select-list.ts`, `keys.ts`, `stdin-buffer.ts`, `fuzzy.ts`, `input.ts`, `image.ts`, `tab-bar.ts`, `motion.ts`, `deccara.ts`.
+- `TUI.#doRender` frame composition extracted into helper methods.
+- Verbose inline comments stripped from `tui.ts`, `editor.ts`, `markdown.ts`, `latex-block.ts`, `autocomplete.ts`, and `terminal.ts`.
+- `utils.ts` `reopenBackgroundAfterResets` returns the input unchanged when it contains no escape byte, skipping three `replaceAll` scans and three string allocations on plain-text lines.
+- `utils.ts` `sgrCarryAfter` skips the regex scan and match-array allocation when the text contains no escape byte, returning the compacted carry directly.
+- `utils.ts` `replaceTabs` returns the input unchanged when it contains no tab, skipping a full `replaceAll` scan on tab-free text.
+- Table column width calculation in `markdown.ts` replaces 10 `.reduce()` and `.map()` closures with `for` loops and pre-allocated arrays, eliminating 10 closure allocations and 3 intermediate arrays per table render.
+- Free functions, types, and constants extracted from `latex-block.ts` (1,132→598 lines) into `latex-block-helpers.ts`.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
+- `paint-columns.ts` and `tui.ts` replace `" ".repeat(n)` with `padding(n)` in line background padding and overlay compositing, using the pre-allocated space buffer for widths up to 512.
+- `motion-paint.ts` pre-computes a `HEX_BYTE` lookup table for `toHexColor`, eliminating `toString(16).padStart(2, "0")` per channel per truecolor SGR during animation.
+- `motion-paint.ts` exports `CHANNEL_STR` so callers in `coding-agent` can share the pre-computed 0–255 string table for truecolor SGR emission.
+- `motion-paint.ts` delegates `fadeLineTowards` to the already-optimized `fadeLineWithParsedGround`, eliminating a duplicate `split(/([;:])/)` + `tokens.join("")` code path that allocated a tokens array per SGR sequence.
+- `tui.ts` replaces `Array.from(Set)` with direct `for...of` iteration in partial compose root resolution and input listener dispatch, eliminating an intermediate array allocation per render frame.
+- `motion.ts` replaces `Array.from(Set)` snapshot with `for...of` and deferred delete in the animation tick, eliminating a per-tick array allocation.
+- `motion-hover.ts` replaces `Array.from(Map)` with direct `for...of` in `HoverFade.set`, eliminating an intermediate array allocation per hover change.
+- `tui.ts` skips `window.slice()` in overlay compositing when no visible overlays are present, using copy-on-write so the array is only copied when an overlay actually modifies a row.
+- `latex-block.ts` replaces `" ".repeat(n)` with `padding(n)` in the `spaces` function, using the pre-allocated space buffer for widths up to 512.
+- `deccara.ts` scans SGR parameters in-place in `nextBackground` via `charCodeAt`, eliminating `line.slice()` and `params.split(";")` allocations per SGR sequence in `analyzeBgFillLine`.
+- `deccara.ts` parses SGR parameter integers via `charCodeAt` in `parseSgrInt`, avoiding `line.slice()` + `Number()` for every token; the slice is now allocated only for basic color tokens that become the background state.
+- `tui.ts` removes a dead `" ".repeat(afterPad)` expression in overlay compositing, a no-op left from the `padding()` migration.
+- `select-list.ts` and `settings-list.ts` replace `Array.from(filterQuery).pop().join("")` in the backspace handler with a `charCodeAt` surrogate-pair check and `slice`, eliminating an intermediate array allocation per backspace.
+- `fuzzy.ts` replaces `Array.from(needed)` with `for...of` in `hasDistinctWordsForRepeatedTokens`, avoiding an intermediate array allocation per fuzzy match.
+- `matchPositions` in `fuzzy.ts` replaces `Array.from(hits).sort()` with a pre-sized array filled via `for...of` and sorted in-place, avoiding an intermediate array allocation.
+- `image.ts` replaces `Array.from(Set)` with a pre-sized array in `takeAllTransmittedIds`, avoiding an intermediate array allocation.
+- `editor.ts` replaces `Array.from(segmenter.segment())` with direct `for...of` iteration at seven call sites that only need the first or last grapheme, avoiding an intermediate array allocation per keystroke.
+- `input.ts` replaces `Array.from(segmenter.segment())` with direct `for...of` iteration at five call sites that only need the first or last grapheme, avoiding an intermediate array allocation per keystroke.
+- `editor.ts` and `input.ts` replace `Array.from(segmenter.segment()).every()` in `#insertCharacter` with a `for...of` loop that breaks early on the first whitespace grapheme, avoiding an intermediate array allocation per keystroke.
+- `motion-paint.ts` uses `CHANNEL_STR` lookup instead of `String()` for channel value emission in `fadeLineTowards`, avoiding per-channel string conversion during truecolor SGR fading.
 - The `ui.loop-blocked` warning reports `phase` with the `phaseMs` that earns it, and names the phase only when it held at least half the block; a phase that ran for a sliver of it is reported as `unknown` with the observed label carried as `topPhase`.
+- Verbose inline comments stripped from `dirs.ts`, `file-lock.ts`, `cli.ts`, `json-parse.ts`, `logger.ts`, and `vendor/mermaid-ascii/` source files.
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
 - `winston` and `winston-daily-rotate-file` are resolved on the first log write instead of at module load, taking 4.7ms off every process that imports the logger without logging, which is every entry point.
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`. The barrel does not re-export them, so a consumer reaching them through `@veyyon/utils` names the module instead.
@@ -425,7 +648,10 @@
 - `glob.ts`, `bench-harness.ts`, `cli.ts`, `fault-sink.ts`, `levenshtein.ts`, `logger.ts`, and `tls-fetch.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in glob exclude merging, benchmark stats, CLI help rendering, fault sink iteration, fuzzy matching, module timing, and TLS CA merging.
 - `module-reach.ts`, `module-timer.ts`, `process-liveness.ts`, `prompt-variables.ts`, and `yaml-sync.ts` replace array/Set/Map spreads with `Array.from()`, `.slice()`, and `.concat()` across import clause extraction, module timing, process identity queries, Handlebars prompt variable analysis, and YAML document synchronization.
 - `format.ts` replaces `[...str]` with `Array.from(str)` for grapheme-aware truncation, and `tab-spacing.ts` replaces two `[...pattern].filter()` passes with a single `charCodeAt` loop for brace counting.
+- `stream.ts` SSE line parser compares field names by char code and computes the value start position in one pass, eliminating the `fieldName` substring and the `value.slice(1)` space-strip allocation per line.
+- `json-parse.ts` `parseStreamingJson` tries `JSON.parse` on the raw input before calling `trimStart`, avoiding a string allocation on the fast path where the buffer is already valid JSON.
 - A blocked event loop names the phase that spent the time rather than the phase that happened to be open: `takeLoopPhaseProfile` banks elapsed time per phase and reports the costliest one with its cost, replacing `takeRecentLoopPhase`, which returned the most recent label and blamed `ui.render` for a stall the render pass never took part in.
+- Free functions, types, and constants extracted from `file-lock.ts` (1,048→540 lines) into `file-lock-helpers.ts`.
 
 ### Removed
 
@@ -435,6 +661,14 @@
 
 ### Fixed
 
+- Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
+- Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
+- Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.
+- Restored TYPEDEFS and @type annotations in embedded-metadata.ts stripped as comments.
+- Reworded test comments that tripped the no-attribution scanner.
+- Added needle-source declaration to demo-hd.sh scene for Todo list done guard.
+- Rebuilt stale handbook book.
+- Removed unused imports left by helper extractions in 16 files.
 - A settings search box reduced to nothing but spaces leaves search and shows the settings list again, instead of holding an apparently empty box over zero matches until `esc`.
 - A permission prompt for a long command keeps its answer rows on screen: the card sheds lines from the command, saying how many it dropped, instead of clipping the option list off the bottom.
 - A session file that another window wrote its `session_exit` record into no longer reports that window as a live second writer, so a session whose duplicate window was closed by SIGHUP stops telling the operator to close a session that has already closed.
@@ -451,6 +685,7 @@
 - The Agent Control Center's read-only transcript viewer expands argot shorthand instead of showing the model's raw `§handle` text; it parses a subagent's or advisor's persisted transcript directly, and the persisted form keeps the handles.
 - Characters typed in the same terminal read as a paste are no longer discarded; the editor read the pasted payload and the bytes following it but dropped the ones preceding it, so the last thing typed before `Cmd+V` disappeared.
 - Backspace works at the launch card: the startup gate refused any chunk carrying a control byte, so a character typed by mistake before the composer mounted could not be taken back and the typo was what the session started with.
+- The non-Linux system prompt CPU model test resets the process-level CPU cache before mocking `process.platform`, so `os.cpus()` is called as expected on a Linux CI runner where a prior test already populated the cache from `/proc/cpuinfo`.
 - An unattended goal keeps driving after a turn whose post-turn maintenance outlasts the continuation delay, instead of sitting active and idle until someone types.
 - Text typed at the launch card appears there as it is typed, instead of staying invisible until session startup finishes and the composer mounts.
 - Text typed before the launch card paints reaches the composer instead of being destroyed, because the startup tty flush now runs only for the relaunch backlog it was written for.
