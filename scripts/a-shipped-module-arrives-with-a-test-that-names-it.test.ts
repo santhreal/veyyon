@@ -319,6 +319,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/modes/components/skill-message.ts",
 	"packages/coding-agent/src/modes/components/status-line/context-usage.ts",
 	"packages/coding-agent/src/modes/components/status-line/location-fit.ts",
+	"packages/coding-agent/src/modes/controllers/command-controller-helpers.ts",
 	"packages/coding-agent/src/modes/interactive/command-dispatch.ts",
 	"packages/coding-agent/src/modes/interactive/event-handlers.ts",
 	"packages/coding-agent/src/modes/interactive/goal-mode-controller.ts",
