@@ -151,7 +151,7 @@ describe("every registered benchmark states its own dataset, argv and resume sup
 			});
 			expect(argv[0]).toBe("bun");
 			const script = argv[1] ?? "";
-			expect(script.startsWith("src/")).toBe(true);
+			expect(script.endsWith(".ts")).toBe(true);
 			// Run from the package directory, so the script path resolves there or the spawn dies
 			// with "module not found" after the row is already recorded as running.
 			expect(fs.existsSync(path.join(evalsPackageDir(), script))).toBe(true);

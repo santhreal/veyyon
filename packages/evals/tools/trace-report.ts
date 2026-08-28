@@ -44,7 +44,7 @@ const DEFAULT_BASE = "http://localhost:4700";
 const DEFAULT_CONCURRENCY = 8;
 
 // --------------------------------------------------------------------------
-// Trace API types (mirror packages/evals/src/manager/store.ts normalization)
+// Trace API types (mirror packages/evals/store/sqlite.ts normalization)
 
 export interface TraceAssistantEntry {
 	kind: "assistant";

@@ -22,7 +22,7 @@ import * as path from "node:path";
 
 // Absolute: a relative entrypoint resolves against this file's directory, and the module
 // graph it pulls in then resolves from the wrong root.
-const webEntry = path.resolve(import.meta.dirname, "..", "..", "src", "web", "index.html");
+const webEntry = path.resolve(import.meta.dirname, "..", "..", "dashboard", "index.html");
 
 describe("the dashboard bundle", () => {
 	it("builds for the browser target, so the server can serve the page", async () => {

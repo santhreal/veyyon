@@ -19,7 +19,7 @@
  * ran it would either be skipped in CI forever or make CI pay per commit. It is
  * a tool you point at a model when you are about to change the prompt.
  *
- *   bun packages/evals/src/suites/typescript-edit/edit-prompt-bench.ts \
+ *   bun evals.ts bench edit-prompt \
  *     --model cursor/cursor-grok-4.5-medium --label before --json runs/before.json
  */
 

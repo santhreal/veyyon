@@ -516,7 +516,7 @@ function readEditSnapshot(jobDir: string): BenchmarkSnapshot {
 
 /**
  * Normalize the DeepSWE suite's arms x tasks results.json (see
- * packages/evals/src/suites/deep-swe/run.ts). One trace per (arm, task) cell: full
+ * packages/evals/suites/deep-swe/main.ts). One trace per (arm, task) cell: full
  * verifier reward is a pass, an execution error is an error, anything else —
  * including a partial reward — is a fail, so pass/fail/error stay disjoint
  * per the shared aggregate contract. The planned grid (arms x tasks) is the

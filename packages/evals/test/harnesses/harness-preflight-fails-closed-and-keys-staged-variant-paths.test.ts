@@ -195,7 +195,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 		if (veyyonHarness) {
 			const verdict = await veyyonHarness.preflight({
 				backend: "pier",
-				options: { binary: nonExecVey },
+				options: { "vey-binary": nonExecVey },
 			});
 			expect(verdict.ok).toBe(false);
 			expect(verdict.reason).toMatch(/not executable/i);

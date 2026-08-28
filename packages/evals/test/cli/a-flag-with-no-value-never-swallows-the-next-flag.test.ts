@@ -26,6 +26,9 @@ const declaredHarnessFlags = harnessFlags().map(flag => `--${flag}`);
 const valueFlags = [...fixedValueFlags, ...declaredHarnessFlags];
 const booleanFlags = Object.keys(BOOLEAN_FLAGS);
 
+/** Flags the `serve` subcommand parser owns, not the main flag grammar. */
+const SERVE_ONLY_FLAGS = new Set(["--port", "--host"]);
+
 describe("a value flag refuses a missing value", () => {
 	it("has value flags to sweep", () => {
 		expect(valueFlags.length).toBeGreaterThan(5);
@@ -162,7 +165,11 @@ describe("the parser and the help it prints agree", () => {
 	it("accepts every flag its help advertises", () => {
 		const advertised = [...new Set([...evalsUsage().matchAll(/(--[a-z][a-z-]+)/g)].map(match => match[1] as string))];
 		const rejected = advertised.filter(
-			flag => !VALUE_FLAGS[flag] && !BOOLEAN_FLAGS[flag] && !harnessFlags().includes(flag.slice(2)),
+			flag =>
+				!VALUE_FLAGS[flag] &&
+				!BOOLEAN_FLAGS[flag] &&
+				!harnessFlags().includes(flag.slice(2)) &&
+				!SERVE_ONLY_FLAGS.has(flag),
 		);
 
 		expect(rejected).toEqual([]);

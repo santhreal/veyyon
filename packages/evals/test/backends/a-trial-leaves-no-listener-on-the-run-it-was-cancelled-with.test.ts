@@ -41,7 +41,7 @@ import { backends, harnesses } from "../../engine/loaded-members";
  * trial through `awaitTrialProcessOutput`, whose listener pairing is proven in
  * `test/core/a-cancelled-trial-stops-waiting-on-the-pipes-its-tree-held-open.test.ts`.
  */
-const NOT_DRIVEN_HERE = ["pier", "harbor"];
+const NOT_DRIVEN_HERE = ["harbor", "pier"];
 
 interface ListenerLedger {
 	readonly signal: AbortSignal;

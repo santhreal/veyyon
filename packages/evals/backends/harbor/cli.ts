@@ -49,8 +49,8 @@ const isTTY = Boolean(process.stdout.isTTY);
 export const HELP = `evals harbor runner (local veyyon)
 
 Usage:
-  bun packages/evals/src/backends/harbor/runner/cli.ts [options]
-  bun packages/evals/src/backends/harbor/runner/cli.ts cleanup
+  bun evals.ts tool harbor-cli [options]
+  bun evals.ts tool harbor-cli cleanup
 
 Options:
   -m, --model <id>               Model to benchmark (repeatable; required)

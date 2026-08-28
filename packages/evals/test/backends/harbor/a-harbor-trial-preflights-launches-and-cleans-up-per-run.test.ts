@@ -254,20 +254,23 @@ describe("buildHarborArgs shared construction", () => {
 	});
 
 	it("builds dataset-based veyyon invocation with agent import path", () => {
-		const args = buildHarborArgs({
-			dataset: "terminal-bench@3.0",
-			jobsDir: "/runs/run-2",
-			jobName: "veyyon-run",
-			concurrency: 4,
-			attempts: 1,
-			tasks: 20,
-			models: ["anthropic/claude-sonnet-4-6"],
-			agent: "veyyon",
-			include: ["task-1", "task-2"],
-			allowHosts: ["api.anthropic.com"],
-			timeoutMultiplier: 1.5,
-			yes: true,
-		});
+		const args = buildHarborArgs(
+			{
+				dataset: "terminal-bench@3.0",
+				jobsDir: "/runs/run-2",
+				jobName: "veyyon-run",
+				concurrency: 4,
+				attempts: 1,
+				tasks: 20,
+				models: ["anthropic/claude-sonnet-4-6"],
+				agent: "veyyon",
+				include: ["task-1", "task-2"],
+				allowHosts: ["api.anthropic.com"],
+				timeoutMultiplier: 1.5,
+				yes: true,
+			},
+			harnesses,
+		);
 
 		expect(args).toEqual([
 			"run",

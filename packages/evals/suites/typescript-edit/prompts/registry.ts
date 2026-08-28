@@ -21,7 +21,7 @@ import reproNewFeature from "./repro-new-feature.md" with { type: "text" };
 
 export type { PromptEntry };
 
-export const typescriptEditSuitePrompts = definePromptRegistry("packages/evals/src/suites/typescript-edit/prompts", {
+export const typescriptEditSuitePrompts = definePromptRegistry("packages/evals/suites/typescript-edit/prompts", {
 	"argot-forced-adoption": {
 		text: argotForcedAdoption,
 		purpose: "asks the model to write handles it was given, so adoption is measured rather than hoped for",
