@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
+import { visibleWidth } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
 import { searchToolRenderer } from "../../src/tools/search-renderer";
 import { textSearchRenderer } from "../../src/tools/text-search";
@@ -267,5 +268,42 @@ describe("textSearchRenderer and searchToolRenderer (text)", () => {
 		// Collapsed compacts to match lines only — no context.
 		expect(collapsedBody.some(line => line.includes("context before"))).toBe(false);
 		expect(collapsedBody.some(line => line.includes("more matches"))).toBe(true);
+	});
+});
+
+/** WHY: the width budget was asserted against the retired `grep` renderer and
+ * was not carried over when the tool became `search text`. A body row budgeted
+ * against the outer width instead of the block content width is re-wrapped by
+ * the output block, which is how a search result grew rows it never printed.
+ * This covers the text renderer only; the files renderer owns its own case. */
+describe("textSearchRenderer row width", () => {
+	useFullColor();
+
+	it("budgets body width against the block content width so lines do not overflow", async () => {
+		const uiTheme = (await getThemeByName("dark"))!;
+		const result = {
+			content: [{ type: "text", text: "" }],
+			details: {
+				matchCount: 1,
+				fileCount: 1,
+				displayContent: [
+					"# src/",
+					"## very-long-file-name-that-exceeds-the-narrow-terminal-width.ts",
+					"*1│const veryLongVariableNameToEnsureWidthBudgetTruncatesProperly = true;",
+				].join("\n"),
+			},
+		};
+
+		const width = 40;
+		const renderedLines = textSearchRenderer
+			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "needle" })
+			.render(width);
+
+		// One header and three body rows. Budgeted against the outer width, the
+		// output block re-wraps each body row and the line count overflows.
+		expect(renderedLines).toHaveLength(4);
+		for (const line of renderedLines.slice(1)) {
+			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+		}
 	});
 });

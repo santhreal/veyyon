@@ -1,9 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import type { AgentToolResult } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { SearchTool, type SearchToolInput, type SearchType, searchSchema } from "@veyyon/coding-agent/tools/search";
+import {
+	SearchTool,
+	type SearchToolDetails,
+	type SearchToolInput,
+	type SearchType,
+	searchSchema,
+} from "@veyyon/coding-agent/tools/search";
 import { removeWithRetries } from "@veyyon/utils";
 
 /** One value per field `searchSchema` declares beyond `type` and `input`. */
@@ -77,6 +84,27 @@ describe("one search tool dispatches every workspace search mode", () => {
 
 		expect(result.details?.type).toBe("files");
 		expect(text).toContain("sample.ts");
+	});
+
+	/** Files search is the one mode that streams. Its engine emits the bare
+	 * `FileSearchDetails`, and the facade has to wrap each event in the same
+	 * discriminated shape the final result carries, or the renderer reads a
+	 * partial it cannot dispatch on. */
+	it("wraps every streamed files partial in the discriminated result shape", async () => {
+		const partials: Array<AgentToolResult<SearchToolDetails>> = [];
+		await tool.execute("search-files-stream", { type: "files", input: "**/*.ts" }, undefined, partial => {
+			partials.push(partial);
+		});
+
+		expect(partials.length).toBeGreaterThan(0);
+		for (const partial of partials) {
+			expect(partial.details?.type).toBe("files");
+			expect(partial.details).not.toHaveProperty("files");
+		}
+		const streamed = partials.flatMap(partial =>
+			partial.details?.type === "files" ? partial.details.result.files : [],
+		);
+		expect(streamed).toContain("sample.ts");
 	});
 
 	it("rejects a field owned by another mode but ignores an absent optional field", async () => {
