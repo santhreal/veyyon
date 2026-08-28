@@ -92,26 +92,25 @@ describe("composer placement under terminal height constraints", () => {
 		const rawViewport = term.getViewport();
 		const viewportLines = rawViewport.map(l => stripVTControlCharacters(stripAnsi(l)));
 
-		// Read screen bounds computed by TUI
-		// On current main, tui computes footerTop = 1 because footerRows is clamped to height - 1 (4).
-		// In reality, all 5 rows on screen are footer lines (windowTop = 18 - 5 = 13, pointing into footer).
+		// The bounds come from the TUI itself, not from a literal written here: this check reads
+		// only `screenBounds`, so a hand-written value would compare a constant against a constant
+		// and hold whatever the renderer did. `pinnedFooterScreenBounds` is the same value the
+		// click router acts on.
+		const screenBounds = tui.pinnedFooterScreenBounds;
+		const totalFrameRows = tui.composedFrameRows;
 		const frameState: ComposerOracleFrameState = {
 			width: 80,
 			height: 5,
 			viewportLines,
 			rawViewportLines: rawViewport,
 			cursor: term.getCursor(),
-			totalFrameRows: 18,
-			windowTopRow: 13,
+			totalFrameRows,
+			windowTopRow: Math.max(0, totalFrameRows - 5),
+			// Inputs this test constructs: six footer children totalling eight rows.
 			pinnedFooterChildCount: 6,
 			pinnedFooterRows: 8,
 			virtualScrollTop: null,
-			screenBounds: {
-				footerTop: 1, // TUI's buggy computed footerTop
-				footerBottom: 4,
-				footerRowOffset: 5 - 8,
-				contentBottom: 4,
-			},
+			screenBounds,
 			segments: [
 				{ startIndex: 0, rowCount: 10, componentName: "TranscriptMock" },
 				{ startIndex: 10, rowCount: 1, componentName: "ComposerHairline" },

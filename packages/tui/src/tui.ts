@@ -1031,6 +1031,19 @@ export function findCommittedPrefixResync(
 }
 
 /**
+ * Where the pinned footer sits on screen, in 0-based physical viewport rows.
+ *
+ * `footerTop` may be negative when the footer is taller than the viewport: the
+ * rows it loses are its first ones, so the visible top is `Math.max(0, footerTop)`.
+ */
+export interface PinnedFooterScreenBounds {
+	footerTop: number;
+	footerBottom: number;
+	footerRowOffset: number;
+	contentBottom: number;
+}
+
+/**
  * TUI - Main class for managing terminal UI with differential rendering
  */
 export class TUI extends Container {
@@ -1750,9 +1763,24 @@ export class TUI extends Container {
 	 */
 	#scrollSpaceLiveTop(frameRows = this.#previousFrameLength): number {
 		const height = Math.max(1, this.terminal.rows);
-		const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
+		const footerRows = this.#footerRowsInViewport(height);
 		const regionRows = height - footerRows;
 		return Math.max(0, this.#scrollSpaceRows(frameRows) - regionRows);
+	}
+
+	/**
+	 * Viewport rows the pinned footer occupies, which is every row it asks for
+	 * up to the whole viewport.
+	 *
+	 * The footer is clamped because it may be taller than the terminal — a
+	 * composer with several lines of text in a five-row window. It is NOT
+	 * clamped to `height - 1`: reserving a content row when the footer alone
+	 * already fills the viewport buys a row nothing can be drawn in, and pushes
+	 * the footer's own top down off row 0, so the rows it loses are its first
+	 * ones. Where there is no room for content, the footer takes the viewport.
+	 */
+	#footerRowsInViewport(height: number): number {
+		return Math.min(this.#pinnedFooterRows, height);
 	}
 
 	/**
@@ -1762,6 +1790,17 @@ export class TUI extends Container {
 	 */
 	get composedFrameRows(): number {
 		return this.#previousFrameLength;
+	}
+
+	/**
+	 * Where the pinned footer sits on screen for the frame just composed.
+	 *
+	 * Read-only, and the same value the click router uses, so a renderer check
+	 * observes the placement the product acts on rather than recomputing it and
+	 * agreeing with itself.
+	 */
+	get pinnedFooterScreenBounds(): PinnedFooterScreenBounds {
+		return this.#pinnedFooterScreenBounds();
 	}
 
 	/**
@@ -3110,15 +3149,10 @@ export class TUI extends Container {
 	/** Wheel step for scroll isolation: freeze/walk the transcript region.
 	 * Anchored to the live window top so the first wheel-up starts from the
 	 * currently visible tail; walking down to the tail resumes following. */
-	#pinnedFooterScreenBounds(): {
-		footerTop: number;
-		footerBottom: number;
-		footerRowOffset: number;
-		contentBottom: number;
-	} {
+	#pinnedFooterScreenBounds(): PinnedFooterScreenBounds {
 		if (this.#virtualScrollTop !== null) {
 			const height = Math.max(1, this.terminal.rows);
-			const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
+			const footerRows = this.#footerRowsInViewport(height);
 			const footerTop = height - footerRows;
 			return {
 				footerTop,
@@ -3128,7 +3162,7 @@ export class TUI extends Container {
 			};
 		}
 		const frameLength = this.#composedFrame.length;
-		const windowTop = this.#windowTopRow;
+		const windowTop = this.#tailWindowTop(frameLength, this.terminal.rows);
 		const footerTop = frameLength - this.#pinnedFooterRows - windowTop;
 		const footerBottom = frameLength - 1 - windowTop;
 		return {
@@ -3137,6 +3171,21 @@ export class TUI extends Container {
 			contentBottom: footerBottom,
 			footerRowOffset: footerTop,
 		};
+	}
+
+	/**
+	 * The single definition of the live-tail window anchor: the first composed-frame
+	 * row the viewport shows while following the tail. The painter stores the result
+	 * in `#windowTopRow`, and `#pinnedFooterScreenBounds()` derives from this instead
+	 * of reading that stored value. The two agree in steady state; they diverge for
+	 * the whole deferred-repaint window after a resize, where a multiplexer settle
+	 * timer holds the repaint back and the stored anchor still describes the previous
+	 * viewport height. Mouse routing reads the bounds during that window, so a stale
+	 * anchor sends footer clicks to transcript rows.
+	 */
+	#tailWindowTop(frameLength: number, height: number): number {
+		const commitFloor = this.#pinnedFooterRows > 0 ? 0 : this.#committedRows;
+		return Math.max(commitFloor, frameLength - height, 0);
 	}
 
 	/**
@@ -4145,7 +4194,16 @@ export class TUI extends Container {
 			// grid would duplicate them for a scrolling reader. On a
 			// multiplexer resize the pane reflowed its own history; committed
 			// rows keep their old wrap there, same as any shell output.
-			windowTop = Math.max(this.#committedRows, frameLength - height, 0);
+			// A pinned footer owns the bottom of the viewport: it always shows the
+			// LAST #pinnedFooterRows rows of the composed frame. Flooring the window
+			// at the commit boundary pushes those rows upward and leaves every row
+			// beneath them blank — the composer stranded mid-screen over a dead
+			// band, which is what a collapsing tool block produces while unfocused.
+			// Law 5 (never re-show a committed row) governs a scrolling transcript
+			// with no pinned chrome; where the two meet, re-showing a committed row
+			// is the lesser fault, and the fallback below already prefers
+			// duplication over loss for exactly this reason.
+			windowTop = this.#tailWindowTop(frameLength, height);
 			// Whatever scrolls above the window commits — the tape is the visual
 			// record; nothing that was painted may vanish. Overlays freeze
 			// commits: composited rows must never enter history, and the hidden
@@ -4221,7 +4279,7 @@ export class TUI extends Container {
 			const uncommittedEnd = Math.max(this.#committedRows, frameLength - this.#pinnedFooterRows);
 			this.#scrollSnapshot ??= [...this.#scrollTape, ...frame.slice(this.#committedRows, uncommittedEnd)];
 			const snapshot = this.#scrollSnapshot;
-			const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
+			const footerRows = this.#footerRowsInViewport(height);
 			const regionRows = height - footerRows;
 			const viewTop = this.#virtualScrollTop!;
 			for (let r = 0; r < height; r++) {
