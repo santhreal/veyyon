@@ -36,11 +36,17 @@
  * for the wrong reason, so the walk asserts its own completeness below.
  */
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { buildStartupImportGraph, declaredDependencies } from "./helpers/startup-import-graph";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const CLI_ENTRY = join(REPO_ROOT, "packages", "coding-agent", "src", "main.ts");
+
+/** True when git ignores the path, which is how a generated build artifact is told apart. */
+function isGitIgnored(file: string): boolean {
+	return spawnSync("git", ["check-ignore", "-q", file], { cwd: REPO_ROOT }).status === 0;
+}
 
 /**
  * The dependencies the CLI evaluates before it has done anything. Every entry is
@@ -85,6 +91,15 @@ describe("startup import graph", () => {
 		// and that is exactly how this suite was nearly written green.
 		expect(graph.unscannable).toEqual([]);
 		expect(graph.files.size).toBeGreaterThan(1_000);
+		// An edge that names no file truncates the walk just as quietly. The one
+		// legitimate source is a build artifact the checkout has not generated —
+		// `src/utils/mupdf-embedded.js` exists only between `gen:mupdf --generate`
+		// and its `--reset`, and git ignores it. An edge out of a tracked file is
+		// a hole.
+		const trackedSources = graph.unresolved
+			.map(edge => edge.slice(0, edge.indexOf(" -> ")))
+			.filter(file => !isGitIgnored(file));
+		expect(trackedSources).toEqual([]);
 	});
 
 	test("keeps the stats dashboard out of a session that never opens it", () => {
