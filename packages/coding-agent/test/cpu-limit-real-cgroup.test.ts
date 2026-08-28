@@ -35,9 +35,10 @@
  * Skips, with the reason stated, when the host has no cgroup v2 delegation, and
  * on non-Linux where the budget is not a kernel throttle at all.
  */
+
 import { describe, expect, it } from "bun:test";
+import { CGROUP_CPU_PERIOD_USEC } from "../src/session/cgroup-format";
 import {
-	CPU_LIMIT_PERIOD_USEC,
 	type CpuBudgetGroupHandle,
 	defaultCpuLimitEnvironment,
 	probeCpuLimitSupport,
@@ -190,7 +191,7 @@ describe("real cgroup enforcement", () => {
 			// periods is the honest bound. At 0.5 cores over a 100ms period that
 			// is 100_000us against a ~1_500_000us expectation, under 7%. It is
 			// derived from the period, not tuned until the test went green.
-			const slackUsec = 2 * CAP_CORES * CPU_LIMIT_PERIOD_USEC;
+			const slackUsec = 2 * CAP_CORES * CGROUP_CPU_PERIOD_USEC;
 			const ceilingUsec = CAP_CORES * burn.wallUsec + slackUsec;
 			// The burner demands a full core for the whole window, so a working
 			// quota is nearly all spent. The 15% shortfall covers the runtime's

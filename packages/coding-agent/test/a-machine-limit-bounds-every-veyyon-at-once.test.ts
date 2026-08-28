@@ -32,17 +32,18 @@
  * not cover Windows nested job objects, which do not exist here yet: the
  * machine tier reports itself unenforceable there, and that report is asserted.
  */
+
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
+import { formatCpuMaxValue } from "@veyyon/coding-agent/session/cgroup-format";
 import { probeCpuLimitSupport, SessionCpuLimit } from "@veyyon/coding-agent/session/cpu-limit";
 import {
 	addMachineHarnessWrite,
 	anyMachineLimitActive,
-	cpuMaxValue,
 	ensureMachineBudget,
 	MACHINE_BUDGET_DIR_NAME,
 	type MachineBudgetLimits,
@@ -183,8 +184,50 @@ describe("a machine limit is applied to a cgroup the session groups live inside"
 
 		// 0 is "no limit" in the settings and "no CPU at all" in cpu.max. The
 		// translation is the only thing standing between the two readings.
-		expect(cpuMaxValue(0)).toBe("max 100000");
-		expect(cpuMaxValue(1)).toBe("100000 100000");
+		expect(formatCpuMaxValue(0)).toBe("max 100000");
+		expect(formatCpuMaxValue(1)).toBe("100000 100000");
+	});
+
+	it("never writes a zero quota for a positive budget, at any size", async () => {
+		withMachineDirControllers(parentDir, ["cpu", "pids", "memory"]);
+
+		// A zero quota is a freeze, so the one value a POSITIVE budget must never
+		// produce is `0`. The machine tier once formatted cpu.max itself, by
+		// truncation, and a budget below half a microsecond of the period came out
+		// as `0 100000`: the tier meant to bound the machine would have stopped
+		// every process on it. Both tiers now share one formatter, so this holds
+		// for a session group as well as the machine group above it.
+		for (const cores of [1e-9, 1e-6, 0.000004, 0.0000051, 0.5, 1, 3.7, 128]) {
+			const [quota, period] = formatCpuMaxValue(cores).split(" ");
+			expect(Number(quota), `cpu.max quota for ${cores} cores`).toBeGreaterThan(0);
+			expect(period).toBe("100000");
+		}
+
+		// The machine group gets that same value, rather than one of its own.
+		await ensureMachineBudget({ platform: "linux", parentDir }, { ...noLimits(), cpuLimitCores: 1e-9 });
+		const [quota] = read(path.join(parentDir, MACHINE_BUDGET_DIR_NAME, "cpu.max")).split(" ");
+		expect(Number(quota)).toBeGreaterThan(0);
+	});
+
+	it("writes a whole number to every countable control file, whatever the setting holds", async () => {
+		withMachineDirControllers(parentDir, ["cpu", "pids", "memory"]);
+
+		// pids.max and memory.max take a count, and reject a fraction outright:
+		// a 0.3 GB budget is 322122547.2 bytes, which the kernel will not parse.
+		// The setting is a number the operator typed, so the conversion is the
+		// only thing keeping a fraction out of the file.
+		await ensureMachineBudget(
+			{ platform: "linux", parentDir },
+			{ ...noLimits(), memoryLimitGb: 0.3, maxProcesses: 2.7 },
+		);
+
+		const dir = path.join(parentDir, MACHINE_BUDGET_DIR_NAME);
+		for (const file of ["memory.max", "pids.max"]) {
+			const body = read(path.join(dir, file)).trim();
+			expect(body, `${file} body`).toMatch(/^\d+$/);
+		}
+		expect(read(path.join(dir, "memory.max")).trim()).toBe("322122547");
+		expect(read(path.join(dir, "pids.max")).trim()).toBe("2");
 	});
 });
 
