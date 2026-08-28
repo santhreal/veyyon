@@ -544,5 +544,3 @@ export interface ChatCompletionCreateParamsNonStreaming extends ChatCompletionCr
 export interface ChatCompletionCreateParamsStreaming extends ChatCompletionCreateParamsBase {
 	stream: true;
 }
-
-export type ChatCompletionCreateParams = ChatCompletionCreateParamsNonStreaming | ChatCompletionCreateParamsStreaming;

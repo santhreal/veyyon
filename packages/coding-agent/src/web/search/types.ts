@@ -424,10 +424,6 @@ export interface PerplexityUsageInfo {
 	cost: PerplexityCost;
 }
 
-export type PerplexityCompletionResponseType = "message" | "info" | "end_of_stream";
-
-export type PerplexityCompletionResponseStatus = "PENDING" | "COMPLETED";
-
 export interface PerplexityChoice {
 	index: number;
 	finish_reason?: "stop" | "length" | null;
