@@ -1,19 +1,5 @@
-/**
- * Shared wire types for the veyyon collab live-session protocol.
- *
- * Dependency-free JSON shapes produced by `@veyyon/coding-agent`
- * (`src/collab/protocol.ts` and friends). Browser and test clients import this
- * package instead of depending on the coding-agent runtime; conformance is
- * asserted per variant in
- * `packages/coding-agent/test/collab/web-wire-conformance.test.ts`, which fails
- * the typecheck when a host-side entry stops being assignable to its wire shape.
- *
- * Unknown entry/event variants arrive over the wire as plain JSON. The unions
- * below cover only the variants this client renders; consumers cast at the
- * JSON boundary and every `switch` keeps a tolerant `default:` branch.
- */
+/** Wire-format protocol types for collaboration sessions. */
 
-// ═══════════════════════════════════════════════════════════════════════════
 // Content blocks
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -48,18 +34,7 @@ export interface ToolCallContent {
 	intent?: string;
 }
 
-/**
- * Anthropic server-side-fallback boundary marker, persisted on an assistant turn whose request opted
- * into `AnthropicOptions.fallbacks`.
- *
- * It is here because it ARRIVES: the host serializes its assistant messages verbatim, and this block
- * is one of the five an assistant turn's content can hold. Leaving it out of the union did not stop it
- * reaching a guest, it only stopped the type from admitting so — and a client written against an
- * exhaustive `switch` had no reason to handle a block it was told could not exist.
- *
- * Renderers should ignore it. It marks where one model handed off to another and carries no content of
- * its own; the coding-agent's own converters strip it on any cross-provider hop for the same reason.
- */
+/** Anthropic server-side-fallback boundary marker, persisted on an assistant turn whose request opted */
 export interface FallbackContent {
 	type: "fallback";
 	/** The model the turn started on. */
@@ -75,22 +50,10 @@ export type AssistantContent =
 	| ToolCallContent
 	| FallbackContent;
 
-/**
- * Why a turn ended, as a guest receives it.
- *
- * The same five literals `StopReason` in `@veyyon/ai` declares today, spelled separately because
- * this package has no runtime dependencies and a browser guest must not pull the host's model
- * layer in to render a transcript. Prefixed anyway: two identical-today unions under one name are
- * how they drift apart later without either side noticing.
- */
+/** Why a turn ended, as a guest receives it. */
 export type WireStopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
 
-/**
- * The old name for {@link WireStopReason}, kept because this package is published.
- *
- * Deprecated: import `WireStopReason`. A renamed export rather than an alias declaration, so the
- * name keeps exactly one declaration repo-wide.
- */
+/** The old name for {@link WireStopReason}, kept because this package is published. */
 export type { WireStopReason as StopReason };
 
 export interface WireUsage {
@@ -102,16 +65,10 @@ export interface WireUsage {
 	cost: { total: number };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // Messages
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * A user turn, as a guest receives it.
- *
- * The host's `UserMessage` in `@veyyon/ai` additionally carries `steering`, `attribution` and
- * `providerPayload`; none of the three is anything a guest draws.
- */
+/** A user turn, as a guest receives it. */
 export interface WireUserMessage {
 	role: "user";
 	content: string | (TextContent | ImageContent)[];
@@ -121,32 +78,19 @@ export interface WireUserMessage {
 	timestamp: number;
 }
 
-/** A developer turn, as a guest receives it. Narrower than `DeveloperMessage` in `@veyyon/ai`. */
+/** Developer turn message as received by guest replica. */
 export interface WireDeveloperMessage {
 	role: "developer";
 	content: string | (TextContent | ImageContent)[];
 	timestamp: number;
 }
 
-/**
- * An assistant turn, as a guest receives it.
- *
- * The widest gap in this file. The host's `AssistantMessage` in `@veyyon/ai` carries the api it was
- * sent to, `providerPayload` (the transport-native history used to replay the turn upstream),
- * `request` (the exact sampling and reasoning parameters as sent), `contextSnapshot`,
- * `retryRecovery`, `responseId`, `turnMetrics`, `errorId` and more. A guest renders none of them.
- */
+/** An assistant turn, as a guest receives it. */
 export interface WireAssistantMessage {
 	role: "assistant";
 	content: AssistantContent[];
 	model: string;
-	/**
-	 * Which provider answered, as a bare id such as `"anthropic"`.
-	 *
-	 * Declared rather than projected away because a guest holds a transcript replica, and a replica
-	 * that cannot say what answered is not faithful. The host's `api` is NOT declared: that is the
-	 * transport endpoint the request went to, which is a detail of how the host is configured.
-	 */
+	/** Which provider answered, as a bare id such as `"anthropic"`. */
 	provider: string;
 	usage: WireUsage;
 	stopReason: WireStopReason;
@@ -154,7 +98,7 @@ export interface WireAssistantMessage {
 	timestamp: number;
 }
 
-/** A tool result, as a guest receives it. */
+/** Tool result message as received by guest replica. */
 export interface WireToolResultMessage {
 	role: "toolResult";
 	toolCallId: string;
@@ -165,33 +109,10 @@ export interface WireToolResultMessage {
 	timestamp: number;
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// The seven custom roles
-//
-// A session message can carry eleven roles. The four above are the model's own;
-// these seven come from the host's `CustomAgentMessages` declaration-merging
-// hook. A guest RENDERS them -- its replica transcript is drawn by the same
-// renderer the host uses -- so they travel, and dropping them would make a `!ls`
-// and its output vanish from every guest's transcript.
-//
-// They are declared here for the same reason the four above are: assignability
-// runs the permissive way, so an undeclared field on a host shape reaches every
-// guest and lands in their replica session file the day somebody adds it.
-// ───────────────────────────────────────────────────────────────────────────
-
-/**
- * The output notice a guest draws under a command's output.
- *
- * Declared `unknown` on the same contract as a tool result's `details`, and for the same reason: the
- * notice is formatted by the host package's own formatter, which reads a truncation record, a source
- * record, a diagnostics record and a limits record, and narrowing it here would mean copying four
- * host types into a published contract and keeping them in step by hand. It is drawn in full, so
- * nothing is dropped; what is missing is a promise about width, and that is stated rather than
- * pretended.
- */
+/** The output notice a guest draws under a command's output. */
 export type WireOutputMeta = unknown;
 
-/** A `!command` the user ran, and what it printed. */
+/** Command execution message and output. */
 export interface WireBashExecutionMessage {
 	role: "bashExecution";
 	command: string;
@@ -207,7 +128,7 @@ export interface WireBashExecutionMessage {
 	timestamp: number;
 }
 
-/** A `$code` the user ran in the Python kernel, and what it printed. */
+/** Eval cell execution message and output. */
 export interface WirePythonExecutionMessage {
 	role: "pythonExecution";
 	code: string;
@@ -220,14 +141,7 @@ export interface WirePythonExecutionMessage {
 	timestamp: number;
 }
 
-/**
- * A message an extension injected.
- *
- * `details` is declared `unknown` deliberately, on the same contract as a tool result's `details`:
- * an extension owns the shape and the renderer it registered owns the drawing, so this package
- * cannot narrow it without breaking every extension. It is the one field here that is NOT a promise
- * about width, and an extension that puts a secret in it puts that secret on the wire.
- */
+/** A message an extension injected. */
 export interface WireCustomMessage {
 	role: "custom";
 	customType: string;
@@ -247,7 +161,7 @@ export interface WireHookMessage {
 	timestamp: number;
 }
 
-/** The summary left behind where a branch was cut. */
+/** Summary message left when a branch is cut. */
 export interface WireBranchSummaryMessage {
 	role: "branchSummary";
 	summary: string;
@@ -255,13 +169,7 @@ export interface WireBranchSummaryMessage {
 	timestamp: number;
 }
 
-/**
- * The summary compaction left in place of the turns it replaced.
- *
- * The host's own shape also carries `providerPayload`, the transport-native history used to replay
- * the compacted span upstream, plus two legacy block arrays from a removed image-archive engine.
- * None is drawn and the first is large, so none is declared.
- */
+/** The summary compaction left in place of the turns it replaced. */
 export interface WireCompactionSummaryMessage {
 	role: "compactionSummary";
 	summary: string;
@@ -272,18 +180,7 @@ export interface WireCompactionSummaryMessage {
 	timestamp: number;
 }
 
-/**
- * Files pulled in by `@path`, drawn as a list of "Read <path>" rows.
- *
- * The host's own shape carries each file's FULL TEXT in `content`, and the renderer draws none of it:
- * a row shows the path, the line count or the skip reason, and whether an image came with it. So
- * mentioning a 4 MB file sent 4 MB to every guest, on the join snapshot and again on the entry frame,
- * and it landed in their replica session file on disk. The body does not travel.
- *
- * `hasContent` is here because absence has to be distinguishable from emptiness. A guest that exports
- * its replica says the body was not replicated rather than printing an empty `<file>` block, which is
- * what dropping the field alone would have produced.
- */
+/** Files pulled in by `@path`, drawn as a list of "Read <path>" rows. */
 export interface WireFileMentionMessage {
 	role: "fileMention";
 	files: {
@@ -311,13 +208,7 @@ export type WireMessage =
 	| WireCompactionSummaryMessage
 	| WireFileMentionMessage;
 
-/**
- * The old names for the four message shapes above, kept because this package is published.
- *
- * Deprecated: import the `Wire`-prefixed names. Renamed exports rather than alias declarations, so
- * each name keeps exactly one declaration repo-wide and `shared-types-have-one-owner.test.ts`
- * stays honest about it.
- */
+/** The old names for the four message shapes above, kept because this package is published. */
 export type {
 	WireAssistantMessage as AssistantMessage,
 	WireDeveloperMessage as DeveloperMessage,
@@ -325,28 +216,7 @@ export type {
 	WireUserMessage as UserMessage,
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Session entries (rendered subset; cast `as WireSessionEntry` at the JSON
-// boundary and skip unknown `type`s in a tolerant `default:`)
-//
-// This is the SUBSET a guest can render, not the session's own entry union.
-// The host's is `SessionEntry` in `@veyyon/agent-core/compaction/entries`, and
-// it carries a dozen more variants (mode changes, subagent spawns, settings
-// snapshots) that no guest draws. Both were spelled `SessionEntry`, so
-// `host.ts` had to import one of them under an alias to say which it meant,
-// and an editor's auto-import decided the question everywhere else.
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * The session's first log line, as a guest receives it.
- *
- * The four fields a guest needs and nothing else. The host's own header (`SessionHeader` in
- * `@veyyon/coding-agent/session/session-entries`) additionally carries `titleSource`,
- * `parentSession`, `providerPromptCacheKey` and a schema `version`, and the stats parser's
- * (`SessionLogHeader` in `@veyyon/stats`) carries `version` too. All three were spelled
- * `SessionHeader`. The host now projects its header onto this shape before sending, so the
- * narrower type is what actually travels rather than merely what the guest promises to read.
- */
+/** The session's first log line, as a guest receives it. */
 export interface WireSessionHeader {
 	type: "session";
 	id: string;
@@ -355,12 +225,7 @@ export interface WireSessionHeader {
 	cwd: string;
 }
 
-/**
- * The old name for {@link WireSessionHeader}, kept because this package is published.
- *
- * Deprecated: import `WireSessionHeader`. A renamed export rather than an alias declaration, so
- * the name keeps exactly one declaration repo-wide.
- */
+/** The old name for {@link WireSessionHeader}, kept because this package is published. */
 export type { WireSessionHeader as SessionHeader };
 
 export interface EntryBase {
@@ -408,7 +273,7 @@ export interface ThinkingLevelChangeEntry extends EntryBase {
 	thinkingLevel?: string | null;
 }
 
-/** The entry variants a guest can render. See the section note above for what it is not. */
+/** Session entry variants rendered by guest. */
 export type WireSessionEntry =
 	| MessageEntry
 	| CustomMessageEntry
@@ -417,13 +282,7 @@ export type WireSessionEntry =
 	| ModelChangeEntry
 	| ThinkingLevelChangeEntry;
 
-/**
- * The old name for {@link WireSessionEntry}, kept because this package is published.
- *
- * Deprecated: import `WireSessionEntry`. Written as a renamed export rather than
- * `export type SessionEntry = WireSessionEntry` on purpose, so the name has exactly one
- * declaration repo-wide and `shared-types-have-one-owner.test.ts` stays honest about it.
- */
+/** The old name for {@link WireSessionEntry}, kept because this package is published. */
 export type { WireSessionEntry as SessionEntry };
 
 /** customType of collab guest prompts injected on the host. */
@@ -434,7 +293,6 @@ export interface CollabPromptDetails {
 	from?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // Events (handled subset)
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -459,37 +317,16 @@ export type AgentEvent =
 			maxAttempts: number;
 			delayMs: number;
 			errorMessage: string;
-			/**
-			 * Which recovery is waiting. Absent means a retry; `continue` is a tool
-			 * batch the host cannot resend being carried forward instead, which a
-			 * guest must not render as a retry. Spelled out rather than imported so
-			 * this package keeps depending on nothing.
-			 */
+			/** Which recovery is waiting. Absent means a retry; `continue` is a tool */
 			mode?: "continue" | "retry";
 	  }
 	| { type: "auto_retry_end"; success: boolean; attempt: number; finalError?: string; mode?: "continue" | "retry" }
 	| { type: "thinking_level_changed"; thinkingLevel?: string };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // State & agents
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * The model a guest renders.
- *
- * A guest never builds a provider request: it renders a replica of the host's session and forwards
- * prompts to the host, which does the calling. So everything on the host's catalog `Model` that
- * exists to SHAPE a request is absent here by design, and that is a structural rule rather than a
- * field-by-field judgement. `baseUrl` is the field that made this worth fixing: on a proxied,
- * self-hosted or gateway-routed configuration it is an internal endpoint, and the state frame
- * re-broadcasts every couple of seconds while streaming, to every guest including read-only viewers.
- * Also absent, for the same reason: `api`, `requestModelId`, `headers`, `maxTokens`, the per-million
- * `cost` table and the compatibility record.
- *
- * What remains is what a guest DRAWS. The thinking fields are here because the status line shows a
- * thinking level and the model picker offers the levels the model actually has, and both read the
- * model rather than a separate field.
- */
+/** The model a guest renders. */
 export interface WireModel {
 	id: string;
 	name: string;
@@ -497,13 +334,7 @@ export interface WireModel {
 	contextWindow: number | null;
 	/** Whether the model reasons at all. Gates the whole thinking display. */
 	reasoning?: boolean;
-	/**
-	 * Which thinking efforts the model offers, and which one it starts on.
-	 *
-	 * A narrowed copy of the host's `ThinkingConfig`. The parts left out (`effortMap`,
-	 * `effortRouting`, per-effort token budgets, `supportsDisplay`) all encode an effort into a
-	 * provider wire field, which is request shaping and never happens on a guest.
-	 */
+	/** Which thinking efforts the model offers, and which one it starts on. */
 	thinking?: {
 		mode: string;
 		efforts: readonly string[];
@@ -552,7 +383,6 @@ export interface AgentSnapshot {
 	model?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // Bus payloads (task subagent lifecycle/progress channels)
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -599,7 +429,6 @@ export interface SubagentLifecyclePayload {
 	index: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // Frames (JSON inside the AES-GCM seal)
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -631,11 +460,7 @@ export type GuestFrame =
 			t: "hello";
 			proto: number;
 			name: string;
-			/**
-			 * base64url write token proving full-link possession; absent for
-			 * read-only (view) links. The host marks peers without a valid token
-			 * read-only and rejects their mutating frames.
-			 */
+			/** base64url write token proving full-link possession; absent for */
 			writeToken?: string;
 	  }
 	| { t: "prompt"; text: string; images?: ImageContent[] }
@@ -644,7 +469,7 @@ export type GuestFrame =
 	| { t: "agent-cmd"; cmd: "chat" | "kill" | "revive"; agentId: string; text?: string }
 	| { t: "fetch-transcript"; reqId: number; agentId: string; fromByte: number };
 
-/** EventBus channels mirrored to guests (task subagent traffic only). */
+/** EventBus channels mirrored to guests. */
 export type BusChannel = "task:subagent:progress" | "task:subagent:lifecycle";
 
 export type HostFrame =
@@ -654,22 +479,12 @@ export type HostFrame =
 			header: WireSessionHeader;
 			state: SessionState;
 			agents: AgentSnapshot[];
-			/**
-			 * Total number of `WireSessionEntry` items the host will deliver in the
-			 * `snapshot-chunk` frames that follow. Guests stay in the loading
-			 * phase until they have accumulated all of them (or a chunk arrives
-			 * with `final: true`).
-			 */
+			/** Total number of `WireSessionEntry` items the host will deliver in the */
 			entryCount: number;
 			/** True when this peer joined through a read-only (view) link. */
 			readOnly?: boolean;
 	  }
-	/**
-	 * Targeted snapshot fragment delivered after `welcome`. Hosts split the
-	 * transcript into chunks bounded by byte size so a multi-MB session is not
-	 * forced through one giant frame the relay may stall on. The last chunk
-	 * carries `final: true`; guests finalize the replica on that frame.
-	 */
+	/** Targeted snapshot fragment delivered after `welcome`. Hosts split the */
 	| { t: "snapshot-chunk"; entries: WireSessionEntry[]; final: boolean }
 	| { t: "entry"; entry: WireSessionEntry }
 	| { t: "event"; event: AgentEvent }
@@ -686,45 +501,19 @@ export type HostFrame =
 
 export type WireFrame = GuestFrame | HostFrame;
 
-/**
- * Wire protocol version carried in `hello`; the host rejects mismatches.
- *
- * - `1` (legacy): `welcome` carried the full `entries` array inline.
- * - `2`: `welcome` carries only metadata (header/state/agents/entryCount);
- *   transcript entries follow in `snapshot-chunk` frames, so multi-MB
- *   sessions are not gated on a single welcome frame fitting under the
- *   guest's first-welcome timeout.
- * - `3`: host asks guests through `ui-request`/`ui-request-end` host frames
- *   answered by the `ui-response` guest frame. Guests that predate the
- *   grammar would silently drop `ui-request` (asks hang forever on the
- *   host), so they must be rejected at hello.
- */
+/** Wire protocol version carried in `hello`; the host rejects mismatches. */
 export const COLLAB_PROTO = 3;
 
 /** Parameter key used for intent tracing (e.g. prompt explanation/reasoning) */
 export const INTENT_FIELD = "i";
 
-// ═══════════════════════════════════════════════════════════════════════════
 // Envelope & link constants
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Plaintext envelope prefix: `[4B uint32 BE peerId][sealed payload]`. */
+/** Envelope prefix codec for peer frames. */
 export const ENVELOPE_HEADER_LENGTH = 4;
 
-/**
- * Wrap a sealed payload in the plaintext envelope.
- *
- * Host→relay: peerId 0 broadcasts to all guests, peerId N targets guest N.
- * Guest→relay: always 0, and the relay rewrites it to the sender's id.
- *
- * The three envelope functions live here, with the constant they read, because
- * both ends of the link have to agree on them byte for byte: a host that wrote
- * the peer id little-endian and a guest that read it big-endian would exchange
- * frames that decrypt cleanly and address the wrong peer. They used to be
- * duplicated in `coding-agent/src/collab/protocol.ts` and
- * `collab-web/src/lib/link.ts`, which is the arrangement that allows that drift.
- * Nothing here touches Node, so the browser guest imports it directly.
- */
+/** Wrap a sealed payload in the plaintext envelope. */
 export function packEnvelope(peerId: number, sealed: Uint8Array): Uint8Array<ArrayBuffer> {
 	const out = new Uint8Array(ENVELOPE_HEADER_LENGTH + sealed.byteLength);
 	new DataView(out.buffer).setUint32(0, peerId, false);
@@ -732,60 +521,30 @@ export function packEnvelope(peerId: number, sealed: Uint8Array): Uint8Array<Arr
 	return out;
 }
 
-/**
- * Split an envelope into its peer id and payload, or null when it is too short
- * to carry a header.
- *
- * The payload is a VIEW over the same buffer, not a copy: the sealed bytes go
- * straight to `crypto.subtle.decrypt`, and copying every frame would double the
- * per-frame allocation on a transcript stream.
- */
+/** Split an envelope into its peer id and payload, or null when it is too short */
 export function unpackEnvelope(data: Uint8Array): { peerId: number; payload: Uint8Array } | null {
 	if (data.byteLength < ENVELOPE_HEADER_LENGTH) return null;
 	const peerId = new DataView(data.buffer, data.byteOffset, ENVELOPE_HEADER_LENGTH).getUint32(0, false);
 	return { peerId, payload: data.subarray(ENVELOPE_HEADER_LENGTH) };
 }
 
-/**
- * Rewrite the peer id in place, without copying the payload.
- *
- * This is the relay's hot path: it stamps the sender's id onto a frame it is
- * about to forward, and the sealed payload is untouched because the relay has no
- * room key. `byteOffset` is passed explicitly so a frame that arrived as a view
- * into a larger read buffer is stamped at its own start, not the buffer's.
- */
+/** Rewrite the peer id in place, without copying the payload. */
 export function rewriteEnvelopePeer(data: Uint8Array, peerId: number): void {
 	new DataView(data.buffer, data.byteOffset, ENVELOPE_HEADER_LENGTH).setUint32(0, peerId, false);
 }
 
 export const ROOM_ID_BYTES = 16;
 
-/** AES-256-GCM room key; the seal key for every collab frame. */
+/** Room cryptographic keys and tokens. */
 export const ROOM_KEY_BYTES = 32;
 
-/**
- * Random write token appended to the room key in full links
- * (`base64url(key ∥ token)`); view links carry the bare key. Possession
- * proves prompt/abort/agent-cmd capability to the host.
- */
+/** Random write token appended to the room key in full links */
 export const WRITE_TOKEN_BYTES = 16;
 
-// ═══════════════════════════════════════════════════════════════════════════
 // Frame sealing (AES-256-GCM)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * The sealed-frame layout: a 12-byte random IV, then the AES-GCM ciphertext with its tag.
- *
- * The host seals what the browser guest opens, so this is a wire format like the rest of this file
- * and not an implementation detail of either side. Both sides used to carry their own copy of the
- * whole thing, IV length and byte order included. That is the failure the envelope codec above had
- * as well, and it is worse here: change the IV length on one side and every frame fails to
- * authenticate, with the plaintext never recovered and nothing to say why, because a GCM tag
- * mismatch cannot distinguish a wrong key from a wrong layout.
- *
- * Nothing here reaches for Node, only WebCrypto, which is what lets the browser guest import it.
- */
+/** The sealed-frame layout: a 12-byte random IV, then the AES-GCM ciphertext with its tag. */
 const AES_ALGORITHM = "AES-GCM";
 
 /** Bytes of random IV prefixed to every sealed frame. */
@@ -794,32 +553,21 @@ export const SEAL_IV_BYTES = 12;
 const SEAL_TEXT_ENCODER = new TextEncoder();
 const SEAL_TEXT_DECODER = new TextDecoder();
 
-/** A fresh random room key. The key never leaves the link fragment; the relay sees only ciphertext. */
+/** Generate fresh random room key. */
 export function generateRoomKey(): Uint8Array {
 	const key = new Uint8Array(ROOM_KEY_BYTES);
 	crypto.getRandomValues(key);
 	return key;
 }
 
-/** A fresh random write token, which is what proves prompt/abort capability to the host. */
+/** Generate fresh random write token. */
 export function generateWriteToken(): Uint8Array {
 	const token = new Uint8Array(WRITE_TOKEN_BYTES);
 	crypto.getRandomValues(token);
 	return token;
 }
 
-/**
- * Import a raw room key for sealing and opening.
- *
- * The length check is not a formality: WebCrypto accepts 16, 24 and 32 byte AES keys, so a
- * truncated key from a mangled link would import cleanly as AES-128 and then fail to open every
- * frame, which looks like a relay fault rather than a bad link.
- *
- * `async` so the length failure arrives as a rejection, the same way a WebCrypto failure does. The
- * previous shape returned a promise but threw the length error synchronously, and one caller passes
- * the promise on without awaiting it (`new CollabSocket({ key: importRoomKey(...) })`), so a
- * mangled link threw out of the socket's construction where nothing was positioned to catch it.
- */
+/** Import a raw room key for sealing and opening. */
 export async function importRoomKey(raw: Uint8Array): Promise<CryptoKey> {
 	if (raw.byteLength !== ROOM_KEY_BYTES) {
 		throw new Error(`Room key must be ${ROOM_KEY_BYTES} bytes, got ${raw.byteLength}`);
@@ -829,37 +577,17 @@ export async function importRoomKey(raw: Uint8Array): Promise<CryptoKey> {
 	return crypto.subtle.importKey("raw", new Uint8Array(raw), AES_ALGORITHM, false, ["encrypt", "decrypt"]);
 }
 
-/**
- * Seal a frame as JSON under the room key.
- *
- * Generic over the frame type because the two sides name it differently: the browser guest works in
- * the JSON skeleton this file pins (`WireFrame`), while the host's frames carry richer session
- * types that serialize into those same shapes. The bytes are identical either way, which is the
- * only thing that has to agree.
- */
+/** Seal a frame as JSON under the room key. */
 export async function sealFrame<Frame>(key: CryptoKey, frame: Frame): Promise<Uint8Array> {
 	return sealBytes(key, SEAL_TEXT_ENCODER.encode(JSON.stringify(frame)));
 }
 
-/**
- * Inverse of {@link sealFrame}. Throws on authentication failure or malformed input.
- *
- * The caller names the frame type it expects; this does not validate it. The seal proves the frame
- * came from someone holding the room key, and the frame grammar is checked where it is handled.
- */
+/** Inverse of {@link sealFrame}. Throws on authentication failure or malformed input. */
 export async function openFrame<Frame>(key: CryptoKey, data: Uint8Array): Promise<Frame> {
 	return JSON.parse(SEAL_TEXT_DECODER.decode(await openBytes(key, data))) as Frame;
 }
 
-/**
- * The envelope itself: `[12B random IV][AES-256-GCM ciphertext with its tag]`.
- *
- * Separate from {@link sealFrame} because not every payload is JSON. A shared session is gzipped
- * before it is sealed, and it was writing this same envelope a second time, with its own copy of
- * the IV length. Two hand-written copies of one wire format is how the two halves drift into
- * ciphertext that the other side reads as garbage, so the envelope has one writer and JSON is a
- * layer on top of it rather than a peer of it.
- */
+/** The envelope itself: `[12B random IV][AES-256-GCM ciphertext with its tag]`. */
 export async function sealBytes(key: CryptoKey, plaintext: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {
 	const iv = new Uint8Array(SEAL_IV_BYTES);
 	crypto.getRandomValues(iv);
@@ -870,7 +598,7 @@ export async function sealBytes(key: CryptoKey, plaintext: Uint8Array<ArrayBuffe
 	return out;
 }
 
-/** Inverse of {@link sealBytes}. Throws on authentication failure or malformed input. */
+/** Decrypt and verify sealed frame bytes. */
 export async function openBytes(key: CryptoKey, data: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
 	if (data.byteLength <= SEAL_IV_BYTES) {
 		throw new Error("Sealed frame too short");
@@ -882,58 +610,24 @@ export async function openBytes(key: CryptoKey, data: Uint8Array): Promise<Uint8
 	return new Uint8Array(await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv }, key, ciphertext));
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // Guest join & request budgets
 // ═══════════════════════════════════════════════════════════════════════════
 
-/*
- * Every guest implementation waits on the same three host round trips, so the
- * budgets belong to the protocol rather than to either client. There are two
- * guests today, the TUI's `collab/guest.ts` and the web client, and they had
- * each declared their own copies. Two of the three were kept in step by hand
- * (the web client's comments literally read "Mirrors the TUI guest's ..."),
- * and the third had already drifted: transcript fetches gave up after 10 s in
- * the browser and 20 s in the terminal, so the same host on the same relay
- * looked responsive to one guest and dead to the other. A comment is not a
- * mechanism, so the values live here now and both guests import them.
- */
+/** Every guest implementation waits on the same three host round trips, so the */
 
 /** A host that never answers `hello` ends the join. */
 export const WELCOME_TIMEOUT_MS = 30_000;
 
-/**
- * Every snapshot chunk must make progress; the timer resets on each arrival,
- * so a multi-MB snapshot fails only when the relay genuinely stalls rather
- * than because its total wall-clock crossed the welcome budget.
- */
+/** Every snapshot chunk must make progress; the timer resets on each arrival, */
 export const SNAPSHOT_PROGRESS_TIMEOUT_MS = 30_000;
 
-/**
- * One `fetch-transcript` round trip. Generous relative to a normal response
- * because the host may be reading a large transcript from disk, and short
- * enough that a wedged host does not leave a viewer waiting indefinitely.
- */
+/** One `fetch-transcript` round trip. Generous relative to a normal response */
 export const TRANSCRIPT_TIMEOUT_MS = 20_000;
 
-/**
- * Default public relay; bare `<roomId>.<key>` links resolve against it.
- *
- * Points at the Veyyon-owned relay host. As of this writing `veyyon.dev` has
- * no live DNS/relay deployed yet — `/collab` against the default (no
- * `--relay` override) will fail to connect until that infra ships. Repoint
- * or override via `collab.relayUrl` once a real relay is standing.
- */
+/** Default public relay; bare `<roomId>.<key>` links resolve against it. */
 export const DEFAULT_RELAY_URL = "wss://share.veyyon.dev";
 
-/**
- * Default share viewer/upload base; `/share` links resolve against
- * `<base>/<id>#<key>`.
- *
- * Same caveat as {@link DEFAULT_RELAY_URL}: `share.veyyon.dev` is not yet a
- * deployed Veyyon share server. `/share` without `--server`/`share.serverUrl`
- * will fail closed on upload (network error) rather than silently reaching
- * an unintended upstream server.
- */
+/** Default share viewer/upload base; `/share` links resolve against */
 export const DEFAULT_SHARE_URL = "https://share.veyyon.dev/s";
 
 export interface ParsedCollabLink {
@@ -945,7 +639,6 @@ export interface ParsedCollabLink {
 	writeToken?: Uint8Array;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // Relay protocol (TEXT JSON control messages, fatal close codes, send bound)
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -962,21 +655,10 @@ export {
 	relayFatalCloseReason,
 } from "./relay";
 
-// ═══════════════════════════════════════════════════════════════════════════
 // Ask-dialog option labels
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Marker the ask dialog appends to the recommended option's label.
- *
- * The producer is the TUI, which bakes the marker into the label text it shows
- * and returns. Every consumer that reports the answer has to take it back off:
- * the dialog itself, the ask tool, and the HTML/collab renderer in
- * `@veyyon/tool-render`. Those four sites each carried their own copy of the
- * literal, so changing the wording in the writer left the readers matching a
- * string nobody produced any more, and the marker survived into the answer the
- * model was told the user picked. This is the one definition.
- */
+/** Marker the ask dialog appends to the recommended option's label. */
 export const RECOMMENDED_SUFFIX = " (Recommended)";
 
 /** Append {@link RECOMMENDED_SUFFIX} unless `label` already carries it. */
@@ -989,26 +671,10 @@ export function stripRecommendedSuffix(label: string): string {
 	return label.endsWith(RECOMMENDED_SUFFIX) ? label.slice(0, -RECOMMENDED_SUFFIX.length) : label;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // Todo status vocabulary
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Every todo status, paired with the one question every surface asks of it:
- * has the task closed?
- *
- * This map is the definition. {@link TodoStatus} is derived from its keys, so a
- * new status cannot join the union without a terminality decision landing here
- * with it, and `Record<TodoStatus, …>` tables elsewhere stop compiling until
- * they answer for it too.
- *
- * It lives in `@veyyon/wire` because both renderers of a todo board need it and
- * they sit on opposite sides of a runtime boundary: the TUI renderer in
- * `@veyyon/coding-agent` (`src/tools/todo.ts`) and the HTML/collab renderer in
- * `@veyyon/tool-render`, which cannot import from coding-agent. Two private
- * copies of the vocabulary is how one renderer ends up calling a board finished
- * while the other still draws it open.
- */
+/** Every todo status, paired with the one question every surface asks of it: */
 export const TODO_STATUS_IS_TERMINAL = {
 	pending: false,
 	in_progress: false,
@@ -1021,44 +687,22 @@ export type TodoStatus = keyof typeof TODO_STATUS_IS_TERMINAL;
 /** Every status in {@link TODO_STATUS_IS_TERMINAL}, for enumeration at run time. */
 export const TODO_STATUSES: readonly TodoStatus[] = Object.keys(TODO_STATUS_IS_TERMINAL) as TodoStatus[];
 
-/**
- * A status no further work is expected on. The complement is open work.
- *
- * Compared against `true` rather than returned raw: the argument is typed, but
- * the values behind it come off session files and wire frames, and a board
- * carrying `status: "toString"` reached `TODO_STATUS_IS_TERMINAL["toString"]`
- * and got `Object.prototype.toString` back — a truthy function that read as
- * CLOSED and collapsed a board with open work on it.
- */
+/** A status no further work is expected on. The complement is open work. */
 export function isTerminalTodoStatus(status: TodoStatus): boolean {
 	return TODO_STATUS_IS_TERMINAL[status] === true;
 }
 
-/**
- * Narrow arbitrary JSON (a transcript, a wire frame) to a status; anything
- * unknown reads as open.
- *
- * Own keys only. `in` walks the prototype chain, so every `Object.prototype`
- * member name passed this check and came back out typed as a status.
- */
+/** Narrow arbitrary JSON (a transcript, a wire frame) to a status; anything */
 export function asTodoStatus(value: unknown): TodoStatus {
 	return typeof value === "string" && Object.hasOwn(TODO_STATUS_IS_TERMINAL, value)
 		? (value as TodoStatus)
 		: "pending";
 }
 
-/** The single line a finished todo board collapses to, on every surface. */
+/** Render summary line for finished todo board. */
 export const TODO_DONE_SUMMARY = "Todo list done";
 
-/**
- * The board holds work and all of it is closed.
- *
- * Renderers call this on the phases in hand and collapse to
- * {@link TODO_DONE_SUMMARY} when it holds. Nothing caches the answer: it is a
- * function of the current board, so appending a pending task reopens the list
- * on the very next frame. An empty board is not "done" — there was nothing to
- * finish.
- */
+/** The board holds work and all of it is closed. */
 export function isTodoListDone(
 	phases: readonly { readonly tasks?: readonly { readonly status: TodoStatus }[] }[],
 ): boolean {
