@@ -159,7 +159,7 @@ export function pluralize(label: string, count: number): string {
  *
  * WHY THIS HAS AN OWNER. Nineteen surfaces write this phrase: every collapsed tool
  * block, the read tool's continuation notice, the edit preview, the LSP hover, the
- * MCP and eval renderers, the Agent Control Center's comms fold. Every one of them
+ * MCP and eval renderers, the subagent dashboard's comms fold. Every one of them
  * wrote `${n} more lines` inline, so every one of them said "1 more lines" on the
  * commonest case of all, a block that hid exactly one line.
  *
