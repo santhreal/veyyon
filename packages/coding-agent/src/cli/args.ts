@@ -392,12 +392,3 @@ export function getExtraHelpText(): string {
 
 	return lines.join("\n");
 }
-
-export function printHelp(): void {
-	process.stdout.write(
-		`${chalk.bold(APP_NAME)} - AI coding assistant\n\n` +
-			`Run ${APP_NAME} --help for full command and option details.\n` +
-			`Run ${APP_NAME} <command> --help for command-specific help.\n\n` +
-			`${getExtraHelpText()}\n`,
-	);
-}

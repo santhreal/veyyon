@@ -329,16 +329,6 @@ export function fitTipLine(candidates: readonly string[], width: number): string
 	return truncateToWidth(candidates[candidates.length - 1] ?? "", width);
 }
 
-export function foldCollapsedGlyph(hovered = false): string {
-	const g = `${theme.nav.expand} `;
-	return hovered ? theme.bold(theme.fg("accent", g)) : theme.fg("dim", g);
-}
-
-export function foldExpandedGlyph(hovered = false): string {
-	const g = `${theme.nav.collapse} `;
-	return hovered ? theme.bold(theme.fg("accent", g)) : theme.fg("dim", g);
-}
-
 export interface ModalShellInput {
 	title: string;
 	breadcrumb?: string;

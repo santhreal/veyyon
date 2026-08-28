@@ -355,10 +355,6 @@ export function silverEscape(intensity: number): string {
 	return `\x1b[38;5;${ramp256[idx]}m`;
 }
 
-export function gradientEscape(): string {
-	return silverEscape(0.55);
-}
-
 export function gradientLogo(lines: readonly string[]): string[] {
 	const reset = SGR_RESET;
 	const result: string[] = new Array(lines.length);

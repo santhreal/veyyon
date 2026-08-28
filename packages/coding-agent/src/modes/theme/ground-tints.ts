@@ -97,9 +97,3 @@ export function groundTintFgAnsi(hex: string | undefined, trueColor: boolean): s
 	const [r, g, b] = channels(hex);
 	return `\x1b[38;2;${r};${g};${b}m`;
 }
-
-export function groundTintBgAnsi(hex: string | undefined, trueColor: boolean): string | undefined {
-	if (hex === undefined || !trueColor) return undefined;
-	const rgb = channels(hex);
-	return `\x1b[48;2;${rgb[0]};${rgb[1]};${rgb[2]}m`;
-}

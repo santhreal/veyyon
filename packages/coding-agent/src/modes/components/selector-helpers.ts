@@ -87,10 +87,3 @@ export function handleTabSwitchKey(data: string, switchTab: (direction: 1 | -1) 
 	}
 	return false;
 }
-
-export function padLinesToHeight(lines: readonly string[], rows: number): readonly string[] {
-	if (lines.length >= rows) return lines;
-	const padded = lines.slice();
-	while (padded.length < rows) padded.push("");
-	return padded;
-}
