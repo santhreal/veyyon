@@ -1,8 +1,5 @@
 /** Wire-format protocol types for collaboration sessions. */
 
-// Content blocks
-// ═══════════════════════════════════════════════════════════════════════════
-
 export interface TextContent {
 	type: "text";
 	text: string;
@@ -64,9 +61,6 @@ export interface WireUsage {
 	totalTokens: number;
 	cost: { total: number };
 }
-
-// Messages
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** A user turn, as a guest receives it. */
 export interface WireUserMessage {
@@ -293,9 +287,6 @@ export interface CollabPromptDetails {
 	from?: string;
 }
 
-// Events (handled subset)
-// ═══════════════════════════════════════════════════════════════════════════
-
 export type AgentEvent =
 	| { type: "agent_start" }
 	| { type: "agent_end" }
@@ -322,9 +313,6 @@ export type AgentEvent =
 	  }
 	| { type: "auto_retry_end"; success: boolean; attempt: number; finalError?: string; mode?: "continue" | "retry" }
 	| { type: "thinking_level_changed"; thinkingLevel?: string };
-
-// State & agents
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** The model a guest renders. */
 export interface WireModel {
@@ -383,9 +371,6 @@ export interface AgentSnapshot {
 	model?: string;
 }
 
-// Bus payloads (task subagent lifecycle/progress channels)
-// ═══════════════════════════════════════════════════════════════════════════
-
 export interface AgentProgress {
 	index: number;
 	id: string;
@@ -428,9 +413,6 @@ export interface SubagentLifecyclePayload {
 	parentToolCallId?: string;
 	index: number;
 }
-
-// Frames (JSON inside the AES-GCM seal)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type CollabUiSelectItem = string | { label: string; description?: string };
 
@@ -507,9 +489,6 @@ export const COLLAB_PROTO = 3;
 /** Parameter key used for intent tracing (e.g. prompt explanation/reasoning) */
 export const INTENT_FIELD = "i";
 
-// Envelope & link constants
-// ═══════════════════════════════════════════════════════════════════════════
-
 /** Envelope prefix codec for peer frames. */
 export const ENVELOPE_HEADER_LENGTH = 4;
 
@@ -540,9 +519,6 @@ export const ROOM_KEY_BYTES = 32;
 
 /** Random write token appended to the room key in full links */
 export const WRITE_TOKEN_BYTES = 16;
-
-// Frame sealing (AES-256-GCM)
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** The sealed-frame layout: a 12-byte random IV, then the AES-GCM ciphertext with its tag. */
 const AES_ALGORITHM = "AES-GCM";
@@ -603,17 +579,9 @@ export async function openBytes(key: CryptoKey, data: Uint8Array): Promise<Uint8
 	if (data.byteLength <= SEAL_IV_BYTES) {
 		throw new Error("Sealed frame too short");
 	}
-	// Both slices are copied rather than viewed. WebCrypto reads a view's whole backing buffer, and
-	// neither of these spans its own: the ciphertext always sits behind the IV.
-	const iv = new Uint8Array(data.subarray(0, SEAL_IV_BYTES));
 	const ciphertext = new Uint8Array(data.subarray(SEAL_IV_BYTES));
 	return new Uint8Array(await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv }, key, ciphertext));
 }
-
-// Guest join & request budgets
-// ═══════════════════════════════════════════════════════════════════════════
-
-/** Every guest implementation waits on the same three host round trips, so the */
 
 /** A host that never answers `hello` ends the join. */
 export const WELCOME_TIMEOUT_MS = 30_000;
@@ -639,12 +607,6 @@ export interface ParsedCollabLink {
 	writeToken?: Uint8Array;
 }
 
-// Relay protocol (TEXT JSON control messages, fatal close codes, send bound)
-// ═══════════════════════════════════════════════════════════════════════════
-
-// Owned by `./relay`, which has no imports, so a relay client pays one module for the protocol instead of
-// this whole barrel. Re-exported here so anything that already took the relay types from `@veyyon/wire` is
-// unchanged.
 export {
 	isRelayFatalCloseCode,
 	RELAY_FATAL_CLOSE_REASONS,
@@ -654,9 +616,6 @@ export {
 	type RelayControlToHost,
 	relayFatalCloseReason,
 } from "./relay";
-
-// Ask-dialog option labels
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** Marker the ask dialog appends to the recommended option's label. */
 export const RECOMMENDED_SUFFIX = " (Recommended)";
@@ -670,9 +629,6 @@ export function withRecommendedSuffix(label: string): string {
 export function stripRecommendedSuffix(label: string): string {
 	return label.endsWith(RECOMMENDED_SUFFIX) ? label.slice(0, -RECOMMENDED_SUFFIX.length) : label;
 }
-
-// Todo status vocabulary
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** Every todo status, paired with the one question every surface asks of it: */
 export const TODO_STATUS_IS_TERMINAL = {
