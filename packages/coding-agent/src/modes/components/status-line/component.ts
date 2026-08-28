@@ -923,6 +923,9 @@ export class StatusLineComponent implements Component {
 	};
 	#quietLocationContents: string[] = [];
 	#quietBadgeParts: string[] = [];
+	#quietRightParts: QuietPart[] = [];
+	#quietBounds: QuietSegmentBounds[] = [];
+	#quietShiftedBounds: QuietSegmentBounds[] = [];
 
 	/**
 	 * The path expansion, as a value between the collapsed row and the expanded one, or
@@ -2233,7 +2236,10 @@ export class StatusLineComponent implements Component {
 		locationContents.length = location.length;
 		for (let i = 0; i < location.length; i++) locationContents[i] = location[i]!.content;
 		let left = this.#locationWithRunClock(locationContents, sep);
-		const rightParts = capLeft.concat(capRight);
+		const rightParts = this.#quietRightParts;
+		rightParts.length = 0;
+		for (let i = 0; i < capLeft.length; i++) rightParts.push(capLeft[i]!);
+		for (let i = 0; i < capRight.length; i++) rightParts.push(capRight[i]!);
 		if (extras?.locationRight) rightParts.push({ id: "location_right", content: extras.locationRight });
 		let right = joinContents(rightParts, sep);
 		// The run clock is comfort chrome; the capability segments (context
@@ -2452,7 +2458,8 @@ export class StatusLineComponent implements Component {
 		// right-aligned at the budget when a left group exists, else it renders
 		// from column 0 and truncates.
 		const sepWidth = visibleWidth(sep);
-		const bounds: QuietSegmentBounds[] = [];
+		const bounds = this.#quietBounds;
+		bounds.length = 0;
 		if (left) {
 			// Once the fitter has run it is the authority on where the parts landed: it is
 			// what dropped a part and what clipped the head, so it knows the painted columns
@@ -2489,7 +2496,8 @@ export class StatusLineComponent implements Component {
 		// The badge shifts every segment right by its width; the recorded bounds
 		// answer in columns of the RETURNED line (quietSegmentAt hit-testing), so
 		// they shift with it.
-		const shifted: QuietSegmentBounds[] = [];
+		const shifted = this.#quietShiftedBounds;
+		shifted.length = 0;
 		for (let bi = 0; bi < bounds.length; bi++) {
 			const entry = bounds[bi]!;
 			if (entry.start >= budget) continue;
