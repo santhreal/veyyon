@@ -57,22 +57,27 @@ export async function buildDirectoryTree(cwd: string, options: BuildDirectoryTre
 	const perDirLimit = options.perDirLimit === undefined ? null : options.perDirLimit;
 	const rootLimit = options.rootLimit === undefined ? perDirLimit : options.rootLimit;
 
-	const { entries, truncated: nativeTruncated } = await listWorkspace({
-		path: rootPath,
-		maxDepth,
-		hidden: true,
-		gitignore: false,
-	});
+	try {
+		const { entries, truncated: nativeTruncated } = await listWorkspace({
+			path: rootPath,
+			maxDepth,
+			hidden: true,
+			gitignore: false,
+		});
 
-	return assembleTree(rootPath, entries, {
-		perDirLimit,
-		rootLimit,
-		lineCap: options.lineCap === undefined ? null : options.lineCap,
-		nativeTruncated,
-		// Tool output (read tool directory listing), not a cached prefix —
-		// the human-friendly relative "ago" is appropriate here.
-		ageMode: "relative",
-	});
+		return assembleTree(rootPath, entries, {
+			perDirLimit,
+			rootLimit,
+			lineCap: options.lineCap === undefined ? null : options.lineCap,
+			nativeTruncated,
+			// Tool output (read tool directory listing), not a cached prefix —
+			// the human-friendly relative "ago" is appropriate here.
+			ageMode: "relative",
+		});
+	} catch (error) {
+		refuseWithoutAddon(error);
+		return emptyTree(rootPath);
+	}
 }
 
 export interface TopLevelDirectoryListing extends DirectoryTree {
@@ -100,57 +105,62 @@ export async function buildTopLevelDirectoryListing(
 	const rootPath = path.resolve(cwd);
 	const entryLimit = options.entryLimit === undefined ? null : options.entryLimit;
 
-	const { entries, truncated: nativeTruncated } = await listWorkspace({
-		path: rootPath,
-		maxDepth: 2,
-		hidden: true,
-		gitignore: false,
-	});
-
-	// Direct-child count per top-level directory, from the same depth-2 scan.
-	const childCounts = new Map<string, number>();
-	const topLevel: Array<{ name: string; isDir: boolean; mtimeMs: number; size: number }> = [];
-	for (const entry of entries) {
-		const slash = entry.path.lastIndexOf("/");
-		const parentPath = slash === -1 ? "" : entry.path.slice(0, slash);
-		if (parentPath === "") {
-			topLevel.push({
-				name: entry.path,
-				isDir: entry.fileType === FileType.Dir,
-				mtimeMs: entry.mtime ?? 0,
-				size: entry.size ?? 0,
-			});
-		} else if (!parentPath.includes("/")) {
-			childCounts.set(parentPath, (childCounts.get(parentPath) ?? 0) + 1);
-		}
-	}
-	topLevel.sort((a, b) => b.mtimeMs - a.mtimeMs || a.name.localeCompare(b.name));
-
-	const capped = entryLimit !== null && topLevel.length > entryLimit;
-	const shown = capped && entryLimit !== null ? topLevel.slice(0, entryLimit) : topLevel;
-	const omitted = topLevel.length - shown.length;
-
-	const formatNodeAge = makeAgeFormatter("relative");
-	const lines: RenderedLine[] = [{ label: ".", depth: 0, isRoot: true }];
-	for (const node of shown) {
-		const count = childCounts.get(node.name) ?? 0;
-		const countText = node.isDir ? `  (${count} ${count === 1 ? "entry" : "entries"})` : "";
-		lines.push({
-			label: `  - ${node.name}${node.isDir ? "/" : ""}${countText}`,
-			depth: 1,
-			isRoot: false,
-			size: node.isDir ? undefined : formatBytes(node.size),
-			age: formatNodeAge(node.mtimeMs),
+	try {
+		const { entries, truncated: nativeTruncated } = await listWorkspace({
+			path: rootPath,
+			maxDepth: 2,
+			hidden: true,
+			gitignore: false,
 		});
-	}
 
-	return {
-		rootPath,
-		rendered: formatLines(lines),
-		truncated: nativeTruncated || capped,
-		totalLines: lines.length,
-		omittedTopLevel: omitted,
-	};
+		// Direct-child count per top-level directory, from the same depth-2 scan.
+		const childCounts = new Map<string, number>();
+		const topLevel: Array<{ name: string; isDir: boolean; mtimeMs: number; size: number }> = [];
+		for (const entry of entries) {
+			const slash = entry.path.lastIndexOf("/");
+			const parentPath = slash === -1 ? "" : entry.path.slice(0, slash);
+			if (parentPath === "") {
+				topLevel.push({
+					name: entry.path,
+					isDir: entry.fileType === FileType.Dir,
+					mtimeMs: entry.mtime ?? 0,
+					size: entry.size ?? 0,
+				});
+			} else if (!parentPath.includes("/")) {
+				childCounts.set(parentPath, (childCounts.get(parentPath) ?? 0) + 1);
+			}
+		}
+		topLevel.sort((a, b) => b.mtimeMs - a.mtimeMs || a.name.localeCompare(b.name));
+
+		const capped = entryLimit !== null && topLevel.length > entryLimit;
+		const shown = capped && entryLimit !== null ? topLevel.slice(0, entryLimit) : topLevel;
+		const omitted = topLevel.length - shown.length;
+
+		const formatNodeAge = makeAgeFormatter("relative");
+		const lines: RenderedLine[] = [{ label: ".", depth: 0, isRoot: true }];
+		for (const node of shown) {
+			const count = childCounts.get(node.name) ?? 0;
+			const countText = node.isDir ? `  (${count} ${count === 1 ? "entry" : "entries"})` : "";
+			lines.push({
+				label: `  - ${node.name}${node.isDir ? "/" : ""}${countText}`,
+				depth: 1,
+				isRoot: false,
+				size: node.isDir ? undefined : formatBytes(node.size),
+				age: formatNodeAge(node.mtimeMs),
+			});
+		}
+
+		return {
+			rootPath,
+			rendered: formatLines(lines),
+			truncated: nativeTruncated || capped,
+			totalLines: lines.length,
+			omittedTopLevel: omitted,
+		};
+	} catch (error) {
+		refuseWithoutAddon(error);
+		return { ...emptyTree(rootPath), omittedTopLevel: 0 };
+	}
 }
 
 /**
