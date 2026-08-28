@@ -582,7 +582,7 @@ describe("profile path segment ownership", () => {
 		// occurrence is the const declaration itself.
 		const dirsSource = await fs.readFile(path.join(import.meta.dir, "..", "src", "dirs.ts"), "utf-8");
 		const helpersSource = await fs.readFile(path.join(import.meta.dir, "..", "src", "dirs-helpers.ts"), "utf-8");
-		const combined = dirsSource + "\n" + helpersSource;
+		const combined = `${dirsSource}\n${helpersSource}`;
 		const literals = combined.match(/"profiles"/g) ?? [];
 		expect(literals).toHaveLength(1);
 		expect(combined).toContain('export const PROFILES_DIR_NAME = "profiles";');
