@@ -1,48 +1,11 @@
-/**
- * Effort-tier variant collapsing.
- *
- * Some providers expose one logical model as several effort- or
- * thinking-suffixed upstream ids (Antigravity CCA:
- * `gemini-3.5-flash-extra-low`/`-low`, `claude-*`/`claude-*-thinking` pairs;
- * aggregators: `X`/`X-thinking` twins). Collapsing replaces the member specs
- * with one logical spec whose `thinking.effortRouting` records the per-effort
- * upstream wire id; request-time code resolves the outbound id via
- * `resolveWireModelId` and everything local (selection, caching, usage
- * attribution) keys on the logical `id`.
- *
- * Families come from two sources:
- * - Hand tables (`VARIANT_COLLAPSE_TABLES`) for providers whose routing needs
- *   curation (Antigravity tier triplets, single-member renames, recycled ids).
- * - `deriveThinkingPairFamilies`: the global automatic rule — any live
- *   `X` + `X-thinking` pair (trailing or infix token) collapses into `X`,
- *   routing thinking-enabled requests to `X-thinking`. Gated on identical
- *   pricing and same api: price-divergent twins are distinct SKUs and stay
- *   separate so billing attribution never lies.
- *
- * Family invariants (hold for hand-written and derived tables):
- * - One axis per family. A second id axis (e.g. Cursor's `-fast` service
- *   tier) becomes a sibling family, never a second routing dimension.
- * - The collapsed spec inherits non-tier fields from the first present
- *   member; members must be cost-homogeneous.
- *
- * `collapseEffortVariants` is pure, deterministic, and idempotent:
- * `collapse(collapse(x))` equals `collapse(x)`, and mixed raw+collapsed input
- * (stale cache rows, previous-snapshot fallbacks) dedupes to the collapsed
- * entry. That makes it safe at every source — discovery, the catalog
- * generator, and the model-manager merge point.
- */
+/** Effort-tier variant collapsing into logical specs with per-effort wire routing. */
 import { buildCompat, buildModel } from "./build";
 import { Effort } from "./effort";
 import { stripThinkingVariantToken } from "./identity/family";
 import { resolveModelThinking } from "./model-thinking";
 import type { Api, Model, ModelSpec, Provider, ThinkingConfig } from "./types";
 
-/**
- * Structural bound for collapse inputs: both raw `ModelSpec`s and built
- * `Model`s qualify. (`Model.compat` is the resolved record, not the sparse
- * config, so the two are not mutually assignable — collapsing never touches
- * `compat`.)
- */
+/** Structural bound for collapse inputs: raw ModelSpecs or built Models. */
 export type VariantSpecLike = Omit<ModelSpec<Api>, "compat"> & { compat?: unknown };
 
 /** One collapsed family: logical id + member wire ids + per-effort routing. */
@@ -51,37 +14,17 @@ export interface EffortVariantFamily {
 	id: string;
 	/** Final display name, no tier marker. */
 	name: string;
-	/**
-	 * Member wire ids in priority order. The first member present in the input
-	 * becomes the collapsed spec's default wire id (`requestModelId`; omitted
-	 * when it equals the logical id).
-	 */
+	/** Member wire ids in priority order. */
 	members: readonly string[];
-	/**
-	 * Wire ids upstream no longer serves (e.g. a deployment killed while
-	 * discovery still advertises it). Fresh collapsing never routes to them,
-	 * and stale collapsed snapshots (bundled catalog, cache rows,
-	 * previous-generation fallbacks) get routing/`requestModelId` entries that
-	 * target them re-pointed through `routing`. Keep retired ids in `members`
-	 * so the raw upstream spec is still consumed and aliased.
-	 */
+	/** Retired wire ids to consume and re-point through routing. */
 	retiredMembers?: readonly string[];
-	/**
-	 * Per-effort upstream wire id; `"off"` applies when thinking is disabled.
-	 * Entries whose target member is absent from the input are dropped — those
-	 * efforts fall back to `requestModelId ?? id`.
-	 */
+	/** Per-effort upstream wire id; 'off' applies when thinking is disabled. */
 	routing: Readonly<Partial<Record<Effort | "off", string>>>;
 	/** Explicit capability surface for the collapsed spec — no inference. */
 	thinking: Readonly<Omit<ThinkingConfig, "effortRouting" | "suppressWhenOff">>;
 	/** Thinking-off requests must explicitly suppress thinking on the wire. */
 	suppressWhenOff?: boolean;
-	/**
-	 * Preserve non-off effort routes even when discovery omits the backing member.
-	 * Used for Cloud Code Assist `X`/`X-thinking` pairs where upstream accepts
-	 * the `-thinking` wire id but the model-list endpoint may advertise only the
-	 * bare id.
-	 */
+	/** Preserve non-off effort routes even when discovery omits the backing member. */
 	preserveAbsentEffortRoutes?: boolean;
 	/** Retired/recycled selector ids that alias to this family without being members. */
 	extraAliases?: readonly string[];
@@ -91,17 +34,10 @@ export interface VariantCollapseTable {
 	families: readonly EffortVariantFamily[];
 }
 
-/**
- * Trailing effort-tier suffix on a sibling wire id (`gpt-5.4-xhigh`,
- * `glm-5-2-none`, `o3-mini-high`). The ONE owner of the tier-suffix
- * vocabulary — discovery normalizers use {@link stripEffortTierSuffix} to
- * recognize a future, un-tabled tier id as a variant of its base model
- * instead of treating it as an unknown model with default metadata.
- */
+/** Trailing effort-tier suffix regex on a sibling wire id. */
 const EFFORT_TIER_SUFFIX_RE = /-(?:minimal|low|medium|high|xhigh|max|none|thinking)$/;
 
-/** The base id with one trailing effort-tier suffix removed, or undefined
- *  when `id` carries no tier suffix. */
+/** Return base id with trailing effort-tier suffix removed, or undefined. */
 export function stripEffortTierSuffix(id: string): string | undefined {
 	const stripped = id.replace(EFFORT_TIER_SUFFIX_RE, "");
 	return stripped !== id && stripped.length > 0 ? stripped : undefined;
@@ -120,8 +56,7 @@ function thinkingPair(baseId: string, name: string): EffortVariantFamily {
 			[Effort.Medium]: `${baseId}-thinking`,
 			[Effort.High]: `${baseId}-thinking`,
 		},
-		// Thinking-off routes to the non-thinking backing id, where omitting
-		// thinkingConfig is already correct — no suppressWhenOff.
+
 		thinking: { mode: "budget", efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High] },
 		preserveAbsentEffortRoutes: true,
 	};
@@ -186,11 +121,7 @@ function devinTierFamily(
 	};
 }
 
-/**
- * GPT-5.6 (Luna/Sol/Terra) serves per-tier siblings for the full five-tier
- * `low..max` wire scale; user efforts route 1:1 onto them. Devin serves no
- * `-max-priority` sibling, so the fast family tops out at `xhigh`.
- */
+/** Devin GPT-5.6 tier families. */
 function devinGpt56Families(variant: "luna" | "sol" | "terra", name: string): readonly EffortVariantFamily[] {
 	const base = `gpt-5-6-${variant}`;
 	return [
@@ -225,12 +156,7 @@ function devinGpt56Families(variant: "luna" | "sol" | "terra", name: string): re
 const GEMINI_3_FLASH_FAMILY_EFFORTS: readonly Effort[] = [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High];
 const GEMINI_3_PRO_FAMILY_EFFORTS: readonly Effort[] = [Effort.Low, Effort.High];
 
-/**
- * Antigravity Cloud Code Assist sends an explicit `thinkingBudget` per tier
- * (verified against captured `daily-cloudcode-pa` requests). Flash uses round
- * budgets; Pro offsets every budget by +1. Minimal mirrors Low (the Antigravity
- * UI exposes Low/Medium/High only) so the effort stays selectable.
- */
+/** Per-tier thinking budgets for Antigravity Cloud Code Assist Gemini 3 Flash. */
 const GEMINI_3_FLASH_FAMILY_BUDGETS: Readonly<Partial<Record<Effort, number>>> = {
 	[Effort.Minimal]: 1000,
 	[Effort.Low]: 1000,
@@ -242,15 +168,7 @@ const GEMINI_3_PRO_FAMILY_BUDGETS: Readonly<Partial<Record<Effort, number>>> = {
 	[Effort.High]: 10001,
 };
 
-/**
- * The two Cloud Code Assist providers share the same Antigravity discovery list
- * but disagree on the thinking transport: `google-antigravity` (daily-cloudcode-pa)
- * sends an explicit `thinkingBudget` (verified against captured requests), while
- * `google-gemini-cli` (cloudcode-pa) follows the official Gemini CLI and uses
- * `thinkingLevel`. The Gemini 3.x families therefore differ only in thinking
- * transport (and, for Flash, the per-tier wire-id routing); everything else is
- * shared verbatim.
- */
+/** Gemini 3.5 Flash family for Cloud Code Assist providers. */
 function geminiFlashFamily(mode: "budget" | "google-level"): EffortVariantFamily {
 	const budget = mode === "budget";
 	return {
@@ -276,21 +194,7 @@ function geminiFlashFamily(mode: "budget" | "google-level"): EffortVariantFamily
 			? { mode: "budget", efforts: GEMINI_3_FLASH_FAMILY_EFFORTS, effortBudgets: GEMINI_3_FLASH_FAMILY_BUDGETS }
 			: { mode: "google-level", efforts: GEMINI_3_FLASH_FAMILY_EFFORTS },
 		suppressWhenOff: true,
-		// Retired bare id; the alias only fires when no live model holds it
-		// (exact match wins in every resolver).
-		//
-		// `gemini-3.6-flash` is deliberately NOT aliased here. It is the id of a
-		// real, separate family ({@link gemini36FlashFamily}) whose per-tier wire
-		// ids come from the same Antigravity discovery list this family is built
-		// from, so the two CAN be live on one provider — they are presence
-		// filtered, not provider partitioned. Aliasing it meant that whenever
-		// discovery happened not to serve the 3.6 tiers, a request for 3.6
-		// quietly resolved to this 3.5 family instead: a different model, chosen
-		// silently, with nothing in the resolved id to show the substitution. A
-		// deepswe-bench run hit exactly that and measured 3.5 while reporting 3.6,
-		// which also disabled its argot encode gate because the allowlist named
-		// the requested id rather than the resolved one. Without the alias, asking
-		// for 3.6 either gets 3.6 or fails loudly, which is the honest outcome.
+		// Retired bare id; exact match wins in every resolver.
 		extraAliases: ["gemini-3-flash"],
 	};
 }
@@ -300,12 +204,7 @@ function geminiProFamily(mode: "budget" | "google-level"): EffortVariantFamily {
 	return {
 		id: "gemini-3.1-pro",
 		name: "Gemini 3.1 Pro",
-		// High routes to `gemini-pro-agent` — the upstream `gemini-3.1-pro-high`
-		// deployment returns INVALID_ARGUMENT on every streamGenerateContent
-		// request (both CCA endpoints) while discovery still lists it;
-		// `gemini-pro-agent` is the same model ("Gemini 3.1 Pro (High)", same
-		// thinking budget/caps) and accepts the identical request body.
-		// `gemini-3.1-pro-high` stays a member so the dead raw id is consumed.
+		// High routes to gemini-pro-agent; gemini-3.1-pro-high stays a member so the dead raw id is consumed.
 		members: ["gemini-3.1-pro-low", "gemini-pro-agent", "gemini-3.1-pro-high"],
 		retiredMembers: ["gemini-3.1-pro-high"],
 		routing: {
@@ -320,23 +219,7 @@ function geminiProFamily(mode: "budget" | "google-level"): EffortVariantFamily {
 	};
 }
 
-/**
- * Gemini 3.6 Flash (Cloud Code Assist) exposes explicit per-tier wire ids —
- * `gemini-3.6-flash-{low,medium,high}`, one upstream deployment per tier
- * (display names "Gemini 3.6 Flash (Low/Medium/High)") — unlike 3.5 Flash, which
- * serves a few ids selected by an in-body thinkingBudget. Without a family here
- * the tiers never collapse: a user selects a raw `-low` deployment AND then a
- * separate thinking effort stacks on top, so the status line reads the
- * contradictory "Flash (Low) · high". Collapsing merges the three into one
- * "Gemini 3.6 Flash" whose effort routes 1:1 onto the tier wire id (`mode:
- * "effort"` — the id carries the tier, so no budget/level goes in the body).
- * Minimal mirrors Low (no separate minimal deployment) so the effort stays
- * selectable. Wire ids are from live Antigravity discovery; presence-filtered
- * collapsing makes this inert on any provider that does not serve them, so it is
- * shared by both CCA tables safely. The bare `gemini-3.6-flash` id is served
- * only by unrelated aggregators, so the logical id introduced here never
- * collides with a CCA member.
- */
+/** Gemini 3.6 Flash family with per-tier wire-id routing. */
 function gemini36FlashFamily(): EffortVariantFamily {
 	return {
 		id: "gemini-3.6-flash",
@@ -352,33 +235,7 @@ function gemini36FlashFamily(): EffortVariantFamily {
 	};
 }
 
-/**
- * Gemini 3.x Flash on Cloud Code Assist is also served as a single `-tiered`
- * deployment (`gemini-3.7-flash-tiered`, `gemini-3.6-flash-tiered`): one wire
- * id for every tier, with the tier carried in the request body as
- * `thinkingLevel` (the `google-level` mode). For 3.7 the tiered id is the ONLY
- * id the endpoint serves, with no bare id and no `-low`/`-medium`/`-high`
- * siblings, so sibling-id effort routing is impossible there. The surface is
- * curated per id, never derived from the suffix: models.dev's
- * `google/gemini-3.7-flash` entry declares the low/medium/high ladder and the
- * official Antigravity harness exposes a low/medium/high effort slider for the
- * deployment. An uncurated future `-tiered` id keeps its raw row and no
- * ladder rather than an invented one.
- *
- * 3.7 collapses to the logical `gemini-3.7-flash` row (matching the bundled
- * `google/gemini-3.7-flash` identity) with `requestModelId` pointing at the
- * tiered wire id. 3.6 cannot: the `gemini-3.6-flash` logical id belongs to the
- * per-tier effort family above, and one family carries one axis. That family's
- * mode is `effort` (the wire id carries the tier); this deployment's is
- * `google-level` (the body does). The 3.6 tiered id therefore stands alone as
- * its own row, keyed on the wire id.
- *
- * No `off` route and no `suppressWhenOff`: Gemini 3.x reasoning is mandatory,
- * so the build-time floor backfills `requiresEffort` and the picker never
- * offers off, matching the bundled `google/gemini-3.7-flash` row. Shared
- * verbatim by both CCA tables: the two providers serve the same discovery list
- * and these deployments take `thinkingLevel` on both endpoints.
- */
+/** Gemini 3.x Flash tiered deployment family. */
 function geminiTieredFlashFamily(id: string, name: string, wireId: string): EffortVariantFamily {
 	return {
 		id,
@@ -399,8 +256,6 @@ const SHARED_CCA_FAMILIES: readonly EffortVariantFamily[] = [
 	geminiTieredFlashFamily("gemini-3.7-flash", "Gemini 3.7 Flash", "gemini-3.7-flash-tiered"),
 	geminiTieredFlashFamily("gemini-3.6-flash-tiered", "Gemini 3.6 Flash Tiered", "gemini-3.6-flash-tiered"),
 	{
-		// Legacy static family — covers stale snapshots and caches. Stale ids are
-		// unverified against the budget-mode CCA contract; keep them on level.
 		id: "gemini-3-pro",
 		name: "Gemini 3 Pro",
 		members: ["gemini-3-pro-low", "gemini-3-pro-high"],
@@ -413,22 +268,13 @@ const SHARED_CCA_FAMILIES: readonly EffortVariantFamily[] = [
 		suppressWhenOff: true,
 	},
 	{
-		// Rename-only collapse: every effort and off fall back to the wire id.
 		id: "gpt-oss-120b",
 		name: "GPT-OSS 120B",
 		members: ["gpt-oss-120b-medium"],
 		routing: {},
 		thinking: { mode: "budget", efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High] },
 	},
-	// Antigravity Cloud Code Assist exposes Claude 4.6 asymmetrically: only the
-	// bare `claude-sonnet-4-6` wire id (no `-thinking` twin) and only the
-	// `claude-opus-4-6-thinking` wire id (no bare twin). Per-effort thinking is
-	// carried in the request body via `thinkingBudget`, so both ids accept on/off
-	// requests. Listing both candidates in `members` (priority order) keeps the
-	// collapse correct if the backend mix ever rebalances; `retiredMembers`
-	// re-points stale collapsed snapshots (bundled catalog rows, cache rows
-	// written by prior generations) away from the dead wire id via
-	// `reconcileRetiredRouting`.
+
 	{
 		id: "claude-sonnet-4-6",
 		name: "Claude Sonnet 4.6",
@@ -544,9 +390,7 @@ export const DEVIN_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
 			},
 			[Effort.Low, Effort.Medium, Effort.High],
 		),
-		// GLM-5.2 serves an off sibling (`-none`), a high tier (the bare id),
-		// and a max tier — an effort axis, not separate SKUs. Lower requested
-		// efforts clamp up to `high`.
+
 		devinTierFamily(
 			"glm-5-2",
 			"GLM-5.2",
@@ -567,8 +411,7 @@ export const DEVIN_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
 			},
 			[Effort.High, Effort.Max],
 		),
-		// Legacy uppercase pair: the underscore token defeats the automatic
-		// `X`/`X-thinking` derivation, so collapse it by hand.
+
 		devinTierFamily(
 			"MODEL_CLAUDE_4_5_OPUS",
 			"Claude Opus 4.5",
@@ -708,16 +551,7 @@ export const DEVIN_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
 	],
 };
 
-/**
- * Cursor serves reasoning effort as tier-suffixed sibling model ids (its wire
- * carries no effort param — see `buildGrpcRequest` in pi-ai/providers/cursor).
- * The raw tier ids arrived from discovery with `reasoning: false` (no
- * `thinkingDetails`, no bundled reference) and sat as separate dial-less
- * models; worse, the bare codex ids inherited a wire-effort ladder from their
- * OpenAI reference specs that the cursor transport silently ignored. These
- * families claim exactly the efforts a tier id exists for, so every claimed
- * effort really changes what the server runs.
- */
+/** Cursor hand collapse table mapping tier suffixes to effort levels. */
 export const CURSOR_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
 	families: [
 		devinTierFamily(
@@ -771,20 +605,7 @@ export const VARIANT_COLLAPSE_TABLES: Readonly<Record<string, VariantCollapseTab
 	cursor: CURSOR_VARIANT_COLLAPSE_TABLE,
 };
 
-/**
- * The global automatic rule: derive an `X` + `X-thinking` family for every
- * pair where both ids are live in `specs` (trailing or infix token). Gates:
- * - both members share the same `api`,
- * - known pricing must match — all-zero cost rows count as unknown
- *   (aggregators routinely ship them), but twins that BOTH carry real,
- *   differing prices are distinct SKUs and never merge,
- * - ids claimed by the provider's hand `table` are skipped (curation wins).
- * The capability surface prefers the thinking member's metadata, then the
- * bare member's, then the canonical deriver (aggregators often ship
- * `reasoning: false` and no thinking config on the twin), then a budget
- * default. `off` routes to the bare id; every supported effort routes to the
- * thinking id.
- */
+/** Derive automatic X + X-thinking pair families for matching live models. */
 export function deriveThinkingPairFamilies<TSpec extends VariantSpecLike>(
 	specs: readonly TSpec[],
 	table?: VariantCollapseTable,
@@ -814,10 +635,7 @@ export function deriveThinkingPairFamilies<TSpec extends VariantSpecLike>(
 		if (spec.api !== base.api) continue;
 		const specPriced = spec.cost.input !== 0 || spec.cost.output !== 0;
 		const basePriced = base.cost.input !== 0 || base.cost.output !== 0;
-		// Cache fields compare only when BOTH sides report one: a zero cache
-		// price on an aggregator means "not told", same as an all-zero row (the
-		// openrouter qwen3-max twin ships identical input/output but zero cache
-		// fields and must still pair).
+
 		const cacheFieldDiffers = (a: number, b: number): boolean => a !== 0 && b !== 0 && a !== b;
 		if (
 			specPriced &&
@@ -847,12 +665,7 @@ export function deriveThinkingPairFamilies<TSpec extends VariantSpecLike>(
 
 const DEFAULT_PAIR_EFFORTS: readonly Effort[] = [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High];
 
-/**
- * Surface fallback chain: thinking member → bare member → canonical deriver →
- * budget default. `requiresEffort` is dropped from every source: the COLLAPSED
- * pair can disable thinking (off routes to the bare backing id), even though
- * the thinking member alone cannot.
- */
+/** Fallback chain for derived pair thinking surface. */
 function derivePairThinkingSurface(
 	thinkingSpec: VariantSpecLike,
 	baseSpec: VariantSpecLike,
@@ -873,12 +686,7 @@ function derivePairThinkingSurface(
 	return { mode: "budget", efforts: DEFAULT_PAIR_EFFORTS };
 }
 
-/**
- * True when `spec` is the output of collapsing rather than a raw upstream
- * member. `thinking.effortRouting` is written only by collapsing; the
- * `requestModelId` arm is scoped to the provider's hand-table family ids so
- * unrelated carriers (GitHub Copilot `-1m` context variants) never match.
- */
+/** Returns true when spec is the output of variant collapsing. */
 export function isVariantCollapsedSpec(spec: VariantSpecLike): boolean {
 	if (spec.thinking?.effortRouting !== undefined) {
 		return true;
@@ -890,17 +698,7 @@ export function isVariantCollapsedSpec(spec: VariantSpecLike): boolean {
 	return table !== undefined && getAliasIndex(table).familyIds.has(spec.id);
 }
 
-/**
- * Re-point a stale collapsed spec whose `requestModelId` or routing still
- * targets a retired wire id. Collapsed snapshots (bundled catalog, cache
- * rows, previous-generation fallbacks) pass through collapsing untouched, so
- * a hand-table routing fix would otherwise never reach them. Only retired
- * targets are rewritten — presence-filtered routing decisions from live
- * discovery stay authoritative for everything else. Per retired entry the
- * table's route for that effort wins, then the off/first-live-member wire id,
- * then the route is dropped (falls back to `requestModelId ?? id`). Returns
- * `spec` by reference when nothing targets a retired id.
- */
+/** Re-point a stale collapsed spec whose routing targets retired wire ids. */
 function reconcileRetiredRouting<TSpec extends VariantSpecLike>(
 	spec: TSpec,
 	family: EffortVariantFamily,
@@ -953,25 +751,12 @@ function reconcileRetiredRouting<TSpec extends VariantSpecLike>(
 	return next;
 }
 
-/**
- * Refresh a collapsed snapshot's thinking surface in place. Bundled catalog and
- * prev-generation snapshots freeze a family's transport, budgets, and routing;
- * discovery emits the canonical id but the exact-id merge never overwrites a
- * stale `family.id` row (e.g. `gemini-3.1-pro`) nor a recycled `extraAliases`
- * row (e.g. `gemini-3-flash`). This re-applies the hand-table family's thinking,
- * routing, and default wire id while keeping the spec id (load-bearing for exact
- * selectors and bundled lookups). Returns `spec` by reference when unchanged.
- */
+/** Refresh a collapsed snapshot's thinking surface in place. */
 function refreshCollapsedThinking<TSpec extends VariantSpecLike>(
 	spec: TSpec,
 	family: EffortVariantFamily,
 	retired: ReadonlySet<string> | undefined,
 ): TSpec {
-	// Scope snapshot self-heal to families carrying a curated per-effort budget
-	// contract (Antigravity gemini-3.x). Their routing targets are all verified
-	// live, so rebuilding routing here is safe; families without `effortBudgets`
-	// (derived `X`/`X-thinking` pairs, claude pairs) keep their presence-filtered
-	// snapshot routing untouched.
 	if (!spec.reasoning || family.thinking.effortBudgets === undefined) return spec;
 	const routing: Partial<Record<Effort | "off", string>> = {};
 	let hasRouting = false;
@@ -994,11 +779,7 @@ function refreshCollapsedThinking<TSpec extends VariantSpecLike>(
 	return { ...spec, thinking, ...(requestModelId !== undefined ? { requestModelId } : {}) };
 }
 
-/**
- * Collapse every family in `table` found in `specs`. Non-member specs pass
- * through verbatim (by reference), order preserved; the collapsed spec
- * replaces the first occurrence of its family.
- */
+/** Collapse every family in table found in specs. */
 export function collapseEffortVariants<TSpec extends VariantSpecLike>(
 	specs: readonly TSpec[],
 	table: VariantCollapseTable,
@@ -1008,9 +789,8 @@ export function collapseEffortVariants<TSpec extends VariantSpecLike>(
 		if (!byId.has(spec.id)) byId.set(spec.id, spec);
 	}
 
-	/** family id → spec to emit at the family's first occurrence. */
 	const replacement = new Map<string, TSpec>();
-	/** spec ids that belong to a touched family (members + logical id). */
+
 	const familyIdBySpecId = new Map<string, string>();
 
 	for (const family of table.families) {
@@ -1028,10 +808,6 @@ export function collapseEffortVariants<TSpec extends VariantSpecLike>(
 				: existing;
 		const rawPresent = family.members.filter(id => byId.has(id) && !(id === family.id && existingCollapsed));
 		if (rawPresent.length === 0) {
-			// Inert (no members) or already collapsed (pass-through). A stale
-			// family.id-keyed snapshot is refreshed in place from the current
-			// hand-table family (transport/budgets/routing); retired targets drop.
-			// Recycled extraAliases rows are healed in a later pass.
 			const refreshed =
 				existing !== undefined && existingCollapsed
 					? refreshCollapsedThinking(reconciled ?? existing, family, retired)
@@ -1047,8 +823,6 @@ export function collapseEffortVariants<TSpec extends VariantSpecLike>(
 		if (existing) familyIdBySpecId.set(family.id, family.id);
 
 		if (existingCollapsed) {
-			// Mixed input: the collapsed entry (live truth) wins; stale raw
-			// members are deduped away. Retired targets are re-pointed first.
 			replacement.set(family.id, reconciled as TSpec);
 			continue;
 		}
@@ -1073,8 +847,6 @@ export function collapseEffortVariants<TSpec extends VariantSpecLike>(
 			}
 		}
 
-		// A family that routes efforts to a live thinking backing id reasons
-		// even when upstream metadata forgot to mark the members.
 		const reasoning = memberSpecs.some(spec => spec.reasoning) || hasEffortRoute;
 		const thinking: ThinkingConfig = { ...family.thinking };
 		if (hasRouting) thinking.effortRouting = routing;
@@ -1093,9 +865,7 @@ export function collapseEffortVariants<TSpec extends VariantSpecLike>(
 			contextWindow: maxOrNull(memberSpecs.map(spec => spec.contextWindow)),
 			maxTokens: maxOrNull(memberSpecs.map(spec => spec.maxTokens)),
 		};
-		// The default wire id is the highest-priority live member; omit when it
-		// equals the logical id (bare/thinking pairs) — `resolveWireModelId`
-		// falls back. Retired members never become the default.
+
 		const defaultWireId = rawPresent.find(id => !retired?.has(id)) ?? rawPresent[0];
 		if (defaultWireId === family.id) {
 			if (usedAbsentEffortRoute) {
@@ -1114,9 +884,6 @@ export function collapseEffortVariants<TSpec extends VariantSpecLike>(
 		replacement.set(family.id, collapsed);
 	}
 
-	// Refresh stale alias-keyed snapshots in place (recycled bare ids). Runs even
-	// when the canonical family.id row is also present, since the exact-id merge
-	// keeps the stale alias row alongside the discovered canonical one.
 	for (const family of table.families) {
 		if (family.extraAliases === undefined) continue;
 		const retired =
@@ -1152,12 +919,7 @@ export function collapseEffortVariants<TSpec extends VariantSpecLike>(
 	return out;
 }
 
-/**
- * Collapse a full mixed-provider list: per provider, the hand table (when
- * registered) plus the automatic `X`/`X-thinking` pair rule. Used by the
- * catalog generator; the runtime equivalent lives at the model-manager merge
- * point. Output is regrouped by provider — callers re-sort.
- */
+/** Collapse variants across all providers in a mixed spec list. */
 export function collapseEffortVariantsAcrossProviders<TSpec extends VariantSpecLike>(specs: readonly TSpec[]): TSpec[] {
 	const byProvider = new Map<string, TSpec[]>();
 	for (const spec of specs) {
@@ -1181,28 +943,20 @@ export function collapseEffortVariantsAcrossProviders<TSpec extends VariantSpecL
 	return out;
 }
 
-/**
- * Runtime entry point for already-built `Model` lists (the model-manager
- * merge point, coding-agent registry custom providers): collapses hand
- * tables plus derived pairs, then re-runs `buildModel` on freshly created
- * logical specs so thinking wire defaults stay resolved. Untouched entries
- * pass through by reference.
- */
+/** Runtime entry point to collapse already-built Model lists. */
 export function collapseBuiltModelVariants<TApi extends Api>(models: readonly Model<TApi>[]): Model<TApi>[] {
 	const collapsed = collapseEffortVariantsAcrossProviders(models);
 	const inputRefs = new Set<Model<TApi>>(models);
 	return collapsed.map(model =>
-		// Rebuild from a projected spec (sparse compatConfig) instead of resolved compat.
 		inputRefs.has(model) ? model : buildModel({ ...model, compat: model.compatConfig } as unknown as ModelSpec<TApi>),
 	);
 }
 
 interface VariantAliasIndex {
-	/** lowercased retired id → replacement model id. */
 	forward: Map<string, string>;
-	/** replacement model id → retired ids that resolve to it. */
+
 	reverse: Map<string, readonly string[]>;
-	/** Collapsed logical ids declared by the table. */
+
 	familyIds: Set<string>;
 }
 
@@ -1239,13 +993,7 @@ function getAliasIndex(table: VariantCollapseTable): VariantAliasIndex {
 	return index;
 }
 
-/**
- * Resolve a retired effort-tier variant id (collapsed member, recycled id) to
- * its replacement model id for `provider` via the hand table. Returns
- * `undefined` when the id is not a known alias; derived `X-thinking` members
- * resolve through `stripThinkingVariantToken` instead. Callers must try an
- * exact model lookup first — a live model always wins over an alias.
- */
+/** Resolve a retired variant id to its replacement model id for provider. */
 export function resolveVariantAlias(provider: Provider, modelId: string): string | undefined {
 	const table = VARIANT_COLLAPSE_TABLES[provider] ?? VARIANT_COLLAPSE_TABLES[provider.toLowerCase()];
 	if (!table) return undefined;
@@ -1259,12 +1007,7 @@ export interface BareVariantAliasHit {
 	providers: readonly Provider[];
 }
 
-/**
- * Provider-agnostic hand-table alias lookup for bare-id selectors. Returns
- * the declaring providers so callers can prefer their models when the
- * replacement id exists on unrelated providers too (e.g. a retired Cursor
- * tier id must not resolve to `openai/gpt-5.4`).
- */
+/** Provider-agnostic hand-table alias lookup for bare-id selectors. */
 export function resolveBareVariantAlias(modelId: string): BareVariantAliasHit | undefined {
 	const normalized = modelId.trim().toLowerCase();
 	for (const provider in VARIANT_COLLAPSE_TABLES) {
@@ -1273,8 +1016,6 @@ export function resolveBareVariantAlias(modelId: string): BareVariantAliasHit | 
 		if (hit === undefined) continue;
 		const providers: Provider[] = [];
 		for (const candidate in VARIANT_COLLAPSE_TABLES) {
-			// Match by resolved alias target, not table identity: the CCA providers
-			// now hold distinct table objects that still share these aliases.
 			if (
 				getAliasIndex(VARIANT_COLLAPSE_TABLES[candidate] as VariantCollapseTable).forward.get(normalized) === hit
 			) {
@@ -1286,12 +1027,7 @@ export function resolveBareVariantAlias(modelId: string): BareVariantAliasHit | 
 	return undefined;
 }
 
-/**
- * Reverse alias lookup: the retired ids that resolve to `modelId` for
- * `provider` via the hand table. Used to re-key config keyed by raw member
- * ids (models.yml `modelOverrides`, suppressed selectors) onto the collapsed
- * model. Empty for providers without a table.
- */
+/** Reverse alias lookup: retired ids resolving to modelId for provider. */
 export function getVariantAliasSources(provider: Provider, modelId: string): readonly string[] {
 	const table = VARIANT_COLLAPSE_TABLES[provider] ?? VARIANT_COLLAPSE_TABLES[provider.toLowerCase()];
 	if (!table) return [];
