@@ -52,6 +52,7 @@ import { loopSource, unionMembers } from "./support/invented-tool-result-sources
  */
 
 const LOOP_REL = "agent/src/agent-loop.ts";
+const LOOP_HELPERS_REL = "agent/src/agent-loop-helpers.ts";
 
 /**
  * Split the argument list of the call whose `(` is at `open`, respecting nesting.
@@ -241,7 +242,7 @@ describe("invented tool results are classified structurally", () => {
 	it("no production source outside the loop matches on a placeholder headline", async () => {
 		const offenders: string[] = [];
 		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
-			if (rel === LOOP_REL) continue;
+			if (rel === LOOP_REL || rel === LOOP_HELPERS_REL) continue;
 			// Comments are stripped so a doc comment that explains why the
 			// discriminator exists is not itself an offender.
 			const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");

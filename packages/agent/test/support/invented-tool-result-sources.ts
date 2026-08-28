@@ -14,11 +14,16 @@ import { PACKAGES_DIR } from "../../../utils/test/support/package-sources";
  */
 
 const LOOP = "agent/src/agent-loop.ts";
+const LOOP_HELPERS = "agent/src/agent-loop-helpers.ts";
 const TYPES = "agent/src/types.ts";
 
-/** `agent-loop.ts` with comments removed, so prose cannot supply a union member. */
+/** `agent-loop.ts` and its extracted helpers, with comments removed, so prose cannot supply a union member. */
 export async function loopSource(): Promise<string> {
-	const text = await fs.readFile(path.join(PACKAGES_DIR, LOOP), "utf8");
+	const main = await fs.readFile(path.join(PACKAGES_DIR, LOOP), "utf8");
+	let text = main;
+	try {
+		text += "\n" + await fs.readFile(path.join(PACKAGES_DIR, LOOP_HELPERS), "utf8");
+	} catch {}
 	return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
 }
 
