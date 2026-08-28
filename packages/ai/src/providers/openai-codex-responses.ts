@@ -1,12 +1,10 @@
 import { scheduler } from "node:timers/promises";
 import { calculateCost, discardAttemptUsage, emptyUsage, scaleUsageCost } from "@veyyon/catalog/models";
-import { toFields, toStringValue } from "@veyyon/catalog/utils";
 import { CODEX_BASE_URL, CODEX_CLIENT_VERSION, getCodexAccountId } from "@veyyon/catalog/wire/codex";
 import { $env, $flag } from "@veyyon/utils/env";
 import { structuredCloneJSON } from "@veyyon/utils/json";
 import { parseStreamingJson } from "@veyyon/utils/json-parse";
 import * as logger from "@veyyon/utils/logger";
-import { readSseJson } from "@veyyon/utils/stream";
 import { asRecord, errorMessage } from "@veyyon/utils/type-guards";
 import {
 	beginCacheTrackedRequest,
@@ -30,44 +28,27 @@ import type {
 	Api,
 	AssistantMessage,
 	Context,
-	FetchImpl,
 	Model,
 	ProviderSessionState,
 	RawSseEvent,
 	ServiceTier,
 	StreamFunction,
-	TextContent,
-	Tool,
 	ToolCall,
 	Usage,
 } from "../types";
-import {
-	createOpenAIResponsesHistoryPayload,
-	getOpenAIResponsesHistoryItems,
-	getOpenAIResponsesHistoryPayload,
-	normalizeSystemPrompts,
-	resolveCacheRetention,
-	sanitizeOpenAIResponsesAssistantFallbackItemsForReplay,
-	sanitizeOpenAIResponsesAssistantHistoryItemsForReplay,
-} from "../utils";
+import { createOpenAIResponsesHistoryPayload, normalizeSystemPrompts, resolveCacheRetention } from "../utils";
 import { clearStreamingPartialJson, kStreamingPartialJson } from "../utils/block-symbols";
 import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
-import { type FirstEventBudget, isPreResponseStall, openStallLadderBudget } from "../utils/first-event-budget";
+import { isPreResponseStall, openStallLadderBudget } from "../utils/first-event-budget";
 import { materializeDumpBody, type RawHttpRequestDump } from "../utils/http-inspector";
 import {
-	armPreResponseTimeout,
 	getOpenAIStreamFirstEventTimeoutMs,
 	getOpenAIStreamIdleTimeoutMs,
 	iterateWithIdleTimeout,
 } from "../utils/idle-iterator";
-import type { OpenAIStreamHandle } from "../utils/openai-http";
-import { fetchProviderWithRetry } from "../utils/provider-fetch";
 import { notifyProviderResponse } from "../utils/provider-response";
 import { createRequestDebugSession, isRequestDebugEnabled, type RequestDebugResponseLog } from "../utils/request-debug";
-import { adaptSchemaForStrict, NO_STRICT, sanitizeSchemaForOpenAIResponses, toolWireSchema } from "../utils/schema";
-import { notifyRawSseEvent } from "../utils/sse-debug";
-import { compactGrammarDefinition } from "./grammar";
 import {
 	type CodexRequestOptions,
 	type InputItem,
@@ -75,14 +56,11 @@ import {
 	resolveCodexResponsesLite,
 	transformRequestBody,
 } from "./openai-codex/request-transformer";
-import { CodexApiError } from "./openai-codex/response-handler";
 import {
 	CODEX_DEBUG,
 	CODEX_MAX_RETRIES,
 	CODEX_MODERATION_METADATA_KEY,
-	CODEX_RATE_LIMIT_BUDGET_MS,
 	CODEX_RETRY_DELAY_MS,
-	CODEX_RETRYABLE_EVENT_CODES,
 	CODEX_WEBSOCKET_CONNECT_TIMEOUT_MS,
 	CODEX_WEBSOCKET_FATAL_PATTERNS,
 	CODEX_WEBSOCKET_FIRST_EVENT_TIMEOUT_MS,
@@ -101,7 +79,6 @@ import {
 	type CodexOutputBlock,
 	type CodexProviderSessionState,
 	type CodexRequestContext,
-	type CodexRequestMetadata,
 	type CodexRequestSetup,
 	type CodexResponseUsage,
 	type CodexStreamCompletion,
@@ -135,29 +112,18 @@ import {
 	resetCodexWebSocketAppendState,
 	resolveCodexResponsesUrl,
 	resolveCodexStartNewTurn,
-	updateCodexSessionMetadataFromHeaders,
 	X_CODEX_TURN_STATE_HEADER,
-	X_MODELS_ETAG_HEADER,
 } from "./openai-codex-responses-helpers";
-import type {
-	ResponseInput,
-	ResponseInputContent,
-	ResponseOutputMessage,
-	ResponseReasoningItem,
-	ResponseStatus,
-} from "./openai-responses-wire";
+import type { ResponseOutputMessage, ResponseReasoningItem, ResponseStatus } from "./openai-responses-wire";
 import {
 	appendMessageContentPart,
 	appendMessageTextDelta,
 	appendReasoningSummaryPart,
 	appendReasoningSummaryPartDone,
 	appendReasoningSummaryTextDelta,
-	appendResponsesToolResultMessages,
 	applyOpenAIServiceTier,
 	applyReasoningSummaryDone,
 	buildResponsesDeltaInput,
-	convertResponsesAssistantMessage,
-	convertResponsesInputContent,
 	encodeResponsesToolCallId,
 	encodeTextSignatureV1,
 	finalizeMessageText,
@@ -169,7 +135,6 @@ import {
 	promoteResponsesToolUseStopReason,
 	resolveResponsesToolCallDeltaShape,
 } from "./openai-shared";
-import { transformMessages } from "./transform-messages";
 
 export {
 	type CodexWebSocketSessionState,
@@ -187,6 +152,21 @@ export {
 	type OpenAICodexTurnUsageDiagnostics,
 	type OpenAICodexWebSocketDebugStats,
 	resetOpenAICodexHistoryAfterCompaction,
+} from "./openai-codex-responses-helpers";
+
+import {
+	convertMessages,
+	convertOpenAICodexResponsesTools,
+	createCodexProviderStreamError,
+	getOrCreateCodexWebSocketConnection,
+	openCodexSseEventStream,
+} from "./openai-codex-responses-helpers";
+
+export {
+	convertMessages as convertCodexResponsesMessages,
+	convertOpenAICodexResponsesTools,
+	createCodexProviderStreamError,
+	isRetryableCodexFailureEvent,
 } from "./openai-codex-responses-helpers";
 
 function resolveCodexCostServiceTier(res: unknown, req?: unknown): ServiceTier | "default" | undefined {
@@ -2025,7 +2005,7 @@ function toWebSocketUrl(url: string): string {
 	return parsed.toString();
 }
 
-function headersToRecord(headers: Headers): Record<string, string> {
+export function headersToRecord(headers: Headers): Record<string, string> {
 	const result: Record<string, string> = {};
 	for (const [key, value] of headers.entries()) {
 		result[key] = value;
@@ -2531,458 +2511,5 @@ export class CodexWebSocketConnection {
 			}
 		}
 		return this.#queue.shift() ?? null;
-	}
-}
-
-async function getOrCreateCodexWebSocketConnection(
-	state: CodexWebSocketSessionState,
-	url: string,
-	headers: Headers,
-	signal?: AbortSignal,
-): Promise<CodexWebSocketConnection> {
-	const headerRecord = headersToRecord(headers);
-	for (let joinAttempt = 0; joinAttempt < 3; joinAttempt += 1) {
-		const pending = state.connection;
-		if (!pending || pending.isOpen() || !pending.isConnecting()) break;
-		try {
-			await pending.connect(signal);
-		} catch {}
-	}
-	if (state.connection?.isOpen()) {
-		if (!state.connection.matchesAuth(headerRecord)) {
-			state.connection.close("token-refresh");
-			resetCodexWebSocketAppendState(state);
-		} else if (state.connection.isHealthyForReuse()) {
-			logger.time("codexWs:reuseOpenSocket");
-			return state.connection;
-		} else {
-			CODEX_DEBUG && logger.debug("[codex] codex websocket reuse rejected by health check", {});
-			state.connection.close("stale-reuse");
-			resetCodexWebSocketAppendState(state);
-		}
-	}
-	state.connection?.close("reconnect");
-	resetCodexWebSocketAppendState(state);
-	logger.time("codexWs:newSocket");
-	state.connection = new CodexWebSocketConnection(url, headerRecord, {
-		onHandshakeHeaders: handshakeHeaders => {
-			updateCodexSessionMetadataFromHeaders(state, handshakeHeaders);
-		},
-	});
-	await state.connection.connect(signal);
-	return state.connection;
-}
-
-async function openCodexSseEventStream(
-	url: string,
-	requestHeaders: Record<string, string> | undefined,
-	accountId: string | undefined,
-	apiKey: string,
-	sessionId: string | undefined,
-	body: RequestBody,
-	state: CodexWebSocketSessionState | undefined,
-	responsesLite: boolean,
-	codexClientVersion: string,
-	requestMetadata: CodexRequestMetadata | undefined,
-	signal: AbortSignal | undefined,
-	firstEventTimeoutMs: number | undefined,
-	firstEventBudget: FirstEventBudget,
-	maxRetryDelayMs: number | undefined,
-	onSseEvent?: OpenAICodexResponsesOptions["onSseEvent"],
-	fetchOverride?: FetchImpl,
-	prepareBody: () => RequestBody | Promise<RequestBody> = () => structuredCloneJSON(body),
-): Promise<OpenAIStreamHandle<Record<string, unknown>>> {
-	const headers = createCodexHeaders(
-		requestHeaders,
-		accountId,
-		apiKey,
-		codexClientVersion,
-		sessionId,
-		"sse",
-		state,
-		responsesLite,
-		requestMetadata,
-	);
-	CODEX_DEBUG &&
-		logger.debug("[codex] codex request", {
-			url,
-			model: body.model,
-			headers: redactHeaders(headers),
-			sentTurnStateHeader: headers.has(X_CODEX_TURN_STATE_HEADER),
-			sentModelsEtagHeader: headers.has(X_MODELS_ETAG_HEADER),
-		});
-	let clearPreResponseTimeout: (() => void) | undefined;
-	const fetchAttempt: FetchImpl = async (input, init) => {
-		try {
-			return await (fetchOverride ?? fetch)(input, init);
-		} finally {
-			clearPreResponseTimeout?.();
-			clearPreResponseTimeout = undefined;
-		}
-	};
-	let response: Response;
-	try {
-		response = await fetchProviderWithRetry(url, {
-			method: "POST",
-			headers,
-			body: JSON.stringify(body),
-			signal,
-			prepareInit: async () => {
-				const wireBody = await prepareBody();
-				const watchdog = armPreResponseTimeout(signal, firstEventTimeoutMs);
-				clearPreResponseTimeout = watchdog.clear;
-				return { body: JSON.stringify(wireBody), signal: watchdog.signal };
-			},
-			maxAttempts: CODEX_MAX_RETRIES + 1,
-			defaultDelayMs: attempt => CODEX_RETRY_DELAY_MS * (attempt + 1),
-			maxDelayMs: maxRetryDelayMs ?? CODEX_RATE_LIMIT_BUDGET_MS,
-			shouldRetryError: error => !(isPreResponseStall(error) && firstEventBudget.spent()),
-			fetch: fetchAttempt,
-			timeout: false,
-		});
-	} finally {
-		clearPreResponseTimeout?.();
-	}
-	CODEX_DEBUG &&
-		logger.debug("[codex] codex response", {
-			url: response.url,
-			status: response.status,
-			statusText: response.statusText,
-			contentType: response.headers.get("content-type") || null,
-			cfRay: response.headers.get("cf-ray") || null,
-		});
-	if (!response.ok) {
-		throw await CodexApiError.fromResponse(response);
-	}
-	updateCodexSessionMetadataFromHeaders(state, response.headers);
-	if (!response.body) {
-		throw new CodexProviderStreamError("No response body", { retryable: false });
-	}
-	const events = readSseJson<Record<string, unknown>>(response.body, signal, event =>
-		notifyRawSseEvent(onSseEvent, { event: event.event, data: event.data, raw: event.raw.slice() }),
-	);
-	return { events, response, requestId: response.headers.get("x-request-id") };
-}
-
-function convertMessages(model: Model<"openai-codex-responses">, context: Context): ResponseInput {
-	const messages: ResponseInput = [];
-
-	const normalizeToolCallId = (id: string): string => {
-		if (!id.includes("|")) return id;
-		const [callId, itemId] = id.split("|");
-		const sanitizedCallId = callId.replace(/[^a-zA-Z0-9_-]/g, "_");
-		let sanitizedItemId = itemId.replace(/[^a-zA-Z0-9_-]/g, "_");
-		if (!sanitizedItemId.startsWith("fc")) {
-			sanitizedItemId = `fc_${sanitizedItemId}`;
-		}
-		let normalizedCallId = sanitizedCallId.length > 64 ? sanitizedCallId.slice(0, 64) : sanitizedCallId;
-		let normalizedItemId = sanitizedItemId.length > 64 ? sanitizedItemId.slice(0, 64) : sanitizedItemId;
-		normalizedCallId = normalizedCallId.replace(/_+$/, "");
-		normalizedItemId = normalizedItemId.replace(/_+$/, "");
-		return `${normalizedCallId}|${normalizedItemId}`;
-	};
-
-	const transformedMessages = transformMessages(context.messages, model, normalizeToolCallId);
-	let msgIndex = 0;
-	const customCallIds = new Set<string>();
-	const knownCallIds = new Set<string>();
-
-	for (const msg of transformedMessages) {
-		if (msg.role === "user" || msg.role === "developer") {
-			const providerPayload = (msg as { providerPayload?: AssistantMessage["providerPayload"] }).providerPayload;
-			const historyItems = getOpenAIResponsesHistoryItems(providerPayload, model.provider) as
-				| Array<ResponseInput[number]>
-				| undefined;
-			if (historyItems) {
-				for (const item of historyItems) {
-					const maybe = item as { type?: string; call_id?: string };
-					if (maybe.type === "custom_tool_call" && typeof maybe.call_id === "string") {
-						customCallIds.add(maybe.call_id);
-					}
-				}
-				for (let hi = 0; hi < historyItems.length; hi++) messages.push(historyItems[hi]!);
-				msgIndex += 1;
-				continue;
-			}
-
-			if (
-				msg.role === "developer" &&
-				Array.isArray(msg.content) &&
-				msg.content.some(item => item.type === "image")
-			) {
-				const textContent = normalizeInputMessageContent(
-					model,
-					msg.content.filter((item): item is TextContent => item.type === "text"),
-				);
-				const imageContent = normalizeInputMessageContent(
-					model,
-					msg.content.filter(item => item.type === "image"),
-				);
-				if (textContent.length > 0) messages.push({ role: "developer", content: textContent });
-				if (imageContent.length > 0) messages.push({ role: "user", content: imageContent });
-				msgIndex += 1;
-				continue;
-			}
-			const normalizedContent = normalizeInputMessageContent(model, msg.content);
-			if (normalizedContent.length === 0) continue;
-			messages.push({ role: msg.role, content: normalizedContent });
-			msgIndex += 1;
-			continue;
-		}
-
-		if (msg.role === "assistant") {
-			const assistantMsg = msg as AssistantMessage;
-			const providerPayload =
-				assistantMsg.api === model.api && assistantMsg.model === model.id
-					? getOpenAIResponsesHistoryPayload(assistantMsg.providerPayload, model.provider, assistantMsg.provider)
-					: undefined;
-			const historyItems = providerPayload?.items as Array<Record<string, unknown>> | undefined;
-			let suppressHiddenEmptyFallback = false;
-			if (historyItems) {
-				const sanitizedHistoryItems = sanitizeOpenAIResponsesAssistantHistoryItemsForReplay(historyItems);
-				if (sanitizedHistoryItems) {
-					for (const item of sanitizedHistoryItems) {
-						const maybe = item as { type?: string; call_id?: string };
-						if (maybe.type === "custom_tool_call" && typeof maybe.call_id === "string") {
-							customCallIds.add(maybe.call_id);
-						}
-					}
-					if (providerPayload?.dt) {
-						for (let hi = 0; hi < sanitizedHistoryItems.length; hi++) messages.push(sanitizedHistoryItems[hi]!);
-					} else {
-						messages.splice(0, messages.length, ...sanitizedHistoryItems);
-					}
-					msgIndex += 1;
-					continue;
-				}
-				suppressHiddenEmptyFallback = true;
-			}
-
-			const convertedOutputItems = convertResponsesAssistantMessage(
-				msg as AssistantMessage,
-				model,
-				msgIndex,
-				knownCallIds,
-				!suppressHiddenEmptyFallback,
-				customCallIds,
-			);
-			const outputItems = suppressHiddenEmptyFallback
-				? sanitizeOpenAIResponsesAssistantFallbackItemsForReplay(convertedOutputItems)
-				: convertedOutputItems;
-			if (outputItems.length > 0) {
-				for (let oi = 0; oi < outputItems.length; oi++) messages.push(outputItems[oi]!);
-			}
-			msgIndex += 1;
-			continue;
-		}
-
-		if (msg.role === "toolResult") {
-			appendResponsesToolResultMessages(
-				messages,
-				msg,
-				model,
-				false,
-				model.compat.supportsImageDetailOriginal,
-				knownCallIds,
-				customCallIds,
-			);
-		}
-
-		msgIndex += 1;
-	}
-
-	return messages;
-}
-
-function normalizeInputMessageContent(
-	model: Model<"openai-codex-responses">,
-	content: string | Array<{ type: "text"; text: string } | { type: "image"; mimeType: string; data: string }>,
-): ResponseInputContent[] {
-	if (typeof content === "string") {
-		if (!content || content.trim() === "") return [];
-		return [{ type: "input_text", text: content.toWellFormed() }];
-	}
-
-	return (
-		convertResponsesInputContent(content, model.input.includes("image"), model.compat.supportsImageDetailOriginal) ??
-		[]
-	);
-}
-
-export { convertMessages as convertCodexResponsesMessages };
-
-type CodexToolPayload =
-	| {
-			type: "function";
-			name: string;
-			description: string;
-			parameters: Record<string, unknown>;
-			strict?: boolean;
-	  }
-	| {
-			type: "custom";
-			name: string;
-			description: string;
-			format: { type: "grammar"; syntax: "lark" | "regex"; definition: string };
-	  };
-
-export function convertOpenAICodexResponsesTools(
-	tools: Tool[],
-	model: Model<"openai-codex-responses">,
-): CodexToolPayload[] {
-	const allowFreeform = model.applyPatchToolType === "freeform";
-	return tools.map((tool): CodexToolPayload => {
-		if (allowFreeform && tool.customFormat) {
-			return {
-				type: "custom",
-				name: tool.customWireName ?? tool.name,
-				description: tool.description || "",
-				format: {
-					type: "grammar",
-					syntax: tool.customFormat.syntax,
-					definition: compactGrammarDefinition(tool.customFormat.syntax, tool.customFormat.definition),
-				},
-			};
-		}
-		const strict = !!(!NO_STRICT && tool.strict);
-		const baseParameters = sanitizeSchemaForOpenAIResponses(toolWireSchema(tool));
-		const { schema: parameters, strict: effectiveStrict } = adaptSchemaForStrict(baseParameters, strict);
-		return {
-			type: "function",
-			name: tool.name,
-			description: tool.description || "",
-			parameters,
-			...(effectiveStrict ? { strict: true } : !NO_STRICT && tool.strict === false ? { strict: false } : {}),
-		};
-	});
-}
-
-interface CodexErrorDetail {
-	code?: string | undefined;
-	type?: string | undefined;
-	message?: string | undefined;
-}
-
-interface CodexFailureResponse {
-	error?: CodexErrorDetail | undefined;
-	message?: string | undefined;
-	status?: string | undefined;
-}
-
-interface CodexFailureEvent {
-	type?: string | undefined;
-	code?: string | undefined;
-	message?: string | undefined;
-	status?: string | undefined;
-	error?: CodexErrorDetail | undefined;
-	response?: CodexFailureResponse | undefined;
-}
-
-function readCodexErrorDetail(value: unknown): CodexErrorDetail | undefined {
-	const fields = toFields(value);
-	if (!fields) {
-		return undefined;
-	}
-	return {
-		code: toStringValue(fields.code),
-		type: toStringValue(fields.type),
-		message: toStringValue(fields.message),
-	};
-}
-
-function readCodexFailureEvent(rawEvent: Record<string, unknown>): CodexFailureEvent {
-	const response = toFields(rawEvent.response);
-	return {
-		type: toStringValue(rawEvent.type),
-		code: toStringValue(rawEvent.code),
-		message: toStringValue(rawEvent.message),
-		status: toStringValue(rawEvent.status),
-		error: readCodexErrorDetail(rawEvent.error),
-		response: response
-			? {
-					error: readCodexErrorDetail(response.error),
-					message: toStringValue(response.message),
-					status: toStringValue(response.status),
-				}
-			: undefined,
-	};
-}
-
-export function isRetryableCodexFailureEvent(rawEvent: Record<string, unknown>): boolean {
-	const event = readCodexFailureEvent(rawEvent);
-	const error = event.error ?? event.response?.error;
-	const code = error?.code ?? error?.type ?? event.code;
-	if (code && CODEX_RETRYABLE_EVENT_CODES.has(code.toLowerCase())) {
-		return true;
-	}
-	const message = error?.message ?? event.message ?? event.response?.message;
-	return !!message && AIError.isTransientErrorText(message);
-}
-
-export function createCodexProviderStreamError(rawEvent: Record<string, unknown>): CodexProviderStreamError {
-	const event = readCodexFailureEvent(rawEvent);
-	const nestedError = event.error ?? event.response?.error;
-	const code = nestedError?.code ?? nestedError?.type ?? event.code ?? "";
-	const message = event.message ?? "";
-	const formattedMessage =
-		event.type === "error"
-			? formatCodexErrorEvent(rawEvent, code, message)
-			: (formatCodexFailure(rawEvent) ?? "Codex response failed");
-	return new CodexProviderStreamError(formattedMessage, {
-		retryable: isRetryableCodexFailureEvent(rawEvent),
-		code: code || undefined,
-	});
-}
-
-function formatCodexFailure(rawEvent: Record<string, unknown>): string | null {
-	const event = readCodexFailureEvent(rawEvent);
-	const error = event.error ?? event.response?.error;
-	const message = error?.message ?? event.message ?? event.response?.message;
-	const code = error?.code ?? error?.type ?? event.code;
-	const status = event.response?.status ?? event.status;
-
-	const meta: string[] = [];
-	if (code) meta.push(`code=${code}`);
-	if (status) meta.push(`status=${status}`);
-
-	if (message) {
-		const metaText = meta.length ? ` (${meta.join(", ")})` : "";
-		return `Codex response failed: ${message}${metaText}`;
-	}
-	if (meta.length) {
-		return `Codex response failed (${meta.join(", ")})`;
-	}
-	try {
-		const rawEventJson = JSON.stringify(rawEvent);
-		const truncatedRawEventJson =
-			rawEventJson.length <= 800
-				? rawEventJson
-				: `${rawEventJson.slice(0, 800)}…[truncated ${rawEventJson.length - 800}]`;
-		return `Codex response failed: ${truncatedRawEventJson}`;
-	} catch {
-		return "Codex response failed";
-	}
-}
-
-function formatCodexErrorEvent(rawEvent: Record<string, unknown>, code: string, message: string): string {
-	const detail = formatCodexFailure(rawEvent);
-	if (detail) {
-		return detail.replace("response failed", "error event");
-	}
-	const meta: string[] = [];
-	if (code) meta.push(`code=${code}`);
-	if (message) meta.push(`message=${message}`);
-	if (meta.length > 0) {
-		return `Codex error event (${meta.join(", ")})`;
-	}
-	try {
-		const rawEventJson = JSON.stringify(rawEvent);
-		const truncatedRawEventJson =
-			rawEventJson.length <= 800
-				? rawEventJson
-				: `${rawEventJson.slice(0, 800)}…[truncated ${rawEventJson.length - 800}]`;
-		return `Codex error event: ${truncatedRawEventJson}`;
-	} catch {
-		return "Codex error event";
 	}
 }

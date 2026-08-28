@@ -12,6 +12,7 @@
 ### Changed
 - 29 type definitions and functions extracted from `providers/openai-responses-codec.ts` (1,813→1,107 lines) into `providers/openai-responses-codec-helpers.ts`.
 - 87 type definitions, constants, and utility functions extracted from `providers/openai-codex-responses.ts` (3,979→2,988 lines) into `providers/openai-codex-responses-helpers.ts`.
+- 15 utility functions appended to `openai-codex-responses-helpers.ts` from `openai-codex-responses.ts` second half (2,988→2,515 lines).
 - 23 header and beta utility functions extracted from `providers/anthropic.ts` (3,522→3,424 lines) into `providers/anthropic-helpers.ts`.
 - 130 type definitions, constants, and utility functions appended to `providers/anthropic-helpers.ts` from `providers/anthropic.ts` (3,424→1,879 lines).
 - 24 utility functions, constants, and types extracted from `stream.ts` (1,623→826 lines) into `stream-helpers.ts`.
