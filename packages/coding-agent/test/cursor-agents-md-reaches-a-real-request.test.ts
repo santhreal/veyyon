@@ -411,7 +411,7 @@ describe("a cursor-agent turn carries every instruction layer the session found"
 	it("carries the operator's instructions inside a delimited block, ahead of the question", async () => {
 		// The shape the model receives. The instructions are marked off from the caller's
 		// configuration, and the question stays after them, so a turn does not read as a
-		// reciting their own configuration file.
+		// reciting of a configuration file.
 		const ws = operatorWorkspace();
 		const { text } = await turnOnTheWire(ws);
 

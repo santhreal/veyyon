@@ -180,6 +180,20 @@ export interface RegisterInput {
 	status?: AgentStatus;
 	/** Model the agent runs on, as a `provider/id` string. */
 	model?: string;
+	/**
+	 * When this agent first existed and when it last did something, for a ref
+	 * being RESTORED rather than started. Both default to now.
+	 *
+	 * A subagent read back from disk has a history, and stamping it with the
+	 * moment of the scan threw that history away: every agent from every previous
+	 * run reported "just now" in the roster for as long as the process lived, so
+	 * the column that exists to separate this minute's work from yesterday's said
+	 * the same thing about all of it. The age also decides when the close budget
+	 * drops the ref, so a restored agent that had been quiet for a day was given a
+	 * full budget from the scan.
+	 */
+	createdAt?: number;
+	lastActivity?: number;
 }
 
 export class AgentRegistry {
@@ -219,8 +233,8 @@ export class AgentRegistry {
 			status: input.status ?? "running",
 			session: input.session,
 			sessionFile: input.sessionFile ?? null,
-			createdAt: now,
-			lastActivity: now,
+			createdAt: input.createdAt ?? now,
+			lastActivity: input.lastActivity ?? now,
 			model: input.model,
 			scope: input.scope ?? this.#deriveScope(input),
 		};

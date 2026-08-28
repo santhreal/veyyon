@@ -1686,6 +1686,20 @@ export class Settings {
 			setNew([next], take(["task", legacy]));
 		}
 
+		// The close stage became the PRUNE stage, and the keys moved with it. "Close"
+		// read as the opposite of park, when the two are consecutive stages of one
+		// lifecycle: parking releases the session and keeps the row, pruning drops the
+		// row. The container is deleted with the leaves so a migrated file carries no
+		// empty `subagent.autoClose` block.
+		for (const [legacy, next] of [
+			["enabled", "enabled"],
+			["parkedMs", "afterMs"],
+			["waitingMs", "waitingAfterMs"],
+		] as const) {
+			setNew(["prune", next], take(["subagent", "autoClose", legacy]));
+		}
+		if (read(["subagent", "autoClose"]) !== undefined) deleteByPath(raw, ["subagent", "autoClose"]);
+
 		// The old depth counted the root as level 1. The replacement counts only
 		// nested subagent levels, so old 1 becomes new 0. Old 0 disabled even the
 		// root task tool; preserve that behavior through the dedicated master

@@ -148,7 +148,7 @@ describe("the split kept one set of commands", () => {
 	 * the number is only useful if a change to it has to be justified:
 	 *
 	 *   - DOWN to 66: `/cockpit` (with its `/hub` alias) was folded into `/agents` as an alias when
-	 *     the Agent Hub overlay and the Agent Control Center stopped being two screens. A command
+	 *     the Agent Hub overlay and the subagent dashboard stopped being two screens. A command
 	 *     that becomes an alias of another leaves the set of NAMES unchanged and the set of
 	 *     DECLARATIONS one shorter, which is exactly what this number counts.
 	 *   - UP to 67: `/secret` was added, storing a credential the agent can reference by
@@ -172,12 +172,7 @@ describe("the split kept one set of commands", () => {
 	 *     MCP server it names) is withheld until the operator decides, and a refusal with no way to
 	 *     answer it inside the session is a dead end: the CLI `veyyon trust` needs a shell, which a
 	 *     running TUI does not have.
-	 *   - UP to 74: `/process-manager` was added. It opens the Agent Control Center at process
-	 *     scope, so a conversation `/new` left running in the background is reachable from the
-	 *     session that replaced it. `/agents` opens the same card on the current conversation,
-	 *     and `a` toggles between them; the separate command exists because the question "is
-	 *     this process spending anywhere" cannot be answered from the screen you are on.
-	 *   - UP to 75: `/advisor` was added. The advisor subsystem shipped complete — a roster loaded
+	 *   - UP to 74: `/advisor` was added. The advisor subsystem shipped complete — a roster loaded
 	 *     from `WATCHDOG.yml`, per-advisor models, tools and instructions, `getAdvisorStats`,
 	 *     `formatAdvisorStatus`, `formatAdvisorHistoryAsText`, and a full-screen roster editor with
 	 *     its own tests — and nothing in the product reached any of it. The three handlers behind it
@@ -186,7 +181,7 @@ describe("the split kept one set of commands", () => {
 	 *     makes the editor reachable and those handlers report the running session.
 	 */
 	it("there are the 75 builtins the declarations hold", () => {
-		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(75);
+		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(74);
 	});
 
 	/**

@@ -379,7 +379,7 @@ describe("every documented alias reaches the handler it claims", () => {
 	/**
 	 * The aliases a reader would NOT guess, which is what makes them worth naming one by one:
 	 * `/status` opens the Extension Control Center rather than a session-status view, `/cockpit` and
-	 * `/hub` are the retired Agent Hub names now pointing at the Agent Control Center, and `/help` is
+	 * `/hub` are the retired Agent Hub names now pointing at the subagent dashboard, and `/help` is
 	 * the first thing a new user types. An alias that resolved elsewhere, or to nothing, would send a
 	 * reader to a command that errors.
 	 *

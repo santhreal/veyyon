@@ -6,7 +6,7 @@ Features, in two groups: the surfaces of an everyday session, then what extends 
 
 These are the parts of the TUI you touch every session:
 
-- [Status line and multi-agent UI](./cockpit.md) covers the status segments, the Agent Control Center (`/agents`), jobs, and the swarm view.
+- [Status line and multi-agent UI](./cockpit.md) covers the status segments, the subagent dashboard (`/agents`), jobs, and the swarm view.
 - [Keybindings](../reference/keybindings-config.md) covers the chords.
 - The composer gives you prompt history, `@` and `/` completion, and `Esc` to interrupt. See [Quickstart](../using/quickstart.md) and [Keybindings](../reference/keybindings-config.md).
 - [Web search](./web-search.md) covers searching from inside a session.

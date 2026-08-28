@@ -227,65 +227,69 @@ The remaining groups in the tab are operational: how many subagents run at once
 (`subagent.maxConcurrency`), how deeply they may nest (`subagent.maxNestedSpawnDepth`),
 per-run wall clock and request budgets, how long a finished subagent stays live
 before parking (`subagent.idleTtlMs`) and how long it stays listed after that
-(`subagent.autoClose.*`), and whether its edits land in an isolated
+(`subagent.prune.*`), and whether its edits land in an isolated
 copy of the tree first (`subagent.isolation.*`, see [Safety](../using/safety.md)).
 
-`subagent.idleTtlMs` defaults to five minutes for every model and provider. Set
-a positive millisecond value to override it. Set `0` to keep idle agents live
-until exit. Parking releases the live session but keeps its transcript, so
-messaging or opening the agent can revive it.
+Park and prune are two stages, and they do different things.
 
-A parked subagent is eventually closed, which drops it from the roster so a long
-session does not accumulate every agent it ever spawned. Closing removes the
-revivable reference; it does not touch the transcript, which stays readable at
-`history://<name>`.
+**Park** releases the live session, the process, its MCP clients and its memory. The
+roster row and the transcript stay, and messaging or opening the agent revives it.
+`subagent.idleTtlMs` ("Park After") is the budget, five minutes by default for every
+model and provider. Set a positive millisecond value to override it, or `0` to keep
+idle agents live until exit.
 
-Four settings in the Auto Close group control the whole lifecycle, in the order they
-happen. `subagent.idleTtlMs` ("Park After") is stage one: how long a finished subagent
-stays live before parking, five minutes by default. `subagent.autoClose.enabled` is on by
+**Prune** drops the roster row and with it the ability to wake the agent, so a long
+session does not accumulate every agent it ever spawned. It deletes nothing: the
+transcript stays readable at `history://<name>`.
+
+Three settings in the Prune group control stage two. `subagent.prune.enabled` is on by
 default; turn it off to keep every parked subagent listed and revivable until you exit.
-`subagent.autoClose.parkedMs` ("Close After") is how long a parked subagent stays listed,
-counted from the moment it parked, and defaults to five minutes.
-`subagent.autoClose.waitingMs` ("Close After (Waiting)") is the same budget for a subagent
-whose last message reported waiting on another agent, and defaults to thirty minutes:
+`subagent.prune.afterMs` ("Prune After") is how long a parked subagent keeps its row,
+counted from the moment it parked, and defaults to one hour.
+`subagent.prune.waitingAfterMs` ("Prune After While Waiting") is the same budget for a
+subagent whose last message reported waiting on another agent, and defaults to two hours:
 it stopped on purpose to let a peer finish, so it is the agent you are most likely to
 message next. Set the two equal to treat both the same.
 
-Turning auto-close off does not turn parking off. Parking is what releases the session, and
-it happens either way; the toggle only sets whether the parked reference is eventually
-dropped. That is why "Park After" sits in this group but is not hidden when the toggle is
-off.
+Turning pruning off does not turn parking off. Parking is what releases the session, and
+it happens either way; the prune switch only sets whether the parked row is eventually
+dropped. "Park After" sits in its own Park group for that reason, and the prune switch
+never hides it.
+
+A subagent read back from a previous run is judged on the same budgets. Its age comes
+from when its transcript was last written, not from when this session found it, so
+resuming a session does not reset every old agent's clock to zero.
 
 ### When each budget starts counting
 
 Both budgets count from the agent's last transition, not from when it was spawned. An
-idle agent's park budget starts when it went idle. A parked agent's close budget starts
+idle agent's park budget starts when it went idle. A parked agent's prune budget starts
 at the moment it parked. A revived agent starts its park budget again from the revival,
 so messaging a parked agent gives it a fresh five minutes rather than resuming a clock
 that was already half spent.
 
-That is why a long-lived session does not slowly close everything at once: each agent's
+That is why a long-lived session does not prune everything at once: each agent's
 deadline moves with its own activity.
 
 ### Only idle and parked agents have a deadline
 
 A `running` agent has no deadline at all, and neither does an `aborted` one. Nothing
-parks or closes an agent that is mid-turn.
+parks or prunes an agent that is mid-turn.
 
 This matters when an agent looks stuck. A subagent waiting for you to answer an approval
-prompt is still mid-turn, so it stays `running` and no park or close timer applies to it.
+prompt is still mid-turn, so it stays `running` and no park or prune timer applies to it.
 If a finished agent is not being cleaned up, check its status first: the lifecycle only
 acts on `idle` and `parked`, so an agent stuck in `running` is a different problem and the
-auto-close settings will not affect it.
+prune settings will not affect it.
 
 ### Turning it off
 
-Set `subagent.autoClose.parkedMs` to `0` and no parked agent is ever closed. That also
-forces the waiting budget to `0`, whatever `subagent.autoClose.waitingMs` is.
+Set `subagent.prune.afterMs` to `0` and no parked agent is ever pruned. That also
+forces the waiting budget to `0`, whatever `subagent.prune.waitingAfterMs` is.
 
 That coupling is deliberate. If a zero parked budget still honoured a separate waiting
-budget, the only agents that ever closed would be the ones that stopped to wait on a peer,
-which are the agents you are most likely to message next. Zero means never close, for
+budget, the only agents that were ever pruned would be the ones that stopped to wait on a
+peer, which are the agents you are most likely to message next. Zero means never prune, for
 both kinds.
 
 ### If the session cannot be saved

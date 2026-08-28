@@ -11,7 +11,6 @@
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
 - `session.newKeepsBackground` decides what `/new` does to a turn still streaming: off (the default) stops it and closes its provider stream before the new session starts, on keeps the old conversation running and says which one.
 - The status line carries a background chip counting conversations this process is still running that no screen is showing, present in every preset and silent at zero.
-- `/process-manager` opens the Agent Control Center across every conversation this process is running rather than only the one on screen, and `a` switches the roster, the comms stream and the transcript guard between the two scopes together.
 - The terminal renderer composer zone gains a formal defect oracle and automated invariant sweep suite covering prompt counts, output bleed, row mixing, footer alignment, mouse click routing, caret positioning, overflow, pad transparency, hairline integrity, and virtual scroll stability.
 - `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
 - `/prewalk` accepts an optional model argument to arm a per-session target model override.
@@ -101,10 +100,18 @@
 - The `debug` tool loads only where at least one configured DAP adapter command resolves, so a host with no debugger installed no longer pays about 1,000 tokens of debug schema on every request for a tool whose every call would fail on the missing adapter.
 - `search.contextAfter` defaults to 1 line instead of 3. A tool result is sent again on every later request of the session, so each line of a search result is billed once per remaining request; over eight searches of this repository the wider window cost 16,836 tokens against 11,483.
 - The eval prompt-override registry, the system-prompt eval hooks, the argot cache and the reroot hint name `@veyyon/evals` paths instead of the retired `@veyyon/metaharness`, `@veyyon/typescript-edit-benchmark` and `@veyyon/deepswe-bench` packages. No behavior change.
+- A parked subagent is pruned rather than closed: `subagent.autoClose.enabled`, `.parkedMs` and `.waitingMs` are now `subagent.prune.enabled`, `.afterMs` and `.waitingAfterMs`, existing config files migrate on load, and the settings tab states park and prune as two stages in their own groups.
+- A parked subagent keeps its roster row for an hour, and two hours when it stopped waiting on a peer, instead of five and thirty minutes.
+- A subagent restored from a previous run is aged from its own transcript rather than from the moment this session found it, so restored agents no longer sit at "just now" forever and are pruned on the same budget as the rest.
+- `session.newKeepsBackground` states that a change needs a restart, because switching it does not affect the running session ([#928](https://github.com/santhreal/veyyon/issues/928)).
 - A turn that changed files takes at most one continuation before it finishes; the verification pass that always ran unconditionally is now the `verify` value of `edit.afterEdit` and no longer stacks a second forced continuation under the review pass.
 - The Julia, Python and Ruby eval kernels share one execution loop instead of three copies of it; no change to how a kernel behaves.
 - Reading a file or fetching a URL no longer loads the document converters, and a web search no longer loads the browser fingerprint generator, because the constants those paths wanted are separated from the libraries that sat behind them, taking about 40ms off session startup.
 - The launch card is painted and flushed before the agent runtime graph is loaded, taking an interactive launch from a blank terminal for 760ms to a typable composer at 111ms.
+- The agent runtime is loaded in stages that hand the event loop back between them, so a character typed while the launch card is up is drawn in 6ms instead of 198ms; the load itself takes the same time.
+- `/agents` is the subagent dashboard: the surface is named that in its title, its `/agents` description, its keybinding descriptions, `/hotkeys` and the handbook, in place of "Agent Control Center".
+- The subagent dashboard no longer opens across every conversation the process is running: `/process-manager` and the `a` scope toggle are removed, and the card is scoped to the conversation on screen.
+- A locally built binary minifies identifiers the way the released one does, cutting it from 310.7MB to 303.4MB and its launch card from 143ms to 131ms; function names are still kept, so stack traces are unchanged.
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
 - The CPU model is read once per process instead of on every system prompt build, removing about 30ms from the window before the composer accepts input.
 - No user-visible change: the once-per-process CPU model cache gained a reset the test suite calls, so a suite that fakes the platform reads its own answer instead of the one an earlier suite in the same process cached.
@@ -167,6 +174,7 @@
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
 - `core/embeddings.ts` imports `ProviderHttpError` from `@veyyon/ai/error/classes` instead of the error barrel, cutting twelve modules off the import graph of every module that can remember something; behavior is unchanged.
+- `config.ts` and `core/extraction/client.ts` take `trimTrailingSlashes` and `withScopedTimeoutSignal` from `@veyyon/utils/url` and `@veyyon/utils/scoped-timeout` instead of the package entry point, cutting the extraction client's import graph from 127 modules to 66; behavior is unchanged.
 - Migrated dashboard theme toggle to shared `ThemeToggle` from `@veyyon/tool-render`.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - The fuzzy-match benchmark fixture now names the canonical text-search source path instead of the retired grep-tool path. No benchmark behavior changed.
@@ -200,6 +208,7 @@
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
 - `winston` and `winston-daily-rotate-file` are resolved on the first log write instead of at module load, taking 4.7ms off every process that imports the logger without logging, which is every entry point.
 - A blocked event loop names the phase that spent the time rather than the phase that happened to be open: `takeLoopPhaseProfile` banks elapsed time per phase and reports the costliest one with its cost, replacing `takeRecentLoopPhase`, which returned the most recent label and blamed `ui.render` for a stall the render pass never took part in.
+- No user-visible change: doc comments name the subagent dashboard, the surface `/agents` opens, instead of the Agent Control Center.
 
 ### Removed
 

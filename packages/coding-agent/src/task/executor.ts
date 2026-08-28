@@ -104,10 +104,10 @@ import type { WorkspaceTree } from "../workspace-tree";
 import { type AutoloadSkillPlan, settleAutoloadSkills } from "./inherited-collections";
 import { generateTaskLabel } from "./label";
 import {
-	resolveSubagentAutoCloseBudget,
 	resolveSubagentIdleTtlMs,
 	resolveSubagentMaxNestedSpawnDepth,
-	type SubagentAutoCloseBudget,
+	resolveSubagentPruneBudget,
+	type SubagentPruneBudget,
 } from "./subagent-settings";
 import { subprocessToolRegistry, YIELD_TOOL_NAME } from "./subprocess-tool-registry";
 import {
@@ -2483,7 +2483,7 @@ export async function finalizeSubagentLifecycle(args: {
 	isolated: boolean;
 	agentIdleTtlMs: number;
 	/** Close budgets for the parked ref; absent keeps it listed until exit. */
-	autoClose?: SubagentAutoCloseBudget;
+	prune?: SubagentPruneBudget;
 	/**
 	 * The agent's sign-off (see the resolver beside {@link saysItIsWaitingOnAPeer}),
 	 * read only to decide whether it stopped to wait on a peer.
@@ -2549,8 +2549,8 @@ export async function finalizeSubagentLifecycle(args: {
 		// what lets the close deadline read `parked` and arm immediately.
 		AgentLifecycleManager.global().adopt(args.id, {
 			idleTtlMs: 0,
-			closeParkedMs: args.autoClose?.parkedMs ?? 0,
-			closeWaitingMs: args.autoClose?.waitingMs ?? 0,
+			pruneAfterMs: args.prune?.afterMs ?? 0,
+			pruneWaitingAfterMs: args.prune?.waitingAfterMs ?? 0,
 		});
 		return;
 	}
@@ -2562,8 +2562,8 @@ export async function finalizeSubagentLifecycle(args: {
 	registry.setStatus(args.id, "idle");
 	AgentLifecycleManager.global().adopt(args.id, {
 		idleTtlMs: args.agentIdleTtlMs,
-		closeParkedMs: args.autoClose?.parkedMs ?? 0,
-		closeWaitingMs: args.autoClose?.waitingMs ?? 0,
+		pruneAfterMs: args.prune?.afterMs ?? 0,
+		pruneWaitingAfterMs: args.prune?.waitingAfterMs ?? 0,
 		revive: args.reviveSession ?? undefined,
 	});
 }
@@ -2833,7 +2833,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		Math.trunc(Number(options.maxRuntimeMs ?? settings.get("subagent.maxRuntimeMs") ?? 0) || 0),
 	);
 	const agentIdleTtlMs = resolveSubagentIdleTtlMs(settings);
-	const autoCloseBudget = resolveSubagentAutoCloseBudget(settings);
+	const pruneBudget = resolveSubagentPruneBudget(settings);
 	const configuredDefaultBudget = Math.max(
 		0,
 		Math.trunc(Number(settings.get("subagent.softRequestBudget") ?? SOFT_REQUEST_BUDGET.default) || 0),
@@ -3425,7 +3425,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 					keepAlive: options.keepAlive !== false,
 					isolated: worktree !== undefined,
 					agentIdleTtlMs,
-					autoClose: autoCloseBudget,
+					prune: pruneBudget,
 					// `captureSalvage` ran on the line above, so the sign-off is this run's
 					// LAST assistant text rather than every assistant message it produced.
 					signOff: subagentSignOffText(monitor),

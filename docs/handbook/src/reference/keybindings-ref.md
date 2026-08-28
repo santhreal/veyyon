@@ -27,7 +27,7 @@ live list after your remaps. For the full guide on customizing, see
 | `alt+r` | Retry the last failed assistant turn (`app.retry`) |
 | `alt+up` | Dequeue a queued message back into the editor (`app.message.dequeue`) |
 | `alt+shift+p` | Toggle plan mode (`app.plan.toggle`) |
-| `alt+a` | Open the Agent Control Center (`app.agents.hub`) |
+| `alt+a` | Open the subagent dashboard (`app.agents.hub`) |
 | `ctrl+r` | Search prompt history (`app.history.search`) |
 | `alt+shift+l` | Copy the current line (`app.clipboard.copyLine`) |
 | `alt+shift+c` | Copy the whole prompt (`app.clipboard.copyPrompt`) |

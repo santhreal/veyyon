@@ -20,8 +20,8 @@ import {
 	DEFAULT_ENABLED_BUNDLED_AGENT,
 	DEFAULT_SUBAGENT_IDLE_TTL_MS,
 	DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH,
-	DEFAULT_SUBAGENT_PARKED_CLOSE_MS,
-	DEFAULT_SUBAGENT_WAITING_CLOSE_MS,
+	DEFAULT_SUBAGENT_PRUNE_MS,
+	DEFAULT_SUBAGENT_WAITING_PRUNE_MS,
 	isModelByDepthKey,
 } from "../config/settings-domains/subagents";
 import type { SettingPath } from "../config/settings-schema";
@@ -71,11 +71,11 @@ export function resolveSubagentIdleTtlMs(settings: Settings): number {
 }
 
 /** How long a parked subagent survives before it is closed, by whether it was waiting. */
-export interface SubagentAutoCloseBudget {
+export interface SubagentPruneBudget {
 	/** Ordinary parked agent. 0 disables closing entirely. */
-	parkedMs: number;
+	afterMs: number;
 	/** Parked agent whose last message said it was waiting on another agent. */
-	waitingMs: number;
+	waitingAfterMs: number;
 }
 
 /**
@@ -83,7 +83,7 @@ export interface SubagentAutoCloseBudget {
  *
  * Parking already released the session; this is the second stage, and without it a
  * long session accumulates every finished agent in `irc list` and the Control
- * Center forever. Disabled (`subagent.autoClose.enabled` off) resolves to zero
+ * Center forever. Disabled (`subagent.prune.enabled` off) resolves to zero
  * budgets, which the lifecycle manager reads as "never close", so the operator's
  * off switch is a real off switch rather than a very long timer.
  *
@@ -93,21 +93,21 @@ export interface SubagentAutoCloseBudget {
  * misconfiguration can only ever lengthen a waiting agent's grace, never shorten
  * it below a quiet agent's.
  */
-export function resolveSubagentAutoCloseBudget(settings: Settings): SubagentAutoCloseBudget {
-	if ((settings.get("subagent.autoClose.enabled") ?? true) !== true) {
-		return { parkedMs: 0, waitingMs: 0 };
+export function resolveSubagentPruneBudget(settings: Settings): SubagentPruneBudget {
+	if ((settings.get("subagent.prune.enabled") ?? true) !== true) {
+		return { afterMs: 0, waitingAfterMs: 0 };
 	}
-	const readMs = (path: "subagent.autoClose.parkedMs" | "subagent.autoClose.waitingMs", fallback: number): number => {
+	const readMs = (path: "subagent.prune.afterMs" | "subagent.prune.waitingAfterMs", fallback: number): number => {
 		const configured = Number(settings.get(path) ?? fallback);
 		if (!Number.isFinite(configured)) return fallback;
 		return Math.max(0, Math.trunc(configured));
 	};
-	const parkedMs = readMs("subagent.autoClose.parkedMs", DEFAULT_SUBAGENT_PARKED_CLOSE_MS);
-	const waitingMs = readMs("subagent.autoClose.waitingMs", DEFAULT_SUBAGENT_WAITING_CLOSE_MS);
+	const afterMs = readMs("subagent.prune.afterMs", DEFAULT_SUBAGENT_PRUNE_MS);
+	const waitingAfterMs = readMs("subagent.prune.waitingAfterMs", DEFAULT_SUBAGENT_WAITING_PRUNE_MS);
 	// A zero parked budget means "never close", so a waiting budget cannot revive
 	// closing for the waiting case alone.
-	if (parkedMs === 0) return { parkedMs: 0, waitingMs: 0 };
-	return { parkedMs, waitingMs: Math.max(parkedMs, waitingMs) };
+	if (afterMs === 0) return { afterMs: 0, waitingAfterMs: 0 };
+	return { afterMs, waitingAfterMs: Math.max(afterMs, waitingAfterMs) };
 }
 
 /**

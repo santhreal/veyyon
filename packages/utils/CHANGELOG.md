@@ -19,6 +19,7 @@
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
 - `winston` and `winston-daily-rotate-file` are resolved on the first log write instead of at module load, taking 4.7ms off every process that imports the logger without logging, which is every entry point.
 - A blocked event loop names the phase that spent the time rather than the phase that happened to be open: `takeLoopPhaseProfile` banks elapsed time per phase and reports the costliest one with its cost, replacing `takeRecentLoopPhase`, which returned the most recent label and blamed `ui.render` for a stall the render pass never took part in.
+- No user-visible change: doc comments name the subagent dashboard, the surface `/agents` opens, instead of the Agent Control Center.
 
 ### Fixed
 

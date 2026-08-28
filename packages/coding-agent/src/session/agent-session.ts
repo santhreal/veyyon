@@ -4770,7 +4770,7 @@ export class AgentSession {
 	 * The registry is process-global and, until this existed, nothing ever told
 	 * it that a conversation had ended. `/new` and `/resume` swap the transcript
 	 * under the same `AgentSession`, so every subagent of the previous
-	 * conversation stayed registered: the Agent Control Center listed them, `irc
+	 * conversation stayed registered: the subagent dashboard listed them, `irc
 	 * list` offered them as peers, and messaging one woke an agent whose replies
 	 * were written into a transcript the operator had already left. That is the
 	 * "agents from other sessions" symptom, and it is a leak as much as a
@@ -9978,7 +9978,7 @@ export class AgentSession {
 	/**
 	 * Expand argot handles across transcript entries a viewer parsed off disk.
 	 *
-	 * The Agent Control Center reads a subagent's or advisor's session file
+	 * The subagent dashboard reads a subagent's or advisor's session file
 	 * directly, so it never passes through `buildDisplaySessionContext`. It gets
 	 * the same codec through this accessor rather than reaching for `#argot`.
 	 */
