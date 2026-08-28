@@ -14,8 +14,8 @@
  * are told, for both answers.
  */
 import { describe, expect, it } from "bun:test";
-import { getAnsiColorFormat, setAnsiColorFormat } from "@veyyon/utils/color-format";
 import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import { getAnsiColorFormat, setAnsiColorFormat } from "@veyyon/utils/color-format";
 
 describe("the colour depth the terminal probe found", () => {
 	it("is the encoding every ANSI colour in this process is written in", () => {
