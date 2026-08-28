@@ -858,17 +858,8 @@ function buildMnemonicNames(allExpansions: Iterable<string>, reserved: Iterable<
 			for (const expansion of group) deferred.push(expansion);
 		}
 	}
-	// Pass 2: every remaining expansion gets `stem` + a short hash suffix, with the
-	// stem TRUNCATED to keep the whole name inside {@link MAX_NAME_LENGTH}.
-	//
-	// Staying inside that budget is the point, not a nicety. A name of four
-	// characters or fewer costs 2 tokens with the sigil; eight costs 3. The old
-	// scheme appended the suffix on top of a full-length stem, so a colliding
-	// handle came out at eight characters and cost 3 tokens against expansions that
-	// are themselves only 3 or 4 tokens, which is how a "saving" became a loss. On
-	// a real Go repository nearly every line-structure candidate collides (every
-	// indentation depth of `return` shares one stem), so this was the common path,
-	// not the rare one.
+	// Pass 2: remaining expansions get `stem` + short hash suffix, with the stem
+	// truncated to keep the whole name within MAX_NAME_LENGTH.
 	for (const expansion of deferred.sort()) {
 		const hash = fnv1a(expansion, 0x811c9dc5).toString(36) + fnv1a(expansion, 0x9e3779b1).toString(36);
 		let name: string | undefined;
