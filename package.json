@@ -97,8 +97,7 @@
 			"zod": "^4",
 			"@veyyon/stats": "1.2.0",
 			"@veyyon/collab-web": "1.2.0",
-		"@veyyon/swarm-extension": "1.2.0",
-		"@veyyon/render-oracle": "1.2.0"
+			"@veyyon/swarm-extension": "1.2.0"
 		}
 	},
 	"overrides": {

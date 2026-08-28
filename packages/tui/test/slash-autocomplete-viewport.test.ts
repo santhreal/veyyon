@@ -1,9 +1,10 @@
 import "./warm-natives"; // load the native addon under the real platform before any process.platform mock
 import { describe, expect, it } from "bun:test";
-import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import { Container, Editor, TUI } from "@veyyon/tui";
 import type { AutocompleteItem, AutocompleteProvider } from "@veyyon/tui/autocomplete";
+import { settleFrames } from "./helpers/settle-frames";
 import { defaultEditorTheme } from "./test-themes";
+import { VirtualTerminal } from "./virtual-terminal";
 
 class SlashProvider implements AutocompleteProvider {
 	async getSuggestions(

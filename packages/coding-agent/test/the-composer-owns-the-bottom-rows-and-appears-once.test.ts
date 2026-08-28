@@ -25,7 +25,7 @@
  */
 
 import { beforeAll, describe, expect, it } from "bun:test";
-import { isComposerPromptLine, isHairlineLine } from "@veyyon/render-oracle";
+import { isComposerPromptLine, isHairlineLine } from "../src/modes/components/composer-defect-oracle";
 import { initTheme } from "../src/modes/theme/theme";
 import { type RunnerOptions, type RunnerResult, runComposerOracleScenario } from "./helpers/composer-oracle-runner";
 

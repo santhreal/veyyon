@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from "bun:test";
-import { VirtualTerminal } from "@veyyon/render-oracle";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type Component, type RenderTimer, TUI } from "@veyyon/tui";
-import { currentLoopPhase, popLoopPhase, takeRecentLoopPhase } from "@veyyon/utils";
+import { currentLoopPhase, popLoopPhase, takeLoopPhaseProfile } from "@veyyon/utils";
+import { VirtualTerminal } from "./virtual-terminal";
 
 /**
  * Contract: the two synchronous spans an interactive session spends its time in
@@ -25,10 +25,18 @@ import { currentLoopPhase, popLoopPhase, takeRecentLoopPhase } from "@veyyon/uti
  * blocks inside a child component is still reported as `ui.render`, which is the
  * span, not the culprit within it. Narrowing that is the next breadcrumb's job.
  */
-afterEach(() => {
+/**
+ * The phase accounting is a process-global, and any suite that renders a frame
+ * banks cost into it. Drain it around each case, BEFORE as well as after, so a
+ * leftover from another file in the same process cannot win a read here.
+ */
+function drainLoopPhases(): void {
 	while (currentLoopPhase() !== undefined) popLoopPhase();
-	takeRecentLoopPhase();
-});
+	takeLoopPhaseProfile();
+}
+
+beforeEach(drainLoopPhases);
+afterEach(drainLoopPhases);
 
 /** Records the phase the engine holds while it calls into a component. */
 class PhaseProbe implements Component {
@@ -135,9 +143,14 @@ describe("a blocked frame and a blocked keystroke name their phase", () => {
 			scheduler.flush();
 
 			expect(currentLoopPhase()).toBeUndefined();
-			// The consume-on-read slot still names the last span, which is what lets a
-			// stall detected one tick later be attributed at all.
-			expect(takeRecentLoopPhase()).toBe("ui.render");
+			// Both spans ran and both were cheap, so which one is costliest is a race
+			// between two microsecond measurements — the guarantee is that a span that
+			// ran is nameable for exactly one read.
+			// `?? "(none)"` keeps this a string, so an unnamed phase fails here rather than
+			// failing to type-check.
+			expect(["ui.render", "ui.input"]).toContain(takeLoopPhaseProfile().phase ?? "(none)");
+			// And is never carried into a later, phase-less interval.
+			expect(takeLoopPhaseProfile().phase).toBeUndefined();
 		} finally {
 			tui.stop();
 		}

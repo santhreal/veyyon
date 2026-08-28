@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
+import { StressRenderScheduler } from "./render-stress-scheduler";
+import { VirtualTerminal } from "./virtual-terminal";
 
 // Regression for the editor ungluing from the viewport bottom when a tall
 // transient prompt (the ask dialog's "type your own" editor) collapses back to

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
 import {
 	type Component,
 	CURSOR_MARKER,
@@ -9,6 +8,8 @@ import {
 	type NativeScrollbackReplay,
 	TUI,
 } from "@veyyon/tui";
+import { StressRenderScheduler } from "./render-stress-scheduler";
+import { VirtualTerminal } from "./virtual-terminal";
 
 /**
  * Scroll isolation over a VIRTUALIZED transcript — the shape the coding agent

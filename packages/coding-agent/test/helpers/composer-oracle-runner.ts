@@ -8,18 +8,11 @@
 
 import { stripVTControlCharacters } from "node:util";
 import { ThinkingLevel } from "@veyyon/agent-core";
-import {
-	type ComposerOracleFrameState,
-	type CorpusCaseState,
-	evaluateAllComposerOracles,
-	type FrameSegmentSnapshot,
-	type OracleEvaluationResult,
-	settleFrames,
-	VirtualTerminal,
-} from "@veyyon/render-oracle";
 import { type Component, Container, Editor, Spacer, TUI } from "@veyyon/tui";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/tui/mouse";
 import { stripAnsi } from "@veyyon/utils";
+import { settleFrames } from "../../../tui/test/helpers/settle-frames";
+import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
 import {
 	CardPadRow,
 	COMPOSER_BOTTOM_MARGIN_ROWS,
@@ -28,7 +21,14 @@ import {
 	mountComposerZone,
 	resolveComposerAccents,
 } from "../../src/modes/components/composer-chrome";
+import {
+	type ComposerOracleFrameState,
+	evaluateAllComposerOracles,
+	type FrameSegmentSnapshot,
+	type OracleEvaluationResult,
+} from "../../src/modes/components/composer-defect-oracle";
 import { getEditorTheme } from "../../src/modes/theme/theme";
+import type { CorpusCaseState } from "./renderer-defect-corpus";
 
 /** Transcript content component */
 export class TranscriptMock implements Component {
@@ -222,15 +222,16 @@ export async function runComposerOracleScenario(options: RunnerOptions): Promise
 	const footerSegments = segments.slice(-mountedCount);
 	const pinnedFooterRows = footerSegments.reduce((sum, s) => sum + s.rowCount, 0);
 
-	// Capture live footer lines from the live frame before any virtual scrolling, sliced
-	// at the rows the renderer placed the footer on rather than at a second guess.
+	// Capture live footer lines from the live frame before any virtual scrolling
 	const liveRawViewport = term.getViewport();
 	const liveViewportLines = liveRawViewport.map(l => stripVTControlCharacters(stripAnsi(l)));
-	const liveBounds = tui.pinnedFooterScreenBounds;
-	const liveFooterLines: string[] = liveViewportLines.slice(
-		Math.max(0, liveBounds.footerTop),
-		Math.min(height, liveBounds.footerBottom + 1),
-	);
+	const liveFooterTop = totalFrameRows < height ? totalFrameRows - pinnedFooterRows : height - pinnedFooterRows;
+	const liveFooterLines: string[] = [];
+	if (totalFrameRows < height) {
+		liveFooterLines.push(...liveViewportLines.slice(Math.max(0, liveFooterTop), totalFrameRows));
+	} else {
+		liveFooterLines.push(...liveViewportLines.slice(Math.max(0, liveFooterTop), height));
+	}
 
 	// If scrollOffset requested, scroll back
 	if (options.scrollOffset && options.scrollOffset > 0) {
@@ -245,17 +246,43 @@ export async function runComposerOracleScenario(options: RunnerOptions): Promise
 	const rawViewportLines = term.getViewport();
 	const viewportLines = rawViewportLines.map(l => stripVTControlCharacters(stripAnsi(l)));
 	const cursor = term.getCursor();
+	let windowTopRow = 0;
 	const virtualScrollTop = tui.virtualScrollActive ? (options.scrollOffset ?? 1) : null;
-	// The placement the product acts on, not a second model of it. Recomputing the
-	// footer's screen rows here made the checks agree with the runner instead of with
-	// the renderer, and the two disagreed once the footer grew taller than the
-	// viewport: the renderer gives the whole viewport to the footer, the copy here
-	// still reserved a content row.
-	const screenBounds = tui.pinnedFooterScreenBounds;
-	// Frame row the viewport starts at, in the same coordinates as `segments`.
-	// Inverted from the bounds above so there is one anchor, not two:
-	// footerTop = totalFrameRows - pinnedFooterRows - windowTopRow.
-	const windowTopRow = virtualScrollTop === null ? totalFrameRows - pinnedFooterRows - screenBounds.footerTop : 0;
+	let screenBounds = {
+		footerTop: 0,
+		footerBottom: 0,
+		footerRowOffset: 0,
+		contentBottom: 0,
+	};
+
+	if (tui.virtualScrollActive) {
+		const footerRows = Math.min(pinnedFooterRows, height - 1);
+		const footerTop = height - footerRows;
+		screenBounds = {
+			footerTop,
+			footerBottom: height - 1,
+			contentBottom: height - 1,
+			footerRowOffset: height - pinnedFooterRows,
+		};
+	} else {
+		if (totalFrameRows < height) {
+			windowTopRow = 0;
+			screenBounds = {
+				footerTop: totalFrameRows - pinnedFooterRows,
+				footerBottom: totalFrameRows - 1,
+				footerRowOffset: totalFrameRows - pinnedFooterRows,
+				contentBottom: totalFrameRows - 1,
+			};
+		} else {
+			windowTopRow = totalFrameRows - height;
+			screenBounds = {
+				footerTop: height - pinnedFooterRows,
+				footerBottom: height - 1,
+				footerRowOffset: height - pinnedFooterRows,
+				contentBottom: height - 1,
+			};
+		}
+	}
 
 	// Capture mouse click routing. Every footer row is probed, not just the boundaries: a click
 	// offset shows up as a row in the middle of the footer dispatching to the transcript, and an

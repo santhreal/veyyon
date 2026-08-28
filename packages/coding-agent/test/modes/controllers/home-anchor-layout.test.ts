@@ -111,13 +111,13 @@ describe("HomeAnchorLayout — stateless re-anchor, no latch-off", () => {
 		layout.sync();
 		expect(rowsOf(layout.topFill)).toBe(0);
 		expect(rowsOf(layout.bottomFill)).toBe(0);
-		// The spike collapses: slack returns, and the conversation routing puts
-		// ALL of it below the transcript (composer stays on the bottom).
+		// The spike collapses: slack returns, and the conversation hug routing
+		// puts ALL of it above the transcript (composer stays on the bottom).
 		children[1] = block(12);
 		state.composedFrameRows = 12;
 		layout.sync();
-		expect(rowsOf(layout.topFill)).toBe(0);
-		expect(rowsOf(layout.bottomFill)).toBe(8);
+		expect(rowsOf(layout.topFill)).toBe(8);
+		expect(rowsOf(layout.bottomFill)).toBe(0);
 	});
 
 	test("an overflowing home screen keeps anchoring once rows free up", () => {
@@ -172,7 +172,7 @@ describe("HomeAnchorLayout.onFrameComposed — the drift correction", () => {
 		children[1] = block(12);
 		state.composedFrameRows = 12;
 		layout.onFrameComposed();
-		expect(rowsOf(layout.bottomFill)).toBe(8);
+		expect(rowsOf(layout.topFill)).toBe(8);
 		expect(state.renderRequests).toBe(1);
 	});
 });
@@ -209,18 +209,17 @@ describe("HomeAnchorLayout.onHeroDismissed — same-frame re-anchor", () => {
 });
 
 describe("HomeAnchorLayout.sync — conversation slack routing", () => {
-	/** Once a conversation exists ALL the anchor slack goes BELOW the content
-	 * and above the composer zone: the content is anchored to the top, so a row
-	 * streamed into a screen that is not yet full lands in the gap and no row
-	 * already painted moves. Routing it above instead anchors the content's
-	 * bottom, which slid and repainted the whole conversation on every streamed
-	 * row. The blank rows cannot reach scrollback: while slack is positive the
-	 * frame is exactly the viewport height, so nothing scrolls off. */
-	test("with a conversation started, all slack goes below so the content is top-anchored", () => {
+	/** The core of the bottom-hugging fix: once a conversation exists, ALL the
+	 * anchor slack moves ABOVE the transcript. The old between-content fill
+	 * painted the prompt at the top and the loader at the bottom with a void of
+	 * blank rows between them; when the reply landed those rows overflowed the
+	 * screen and pushed the prompt into scrollback while the viewport was mostly
+	 * empty. */
+	test("with a conversation started, all slack goes above so content hugs the composer", () => {
 		const { layout } = makeHarness({ rows: 30, contentRows: 8, transcriptChildren: 1 });
 		layout.sync();
-		expect(rowsOf(layout.topFill)).toBe(0);
-		expect(rowsOf(layout.bottomFill)).toBe(22);
+		expect(rowsOf(layout.topFill)).toBe(22);
+		expect(rowsOf(layout.bottomFill)).toBe(0);
 	});
 
 	/** The hero split wins while the hero is still up even if a transcript
@@ -232,16 +231,16 @@ describe("HomeAnchorLayout.sync — conversation slack routing", () => {
 		expect(rowsOf(layout.bottomFill)).toBe(14);
 	});
 
-	/** Growth eats the BOTTOM fill row-for-row: content grows downward from
-	 * where it already is, and nothing scrolls while free rows remain. */
-	test("conversation growth eats the bottom fill row-for-row until the viewport fills", () => {
+	/** Growth shrinks the TOP fill row-for-row: content climbs from the
+	 * composer upward, and nothing ever scrolls while free rows remain. */
+	test("conversation growth eats the top fill row-for-row until the viewport fills", () => {
 		const { layout, children } = makeHarness({ rows: 30, contentRows: 8, transcriptChildren: 1 });
 		layout.sync();
-		expect(rowsOf(layout.bottomFill)).toBe(22);
+		expect(rowsOf(layout.topFill)).toBe(22);
 		children[1] = block(20);
 		layout.sync(true);
-		expect(rowsOf(layout.topFill)).toBe(0);
-		expect(rowsOf(layout.bottomFill)).toBe(10);
+		expect(rowsOf(layout.topFill)).toBe(10);
+		expect(rowsOf(layout.bottomFill)).toBe(0);
 		// Content exceeds the viewport: both fills are zero — the composer is
 		// on the natural bottom, same place the fill held it.
 		children[1] = block(31);
@@ -285,13 +284,13 @@ describe("HomeAnchorLayout — the anchor never routes slack the children have t
 			composedFrameRows: 30,
 			transcriptChildren: 1,
 		});
-		layout.bottomFill.setLines(22);
+		layout.topFill.setLines(22);
 		children[1] = block(14);
 		layout.sync();
 		// 30 - 14 = 16. The stale frame implies 22, which composes 36 rows into
 		// a 30-row viewport.
-		expect(rowsOf(layout.topFill)).toBe(0);
-		expect(rowsOf(layout.bottomFill)).toBe(16);
+		expect(rowsOf(layout.topFill)).toBe(16);
+		expect(rowsOf(layout.bottomFill)).toBe(0);
 	});
 
 	test("no reachable content height routes a fill that overflows the viewport", () => {

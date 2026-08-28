@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { VirtualTerminal } from "@veyyon/render-oracle";
 import { ImageProtocol, setTerminalImageProtocol, TERMINAL, TUI } from "@veyyon/tui";
+import { VirtualTerminal } from "./virtual-terminal";
 
 type MutableTerminalInfo = {
 	imageProtocol: ImageProtocol | null;

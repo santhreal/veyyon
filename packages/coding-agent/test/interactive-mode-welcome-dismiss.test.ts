@@ -146,7 +146,7 @@ describe("InteractiveMode welcome dismissal (UI-10)", () => {
 		expect(wordmarks).toHaveLength(1);
 	});
 
-	it("first message is top-anchored with the slack below it, composer on the viewport bottom", async () => {
+	it("first message hugs the composer at the viewport bottom, no void between them", async () => {
 		await mode.init();
 
 		// Home screen: the composer is pinned to the viewport bottom by a large
@@ -168,23 +168,23 @@ describe("InteractiveMode welcome dismissal (UI-10)", () => {
 		expect(rendered).toContain(marker);
 		expect(afterLines.length).toBeLessThanOrEqual(40);
 
-		// Chat-surface contract: once a conversation starts, ALL slack routes BELOW
-		// the transcript. The content is anchored to the top, so a row streamed into
-		// a screen that is not yet full lands in the empty space instead of sliding
-		// every painted row up one, and the composer stays locked to the bottom
-		// because the fill sits directly above the composer zone.
+		// Chat-surface contract: once a conversation starts, ALL slack routes above
+		// the transcript, so the message hugs the composer at the bottom like any
+		// chat surface. The old between-content fill (message at the top, composer at
+		// the bottom, a void of blank rows between them) committed those blank rows,
+		// and the landing reply pushed the prompt into scrollback. Assert the hug:
+		// the message sits directly above the composer zone, and the composer stays
+		// locked to the bottom.
 		const markerRow = afterLines.findIndex(line => line.includes(marker));
 		expect(markerRow).toBeGreaterThanOrEqual(0);
 		// The composer placeholder sits in the bottom region of the 40-row viewport.
 		const composerRow = afterLines.findIndex(line => line.includes("ask anything"));
 		expect(composerRow).toBeGreaterThanOrEqual(30);
+		// The message is above the composer, close to it: the only rows between
+		// them are the composer zone chrome (status loader, hairline, pad rows),
+		// never a reserved void.
 		expect(markerRow).toBeLessThan(composerRow);
-		// And the empty space is BELOW the message, never reserved above it: a void
-		// above is the bottom-anchored routing that made a streaming answer shake.
-		const isBlank = (line: string): boolean => Bun.stripANSI(line).trim().length === 0;
-		const blankAbove = afterLines.slice(0, markerRow).filter(isBlank).length;
-		const blankBelow = afterLines.slice(markerRow + 1, composerRow).filter(isBlank).length;
-		expect(blankAbove).toBeLessThanOrEqual(blankBelow);
+		expect(composerRow - markerRow).toBeLessThanOrEqual(12);
 	});
 
 	it("latches the anchor off once the transcript fills the viewport: no reserved gap, composer on the natural bottom", async () => {

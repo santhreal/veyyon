@@ -44,10 +44,10 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { type TodoPhase, todoToolRenderer } from "@veyyon/coding-agent/tools/todo";
-import { VirtualTerminal } from "@veyyon/render-oracle";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { isTodoListDone, TODO_DONE_SUMMARY, TODO_STATUSES, type TodoStatus } from "@veyyon/wire";
+import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
 
 const COLUMNS = 100;
 

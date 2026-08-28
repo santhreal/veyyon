@@ -26,7 +26,6 @@ operator manual.
 |`packages/mnemopi`|Local SQLite memory engine: triples, embeddings, recall|
 |`packages/wire`|Dependency-free collab wire types, so a browser or test client need not depend on coding-agent|
 |`packages/tool-render`|Shared React tool-call renderers for HTML export and collab-web|
-|`packages/render-oracle`|Terminal renderer defect oracle: virtual terminal, frame capture, state-relative invariant detectors, fuzz driver and a replayable defect corpus. Owns every renderer regression test|
 |`packages/collab-web`|Browser guest client and local relay for collab live sessions (private)|
 |`packages/swarm-extension`|Swarm orchestration extension|
 |`packages/evals`|Every model and agent evaluation: the DeepSWE, Terminal-Bench 3.0 and TypeScript-edit suites, harness adapters, execution backends, run store, REST/SSE API and live dashboard (private)|

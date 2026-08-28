@@ -1734,6 +1734,31 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		}
 	}
 
+	/**
+	 * Discard the draft, leaving it recoverable with undo.
+	 *
+	 * {@link setText} is a load: it replaces the buffer with text from elsewhere — shell
+	 * history, a resumed session — and drops an undo history that describes text the
+	 * buffer no longer holds. Discarding is an edit of what the operator typed, so it
+	 * records an undo state first and ctrl+z restores the draft like any other edit.
+	 */
+	discardDraft(): void {
+		if (this.#state.lines.length === 1 && this.#state.lines[0] === "") return;
+		this.#exitHistoryForEditing();
+		this.#recordUndoState();
+		this.#resetKillSequence();
+		this.#state.lines = [""];
+		this.#state.cursorLine = 0;
+		this.#setCursorCol(0);
+		this.#preferredVisualCol = null;
+		this.#scrollOffset = 0;
+		this.#volatileTextLen = 0;
+		this.#lastAction = null;
+		if (this.onChange) {
+			this.onChange("");
+		}
+	}
+
 	/** Code units of the current volatile speech-to-text preview (see {@link setVolatileText}). */
 	#volatileTextLen = 0;
 
@@ -3175,21 +3200,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		if (shouldChainSlashCommandAutocomplete && this.#isCompletedSlashCommandAtCursor()) {
 			void this.#tryTriggerAutocomplete();
 		}
-	}
-
-	/**
-	 * Whether this editor has anything a click could land on.
-	 *
-	 * The engine takes mouse reporting only while the transcript scrolls or a pinned-footer
-	 * child asks for it, so a component that routes clicks and never asks is reachable by
-	 * accident — in a session short enough that nothing scrolls, no button report arrives at
-	 * all and {@link routeMouse} is dead code. A caret target exists as soon as there is text
-	 * to put the caret in, and a suggestion popup is a target of its own. An empty, idle
-	 * composer asks for nothing, so a session that has not been typed into yet keeps the
-	 * terminal's native drag-select, which is what the grab costs.
-	 */
-	wantsPointer(): boolean {
-		return this.getText().length > 0 || this.#autocompleteState !== null;
 	}
 
 	/**

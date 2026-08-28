@@ -94,6 +94,8 @@ export function isCodeFile(filePath: string): boolean {
 }
 export interface MutationEvidence {
 	sequence: number;
+	/** The call that produced it, so a reviewer can ask whether it is still in context. */
+	toolCallId: string;
 	toolName: MutationToolName;
 	paths: readonly string[];
 }
@@ -111,7 +113,6 @@ export interface VerificationLedgerSnapshot {
 	proofs: readonly ProofEvidence[];
 	intervenedThisTurn: boolean;
 	intervenedCodeReviewThisTurn?: boolean;
-	codeReviewStartedAtSequence?: number;
 	turnStartedAtSequence: number;
 }
 
@@ -205,7 +206,7 @@ function mutationFromResult(
 	toolName: string,
 	detailsValue: unknown,
 	resultFailed: boolean,
-): Omit<MutationEvidence, "sequence"> | undefined {
+): Omit<MutationEvidence, "sequence" | "toolCallId"> | undefined {
 	let effectiveTool = toolName;
 	let details = record(detailsValue);
 	if (toolName === "resolve" && details?.action === "apply" && details.sourceToolName === "ast_edit") {
@@ -252,31 +253,49 @@ function appendBounded<T>(items: T[], item: T): void {
 	if (items.length > MAX_EVIDENCE) items.splice(0, items.length - MAX_EVIDENCE);
 }
 
+interface CodeReviewEntry {
+	path: string;
+	/** Every mutation call that touched this path in the window, oldest first. */
+	toolCallIds: string[];
+}
+
 interface CodeReviewPathSelection {
-	paths: string[];
+	entries: CodeReviewEntry[];
 	total: number;
 }
 
 function selectCodeReviewPaths(mutations: readonly MutationEvidence[], afterSequence: number): CodeReviewPathSelection {
-	const paths: string[] = [];
-	const seen = new Set<string>();
+	const entries: CodeReviewEntry[] = [];
+	const callsByIdentity = new Map<string, string[]>();
 	let total = 0;
 	for (const mutation of mutations) {
 		if (mutation.sequence <= afterSequence) continue;
 		for (const filePath of mutation.paths) {
 			if (!isCodeFile(filePath)) continue;
 			const identity = pathIdentity(filePath);
-			if (seen.has(identity)) continue;
-			seen.add(identity);
+			const known = callsByIdentity.get(identity);
+			if (known) {
+				known.push(mutation.toolCallId);
+				continue;
+			}
+			// Shared with the entry below, so a later mutation of the same path
+			// reaches an entry that was already selected.
+			const toolCallIds = [mutation.toolCallId];
+			callsByIdentity.set(identity, toolCallIds);
 			total += 1;
-			if (paths.length < MAX_CODE_REVIEW_PATHS) paths.push(filePath);
+			if (entries.length < MAX_CODE_REVIEW_PATHS) entries.push({ path: filePath, toolCallIds });
 		}
 	}
-	return { paths, total };
+	return { entries, total };
 }
 
 function escapePromptPath(filePath: string): string {
 	return filePath.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+/** Renders a bullet list, or the empty string, which a `{{#if}}` block drops. */
+function promptPathList(paths: readonly string[]): string {
+	return paths.map(filePath => `- ${escapePromptPath(filePath)}`).join("\n");
 }
 
 /**
@@ -289,22 +308,14 @@ export class VerificationEvidenceLedger {
 	#intervenedThisTurn = false;
 	#intervenedCodeReviewThisTurn = false;
 	#turnStartedAtSequence = 0;
-	#codeReviewStartedAtSequence = 0;
 	readonly #mutations: MutationEvidence[] = [];
 	readonly #proofs: ProofEvidence[] = [];
 	readonly #pendingProofCalls = new Map<string, ToolStartEvidence>();
 
-	startUserTurn(options?: { preservePendingCodeReview?: boolean }): void {
-		const pendingCodeReview =
-			options?.preservePendingCodeReview === true &&
-			!this.#intervenedCodeReviewThisTurn &&
-			selectCodeReviewPaths(this.#mutations, this.#codeReviewStartedAtSequence).total >= 2;
+	startUserTurn(): void {
 		this.#intervenedThisTurn = false;
+		this.#intervenedCodeReviewThisTurn = false;
 		this.#turnStartedAtSequence = this.#sequence;
-		if (!pendingCodeReview) {
-			this.#intervenedCodeReviewThisTurn = false;
-			this.#codeReviewStartedAtSequence = this.#sequence;
-		}
 	}
 
 	restore(snapshot: VerificationLedgerSnapshot): void {
@@ -327,10 +338,6 @@ export class VerificationEvidenceLedger {
 		this.#intervenedThisTurn = snapshot.intervenedThisTurn;
 		this.#intervenedCodeReviewThisTurn = snapshot.intervenedCodeReviewThisTurn ?? false;
 		this.#turnStartedAtSequence = Math.min(snapshot.turnStartedAtSequence, this.#sequence);
-		this.#codeReviewStartedAtSequence = Math.min(
-			snapshot.codeReviewStartedAtSequence ?? snapshot.turnStartedAtSequence,
-			this.#sequence,
-		);
 	}
 
 	recordToolStart(event: ToolStart): void {
@@ -353,7 +360,7 @@ export class VerificationEvidenceLedger {
 		const resultFailed = event.isError === true || event.result.isError === true;
 		const mutation = mutationFromResult(event.toolName, event.result.details, resultFailed);
 		if (mutation) {
-			appendBounded(this.#mutations, { ...mutation, sequence: ++this.#sequence });
+			appendBounded(this.#mutations, { ...mutation, toolCallId: event.toolCallId, sequence: ++this.#sequence });
 			return;
 		}
 		if (resultFailed) return;
@@ -390,21 +397,27 @@ export class VerificationEvidenceLedger {
 	}
 
 	/**
-	 * Returns a code review reminder when at least two distinct code files remain
-	 * unreviewed. A pending reminder can span a user answer, but a one-file turn
-	 * never combines with a later independent turn.
+	 * Returns a review of every code file this user turn changed, at most once
+	 * in the turn. A path whose every recorded mutation call has left the
+	 * context window is listed apart: the model cannot judge a change it can no
+	 * longer see, so it is told to read that file first.
 	 */
-	takeCodeReviewReminder(): string | undefined {
+	takeCodeReviewReminder(isInContext: (toolCallId: string) => boolean): string | undefined {
 		if (this.#intervenedCodeReviewThisTurn) return undefined;
-		const selection = selectCodeReviewPaths(this.#mutations, this.#codeReviewStartedAtSequence);
-		if (selection.total < 2) return undefined;
+		const selection = selectCodeReviewPaths(this.#mutations, this.#turnStartedAtSequence);
+		if (selection.total === 0) return undefined;
 
 		this.#intervenedCodeReviewThisTurn = true;
-		const omitted = selection.total - selection.paths.length;
-		const pathLines = selection.paths.map(filePath => `- ${escapePromptPath(filePath)}`);
-		if (omitted > 0) pathLines.push(`- … ${omitted} more code file${omitted === 1 ? "" : "s"}`);
+		const visible: string[] = [];
+		const unreadable: string[] = [];
+		for (const entry of selection.entries) {
+			(entry.toolCallIds.some(isInContext) ? visible : unreadable).push(entry.path);
+		}
+		const omitted = selection.total - selection.entries.length;
 		return prompt.render(sessionPrompts["session/code-review-reminder"].text, {
-			pathsMarkdown: pathLines.join("\n"),
+			pathsMarkdown: promptPathList(visible),
+			unreadablePathsMarkdown: promptPathList(unreadable),
+			omittedNote: omitted > 0 ? `… and ${omitted} more code file${omitted === 1 ? "" : "s"} beyond these.` : "",
 		});
 	}
 
@@ -414,7 +427,6 @@ export class VerificationEvidenceLedger {
 			proofs: this.#proofs.map(item => ({ ...item })),
 			intervenedThisTurn: this.#intervenedThisTurn,
 			intervenedCodeReviewThisTurn: this.#intervenedCodeReviewThisTurn,
-			codeReviewStartedAtSequence: this.#codeReviewStartedAtSequence,
 			turnStartedAtSequence: this.#turnStartedAtSequence,
 		};
 	}
