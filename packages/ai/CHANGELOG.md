@@ -17,6 +17,7 @@
 - 24 utility functions, constants, and types extracted from `stream.ts` (1,623→826 lines) into `stream-helpers.ts`.
 - 12 utility functions, constants, and types extracted from `providers/google-gemini-cli.ts` (1,272→1,003 lines) into `providers/google-gemini-cli-helpers.ts`.
 - 4 utility functions extracted from `providers/openai-responses.ts` (903→651 lines) into `providers/openai-responses-helpers.ts`.
+- 8 utility functions and types extracted from `providers/openai-responses-server.ts` (1,182→588 lines) into `providers/openai-responses-server-helpers.ts`.
 - 24 utility functions, constants, and the BoundedLruMap class extracted from `providers/cursor.ts` (3,064→2,846 lines) into `providers/cursor-helpers.ts`.
 - 112 type definitions, constants, and utility functions extracted from `auth-storage.ts` (5,263→4,693 lines) into `auth-storage-helpers.ts`.
 - 42 free helper functions, types, and constants extracted from `openai-completions.ts` (2,161→1,791 lines) into `openai-completions-helpers.ts`.
