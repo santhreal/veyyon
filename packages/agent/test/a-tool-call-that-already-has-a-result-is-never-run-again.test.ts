@@ -30,13 +30,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { agentLoop } from "@veyyon/agent-core/agent-loop";
-import type {
-	AgentContext,
-	AgentEvent,
-	AgentLoopConfig,
-	AgentMessage,
-	AgentTool,
-} from "@veyyon/agent-core/types";
+import type { AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, AgentTool } from "@veyyon/agent-core/types";
 import type { AssistantMessage, Message, ToolResultMessage } from "@veyyon/ai";
 import { createMockModel } from "@veyyon/ai/providers/mock";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
@@ -61,10 +55,7 @@ interface Recorded {
  * asked), with `priorResult` already in the transcript. No block carries
  * `kCursorExecResolved`: the point is what the loop decides without it.
  */
-async function runTurn(options: {
-	priorResult?: ToolResultMessage;
-	includeUnanswered?: boolean;
-}): Promise<Recorded> {
+async function runTurn(options: { priorResult?: ToolResultMessage; includeUnanswered?: boolean }): Promise<Recorded> {
 	const schema = type({ command: "string" });
 	const executed: string[] = [];
 	const tool: AgentTool<typeof schema, { command: string }> = {
