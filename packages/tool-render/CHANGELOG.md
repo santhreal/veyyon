@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added `ThemeToggle` component to shared React renderers for cycling system, light, and dark theme preferences.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes

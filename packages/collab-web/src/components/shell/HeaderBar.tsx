@@ -1,8 +1,9 @@
+import { ThemeToggle } from "@veyyon/tool-render";
 import { LogOut, PanelRight } from "lucide-react";
 import type { ReactNode } from "react";
 import type { GuestSnapshot } from "../../lib/client";
 import { fmtPercent, shortenPath } from "../../lib/format";
-import { ThemeToggle } from "./ThemeToggle";
+import { useThemePreference } from "../../lib/theme";
 
 export interface HeaderBarProps {
 	snapshot: GuestSnapshot;
@@ -15,6 +16,7 @@ export interface HeaderBarProps {
 export function HeaderBar({ snapshot, subCount, railOpen, onToggleRail, onLeave }: HeaderBarProps): ReactNode {
 	const { header, state, phase, readOnly } = snapshot;
 	const title = header?.title ?? state?.sessionName ?? "session";
+	const { preference, setPreference } = useThemePreference();
 	const usage = state?.contextUsage;
 	let pct: number | null = null;
 	if (usage) {
@@ -70,7 +72,7 @@ export function HeaderBar({ snapshot, subCount, railOpen, onToggleRail, onLeave 
 					</span>
 				)}
 				<span className={`sh-dot sh-dot-${phase}`} title={phase} />
-				<ThemeToggle />
+				<ThemeToggle preference={preference} setPreference={setPreference} className="sh-theme-toggle" />
 				<button
 					type="button"
 					className={railOpen ? "sh-btn sh-btn-icon sh-btn-on" : "sh-btn sh-btn-icon"}

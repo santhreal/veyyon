@@ -4,7 +4,8 @@ import { RangeControl } from "./RangeControl";
 import type { DashboardSection } from "./routes";
 import { routes } from "./routes";
 import { SyncButton } from "./SyncButton";
-import { ThemeToggle } from "./ThemeToggle";
+import { ThemeToggle } from "@veyyon/tool-render";
+import { useThemePreference } from "../useSystemTheme";
 
 export interface TopBarProps {
 	activeSection: DashboardSection;
@@ -30,6 +31,7 @@ export function TopBar({
 	const currentRoute = routes.find(r => r.id === activeSection);
 	const title = currentRoute?.label || "Observability";
 
+	const { preference, setPreference } = useThemePreference();
 	const formatLastUpdated = (time: number | null) => {
 		if (!time) return "Not updated";
 		const date = new Date(time);
@@ -64,7 +66,7 @@ export function TopBar({
 
 				<RangeControl value={range} onChange={onRangeChange} />
 
-				<ThemeToggle />
+				<ThemeToggle preference={preference} setPreference={setPreference} className="stats-theme-toggle" />
 
 				<SyncButton onSyncStart={onSyncStart} onSyncComplete={onSyncComplete} />
 			</div>
