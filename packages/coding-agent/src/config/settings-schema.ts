@@ -261,8 +261,6 @@ const SETTING_TYPE_ROWS: Readonly<Record<SettingType, true>> = {
 	record: true,
 };
 
-export const SETTING_TYPES = Object.keys(SETTING_TYPE_ROWS) as readonly SettingType[];
-
 export function isSettingType(value: string): value is SettingType {
 	return Object.hasOwn(SETTING_TYPE_ROWS, value);
 }

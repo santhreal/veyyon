@@ -129,4 +129,3 @@ export function clearBundledAgentsCache(): void {
 	bundledAgentsCache = null;
 }
 
-export const BUNDLED_AGENTS = loadBundledAgents;

@@ -852,10 +852,6 @@ export function statementById(id: string): PromptStatementEntry | undefined {
 	return STATEMENTS_BY_ID.get(id);
 }
 
-export const STATEMENT_CONDITION_VARIABLES: readonly string[] = [
-	...new Set(PROMPT_STATEMENTS.flatMap(statement => conditionVariables(statement.condition))),
-];
-
 export function conditionVariables(condition: StatementCondition): readonly string[] {
 	switch (condition.kind) {
 		case "always":

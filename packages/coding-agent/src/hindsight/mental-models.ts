@@ -299,5 +299,3 @@ function longestCommonSubsequence(a: string[], b: string[]): string[] {
 }
 
 export const MENTAL_MODEL_FIRST_TURN_DEADLINE_MS = 1500;
-
-export const builtinSeedsForTest: ReadonlyArray<Readonly<RawSeed>> = BUILTIN_SEEDS;

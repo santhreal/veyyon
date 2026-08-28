@@ -1,7 +1,5 @@
 import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome, ResetCreditTarget } from "../../session/auth-storage";
 
-export const CODEX_PROVIDER_ID = "openai-codex";
-
 export interface ResetUsageAccount {
 	label: string;
 	availableCount: number;

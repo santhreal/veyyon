@@ -825,5 +825,3 @@ export function renderSegment(id: StatusLineSegmentId, ctx: SegmentContext): Ren
 	}
 	return segment.render(ctx);
 }
-
-export const ALL_SEGMENT_IDS: StatusLineSegmentId[] = Object.keys(SEGMENTS) as StatusLineSegmentId[];

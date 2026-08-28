@@ -6,8 +6,6 @@ import { resolveReadPath } from "../tools/path-utils";
 import { canonicalizeImageContent, formatDimensionNote, type ImageResizeOptions, resizeImage } from "./image-resize";
 
 export const MAX_IMAGE_INPUT_BYTES = 20 * 1024 * 1024;
-export const SUPPORTED_INPUT_IMAGE_MIME_TYPES = SUPPORTED_IMAGE_MIME_TYPES;
-
 export function modelLacksWebpSupport(
 	model: Pick<Model, "provider" | "api" | "imageInputDecoder"> | undefined,
 ): boolean {
