@@ -33,7 +33,7 @@
 - [Editing and repair](./using/editing.md)
 - [Approvals](./features/sandbox.md)
   - [Safety](./using/safety.md)
-- [CPU limits](./features/cpu-limit.md)
+- [Resource limits](./features/resource-limits.md)
 - [Secrets](./features/secrets.md)
 - [Models and providers](./using/models.md)
 - [Sessions](./using/sessions.md)

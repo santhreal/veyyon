@@ -799,6 +799,93 @@ export function writeGlobalProfileSharing(shared: boolean): string {
 }
 
 /**
+ * The GLOBAL config key holding machine-wide resource limits.
+ *
+ * These are machine-wide rather than per-profile because they bound VEYYON,
+ * not one session and not one profile. Two profiles running at once share one
+ * CPU and one disk, so a cap held per profile is not the cap it names: each
+ * copy reads its own file, and the machine gets the sum. Grouped under one
+ * mapping so a hand-edited config keeps them together instead of scattering
+ * four numbers across the top level.
+ *
+ * The key is also the settings-path prefix (`machine.cpuLimitCores` is stored
+ * at `machine.cpuLimitCores`), so the panel, the generated reference and the
+ * file a person opens all spell the value the same way.
+ */
+export const GLOBAL_MACHINE_CONFIG_KEY = "machine";
+
+/**
+ * Every machine-wide limit, by leaf name under {@link GLOBAL_MACHINE_CONFIG_KEY}.
+ * The leaf names match the per-session setting they bound, so the two tiers of
+ * one resource are recognisably the same knob at two scopes.
+ *
+ * Enumerated here rather than at each call site: the settings domain, the
+ * bindings map and the budget placement all derive from this list, so adding a
+ * resource is one edit and cannot reach three of the four places.
+ */
+export const GLOBAL_RESOURCE_LIMITS = ["cpuLimitCores", "memoryLimitGb", "writeBudgetGb", "maxProcesses"] as const;
+
+export type GlobalResourceLimit = (typeof GLOBAL_RESOURCE_LIMITS)[number];
+
+/**
+ * One machine-wide limit from the GLOBAL config. `0` means no limit, which is
+ * also what an absent key means, so an unconfigured machine and an explicitly
+ * lifted one behave identically.
+ *
+ * Throws on a value that is present but not a non-negative finite number,
+ * naming the file and the key: a limit is a safety control, and a typo that
+ * silently read as "no limit" is the failure this must not have.
+ */
+export function resolveGlobalResourceLimit(limit: GlobalResourceLimit): number {
+	const { record, filePath } = readGlobalConfigRecord();
+	const resources = record[GLOBAL_MACHINE_CONFIG_KEY];
+	if (!isRecord(resources)) return 0;
+	const value = resources[limit];
+	if (value === undefined) return 0;
+	if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+		throw new Error(
+			`Global config ${filePath}: ${GLOBAL_MACHINE_CONFIG_KEY}.${limit} must be a non-negative number ` +
+				`(0 = no limit). Got ${JSON.stringify(value)}.`,
+		);
+	}
+	return value;
+}
+
+/**
+ * Module-load-safe variant of {@link resolveGlobalResourceLimit}. A broken
+ * global config must never crash a bare import or the settings panel.
+ *
+ * It reports NO limit rather than some limit, because the alternative is worse:
+ * a config the reader cannot parse would otherwise cap a machine at a number
+ * nobody chose, with no way to see where it came from. The budget placement
+ * surfaces the parse failure through {@link resolveGlobalResourceLimit} on the
+ * path that actually applies limits, so the error is reported rather than lost.
+ */
+export function readGlobalResourceLimitSafe(limit: GlobalResourceLimit): number {
+	try {
+		return resolveGlobalResourceLimit(limit);
+	} catch {
+		return 0;
+	}
+}
+
+/**
+ * Set or lift one machine-wide limit, preserving every other key. `0` deletes
+ * the leaf and an emptied `resources` mapping, so a fully lifted config leaves
+ * no stub behind. Returns the file written.
+ */
+export function writeGlobalResourceLimit(limit: GlobalResourceLimit, value: number): string {
+	return mutateGlobalConfigKey(GLOBAL_MACHINE_CONFIG_KEY, existing => {
+		const resources = isRecord(existing[GLOBAL_MACHINE_CONFIG_KEY])
+			? { ...(existing[GLOBAL_MACHINE_CONFIG_KEY] as Record<string, unknown>) }
+			: {};
+		if (Number.isFinite(value) && value > 0) resources[limit] = Math.floor(value);
+		else delete resources[limit];
+		return Object.keys(resources).length > 0 ? resources : undefined;
+	});
+}
+
+/**
  * The onboarding-generation key in the GLOBAL config.
  *
  * Onboarding is something a HUMAN does once per machine, so its marker belongs
