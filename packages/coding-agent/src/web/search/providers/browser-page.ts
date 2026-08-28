@@ -6,12 +6,31 @@ import { acquireBrowser, holdBrowser, releaseBrowser } from "../../../tools/brow
 import { buildBrowserNavigationHeaders } from "./browser-headers";
 import { SEARCH_HARD_TIMEOUT_MS } from "./utils";
 
+/**
+ * How long to wait for a rendered page to show its results before reading it
+ * anyway.
+ *
+ * A property of this mechanism rather than of any provider: the wait exists
+ * because a headless browser reports the document as loaded before the search
+ * results are in the DOM, and that is the same race whichever engine is being
+ * read. Ten seconds is generous for a page that has already responded; the wait
+ * expiring is not an error, since the page is read as it stands.
+ */
 export const RESULT_RENDER_TIMEOUT_MS = 10_000;
 
+/**
+ * How long to wait for `ready.selector`, defaulting to
+ * {@link RESULT_RENDER_TIMEOUT_MS}.
+ *
+ * A function rather than a `??` at the call site so the resolution is testable
+ * without a browser, and so an explicit `0` keeps meaning "do not wait" instead
+ * of falling back to the default the way a truthiness check would.
+ */
 export function readyTimeoutMs(ready?: { timeoutMs?: number }): number {
 	return ready?.timeoutMs ?? RESULT_RENDER_TIMEOUT_MS;
 }
 
+/** HTML plus the response status and final URL after redirects or browser navigation. */
 export interface LoadedHtmlPage {
 	html: string;
 	status: number;
@@ -25,10 +44,20 @@ export interface BrowserFetchAttempt {
 	headers?: Readonly<Record<string, string>>;
 }
 
+/** Builds request text at the final seam so every fetch/navigation attempt is fresh. */
 export type BrowserFetchAttemptFactory = () => BrowserFetchAttempt;
 
 interface BrowserFallbackOptions {
 	homeUrl?: () => string;
+	/**
+	 * A selector to wait for after navigation, so the page is read once its results
+	 * exist rather than as soon as the document loads.
+	 *
+	 * `timeoutMs` is optional and defaults to {@link RESULT_RENDER_TIMEOUT_MS}: the
+	 * SELECTOR is the provider's own fact and the patience is this mechanism's, and
+	 * when each provider carried both, two of them declared the same
+	 * `RESULT_RENDER_TIMEOUT_MS = 10_000` beside their selector.
+	 */
 	ready?: { selector: string; timeoutMs?: number };
 	afterNavigation?: (page: Page, signal: AbortSignal) => Promise<void>;
 	shouldFallback: (page: LoadedHtmlPage) => boolean;
@@ -36,6 +65,7 @@ interface BrowserFallbackOptions {
 	retryDelayMs?: number;
 }
 
+/** Controls a browser-profiled fetch and its optional headless-browser fallback. */
 export interface BrowserFetchOptions {
 	fetch?: FetchImpl;
 	signal: AbortSignal;
@@ -108,6 +138,9 @@ async function browseHtmlPage(
 			);
 			if (options.afterNavigation) await options.afterNavigation(activePage, signal);
 			if (ready) {
+				// The selector wait is an optimisation: it gives results a chance to render before the HTML is
+				// read. A timeout is an ordinary outcome for a page that never shows it, and the content read
+				// below plus `shouldFallback` decide whether the page was actually usable.
 				await untilAborted(signal, () =>
 					activePage.waitForSelector(ready.selector, { timeout: readyTimeoutMs(ready) }).catch(() => null),
 				);
@@ -121,11 +154,14 @@ async function browseHtmlPage(
 		}
 		throw new Error("Browser fallback exhausted without a response");
 	} finally {
+		// Teardown in a `finally` that must not replace either the loaded page or the "exhausted" error above;
+		// a page that will not close is going away with the browser released on the next line.
 		await page?.close().catch(() => undefined);
 		await releaseBrowser(handle, { kill: false });
 	}
 }
 
+/** Fetch with a fresh browser profile, escalating rejected production responses to the stealth browser. */
 export async function browserFetch(
 	createAttempt: BrowserFetchAttemptFactory,
 	options: BrowserFetchOptions,

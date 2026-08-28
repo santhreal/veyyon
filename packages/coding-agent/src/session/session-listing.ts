@@ -6,6 +6,7 @@ import {
 	getAgentDir as getDefaultAgentDir,
 	HOUR_MS,
 	isEnoent,
+	listProfiles,
 	logger,
 	parseJsonlLenient,
 	toError,
@@ -670,9 +671,51 @@ export async function resolveResumableSession(
 
 	const globalSessions = await listAllSessions(storage);
 	const globalMatch = globalSessions.find(session => sessionMatchesResumeArg(session, sessionArg));
-	if (!globalMatch) {
-		return undefined;
+	if (globalMatch) {
+		return { session: globalMatch, scope: "global" };
 	}
 
-	return { session: globalMatch, scope: "global" };
+	const foreignMatch = await findSessionInOtherProfiles(sessionArg, storage);
+	return foreignMatch ? { session: foreignMatch, scope: "global" } : undefined;
+}
+
+/**
+ * The session an id names in a profile other than the active one.
+ *
+ * A session id is globally unique, and the line printed on the way out —
+ * `veyyon --resume <id>` — carries nothing about which profile wrote it. Every
+ * lookup above stops at the active profile's own sessions root, so that line
+ * resolved only when the operator happened to relaunch under the same profile
+ * and otherwise reported the session as not found, with the file sitting on disk
+ * one directory over. The session is resumed where it lives; only the settings
+ * come from the profile that is running.
+ *
+ * Reached only after the active profile has missed on an explicit id, so the
+ * cost of scanning every profile is paid on the path that would otherwise fail.
+ */
+async function findSessionInOtherProfiles(
+	sessionArg: string,
+	storage: SessionStorage,
+): Promise<SessionInfo | undefined> {
+	const activeRoot = path.resolve(path.join(getDefaultAgentDir(), "sessions"));
+	for (const profile of listProfiles()) {
+		const sessionsRoot = path.resolve(path.join(profile.agentDir, "sessions"));
+		if (sessionsRoot === activeRoot) continue;
+		let files: string[];
+		try {
+			files = storage.listFilesRecursiveSync(sessionsRoot, `*${SESSION_FILE_EXTENSION}`);
+		} catch (err) {
+			if (!isEnoent(err)) {
+				logger.warn("A profile's sessions directory could not be scanned while resolving a session id", {
+					path: sessionsRoot,
+					error: toError(err).message,
+				});
+			}
+			continue;
+		}
+		const sessions = await collectSessionsFromFiles(files, storage, true);
+		const match = sessions.find(session => sessionMatchesResumeArg(session, sessionArg));
+		if (match) return match;
+	}
+	return undefined;
 }

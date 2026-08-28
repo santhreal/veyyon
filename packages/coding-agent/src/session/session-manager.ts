@@ -17,6 +17,7 @@ import { pathStateSync } from "@veyyon/utils/fs-optional";
 import { sessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
 import { ArtifactManager } from "./artifacts";
 import { type BlobPutOptions, type BlobPutResult, BlobStore } from "./blob-store";
+import { SESSION_EXIT_CUSTOM_TYPE } from "./exit-diagnostics";
 import {
 	type BashExecutionMessage,
 	type CustomMessage,
@@ -389,11 +390,12 @@ export class SessionManager {
 
 	#adoptForeignLines(text: string): void {
 		const foreign: string[] = [];
+		let liveWriterEntries = 0;
 		for (const raw of text.split("\n")) {
 			if (!raw.trim()) continue;
-			let parsed: { type?: unknown; id?: unknown } | undefined;
+			let parsed: { type?: unknown; id?: unknown; customType?: unknown } | undefined;
 			try {
-				parsed = JSON.parse(raw) as { type?: unknown; id?: unknown };
+				parsed = JSON.parse(raw) as { type?: unknown; id?: unknown; customType?: unknown };
 			} catch {
 				continue;
 			}
@@ -401,17 +403,34 @@ export class SessionManager {
 			const id = typeof parsed.id === "string" ? parsed.id : undefined;
 			if (!id || this.#idsEverSeen.has(id)) continue;
 			foreign.push(raw);
+			if (parsed.customType !== SESSION_EXIT_CUSTOM_TYPE) liveWriterEntries += 1;
 		}
 		this.#foreignLines = foreign;
-		if (foreign.length > 0 && !this.#reportedForeignWriter) {
-			this.#reportedForeignWriter = true;
-			const message = `Another veyyon session is writing ${this.#sessionFile}; its entries are being kept alongside this session's. Close one of them, or run /fork to give this session its own transcript.`;
-			logger.warn("session file has a second writer", {
-				sessionFile: this.#sessionFile,
-				foreignLines: foreign.length,
-			});
-			this.#operatorNotices?.warn("session", message);
+		if (this.#reportedForeignWriter) return;
+		// A `session_exit` record is the last thing a run writes, so a foreign one is
+		// the other writer reporting that it is GONE. Counting it as evidence of a
+		// live writer inverted what it says: a window closed by SIGHUP appends its
+		// exit carrying the leaf id it was holding, and the surviving session read
+		// that unknown id and told the operator to close a session that had just
+		// closed itself. An ordinary entry is different — nothing in it says the
+		// writer stopped — so it still raises the warning.
+		if (liveWriterEntries === 0) {
+			if (foreign.length > 0) {
+				logger.debug("session file carries the exit record of a run that has ended", {
+					sessionFile: this.#sessionFile,
+					foreignLines: foreign.length,
+				});
+			}
+			return;
 		}
+		this.#reportedForeignWriter = true;
+		const message = `Another veyyon session is writing ${this.#sessionFile}; its entries are being kept alongside this session's. Close one of them, or run /fork to give this session its own transcript.`;
+		logger.warn("session file has a second writer", {
+			sessionFile: this.#sessionFile,
+			foreignLines: foreign.length,
+			liveWriterEntries,
+		});
+		this.#operatorNotices?.warn("session", message);
 	}
 
 	#historyContainsAssistantMessage(): boolean {

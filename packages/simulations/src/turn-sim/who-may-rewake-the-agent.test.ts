@@ -150,7 +150,7 @@ const ROUTE_RIGS: Record<SettleContinuationRoute, RouteRig> = {
 		],
 	},
 	"code-review": {
-		settings: { "edit.critiqueCodeMutations": true },
+		settings: { "edit.afterEdit": "review" },
 		tools: [
 			simTool("edit", async () => ({
 				content: [{ type: "text", text: "edited file" }],
@@ -264,11 +264,18 @@ describe("every settle continuation route defers to a question", () => {
 		});
 	}
 
-	it("delivers a held code review after the user answers", async () => {
+	/**
+	 * A review names the code changed since the last user message. When a question
+	 * deferred one and the user then answers, those changes belong to the turn
+	 * before the answer, and the second turn edited nothing: no review is owed and
+	 * the answer costs one provider call, not two. The cost of the window being
+	 * this literal is that changes made before a question are never reviewed.
+	 */
+	it("drops a review the question deferred, because the window moved with the user", async () => {
 		sim = await createSimulation({
 			settings: {
 				"retry.enabled": false,
-				"edit.critiqueCodeMutations": true,
+				"edit.afterEdit": "review",
 			},
 			tools: ROUTE_RIGS["code-review"].tools,
 			script: scriptTurns(
@@ -281,10 +288,6 @@ describe("every settle continuation route defers to a question", () => {
 					turn.text(STATEMENT_REPLY);
 					turn.finish();
 				},
-				turn => {
-					turn.text(QUESTION_REPLY);
-					turn.finish();
-				},
 			),
 		});
 
@@ -292,7 +295,7 @@ describe("every settle continuation route defers to a question", () => {
 		expect(sim.providerCalls()).toBe(2);
 
 		await sim.session.prompt("use the first approach");
-		expect(sim.providerCalls()).toBe(4);
+		expect(sim.providerCalls()).toBe(3);
 		expect(sim.session.isStreaming).toBe(false);
 	});
 });

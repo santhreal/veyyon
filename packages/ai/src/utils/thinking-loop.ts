@@ -61,7 +61,17 @@ export function detectDegenerateRepetition(text: string): string | null {
 			if (agreement > 0) {
 				const count = Math.floor((agreement + len) / len);
 				const unit = text.slice(runStart, runStart + len);
-				if (count >= 4 && count * len >= VERBATIM_MIN_REPEATED_CHARS && VERBATIM_UNIT_CONTENT.test(unit)) {
+				// Same judgement the streamed detector applies: a whitespace-free run that
+				// only continues a longer token is one long name cycling, not a sampler
+				// runaway. Both paths have to agree, or a path echoed in a completed
+				// message is a loop while the same bytes streamed are not.
+				const continuesToken = !/\s/.test(unit) && runStart > 0 && !/\s/.test(text[runStart - 1] as string);
+				if (
+					count >= 4 &&
+					count * len >= VERBATIM_MIN_REPEATED_CHARS &&
+					VERBATIM_UNIT_CONTENT.test(unit) &&
+					!continuesToken
+				) {
 					return describeVerbatimRepeat(unit, count);
 				}
 				agreement = 0;
@@ -248,11 +258,20 @@ export function guardThinkingLoopStream(
 					thinkingArmed = false;
 					textArmed = false;
 				} else if (event.type === "done") {
-					if (thinkingArmed) {
-						detail = thinkingDetector.flush();
-					}
-					if (textArmed) {
-						detail = detail || textDetector.flush();
+					// A stream that reached `done` stopped on its own, so a trailing repeat is
+					// the end of an answer rather than a runaway. Raising here discards a turn
+					// that already succeeded and hands the session a retry that resamples the
+					// same prompt, trips the same detector, and fails again — the abort is
+					// deterministic, so the retry ladder cannot recover it. Only a `length`
+					// stop, where the model ran into the token cap still repeating, carries
+					// the runaway signature this guard exists for.
+					if (event.reason === "length") {
+						if (thinkingArmed) {
+							detail = thinkingDetector.flush();
+						}
+						if (textArmed) {
+							detail = detail || textDetector.flush();
+						}
 					}
 				}
 				if (detail) {
@@ -358,7 +377,16 @@ function detectVerbatimRepetition(text: string): [unit: string, count: number] |
 				break;
 			}
 		}
-		if (count >= 4 && len * count >= VERBATIM_MIN_REPEATED_CHARS) return [unit, count];
+		if (count < 4 || len * count < VERBATIM_MIN_REPEATED_CHARS) continue;
+		// A whitespace-free unit can be a slice of ONE long token — a path segment, an
+		// identifier, a hash — that happens to cycle. A directory named
+		// `probe_on_and_on_and_on…` repeats `_on_and` past the character threshold while
+		// being a name that exists on disk, and echoing it back is not a sampler that lost
+		// its footing. A runaway repeats ACROSS token boundaries, so a whitespace-free run
+		// that only continues a longer token is data and is left alone. A run starting at a
+		// token boundary still trips, which keeps a space-free script covered.
+		if (!/\s/.test(unit) && pos > 0 && !/\s/.test(searchSpace[pos - 1] as string)) continue;
+		return [unit, count];
 	}
 	return null;
 }

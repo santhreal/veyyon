@@ -857,3 +857,60 @@ describe("provider onPayload JSON seam battery", () => {
 		}
 	});
 });
+
+describe("no api uploads the system prompt more than once", () => {
+	// WHY. The cursor transport once put the same assembled prompt on three channels of one
+	// request — the prompt-head blobs, the request-context rules and the user turn — so an
+	// operator uploaded tens of kilobytes twice over per turn and the harness held three copies
+	// of its own instructions, any of which could drift after an edit. Each channel was correct
+	// on its own, which is why only a count catches it.
+	//
+	// This battery is the choke point: it already drives every catalog api's real request build
+	// and captures the exact object handed to `onPayload`, so counting the prompt in that object
+	// closes the class for every api at once rather than for the transport that broke.
+	//
+	// WHAT IT DOES NOT CATCH. A copy an api adds after the hook, and a near-copy (a re-rendered
+	// or re-wrapped prompt) rather than the same bytes.
+	for (const kase of BATTERY) {
+		it(`sends ${kase.name} the system prompt exactly once`, async () => {
+			const payload = await runBatteryCase(kase.start);
+			const expected = CAPTURE_WITHOUT_PROMPT.includes(kase.name) ? 0 : 1;
+			expect(countPromptCopies(payload)).toBe(expected);
+		});
+	}
+
+	it("exempts only the case whose captured frame is not the prompt-bearing one", () => {
+		// Pinned by equality, not by count: a second exemption is someone deciding an api may
+		// stop carrying its instructions where this battery can see them, and that decision has
+		// to be written down here rather than absorbed.
+		expect(CAPTURE_WITHOUT_PROMPT).toEqual(["gitlab-duo-agent"]);
+	});
+});
+
+/**
+ * Cases whose captured payload carries no prompt at all, and why.
+ *
+ * `gitlab-duo-agent` hands the hook its workflow-create body; the prompt travels on a later
+ * WebSocket `startRequest` frame this battery does not drive (see the header). Zero copies there
+ * is the shape of the harness, not of the request.
+ */
+const CAPTURE_WITHOUT_PROMPT = ["gitlab-duo-agent"];
+
+/**
+ * Occurrences of the battery's system prompt in a captured payload.
+ *
+ * Serialized rather than walked, because a copy can hide in a nested string, a base64 field or
+ * an encoded blob body, and a walk that only visits known keys would miss exactly the placement
+ * that caused the defect.
+ */
+function countPromptCopies(payload: unknown): number {
+	const serialized = JSON.stringify(payload) ?? "";
+	const needle = "battery system prompt";
+	let count = 0;
+	let at = serialized.indexOf(needle);
+	while (at !== -1) {
+		count += 1;
+		at = serialized.indexOf(needle, at + needle.length);
+	}
+	return count;
+}

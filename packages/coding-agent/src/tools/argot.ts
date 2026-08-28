@@ -1,5 +1,5 @@
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
-import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot";
+import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot/constants";
 import { type } from "arktype";
 import { loadArgotFolder, unloadArgotFolder } from "../argot-cache";
 import type { ToolSession } from ".";

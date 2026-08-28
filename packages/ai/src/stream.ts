@@ -29,6 +29,14 @@ import { getVertexAccessToken } from "./providers/google-auth";
 import type { GoogleGeminiCliOptions } from "./providers/google-gemini-cli";
 import type { GoogleVertexOptions } from "./providers/google-vertex";
 import type { OllamaChatOptions } from "./providers/ollama";
+// Heavy provider stream functions are imported lazily via register-builtins,
+// which wraps each provider module in a dynamic import. This keeps the
+// AWS SDK, google-auth-library, @google/genai, @bufbuild/protobuf, and
+// other provider SDKs out of the CLI startup parse graph. The
+// gitlab-duo / kimi / synthetic providers stay eager because their modules
+// export routing predicates (isGitLabDuoModel, isKimiModel, isSyntheticModel)
+// that must be callable synchronously before streaming begins, and their
+// modules are thin wrappers with no heavy SDK dependencies.
 import {
 	streamAnthropic,
 	streamAzureOpenAIResponses,
@@ -69,11 +77,31 @@ function isGoogleVertexAuthenticatedModel(model: Model<Api>): boolean {
 	);
 }
 
+/**
+ * Whether {@link model} is an official first-party endpoint whose stream needs
+ * no leaked-thinking healing — the official Anthropic API and the official
+ * OpenAI / OpenAI-Codex endpoints return structured thinking blocks and never
+ * leak reasoning idioms into the visible text channel.
+ *
+ * The gate is provider id **and** official endpoint URL: pointing
+ * `provider: "anthropic"` (or `openai`) at a custom proxy via `models.yml`
+ * still routes through {@link wrapLeakedThinkingStream}, since a third-party
+ * gateway may well leak. URL checks are strict (exact origin / path boundary
+ * or parsed hostname) — a substring match would accept lookalikes like
+ * `https://api.openai.com.evil/`. Anthropic Foundry (`CLAUDE_CODE_USE_FOUNDRY`)
+ * redirects an empty `baseUrl` to `FOUNDRY_BASE_URL`, so the check runs against
+ * that effective endpoint — exempt only when it resolves to the official host.
+ */
 function isLeakedThinkingHealExempt(model: Model<Api>): boolean {
 	switch (model.provider) {
 		case "anthropic":
+			// Mirror resolveAnthropicBaseUrl: Foundry redirects an empty baseUrl to
+			// FOUNDRY_BASE_URL, so exempt only when the effective endpoint is official.
 			return isOfficialAnthropicApiUrl((isFoundryEnabled() && $env.FOUNDRY_BASE_URL?.trim()) || model.baseUrl);
 		case "openai":
+			// The catalog's check, not a third copy of it: the same hostname question decides whether this
+			// endpoint gets the obfuscation opt-out and server compaction, and a local copy drifted into
+			// answering it here.
 			return isOfficialOpenAIEndpoint("openai", model.baseUrl ?? "");
 		case "openai-codex":
 			return isOfficialCodexApiUrl(model.baseUrl);
@@ -82,12 +110,18 @@ function isLeakedThinkingHealExempt(model: Model<Api>): boolean {
 	}
 }
 
+/** Strict official-Codex endpoint check; exact origin or a path boundary after {@link CODEX_BASE_URL}. */
 function isOfficialCodexApiUrl(baseUrl: string | undefined): boolean {
 	if (!baseUrl) return true;
 	const lower = trimTrailingSlashes(baseUrl.toLowerCase());
 	return lower === CODEX_BASE_URL || lower.startsWith(`${CODEX_BASE_URL}/`);
 }
 
+/**
+ * Apply live leaked-thinking healing unless {@link model} is an official
+ * first-party endpoint ({@link isLeakedThinkingHealExempt}), which emits
+ * structured thinking and needs no healing.
+ */
 export function healLeakedThinking(model: Model<Api>, inner: AssistantMessageEventStream): AssistantMessageEventStream {
 	return isLeakedThinkingHealExempt(model) ? inner : wrapLeakedThinkingStream(inner);
 }
@@ -96,6 +130,7 @@ type ProviderInFlightLease = {
 	path: string;
 	heartbeat: NodeJS.Timeout;
 	flushHeartbeat: () => Promise<void>;
+	/** Run one heartbeat now and wait for it, so a test does not have to wait for the interval. */
 	touchHeartbeat: () => Promise<void>;
 };
 
@@ -111,12 +146,29 @@ const PROVIDER_INFLIGHT_LOCK_STALE_MS = 10_000;
 const PROVIDER_INFLIGHT_LEASE_STALE_MS = 30_000;
 const PROVIDER_INFLIGHT_HEARTBEAT_MS = 5_000;
 const PROVIDER_INFLIGHT_SIGNAL_FALLBACK_MS = 250;
+/**
+ * Consecutive heartbeat write failures that mean this lease WILL be treated as dead.
+ *
+ * A single failure is normal and uninteresting: the next beat rewrites the file. What matters is a run of
+ * them long enough for the lease's timestamp to age past {@link PROVIDER_INFLIGHT_LEASE_STALE_MS}, because at
+ * that point another process reclaims the lease while this request is still in flight and the concurrency
+ * guard has failed OPEN. Derived from the two intervals rather than written as a number so it cannot drift
+ * out of step with them.
+ */
 const PROVIDER_INFLIGHT_HEARTBEAT_FAILURES_BEFORE_STALE = Math.ceil(
 	PROVIDER_INFLIGHT_LEASE_STALE_MS / PROVIDER_INFLIGHT_HEARTBEAT_MS,
 );
 
 let providerInFlightRootOverride: string | undefined;
 
+/**
+ * The caps and their resolver live in `./provider-inflight-limits`, which imports nothing.
+ *
+ * The WRITER of this state is the harness's settings layer, and reaching a setter that lived here meant
+ * importing this module's 285: every provider transport, the model registry, the error taxonomy. The
+ * re-export keeps `@veyyon/ai/stream` a working import path for it, so nothing that already calls it
+ * changes, while a caller that only configures caps can name the owner instead.
+ */
 export { configureProviderMaxInFlightRequests } from "./provider-inflight-limits";
 
 function providerInFlightRoot(): string {
@@ -149,6 +201,9 @@ async function readProviderInFlightInfo(infoPath: string): Promise<ProviderInFli
 		}
 		return { pid: parsed.pid, timestamp: parsed.timestamp, token: parsed.token };
 	} catch {
+		// Null means "no valid lease here", the same answer the shape checks above give and the same answer
+		// an absent file gives. The lease protocol then treats the slot as free, which is correct: a lease
+		// we cannot read cannot be honoured, and a stale one is exactly what this file is for.
 		return null;
 	}
 }
@@ -209,6 +264,18 @@ function isSameProviderInFlightLock(
 	return current.birthtimeMs === expected.birthtimeMs;
 }
 
+/**
+ * Report a lock directory that could not be released.
+ *
+ * All three release paths are best effort by design: a failed release must never turn into a thrown
+ * error on a request that already succeeded. What it must not be is silent. This directory IS the
+ * provider's concurrency gate, so one left behind makes the NEXT request for that provider wait for
+ * the stale timeout ({@link PROVIDER_INFLIGHT_LOCK_STALE_MS}) before it can proceed — a latency cliff
+ * with no error, no log line, and nothing pointing at a leftover directory (Law 10).
+ *
+ * A missing directory is not a leak: another process released the same lock first, which is the
+ * ordinary outcome of the race these functions are written for.
+ */
 function reportProviderInFlightLockLeak(lockDir: string, what: string, error: unknown): void {
 	if (isEnoent(error)) return;
 	logger.warn("Provider in-flight lock could not be released; the next request for this provider will wait", {
@@ -219,6 +286,22 @@ function reportProviderInFlightLockLeak(lockDir: string, what: string, error: un
 	});
 }
 
+/**
+ * Report a lease directory that could not be removed.
+ *
+ * The lock releases have carried this contract since they were written: a failed release must never
+ * turn into a thrown error on a request, and must never be silent either. The LEASE removal was the
+ * half that had neither. `releaseProviderInFlightLease` had no `catch` at all, so an `fs.rm` that
+ * failed (a config root whose permissions changed under a restrictive umask, a container running as
+ * another uid, a synced home) threw out of the `finally` in `withProviderInFlightLimit` and REPLACED
+ * the provider's own error with an `EACCES` about a temp directory. On the success path it was worse
+ * than useless: the stream had already ended, so the throw was swallowed whole and the leaked slot
+ * left no trace at all.
+ *
+ * A leaked lease is not merely slow. Until it ages past {@link PROVIDER_INFLIGHT_LEASE_STALE_MS} it
+ * counts against the provider's limit, and if the same permissions stop the staleness sweep from
+ * removing it, the slot is gone for the life of the directory.
+ */
 function reportProviderInFlightLeaseLeak(leasePath: string, what: string, error: unknown): void {
 	if (isEnoent(error)) return;
 	logger.warn("Provider in-flight lease could not be removed; it will hold a slot for this provider", {
@@ -246,6 +329,8 @@ async function releaseProviderInFlightStaleLock(lockDir: string, stale: Provider
 	}
 }
 
+// Best-effort token-checked release. A token mismatch means another process has
+// already replaced the lock, so the fresh lock must be left intact.
 async function releaseProviderInFlightLock(lockDir: string, token: string): Promise<void> {
 	try {
 		const info = await readProviderInFlightInfo(path.join(lockDir, "info.json"));
@@ -326,6 +411,18 @@ async function cleanupProviderInFlightLeases(providerDir: string): Promise<numbe
 		}
 		if (!isDirectory) continue;
 		if (await isProviderInFlightDirStale(leaseDir, PROVIDER_INFLIGHT_LEASE_STALE_MS)) {
+			// The lease is provably dead: its owning pid is gone or its heartbeat stopped long enough ago
+			// that another process is already entitled to proceed. Removing the directory is housekeeping,
+			// so a removal that fails must not become the request's error. It used to: the throw escaped
+			// through `tryAcquireProviderInFlightLease` and `acquireProviderInFlightSlot` into
+			// `withProviderInFlightLimit`, which failed the stream with an `EACCES` about a temp directory,
+			// and it did so on EVERY later request for that provider because the sweep runs on each one.
+			// One unremovable directory turned into a permanently dead provider.
+			//
+			// It is counted as reclaimed rather than active, deliberately. Counting it would be the other
+			// failure: with a limit of one, a directory that cannot be removed and cannot age out would
+			// block every request for that provider forever, and a hang is worse than briefly exceeding a
+			// soft concurrency cap. The warning names the directory so the cause is findable.
 			try {
 				await fs.rm(leaseDir, { recursive: true, force: true });
 			} catch (error) {
@@ -356,10 +453,19 @@ async function tryAcquireProviderInFlightLease(
 			await fs.mkdir(leaseDir);
 			await writeProviderInFlightInfo(leaseDir, token);
 		} catch (error) {
+			// The lease-creation error is what the caller needs and it is rethrown. A cleanup that also fails
+			// could only be surfaced by replacing that error with a less useful one; the cost of dropping it is
+			// one lease directory that the staleness sweep will reclaim.
 			await removeProviderInFlightLeaseDir(leaseDir).catch(() => {});
 			throw error;
 		}
 		let heartbeatFlush = Promise.resolve();
+		// A heartbeat that keeps failing lets the lease age past PROVIDER_INFLIGHT_LEASE_STALE_MS, after which
+		// another process treats this in-flight request as dead and proceeds: the concurrency guard fails OPEN
+		// while the operator still believes duplicate in-flight requests are prevented. The write itself cannot
+		// be made to throw here (nothing awaits the interval callback), so the failure is COUNTED, and the run
+		// is reported once it is long enough to have that effect. The first failures stay quiet on purpose: a
+		// single transient write failure is normal and the next beat repairs it.
 		let consecutiveFailures = 0;
 		let reportedStaleRisk = false;
 		const touchHeartbeat = (): Promise<void> => {
@@ -418,6 +524,10 @@ async function signalProviderInFlightWaitersInDir(dir: string): Promise<void> {
 		await fs.mkdir(dir, { recursive: true });
 		await Bun.write(path.join(dir, ".wakeup"), String(Date.now()));
 	} catch (error) {
+		// Waiters have a fallback timer, so a dropped wakeup is not fatal, but it is
+		// not free either: every queued request for this provider then waits out
+		// PROVIDER_INFLIGHT_SIGNAL_FALLBACK_MS. A directory that is unwritable stays
+		// unwritable, so the stall repeats forever with no other trace.
 		logger.warn("Provider in-flight wakeup could not be written; queued requests will wait for the fallback timer", {
 			dir,
 			error: errorMessage(error),
@@ -464,7 +574,10 @@ function waitForProviderInFlightSignal(provider: string, signal?: AbortSignal): 
 				if (!isEnoent(error)) finish(resolve);
 			},
 		);
-	} catch {}
+	} catch {
+		// Filesystem notifications are best-effort across platforms; the fallback
+		// timer keeps stale-lock/lease cleanup progressing if an event is dropped.
+	}
 	return promise;
 }
 
@@ -485,14 +598,25 @@ async function removeProviderInFlightLeaseDir(leasePath: string): Promise<void> 
 	}
 }
 
+// Signal into the lease's OWN provider directory (derived from `lease.path`)
+// rather than recomputing it from the current root. A release that lands after
+// the in-flight root has been repointed (only the test seam does that) must not
+// write `.wakeup` into an unrelated provider directory.
 async function releaseProviderInFlightLease(lease: ProviderInFlightLease): Promise<void> {
 	clearInterval(lease.heartbeat);
 	await lease.flushHeartbeat();
 	try {
 		await removeProviderInFlightLeaseDir(lease.path);
 	} catch (error) {
+		// Never rethrow. This runs from the `finally` in `withProviderInFlightLimit`, where a throw
+		// REPLACES whatever the request was already reporting: a provider's real failure became an
+		// `EACCES` about a temp directory, and a successful stream had the throw swallowed silently
+		// because `outer` was already ended. Both outcomes destroyed the information that mattered.
 		reportProviderInFlightLeaseLeak(lease.path, "own lease", error);
 	}
+	// Signalled even when the removal failed. Waiters are woken by the `.wakeup` write, not by the
+	// directory disappearing, and a waiter that is never woken pays the fallback timer on top of a
+	// slot it may not get anyway.
 	await signalProviderInFlightWaitersInDir(path.dirname(lease.path));
 }
 
@@ -532,6 +656,10 @@ export const __providerInFlightForTesting = {
 		if (!stale) return null;
 		return () => releaseProviderInFlightStaleLock(lockDir, stale);
 	},
+	/**
+	 * Take a real lease and expose one heartbeat, so a test can make the write fail and drive beats itself
+	 * instead of waiting out PROVIDER_INFLIGHT_HEARTBEAT_MS several times.
+	 */
 	async acquireLease(
 		provider: string,
 		limit: number,
@@ -550,6 +678,9 @@ export const __providerInFlightForTesting = {
 			const identity = await readProviderInFlightLockIdentity(lockDir);
 			return () => releaseProviderInFlightLockDirIfSame(lockDir, identity);
 		} catch {
+			// No identity read means we cannot prove the lock is ours, so no release closure is handed back and
+			// nothing is unlocked. Fail closed: releasing a lock that might belong to another process is the
+			// failure that matters here, and null is the caller's "nothing to release" answer.
 			return null;
 		}
 	},
@@ -560,6 +691,10 @@ export function withProviderInFlightLimit<TOptions extends Pick<StreamOptions, "
 	options: TOptions | undefined,
 	dispatch: () => AssistantMessageEventStream,
 ): AssistantMessageEventStream {
+	// Leaked-thinking healing folds in here — the one shared provider-dispatch
+	// chokepoint — so the loop guard (which wraps this) sees healed events and all
+	// provider exits are covered by one wrap. Official first-party providers are
+	// exempt (see `healLeakedThinking`); healing is otherwise idempotent.
 	const limit = resolveProviderInFlightLimit(model.provider, options?.maxInFlightRequests);
 	if (limit === undefined) return healLeakedThinking(model, dispatch());
 
@@ -631,6 +766,9 @@ async function readVertexRequestBody(input: string | URL | Request, init: Reques
 	return "";
 }
 
+// Vertex Claude rejects the standard Anthropic body shape: the `model` field
+// is encoded in the URL path and `anthropic_version: "vertex-2023-10-16"` is
+// required in the JSON body instead of the `anthropic-version` HTTP header.
 function transformVertexAnthropicBody(bodyText: string): string {
 	if (!bodyText) return bodyText;
 	try {
@@ -678,6 +816,10 @@ function resolveVertexRequest(input: string | URL | Request): string | URL | Req
 	return rewriteUrl(input);
 }
 
+// The env-key table moved to `./env-api-key`, a leaf that imports the catalog and the registry and
+// nothing else. It was here only because it was written here, and it made every caller that wanted
+// "which variable holds this key" instantiate the whole streaming engine. Re-exported rather than
+// dropped so the specifier a caller already uses keeps working.
 export { getEnvApiKey, getEnvApiKeyName, listProvidersWithEnvKey } from "./env-api-key";
 
 export function stream<TApi extends Api>(
@@ -702,6 +844,7 @@ function streamDispatch<TApi extends Api>(
 		fetch: wrapFetchForProxy(debugOptions.fetch ?? (globalThis.fetch as FetchImpl), model.provider),
 	} as OptionsForApi<TApi>;
 
+	// Check custom API registry first (extension-provided APIs like "vertex-claude-api")
 	const customApiProvider = getCustomApi(model.api);
 	if (customApiProvider) {
 		return customApiProvider.stream(model, context, requestOptions as StreamOptions);
@@ -729,9 +872,11 @@ function streamDispatch<TApi extends Api>(
 		} as GitLabDuoWorkflowOptions);
 	}
 
+	// Vertex AI uses Application Default Credentials, not API keys
 	if (model.api === "google-vertex") {
 		return streamGoogleVertex(model as Model<"google-vertex">, context, requestOptions as GoogleVertexOptions);
 	} else if (model.api === "bedrock-converse-stream") {
+		// Bedrock doesn't have any API keys instead it sources credentials from standard AWS env variables or from given AWS profile.
 		return streamBedrock(model as Model<"bedrock-converse-stream">, context, requestOptions as BedrockOptions);
 	}
 
@@ -824,3 +969,5 @@ function streamDispatch<TApi extends Api>(
 			throw new AIError.ConfigurationError(`Unhandled API: ${api}`);
 	}
 }
+
+/** Thinking-loop re-samples spent before {@link resolveWithThinkingLoopCook} cooks. */

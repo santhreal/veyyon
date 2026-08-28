@@ -8,6 +8,9 @@
 
 - No user-facing effect; the spread-to-concat optimization this rebase repaired was already released in 1.2.0.
 
+### Added
+
+- Added `ThemeToggle` component to shared React renderers for cycling system, light, and dark theme preferences.
 
 ## [1.2.0] - 2026-08-23
 

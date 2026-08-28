@@ -1,4 +1,4 @@
-import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot";
+import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot/constants";
 
 export const BUILTIN_TOOL_NAMES = [
 	"read",

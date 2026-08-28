@@ -2,7 +2,16 @@ import { EDIT_MODES } from "../../utils/edit-mode";
 import { DEFAULT_BASH_INTERCEPTOR_RULES } from "../bash-interceptor-rules";
 import { EMPTY_STRING_ARRAY, EMPTY_STRING_RECORD } from "./shared";
 
+/** What one turn that changed files owes before it may finish. */
+export const AFTER_EDIT_CHECKS = ["verify", "review", "off"] as const;
+
+/** Editing domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const EDITING_SETTINGS = {
+	// ────────────────────────────────────────────────────────────────────────
+	// Editing
+	// ────────────────────────────────────────────────────────────────────────
+
+	// Edit tool
 	"edit.mode": {
 		type: "enum",
 		values: EDIT_MODES,
@@ -15,6 +24,17 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
+	// Per-model override of `edit.mode`, keyed by a substring of the model id
+	// (`{ "kimi": "replace" }`), read by `Settings.getEditVariantForModel` and
+	// outranking `edit.mode` for any model whose id contains the pattern.
+	//
+	// Declared here and not only read: it is an operator-facing knob that
+	// production consults on every edit and that docs/handbook/src/reference/environment-complete.md
+	// tells operators outranks `edit.mode`, yet it was absent from the schema,
+	// so it had no type, no validated shape, no default, and no row in the
+	// generated reference. No `ui` block, because a pattern-to-mode table is not
+	// something the settings selector can edit; it lives in the
+	// configuration-file section of docs/handbook/src/reference/settings-reference.md.
 	"edit.modelVariants": { type: "record", default: EMPTY_STRING_RECORD },
 
 	"edit.fuzzyMatch": {
@@ -67,15 +87,19 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
-	"edit.critiqueCodeMutations": {
-		type: "boolean",
-		default: false,
+	// One pass at most, never both: the verification reminder asks for execution
+	// evidence the review reminder already subsumes, and running them in turn
+	// spent two forced continuations on one turn.
+	"edit.afterEdit": {
+		type: "enum",
+		values: AFTER_EDIT_CHECKS,
+		default: "verify",
 		ui: {
 			tab: "files",
 			group: "Editing",
-			label: "Post-Edit Code Review",
+			label: "After an Edit",
 			description:
-				"Prompt the model to review multi-file code changes for correctness, maintainability, and idioms before finalizing",
+				"What happens when a turn ends having changed files: verify runs one check when none followed the last edit, review reads back every file the turn changed and judges correctness, maintainability and cross-file contracts, off ends the turn where the model ends it",
 		},
 	},
 
@@ -203,8 +227,12 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
+	// LSP
 	"lsp.enabled": {
 		type: "boolean",
+		// Off: it starts a language server per project, and its two policy statements plus
+		// the tool description are among the larger things the prompt carries. Both drop
+		// out with the tool, so a session that does no symbol work does not pay for it.
 		default: false,
 		ui: {
 			tab: "files",
@@ -216,6 +244,10 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
+	// Every row below only means something while a language server runs, so each
+	// is conditioned on the master above. `lsp.enabled` ships off; without that
+	// condition these would still render: a Files tab offering format-on-write
+	// and diagnostics injection to a session with no server at all.
 	"lsp.tool": {
 		type: "boolean",
 		default: true,
@@ -319,6 +351,7 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
+	// Bash interceptor
 	"bashInterceptor.enabled": {
 		type: "boolean",
 		default: false,
@@ -331,6 +364,7 @@ export const EDITING_SETTINGS = {
 	},
 	"bashInterceptor.patterns": { type: "array", default: DEFAULT_BASH_INTERCEPTOR_RULES },
 
+	// Shell output minimizer
 	"shellMinimizer.enabled": {
 		type: "boolean",
 		default: true,
@@ -367,6 +401,7 @@ export const EDITING_SETTINGS = {
 		default: undefined,
 	},
 
+	// Eval (per-backend toggles; add more as new backends ship, e.g. eval.ts)
 	"eval.py": {
 		type: "boolean",
 		default: true,
@@ -411,6 +446,7 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
+	// Runtime knobs (consumed by eval backends and the /python slash command)
 	"ruby.kernelMode": {
 		type: "enum",
 		values: ["session", "per-call"] as const,

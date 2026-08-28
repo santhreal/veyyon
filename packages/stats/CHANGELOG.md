@@ -9,6 +9,8 @@
 - `ToolsRoute.tsx` replaces `[...new Set()]` spread with `Array.from()` in tool model panel.
 
 
+- Migrated dashboard theme toggle to shared `ThemeToggle` from `@veyyon/tool-render`.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes
