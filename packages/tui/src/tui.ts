@@ -727,6 +727,21 @@ export class Container implements Component, MouseRoutable {
 			start += rows;
 		}
 	}
+
+	/**
+	 * True while any child has a click target, so a footer child that only wraps
+	 * other components still asks for the mouse on their behalf. The engine scans
+	 * ROOT footer children alone, and the composer zone mounts its editor inside a
+	 * container: without this the child's targets are reachable only by accident,
+	 * whenever something else in the footer happened to take the mouse.
+	 */
+	wantsPointer(): boolean {
+		for (const child of this.children) {
+			const routable = child as Component & Partial<MouseRoutable>;
+			if (routable.wantsPointer?.() === true) return true;
+		}
+		return false;
+	}
 }
 
 /**
@@ -4729,12 +4744,22 @@ export class TUI extends Container {
 		height: number,
 		hardwareCursor: HardwareCursorUpdate,
 	): void {
+		this.#commitFrameState(lines, window, width, height);
+		this.#recordHardwareCursorUpdate(hardwareCursor);
+	}
+
+	/**
+	 * The half of a commit that describes the FRAME rather than the cursor: what the next diff
+	 * compares against, and the notification that a frame happened. A frame that composed
+	 * something and then found nothing to write owes this much even though it moved no cursor,
+	 * so the two paths share it instead of one of them keeping stale geometry.
+	 */
+	#commitFrameState(lines: readonly string[], window: string[], width: number, height: number): void {
 		this.#previousFrameLength = lines.length;
 		this.#previousWindow = window;
 		this.#forceViewportRepaintOnNextRender = false;
 		this.#previousWidth = width;
 		this.#previousHeight = height;
-		this.#recordHardwareCursorUpdate(hardwareCursor);
 		this.onFrameComposed?.();
 	}
 
@@ -5320,20 +5345,39 @@ export class TUI extends Container {
 		// top-clamped full rewrite.
 		const inPlaceRewrite = repaintVirtualScrollInPlace || scroll !== 0;
 		if (chunkLength === 0) {
-			if (forceWindowRewrite || inPlaceRewrite) this.#fullRedrawCount += 1;
-			let firstChanged = forceWindowRewrite || inPlaceRewrite ? 0 : -1;
-			let lastChanged = forceWindowRewrite || inPlaceRewrite ? height - 1 : -1;
-			if (!forceWindowRewrite && !inPlaceRewrite) {
-				const comparable = previousWindow.length === height;
-				for (let r = 0; r < height; r++) {
-					if (comparable && (window[r] ?? "") === (previousWindow[r] ?? "")) continue;
-					if (firstChanged === -1) firstChanged = r;
-					lastChanged = r;
-				}
+			// What changed decides whether anything is written at all; the frame KIND decides
+			// only how wide the walk has to be once something has. A slid or overlay-composited
+			// window cannot trust a relative move from the tracked row, so when it does write it
+			// walks the whole viewport from a clamped top — but a frame where every row already
+			// matches the screen writes nothing, whatever kind it is, instead of erasing and
+			// reprinting the viewport it just drew.
+			const comparable = !forceWindowRewrite && previousWindow.length === height && width === this.#previousWidth;
+			let firstChanged = -1;
+			let lastChanged = -1;
+			for (let r = 0; r < height; r++) {
+				if (comparable && (window[r] ?? "") === (previousWindow[r] ?? "")) continue;
+				if (firstChanged === -1) firstChanged = r;
+				lastChanged = r;
+			}
+			if (firstChanged !== -1 && (forceWindowRewrite || inPlaceRewrite)) {
+				this.#fullRedrawCount += 1;
+				firstChanged = 0;
+				lastChanged = height - 1;
 			}
 			if (firstChanged === -1) {
 				if (purgeSequence.length > 0) this.terminal.write(purgeSequence);
 				this.#writeCursorPosition(cursorPos, cursorTrackingLineCount);
+				// A frame that would have rewritten the window, and turned out to match it
+				// byte for byte, still moved the window and still composed a frame: the anchor
+				// and the geometry the next diff compares against are owed either way. Without
+				// this, a stream landing entirely below a frozen view leaves the engine reading
+				// the previous frame's length and losing the rows it is holding. A frame that
+				// was already static keeps the narrower path it always took.
+				if (forceWindowRewrite || inPlaceRewrite) {
+					this.#windowTopRow = windowTop;
+					this.#commitFrameState(frame, window, width, height);
+					return;
+				}
 				this.#previousWidth = width;
 				this.#previousHeight = height;
 				return;
@@ -5362,9 +5406,25 @@ export class TUI extends Container {
 				fillTexts = plan.texts;
 				fillSequence = plan.sequence;
 			}
+			// A slid window shifts every row, so the rewritten SPAN stays full — but a row whose
+			// bytes already match the screen needs neither the erase nor the write. Skipping it
+			// leaves the cursor walk intact, since the newline between rows moves down either
+			// way, and stops a streaming HUD from erasing the whole viewport every frame: on a
+			// terminal without synchronized output that sweep is visible as a flash across rows
+			// that never changed. Only taken where the screen is known: a forced rewrite exists
+			// because the screen cannot be trusted, a width change re-renders every row, and a
+			// DECCARA fill paints rectangles this comparison does not model.
+			const skipUnchangedRows =
+				inPlaceRewrite &&
+				!forceWindowRewrite &&
+				fillSequence.length === 0 &&
+				previousWindow.length === height &&
+				width === this.#previousWidth;
 			for (let r = firstChanged; r <= lastChanged; r++) {
 				if (r > firstChanged) buffer += "\r\n";
-				buffer += this.#lineRewriteSequence(fillTexts ? fillTexts[r - firstChanged] : (window[r] ?? ""), width);
+				const text = fillTexts ? (fillTexts[r - firstChanged] ?? "") : (window[r] ?? "");
+				if (skipUnchangedRows && text === (previousWindow[r] ?? "")) continue;
+				buffer += this.#lineRewriteSequence(text, width);
 			}
 			buffer += fillSequence;
 			// Never park below real content (a height shrink would scroll live

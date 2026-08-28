@@ -58,6 +58,7 @@ export * from "./fuzz/traits";
 export * from "./fuzz/types";
 export * from "./terminal/constants";
 export * from "./terminal/engine-recovery";
+export * from "./terminal/frame-recorder";
 export * from "./terminal/ghostty-engine";
 export * from "./terminal/grid-reader";
 export * from "./terminal/virtual-terminal";
