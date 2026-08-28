@@ -117,7 +117,6 @@ export async function fetchCodexModels(options: CodexModelDiscoveryOptions): Pro
 				signal: options.signal,
 			});
 		} catch (error) {
-			// `continue` moves on to the next route, which is right; the attempt used to leave no trace at all.
 			report("request", errorMessage(error));
 			continue;
 		}

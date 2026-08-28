@@ -452,8 +452,6 @@ async function fetchOllamaNativeModels(
 	try {
 		payload = (await response.json()) as { models?: Array<{ name?: string; model?: string }> };
 	} catch (error) {
-		// Previously this threw out of the whole fetcher rather than answering `null`, so a captive portal or
-		// an HTML proxy page turned one provider's discovery into an `unhandled` stage blamed on this reader.
 		report("body", errorMessage(error));
 		return null;
 	}

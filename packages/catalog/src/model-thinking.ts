@@ -197,9 +197,7 @@ export function resolveModelThinking<TApi extends Api>(
 	if (spec.reasoning === true && (spec.provider === "ollama" || spec.provider === "ollama-cloud")) {
 		return thinkingConfigFromEfforts(spec, compat, normalizeOllamaWireEfforts(spec, OLLAMA_WIRE_EFFORTS));
 	}
-	// Nothing declared: the model reasons (or not) as shipped, and no effort
-	// surface is offered. Fabricating a ladder from the model id is how the
-	// picker used to offer tiers the endpoint rejects.
+	// Nothing declared: the model reasons as shipped, and no effort surface is offered.
 	return undefined;
 }
 

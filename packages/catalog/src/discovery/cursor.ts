@@ -158,14 +158,7 @@ async function fetchViaHttp2(
 ): Promise<Uint8Array | null> {
 	const { promise, resolve } = Promise.withResolvers<Uint8Array | null>();
 	const client = http2.connect(baseUrl);
-	// ONE REASON PER REQUEST. Four events end this request and every one of them used to
-	// report: `Promise.withResolvers` made the second `resolve` a no-op, so the RESULT was
-	// single-valued while the reasons were not. One unresolvable host under Bun 1.4 fires
-	// the session `error` and then the cancelled stream's `error`, which reported
-	// "HTTP/2 connection failed: getaddrinfo ENOTFOUND" and "HTTP/2 stream failed: The
-	// pending stream has been canceled" for one failure, so a caller listing why discovery
-	// found nothing showed the same failure twice and the cancellation read as a second
-	// fault. The first event is the cause, and it is the only one anybody can act on.
+	// Report only the first failure event per request.
 	let settled = false;
 	const timer = setTimeout(() => giveUp("request", `no response within ${timeoutMs}ms`), timeoutMs);
 
