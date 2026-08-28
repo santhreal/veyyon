@@ -30,6 +30,7 @@
 - An inline image drawn inside a tmux pane reaches the outer terminal. `encodeITerm2` emitted a bare OSC 1337, which tmux swallows, while every Kitty emitter already wrapped its payload in tmux's DCS passthrough envelope; Sixel stays raw, because it is selected only when the DA1 answer reported it and inside tmux that answer is tmux's own.
 - A frame identical to the one on screen writes nothing. An overlay, a frozen scroll view or a slid window widened the repaint span to the whole viewport before the diff ran, so every such frame erased and reprinted rows it had just painted; what changed now decides whether anything is written, and the frame kind only decides how wide the walk is, with rows already matching the screen skipped inside it.
 - A keystroke typed during a heavy stream paints on the next frame instead of waiting out adaptive backpressure. The 50% duty-cycle floor, up to 200ms, was charged to every frame including one input asked for, and a frame already armed at that delay was never pulled earlier; an input-caused frame now skips the adaptive floor, keeps the cadence and input-grace floors, and re-arms a pending frame whenever it can start sooner.
+- A frame that slides the window without painting no longer emits a one-row cursor move, so the physical cursor stops drifting away from the tracked row and a later commit cannot scroll uncommitted rows, overlay content among them, into native scrollback.
 
 ## [1.2.0] - 2026-08-23
 

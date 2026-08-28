@@ -4829,6 +4829,19 @@ export class TUI extends Container {
 		this.#hardwareCursorVisibilityKnown = true;
 	}
 
+	/**
+	 * Keep the tracked cursor row on the same SCREEN row across a window slide that
+	 * painted nothing. The row is a frame-absolute coordinate and every relative move
+	 * is derived from it, so a slide that leaves the terminal untouched still shifts
+	 * the frame row sitting under the physical cursor by the slide distance.
+	 */
+	#slideHardwareCursorRow(scroll: number): void {
+		if (scroll === 0) return;
+		const row = Math.max(0, this.#hardwareCursorRow + scroll);
+		this.#hardwareCursorRow = row;
+		if (this.#hardwareCursorState) this.#hardwareCursorState = { ...this.#hardwareCursorState, row };
+	}
+
 	#recordHardwareCursorRowOnly(row: number, visible?: boolean): void {
 		this.#hardwareCursorRow = row;
 		this.#hardwareCursorState = null;
@@ -5413,6 +5426,14 @@ export class TUI extends Container {
 			}
 			if (firstChanged === -1) {
 				if (purgeSequence.length > 0) this.terminal.write(purgeSequence);
+				// Nothing is painted on this frame, so the physical cursor does not move —
+				// but the window slid under it, and the tracked row is a frame-absolute
+				// coordinate. The same screen row now names a frame row `scroll` further
+				// down, so rebase before the cursor write derives a RELATIVE move from it:
+				// otherwise every paintless slide emits one spurious CUD/CUU, the physical
+				// cursor drifts a row per frame away from the tracked one, and the next
+				// commit scrolls from the wrong origin and pushes live rows into history.
+				this.#slideHardwareCursorRow(scroll);
 				this.#writeCursorPosition(cursorPos, cursorTrackingLineCount);
 				// A frame that would have rewritten the window, and turned out to match it
 				// byte for byte, still moved the window and still composed a frame: the anchor

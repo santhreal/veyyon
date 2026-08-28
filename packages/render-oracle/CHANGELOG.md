@@ -9,6 +9,7 @@
 - New package: the terminal renderer defect oracle, holding the virtual terminal, frame capture, state-relative invariant detectors, the fuzz driver and the replayable defect corpus.
 - `defaultImageTheme` test fixture, so no suite hand-rolls an image theme.
 - `findViewportHoles` and `findStrandedChrome` decide the two blank-space defect classes from the frame's own state, taking no size threshold: a hole is a blank run with paint on both sides, and chrome is stranded when a painted row sits below it.
+- `cursor-tracking` suite: a frame that paints nothing must leave the terminal cursor where it was, swept across viewport heights and slide distances, with the scrollback consequence of a drifted cursor as its second arm.
 
 ### Changed
 
