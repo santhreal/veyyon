@@ -384,6 +384,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/tui/src/components/editor-helpers.ts",
 	"packages/tui/src/components/markdown-helpers.ts",
 	"packages/tui/src/components/settings-search.ts",
+	"packages/tui/src/tui-helpers.ts",
 	"packages/typescript-edit-benchmark/src/edit-prompt-bench.ts",
 	"packages/typescript-edit-benchmark/src/goal-budget-context-bench.ts",
 	"packages/typescript-edit-benchmark/src/in-process-client.ts",

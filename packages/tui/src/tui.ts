@@ -1,5 +1,4 @@
 import * as fs from "node:fs";
-import { performance } from "node:perf_hooks";
 import { getDebugLogPath } from "@veyyon/utils/dirs";
 import { $flag } from "@veyyon/utils/env";
 import * as logger from "@veyyon/utils/logger";
@@ -15,13 +14,68 @@ import { isConPTYHosted, setAltScreenActive, type Terminal } from "./terminal";
 import {
 	encodeKittyDeleteImage,
 	ImageProtocol,
-	isInsideTerminalMultiplexer,
 	setCellDimensions,
 	setTerminalImageProtocol,
 	shouldEnableSynchronizedOutputByDefault,
 	synchronizedOutputUserOverride,
 	TERMINAL,
 } from "./terminal-capabilities";
+import {
+	ALT_SCREEN_ENTER,
+	ALT_SCREEN_EXIT,
+	ALT_SCROLL_OFF,
+	ALT_SCROLL_ON,
+	asViewportTailProvider,
+	type Component,
+	CURSOR_BEGIN,
+	CURSOR_BEGIN_NO_SYNC,
+	CURSOR_END,
+	CURSOR_END_NO_SYNC,
+	CURSOR_MARKER,
+	canAnimateOverlayExit,
+	canPrepareNativeScrollbackReplay,
+	DEFAULT_RENDER_SCHEDULER,
+	ERASE_LINE,
+	ERASE_TO_END_OF_LINE,
+	getNativeScrollbackLiveRegionStart,
+	getRenderStablePrefixRows,
+	type InputListener,
+	type InputListenerResult,
+	isFocusable,
+	isMultiplexerSession,
+	isOverlayFocusTarget,
+	LEGACY_CURSOR_SCROLL,
+	LINE_FIT_MAX_SOURCE_CODE_UNITS,
+	LINE_FIT_MIN_SOURCE_CODE_UNITS,
+	LINE_FIT_SOURCE_WIDTH_MULTIPLIER,
+	LINE_TERMINATOR,
+	MOUSE_TRACKING_OFF,
+	MOUSE_TRACKING_ON,
+	MOUSE_WHEEL_TRACKING_OFF,
+	MOUSE_WHEEL_TRACKING_ON,
+	type OverlayAnchor,
+	type OverlayHandle,
+	type OverlayOptions,
+	PAINT_BEGIN,
+	PAINT_BEGIN_NO_SYNC,
+	PAINT_END,
+	PAINT_END_NO_SYNC,
+	parseSizeValue,
+	prepareNativeScrollbackReplay,
+	type RenderRequestOptions,
+	type RenderScheduler,
+	type RenderTimer,
+	resizeRepaintsInPlace,
+	SCROLL_TRACK_GROOVE,
+	SCROLL_TRACK_THUMB,
+	type ScrollTransport,
+	type StartListener,
+	setNativeScrollbackCommittedRows,
+	setNativeScrollbackRetainRows,
+	type TUIOptions,
+	type TUIStartOptions,
+	takeNativeScrollbackDroppedRows,
+} from "./tui-helpers";
 import {
 	clampLow,
 	Ellipsis,
@@ -34,257 +88,32 @@ import {
 	visibleWidth,
 } from "./utils";
 
-const LINE_TERMINATOR = "\x1b[0m\x1b]8;;\x07";
-const ERASE_LINE = "\x1b[2K";
-const ERASE_TO_END_OF_LINE = "\x1b[K";
-const LINE_FIT_MIN_SOURCE_CODE_UNITS = 4096;
-const LINE_FIT_MAX_SOURCE_CODE_UNITS = 65536;
-const LINE_FIT_SOURCE_WIDTH_MULTIPLIER = 64;
-const HIDE_CURSOR = "\x1b[?25l";
-const SYNC_OUTPUT_BEGIN = "\x1b[?2026h";
-const SYNC_OUTPUT_END = "\x1b[?2026l";
-const DISABLE_AUTOWRAP = "\x1b[?7l";
-const ENABLE_AUTOWRAP = "\x1b[?7h";
-const PAINT_BEGIN = `${HIDE_CURSOR}${SYNC_OUTPUT_BEGIN}${DISABLE_AUTOWRAP}`;
-const PAINT_END = `${ENABLE_AUTOWRAP}${SYNC_OUTPUT_END}`;
-const PAINT_BEGIN_NO_SYNC = `${HIDE_CURSOR}${DISABLE_AUTOWRAP}`;
-const PAINT_END_NO_SYNC = ENABLE_AUTOWRAP;
-const CURSOR_BEGIN = `${HIDE_CURSOR}${SYNC_OUTPUT_BEGIN}`;
-const CURSOR_BEGIN_NO_SYNC = HIDE_CURSOR;
-const CURSOR_END = SYNC_OUTPUT_END;
-const CURSOR_END_NO_SYNC = "";
-const MOUSE_TRACKING_ON = "\x1b[?1000h\x1b[?1003h\x1b[?1006h";
-const MOUSE_TRACKING_OFF = "\x1b[?1006l\x1b[?1003l\x1b[?1000l";
-const MOUSE_WHEEL_TRACKING_ON = "\x1b[?1000h\x1b[?1006h";
-const SCROLL_TRACK_GROOVE = "\x1b[2m│\x1b[22m";
-const SCROLL_TRACK_THUMB = "█";
-const MOUSE_WHEEL_TRACKING_OFF = "\x1b[?1006l\x1b[?1000l";
-const ALT_SCREEN_ENTER = "\x1b[?1049h";
-const ALT_SCREEN_EXIT = "\x1b[?1049l";
-const ALT_SCROLL_ON = "\x1b[?1007h";
-const ALT_SCROLL_OFF = "\x1b[?1007l";
-const LEGACY_CURSOR_SCROLL: Readonly<Record<string, -1 | 1 | undefined>> = {
-	"\x1b[A": -1,
-	"\x1b[B": 1,
-	"\x1bOA": -1,
-	"\x1bOB": 1,
-};
-
-export type ScrollTransport = "mouse" | "alt-arrows";
-type InputListenerResult = { consume?: boolean; data?: string } | undefined;
-type InputListener = (data: string) => InputListenerResult;
-type StartListener = () => void;
-
-export interface RenderTimer {
-	cancel(): void;
-}
-
-export interface RenderScheduler {
-	now(): number;
-	scheduleImmediate(callback: () => void): void;
-	scheduleRender(callback: () => void, delayMs: number): RenderTimer;
-}
-
-export interface TUIOptions {
-	renderScheduler?: RenderScheduler;
-}
-
-export interface TUIStartOptions {
-	clearScrollback?: boolean;
-}
-
-const DEFAULT_RENDER_SCHEDULER: RenderScheduler = {
-	now: () => performance.now(),
-	scheduleImmediate: callback => {
-		setImmediate(callback);
-	},
-	scheduleRender: (callback, delayMs) => {
-		const timer = setTimeout(callback, delayMs);
-		return {
-			cancel: () => {
-				clearTimeout(timer);
-			},
-		};
-	},
-};
-
-export interface Component {
-	render(width: number): readonly string[];
-
-	handleInput?(data: string): void;
-
-	wantsKeyRelease?: boolean;
-
-	invalidate?(): void;
-	setIgnoreTight?(ignore: boolean): void;
-
-	dispose?(): void;
-}
-
-export interface OverlayFocusOwner {
-	ownsOverlayFocusTarget(component: Component): boolean;
-}
-
-export interface NativeScrollbackLiveRegion {
-	getNativeScrollbackLiveRegionStart(): number | undefined;
-}
-
-export interface NativeScrollbackCommittedRows {
-	setNativeScrollbackCommittedRows(rows: number): void;
-}
-
-export interface NativeScrollbackReplay {
-	prepareNativeScrollbackReplay(): void;
-}
-
-function prepareNativeScrollbackReplay(component: Component): void {
-	(component as Component & Partial<NativeScrollbackReplay>).prepareNativeScrollbackReplay?.();
-}
-
-export interface NativeScrollbackCompaction {
-	takeNativeScrollbackDroppedRows(): number;
-	setNativeScrollbackRetainRows?(rows: number): void;
-}
-
-function takeNativeScrollbackDroppedRows(component: Component): number {
-	const rows = (component as Component & Partial<NativeScrollbackCompaction>).takeNativeScrollbackDroppedRows?.();
-	return typeof rows === "number" && Number.isFinite(rows) && rows > 0 ? Math.trunc(rows) : 0;
-}
-
-function setNativeScrollbackRetainRows(component: Component, rows: number): void {
-	(component as Component & Partial<NativeScrollbackCompaction>).setNativeScrollbackRetainRows?.(rows);
-}
-function canPrepareNativeScrollbackReplay(component: Component): boolean {
-	return (
-		typeof (component as Component & Partial<NativeScrollbackReplay>).prepareNativeScrollbackReplay === "function"
-	);
-}
-
-function setNativeScrollbackCommittedRows(component: Component, rows: number): void {
-	(component as Component & Partial<NativeScrollbackCommittedRows>).setNativeScrollbackCommittedRows?.(rows);
-}
-
-function isOverlayFocusTarget(owner: Component, component: Component | null): boolean {
-	if (component === owner) return true;
-	if (!component) return false;
-	const candidate = owner as Component & Partial<OverlayFocusOwner>;
-	return candidate.ownsOverlayFocusTarget?.(component) === true;
-}
-
-function getNativeScrollbackLiveRegionStart(component: Component): number | undefined {
-	return (component as Component & Partial<NativeScrollbackLiveRegion>).getNativeScrollbackLiveRegionStart?.();
-}
-
-export interface RenderStablePrefix {
-	getRenderStablePrefixRows(): number;
-}
-
-function getRenderStablePrefixRows(component: Component): number | undefined {
-	return (component as Component & Partial<RenderStablePrefix>).getRenderStablePrefixRows?.();
-}
-
-export interface ViewportTailProvider {
-	renderViewportTail(width: number, maxRows: number): readonly string[];
-}
-
-function asViewportTailProvider(component: Component): ViewportTailProvider | undefined {
-	const candidate = component as Component & Partial<ViewportTailProvider>;
-	return typeof candidate.renderViewportTail === "function" ? (candidate as ViewportTailProvider) : undefined;
-}
-
-export interface Focusable {
-	focused: boolean;
-	setUseTerminalCursor?(useTerminalCursor: boolean): void;
-}
-
-export interface RenderRequestOptions {
-	clearScrollback?: boolean;
-}
-export function isFocusable(component: Component | null): component is Component & Focusable {
-	return component !== null && "focused" in component;
-}
-
-export const CURSOR_MARKER = "\x1b_pi:c\x07";
-
-export { visibleWidth };
-
-export type OverlayAnchor =
-	| "center"
-	| "top-left"
-	| "top-right"
-	| "bottom-left"
-	| "bottom-right"
-	| "top-center"
-	| "bottom-center"
-	| "left-center"
-	| "right-center";
-
-export interface OverlayMargin {
-	top?: number;
-	right?: number;
-	bottom?: number;
-	left?: number;
-}
-
-export type SizeValue = number | `${number}%`;
-
-function parseSizeValue(value: SizeValue | undefined, referenceSize: number): number | undefined {
-	if (value === undefined) return undefined;
-	if (typeof value === "number") return value;
-	const match = value.match(/^(\d+(?:\.\d+)?)%$/);
-	if (match) {
-		return Math.floor((referenceSize * parseFloat(match[1])) / 100);
-	}
-	return undefined;
-}
-
-function isMultiplexerSession(): boolean {
-	return isInsideTerminalMultiplexer();
-}
-
-function reportsSizeOnAltScreenToggle(): boolean {
-	const override = Bun.env.VEYYON_TUI_RESIZE_IN_PLACE;
-	if (override === "0" || override === "false") return false;
-	if (override === "1" || override === "true") return true;
-	return Bun.env.TERM_PROGRAM?.toLowerCase() === "warpterminal";
-}
-
-function resizeRepaintsInPlace(): boolean {
-	return isMultiplexerSession() || reportsSizeOnAltScreenToggle();
-}
-
-export interface OverlayOptions {
-	width?: SizeValue;
-	minWidth?: number;
-	maxHeight?: SizeValue;
-
-	anchor?: OverlayAnchor;
-	offsetX?: number;
-	offsetY?: number;
-
-	row?: SizeValue;
-	col?: SizeValue;
-
-	margin?: OverlayMargin | number;
-
-	visible?: (termWidth: number, termHeight: number) => boolean;
-
-	fullscreen?: boolean;
-}
-
-export interface OverlayHandle {
-	hide(): void;
-	setHidden(hidden: boolean): void;
-	isHidden(): boolean;
-}
-
-export interface OverlayExitAnimatable {
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean;
-}
-
-export function canAnimateOverlayExit(component: Component): component is Component & OverlayExitAnimatable {
-	return typeof (component as Partial<OverlayExitAnimatable>).beginOverlayExit === "function";
-}
+export {
+	type Component,
+	CURSOR_MARKER,
+	canAnimateOverlayExit,
+	type Focusable,
+	isFocusable,
+	type NativeScrollbackCommittedRows,
+	type NativeScrollbackCompaction,
+	type NativeScrollbackLiveRegion,
+	type NativeScrollbackReplay,
+	type OverlayAnchor,
+	type OverlayExitAnimatable,
+	type OverlayFocusOwner,
+	type OverlayHandle,
+	type OverlayMargin,
+	type OverlayOptions,
+	type RenderRequestOptions,
+	type RenderScheduler,
+	type RenderStablePrefix,
+	type RenderTimer,
+	type ScrollTransport,
+	type SizeValue,
+	type TUIOptions,
+	type TUIStartOptions,
+	type ViewportTailProvider,
+} from "./tui-helpers";
 
 export class Container implements Component, MouseRoutable {
 	children: Component[] = [];
