@@ -93,7 +93,7 @@ function resolveApiKey(options: Readonly<Record<string, unknown>>, authEnvVar: s
  * provides metadata (contextWindow, maxTokens, reasoning) that omp's own
  * `models refresh` lacks because it has no models.dev overlay.
  */
-function buildModelsYml(refreshJson: string, modelSelector: string, apiKey: string, gatewayUrl: string | null = null): string | null {
+function buildModelsYml(refreshJson: string, modelSelector: string, apiKey: string, gatewayUrl: string | null = null, contextCap: number | null = null): string | null {
 	const slashIndex = modelSelector.indexOf("/");
 	if (slashIndex < 1) return null;
 	const provider = modelSelector.slice(0, slashIndex);
@@ -124,7 +124,7 @@ function buildModelsYml(refreshJson: string, modelSelector: string, apiKey: stri
 	}
 	for (const entry of entries) {
 		if (entry.id !== modelId && entry.name !== modelId) continue;
-		const contextWindow = entry.contextWindow ?? entry.input ?? 131_072;
+		const contextWindow = Math.min(entry.contextWindow ?? entry.input ?? 131_072, contextCap ?? Infinity);
 		const maxTokens = entry.maxTokens ?? entry.output ?? 8192;
 		const reasoning = entry.reasoning ?? false;
 		const baseUrl = providerBaseUrls[provider] ?? (gatewayUrl ? `${gatewayUrl.replace(/\/+$/, "")}/v1` : "https://opencode.ai/zen/v1");
@@ -169,6 +169,7 @@ function ompModelsYml(
 	apiKey: string,
 	options: Readonly<Record<string, unknown>>,
 	gatewayUrl: string | null,
+	contextCap: number | null = null,
 ): string | null {
 	if (isLocalInferenceModel(model)) return null;
 	const flag = options.binary ?? options["vey-binary"];
@@ -187,7 +188,7 @@ function ompModelsYml(
 			timeout: 30_000,
 			env: refreshEnv,
 		});
-		return buildModelsYml(refreshOutput, model, apiKey, gatewayUrl);
+		return buildModelsYml(refreshOutput, model, apiKey, gatewayUrl, contextCap);
 	} catch (err) {
 		logger.warn(`warning: failed to build models.yml for omp via 'vey models refresh': ${errorMessage(err)}`);
 		return null;
@@ -198,7 +199,7 @@ export class OmpAdapter implements HarnessAdapter {
 	readonly id = "omp";
 	readonly displayName = "Oh My Pi (omp)";
 	readonly description = "Oh My Pi (omp) CLI agent headlessly executing containerized benchmark tasks.";
-	readonly flags: readonly string[] = ["omp-binary", "omp-api-key"];
+	readonly flags: readonly string[] = ["omp-binary", "omp-api-key", "omp-context"];
 	readonly defaultModel = "opencode-go/deepseek-v4-flash";
 
 	readonly capabilities: HarnessCapabilities = {
@@ -237,35 +238,36 @@ export class OmpAdapter implements HarnessAdapter {
 		const authEnvVar = authEnvVarFor(model);
 		const apiKey = resolveApiKey(options, authEnvVar) ?? "";
 		const binary = resolveOmpBinary(options);
-	const gatewayUrl = typeof options.gatewayUrl === "string" ? options.gatewayUrl : null;
-	const gatewayToken = typeof options.gatewayToken === "string" ? options.gatewayToken : null;
-	// When routing through the gateway, the gateway token is the apiKey omp
-	// sends as the bearer. Without it, omp sends "no-auth" and gets 401.
-	const effectiveApiKey = gatewayUrl ? (gatewayToken || apiKey || "no-auth") : apiKey;
-	const modelsYml = ompModelsYml(model, effectiveApiKey, options, gatewayUrl);
+		const gatewayUrl = typeof options.gatewayUrl === "string" ? options.gatewayUrl : null;
+		const gatewayToken = typeof options.gatewayToken === "string" ? options.gatewayToken : null;
+		// When routing through the gateway, the gateway token is the apiKey omp
+		// sends as the bearer. Without it, omp sends "no-auth" and gets 401.
+		const effectiveApiKey = gatewayUrl ? (gatewayToken || apiKey || "no-auth") : apiKey;
+		const contextCap = typeof options["omp-context"] === "string" && options["omp-context"] ? Number(options["omp-context"]) : null;
+		const modelsYml = ompModelsYml(model, effectiveApiKey, options, gatewayUrl, contextCap);
 		const localEndpoint = containerLocalEndpointEnv(model);
 		const authDb = resolveOmpAuthDb();
 
-	const files: ProgramFile[] = [];
-	if (binary) files.push({ file: "omp", source: { copy: binary }, mode: 0o755 });
-	// omp is a Bun script (#!/usr/bin/env bun). Task containers may pin an older
-	// Bun than omp was built for, so stage the host's bun binary and invoke omp
-	// through it instead of relying on the container's shebang resolution.
-	const hostBun = $which("bun");
-	if (hostBun && fs.existsSync(hostBun)) {
-		files.push({ file: "bun", source: { copy: hostBun }, mode: 0o755 });
-	}
-	// When an API key is resolved, it travels in omp.env. When auth is OAuth from
-	// the auth DB, the env lines are empty — omp reads the token from ~/.omp/agent.
-	const envLines = [`${authEnvVar}=${apiKey}`, `OPENCODE_API_KEY=${apiKey}`];
-	for (const [key, value] of Object.entries(localEndpoint ?? {})) envLines.push(`${key}=${value}`);
-	files.push({
-		file: "omp.env",
-		source: { text: `${envLines.join("\n")}\n` },
-		mode: 0o600,
-	});
-	if (modelsYml) files.push({ file: "models.yml", source: { text: modelsYml } });
-	if (authDb) files.push({ file: "auth-agent.db", source: { copy: authDb }, mode: 0o600 });
+		const files: ProgramFile[] = [];
+		if (binary) files.push({ file: "omp", source: { copy: binary }, mode: 0o755 });
+		// omp is a Bun script (#!/usr/bin/env bun). Task containers may pin an older
+		// Bun than omp was built for, so stage the host's bun binary and invoke omp
+		// through it instead of relying on the container's shebang resolution.
+		const hostBun = $which("bun");
+		if (hostBun && fs.existsSync(hostBun)) {
+			files.push({ file: "bun", source: { copy: hostBun }, mode: 0o755 });
+		}
+		// When an API key is resolved, it travels in omp.env. When auth is OAuth from
+		// the auth DB, the env lines are empty — omp reads the token from ~/.omp/agent.
+		const envLines = [`${authEnvVar}=${apiKey}`, `OPENCODE_API_KEY=${apiKey}`];
+		for (const [key, value] of Object.entries(localEndpoint ?? {})) envLines.push(`${key}=${value}`);
+		files.push({
+			file: "omp.env",
+			source: { text: `${envLines.join("\n")}\n` },
+			mode: 0o600,
+		});
+		if (modelsYml) files.push({ file: "models.yml", source: { text: modelsYml } });
+		if (authDb) files.push({ file: "auth-agent.db", source: { copy: authDb }, mode: 0o600 });
 
 		return {
 			program: {

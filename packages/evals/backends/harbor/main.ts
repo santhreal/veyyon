@@ -270,6 +270,7 @@ export class HarborBackend implements ExecutionBackend {
 		cfg.attempts = 1;
 		cfg.include = params.task ? [params.task] : [];
 		cfg.thinking = typeof options?.thinking === "string" ? options.thinking : null;
+		cfg.compactionThreshold = typeof options?.compactionThreshold === "string" ? options.compactionThreshold : null;
 		cfg.agentArgs = Array.isArray(options?.agentArgs) ? (options.agentArgs as string[]) : [];
 		cfg.agent = params.agent;
 		cfg.install = (options?.install as "source" | "local" | "published") ?? "source";

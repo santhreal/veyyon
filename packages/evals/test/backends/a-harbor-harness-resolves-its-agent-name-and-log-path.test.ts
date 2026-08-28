@@ -31,6 +31,7 @@ function mockRunnerConfig(): Config {
 		version: null,
 		tarball: null,
 		thinking: null,
+		compactionThreshold: null,
 		agentArgs: ["--flag"],
 		webSearch: false,
 		gateway: true,
