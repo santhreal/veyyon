@@ -67,6 +67,7 @@ function sessionWith(usage: UsageShape | undefined) {
 		},
 		getPrewalkState: () => undefined,
 		getAsyncJobSnapshot: () => undefined,
+		getRunningNonTaskJobCount: () => 0,
 		// Compaction off: the gauge denominates against the raw model window, so the
 		// percentages below are the arithmetic and nothing else.
 		settings: { getGroup: () => ({ enabled: false }) },
