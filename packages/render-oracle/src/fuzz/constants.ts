@@ -44,6 +44,19 @@ export const REGRESSION_REPLAYS: readonly { template: string; seed: number }[] =
 	// compact synthetic state at every resize boundary so the multi-width trap
 	// state never forms.
 	{ template: "linux-unknown-wsl-small", seed: 0x24d2d8c2 },
+	// 2026-08-27: editOffscreenLine rewrote a row that had already scrolled
+	// into history while the reader was scrolled up. The engine took its
+	// documented divergence rebuild (one ED3, replay the frame, history holds
+	// the block exactly once), which the anti-yank oracle read as a stray
+	// write; it now exempts an op the engine redrew and instead holds the
+	// rebuilt tape to the committed record, byte for byte.
+	{ template: "linux-normal-vteNoSync-small", seed: 0x5eed1234 },
+	// 2026-08-27: the same rebuild exemption, with an overlay up and the
+	// reader scrolled. The overlay borrows the grid, so the engine's replayed
+	// live rows are the modal's — comparing the whole buffer against the
+	// committed record read that as a corrupt rebuild. Only history is
+	// judged now, and this pair covers the overlay case.
+	{ template: "darwin-normal-tiny", seed: 0xb16b00b5 },
 ];
 export const LARGE_SCROLL = 1_000_000;
 export const CORE_ITERATIONS = 120;

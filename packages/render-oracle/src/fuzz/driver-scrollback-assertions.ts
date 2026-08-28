@@ -112,6 +112,41 @@ export function assertScrolledDeferral(
 		!context.traits.ed3ScrollbackEraseRisk
 	)
 		return;
+
+	// The engine's one documented history rewrite: a committed-prefix
+	// divergence (a scrolled-off row whose source produced different bytes)
+	// erases native scrollback with a single ED3 and replays the frame, so the
+	// block lands exactly once instead of being recommitted below its stale
+	// copy. `divergenceRebuild` in `TUI.#doRender` takes that path without
+	// consulting the reader's position — there is no viewport probe, and
+	// exactly-once history is the recorded product decision, so neither the
+	// reader's offset nor the rows above it survive the replay by contract.
+	// Hold the rebuild to the fidelity the at-bottom path demands instead of
+	// skipping it: the history it wrote is exactly what the engine recorded as
+	// committed. Only history is judged — an overlay borrows the grid and
+	// paints live rows the committed record never holds — and only where the
+	// engine owns native scrollback: a multiplexer pane keeps its own history
+	// (the engine never ED3s there), which `assertMultiplexerPaneHistoryGrowth`
+	// bounds instead.
+	if (after.redraws !== before.redraws) {
+		if (!context.traits.strictNativeScrollback) return;
+		const rebuilt = expectedDriverScrollbackBuffer(context.shadow, after.height, context.scenario.scrollback);
+		const historyRows = Math.min(after.position.baseY, after.buffer.length, rebuilt.length);
+		const actualHistory = after.buffer.slice(0, historyRows);
+		const expectedHistory = rebuilt.slice(0, historyRows);
+		if (!sameLinesAllowingMarkDrift(actualHistory, expectedHistory)) {
+			const mismatch = firstMismatchIndex(actualHistory, expectedHistory);
+			context.fail("rebuilt history diverged from the committed record", op, before, after, index, {
+				historyRows,
+				expectedLength: rebuilt.length,
+				actualLength: after.buffer.length,
+				firstMismatch: mismatch,
+				expectedWindow: windowAround(expectedHistory, mismatch),
+				actualWindow: windowAround(actualHistory, mismatch),
+			});
+		}
+		return;
+	}
 	if (after.position.viewportY !== before.position.viewportY) {
 		context.fail("scrolled viewport moved during content mutation", op, before, after, index, {
 			expectedViewportY: before.position.viewportY,
