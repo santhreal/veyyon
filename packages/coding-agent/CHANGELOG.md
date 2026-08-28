@@ -7,6 +7,7 @@
 - `interactive-mode.ts` controllers extracted into `interactive/` module (command-dispatch, event-handlers, lifecycle, goal-mode-controller, plan-mode-controller, todo-board-manager, working-loader-manager).
 - `agent-session.ts` deep comment strip removed 4,242 lines.
 - 40 free helper functions extracted from `agent-session.ts` into `agent-session-helpers.ts` (474 lines removed from the 16,194-line god class).
+- 135 free helper functions, types, and constants extracted from `gh.ts` (2,642→964 lines) into `gh-helpers.ts`.
 - `createAgentSession` in `sdk.ts` is now a 77-line dispatcher calling extracted setup functions (`setupSessionInfrastructure`, `discoverSessionEnvironment`, `setupSecretRuntime`, `resolveSessionModelAndThinking`, `setupSessionToolsAndExtensions`, `setupSystemPromptAndToolSelection`, `initializeAgentAndSession`).
 - `#processAgentEvent` in `agent-session.ts` is now a 35-line dispatcher calling 12 extracted event handler methods.
 - `GrepTool.execute` and `ReadTool.execute` are now 21-line and 52-line dispatchers calling extracted phase handlers.
