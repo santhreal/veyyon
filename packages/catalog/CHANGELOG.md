@@ -13,6 +13,7 @@
 - Added `supportsServerCompaction` capability data for ChatGPT Codex backend models on the Responses API.
 
 ### Changed
+- 65 type definitions and provider model manager functions extracted from `provider-models/openai-compat/providers.ts` (2,203→1,359 lines) into `provider-models/openai-compat/providers-helpers.ts`.
 - `openai-compat.ts` resolver sections extracted into `openai-compat/` module (helpers, overrides, providers, resolvers).
 - Verbose inline comments stripped from `openai-compat.ts`, `variant-collapse.ts`, and `types.ts`.
 
