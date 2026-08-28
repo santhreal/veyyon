@@ -420,6 +420,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/collab-web/src/lib/use-guest.ts",
 	"packages/metaharness/src/bench-report.ts",
 	"packages/metaharness/src/launch-args.ts",
+	"packages/metaharness/src/runner-helpers.ts",
 	"packages/mnemopi/src/util/ids.ts",
 	"packages/simulations/src/cache-sim/harness.ts",
 	"packages/simulations/src/paint-sim/harness.ts",
