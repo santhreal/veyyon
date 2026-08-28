@@ -24,6 +24,7 @@
  */
 
 import { describe, expect, it, spyOn } from "bun:test";
+import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
 import type {
 	EvalSuite,
@@ -52,6 +53,14 @@ import {
 import { main } from "../../evals";
 
 const MODEL = "anthropic/claude-sonnet-4-6";
+
+/**
+ * The harbor-backed suite reads its tasks off a dataset directory, and the corpus it defaults
+ * to is downloaded rather than committed. These cases pin the order the CLI refuses in, not
+ * the corpus, so they name the committed fixture dataset: without it the run died on a missing
+ * download before it could reach the axis verdict this suite exists to defend.
+ */
+const HARBOR_DATASET = path.resolve(import.meta.dirname, "../suites/terminal-bench/fixtures");
 
 /** Builds a variant that sets exactly one axis, so a sweep can name the axis it varies. */
 function variantVarying(axis: VariantAxis | null, harness = "veyyon"): Variant {
@@ -373,7 +382,7 @@ function capture(stream: "stdout" | "stderr"): { text: () => string } {
 
 /** A suite whose backend applies nothing, so the CLI can be driven to the refusal. */
 const HARBOR_SUITE = "terminal-bench";
-const HARBOR_TASK = "atrx-vep-crispr";
+const HARBOR_TASK = "gpu-task";
 
 describe("the CLI", () => {
 	it("states an axes verdict on a dry run and refuses one nobody applies", async () => {
@@ -383,6 +392,8 @@ describe("the CLI", () => {
 			const code = await main([
 				"--suite",
 				HARBOR_SUITE,
+				"--dataset-dir",
+				HARBOR_DATASET,
 				"--tasks",
 				HARBOR_TASK,
 				"--model",
@@ -412,7 +423,17 @@ describe("the CLI", () => {
 		const stdout = capture("stdout");
 		const stderr = capture("stderr");
 		try {
-			await main(["--suite", HARBOR_SUITE, "--tasks", HARBOR_TASK, "--model", MODEL, "--dry-run"]);
+			await main([
+				"--suite",
+				HARBOR_SUITE,
+				"--dataset-dir",
+				HARBOR_DATASET,
+				"--tasks",
+				HARBOR_TASK,
+				"--model",
+				MODEL,
+				"--dry-run",
+			]);
 			expect(stdout.text()).toContain("axes       ok");
 			expect(stdout.text()).toContain("  suite      ");
 		} finally {
@@ -430,6 +451,8 @@ describe("the CLI", () => {
 			const code = await main([
 				"--suite",
 				HARBOR_SUITE,
+				"--dataset-dir",
+				HARBOR_DATASET,
 				"--tasks",
 				HARBOR_TASK,
 				"--model",
