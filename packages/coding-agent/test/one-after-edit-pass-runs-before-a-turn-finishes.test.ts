@@ -38,7 +38,7 @@ import {
 	VERIFICATION_EVIDENCE_REMINDER_TYPE,
 	VerificationEvidenceLedger,
 } from "@veyyon/coding-agent/session/verification-evidence-ledger";
-import { TempDir } from "@veyyon/utils";
+import { logger, TempDir } from "@veyyon/utils";
 
 type AfterEditCheck = (typeof AFTER_EDIT_CHECKS)[number];
 
@@ -328,6 +328,7 @@ async function settleAfterEdits(options: {
 	callsInContext?: boolean;
 	isSubagent?: boolean;
 	finalText?: string;
+	settlesTwice?: boolean;
 }): Promise<SettleOutcome> {
 	const tempDir = TempDir.createSync("@veyyon-after-edit-");
 	const authStorage = await AuthStorage.create(path.join(tempDir.path(), "auth.db"));
@@ -380,6 +381,14 @@ async function settleAfterEdits(options: {
 		agent.emitExternalEvent({ type: "message_end", message: finalCandidate });
 		agent.emitExternalEvent({ type: "agent_end", messages: [finalCandidate] });
 		await session.waitForIdle();
+		if (options.settlesTwice) {
+			// Same session, second settle: the ledger owes nothing more, but every
+			// per-settle decision runs again.
+			const second = assistantFinal("Done.");
+			agent.emitExternalEvent({ type: "message_end", message: second });
+			agent.emitExternalEvent({ type: "agent_end", messages: [second] });
+			await session.waitForIdle();
+		}
 
 		const reminders = agent.state.messages.filter(
 			message =>
@@ -470,6 +479,27 @@ describe("edit.afterEdit selects exactly one after-edit pass", () => {
 		});
 		expect(outcome.reminderText).toContain("with the edits above in this turn");
 		expect(outcome.reminderText).not.toContain("no longer in your context");
+	});
+
+	/**
+	 * A config file is read without enum validation, so a typo arrives verbatim
+	 * and matches neither pass. Silently ending every turn with no check is the
+	 * worst of the three outcomes, so it falls back to the default and warns.
+	 */
+	it("falls back to the default, loudly, on a value outside the schema", async () => {
+		// Collected outside the spy: the harness restores mocks, which clears their
+		// own call record.
+		const warnings: string[] = [];
+		vi.spyOn(logger, "warn").mockImplementation(message => {
+			warnings.push(message);
+		});
+		const outcome = await settleAfterEdits({
+			settings: { "edit.afterEdit": "nonsense" },
+			paths: ["/repo/src/a.ts"],
+			settlesTwice: true,
+		});
+		expect(outcome.reminderTypes).toEqual([VERIFICATION_EVIDENCE_REMINDER_TYPE]);
+		expect(warnings.filter(message => message.includes("edit.afterEdit"))).toHaveLength(1);
 	});
 
 	it("exempts a subagent from every value", async () => {
