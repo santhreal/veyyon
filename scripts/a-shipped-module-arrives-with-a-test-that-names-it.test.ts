@@ -375,6 +375,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/stats/src/client/data/useHashRoute.ts",
 	"packages/stats/src/client/data/useResource.ts",
 	"packages/tui/src/components/cancellable-loader.ts",
+	"packages/tui/src/components/editor-helpers.ts",
 	"packages/tui/src/components/settings-search.ts",
 	"packages/typescript-edit-benchmark/src/edit-prompt-bench.ts",
 	"packages/typescript-edit-benchmark/src/goal-budget-context-bench.ts",

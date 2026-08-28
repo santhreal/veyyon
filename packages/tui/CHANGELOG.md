@@ -4,6 +4,7 @@
 
 ### Changed
 - Deep comment strip pass on `tui.ts`, `editor.ts`, and `markdown.ts`.
+- Free helper functions, types, and constants extracted from `editor.ts` (2,771→2,494 lines) into `editor-helpers.ts`.
 - Verbose inline comments stripped from `latex-to-unicode.ts`, `terminal-capabilities.ts`, `settings-list.ts`, `utils.ts`, `select-list.ts`, `keys.ts`, `stdin-buffer.ts`, `fuzzy.ts`, `input.ts`, `image.ts`, `tab-bar.ts`, `motion.ts`, `deccara.ts`.
 - `TUI.#doRender` frame composition extracted into helper methods.
 - Verbose inline comments stripped from `tui.ts`, `editor.ts`, `markdown.ts`, `latex-block.ts`, `autocomplete.ts`, and `terminal.ts`.
