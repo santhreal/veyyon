@@ -1,18 +1,4 @@
-/**
- * How many tokens a message costs, and the cache that keeps the answer.
- *
- * WHY IT IS NOT IN `compaction.ts`. That module is the compaction ENGINE: the summarizer, the cut point and
- * the provider round trip, and it reaches 395 modules to do that job. Estimating a message costs a tokenizer
- * and nothing else. Three modules in this directory wanted only the estimate and had taken it from the
- * engine: `shake.ts` paid 312 marginal modules for it, `pruning.ts` 197, and `branch-summarization.ts` the
- * same edge again. `compaction.ts` re-exports the name it used to declare, so no caller outside changed.
- *
- * The estimate is not a display number. It decides when compaction triggers, how pruning spends its budget,
- * and what the operator's context meter reads, so an estimate that is wrong in one direction silently lets a
- * session exceed the provider window and wrong in the other compacts a session that did not need it. That is
- * why the odd-looking cases below (a `developer` message counting its images, a thinking block counting its
- * signature) are each written with the failure they fix.
- */
+/** How many tokens a message costs, and the cache that keeps the answer. */
 
 import type { AssistantMessage } from "@veyyon/ai";
 import { stringifyJson } from "@veyyon/utils/json";
@@ -20,61 +6,16 @@ import { countTokens } from "../tokenizer";
 import type { AgentMessage } from "../types";
 import { LEGACY_FRAME_TOKEN_ESTIMATE } from "./legacy-snapcompact-archive";
 
-/**
- * Image content has no tokenizer representation; charge a fixed estimate
- * matching what providers typically bill for inline images.
- */
+/** Image content has no tokenizer representation; charge a fixed estimate */
 const IMAGE_TOKEN_ESTIMATE = 1200;
 
-/**
- * Per-message token estimate cache, keyed by message object identity plus a
- * shape digest of the content that identity currently holds.
- *
- * The digest is what makes the entry trustworthy, and it is not optional. The
- * compaction rewrites edit a stored message IN PLACE: `applyShakeRegion`
- * assigns a placeholder over `message.content` and stamps `prunedAt`,
- * `pruning.ts` blanks a tool result the same way, and `dropImages` splices
- * image blocks out of one. Identity survives all three, so an identity-only
- * cache answers every later caller with the size the message had BEFORE the
- * bytes were removed, permanently. The consequences are not cosmetic: the
- * compaction decision floors the provider figure with this estimate
- * (`compactionContextTokens`), so an estimate that cannot fall means a dedup or
- * prune can never bring a session back under the trigger, the post-compaction
- * headroom and retry-fit checks measure a residual that is already gone, and
- * the operator's context meter reports elided bytes as live.
- *
- * So validity is decided by what the message says now, not by whether the
- * object is the same one. Recomputing the digest walks the blocks and reads
- * string lengths, which is what the cache is here to make cheap: the expensive
- * part is `countTokens`, and that still runs only when the shape moved.
- *
- * WHAT THE DIGEST DOES NOT CATCH: an in-place edit that preserves the fragment
- * sequence and every fragment's length (swapping two same-length texts). No
- * rewrite in this directory does that, and one that did would not change the
- * estimate by more than rounding.
- *
- * The two option variants (`default` vs `excludeEncryptedReasoning`) can
- * disagree for a message with encrypted reasoning, and they also walk different
- * fragments, so each keeps its own value and its own digest rather than sharing
- * one slot.
- */
+/** Per-message token estimate cache, keyed by message object identity plus a */
 const tokenEstimateCache = new WeakMap<
 	AgentMessage,
 	{ default?: { value: number; shape: number }; noReasoning?: { value: number; shape: number } }
 >();
 
-/**
- * Estimate token count for a message using cl100k_base via the native
- * tokenizer. This is not Claude's first-party tokenizer (Anthropic doesn't
- * publish one) but is within ~5-10% across English/code text.
- *
- * `excludeEncryptedReasoning` drops opaque provider reasoning payloads
- * (`thinkingSignature`, `redactedThinking`) from the estimate. Those are billed
- * by the provider on replay, so the default counts them — but their *local*
- * byte size can diverge wildly from what the provider charges, so the
- * compaction floor (which only needs the reliably-countable, on-wire-compressible
- * content) excludes them to avoid false triggers on thinking-heavy turns.
- */
+/** Estimate token count for a message using cl100k_base via the native */
 export function estimateTokens(message: AgentMessage, options?: { excludeEncryptedReasoning?: boolean }): number {
 	const slotKey = options?.excludeEncryptedReasoning ? "noReasoning" : "default";
 	// One walk answers "is the cached number still about this content?" without
@@ -103,43 +44,13 @@ function estimateTokensUncached(message: AgentMessage, options?: { excludeEncryp
 	return extra + countTokens(fragments);
 }
 
-/**
- * Roles a host application contributes through the `CustomAgentMessages`
- * augmentation, and the string fields each one carries. This module compiles
- * without them in `AgentMessage`, so they are matched on the role string rather
- * than in the typed switch below.
- *
- * They are not exotic: the host turns each one into a user message on its way to
- * the provider, so their bytes are billed like any other. A role missing from
- * here is content the estimate believes is free, which is the same defect the
- * `developer` case and the user-image charge below each record — and it kept
- * happening on the roles that carry the MOST text. `pythonExecution` (a `$`
- * cell's code and output) counted zero from the day it was added, and
- * `fileMention` counted zero while carrying up to 50KB of file body per turn:
- * a session that mentioned two files reported a fifth of its real prompt to the
- * compaction trigger, the pruning budgets and the operator's context gauge, and
- * the first thing the operator saw was the provider refusing the request.
- *
- * Like `bashExecution` before it, `pythonExecution` is counted even when
- * `excludeFromContext` drops it from the payload: over-counting an excluded cell
- * only makes compaction keener, while under-counting one is the failure above.
- */
+/** Roles a host application contributes through the `CustomAgentMessages` */
 const HOST_ROLE_TEXT_FIELDS: Record<string, readonly string[]> = {
 	bashExecution: ["command", "output"],
 	pythonExecution: ["code", "output"],
 };
 
-/**
- * The one walk over everything a message's estimate counts: every counted text
- * fragment goes to `sink`, and the return value is the token charge for content
- * a tokenizer cannot measure (images, legacy frames).
- *
- * It is a sink rather than a returned array because the cache validity check in
- * {@link estimateTokens} needs the same traversal without keeping the strings.
- * Two traversals would be two places to add a new role to, and a role missing
- * from one of them is a silent wrong answer in exactly the way the cases below
- * record.
- */
+/** The one walk over everything a message's estimate counts: every counted text */
 function walkCountedFragments(
 	message: AgentMessage,
 	options: { excludeEncryptedReasoning?: boolean } | undefined,

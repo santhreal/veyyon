@@ -1,52 +1,17 @@
-/**
- * Optional remote summarizer endpoint for the `summary` compaction strategy.
- *
- * This is a transport, not a compaction strategy. Whatever it points at must
- * return summary TEXT, which veyyon stores in the compaction entry exactly like
- * a locally generated summary: readable in the session log, usable by any model,
- * and portable across providers.
- *
- * Do not confuse it with server-side compaction, which is a separate feature.
- * That one is gated on `compaction.remote` plus a model
- * `resolveServerCompactionTransport` admits, calls the provider's own
- * compaction endpoint, and stores the window it returns as the artifact with
- * no summary at all (`remote-compaction.ts`, `remote-compaction-entry.ts`).
- * This one is gated on `compaction.remoteEndpoint`, points at whatever the
- * operator runs (llama.cpp, vLLM, a purpose-built summarizer), and still
- * writes ordinary summary text. Neither replaces the other. They only share
- * the word "remote", which is how a comment claiming one had replaced the
- * other survived here for as long as it did.
- */
+/** Optional remote summarizer endpoint for the `summary` compaction strategy. */
 
 import { ProviderHttpError } from "@veyyon/ai/error/classes";
 import { parseAzureDeploymentNameMap } from "@veyyon/ai/providers/openai-shared";
 import type { FetchImpl, Model } from "@veyyon/ai/types";
 import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils";
 
-/**
- * Re-exported for callers that already import compaction transports from here.
- * The two dead provider-native keys, and why they are looked past rather than
- * read, are documented at the definition.
- */
+/** Re-exported for callers that already import compaction transports from here. */
 export * from "./legacy-provider-native";
 
-/**
- * Hard ceiling on a remote summarizer call. A hung connection or a body a
- * middlebox never finishes would otherwise stall the whole compaction pipeline
- * forever (frozen maintenance spinner, manual `/compact` queued behind it).
- */
+/** Hard ceiling on a remote summarizer call. A hung connection or a body a */
 export const REMOTE_COMPACTION_TIMEOUT_MS = 180_000;
 
-/**
- * Bound the non-2xx body written into the log line below.
- *
- * `compaction.remoteEndpoint` points at whatever the operator configured, and a
- * misconfigured one is the common case: a corporate proxy, a captive portal, or
- * a plain web server in front of the intended summarizer answers with a whole
- * HTML page. Uncapped, that page was written to `~/.veyyon/profiles/<name>/logs` in full on
- * every compaction attempt of every turn. Matches the 4096-char cap the Google
- * provider path uses for the same hazard.
- */
+/** Bound the non-2xx body written into the log line below. */
 const MAX_REMOTE_ERROR_DETAIL_CHARS = 4096;
 
 export interface RemoteCompactionRequest {
@@ -66,23 +31,7 @@ function resolveRemoteSummarizerModel(model: Model): string {
 	return parseAzureDeploymentNameMap($env.AZURE_OPENAI_DEPLOYMENT_NAME_MAP).get(requestModel) ?? requestModel;
 }
 
-/**
- * POST a conversation to a remote summarizer and return its summary text.
- *
- * Two wire shapes are auto-selected by endpoint suffix so one
- * `compaction.remoteEndpoint` setting can point at either a purpose-built
- * veyyon summarizer (`{systemPrompt, prompt}` -> `{summary}`) or any
- * OpenAI-compatible chat-completions server (`/chat/completions`,
- * `/v1/chat/completions`, ...) as reported for llama.cpp / vLLM in issue #4630:
- * without this the veyyon payload was rejected with HTTP 400
- * `"'messages' is required"`, compaction fell back to local summarization, and
- * context grew unbounded.
- *
- * When `opts.model` is provided the chat-completions body is tagged with that
- * model's wire id (llama.cpp requires the field) and `opts.apiKey` is forwarded
- * as `Authorization: Bearer`. Callers wrap this in `withAuth` so 401s force a
- * refresh through the standard credential rotation policy.
- */
+/** POST a conversation to a remote summarizer and return its summary text. */
 export async function requestRemoteCompaction(
 	endpoint: string,
 	request: RemoteCompactionRequest,

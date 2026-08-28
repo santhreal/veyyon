@@ -1,7 +1,4 @@
-/**
- * Proxy stream function for apps that route LLM calls through a server.
- * The server manages auth and proxies requests to LLM providers.
- */
+/** Proxy stream function for LLM calls routed through a proxy server. */
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -35,9 +32,7 @@ export class ProxyMessageEventStream extends EventStream<AssistantMessageEvent, 
 	}
 }
 
-/**
- * Proxy event types - server sends these with partial field stripped to reduce bandwidth.
- */
+/** Proxy event types - server sends these with partial field stripped to reduce bandwidth. */
 export type ProxyAssistantMessageEvent =
 	| { type: "start" }
 	| { type: "text_start"; contentIndex: number }
@@ -70,25 +65,7 @@ export interface ProxyStreamOptions extends SimpleStreamOptions {
 	fetch?: FetchImpl;
 }
 
-/**
- * Stream function that proxies through a server instead of calling LLM providers directly.
- * The server strips the partial field from delta events to reduce bandwidth.
- * We reconstruct the partial message client-side.
- *
- * Use this as the `streamFn` option when creating an Agent that needs to go through a proxy.
- *
- * @example
- * ```typescript
- * const agent = new Agent({
- *   streamFn: (model, context, options) =>
- *     streamProxy(model, context, {
- *       ...options,
- *       authToken: await getAuthToken(),
- *       proxyUrl: "https://genai.example.com",
- *     }),
- * });
- * ```
- */
+/** Stream function that proxies through a server instead of calling LLM providers directly. */
 export function streamProxy(model: Model, context: Context, options: ProxyStreamOptions): ProxyMessageEventStream {
 	const stream = new ProxyMessageEventStream();
 
@@ -108,9 +85,6 @@ export function streamProxy(model: Model, context: Context, options: ProxyStream
 		const abortHandler = () => {
 			const body = response?.body;
 			if (body) {
-				// The user aborted, so there is no caller left to tell. A stream that refuses to cancel -- most
-				// often because it has already ended -- changes nothing about the abort that is in progress, and
-				// the abort's own error is what surfaces to the caller.
 				body.cancel("Request aborted by user").catch(() => {});
 			}
 		};
@@ -200,27 +174,14 @@ export function streamProxy(model: Model, context: Context, options: ProxyStream
 	return stream;
 }
 
-/**
- * Clear the `partialJson` streaming symbol from any tool-call content blocks
- * that still carry it (e.g. when the stream ended without a `toolcall_end`), so
- * the finalized `AssistantMessage` no longer reads as still-streaming.
- */
+/** Clear the `partialJson` streaming symbol from any tool-call content blocks */
 function scrubPartialJson(partial: AssistantMessage): void {
 	for (const block of partial.content) {
 		if (block?.type === "toolCall") clearStreamingPartialJson(block);
 	}
 }
 
-/**
- * Process a proxy event and update the partial message.
- *
- * Streaming `partialJson` for in-progress tool calls is accumulated in a
- * side-channel map keyed by `contentIndex` and also written onto the content
- * object as a symbol-keyed field so downstream renderers can read it
- * during streaming. The field is cleared at `toolcall_end` and scrubbed from any
- * remaining blocks at `done`/`error` so the finalized `AssistantMessage` never
- * reads as still-streaming.
- */
+/** Process a proxy event and update the partial message. */
 function processProxyEvent(
 	model: Model,
 	proxyEvent: ProxyAssistantMessageEvent,

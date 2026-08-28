@@ -2,25 +2,7 @@ function abortErrorFromSignal(signal: AbortSignal): unknown {
 	return signal.reason !== undefined ? signal.reason : new DOMException("The operation was aborted.", "AbortError");
 }
 
-/**
- * Process-global pause gate for agent loops.
- *
- * Every agent in a process — main session, in-process subagents, advisor —
- * funnels through {@link ../agent-loop!agentLoop}, which polls this gate at its
- * two action boundaries: before each model call and before each tool call
- * starts. Engaging the gate therefore freezes all of them at the next safe
- * point without aborting anything: in-flight provider streams and
- * already-started tool executions run to completion, then every loop parks
- * until {@link AgentPauseGate.resume}. Queued steering/follow-up messages stay
- * queued and deliver normally after resume.
- *
- * A run's own `AbortSignal` still unwinds a parked loop immediately: the park
- * releases on abort (without releasing the gate), so cancelling one run never
- * requires resuming the whole process.
- *
- * Hosts drive the singleton {@link agentPauseGate} (e.g. the TUI `/pause`
- * command); library code only ever reads it.
- */
+/** Process-global pause gate for agent loops. */
 
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
@@ -54,10 +36,7 @@ export class AgentPauseGate {
 		return true;
 	}
 
-	/**
-	 * Release the gate, waking every parked loop. Returns the pause duration in
-	 * ms, or undefined when the gate was not engaged.
-	 */
+	/** Release the gate, waking every parked loop. Returns the pause duration in */
 	resume(): number | undefined {
 		const gate = this.#gate;
 		if (!gate) return undefined;
@@ -73,11 +52,7 @@ export class AgentPauseGate {
 		return () => this.#listeners.delete(listener);
 	}
 
-	/**
-	 * Park until the gate is released. Resolves immediately when not paused.
-	 * An abort on `signal` rejects with the abort error — the gate stays engaged —
-	 * so a cancelled run unwinds while the rest of the process stays frozen.
-	 */
+	/** Park until the gate is released. Resolves immediately when not paused. */
 	async waitUntilResumed(signal?: AbortSignal): Promise<void> {
 		// Loop: resume() swaps the gate promise, so a pause re-engaged while a
 		// waiter is between awaits must re-park instead of slipping through.

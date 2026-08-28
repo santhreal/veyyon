@@ -1,27 +1,4 @@
-/**
- * OpenTelemetry instrumentation for the agent loop.
- *
- * Implements the OpenTelemetry GenAI semantic conventions
- * (https://opentelemetry.io/docs/specs/semconv/gen-ai/) plus `pi.gen_ai.*`
- * extension attributes for run summaries, dashboard summaries, and cost hints
- * that are useful to downstream observability UIs.
- *
- * Span hierarchy emitted by the loop:
- *
- *   invoke_agent {agent.name}         (one per runLoop, gen_ai.operation.name=invoke_agent)
- *   ├── chat {model}                  (one per LLM call, gen_ai.operation.name=chat)
- *   ├── execute_tool {tool.name}      (one per tool call, gen_ai.operation.name=execute_tool)
- *   └── ...
- *
- * The `handoff` operation is emitted via the public {@link recordHandoff}
- * helper for hosts that route work between named agents.
- *
- * Activation is opt-in: callers pass an {@link AgentTelemetryConfig} on
- * `AgentLoopConfig.telemetry`. When unset, every helper short-circuits and
- * the loop performs zero tracer lookups. When set but no OTEL SDK is
- * registered, `@opentelemetry/api` returns a no-op tracer and all calls are
- * cheap pass-throughs.
- */
+/** OpenTelemetry instrumentation for the agent loop. */
 
 import {
 	type Attributes,
@@ -54,10 +31,7 @@ const MAX_TELEMETRY_OBJECT_DEPTH = 3;
 const MAX_TELEMETRY_OBJECT_KEYS = 12;
 const MAX_TELEMETRY_TEXT_CHARS = 240;
 
-/**
- * GenAI semantic-convention attribute keys grouped by operation. Hoisted so
- * call sites stay typo-proof and easy to grep.
- */
+/** GenAI semantic-convention attribute keys grouped by operation. Hoisted so */
 export const enum GenAIAttr {
 	// Common identifiers
 	ProviderName = "gen_ai.provider.name",
@@ -167,11 +141,7 @@ export type GenAIOperationName = (typeof GenAIOperation)[keyof typeof GenAIOpera
 /** Identifies which agent span a callback is reporting on. */
 export type TelemetrySpanKind = "invoke_agent" | "chat" | "execute_tool" | "handoff";
 
-/**
- * Aggregated usage + cost surface passed to {@link AgentTelemetryConfig.costEstimator}.
- * Mirrors the bucketed shape we already emit as span attributes so the
- * estimator never has to re-derive cache-read vs cache-write breakdowns.
- */
+/** Aggregated usage + cost surface passed to {@link AgentTelemetryConfig.costEstimator}. */
 export interface ChatUsageSnapshot {
 	readonly inputTokens: number;
 	readonly outputTokens: number;
@@ -189,13 +159,7 @@ export interface CostEstimatorContext {
 	readonly usage: ChatUsageSnapshot;
 }
 
-/**
- * Cost estimator result.
- *   { usd: number }                — cost is known; emitted as pi.gen_ai.cost.estimated_usd
- *   { unavailable: string }        — cost is intentionally unknown; emitted as
- *                                    pi.gen_ai.cost.unavailable_reason
- *   undefined                      — no opinion; nothing emitted
- */
+/** Cost estimator result. */
 export type CostEstimate =
 	| { readonly usd: number; readonly inputUsd?: number; readonly outputUsd?: number }
 	| { readonly unavailable: string };
@@ -214,12 +178,7 @@ export interface CostDelta {
 	readonly costUnavailableReason: string | undefined;
 }
 
-/**
- * Event fired for every chat step that produced usage, regardless of whether
- * a {@link AgentTelemetryConfig.costEstimator} is configured. Use this to
- * forward token usage to metrics pipelines or dashboards without taking a
- * dependency on the cost estimator path.
- */
+/** Event fired for every chat step that produced usage, regardless of whether */
 export interface ChatUsageEvent {
 	readonly span: Span;
 	readonly agent: AgentIdentity | undefined;
@@ -232,16 +191,7 @@ export interface ChatUsageEvent {
 	readonly cost: CostEstimate | undefined;
 	/** Resolved dynamic attributes for this chat span (from `resolveAttributes`). */
 	readonly attributes: Attributes | undefined;
-	/**
-	 * Response headers captured from the upstream HTTP response, with keys
-	 * lowercased (mirrors {@link ProviderResponseMetadata.headers}). `undefined`
-	 * when the provider transport did not surface headers (non-HTTP providers,
-	 * mocked streams, requests that aborted before headers arrived).
-	 *
-	 * Use this to reconcile gateway-issued ids (e.g. `x-litellm-call-id`) with
-	 * downstream billing / spend dashboards. Known gateway patterns are also
-	 * auto-stamped on the chat span as `pi.gen_ai.gateway.*` attributes.
-	 */
+	/** Response headers captured from the upstream HTTP response, with keys */
 	readonly headers: Readonly<Record<string, string>> | undefined;
 }
 
@@ -300,62 +250,27 @@ export interface TelemetryAttributeContext {
 export interface TelemetryHookContext extends TelemetryAttributeContext {
 	readonly span: Span;
 }
-/**
- * Opt-in OpenTelemetry configuration accepted by the agent loop.
- *
- * All fields are optional. Passing the empty object `{}` enables
- * instrumentation with sensible defaults. Pass `undefined` (or omit the
- * `telemetry` field entirely) to disable everything — the loop performs zero
- * tracer lookups in that case.
- */
+/** Opt-in OpenTelemetry configuration accepted by the agent loop. */
 export interface AgentTelemetryConfig {
-	/**
-	 * Override the tracer instance. When omitted, the loop calls
-	 * `trace.getTracer(tracerName ?? DEFAULT_TRACER_NAME)` lazily on first use.
-	 */
+	/** Override the tracer instance. When omitted, the loop calls */
 	readonly tracer?: Tracer;
 	/** Override the tracer name passed to `trace.getTracer`. */
 	readonly tracerName?: string;
-	/**
-	 * Capture request/response content. `true` preserves the historical full
-	 * payload capture; `"summary"` emits bounded dashboard-friendly summaries;
-	 * `"full"` emits both summaries and full OTEL message payloads.
-	 *
-	 * Defaults to the value of the `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`
-	 * env var (`true`/`1`/`yes` => `"full"`, `"summary"` => `"summary"`).
-	 */
+	/** Capture request/response content. `true` preserves the historical full */
 	readonly captureMessageContent?: TelemetryContentCapture;
 	/** Extra attributes merged onto every emitted span. */
 	readonly attributes?: Attributes;
-	/**
-	 * Attribute resolver merged onto every emitted span after static
-	 * `attributes` and before span-specific attributes. Use this for ambient
-	 * run, tenant, deployment, or request metadata.
-	 */
+	/** Attribute resolver merged onto every emitted span after static */
 	readonly resolveAttributes?: (ctx: TelemetryAttributeContext) => Attributes | undefined;
 	/** Agent identity stamped onto invoke_agent + propagated to children. */
 	readonly agent?: AgentIdentity;
-	/**
-	 * Conversation identifier. When omitted, the loop falls back to
-	 * `AgentLoopConfig.sessionId` for the `gen_ai.conversation.id` attribute.
-	 */
+	/** Conversation identifier. When omitted, the loop falls back to */
 	readonly conversationId?: string;
-	/**
-	 * Per-step cost estimator. Synchronous on purpose — runs inside the chat
-	 * span's finish path. Return `undefined` to emit no cost attribute.
-	 */
+	/** Per-step cost estimator. Synchronous on purpose — runs inside the chat */
 	readonly costEstimator?: (input: CostEstimatorContext) => CostEstimate | undefined;
 	/** Called after cost estimation for a chat step. */
 	readonly onCostDelta?: (delta: CostDelta) => void;
-	/**
-	 * Fired once per chat step that produced usage, regardless of whether a
-	 * {@link costEstimator} is configured. Use this for usage-only metrics
-	 * pipelines (token counters, cache-hit ratios) without paying the cost of
-	 * estimating dollars per call.
-	 *
-	 * **Non-fatal.** Synchronous and asynchronous failures are caught, surfaced
-	 * via {@link onTelemetryWarning}, and swallowed.
-	 */
+	/** Fired once per chat step that produced usage, regardless of whether a */
 	readonly onChatUsage?: (event: ChatUsageEvent) => void | Promise<void>;
 	/** Override provider labels before they are emitted or passed to cost hooks. */
 	readonly normalizeProvider?: (provider: string | undefined) => string | undefined;
@@ -363,41 +278,19 @@ export interface AgentTelemetryConfig {
 	readonly normalizeAgentName?: (name: string | undefined) => string | undefined;
 	/** Override the default bounded JSON serializers used by summary capture. */
 	readonly contentSerializer?: TelemetryContentSerializer;
-	/**
-	 * Final fail-closed transform for every dynamic string crossing into an
-	 * OTEL span, including names, attribute keys/values, events, exceptions,
-	 * status messages, and serialized content.
-	 */
+	/** Final fail-closed transform for every dynamic string crossing into an */
 	readonly textSanitizer?: (text: string) => string;
-	/**
-	 * Called immediately after a span starts. Use to stamp request-side
-	 * context (user id, deployment id, route name) without forking the loop.
-	 */
+	/** Called immediately after a span starts. Use to stamp request-side */
 	readonly onSpanStart?: (ctx: TelemetryHookContext) => void;
-	/**
-	 * Called just before `span.end()`. Use to stamp response-side context
-	 * that depends on the final result.
-	 */
+	/** Called just before `span.end()`. Use to stamp response-side context */
 	readonly onSpanEnd?: (ctx: TelemetryHookContext) => void;
-	/**
-	 * Fired once per `invoke_agent`, immediately after the run-level summary
-	 * is built and aggregate attributes are stamped on the `invoke_agent`
-	 * span. Use this to persist, log, or forward the {@link AgentRunSummary} /
-	 * {@link AgentRunCoverage} value without parsing OTEL spans.
-	 *
-	 * **Non-fatal.** Exceptions thrown from this callback are caught, logged
-	 * via `console.warn`, and swallowed — a misbehaving telemetry consumer can
-	 * NEVER turn a successful agent run into a failed one.
-	 */
+	/** Fired once per `invoke_agent`, immediately after the run-level summary */
 	readonly onRunEnd?: (summary: AgentRunSummary, coverage: AgentRunCoverage) => void;
 	/** Receives non-fatal telemetry callback failures and host-defined warnings. */
 	readonly onTelemetryWarning?: (warning: AgentTelemetryWarning) => void;
 }
 
-/**
- * Public handle used internally to thread the resolved tracer + config
- * through the loop. Constructed once per `agentLoop` invocation.
- */
+/** Public handle used internally to thread the resolved tracer + config */
 export interface AgentTelemetry {
 	readonly config: AgentTelemetryConfig;
 	readonly tracer: Tracer;
@@ -453,11 +346,7 @@ function resolveContentCapture(value: TelemetryContentCapture | undefined): Reso
 	return "none";
 }
 
-/**
- * Start a span with the standard attribute envelope (provider, operation,
- * conversation, agent identity, user-supplied extras) pre-applied. Returns
- * `undefined` when telemetry is disabled.
- */
+/** Start a span with the standard attribute envelope (provider, operation, */
 function startSpan(
 	telemetry: AgentTelemetry | undefined,
 	kind: TelemetrySpanKind,
@@ -509,10 +398,7 @@ interface TelemetryTextSanitizer {
 	): Parameters<Span["recordException"]>[0] | undefined;
 }
 
-/**
- * Exact schema keys owned by this module. These keys are protocol, not
- * caller-provided text, so they must never be rewritten by `textSanitizer`.
- */
+/** Exact schema keys owned by this module. These keys are protocol, not */
 const FIXED_TELEMETRY_ATTRIBUTE_KEYS: Record<string, true> = {
 	"gen_ai.provider.name": true,
 	"gen_ai.operation.name": true,
@@ -975,10 +861,7 @@ function safeOnSpanEnd(telemetry: AgentTelemetry | undefined, ctx: TelemetryHook
 	}
 }
 
-/**
- * Start the outer `invoke_agent` span that wraps a full `runLoop` invocation.
- * Returns `undefined` when telemetry is disabled.
- */
+/** Start the outer `invoke_agent` span that wraps a full `runLoop` invocation. */
 export function startInvokeAgentSpan(telemetry: AgentTelemetry | undefined, model: Model): Span | undefined {
 	const agentName = telemetry?.agent ? normalizeAgentIdentity(telemetry, telemetry.agent).name : undefined;
 	const name = agentName ? `invoke_agent ${agentName}` : "invoke_agent";
@@ -991,10 +874,7 @@ export function applyInvokeAgentFinish(span: Span | undefined, stepCount: number
 	span.setAttribute(PiGenAIAttr.AgentStepCount, stepCount);
 }
 
-/**
- * Start a `chat` span representing one provider call. Parented under the
- * supplied `invoke_agent` span (or whatever is active if none is passed).
- */
+/** Start a `chat` span representing one provider call. Parented under the */
 export function startChatSpan(
 	telemetry: AgentTelemetry | undefined,
 	model: Model,
@@ -1439,10 +1319,7 @@ function serializeToolCallResultForTelemetry(telemetry: AgentTelemetry, result: 
 			: stringifyJsonAttribute(summarizeTelemetryValue(result));
 }
 
-/**
- * Stamp the final response onto a chat span, fire the cost estimator hook,
- * and end the span. No-op when `span` is undefined.
- */
+/** Stamp the final response onto a chat span, fire the cost estimator hook, */
 export async function finishChatSpan(
 	telemetry: AgentTelemetry | undefined,
 	span: Span | undefined,
@@ -1492,12 +1369,7 @@ export async function finishChatSpan(
 	span.end();
 }
 
-/**
- * Record a chat that failed before producing a final `AssistantMessage`
- * (e.g. the provider stream threw mid-iteration). Mirrors `finishChatSpan`'s
- * span-end side effects and pushes a failed `ChatRecord` to the collector so
- * the run summary still reflects the failed step.
- */
+/** Record a chat that failed before producing a final `AssistantMessage` */
 export function failChatSpan(
 	telemetry: AgentTelemetry | undefined,
 	span: Span | undefined,
@@ -1564,25 +1436,14 @@ function applyUsageAttributes(span: Span, usage: Usage | undefined): void {
 	}
 }
 
-/**
- * Result of {@link detectGatewayFromHeaders}. `callId` and `routedTo` are
- * populated only when the gateway surfaces them; consumers should treat
- * `undefined` as "unknown for this gateway" rather than "no value".
- */
+/** Result of {@link detectGatewayFromHeaders}. `callId` and `routedTo` are */
 export interface GatewayHeaderDetection {
 	readonly name: string;
 	readonly callId: string | undefined;
 	readonly routedTo: string | undefined;
 }
 
-/**
- * Identify a known LLM gateway / proxy from response headers (LiteLLM,
- * Helicone, Portkey). Returns `undefined` when no recognizable pattern is
- * present so direct-API traffic stays unaffected.
- *
- * Header keys are matched case-insensitively against the lowercased map that
- * {@link ProviderResponseMetadata.headers} produces.
- */
+/** Identify a known LLM gateway / proxy from response headers (LiteLLM, */
 export function detectGatewayFromHeaders(
 	headers: Readonly<Record<string, string>> | undefined,
 ): GatewayHeaderDetection | undefined {
@@ -1950,11 +1811,7 @@ export async function recordManualChatTelemetry(
 	return span;
 }
 
-/**
- * Start an `execute_tool` span representing one tool invocation. Parented
- * under the supplied `invoke_agent` span by default — pass `parent` to
- * override.
- */
+/** Start an `execute_tool` span representing one tool invocation. Parented */
 export function startExecuteToolSpan(
 	telemetry: AgentTelemetry | undefined,
 	options: {
@@ -1988,13 +1845,7 @@ export function startExecuteToolSpan(
 	return span;
 }
 
-/**
- * End an `execute_tool` span. Pass `status` to specify the terminal status
- * explicitly (`"ok" | "error" | "skipped" | "blocked" | "timeout" |
- * "aborted"`); when omitted, `status` is derived from `isError`. Passing
- * `errorObject` (the thrown value) additionally records an exception with
- * stack.
- */
+/** End an `execute_tool` span. Pass `status` to specify the terminal status */
 export function finishExecuteToolSpan(
 	telemetry: AgentTelemetry | undefined,
 	span: Span | undefined,
@@ -2052,12 +1903,7 @@ export function finishExecuteToolSpan(
 /** Span attribute carrying the terminal {@link ToolStatus}. */
 export const EXECUTE_TOOL_STATUS_ATTR = PiGenAIAttr.ToolStatus;
 
-/**
- * Mapping from non-ok {@link ToolStatus} values to the `error.type` attribute
- * string written on the span when no thrown error is available. The wire
- * format intentionally matches the status string so dashboards can group on
- * one column.
- */
+/** Mapping from non-ok {@link ToolStatus} values to the `error.type` attribute */
 const STATUS_ERROR_TYPE: Record<Exclude<ToolStatus, "ok">, string> = {
 	error: "tool_error",
 	skipped: "tool_skipped",
@@ -2066,13 +1912,7 @@ const STATUS_ERROR_TYPE: Record<Exclude<ToolStatus, "ok">, string> = {
 	aborted: "tool_aborted",
 };
 
-/**
- * Record a tool that bypassed the span lifecycle entirely (pre-run
- * interrupt, post-execution tail sweep for calls that never produced a
- * result message). The LLM still asked for the tool, so it counts toward
- * coverage and toward the relevant `tools.<status>` counter; no span is
- * emitted because the loop never started one.
- */
+/** Record a tool that bypassed the span lifecycle entirely (pre-run */
 export function recordSkippedTool(
 	telemetry: AgentTelemetry | undefined,
 	options: {
@@ -2084,12 +1924,7 @@ export function recordSkippedTool(
 	telemetry?.collector.recordOrphanTool(options);
 }
 
-/**
- * End an `invoke_agent` span. Snapshots the run collector, stamps aggregate
- * `gen_ai.agent.*` attributes on the span, fires the non-fatal
- * {@link AgentTelemetryConfig.onRunEnd} hook, then records any uncaught
- * error and ends the span.
- */
+/** End an `invoke_agent` span. Snapshots the run collector, stamps aggregate */
 export function finishInvokeAgentSpan(
 	telemetry: AgentTelemetry | undefined,
 	span: Span | undefined,
@@ -2121,14 +1956,7 @@ export function finishInvokeAgentSpan(
 	return snapshot;
 }
 
-/**
- * Invoke {@link AgentTelemetryConfig.onRunEnd} on `telemetry` if set. Throws
- * are caught and surfaced via the `onTelemetryWarning` hook (falling back to `console.warn`
- * when no hook is set) — telemetry callbacks NEVER turn a
- * successful agent run into a failed one. Idempotent at the call site via
- * {@link AgentRunCollector.markRunEnded}; callers must check that before
- * calling this helper.
- */
+/** Invoke {@link AgentTelemetryConfig.onRunEnd} on `telemetry` if set. Throws */
 export function fireOnRunEnd(telemetry: AgentTelemetry, summary: AgentRunSummary, coverage: AgentRunCoverage): void {
 	const hook = telemetry.config.onRunEnd;
 	if (!hook) return;
@@ -2205,25 +2033,13 @@ function applyAggregateAttributes(span: Span, summary: AgentRunSummary, coverage
 	span.setAttribute(PiGenAIAggregateAttr.ErrorsCount, summary.errors.total);
 }
 
-/**
- * Run `fn` with `span` activated on the OTEL context. Spans created
- * downstream (provider HTTP clients, MCP tools, user code) attach as
- * children. No-op when `span` is undefined.
- *
- * Required because `tracer.startSpan` creates the span object but does not
- * activate it — without this wrapper, downstream spans attach to whatever
- * context was active before and the parent linkage we advertise is lost.
- */
+/** Run `fn` with `span` activated on the OTEL context. Spans created */
 export function runInActiveSpan<T>(span: Span | undefined, fn: () => Promise<T>): Promise<T> {
 	if (!span) return fn();
 	return context.with(trace.setSpan(context.active(), span), fn);
 }
 
-/**
- * Emit a one-shot `handoff` span describing a transition between two named
- * agents. Pass `parent` to make the span a child of an in-flight
- * invoke_agent span; otherwise the active context's span is used.
- */
+/** Emit a one-shot `handoff` span describing a transition between two named */
 export function recordHandoff(
 	telemetry: AgentTelemetry | undefined,
 	options: {
@@ -2262,10 +2078,7 @@ export function recordHandoff(
 	span.end();
 }
 
-/**
- * Set a single attribute on a possibly-undefined span. Use when the caller
- * needs to attach context outside the standard helpers without a branch.
- */
+/** Set a single attribute on a possibly-undefined span. Use when the caller */
 export function setSpanAttribute(span: Span | undefined, key: string, value: AttributeValue): void {
 	if (!span) return;
 	span.setAttribute(key, value);

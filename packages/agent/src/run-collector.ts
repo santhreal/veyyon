@@ -1,19 +1,4 @@
-/**
- * Per-invocation run aggregator. Buffers per-chat and per-tool records as the
- * loop executes and folds them into a single {@link AgentRunSummary} +
- * {@link AgentRunCoverage} value at the end.
- *
- * One collector lives on each {@link AgentTelemetry} handle, which is
- * constructed once per `agentLoop` invocation in {@link resolveTelemetry}.
- * Collector lookups use the live `Span` as a `WeakMap` key — bounded memory,
- * no cross-invoke leakage.
- *
- * The collector is fed exclusively by helpers in `./telemetry.ts`. Loop
- * authors do not interact with it directly except via the public
- * `recordSkippedTool` helper used for the two skip paths that bypass spans
- * entirely (pre-run interrupt and the tail-sweep for tool calls that never
- * produced a result message).
- */
+/** Per-invocation run aggregator. Buffers per-chat and per-tool records as the */
 
 import type { Span } from "@opentelemetry/api";
 import type { AssistantMessage, Model, StopReason } from "@veyyon/ai";
@@ -60,11 +45,7 @@ export interface ToolCounters {
 	readonly totalLatencyMs: number;
 }
 
-/**
- * Run-level rollup returned in the `agent_end` event and passed to
- * {@link AgentTelemetryConfig.onRunEnd}. Pure aggregation — no references to
- * spans, no callbacks, no live state. Safe to persist / diff / assert.
- */
+/** Run-level rollup returned in the `agent_end` event and passed to */
 export interface AgentRunSummary {
 	readonly chats: {
 		readonly total: number;
@@ -104,10 +85,7 @@ export interface AgentRunSummary {
 	readonly stepCount: number;
 }
 
-/**
- * Coverage rollup: registered-vs-invoked across the run. All arrays are
- * sorted ascending and deduped so the value is stable for diffing.
- */
+/** Coverage rollup: registered-vs-invoked across the run. All arrays are */
 export interface AgentRunCoverage {
 	readonly toolsAvailable: readonly string[];
 	readonly toolsInvoked: readonly string[];
@@ -129,16 +107,7 @@ interface ToolStart {
 	readonly startedAtMs: number;
 }
 
-/**
- * Per-invocation event buffer. Constructed unconditionally inside
- * {@link resolveTelemetry}; cost is one allocation per `agentLoop` call.
- *
- * Methods are intentionally non-throwing — telemetry must never turn a
- * successful agent run into a failed one. WeakMap keys keep span-state
- * lookups bounded; if a finish path is somehow reached without a matching
- * begin (provider crash, tracer swap mid-run), the corresponding record is
- * still emitted with `latencyMs: 0` rather than throwing.
- */
+/** Per-invocation event buffer. Constructed unconditionally inside */
 const kChatStart = Symbol("agent.run-collector.chatStart");
 const kToolStart = Symbol("agent.run-collector.toolStart");
 type SpanWithChatStart = Span & { [kChatStart]?: ChatStart };
@@ -158,13 +127,7 @@ export class AgentRunCollector {
 		return this.#runEnded;
 	}
 
-	/**
-	 * Mark this run as logically ended. Callers use this to coordinate the
-	 * `onRunEnd` hook between the success path (fires inside
-	 * `buildAgentEndEvent`, before `stream.end()`) and the error path (fires
-	 * inside `finishInvokeAgentSpan`'s finally). Idempotent — returns `true`
-	 * the first time, `false` on subsequent calls.
-	 */
+	/** Mark this run as logically ended. Callers use this to coordinate the */
 	markRunEnded(): boolean {
 		if (this.#runEnded) return false;
 		this.#runEnded = true;
@@ -234,11 +197,7 @@ export class AgentRunCollector {
 		});
 	}
 
-	/**
-	 * Stamp the chat span as failed without a finalized AssistantMessage. Used
-	 * by the `catch` arm of `streamAssistantResponse` so error chats still
-	 * appear in the run summary.
-	 */
+	/** Stamp the chat span as failed without a finalized AssistantMessage. Used */
 	failChat(span: Span, fields: { readonly errorType: string }): void {
 		const start = (span as SpanWithChatStart)[kChatStart];
 		(span as SpanWithChatStart)[kChatStart] = undefined;
@@ -281,11 +240,7 @@ export class AgentRunCollector {
 		});
 	}
 
-	/**
-	 * Record a tool that never produced a span — pre-run interrupt or tail
-	 * sweep. The LLM still asked for it, so it counts toward
-	 * {@link AgentRunCoverage.toolsInvoked}.
-	 */
+	/** Record a tool that never produced a span — pre-run interrupt or tail */
 	recordOrphanTool(record: {
 		readonly toolCallId: string;
 		readonly toolName: string;
@@ -432,16 +387,7 @@ export class AgentRunCollector {
 	}
 }
 
-/**
- * Fold multiple per-run summaries into one. Pure aggregation — useful when a
- * caller (verify pass, benchmark harness) drives the agent loop N times and
- * needs a single rollup across all invocations.
- *
- * Counters sum element-wise. Sets (cost reasons, error types, per-tool
- * counters) merge by key. Numeric totals sum. The output is in the same
- * shape as a single `AgentRunSummary`, so all dashboards and persistence
- * layers handle it uniformly.
- */
+/** Fold multiple per-run summaries into one. Pure aggregation — useful when a */
 export function aggregateAgentRunSummaries(summaries: readonly AgentRunSummary[]): AgentRunSummary {
 	if (summaries.length === 0) return EMPTY_SUMMARY;
 	if (summaries.length === 1) return summaries[0];
@@ -610,12 +556,7 @@ export function emptyAgentRunCoverage(): AgentRunCoverage {
 	return EMPTY_COVERAGE;
 }
 
-/**
- * Distinguishable error class thrown when `beforeToolCall` returns
- * `{ block: true }`. Lets the catch arm of `runTool` set the terminal status
- * on the execute_tool span to `"blocked"` instead of conflating with a real
- * tool exception.
- */
+/** Distinguishable error class thrown when `beforeToolCall` returns */
 export class ToolCallBlockedError extends Error {
 	override readonly name = "ToolCallBlockedError";
 	constructor(reason?: string) {

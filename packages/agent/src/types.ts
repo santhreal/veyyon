@@ -22,12 +22,7 @@ import type {
 import type { Dialect } from "@veyyon/ai/dialect";
 
 import type { AgentPauseGate } from "./pause";
-/**
- * Owned-dialect configuration: a fixed dialect, or a per-model resolver that is
- * re-evaluated with the active model on every request. `undefined` (value or
- * resolver result) keeps provider-native tool calling, subject to the
- * `VEYYON_DIALECT` env override.
- */
+/** Owned-dialect configuration: a fixed dialect, or a per-model resolver that is */
 export type ConfiguredDialect = Dialect | ((model: Model) => Dialect | undefined);
 
 import type { HarmonyAuditEvent } from "@veyyon/ai/utils/harmony-leak";
@@ -40,12 +35,7 @@ export type StreamFn = (
 	...args: Parameters<typeof streamSimple>
 ) => AssistantMessageEventStream | Promise<AssistantMessageEventStream>;
 
-/**
- * An aside entry: a ready {@link AgentMessage}, or a sync thunk evaluated at
- * injection time that returns the message to inject or `null` to skip it. Thunks
- * let the producer make the final inject-or-drop decision against current state
- * (e.g. dropping late diagnostics a newer edit superseded).
- */
+/** An aside entry: a ready {@link AgentMessage}, or a sync thunk evaluated at */
 export type AsideMessage = AgentMessage | (() => AgentMessage | null);
 
 export interface AgentTurnEndContext {
@@ -57,25 +47,11 @@ export interface AgentTurnEndContext {
 	willContinue: boolean;
 }
 
-/**
- * A soft tool requirement: the host wants `toolName` called before the loop
- * runs other tools or yields, but WITHOUT paying the forced-`toolChoice` cost
- * up front (changing `tool_choice` invalidates the provider message cache).
- * Returned from {@link AgentLoopConfig.getToolChoice} in place of a hard
- * {@link ToolChoice}: the loop injects `reminder` once when a new `id` becomes
- * active, runs with `toolChoice` unchanged, and escalates to a one-turn forced
- * choice only if the model fails to call `toolName`. Auto-clears when the host
- * stops returning it or `toolName` is no longer an active tool.
- */
+/** A soft tool requirement: the host wants `toolName` called before the loop */
 export interface SoftToolRequirement {
 	/** Discriminates a soft requirement from a hard {@link ToolChoice}. */
 	soft: true;
-	/**
-	 * Stable id of the *current* requirement. The loop injects `reminder` when
-	 * this id first becomes active and again whenever it changes (e.g. one
-	 * stacked preview resolves and the next becomes the head), but never
-	 * re-injects for an unchanged id across turns.
-	 */
+	/** Stable id of the *current* requirement. The loop injects `reminder` when */
 	id: string;
 	/** Tool that must be called before the loop runs other tools or yields. */
 	toolName: string;
@@ -83,10 +59,7 @@ export interface SoftToolRequirement {
 	reminder: AgentMessage[];
 }
 
-/**
- * A per-turn tool-choice directive: either a hard provider {@link ToolChoice}
- * (applied verbatim) or a {@link SoftToolRequirement} (remind-then-escalate).
- */
+/** A per-turn tool-choice directive: either a hard provider {@link ToolChoice} */
 export type ToolChoiceDirective = ToolChoice | SoftToolRequirement;
 
 /** True when a {@link ToolChoiceDirective} is a soft requirement, not a hard choice. */
@@ -105,18 +78,7 @@ export interface SteeringQueueState {
 	source?: SteeringInterruptSource;
 }
 
-/**
- * The two forms of a tool call's arguments produced by
- * {@link AgentLoopConfig.transformToolCallArguments}.
- *
- * They exist separately because argument expansions disagree about their
- * audience. A codec handle MUST be expanded before a person reads it — the whole
- * point is that nobody should have to decode `§handle` by eye. A secret
- * placeholder MUST NOT be: the expanded form is a live credential, and a display
- * or a session file is exactly where it must never appear. One shared form
- * cannot satisfy both, so the transform states which form each audience gets and
- * the loop routes them.
- */
+/** The two forms of a tool call's arguments produced by */
 export interface ToolCallArgumentTransform {
 	/** Fully expanded arguments. Only `tool.execute` and `beforeToolCall` see these. */
 	execution: Record<string, unknown>;
@@ -124,403 +86,121 @@ export interface ToolCallArgumentTransform {
 	display: Record<string, unknown>;
 }
 
-/**
- * Configuration for the agent loop.
- */
+/** Configuration for the agent loop. */
 export interface AgentLoopConfig extends SimpleStreamOptions {
 	model: Model;
 
-	/**
-	 * Pause boundary for this loop. Defaults to the process-wide gate used by
-	 * hosts; embedders with independent execution domains may inject a scoped
-	 * gate so pausing one domain cannot freeze another.
-	 */
+	/** Pause boundary for this loop. Defaults to the process-wide gate used by */
 	pauseGate?: AgentPauseGate;
 
-	/**
-	 * When to interrupt tool execution for steering messages.
-	 * - "immediate" = check after each tool call (default)
-	 * - "wait" = defer steering until the current turn completes
-	 */
+	/** When to interrupt tool execution for steering messages. */
 	interruptMode?: "immediate" | "wait";
 
-	/**
-	 * Optional session identifier forwarded to LLM providers.
-	 * Used by providers that support session-based caching (e.g., OpenAI Codex).
-	 */
+	/** Optional session identifier forwarded to LLM providers. */
 	sessionId?: string;
 
 	/** Absolute wall-clock deadline in Unix epoch milliseconds. */
 	deadline?: number;
 
-	/**
-	 * Optional resolver called per LLM request to produce request metadata.
-	 * When set, the agent loop evaluates it **after** `getApiKey` resolves the
-	 * session-sticky credential, ensuring the metadata's `account_uuid` reflects
-	 * the credential actually used for the request (not the credential that was
-	 * current when `AgentLoopConfig` was first constructed). Overrides the static
-	 * `metadata` field when present.
-	 */
+	/** Optional resolver called per LLM request to produce request metadata. */
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined;
 
-	/**
-	 * Converts AgentMessage[] to LLM-compatible Message[] before each LLM call.
-	 *
-	 * Each AgentMessage must be converted to a UserMessage, AssistantMessage, or ToolResultMessage
-	 * that the LLM can understand. AgentMessages that cannot be converted (e.g., UI-only notifications,
-	 * status messages) should be filtered out.
-	 *
-	 * @example
-	 * ```typescript
-	 * convertToLlm: (messages) => messages.flatMap(m => {
-	 *   if (m.role === "custom") {
-	 *     // Convert custom message to user message
-	 *     return [{ role: "user", content: m.content, timestamp: m.timestamp }];
-	 *   }
-	 *   if (m.role === "notification") {
-	 *     // Filter out UI-only messages
-	 *     return [];
-	 *   }
-	 *   // Pass through standard LLM messages
-	 *   return [m];
-	 * })
-	 * ```
-	 */
+	/** Converts AgentMessage[] to LLM-compatible Message[] before each LLM call. */
 	convertToLlm: (messages: AgentMessage[]) => Message[] | Promise<Message[]>;
 
-	/**
-	 * Optional transform applied to the context before `convertToLlm`.
-	 *
-	 * Use this for operations that work at the AgentMessage level:
-	 * - Context window management (pruning old messages)
-	 * - Injecting context from external sources
-	 *
-	 * @example
-	 * ```typescript
-	 * transformContext: async (messages) => {
-	 *   if (estimateTokens(messages) > MAX_TOKENS) {
-	 *     return pruneOldMessages(messages);
-	 *   }
-	 *   return messages;
-	 * }
-	 * ```
-	 */
+	/** Optional transform applied to the context before `convertToLlm`. */
 	transformContext?: (messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>;
 
-	/**
-	 * Optional transform applied to the final provider context after conversion,
-	 * normalization, and append-only context handling, but before telemetry capture
-	 * and provider send.
-	 */
+	/** Optional transform applied to the final provider context after conversion, */
 	transformProviderContext?: (context: Context, model: Model) => Context | Promise<Context>;
 
-	/**
-	 * Resolves the API key or resolver for the current model before each LLM call.
-	 *
-	 * Returning an ApiKeyResolver lets the stream retry policy refresh or rotate
-	 * the model-scoped credential after auth/usage-limit errors.
-	 */
+	/** Resolves the API key or resolver for the current model before each LLM call. */
 	getApiKey?: (model: Model) => Promise<ApiKey | undefined> | ApiKey | undefined;
 
-	/**
-	 * Returns steering messages to inject into the conversation mid-run.
-	 *
-	 * Called at injection boundaries only (loop start and after a tool batch
-	 * fully settles), so dequeued messages are immediately injected. The
-	 * mid-batch interrupt poll uses {@link hasSteeringMessages} instead and
-	 * never consumes the queue.
-	 */
+	/** Returns steering messages to inject into the conversation mid-run. */
 	getSteeringMessages?: () => Promise<AgentMessage[]>;
 
-	/**
-	 * Peeks whether steering messages are queued, without consuming them.
-	 *
-	 * Called after each tool execution (unless interruptMode is "wait") to decide
-	 * whether to skip the remaining tool calls in the batch. The queue keeps
-	 * owning its messages until the loop reaches the next injection boundary and
-	 * dequeues via {@link getSteeringMessages} — so callers can still cancel or
-	 * restore queued messages while in-flight tools settle, and an external
-	 * abort in that window leaves the queue intact for a post-abort continue.
-	 *
-	 * Returning `true` is treated as user-originated steering for compatibility.
-	 * Return a {@link SteeringQueueState} when the queue can distinguish system
-	 * advisories from real user messages.
-	 *
-	 * When omitted, steering never interrupts a running tool batch; queued
-	 * messages are still delivered at the next injection boundary.
-	 */
+	/** Peeks whether steering messages are queued, without consuming them. */
 	hasSteeringMessages?: () => boolean | SteeringQueueState | Promise<boolean | SteeringQueueState>;
 
-	/**
-	 * Peeks whether IRC messages should interrupt an interruptible waiting tool.
-	 *
-	 * Uses the same delivery rules as steering: the poll is non-consuming, only
-	 * runs for interruptible tools, and is ignored when interruptMode is "wait".
-	 * The host owns message injection at the next boundary.
-	 */
+	/** Peeks whether IRC messages should interrupt an interruptible waiting tool. */
 	hasIrcInterrupts?: () => boolean | Promise<boolean>;
 
-	/**
-	 * Returns follow-up messages to process after the agent would otherwise stop.
-	 *
-	 * Called when the agent has no more tool calls and no steering messages.
-	 * If messages are returned, they're added to the context and the agent
-	 * continues with another turn.
-	 */
+	/** Returns follow-up messages to process after the agent would otherwise stop. */
 	getFollowUpMessages?: () => Promise<AgentMessage[]>;
-	/**
-	 * Returns non-interrupting "aside" messages to inject at a step boundary.
-	 *
-	 * Polled after each tool batch (before the next LLM call) AND at the yield
-	 * check. Unlike steering, these NEVER abort in-flight tools — they are passive
-	 * notifications (e.g. background-job completions, late LSP diagnostics) that
-	 * should reach the model between requests without waiting for the agent to
-	 * fully stop. Returned messages are appended to the context with normal
-	 * message events and keep the loop running so the model can react.
-	 */
+	/** Returns non-interrupting "aside" messages to inject at a step boundary. */
 	getAsideMessages?: () => Promise<AsideMessage[]>;
-	/**
-	 * Hook fired right before the loop would exit.
-	 *
-	 * Called when the agent has no more tool calls and no steering messages,
-	 * immediately before polling follow-up messages.
-	 */
+	/** Hook fired right before the loop would exit. */
 	onBeforeYield?: () => Promise<void> | void;
 
-	/**
-	 * Provides tool execution context, resolved per tool call.
-	 * Use for late-bound UI or session state access.
-	 */
+	/** Provides tool execution context, resolved per tool call. */
 	getToolContext?: (toolCall?: ToolCallContext) => AgentToolContext | undefined;
 
-	/**
-	 * Refreshes prompt/tool context from live session state before each model call.
-	 * Use this when tool availability or the system prompt can change mid-turn.
-	 */
+	/** Refreshes prompt/tool context from live session state before each model call. */
 	syncContextBeforeModelCall?: (context: AgentContext) => void | Promise<void>;
 
-	/**
-	 * Optional transform applied to tool call arguments, once, straight after
-	 * argument validation and before anything else reads them.
-	 *
-	 * It returns TWO forms of the arguments because expansions do not all have the
-	 * same audience, and one shared form cannot serve both:
-	 *
-	 * - `execution` reaches `tool.execute` and `beforeToolCall`. Every expansion
-	 *   applies, including ones whose expanded text must never be shown.
-	 * - `display` reaches `tool_execution_start`, `tool_execution_update`, the
-	 *   telemetry span and the recorded tool call, so it is what an operator reads
-	 *   and what a serializer persists. Only expansions safe to reveal apply.
-	 *
-	 * Return the same object for both when the distinction does not apply; nothing
-	 * copies it.
-	 *
-	 * Throwing fails the call with the thrown message as the tool error; the tool
-	 * does not run.
-	 */
+	/** Optional transform applied to tool call arguments, once, straight after */
 	transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => ToolCallArgumentTransform;
 
-	/**
-	 * Enable intent tracing for tool calls.
-	 * When enabled, the harness injects a `string` field into tool schemas sent to the model,
-	 * then strips from arguments before executing tools.
-	 *
-	 * A resolved boolean, not a resolver: the loop config is rebuilt per turn, so `Agent` calls its own
-	 * resolver when it builds this and the whole turn sees one consistent answer. Making it a function
-	 * here would let the schema injection and the argument stripping disagree within a single turn.
-	 */
+	/** Enable intent tracing for tool calls. */
 	intentTracing?: boolean;
-	/**
-	 * How densely each tool call records a study record on its result message.
-	 * `undefined`/`"off"` attaches nothing (default); higher levels attach
-	 * progressively more (see {@link InstrumentationLevel}). The loop measures
-	 * the raw timings and delegates the level→fields decision to
-	 * {@link captureToolCallMetrics}.
-	 */
+	/** How densely each tool call records a study record on its result message. */
 	instrumentation?: InstrumentationLevel;
-	/**
-	 * Strip tool descriptions (top-level + nested schema annotations) from the
-	 * provider-bound tool specs. Use when the full catalog is rendered into the
-	 * system prompt instead, so descriptions are not duplicated on the wire.
-	 */
+	/** Strip tool descriptions (top-level + nested schema annotations) from the */
 	pruneToolDescriptions?: boolean;
-	/**
-	 * Owned tool calling dialect.
-	 *
-	 * Undefined keeps provider-native tool calling. A dialect value sends no
-	 * native `tools`, forces `toolChoice` off, appends that dialect's tool catalog
-	 * instructions, re-encodes prior tool calls/results as text, and parses the
-	 * model's text output back into canonical `toolCall` blocks.
-	 *
-	 * A function form is re-evaluated with the active model on every request, so
-	 * mid-session model switches pick the right tool-calling shape (e.g. a switch
-	 * to a `supportsTools: false` model engages an in-band dialect instead of
-	 * sending a native `tools` param the endpoint rejects).
-	 */
+	/** Owned tool calling dialect. */
 	dialect?: ConfiguredDialect;
-	/**
-	 * When owned (in-band) tool calling is active and the model starts
-	 * fabricating a tool result inside its own turn, control how the loop reacts:
-	 * - `true` (default): abort the provider request immediately so it stops
-	 *   generating the hallucinated continuation (cheaper, lower latency).
-	 * - `false`: let the request finish and silently discard everything past the
-	 *   fabrication boundary (keeps the connection alive but pays for the tokens
-	 *   the model spends on the discarded tail).
-	 * Only meaningful when {@link dialect} (or `VEYYON_DIALECT`) selects an
-	 * owned dialect; native tool calling never fabricates results in text.
-	 */
+	/** When owned (in-band) tool calling is active and the model starts */
 	abortOnFabricatedToolResult?: boolean;
-	/**
-	 * Append-only context mode — stabilizes system prompt + tool spec bytes
-	 * across turns so provider prefix caches hit at maximum rate.
-	 *
-	 * When set, the loop reads messages from the append-only log (stable
-	 * byte prefix) and caches system prompt + tools. Tools exclude per-turn
-	 * `i` intent fields.
-	 */
+	/** Append-only context mode — stabilizes system prompt + tool spec bytes */
 	appendOnlyContext?: AppendOnlyContextManager;
 
-	/**
-	 * Inspect assistant streaming events before they are published to the outer agent event stream.
-	 * Callers may abort synchronously to stop consuming buffered provider events.
-	 */
+	/** Inspect assistant streaming events before they are published to the outer agent event stream. */
 	onAssistantMessageEvent?: (message: AssistantMessage, event: AssistantMessageEvent) => void;
 
-	/**
-	 * Called when GPT-5 Harmony protocol leakage is detected and mitigated.
-	 */
+	/** Called when GPT-5 Harmony protocol leakage is detected and mitigated. */
 	onHarmonyLeak?: (event: HarmonyAuditEvent) => void | Promise<void>;
 
-	/**
-	 * Dynamic tool-choice directive, resolved once per turn. Returns a hard
-	 * {@link ToolChoice} (applied verbatim, overriding the static `toolChoice`),
-	 * a {@link SoftToolRequirement} (the loop reminds-then-escalates instead of
-	 * forcing `tool_choice` immediately, so a model that complies with the
-	 * reminder pays no message-cache invalidation), or `undefined` to fall back
-	 * to the static `toolChoice`.
-	 */
+	/** Dynamic tool-choice directive, resolved once per turn. Returns a hard */
 	getToolChoice?: () => ToolChoiceDirective | undefined;
 
-	/**
-	 * Dynamic reasoning effort override, resolved per LLM call.
-	 * When set and returns a value, overrides the static `reasoning` captured
-	 * at run-loop start. Use this so mid-run thinking-level changes apply on
-	 * the next model call instead of waiting for the next prompt.
-	 */
+	/** Dynamic reasoning effort override, resolved per LLM call. */
 	getReasoning?: () => Effort | undefined;
-	/**
-	 * Dynamic model override, resolved once per LLM call. When set, each
-	 * provider call re-reads the model (like {@link getReasoning}) so mid-run
-	 * model switches — context promotion, retry fallback — apply on the next
-	 * call instead of the run finishing on the stale model captured at
-	 * run-loop start. Falls back to the static {@link model} when unset.
-	 */
+	/** Dynamic model override, resolved once per LLM call. When set, each */
 	getModel?: () => Model;
 
-	/**
-	 * Dynamic reasoning-disable override, resolved per LLM call. When set,
-	 * its return value overrides the static `disableReasoning` from
-	 * `SimpleStreamOptions` for that request. Pair with `getReasoning` so
-	 * mid-run transitions into and out of the explicit `off` state propagate
-	 * to the next provider call.
-	 */
+	/** Dynamic reasoning-disable override, resolved per LLM call. When set, */
 	getDisableReasoning?: () => boolean | undefined;
 
-	/**
-	 * Per-call effective service-tier resolver. Unlike {@link getReasoning},
-	 * this is *authoritative*: when set, its return value (including
-	 * `undefined`) fully replaces the static `serviceTier` for the request and
-	 * its telemetry. The resolver receives the model being requested so the
-	 * caller can scope the tier per provider/model without mutating the shared
-	 * session `serviceTier` (e.g. opting a Fireworks model into the Priority
-	 * serving path while leaving the OpenAI/Anthropic tier untouched).
-	 */
+	/** Per-call effective service-tier resolver. Unlike {@link getReasoning}, */
 	getServiceTier?: (model: Model) => ServiceTier | undefined;
 
-	/**
-	 * Per-call working-directory resolver, read once per LLM call. When set, its
-	 * return value overrides the static {@link SimpleStreamOptions.cwd} for the
-	 * request (falling back to that static `cwd` when it returns `undefined`).
-	 * Lets the host reflect a session move (`/move`, which updates the working
-	 * directory without reconstructing the loop config) into provider options —
-	 * e.g. GitLab Duo Agent namespace/project discovery keys off this cwd's git
-	 * remote, so a stale value would strand discovery on the original repo.
-	 */
+	/** Per-call working-directory resolver, read once per LLM call. When set, its */
 	getCwd?: () => string | undefined;
 
-	/**
-	 * Called after a tool call has been validated and is about to execute.
-	 *
-	 * Return `{ block: true }` to prevent execution. The loop emits an error tool
-	 * result instead (using `reason` as the error text, or a default if omitted).
-	 *
-	 * Mutating `context.args` in place changes the arguments passed to `tool.execute`
-	 * — the loop does **not** re-validate after this hook runs.
-	 *
-	 * The hook receives the tool abort signal (`signal`) and is responsible for
-	 * honoring it. Throwing surfaces as a tool-error result and does not abort the
-	 * rest of the batch.
-	 */
+	/** Called after a tool call has been validated and is about to execute. */
 	beforeToolCall?: (
 		context: BeforeToolCallContext,
 		signal?: AbortSignal,
 	) => Promise<BeforeToolCallResult | undefined> | BeforeToolCallResult | undefined;
-	/**
-	 * Called after a turn ends and before the loop polls steering/asides for the
-	 * next iteration. `context` carries the just-finished turn; `context.willContinue`
-	 * is true when the current tool-loop batch is continuing without yielding to
-	 * post-turn steering.
-	 */
+	/** Called after a turn ends and before the loop polls steering/asides for the */
 	onTurnEnd?: (messages: AgentMessage[], signal?: AbortSignal, context?: AgentTurnEndContext) => Promise<void> | void;
 
-	/**
-	 * Called once an assistant message is finalized from the model stream, before
-	 * it is appended to the context, emitted as `message_end`, or its tool calls
-	 * are validated and dispatched. The hook may mutate the message in place —
-	 * both its text content and its tool-call arguments — and those edits are seen
-	 * by the transcript, the UI, and tool execution alike (single source of truth).
-	 *
-	 * Used for inline macro expansion: rewriting `@[[runtime.name(args)]]` tokens
-	 * to host-computed values before anything downstream consumes the message.
-	 * Runs at most once per assistant message; must not throw (a throw would abort
-	 * the turn).
-	 */
+	/** Called once an assistant message is finalized from the model stream, before */
 	transformAssistantMessage?: (message: AssistantMessage, signal?: AbortSignal) => Promise<void> | void;
 
-	/**
-	 * Called after a tool finishes executing, before `tool_execution_end` and the
-	 * tool-result message are emitted.
-	 *
-	 * Return an `AfterToolCallResult` to override individual fields of the executed
-	 * tool result. Omitted fields keep their original values; there is no deep merge.
-	 *
-	 * Throwing surfaces as a tool-error result and does not abort the rest of the batch.
-	 */
+	/** Called after a tool finishes executing, before `tool_execution_end` and the */
 	afterToolCall?: (
 		context: AfterToolCallContext,
 		signal?: AbortSignal,
 	) => Promise<AfterToolCallResult | undefined> | AfterToolCallResult | undefined;
-	/**
-	 * Schema-based tool-call repair (fix-if-clear, refuse-if-ambiguous), run before
-	 * `validateToolArguments`. When repair returns `unrepairable`, the loop emits
-	 * an error tool result and does not dispatch.
-	 */
+	/** Schema-based tool-call repair (fix-if-clear, refuse-if-ambiguous), run before */
 	repairToolCallArguments?: (tool: AgentTool, toolCall: AgentToolCall) => ToolCallRepairResult;
-	/**
-	 * Opt-in OpenTelemetry instrumentation. Passing `{}` enables the loop's
-	 * GenAI-semantic-convention spans (`invoke_agent`, `chat`, `execute_tool`)
-	 * using the global tracer provider. Leaving this field undefined disables
-	 * the instrumentation entirely — the loop performs zero tracer lookups.
-	 *
-	 * See {@link AgentTelemetryConfig} for the full surface (hooks, content
-	 * capture, cost estimator, agent identity).
-	 */
+	/** Opt-in OpenTelemetry instrumentation. Passing `{}` enables the loop's */
 	telemetry?: AgentTelemetryConfig;
 }
 
-/**
- * Batch/sequencing metadata for the tool call currently being processed.
- */
+/** Batch/sequencing metadata for the tool call currently being processed. */
 export interface ToolCallContext {
 	batchId: string;
 	index: number;
@@ -531,26 +211,13 @@ export interface ToolCallContext {
 /** A single tool-call content block emitted by an assistant message. */
 export type AgentToolCall = Extract<AssistantMessage["content"][number], { type: "toolCall" }>;
 
-/**
- * Result returned from `beforeToolCall`.
- *
- * Set `block: true` to prevent the tool from executing. The loop emits an error tool
- * result instead, using `reason` as the error text (or a default if omitted).
- *
- * Mutating the `args` reference passed in `BeforeToolCallContext` is supported and
- * survives into execution — the loop does **not** re-validate after this hook runs.
- */
+/** Result returned from `beforeToolCall`. */
 export interface BeforeToolCallResult {
 	block?: boolean;
 	reason?: string;
 }
 
-/**
- * Partial override returned from `afterToolCall`.
- *
- * Merge semantics are field-by-field; omitted fields keep the executed values.
- * No deep merge is performed.
- */
+/** Partial override returned from `afterToolCall`. */
 export interface AfterToolCallResult {
 	/** If provided, replaces the tool result content array in full. */
 	content?: (TextContent | ImageContent)[];
@@ -578,13 +245,7 @@ export interface BeforeToolCallContext {
 	assistantMessage: AssistantMessage;
 	/** The raw tool call block from `assistantMessage.content`. */
 	toolCall: AgentToolCall;
-	/**
-	 * Validated tool arguments in their `execution` form — fully expanded, the same
-	 * reference forwarded to `tool.execute`, so in-place mutations stick. This hook
-	 * decides whether the call runs, so it sees what would run. Anything that only
-	 * displays or records arguments gets the `display` form instead, which is why
-	 * these may contain expanded secrets and must not be logged.
-	 */
+	/** Validated tool arguments in their `execution` form — fully expanded, the same */
 	args: Record<string, unknown>;
 	/** Current agent context at the time the tool call is prepared. */
 	context: AgentContext;
@@ -596,11 +257,7 @@ export interface AfterToolCallContext {
 	assistantMessage: AssistantMessage;
 	/** The raw tool call block from `assistantMessage.content`. */
 	toolCall: AgentToolCall;
-	/**
-	 * Tool arguments in their `display` form: the recorded arguments, safe to
-	 * reveal. This hook runs after execution and cannot change what ran, so it is
-	 * given the recorded form rather than the expanded one.
-	 */
+	/** Tool arguments in their `display` form: the recorded arguments, safe to */
 	args: Record<string, unknown>;
 	/** The executed tool result before any `afterToolCall` overrides are applied. */
 	result: AgentToolResult<any>;
@@ -610,34 +267,15 @@ export interface AfterToolCallContext {
 	context: AgentContext;
 }
 
-/**
- * Extensible interface for custom app messages.
- * Apps can extend via declaration merging:
- *
- * @example
- * ```typescript
- * declare module "@veyyon/agent" {
- *   interface CustomAgentMessages {
- *     artifact: ArtifactMessage;
- *     notification: NotificationMessage;
- *   }
- * }
- * ```
- */
+/** Extensible interface for custom app messages. */
 export interface CustomAgentMessages {
 	// Empty by default - apps extend via declaration merging
 }
 
-/**
- * AgentMessage: Union of LLM messages + custom messages.
- * This abstraction allows apps to add custom message types while maintaining
- * type safety and compatibility with the base LLM messages.
- */
+/** AgentMessage: Union of LLM messages + custom messages. */
 export type AgentMessage = Message | CustomAgentMessages[keyof CustomAgentMessages];
 
-/**
- * Agent state containing all configuration and conversation data.
- */
+/** Agent state containing all configuration and conversation data. */
 export interface AgentState {
 	systemPrompt: string[];
 	model: Model;
@@ -681,32 +319,13 @@ export interface RenderResultOptions {
 /** Capability tier a tool exercises. Determines which approval modes auto-approve it. */
 export type ToolTier = "read" | "write" | "exec";
 
-/**
- * Per-tool approval declaration.
- * - bare tier ("read" / "write" / "exec") — static classification.
- * - object form — adds a `reason` (shown in the prompt) and/or `override: true`
- *   (force-prompt even in modes that would otherwise auto-approve this tier).
- * - function — dynamic, given parsed args. Returns either form above.
- *
- * `critical: true` is `override` with a floor under it. An override forces a
- * prompt in `plan`, `ask` and `auto-edit`, and yolo skips it entirely, so the
- * most dangerous calls were the ones most likely to run in the mode that
- * ignored the check. A critical decision still prompts in yolo and survives the
- * `/yolo` bypass. Setting `tools.approval.<tool>` explicitly remains
- * authoritative in both directions, so `allow` is the escape hatch and `deny`
- * is still a hard block.
- *
- * Omitted approvals are treated as "exec" by callers that enforce approvals.
- */
+/** Per-tool approval declaration. */
 export type ToolApprovalDecision =
 	| ToolTier
 	| { tier: ToolTier; reason?: string; override?: boolean; critical?: boolean };
 export type ToolApproval = ToolApprovalDecision | ((args: unknown) => ToolApprovalDecision);
 
-/**
- * Context passed to tool execution.
- * Apps can extend via declaration merging.
- */
+/** Context passed to tool execution. */
 export interface AgentToolContext {
 	// Empty by default - apps extend via declaration merging
 }
@@ -733,70 +352,22 @@ export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = unk
 	loadMode?: "essential" | "discoverable";
 	/** Short one-line summary used for tool discovery indexes. */
 	summary?: string;
-	/**
-	 * Concurrency mode for tool scheduling when multiple calls are in one turn.
-	 * - "shared": can run alongside other shared tools (default)
-	 * - "exclusive": runs alone; other tools wait until it finishes
-	 * - function: resolved per call from the (raw, pre-validation) arguments
-	 */
+	/** Concurrency mode for tool scheduling when multiple calls are in one turn. */
 	concurrency?: "shared" | "exclusive" | ((args: Partial<Static<TParameters>>) => "shared" | "exclusive");
 	/** If true, argument validation errors are non-fatal: raw args are passed to execute() instead of returning an error to the LLM. */
 	lenientArgValidation?: boolean;
-	/**
-	 * Whether the agent loop may abort this call mid-execution to deliver a
-	 * queued steering message (instead of waiting for it to finish on its own).
-	 * Set only where the call purely *waits* and observes its abort signal
-	 * cleanly (e.g. the `job` poll), so the abort surfaces the tool's current
-	 * snapshot rather than corrupting a side effect. Honored only when
-	 * `interruptMode` is "immediate".
-	 *
-	 * - boolean: every call to the tool is (or is not) interruptible.
-	 * - function: resolved per call from the (raw, pre-validation) arguments,
-	 *   for a tool where only some operations block. A tool that declares itself
-	 *   interruptible for every call hands its non-blocking calls the same abort
-	 *   signal, and an interrupt landing before one of those starts replaces its
-	 *   real result with a "skipped" placeholder — including the validation error
-	 *   a malformed call was about to report. A resolver that throws is treated
-	 *   as `false`.
-	 */
+	/** Whether the agent loop may abort this call mid-execution to deliver a */
 	interruptible?: boolean | ((args: Partial<Static<TParameters>>) => boolean);
-	/**
-	 * Controls how the INTENT_FIELD (`i`) is handled for this tool.
-	 * - `"require"` (default): `i` is injected and required in the parameter schema.
-	 * - `"optional"`: `i` is injected as an optional/nullable field.
-	 * - `"omit"`: `i` is NOT injected. Use for tools where intent is obvious (yield, resolve, todo, …).
-	 * - function: `i` is NOT injected; intent is derived dynamically from (potentially partial / streaming) args.
-	 */
+	/** Controls how the INTENT_FIELD (`i`) is handled for this tool. */
 	intent?: "omit" | "optional" | "require" | ((args: Partial<Static<TParameters>>) => string | undefined);
 
-	/**
-	 * Normalize (potentially partial) streamed arguments into the plain text that
-	 * stream-content matchers (e.g. TTSR rules) should inspect — the real content
-	 * the call introduces, without wire grammar such as patch prefixes or JSON
-	 * string escaping. Return `undefined` to fall back to raw argument-delta
-	 * matching.
-	 */
+	/** Normalize (potentially partial) streamed arguments into the plain text that */
 	matcherDigest?: (args: unknown) => string | undefined;
 
-	/**
-	 * Surface the target file paths a (potentially partial) streamed call would
-	 * touch, so path-scoped stream matchers (e.g. TTSR `tool:edit(*.ts)` globs)
-	 * can match without a top-level `path`/`paths` argument. Used for tools whose
-	 * wire grammar embeds paths inside the streamed payload (hashline section
-	 * headers, apply_patch envelope markers). Return `undefined` (or an empty
-	 * array) to fall back to the caller's top-level argument scan.
-	 */
+	/** Surface the target file paths a (potentially partial) streamed call would */
 	matcherPaths?: (args: unknown) => readonly string[] | undefined;
 
-	/**
-	 * Per-file projection of a (potentially partial) streamed call, pairing each
-	 * touched file path with the digest of only the lines added to that file.
-	 * Path-scoped stream matchers (TTSR) evaluate each entry in isolation, so a
-	 * scoped rule like `tool:edit(*.ts)` never fires on text that actually
-	 * belongs to a sibling Markdown hunk in a multi-file payload. Takes
-	 * precedence over {@link matcherDigest} + {@link matcherPaths} when present;
-	 * returns `undefined` (or empty) to fall back to the combined hooks.
-	 */
+	/** Per-file projection of a (potentially partial) streamed call, pairing each */
 	matcherEntries?: (args: unknown) => readonly { path: string; digest: string }[] | undefined;
 
 	/** Capability tier declaration used by approval gates. Omitted means "exec". */
@@ -819,12 +390,7 @@ export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = unk
 	) => unknown;
 }
 
-/**
- * Existential tool type for heterogeneous collections. `TDetails` is
- * contravariant in `renderResult`/`onUpdate`, so a typed tool is not
- * assignable to `AgentTool<TSchema, unknown>` — collections that hold tools of
- * differing detail types must use this alias instead.
- */
+/** Existential tool type for heterogeneous collections. `TDetails` is */
 export type AnyAgentTool = AgentTool<any, any, any>;
 
 // AgentContext is like Context but uses AgentTool
@@ -834,10 +400,7 @@ export interface AgentContext {
 	tools?: AnyAgentTool[];
 }
 
-/**
- * Events emitted by the Agent for UI updates.
- * These events provide fine-grained lifecycle information for messages, turns, and tool executions.
- */
+/** Events emitted by the Agent for UI updates. */
 export type AgentEvent =
 	// Agent lifecycle
 	| { type: "agent_start" }

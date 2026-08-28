@@ -1,6 +1,4 @@
-/** Agent class that uses the agent-loop directly.
- * No transport abstraction - calls streamSimple via the loop.
- */
+/** Agent class that uses the agent-loop directly. */
 import { isPromise } from "node:util/types";
 import type {
 	ApiKey,
@@ -60,9 +58,7 @@ import type {
 import { isSoftToolRequirement } from "./types";
 import { EventLoopKeepalive } from "./utils/yield";
 
-/**
- * Default convertToLlm: Keep only LLM-compatible replay messages.
- */
+/** Default convertToLlm: Keep only LLM-compatible replay messages. */
 function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
 	return messages.filter((m): m is Message => {
 		if (m.role === "assistant") return !isProviderRefusalMessage(m);
@@ -105,107 +101,60 @@ export class AgentBusyError extends Error {
 export interface AgentOptions {
 	initialState?: Partial<AgentState>;
 
-	/**
-	 * Converts AgentMessage[] to LLM-compatible Message[] before each LLM call.
-	 * Default filters to user/assistant/toolResult and converts attachments.
-	 */
+	/** Converts AgentMessage[] to LLM-compatible Message[] before each LLM call. */
 	convertToLlm?: (messages: AgentMessage[]) => Message[] | Promise<Message[]>;
 
-	/**
-	 * Optional transform applied to context before convertToLlm.
-	 * Use for context pruning, injecting external context, etc.
-	 */
+	/** Optional transform applied to context before convertToLlm. */
 	transformContext?: (messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>;
 
-	/**
-	 * Optional transform applied after provider context assembly and before
-	 * telemetry capture/provider send.
-	 */
+	/** Optional transform applied after provider context assembly and before */
 	transformProviderContext?: (context: Context, model: Model) => Context | Promise<Context>;
 
-	/**
-	 * Steering mode: "all" = send all steering messages at once, "one-at-a-time" = one per turn
-	 */
+	/** Steering mode: "all" = send all steering messages at once, "one-at-a-time" = one per turn */
 	steeringMode?: "all" | "one-at-a-time";
 
-	/**
-	 * Follow-up mode: "all" = send all follow-up messages at once, "one-at-a-time" = one per turn
-	 */
+	/** Follow-up mode: "all" = send all follow-up messages at once, "one-at-a-time" = one per turn */
 	followUpMode?: "all" | "one-at-a-time";
 
-	/**
-	 * When to interrupt tool execution for steering messages.
-	 * - "immediate": check after each tool call (default)
-	 * - "wait": defer steering until the current turn completes
-	 */
+	/** When to interrupt tool execution for steering messages. */
 	interruptMode?: "immediate" | "wait";
 
-	/**
-	 * API format for Kimi Code provider: "openai" or "anthropic" (default: "anthropic")
-	 */
+	/** API format for Kimi Code provider: "openai" or "anthropic" (default: "anthropic") */
 	kimiApiFormat?: "openai" | "anthropic";
 
 	/** Hint that websocket transport should be preferred when supported by the provider implementation. */
 	preferWebsockets?: boolean;
 
-	/**
-	 * Custom stream function (for proxy backends, etc.). Default uses streamSimple.
-	 */
+	/** Custom stream function (for proxy backends, etc.). Default uses streamSimple. */
 	streamFn?: StreamFn;
 	/** Absolute wall-clock deadline in Unix epoch milliseconds. */
 	deadline?: number;
 
-	/**
-	 * Optional session identifier forwarded to LLM providers.
-	 * Used by providers that support session-based caching (e.g., OpenAI Codex).
-	 */
+	/** Optional session identifier forwarded to LLM providers. */
 	sessionId?: string;
-	/**
-	 * Optional prompt cache key forwarded to LLM providers.
-	 * When omitted, providers may fall back to sessionId.
-	 */
+	/** Optional prompt cache key forwarded to LLM providers. */
 	promptCacheKey?: string;
-	/**
-	 * Shared provider state map for session-scoped transport/session caches.
-	 */
+	/** Shared provider state map for session-scoped transport/session caches. */
 	providerSessionState?: Map<string, ProviderSessionState>;
 
-	/**
-	 * Resolves an API key or resolver dynamically for each LLM call.
-	 * Useful for expiring tokens and model-scoped credential routing.
-	 */
+	/** Resolves an API key or resolver dynamically for each LLM call. */
 	getApiKey?: (model: Model) => Promise<ApiKey | undefined> | ApiKey | undefined;
 
-	/**
-	 * Inspect or replace provider payloads before they are sent.
-	 */
+	/** Inspect or replace provider payloads before they are sent. */
 	onPayload?: SimpleStreamOptions["onPayload"];
-	/**
-	 * Inspect provider response metadata after headers arrive and before streaming body consumption.
-	 */
+	/** Inspect provider response metadata after headers arrive and before streaming body consumption. */
 	onResponse?: SimpleStreamOptions["onResponse"];
-	/**
-	 * Inspect raw Server-Sent Events from HTTP streaming providers.
-	 */
+	/** Inspect raw Server-Sent Events from HTTP streaming providers. */
 	onSseEvent?: SimpleStreamOptions["onSseEvent"];
-	/**
-	 * Inspect assistant streaming events before they are emitted to subscribers.
-	 * Use this when abort decisions must happen before buffered events continue flowing.
-	 */
+	/** Inspect assistant streaming events before they are emitted to subscribers. */
 	onAssistantMessageEvent?: (message: AssistantMessage, event: AssistantMessageEvent) => void;
 
-	/**
-	 * Called when GPT-5 Harmony protocol leakage is detected and mitigated.
-	 */
+	/** Called when GPT-5 Harmony protocol leakage is detected and mitigated. */
 	onHarmonyLeak?: (event: HarmonyAuditEvent) => void | Promise<void>;
-	/**
-	 * Custom token budgets for thinking levels (token-based providers only).
-	 */
+	/** Custom token budgets for thinking levels (token-based providers only). */
 	thinkingBudgets?: ThinkingBudgets;
 
-	/**
-	 * Sampling temperature for LLM calls. `undefined` uses provider default.
-	 */
+	/** Sampling temperature for LLM calls. `undefined` uses provider default. */
 	temperature?: number;
 
 	/** Additional sampling controls for providers that support them. */
@@ -215,155 +164,62 @@ export interface AgentOptions {
 	presencePenalty?: number;
 	repetitionPenalty?: number;
 	serviceTier?: ServiceTier;
-	/**
-	 * What to do when a turn's prompt-cache markers demonstrably did not take
-	 * effect. Defaults to reporting; blocking is opt-in. See
-	 * `@veyyon/ai/cache` for why the failure lands on the following request.
-	 */
+	/** What to do when a turn's prompt-cache markers demonstrably did not take */
 	cacheEnforcement?: CacheEnforcement;
-	/**
-	 * Per-call effective service-tier resolver. When set, it authoritatively
-	 * supplies the request's tier (replacing the static `serviceTier` and its
-	 * telemetry) per model — used to scope a provider/model into a priority
-	 * serving path without mutating the shared session `serviceTier`.
-	 */
+	/** Per-call effective service-tier resolver. When set, it authoritatively */
 	serviceTierResolver?: (model: Model) => ServiceTier | undefined;
-	/**
-	 * If true, request that the underlying provider omit reasoning/thinking summaries
-	 * from the response. The model still reasons internally; only the human-readable
-	 * summary stream is suppressed. Useful when the UI hides thinking blocks anyway.
-	 */
+	/** If true, request that the underlying provider omit reasoning/thinking summaries */
 	hideThinkingSummary?: boolean;
 
-	/**
-	 * Maximum delay in milliseconds to wait for a retry when the server requests a long wait.
-	 * If the server's requested delay exceeds this value, the request fails immediately,
-	 * allowing higher-level retry logic to handle it with user visibility.
-	 * Default: 60000 (60 seconds). Set to 0 to disable the cap.
-	 */
+	/** Maximum delay in milliseconds to wait for a retry when the server requests a long wait. */
 	maxRetryDelayMs?: number;
 
-	/**
-	 * Provides tool execution context, resolved per tool call.
-	 * Use for late-bound UI or session state access.
-	 */
+	/** Provides tool execution context, resolved per tool call. */
 	getToolContext?: (toolCall?: ToolCallContext) => AgentToolContext | undefined;
 
-	/**
-	 * Optional transform applied to tool call arguments before execution. Use for
-	 * deobfuscating secrets or rewriting arguments.
-	 *
-	 * Returns the arguments split by audience — see {@link ToolCallArgumentTransform}.
-	 * An expansion whose result must not be shown belongs in `execution` only.
-	 */
+	/** Optional transform applied to tool call arguments before execution. Use for */
 	transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => ToolCallArgumentTransform;
 
-	/**
-	 * Enable intent tracing schema injection/stripping in the harness.
-	 *
-	 * A FUNCTION when the value can change mid-session, which is what a settings-backed flag is. Both
-	 * places the agent reads it -- the provider context it builds per request and the loop config it
-	 * builds per turn -- call the resolver then, so flipping `tools.intentTracing` takes effect on the
-	 * next turn instead of at the next process start. A plain boolean is still accepted for a caller
-	 * whose answer genuinely cannot change; it is normalized to a resolver once, in the constructor, so
-	 * nothing downstream has to know which form arrived.
-	 */
+	/** Enable intent tracing schema injection/stripping in the harness. */
 	intentTracing?: boolean | (() => boolean);
-	/**
-	 * How densely each tool call records a study record on its result message.
-	 * Forwarded verbatim to the loop config (see {@link AgentLoopConfig.instrumentation}).
-	 */
+	/** How densely each tool call records a study record on its result message. */
 	instrumentation?: InstrumentationLevel;
-	/**
-	 * Strip tool descriptions from provider-bound tool specs (top-level + nested
-	 * schema annotations). Use when the full catalog is rendered into the system
-	 * prompt so descriptions are not duplicated on the wire. Native tool calling only.
-	 *
-	 * A function is resolved against the active model for every request, so a
-	 * model switch can move descriptors between the prompt and native schemas
-	 * without retaining the previous model's less efficient representation.
-	 */
+	/** Strip tool descriptions from provider-bound tool specs (top-level + nested */
 	pruneToolDescriptions?: boolean | ((model: Model) => boolean);
-	/**
-	 * Owned tool-calling dialect. Undefined keeps provider-native tool calling.
-	 * A function form is re-evaluated with the active model on every request, so
-	 * mid-session model switches pick the right tool-calling shape.
-	 */
+	/** Owned tool-calling dialect. Undefined keeps provider-native tool calling. */
 	dialect?: ConfiguredDialect;
-	/**
-	 * When owned tool calling is active and the model fabricates a tool result
-	 * mid-turn: `true` (default) aborts the provider request immediately; `false`
-	 * drains the request and discards the fabricated continuation. Forwarded to
-	 * the loop's {@link AgentLoopConfig.abortOnFabricatedToolResult}.
-	 */
+	/** When owned tool calling is active and the model fabricates a tool result */
 	abortOnFabricatedToolResult?: boolean;
 	/** Dynamic tool-choice directive (hard {@link ToolChoice} or {@link SoftToolRequirement}), resolved once per turn. */
 	getToolChoice?: () => ToolChoiceDirective | undefined;
 
-	/**
-	 * Cursor exec handlers for local tool execution.
-	 */
+	/** Cursor exec handlers for local tool execution. */
 	cursorExecHandlers?: CursorExecHandlers;
 
-	/**
-	 * Cursor tool result callback for exec tool responses.
-	 */
+	/** Cursor tool result callback for exec tool responses. */
 	cursorOnToolResult?: CursorToolResultHandler;
 
-	/**
-	 * Operator-owned instruction files for Cursor's `requestContext.rules` channel,
-	 * resolved once per turn so a mid-session context-file reload (`/reload`, `/move`)
-	 * reaches the next request. The provider adds the session system prompt itself;
-	 * these are the file-backed units (the operator's global and profile AGENTS.md),
-	 * and repository content must never appear in them (see `CursorRuleInput`).
-	 */
+	/** Operator-owned instruction files for Cursor's `requestContext.rules` channel, */
 	cursorRulesResolver?: () => CursorRuleInput[];
 
 	/** Current working directory used by local tool execution. */
 	cwd?: string;
-	/**
-	 * Resolver for the live working directory, re-read on every turn. When set, it
-	 * overrides the static {@link cwd} at config-build time so a session move
-	 * (`/move`, which updates the host's cwd without reconstructing the Agent) is
-	 * reflected in provider options — e.g. GitLab Duo Agent namespace/project
-	 * discovery keys off this cwd's git remote. Falls back to `cwd` when it returns
-	 * `undefined`.
-	 */
+	/** Resolver for the live working directory, re-read on every turn. When set, it */
 	cwdResolver?: () => string | undefined;
-	/**
-	 * Schema-based repair for malformed tool arguments, run before validation.
-	 * See {@link AgentLoopConfig.repairToolCallArguments}.
-	 */
+	/** Schema-based repair for malformed tool arguments, run before validation. */
 	repairToolCallArguments?: AgentLoopConfig["repairToolCallArguments"];
-	/**
-	 * Called after a tool call has been validated and is about to execute.
-	 * See {@link AgentLoopConfig.beforeToolCall} for full semantics.
-	 */
+	/** Called after a tool call has been validated and is about to execute. */
 	beforeToolCall?: AgentLoopConfig["beforeToolCall"];
 
-	/**
-	 * Called after a tool finishes executing, before `tool_execution_end` and the tool-result
-	 * message are emitted. See {@link AgentLoopConfig.afterToolCall} for full semantics.
-	 */
+	/** Called after a tool finishes executing, before `tool_execution_end` and the tool-result */
 	afterToolCall?: AgentLoopConfig["afterToolCall"];
 
-	/**
-	 * Called once an assistant message is finalized, before it reaches the
-	 * context, the UI, or tool dispatch. May mutate the message in place (text +
-	 * tool-call arguments). See {@link AgentLoopConfig.transformAssistantMessage}.
-	 */
+	/** Called once an assistant message is finalized, before it reaches the */
 	transformAssistantMessage?: AgentLoopConfig["transformAssistantMessage"];
 
-	/**
-	 * Opt-in OpenTelemetry instrumentation. Passing `{}` enables the loop's
-	 * GenAI-semantic-convention spans using the global tracer provider. See
-	 * {@link AgentLoopConfig.telemetry} for the full surface.
-	 */
+	/** Opt-in OpenTelemetry instrumentation. Passing `{}` enables the loop's */
 	telemetry?: AgentLoopConfig["telemetry"];
-	/**
-	 * Immutable context mode — stabilizes system prompt + tool spec bytes
-	 * across turns so DeepSeek/Anthropic prefix caches hit at maximum rate.
-	 */
+	/** Immutable context mode — stabilizes system prompt + tool spec bytes */
 	appendOnlyContext?: AppendOnlyContextManager;
 }
 
@@ -453,24 +309,13 @@ export class Agent {
 
 	streamFn: StreamFn;
 	getApiKey?: (model: Model) => Promise<ApiKey | undefined> | ApiKey | undefined;
-	/**
-	 * Hook invoked after tool arguments are validated and before execution.
-	 * Reassign at any time to swap the implementation (e.g. on extension reload).
-	 */
+	/** Hook invoked after tool arguments are validated and before execution. */
 	beforeToolCall?: AgentLoopConfig["beforeToolCall"];
-	/**
-	 * Hook invoked after tool execution and before `tool_execution_end` / tool-result
-	 * message emission. Reassign at any time to swap the implementation.
-	 */
+	/** Hook invoked after tool execution and before `tool_execution_end` / tool-result */
 	afterToolCall?: AgentLoopConfig["afterToolCall"];
-	/**
-	 * Hook invoked once an assistant message is finalized, before context append,
-	 * UI emission, and tool dispatch. Reassign at any time to swap the implementation.
-	 */
+	/** Hook invoked once an assistant message is finalized, before context append, */
 	transformAssistantMessage?: AgentLoopConfig["transformAssistantMessage"];
-	/**
-	 * Hook that peeks whether interrupting IRC asides are queued for the next boundary.
-	 */
+	/** Hook that peeks whether interrupting IRC asides are queued for the next boundary. */
 	hasIrcInterrupts?: AgentLoopConfig["hasIrcInterrupts"];
 
 	constructor(opts: AgentOptions = {}) {
@@ -534,53 +379,32 @@ export class Agent {
 		this.#transformProviderContext = opts.transformProviderContext;
 	}
 
-	/**
-	 * Get the current session ID used for provider caching.
-	 */
+	/** Get the current session ID used for provider caching. */
 	get sessionId(): string | undefined {
 		return this.#sessionId;
 	}
 
-	/**
-	 * Set the session ID for provider caching.
-	 * Call this when switching sessions (new session, branch, resume).
-	 */
+	/** Set the session ID for provider caching. */
 	set sessionId(value: string | undefined) {
 		this.#sessionId = value;
 	}
 
-	/**
-	 * Set the telemetry level used when the next model loop starts. An in-flight
-	 * loop keeps its capture level; the host persistence boundary re-applies the
-	 * live policy when that turn finishes.
-	 */
+	/** Set the telemetry level used when the next model loop starts. An in-flight */
 	set instrumentation(value: InstrumentationLevel) {
 		this.#instrumentation = value;
 	}
 
-	/**
-	 * Get the prompt cache key forwarded to providers.
-	 */
+	/** Get the prompt cache key forwarded to providers. */
 	get promptCacheKey(): string | undefined {
 		return this.#promptCacheKey;
 	}
 
-	/**
-	 * Set the prompt cache key forwarded to providers.
-	 */
+	/** Set the prompt cache key forwarded to providers. */
 	set promptCacheKey(value: string | undefined) {
 		this.#promptCacheKey = value;
 	}
 
-	/**
-	 * Static metadata forwarded to every API request when no resolver is installed
-	 * (e.g. `metadata.user_id` for Anthropic session attribution). Setting this
-	 * clears any installed resolver.
-	 *
-	 * For live/provider-aware metadata (e.g. Anthropic OAuth `account_uuid` that
-	 * must reflect the credential selected per-request), use
-	 * {@link setMetadataResolver} and read via {@link metadataForProvider}.
-	 */
+	/** Static metadata forwarded to every API request when no resolver is installed */
 	get metadata(): Record<string, unknown> | undefined {
 		return this.#metadata;
 	}
@@ -590,87 +414,53 @@ export class Agent {
 		this.#metadataResolver = undefined;
 	}
 
-	/**
-	 * Resolve request metadata for the given provider at call time. When a
-	 * resolver is installed via {@link setMetadataResolver}, it is invoked with
-	 * the provider string so the result can be scoped (e.g. `account_uuid` is
-	 * only included for `"anthropic"` requests). Falls back to the static
-	 * {@link metadata} value when no resolver is set.
-	 */
+	/** Resolve request metadata for the given provider at call time. When a */
 	metadataForProvider(provider: string): Record<string, unknown> | undefined {
 		if (this.#metadataResolver) return this.#metadataResolver(provider);
 		return this.#metadata;
 	}
 
-	/**
-	 * Install a function that resolves request metadata at call time. The
-	 * resolver receives the target provider string and can gate provider-specific
-	 * fields (e.g. `account_uuid` only for `"anthropic"`). Invoked per LLM
-	 * request by `agent-loop` after `getApiKey` selects the session-sticky
-	 * credential. Pass `undefined` to clear and revert to the static
-	 * {@link metadata} value.
-	 */
+	/** Install a function that resolves request metadata at call time. The */
 	setMetadataResolver(resolver: ((provider: string) => Record<string, unknown> | undefined) | undefined): void {
 		this.#metadataResolver = resolver;
 	}
 
-	/**
-	 * Read the active OpenTelemetry configuration. Returns `undefined` when
-	 * instrumentation is disabled. Callers spawning child runs (e.g. subagent
-	 * dispatch) forward this to the child's loop so its spans appear under the
-	 * parent's active context with the subagent's own identity stamped.
-	 */
+	/** Read the active OpenTelemetry configuration. Returns `undefined` when */
 	get telemetry(): AgentLoopConfig["telemetry"] | undefined {
 		return this.#telemetry;
 	}
 
-	/**
-	 * Replace the active OpenTelemetry configuration. Pass `undefined` to
-	 * disable instrumentation. Applies to the *next* `agentLoop` invocation —
-	 * in-flight loops keep the configuration they started with.
-	 */
+	/** Replace the active OpenTelemetry configuration. Pass `undefined` to */
 	setTelemetry(telemetry: AgentLoopConfig["telemetry"] | undefined): void {
 		this.#telemetry = telemetry;
 	}
 
-	/**
-	 * Get provider-scoped mutable session state store.
-	 */
+	/** Get provider-scoped mutable session state store. */
 	get providerSessionState(): Map<string, ProviderSessionState> | undefined {
 		return this.#providerSessionState;
 	}
 
-	/**
-	 * Set provider-scoped mutable session state store.
-	 */
+	/** Set provider-scoped mutable session state store. */
 	set providerSessionState(value: Map<string, ProviderSessionState> | undefined) {
 		this.#providerSessionState = value;
 	}
 
-	/**
-	 * Get the current thinking budgets.
-	 */
+	/** Get the current thinking budgets. */
 	get thinkingBudgets(): ThinkingBudgets | undefined {
 		return this.#thinkingBudgets;
 	}
 
-	/**
-	 * Set custom thinking budgets for token-based providers.
-	 */
+	/** Set custom thinking budgets for token-based providers. */
 	set thinkingBudgets(value: ThinkingBudgets | undefined) {
 		this.#thinkingBudgets = value;
 	}
 
-	/**
-	 * Get the current sampling temperature.
-	 */
+	/** Get the current sampling temperature. */
 	get temperature(): number | undefined {
 		return this.#temperature;
 	}
 
-	/**
-	 * Set sampling temperature for LLM calls. `undefined` uses provider default.
-	 */
+	/** Set sampling temperature for LLM calls. `undefined` uses provider default. */
 	set temperature(value: number | undefined) {
 		this.#temperature = value;
 	}
@@ -747,17 +537,12 @@ export class Agent {
 		this.#hideThinkingSummary = value;
 	}
 
-	/**
-	 * Get the current max retry delay in milliseconds.
-	 */
+	/** Get the current max retry delay in milliseconds. */
 	get maxRetryDelayMs(): number | undefined {
 		return this.#maxRetryDelayMs;
 	}
 
-	/**
-	 * Set the maximum delay to wait for server-requested retries.
-	 * Set to 0 to disable the cap.
-	 */
+	/** Set the maximum delay to wait for server-requested retries. */
 	set maxRetryDelayMs(value: number | undefined) {
 		this.#maxRetryDelayMs = value;
 	}
@@ -774,19 +559,7 @@ export class Agent {
 		this.#appendOnlyContext = manager;
 	}
 
-	/**
-	 * Assemble the provider Context for a side-channel (no-loop) request, mirroring
-	 * the main loop's prefix (system + normalized tools) so it shares the prompt
-	 * cache. Never touches the append-only log or the tool-choice queue. Owned/
-	 * in-band dialect sessions stay tools-less (matching their no-native-tools wire
-	 * shape and avoiding tool-markup leakage). `llmMessages` is already converted
-	 * (and, in production, obfuscated) by the caller.
-	 *
-	 * `systemPrompt` defaults to the live agent prompt so the side request hits the
-	 * same cached prefix as the main loop. Callers that must pin a different prompt
-	 * (e.g. handoff generation, which uses the base prompt rather than a per-turn
-	 * `before_agent_start` hook override) pass it explicitly.
-	 */
+	/** Assemble the provider Context for a side-channel (no-loop) request, mirroring */
 	async buildSideRequestContext(
 		llmMessages: Message[],
 		systemPrompt: string[] = this.#state.systemPrompt,
@@ -799,10 +572,6 @@ export class Agent {
 			? []
 			: (normalizeTools(
 					this.#state.tools,
-					// Resolved HERE, per request, not captured at construction: this is the read that
-					// decides whether every tool schema carries the intent field, and the system prompt
-					// explains that field. A prompt that describes a field the schemas do not carry is
-					// worse than one that omits it, so the two reads have to see the same answer.
 					this.#resolveIntentTracing(),
 					preferredDialect(model.id),
 					this.#resolvePruneToolDescriptions(model),
@@ -821,11 +590,7 @@ export class Agent {
 		this.#onResponse = fn;
 	}
 
-	/**
-	 * Replace the provider-context transform (e.g. AgentSession wrapping for
-	 * session-local tool-call ID canonicalization). Must be installed after
-	 * construction when the session owns state the transform closes over.
-	 */
+	/** Replace the provider-context transform (e.g. AgentSession wrapping for */
 	setTransformProviderContext(fn: ((context: Context, model: Model) => Context | Promise<Context>) | undefined): void {
 		this.#transformProviderContext = fn;
 	}
@@ -851,11 +616,7 @@ export class Agent {
 		this.#onTurnEnd = fn;
 	}
 
-	/**
-	 * Provide a source of non-interrupting "aside" messages (e.g. background-job
-	 * completions, late LSP diagnostics) drained at each step boundary. Never
-	 * aborts in-flight tools. See `AgentLoopConfig.getAsideMessages`.
-	 */
+	/** Provide a source of non-interrupting "aside" messages (e.g. background-job */
 	setAsideMessageProvider(fn: (() => AsideMessage[] | Promise<AsideMessage[]>) | undefined): void {
 		this.#asideMessageProvider = fn;
 	}
@@ -949,18 +710,12 @@ export class Agent {
 		return removed;
 	}
 
-	/**
-	 * Queue a steering message to interrupt the agent mid-run.
-	 * Delivered after current tool execution, skips remaining tools.
-	 */
+	/** Queue a steering message to interrupt the agent mid-run. */
 	steer(m: AgentMessage) {
 		this.#steeringQueue.push(m);
 	}
 
-	/**
-	 * Queue a follow-up message to be processed after the agent finishes.
-	 * Delivered only when agent has no more tool calls or steering messages.
-	 */
+	/** Queue a follow-up message to be processed after the agent finishes. */
 	followUp(m: AgentMessage) {
 		this.#followUpQueue.push(m);
 	}
@@ -982,16 +737,12 @@ export class Agent {
 		return this.#steeringQueue.length > 0 || this.#followUpQueue.length > 0;
 	}
 
-	/** Non-consuming view of the pending steering queue (insertion order, newest
-	 *  last). The session layer derives its queued-message display/count from
-	 *  this live view instead of a mirror, so the agent-core queue stays the
-	 *  single source of truth. */
+	/** Non-consuming view of the pending steering queue (insertion order, newest */
 	peekSteeringQueue(): readonly AgentMessage[] {
 		return this.#steeringQueue;
 	}
 
-	/** Non-consuming view of the pending follow-up queue. See
-	 *  {@link peekSteeringQueue}. */
+	/** Non-consuming view of the pending follow-up queue. See */
 	peekFollowUpQueue(): readonly AgentMessage[] {
 		return this.#followUpQueue;
 	}
@@ -1028,18 +779,12 @@ export class Agent {
 		return followUp;
 	}
 
-	/**
-	 * Remove and return the last steering message from the queue (LIFO).
-	 * Used by dequeue keybinding.
-	 */
+	/** Remove and return the last steering message from the queue (LIFO). */
 	popLastSteer(): AgentMessage | undefined {
 		return this.#steeringQueue.pop();
 	}
 
-	/**
-	 * Remove and return the last follow-up message from the queue (LIFO).
-	 * Used by dequeue keybinding.
-	 */
+	/** Remove and return the last follow-up message from the queue (LIFO). */
 	popLastFollowUp(): AgentMessage | undefined {
 		return this.#followUpQueue.pop();
 	}
@@ -1115,9 +860,7 @@ export class Agent {
 		await this.#runLoop(msgs, promptOptions);
 	}
 
-	/**
-	 * Continue from current context (used for retries and resuming queued messages).
-	 */
+	/** Continue from current context (used for retries and resuming queued messages). */
 	async continue() {
 		if (this.#state.isStreaming) {
 			throw new AgentBusyError();
@@ -1146,11 +889,7 @@ export class Agent {
 		await this.#runLoop(undefined);
 	}
 
-	/**
-	 * Run the agent loop.
-	 * If messages are provided, starts a new conversation turn with those messages.
-	 * Otherwise, continues from existing context.
-	 */
+	/** Run the agent loop. */
 	async #runLoop(messages?: AgentMessage[], options?: AgentPromptOptions & { skipInitialSteeringPoll?: boolean }) {
 		const model = this.#state.model;
 		if (!model) throw new Error("No model configured");
@@ -1182,18 +921,11 @@ export class Agent {
 				? async (message: ToolResultMessage) => {
 						let finalMessage = message;
 						if (this.#cursorOnToolResult) {
-							// Host hooks fail closed like convertToLlm/transformContext: a
-							// throw here propagates as a stream error instead of silently
-							// dropping the host's transformation.
 							const updated = await this.#cursorOnToolResult(message);
 							if (updated) {
 								finalMessage = updated;
 							}
 						}
-						// Cursor executes tools server-side during streaming. We buffer
-						// each toolResult and emit them right after the assistant message
-						// closes (see `#emitCursorSplitAssistantMessage`), so replay
-						// receives (assistant with interleaved toolCall blocks) → results.
 						this.#cursorToolResultBuffer.push({ toolResult: finalMessage });
 						return finalMessage;
 					}
@@ -1341,9 +1073,6 @@ export class Agent {
 						break;
 
 					case "turn_end":
-						// `in`-narrowing instead of a role narrow: declaration-merged
-						// CustomAgentMessages members keep AgentMessage from narrowing
-						// to AssistantMessage on `role` alone.
 						if (
 							event.message.role === "assistant" &&
 							"errorMessage" in event.message &&
@@ -1446,9 +1175,7 @@ export class Agent {
 		}
 	}
 
-	/**
-	 * Emit a Cursor assistant message with buffered exec-channel toolResults.
-	 */
+	/** Emit a Cursor assistant message with buffered exec-channel toolResults. */
 	#emitCursorSplitAssistantMessage(assistantMessage: AssistantMessage): void {
 		const buffer = this.#cursorToolResultBuffer;
 		this.#cursorToolResultBuffer = [];

@@ -3,11 +3,7 @@
 // `ThinkingLevel` is read by config, by the CLI and by `packages/coding-agent/src/thinking.ts`.
 import { Effort } from "@veyyon/catalog/effort";
 
-/**
- * Agent-local thinking selector.
- *
- * `off` disables reasoning, while `inherit` defers to a higher-level selector.
- */
+/** Agent-local thinking selector. */
 export const ThinkingLevel = {
 	Inherit: "inherit",
 	Off: "off",

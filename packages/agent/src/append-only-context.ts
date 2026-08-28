@@ -1,18 +1,4 @@
-/**
- * Append-only context mode — stabilizes the byte prefix sent to the LLM
- * across turns so provider prefix caches (DeepSeek, Anthropic, etc.)
- * hit at the maximum possible rate.
- *
- * Two mechanisms:
- *
- * 1. **StablePrefix** — system prompt + tool specs are computed once
- *    and frozen. Subsequent turns reuse the exact same byte sequence
- *    unless `invalidate()` is called (e.g. after MCP reconnect).
- *
- * 2. **AppendOnlyLog** — messages only grow; prior turns are never
- *    re-serialized. Combined with a stable prefix, only the user's new
- *    message delta is a cache miss each turn.
- */
+/** Append-only context mode for stabilizing prefix caches across turns. */
 
 import type { Context, Message, Tool } from "@veyyon/ai";
 import type { Dialect } from "@veyyon/ai/dialect";
@@ -35,14 +21,7 @@ export interface BuildOptions {
 	pruneToolDescriptions?: boolean;
 }
 
-/**
- * A frozen prefix (system prompt + tools) that produces stable byte
- * sequences across `build()` calls.
- *
- * The first `build()` snapshots the live state. Subsequent calls reuse
- * the cached copy until `invalidate()` is called or the live state's
- * fingerprint changes.
- */
+/** A frozen prefix (system prompt + tools) that produces stable byte */
 export class StablePrefix {
 	#snapshot: StablePrefixSnapshot | null = null;
 	#version = 0;
@@ -57,10 +36,7 @@ export class StablePrefix {
 		return this.#snapshot !== null;
 	}
 
-	/**
-	 * Build or rebuild from live context.
-	 * Returns `true` if the prefix actually changed (cache miss imminent).
-	 */
+	/** Build or rebuild from live context. */
 	build(context: AgentContext, options: BuildOptions): boolean {
 		const snapshot = takeSnapshot(context, options);
 		if (this.#snapshot && this.#snapshot.fingerprint === snapshot.fingerprint) {
@@ -76,10 +52,7 @@ export class StablePrefix {
 		this.#snapshot = null;
 	}
 
-	/**
-	 * Returns the cached prefix.
-	 * @throws if `build()` was never called.
-	 */
+	/** Returns the cached prefix. */
 	toContext(): { systemPrompt: string[]; tools: Tool[] } {
 		const s = this.#snapshot;
 		if (!s) throw new Error("StablePrefix.toContext() called before build()");
@@ -87,16 +60,9 @@ export class StablePrefix {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // AppendOnlyLog
-// ---------------------------------------------------------------------------
 
-/**
- * Append-only message log at the `Message[]` (provider-level) layer.
- *
- * The only mutation path is `replaceTail()`, reserved for compaction.
- * Every other operation is append-only.
- */
+/** Append-only message log at the `Message[]` (provider-level) layer. */
 export class AppendOnlyLog {
 	#entries: Message[] = [];
 
@@ -128,9 +94,7 @@ export class AppendOnlyLog {
 		return this.#entries;
 	}
 
-	/** Drop entries past index `count`, keeping the first `count` byte-stable.
-	 * Used by {@link AppendOnlyContextManager.syncMessages} to preserve the
-	 * already-on-the-wire prefix when a later message diverges. */
+	/** Drop entries past index `count`, keeping the first `count` byte-stable. */
 	truncate(count: number): void {
 		if (count < 0) count = 0;
 		if (count >= this.#entries.length) return;
@@ -142,38 +106,15 @@ export class AppendOnlyLog {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // AppendOnlyContextManager
-// ---------------------------------------------------------------------------
 
-/**
- * Manages a stable prefix + append-only log for the agent loop.
- *
- * Call `build(context)` each turn to get a `Context` with stable
- * `systemPrompt` and `tools` and append-only messages. Call
- * `syncMessages(normalizedMessages)` after `convertToLlm` each
- * turn to keep the log in sync.
- *
- * Example:
- * ```
- * const mgr = new AppendOnlyContextManager();
- * const ctx = mgr.build(context);  // first call snapshots prefix
- * mgr.syncMessages(normalized);    // grow the log
- * ctx = mgr.build(context);        // subsequent calls use cache
- * ```
- */
+/** Manages a stable prefix + append-only log for the agent loop. */
 export class AppendOnlyContextManager {
 	readonly prefix = new StablePrefix();
 	readonly log = new AppendOnlyLog();
 	/** How many normalized messages were synced into the log as of the last sync. */
 	#lastSyncCount = 0;
-	/**
-	 * Per-message digests of the synced log. Lets a deep or tail rewrite
-	 * (per-turn pruning, image strip, transformContext re-render) preserve
-	 * the byte-stable prefix instead of re-sending the entire conversation
-	 * — keeps the provider's prompt-cache hit rate up to the divergence
-	 * point on every subsequent turn.
-	 */
+	/** Per-message digests of the synced log. Lets a deep or tail rewrite */
 	#messageDigests: number[] = [];
 
 	build(context: AgentContext, options: BuildOptions): Context {
@@ -182,10 +123,7 @@ export class AppendOnlyContextManager {
 		return { systemPrompt, messages: this.log.toMessages(), tools };
 	}
 
-	/**
-	 * Sync normalized (provider-level) messages into the append-only log.
-	 * Preserves the longest byte-stable prefix to maximize KV cache reuse.
-	 */
+	/** Sync normalized (provider-level) messages into the append-only log. */
 	syncMessages(normalizedMessages: Message[]): void {
 		// Compaction (array shrunk) — every previously-synced message is gone,
 		// so the log can't carry any byte-stable bytes forward.
@@ -195,11 +133,6 @@ export class AppendOnlyContextManager {
 			this.#messageDigests = [];
 		}
 
-		// In-place rewrite: trim the log down to the longest byte-stable prefix
-		// that both the previous sync and the new messages share. Bound it by
-		// the current log length because `log.clear()` is public; direct clears
-		// (advisor reset) can leave the sync cursor ahead of the physical log.
-		// Anything past that point will be re-appended below with the new bytes.
 		if (this.#lastSyncCount > 0) {
 			const stableCount = Math.min(this.#longestStablePrefix(normalizedMessages), this.log.length);
 			if (stableCount < this.#lastSyncCount) {
@@ -253,9 +186,7 @@ export class AppendOnlyContextManager {
 		this.prefix.build(context, options);
 	}
 
-	/** Index of the first message whose serialized bytes differ from the
-	 * previously-synced log; equals `min(lastSyncCount, normalizedMessages.length)`
-	 * when nothing diverged. */
+	/** Index of the first message whose serialized bytes differ from the */
 	#longestStablePrefix(normalizedMessages: readonly unknown[]): number {
 		const bound = Math.min(this.#lastSyncCount, normalizedMessages.length);
 		for (let i = 0; i < bound; i++) {
@@ -266,11 +197,7 @@ export class AppendOnlyContextManager {
 		return bound;
 	}
 
-	/** Deterministic digest over every field the provider may serialize — role,
-	 * content, provider-native replay payloads, tool calls (both `toolCalls` and
-	 * OpenAI-wire `tool_calls`), tool-result ids/names/error flags (both internal
-	 * camelCase and wire snake_case), and assistant `id` — so an in-place rewrite
-	 * of *any* of these fields is visible to {@link #longestStablePrefix}. */
+	/** Deterministic digest over every field the provider may serialize — role, */
 	#messageDigest(msg: unknown): number {
 		if (!msg || typeof msg !== "object") return 0;
 		const m = msg as Record<string, unknown>;

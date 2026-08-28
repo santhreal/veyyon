@@ -1,6 +1,4 @@
-/**
- * Every prompt the agent core sends a model, owned in ONE place.
- */
+/** Every prompt the agent core sends a model, owned in ONE place. */
 import { definePromptRegistry, type PromptEntry } from "@veyyon/utils/prompt-registry";
 import compactionAutoHandoffThresholdFocus from "./compaction/auto-handoff-threshold-focus.md" with { type: "text" };
 import compactionBranchSummary from "./compaction/branch-summary.md" with { type: "text" };
@@ -77,13 +75,4 @@ export type AgentPromptId = keyof typeof AGENT_PROMPTS;
 /** Every registered id, for enumeration. */
 export const AGENT_PROMPT_IDS = agentCorePrompts.ids;
 
-/**
- * The lookups live on `agentCorePrompts`, not under package-specific names.
- *
- * `agentCorePrompts.require(id)` is the one to reach for when an id comes from a variable.
- * It throws rather than returning undefined, and this package had no such lookup at all,
- * which is worse than the wrong one: a caller indexed `AGENT_PROMPTS` directly, and an id
- * that had drifted from its filename yielded `undefined` whose `.text` reached the
- * summarizer as no brief. A compaction that runs with an empty system prompt still returns
- * a summary, so nothing failed loudly; the session simply came back worse.
- */
+/** The lookups live on `agentCorePrompts`, not under package-specific names. */

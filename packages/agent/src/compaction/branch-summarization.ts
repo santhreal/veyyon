@@ -1,9 +1,4 @@
-/**
- * Branch summarization for tree navigation.
- *
- * When navigating to a different point in the session tree, this generates
- * a summary of the branch being left so context isn't lost.
- */
+/** Branch summarization for tree navigation. */
 
 import type { Api, ApiKey, AssistantMessage, Context, Model, ServiceTier, SimpleStreamOptions } from "@veyyon/ai";
 import { detectDegenerateRepetition } from "@veyyon/ai/utils/thinking-loop";
@@ -34,9 +29,7 @@ import {
 	upsertFileOperations,
 } from "./utils";
 
-// ============================================================================
 // Types
-// ============================================================================
 
 export interface BranchSummaryResult {
 	summary?: string;
@@ -85,37 +78,19 @@ export interface GenerateBranchSummaryOptions {
 	metadata?: Record<string, unknown>;
 	/** Convert app-specific messages before serializing the branch summary prompt. */
 	convertToLlm?: ConvertToLlm;
-	/**
-	 * Resolve the live provider-text transform after each credential resolution.
-	 * Each physical auth attempt rebuilds its context from the raw entries with
-	 * the returned transform before budgeting or serialization.
-	 */
+	/** Resolve the live provider-text transform after each credential resolution. */
 	resolveObfuscateProviderText?: () => (text: string) => string;
-	/**
-	 * Optional final provider-payload hook. When a live text transform is
-	 * configured, its result is sanitized with the same attempt transform.
-	 */
+	/** Optional final provider-payload hook. When a live text transform is */
 	onPayload?: SimpleStreamOptions["onPayload"];
-	/**
-	 * Optional telemetry handle. When provided, the branch summary LLM call is
-	 * wrapped in an OTEL chat span tagged with `pi.gen_ai.oneshot.kind = "branch_summary"`.
-	 */
+	/** Optional telemetry handle. When provided, the branch summary LLM call is */
 	telemetry?: AgentTelemetry;
-	/**
-	 * Optional completion transport override (same contract as
-	 * {@link SummaryOptions.completeImpl}). Lets the host route the branch
-	 * summary HTTP request through its provider-concurrency limiter instead
-	 * of the default `completeSimple` transport.
-	 */
+	/** Optional completion transport override (same contract as */
 	completeImpl?: <TApi extends Api>(
 		model: Model<TApi>,
 		ctx: Context,
 		options: SimpleStreamOptions,
 	) => Promise<AssistantMessage>;
-	/**
-	 * Service tier for the summarization request, resolved by the host from the
-	 * model's provider family (same contract as {@link SummaryOptions.serviceTier}).
-	 */
+	/** Service tier for the summarization request, resolved by the host from the */
 	serviceTier?: ServiceTier;
 	/** Session routing key for remote transports and side-request conversation derivation. */
 	sessionId?: string;
@@ -125,22 +100,9 @@ export interface GenerateBranchSummaryOptions {
 	promptCacheKey?: string;
 }
 
-// ============================================================================
 // Entry Collection
-// ============================================================================
 
-/**
- * Collect entries that should be summarized when navigating from one position to another.
- *
- * Walks from oldLeafId back to the common ancestor with targetId, collecting entries
- * along the way. Does NOT stop at compaction boundaries - those are included and their
- * summaries become context.
- *
- * @param session - Session manager (read-only access)
- * @param oldLeafId - Current position (where we're navigating from)
- * @param targetId - Target position (where we're navigating to)
- * @returns Entries to summarize and the common ancestor
- */
+/** Collect entries that should be summarized when navigating from one position to another. */
 export function collectEntriesForBranchSummary(
 	session: ReadonlySessionManager,
 	oldLeafId: string | null,
@@ -183,14 +145,9 @@ export function collectEntriesForBranchSummary(
 	return { entries, commonAncestorId };
 }
 
-// ============================================================================
 // Entry to Message Conversion
-// ============================================================================
 
-/**
- * Extract AgentMessage from a session entry.
- * Similar to getMessageFromEntry in compaction.ts but also handles compaction entries.
- */
+/** Extract AgentMessage from a session entry. */
 function getMessageFromEntry(entry: SessionEntry): AgentMessage | undefined {
 	switch (entry.type) {
 		case "message":
@@ -367,15 +324,7 @@ function transformProviderText(
 	}
 }
 
-/**
- * Clone provider-bound JSON while transforming free-text string values and
- * user-authored data keys. Provider protocol keys, roles, discriminants,
- * statuses, identifiers, and opaque signatures remain byte-for-byte intact.
- * The strict traversal limits bound work over persisted/provider-shaped data;
- * cycles, accessors, symbols, transformed-key collisions, and exotic objects
- * fail closed. Binary buffers/views contain no transformable string surface and
- * are deliberately passed through unchanged.
- */
+/** Clone provider-bound JSON while transforming free-text string values and */
 function transformProviderValue<T>(value: T, transform: ObfuscateProviderText): T {
 	const traversal: ProviderTransformTraversal = {
 		ancestors: new WeakSet<object>(),
@@ -504,19 +453,7 @@ function estimateBranchSummaryTokens(message: AgentMessage): number {
 	});
 }
 
-/**
- * Prepare entries for summarization with token budget.
- *
- * Walks entries from NEWEST to OLDEST, adding messages until we hit the token budget.
- * This ensures we keep the most recent context when the branch is too long.
- *
- * Also collects file operations from:
- * - Tool calls in assistant messages
- * - Existing branch_summary entries' details (for cumulative tracking)
- *
- * @param entries - Entries in chronological order
- * @param tokenBudget - Maximum tokens to include (0 = no limit)
- */
+/** Prepare entries for summarization with token budget. */
 function prepareBranchEntriesForProvider(
 	entries: SessionEntry[],
 	tokenBudget: number,
@@ -582,20 +519,13 @@ export function prepareBranchEntries(entries: SessionEntry[], tokenBudget: numbe
 	return prepareBranchEntriesForProvider(entries, tokenBudget);
 }
 
-// ============================================================================
 // Summary Generation
-// ============================================================================
 
 const BRANCH_SUMMARY_PREAMBLE = prompt.render(AGENT_PROMPTS["compaction/branch-summary-preamble"].text);
 
 const BRANCH_SUMMARY_PROMPT = prompt.render(AGENT_PROMPTS["compaction/branch-summary"].text);
 
-/**
- * Generate a summary of abandoned branch entries.
- *
- * @param entries - Session entries to summarize (chronological order)
- * @param options - Generation options
- */
+/** Generate a summary of abandoned branch entries. */
 export async function generateBranchSummary(
 	entries: SessionEntry[],
 	options: GenerateBranchSummaryOptions,

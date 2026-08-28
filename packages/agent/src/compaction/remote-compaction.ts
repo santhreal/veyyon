@@ -1,37 +1,4 @@
-/**
- * Provider server-side ("remote") compaction, engine side.
- *
- * The session layer calls {@link compactWithProvider} instead of `compact()`
- * when the remote-compaction setting is on and the SESSION model resolves a
- * transport (`resolveServerCompactionTransport`, keyed on the model's compat
- * data, not its provider name). The compaction model chain never runs for
- * such a compaction: the provider compacts server-side, so a configured local
- * compaction model does not apply to it.
- *
- * ONE CALL, NOT TWO. This used to pair the provider call with a full local
- * summary of the same span and dual-write both, which made compacting on
- * OpenAI strictly more expensive than compacting locally: the provider
- * compacted, and then the session model was billed to summarize the identical
- * span so a readable copy existed. For an OpenAI model that is exactly
- * backwards. The provider's window IS the compacted context, it preserves the
- * encrypted reasoning a local summary throws away, and paying a second model
- * to paraphrase what OpenAI just compacted buys nothing the window does not
- * already carry.
- *
- * So the entry now stores the window and no summary text. The span is not
- * lost: compaction only moves `firstKeptEntryId`, and every discarded entry
- * is still on disk. A rebuild that CAN replay the window (the same provider
- * and api that minted it) replays it and never wanted summary text. A rebuild
- * that CANNOT (a fork or a resume onto a different provider) re-expands the
- * real messages instead, which is strictly better than the paraphrase it used
- * to get, and the next compaction on that provider summarizes them locally.
- * `buildSessionContext` owns that fallback; see the `usableCompaction` gate
- * in `session-context.ts`.
- *
- * What this does cost: no `shortSummary`, so the session listing falls back to
- * its header title, and no file-operation list folded into summary text. The
- * window carries the real tool calls, so the model still sees the file work.
- */
+/** Provider server-side ("remote") compaction, engine side. */
 
 import type { ApiKey, Model } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
@@ -57,16 +24,7 @@ export type {
 export { resolveServerCompactionTransport } from "@veyyon/ai/providers/openai-compaction";
 export * from "./remote-compaction-entry";
 
-/**
- * Compact the prepared span on the session model's provider and return the
- * result, whose readable summary is deliberately empty (see the module note).
- *
- * Throws when the model resolves no transport (callers gate on
- * `resolveServerCompactionTransport` first) and propagates any transport
- * failure unchanged: the session layer catches, warns once, and falls back to
- * the ordinary local compaction path, so a failed remote pass never leaves the
- * session uncompacted.
- */
+/** Compact the prepared span on the session model's provider and return the */
 export async function compactWithProvider(
 	preparation: CompactionPreparation,
 	model: Model,

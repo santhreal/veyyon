@@ -1,6 +1,4 @@
-/**
- * Tool output pruning utilities for compaction.
- */
+/** Tool output pruning utilities for compaction. */
 
 import type { ToolResultMessage } from "@veyyon/ai";
 import { toolResultNeverRan } from "../tool-result-never-ran";
@@ -23,32 +21,13 @@ export interface PruneConfig {
 	minimumSavings: number;
 	/** Tool-result protection matchers. String entries protect every result from that tool; predicates may inspect the paired tool call. */
 	protectedTools: ProtectedToolMatcher[];
-	/**
-	 * Optional supersede key function (see {@link SupersedePruneConfig.supersedeKey}).
-	 * When provided, superseded tool results are pruned first — even inside the
-	 * `protectTokens` window — before age-based victims. Absent, behavior is
-	 * unchanged.
-	 */
+	/** Optional supersede key function (see {@link SupersedePruneConfig.supersedeKey}). */
 	supersedeKey?: SupersedeKeyFn;
 	/** Useless-flagged results bypass the protect window (see {@link USELESS_NOTICE}). Default true. */
 	pruneUseless?: boolean;
-	/**
-	 * Compaction boundary: the `firstKeptEntryId` of the latest compaction on
-	 * the branch. Entries at indices BEFORE this id are summarized away and never
-	 * sent to the model, so mutating them only churns persisted history without
-	 * shrinking the prompt — they are skipped. Undefined = no compaction (the
-	 * whole branch is sent).
-	 */
+	/** Compaction boundary: the `firstKeptEntryId` of the latest compaction on */
 	keepBoundaryId?: string;
-	/**
-	 * Prompt-cache guard. When set, a tool result whose all-message suffix
-	 * (tokens of every message after it) EXCEEDS this is part of the warm,
-	 * already-sent cache prefix: mutating it forces the provider to re-write the
-	 * whole suffix (cacheWrite premium). Such results — including superseded and
-	 * useless ones, which otherwise bypass {@link protectTokens} — are left for
-	 * compaction/shake (which rebuild the cache anyway) to reclaim. Undefined =
-	 * no cache guard (legacy: superseded/useless prune at any depth).
-	 */
+	/** Prompt-cache guard. When set, a tool result whose all-message suffix */
 	cacheWarmSuffixTokens?: number;
 }
 
@@ -70,12 +49,7 @@ export const SUPERSEDED_NOTICE = "[Superseded by a newer read of this file]";
 /** Exact placeholder written over an elided useless tool result. */
 export const USELESS_NOTICE = "[Uneventful result elided]";
 
-/**
- * Maps a tool call to its supersede targets. A tool result is superseded when
- * every target it carries is covered by later (newer) tool results (either by an
- * identical target or by a selector-free read of the same base path).
- * Return `undefined` to exempt a call from supersede grouping.
- */
+/** Maps a tool call to its supersede targets. A tool result is superseded when */
 export type SupersedeKeyFn = (
 	toolName: string,
 	args: Record<string, unknown>,
@@ -88,40 +62,15 @@ export interface SupersedePruneConfig {
 	pruneUseless?: boolean;
 	/** Prune a candidate now when all messages after it total at most this many estimated tokens. Default 8 000. */
 	suffixTokenLimit?: number;
-	/**
-	 * Read-equivalent price of re-writing one already-cached token, used to decide
-	 * whether a batch of victims is worth the cache write it forces. Providers
-	 * charge roughly 1.25x base input to write a cache entry and 0.1x to read one,
-	 * so a rewritten token costs about 12.5 reads of the same token. Default 12.5.
-	 */
+	/** Read-equivalent price of re-writing one already-cached token, used to decide */
 	cacheWritePremium?: number;
-	/**
-	 * Turns the reclaimed tokens are assumed to survive if nothing prunes them,
-	 * i.e. how many times they would be re-read before the next compaction drops
-	 * them anyway. This is the other half of the trade: reclaiming M tokens saves
-	 * `M * paybackTurns` reads and costs `cacheWritePremium * suffix` writes.
-	 * Default 30. A backtest over 659 recorded sessions (550k turns) priced the
-	 * sweep at 30, 60 and 120: 60 reclaims more in total but leaves 15 sessions
-	 * worse by up to +8% because their real remaining life was shorter than the
-	 * assumption; 30 leaves 2 sessions worse by at most +1.4% and still nets
-	 * -0.5% of the total bill with a 0.02-point cache-hit change.
-	 */
+	/** Turns the reclaimed tokens are assumed to survive if nothing prunes them, */
 	paybackTurns?: number;
-	/**
-	 * Prune all candidates when the last message is at least this old: the
-	 * provider prompt cache is then cold, so re-writing it is free. MUST exceed
-	 * the cache retention (Anthropic "long" = 1h) or a still-warm prefix is busted
-	 * by the flush. Default 30 min — callers on long retention override it.
-	 */
+	/** Prune all candidates when the last message is at least this old: the */
 	idleFlushMs?: number;
 	/** Clock override for tests. */
 	now?: number;
-	/**
-	 * Compaction boundary (`firstKeptEntryId` of the latest compaction). Entries
-	 * before it are summarized away and never sent, so they are skipped in every
-	 * path — including the idle flush — to avoid pointless history churn.
-	 * Undefined = no compaction (the whole branch is sent).
-	 */
+	/** Compaction boundary (`firstKeptEntryId` of the latest compaction). Entries */
 	keepBoundaryId?: string;
 	/** Tool-result protection matchers (same contract as {@link PruneConfig.protectedTools}). */
 	protectedTools: ProtectedToolMatcher[];
@@ -136,14 +85,7 @@ function createPrunedNotice(tokens: number): string {
 	return `[Output truncated - ${tokens} tokens]`;
 }
 
-/**
- * Generic age-based pruning floor. Below this, blanking a result to
- * `[Output truncated - N tokens]` recovers nothing — the placeholder itself
- * costs ~8 tokens, so a sub-floor result grows the context (and churns the
- * prompt cache) instead of shrinking it. Superseded/useless results keep their
- * own rules: useless already drops no-savings candidates, superseded prunes for
- * correctness regardless of size.
- */
+/** Generic age-based pruning floor. Below this, blanking a result to */
 const MIN_PRUNE_TOKENS = 50;
 
 function estimatePrunedSavings(tokens: number, notice: string): number {
@@ -151,12 +93,7 @@ function estimatePrunedSavings(tokens: number, notice: string): number {
 	return Math.max(0, tokens - noticeTokens);
 }
 
-/**
- * For each entry index, the estimated token total of all *message* entries
- * strictly after it — how much prompt-cache content the provider must re-write
- * (cacheWrite premium) if that entry is mutated in place. Used to keep prune
- * mutations inside the cheap-to-recache tail.
- */
+/** For each entry index, the estimated token total of all *message* entries */
 function computeMessageSuffixTokens(entries: readonly SessionEntry[]): number[] {
 	const suffix = new Array<number>(entries.length);
 	let accumulated = 0;
@@ -178,16 +115,7 @@ interface SupersedeCandidate {
 	notice: string;
 }
 
-/**
- * Collect superseded tool results: for every unpruned, unprotected tool result
- * whose paired call resolves supersede targets, the result is marked superseded
- * if and only if EVERY target it carries has been covered by later tool results.
- * A target is covered by an identical target or by a selector-free read of the
- * same base path. Partial cover (e.g. later read of `a.ts` when earlier read was
- * `a.ts; b.ts`) does NOT retire the earlier result, preserving content that has
- * not been re-read.
- * Returned in message order.
- */
+/** Collect superseded tool results: for every unpruned, unprotected tool result */
 function collectSupersededResults(
 	entries: readonly SessionEntry[],
 	toolCallsById: ReadonlyMap<string, AgentToolCall>,
@@ -246,12 +174,7 @@ function collectSupersededResults(
 	return candidates.reverse();
 }
 
-/**
- * Collect tool results their tool flagged contextually useless (zero matches,
- * elapsed wait): unpruned, non-error, unprotected, not in `exclude`, and large
- * enough that blanking to {@link USELESS_NOTICE} actually saves tokens.
- * Returned in message order.
- */
+/** Collect tool results their tool flagged contextually useless (zero matches, */
 function collectUselessResults(
 	entries: readonly SessionEntry[],
 	toolCallsById: ReadonlyMap<string, AgentToolCall>,
@@ -272,17 +195,7 @@ function collectUselessResults(
 	return candidates;
 }
 
-/**
- * Deepest batch of victims whose reclaimed tokens pay for the one cache rewrite
- * they force, or an empty array when no batch does.
- *
- * Rewriting a message invalidates every cached token after it, so the price of a
- * sweep is set by its EARLIEST victim and is paid once, while the saving is the
- * whole batch's mass, collected on every later turn. That is why the answer is a
- * batch: `dead * paybackTurns` against `premium * suffix(earliest)`. Candidates
- * arrive in message order, so each prefix of the list is a legal cut and the best
- * one is a single scan from the deep end.
- */
+/** Deepest batch of victims whose reclaimed tokens pay for the one cache rewrite */
 function chooseWorthwhileSweep(
 	candidates: readonly SupersedeCandidate[],
 	suffixTokens: readonly number[],
@@ -305,16 +218,7 @@ function chooseWorthwhileSweep(
 	return bestCut === candidates.length ? [] : candidates.slice(bestCut);
 }
 
-/**
- * Prune superseded tool results (e.g. stale `read` outputs replaced by a newer
- * read of the same file) and, when `pruneUseless` is set, results their tool
- * flagged contextually useless. Prompt-cache-aware in three ways: a candidate
- * whose own suffix is small is rewritten on its own (the read→edit→read loop), a
- * deeper BATCH is rewritten when its combined mass pays for the one cache write
- * it forces (see {@link chooseWorthwhileSweep}), and an idle context flushes
- * everything because its cache has expired anyway.
- * Never mutates entries before `keepBoundaryId` (summarized away — not sent).
- */
+/** Prune superseded tool results (e.g. stale `read` outputs replaced by a newer */
 export function pruneSupersededToolResults(entries: SessionEntry[], config: SupersedePruneConfig): PruneResult {
 	const toolCallsById = collectToolCallsById(entries);
 	const candidates = config.supersedeKey
@@ -482,13 +386,7 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 	return { prunedCount, tokensSaved };
 }
 
-/**
- * Supersede targets for the `read` tool: a list of normalized target keys.
- * Selector-free reads key on the bare path; selector-carrying reads key on
- * `path + "\u0000" + selector` (via {@link splitReadSelector}).
- * Multi-target reads (`a.ts; b.ts`) are split into distinct targets.
- * URL and internal schemes (`skill://…`, `https://…`) are exempt per target.
- */
+/** Supersede targets for the `read` tool: a list of normalized target keys. */
 export function readToolSupersedeKey(toolName: string, args: Record<string, unknown>): readonly string[] | undefined {
 	if (toolName !== "read") return undefined;
 	const path = args.path;
