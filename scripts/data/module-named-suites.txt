@@ -411,7 +411,6 @@ packages/coding-agent/test/tools/report-tool-issue.test.ts
 packages/coding-agent/test/tools/reroot-hint.test.ts
 packages/coding-agent/test/tools/resolve.test.ts
 packages/coding-agent/test/tools/review.test.ts
-packages/coding-agent/test/tools/runtime.test.ts
 packages/coding-agent/test/tools/search-tool-bm25.test.ts
 packages/coding-agent/test/tools/structure-search.test.ts
 packages/coding-agent/test/tools/todo.test.ts

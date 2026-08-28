@@ -879,10 +879,9 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `thinkingBudgets.medium` | number | `8192` |  |
 | `thinkingBudgets.minimal` | number | `1024` |  |
 | `thinkingBudgets.xhigh` | number | `32768` |  |
-| `tools.unifiedRuntime` | boolean | `false` |  |
 | `ttsr.experimentalRules` | array | `[]` |  |
 | `tui.maxInlineImageColumns` | number | `100` |  |
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-348 settings in /settings, 121 configuration-file keys, 469 in all.
+348 settings in /settings, 120 configuration-file keys, 468 in all.
