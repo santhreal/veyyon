@@ -57,8 +57,8 @@ one. If no boundary is available at all, the suite does not run. Read
 
 | Mode | Contents |
 | --- | --- |
-| `workspace` | Fast packages (hashline, wire, utils, catalog, ai, agent, argot, stats, tool-render, swarm-extension, mnemopi, simulations). Packages only: the script gates are their own bucket. |
-| `native` | natives, tui, evals, collab-web |
+| `workspace` | Fast packages (hashline, wire, utils, catalog, ai, agent, argot, stats, tool-render, swarm-extension, deepswe-bench, mnemopi). Packages only: the script gates are their own bucket. |
+| `native` | natives, tui, typescript-edit-benchmark, metaharness, collab-web |
 | `coding-agent-singleton` | Settings / global-state suites (one process; do not chunk) |
 | `coding-agent-ui` | TUI/interactive suites (chunk size 5; ghostty GC ceiling) |
 | `coding-agent-runtime` | Session, RPC, SDK, MCP, extensions |
@@ -1181,7 +1181,7 @@ Two things to get right, because both produce convincing lies:
   what you are proving, instead of reading the placeholder box as a rendering fault.
 
 This is how the `⟳` in the running-agent status was found. It is U+27F3, no plain
-monospace face carries it, and every busy row in the Agent Control Center drew a
+monospace face carries it, and every busy row in the subagent dashboard drew a
 tofu box on a machine without a Nerd Font. Three hundred passing assertions on
 that component said nothing, because the string was correct the whole time.
 
@@ -1219,4 +1219,4 @@ Wiring you can't exercise in-process (worker spawn, install flow) is covered by 
 runtime smoke probe (`veyyon --smoke-test`) and the install-test scripts, not by a
 source grep.
 
-*Verified against `8c73c29b2` on 2026-08-25.*
+*Verified against `27773e7` on 2026-08-28.*

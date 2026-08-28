@@ -35,7 +35,7 @@ These are genuinely good patterns. Refactors must preserve behavior.
    steering-hint prompt text lives in
    `packages/coding-agent/src/prompts/steering/{parent-irc,user-interjection}.md`. A richer IRC-style,
    full multi-agent **dashboard** (channels, not just the message bus) remains **Spec, not shipped**
-   (BACKLOG `U4-10`), beyond the single `/agents` Agent Control Center card that `/cockpit` and
+   beyond the single `/agents` subagent dashboard card that `/cockpit` and
    `/hub` are aliases of. The messaging primitive itself is built; the dashboard UI around it is not.
 4. **Subagent + todo-list interaction model**: the `todo` tool
    (`packages/coding-agent/src/tools/todo.ts`) plus plan-mode guardrails
@@ -75,10 +75,10 @@ the shipped model-slots-plus-3-knob-compaction design (see [Compaction & project
 | Which model runs for which role (matrix + popups) | **CUT** | Replaced by plain `subagent.model` / `compaction.model` fields |
 | Forced role reassignment on model change | **CUT** | `/model` only changes the interactive model |
 | Compaction/subagent model popups | **CUT** | Plain settings fields (model tab) |
-| Full IRC-style multi-agent dashboard (channels) | **Spec, not shipped** | Tracked as BACKLOG `U4-10`; the messaging tool itself is built |
+| Full IRC-style multi-agent dashboard (channels) | **Spec, not shipped** | The messaging tool itself is built |
 
 **Rule for future refactors:** if a change touches subagent spawning, `irc` messaging, or the compaction
 handoff prompt, preserve behavior. If it touches model-routing *settings knobs*, follow the shipped
 model-slots design above, do not resurrect a role→model matrix because an old fork had one.
 
-*Verified against `7e4c6374` on 2026-08-06.*
+*Verified against `27773e7` on 2026-08-28.*

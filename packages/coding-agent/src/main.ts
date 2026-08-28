@@ -93,7 +93,7 @@ import { takeStartupPrologue } from "./startup/prologue-handoff";
 import { shouldShowStartupSplash } from "./startup-splash";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";
 import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
-import { resolveSubagentAutoCloseBudget, resolveSubagentIdleTtlMs } from "./task/subagent-settings";
+import { resolveSubagentIdleTtlMs, resolveSubagentPruneBudget } from "./task/subagent-settings";
 import { initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
 import type { LspStartupServerInfo } from "./tools";
 import { decideUpdateNotice, readLastChangelogVersion, writeLastChangelogVersion } from "./utils/changelog";
@@ -1885,11 +1885,14 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 				settings: settingsInstance,
 				enableLsp: sessionOptions.enableLsp ?? true,
 			}),
-			resolveSubagentIdleTtlMs(settingsInstance),
-			// The operator's current close budgets, so a ref revived from disk rejoins the
-			// close stage instead of staying listed for the rest of the session. Read here
-			// rather than defaulted in the manager because this is where the settings are.
-			resolveSubagentAutoCloseBudget(settingsInstance),
+			() => resolveSubagentIdleTtlMs(settingsInstance),
+			// The operator's close budgets, so a ref restored from disk or revived
+			// rejoins the close stage instead of staying listed for the rest of the
+			// session. Read through a function rather than snapshotted here, so a
+			// change in /settings governs every agent adopted after it; the deadlines
+			// already armed keep the budget they were armed with until their next
+			// status change re-derives them.
+			() => resolveSubagentPruneBudget(settingsInstance),
 		);
 		if (parsedArgs.apiKey && !sessionOptions.model && session.model) {
 			authStorage.setRuntimeApiKey(session.model.provider, parsedArgs.apiKey);

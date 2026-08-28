@@ -499,7 +499,7 @@ export function expandSessionContext(argot: ArgotSession, context: SessionContex
  * Expand handles across persisted transcript entries read straight off disk.
  *
  * `expandSessionContext` covers a rebuild that goes through `SessionManager`.
- * The Agent Control Center's transcript viewer does not: it parses a subagent's
+ * The subagent dashboard's transcript viewer does not: it parses a subagent's
  * or advisor's `.jsonl` itself, because those two cases have no live session to
  * hand the view over to. The persisted file keeps the cheap handles (see
  * {@link expandSessionContext}), so that viewer was the one display that showed

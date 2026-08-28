@@ -1,5 +1,5 @@
 /**
- * The live side of the Agent Control Center: who is running and what each one
+ * The live side of the subagent dashboard: who is running and what each one
  * is called.
  *
  * WHY THIS MODULE EXISTS. The Control Center used to open on a strip of source

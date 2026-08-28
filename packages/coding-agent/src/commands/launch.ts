@@ -247,7 +247,15 @@ export default class Index extends Command {
 		// `--export`, `--print`, a protocol mode) load `../main` immediately
 		// below regardless, making this module load noise against that.
 		const { runStartupPrologue, shouldPrepaintLaunchCard } = await import("../startup/launch-card");
-		if (shouldPrepaintLaunchCard(parsed)) await runStartupPrologue(parsed);
+		if (shouldPrepaintLaunchCard(parsed)) {
+			await runStartupPrologue(parsed);
+			// The card is up and its typeahead gate is listening, so the runtime
+			// graph is loaded in stages that hand the loop back between subtrees.
+			// Without it the next line blocks for the whole evaluation and a
+			// keystroke typed during it is not echoed until the composer mounts.
+			const { warmRuntimeGraph } = await import("../startup/runtime-warmup");
+			await warmRuntimeGraph();
+		}
 		const { runRootCommand } = await import("../main");
 		await runRootCommand(parsed, args);
 	}

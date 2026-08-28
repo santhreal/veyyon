@@ -3,7 +3,7 @@ import { lookupBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/b
 
 /**
  * `/agents` is a live navigation surface, not a profile editor. The contract
- * pinned here is that its TUI handler opens the Agent Control Center overlay
+ * pinned here is that its TUI handler opens the subagent dashboard overlay
  * and nothing else: routing it back through the settings selector would swap a
  * live roster for a form, which is the mistake these cases catch.
  *
@@ -34,7 +34,7 @@ describe("/agents routing", () => {
 		expect(showAgentsDashboard).toHaveBeenCalledTimes(1);
 		expect(setText).toHaveBeenCalledWith("");
 		expect(lookupBuiltinSlashCommand("agents")?.description).toBe(
-			"Agent Control Center: live agent roster and comms stream",
+			"Subagent dashboard: live agent roster and comms stream",
 		);
 	});
 

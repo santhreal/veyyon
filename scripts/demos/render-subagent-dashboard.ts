@@ -1,5 +1,5 @@
 /**
- * Print an Agent Control Center view as ANSI, for the render proofs.
+ * Print a subagent dashboard view as ANSI, for the render proofs.
  *
  * The card cannot be captured by launching veyyon and pressing `/agents`: both
  * of its views show LIVE state -- which agents are running, and what they have
@@ -11,7 +11,7 @@
  *
  * Usage:
  *
- *     bun scripts/demos/render-agent-control-center.ts --view termination [--rows 34] [--theme titanium]
+ *     bun scripts/demos/render-subagent-dashboard.ts --view termination [--rows 34] [--theme titanium]
  *       | bun scripts/demos/render-proof.ts --out /tmp/proof/acc-termination --width 120
  *
  * Views: `live` (the roster), `live-hover` (the roster's pointer affordance),
@@ -145,7 +145,7 @@ const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 function positionOf(lines: readonly string[], needle: string): { row: number; col: number } {
 	const plain = lines.map(line => line.replace(ANSI_PATTERN, ""));
 	const row = plain.findIndex(line => line.includes(needle));
-	if (row < 0) throw new Error(`Agent Control Center proof could not find ${JSON.stringify(needle)}`);
+	if (row < 0) throw new Error(`subagent dashboard proof could not find ${JSON.stringify(needle)}`);
 	return { row: row + 1, col: plain[row]!.indexOf(needle) + 1 };
 }
 
@@ -185,9 +185,9 @@ if (view === "termination") {
 	const scout = positionOf(lines, "scout");
 	const scoutLine = lines[scout.row - 1]!.replace(ANSI_PATTERN, "");
 	const terminateCol = scoutLine.lastIndexOf("[x]") + 1;
-	if (terminateCol === 0) throw new Error("Agent Control Center proof did not reveal the row termination action");
+	if (terminateCol === 0) throw new Error("subagent dashboard proof did not reveal the row termination action");
 	dashboard.handleInput(`\x1b[<0;${terminateCol};${scout.row}M`);
-	if (!overlay) throw new Error("Agent Control Center proof did not mount the termination confirmation");
+	if (!overlay) throw new Error("subagent dashboard proof did not mount the termination confirmation");
 	lines = overlay.render(width);
 }
 

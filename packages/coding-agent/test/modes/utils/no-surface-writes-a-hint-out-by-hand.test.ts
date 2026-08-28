@@ -10,7 +10,7 @@
  * the product read it properly. Six places that NAME it did not, and each was a
  * literal `ctrl+o` printed at the user:
  *
- * - the Agent Control Center's Comms footer chip,
+ * - the subagent dashboard's Comms footer chip,
  * - its fold line under a truncated message,
  * - the rule-injection notice, in three separate branches,
  * - the bash/eval execution block's hidden-line note,
