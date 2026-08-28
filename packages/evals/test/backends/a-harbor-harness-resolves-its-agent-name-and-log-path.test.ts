@@ -183,7 +183,7 @@ describe("a harbor harness resolves its agent name and log path from the registr
 			},
 			harnesses,
 		);
-		expect(veyyonArgs).toContain("--agent-import-path");
+		expect(veyyonArgs).toContain("--agent");
 		expect(veyyonArgs).toContain("veyyon_local:VeyyonLocal");
 
 		const oracleArgs = buildHarborArgs(
@@ -196,7 +196,7 @@ describe("a harbor harness resolves its agent name and log path from the registr
 		);
 		expect(oracleArgs).toContain("-a");
 		expect(oracleArgs).toContain("oracle");
-		expect(oracleArgs).not.toContain("--agent-import-path");
+		expect(oracleArgs).not.toContain("--agent");
 	});
 
 	it("buildHarborEnv produces agent env only for harbor-bound harnesses", () => {
@@ -220,8 +220,8 @@ describe("a harbor harness resolves its agent name and log path from the registr
 		expect(unboundEnv.VEYYON_BENCH_AGENT_ARGS).toBeUndefined();
 		expect(unboundEnv.VEYYON_BENCH_GATEWAY).toBeUndefined();
 
-		// omp is harbor-bound and carries its own credentials in its program env file, so
-		// it gets the agent channel with the gateway switched off rather than announced.
+		// omp is harbor-bound and routes through the auth gateway, so the agent
+		// channel announces the gateway with URL and token.
 		const programEnv = buildHarborEnv(
 			{ ...mockConfig, agent: "omp" },
 			"/path/to/models.yaml",
@@ -231,9 +231,9 @@ describe("a harbor harness resolves its agent name and log path from the registr
 			harnesses.require("omp").backends.harbor,
 		);
 		expect(programEnv.VEYYON_BENCH_AGENT_ARGS).toBe('["--flag"]');
-		expect(programEnv.VEYYON_BENCH_GATEWAY).toBe("0");
-		expect(programEnv.VEYYON_BENCH_GATEWAY_URL).toBeUndefined();
-		expect(programEnv.VEYYON_BENCH_GATEWAY_TOKEN).toBeUndefined();
+		expect(programEnv.VEYYON_BENCH_GATEWAY).toBe("1");
+		expect(programEnv.VEYYON_BENCH_GATEWAY_URL).toBe("http://127.0.0.1:4000");
+		expect(programEnv.VEYYON_BENCH_GATEWAY_TOKEN).toBe("token-1");
 	});
 
 	it("the progress frame labels whichever harness the run drove", () => {

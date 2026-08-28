@@ -297,7 +297,7 @@ describe("buildHarborArgs shared construction", () => {
 			"--timeout-multiplier",
 			"1.5",
 			"-y",
-			"--agent-import-path",
+			"--agent",
 			"veyyon_local:VeyyonLocal",
 		]);
 	});
