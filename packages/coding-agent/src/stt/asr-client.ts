@@ -313,10 +313,6 @@ export class SttClient {
 
 export const sttClient = new SttClient();
 
-export async function shutdownSttClient(): Promise<void> {
-	await sttClient.terminate();
-}
-
 export async function smokeTestSttWorker({
 	timeoutMs = SMOKE_TEST_TIMEOUT_MS,
 }: {

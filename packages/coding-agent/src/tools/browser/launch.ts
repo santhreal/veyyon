@@ -677,10 +677,6 @@ async function injectStealthScripts(page: Page): Promise<void> {
 	await page.evaluateOnNewDocument(buildStealthInjectionScript());
 }
 
-export function buildStealthInjectionScriptForTest(scripts: readonly string[] = STEALTH_PATCH_SCRIPTS): string {
-	return buildStealthInjectionScript(scripts);
-}
-
 export async function applyStealthPatches(
 	browser: Browser,
 	page: Page,
@@ -702,15 +698,4 @@ export async function applyStealthPatches(
 
 export function stealthIgnoreDefaultArgsForTest(executablePath: string | undefined): string[] {
 	return stealthIgnoreDefaultArgs(executablePath);
-}
-
-export function targetSupportsUserAgentOverrideForTest(target: Target): boolean {
-	return targetSupportsUserAgentOverride(target);
-}
-export async function configureUserAgentTargetsForTest(
-	browser: Browser,
-	state: { browserSession: CDPSession | null; override: UserAgentOverride },
-	targetTimeoutMs?: number,
-): Promise<void> {
-	await configureUserAgentTargets(browser, state, targetTimeoutMs);
 }

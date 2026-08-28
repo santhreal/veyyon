@@ -9,28 +9,15 @@ import type {
 } from "@veyyon/agent-core";
 import type {
 	CursorMcpCall,
-	CursorRuleInput,
 	CursorShellStreamCallbacks,
 	CursorExecHandlers as ICursorExecHandlers,
-	Model,
 	ToolResultMessage,
 } from "@veyyon/ai";
 import { errorMessage, sanitizeText } from "@veyyon/utils";
-import type { ContextFileEntry } from "./tools";
 import { resolveToCwd } from "./tools/path-utils";
 
 /** Whether this model's instructions travel through Cursor's `requestContext.rules` channel instead of the system-prompt blobs every other provider honors. */
-export function usesCursorRuleDelivery(model: Pick<Model, "api"> | undefined): boolean {
-	return model?.api === "cursor-agent";
-}
-
 /** The context files a Cursor-bound request may deliver, as `CursorRuleInput` units. Only OPERATOR-OWNED scopes become rules: the operator's cross-profile file (`global`) */
-export function cursorContextFileRules(files: readonly ContextFileEntry[]): CursorRuleInput[] {
-	return files
-		.filter(file => file.level === "global" || file.level === "user")
-		.map(file => ({ fullPath: file.path, content: file.content }));
-}
-
 interface CursorExecBridgeOptions {
 	cwd: string;
 	tools: Map<string, AgentTool>;

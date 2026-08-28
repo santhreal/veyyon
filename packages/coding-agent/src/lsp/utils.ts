@@ -18,7 +18,6 @@ import type {
 	Range,
 	SymbolInformation,
 	SymbolKind,
-	TextEdit,
 	WorkspaceEdit,
 } from "./types";
 
@@ -81,24 +80,6 @@ export function sortDiagnostics(diagnostics: Diagnostic[]): Diagnostic[] {
 		if (aCol !== bCol) return aCol - bCol;
 		return a.message.localeCompare(b.message);
 	});
-}
-
-export function severityToIcon(severity?: DiagnosticSeverity): string {
-	const currentTheme = theme as Theme | undefined;
-	const fallback = currentTheme?.format?.bullet ?? "*";
-	const status = currentTheme?.status;
-	switch (severity ?? 1) {
-		case 1:
-			return status?.error ?? fallback;
-		case 2:
-			return status?.warning ?? fallback;
-		case 3:
-			return status?.info ?? fallback;
-		case 4:
-			return currentTheme?.format?.bullet ?? fallback;
-		default:
-			return status?.error ?? fallback;
-	}
 }
 
 function stripDiagnosticNoise(message: string): string {
@@ -214,10 +195,6 @@ export function formatLocation(location: Location, cwd: string): string {
 	return `${file}:${line}:${col}`;
 }
 
-export function formatPosition(line: number, col: number): string {
-	return `${line}:${col}`;
-}
-
 export function comparePosition(a: Position, b: Position): number {
 	return a.line === b.line ? a.character - b.character : a.line - b.line;
 }
@@ -270,15 +247,6 @@ export function formatWorkspaceEdit(edit: WorkspaceEdit, cwd: string): string[] 
 	return results;
 }
 
-export function formatTextEdit(edit: TextEdit, maxLength = 50): string {
-	const range = `${edit.range.start.line + 1}:${edit.range.start.character + 1}`;
-	const preview =
-		edit.newText.length > maxLength
-			? `${edit.newText.slice(0, maxLength).replace(/\n/g, "\\n")}…`
-			: edit.newText.replace(/\n/g, "\\n");
-	return `line ${range} ${theme.nav.cursor} "${preview}"`;
-}
-
 function getSymbolKindIcons(): Record<SymbolKind, string> {
 	const currentTheme = theme as Theme | undefined;
 	const fallback = currentTheme?.format?.bullet ?? "*";
@@ -325,38 +293,6 @@ export function symbolKindToIcon(kind: SymbolKind): string {
 	const currentTheme = theme as Theme | undefined;
 	const bullet = currentTheme?.format?.bullet ?? "*";
 	return getSymbolKindIcons()[kind] ?? bullet;
-}
-
-export function symbolKindToName(kind: SymbolKind): string {
-	const names: Record<number, string> = {
-		1: "File",
-		2: "Module",
-		3: "Namespace",
-		4: "Package",
-		5: "Class",
-		6: "Method",
-		7: "Property",
-		8: "Field",
-		9: "Constructor",
-		10: "Enum",
-		11: "Interface",
-		12: "Function",
-		13: "Variable",
-		14: "Constant",
-		15: "String",
-		16: "Number",
-		17: "Boolean",
-		18: "Array",
-		19: "Object",
-		20: "Key",
-		21: "Null",
-		22: "EnumMember",
-		23: "Struct",
-		24: "Event",
-		25: "Operator",
-		26: "TypeParameter",
-	};
-	return names[kind] ?? "Unknown";
 }
 
 export function formatDocumentSymbol(symbol: DocumentSymbol, indent = 0): string[] {

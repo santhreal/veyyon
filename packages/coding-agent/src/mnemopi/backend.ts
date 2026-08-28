@@ -605,11 +605,6 @@ function getMnemopiSessionStateFromParent(options: MemoryBackendStartOptions): M
 	return parent?.aliasOf ?? parent;
 }
 
-export function getMnemopiDbDirForTests(session: AgentSession): string | undefined {
-	const state = getMnemopiSessionState(session);
-	return state ? path.dirname(state.config.dbPath) : undefined;
-}
-
 async function removeDbFiles(dbPaths: readonly string[]): Promise<void> {
 	for (const dbPath of dbPaths) {
 		for (const suffix of ["", "-wal", "-shm"]) {

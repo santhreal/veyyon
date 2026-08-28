@@ -765,7 +765,6 @@ export async function runClaudeMessagesCapture(args: ClaudeTraceCommandArgs = {}
 		await proxy.stop();
 	}
 }
-
 export async function runClaudeTraceCommand(args: ClaudeTraceCommandArgs = {}): Promise<void> {
 	process.stderr.write(
 		`Starting Claude trace proxy on ${args.host ?? DEFAULT_PROXY_HOST}:${args.port ?? DEFAULT_PROXY_PORT}\n`,

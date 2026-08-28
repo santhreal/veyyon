@@ -100,8 +100,3 @@ async function launch({ port, start = startRemoteDebugger }: StartRemoteDebugger
 
 	throw thrown instanceof Error ? thrown : new Error(`Remote debugger socket never came up on ${host}:${chosen}`);
 }
-
-export function __resetRemoteDebuggerForTests(): void {
-	active = null;
-	starting = null;
-}

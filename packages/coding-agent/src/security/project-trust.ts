@@ -68,12 +68,6 @@ async function realPathOrSelf(target: string): Promise<string> {
 	}
 }
 
-export async function isInsideProject(absolutePath: string, canonicalRoot: string): Promise<boolean> {
-	const real = await realPathOrSelf(path.resolve(absolutePath));
-	const relative = path.relative(canonicalRoot, real);
-	return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
-}
-
 export class ProjectTrust {
 	#store: ProjectTrustStore;
 	readonly filePath: string;

@@ -34,9 +34,3 @@ export function getLinterClient(serverName: string, config: ServerConfig, cwd: s
 /**
  * Clear all cached linter clients.
  */
-export function clearLinterClientCache(): void {
-	for (const client of clientCache.values()) {
-		client.dispose?.();
-	}
-	clientCache.clear();
-}

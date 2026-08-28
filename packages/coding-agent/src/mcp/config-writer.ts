@@ -120,16 +120,6 @@ export async function removeMCPServer(filePath: string, name: string): Promise<v
 	});
 }
 
-export async function getMCPServer(filePath: string, name: string): Promise<MCPServerConfig | undefined> {
-	const config = await readMCPConfigFile(filePath);
-	return config.mcpServers?.[name];
-}
-
-export async function listMCPServers(filePath: string): Promise<string[]> {
-	const config = await readMCPConfigFile(filePath);
-	return Object.keys(config.mcpServers ?? {});
-}
-
 async function readMCPConfigFileForQuery(filePath: string): Promise<MCPConfigFile> {
 	try {
 		return await readMCPConfigFile(filePath);

@@ -3,7 +3,6 @@ import { resolveEffort, withLegacyDefaultEffort } from "../../config/effort-reso
 import { Settings } from "../../config/settings";
 import {
 	type AnyUiMetadata,
-	getDefault,
 	getEnumValues,
 	getPathsForTab,
 	getType,
@@ -327,11 +326,4 @@ export function getSettingsForTab(tab: SettingTab): SettingDef[] {
 
 export function getSettingDef(path: SettingPath): SettingDef | undefined {
 	return getAllSettingDefs().find(def => def.path === path);
-}
-
-export function getDisplayDefault(path: SettingPath): string {
-	const value = getDefault(path);
-	if (value === undefined) return "";
-	if (typeof value === "boolean") return value ? "true" : "false";
-	return String(value);
 }

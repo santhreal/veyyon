@@ -483,14 +483,6 @@ function notifyThemeChange(event: ThemeChangeEvent = {}): void {
 	}
 }
 
-export function getAvailableSymbolPresets(): SymbolPreset[] {
-	return ["unicode", "nerd", "ascii"];
-}
-
-export function isValidSymbolPreset(preset: string): preset is SymbolPreset {
-	return preset === "unicode" || preset === "nerd" || preset === "ascii";
-}
-
 async function startThemeWatcher(): Promise<void> {
 	stopThemeWatcher();
 

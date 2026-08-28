@@ -1215,15 +1215,3 @@ export class MCPManager {
 		return resolved;
 	}
 }
-
-export async function createMCPManager(
-	cwd: string,
-	options?: MCPDiscoverOptions,
-): Promise<{
-	manager: MCPManager;
-	result: MCPLoadResult;
-}> {
-	const manager = new MCPManager(cwd);
-	const result = await manager.discoverAndConnect(options);
-	return { manager, result };
-}

@@ -66,20 +66,3 @@ export function parseCommitArgs(args: string[]): CommitCommandArgs | undefined {
 
 	return result;
 }
-
-export function printCommitHelp(): void {
-	const lines = [
-		"Usage:",
-		"  veyyon commit [options]",
-		"",
-		"Options:",
-		"  --push           Push after committing",
-		"  --dry-run        Preview without committing",
-		"  --no-changelog   Skip changelog updates",
-		"  --legacy         Use legacy deterministic pipeline",
-		"  --context, -c    Additional context for the model",
-		"  --model, -m      Override model selection",
-		"  --help, -h       Show this help message",
-	];
-	process.stdout.write(`${lines.join("\n")}\n`);
-}

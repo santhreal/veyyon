@@ -191,10 +191,6 @@ export async function awaitGpuProbe(): Promise<void> {
 	await gpuProbe;
 }
 
-export function __resetGpuStateForTests(): void {
-	processGpu = undefined;
-	gpuProbe = undefined;
-}
 export function __resetCpuStateForTests(): void {
 	processCpuModel = undefined;
 }

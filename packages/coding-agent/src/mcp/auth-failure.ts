@@ -44,10 +44,6 @@ export class MCPAuthRequiredError extends Error {
 }
 
 /** True for the error this module throws, without importing the manager. */
-export function isMcpAuthRequiredError(error: unknown): error is MCPAuthRequiredError {
-	return error instanceof MCPAuthRequiredError;
-}
-
 /** A configured MCP value names an environment variable that is unset or empty. The connection is refused instead of attempted. The old resolution fell back */
 export class MCPUnresolvedEnvReferenceError extends Error {
 	readonly variable: string;

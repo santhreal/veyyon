@@ -119,13 +119,6 @@ export function applySectionOverrides(
 	return resolved;
 }
 
-export async function loadPromptSectionOverrides(
-	options: LoadSectionOverridesOptions,
-	assembled: DefaultTemplateSections,
-): Promise<Partial<DefaultTemplateSections>> {
-	return applySectionOverrides(await loadSectionOverrideFiles(options), assembled);
-}
-
 async function defaultListDir(dir: string): Promise<string[]> {
 	const { readdir } = await import("node:fs/promises");
 	return readdir(dir);

@@ -1,14 +1,6 @@
 import type { Component, SelectList, SettingsList, SgrMouseEvent } from "@veyyon/tui";
 import { Container, routeSelectListMouse } from "@veyyon/tui";
 
-interface RoutableSelectList {
-	routeMouse?: (event: SgrMouseEvent, line: number, col: number) => void;
-	handleWheel(delta: -1 | 1): void;
-	hitTest(line: number): number | undefined;
-	setHoverIndex(index: number | null): void;
-	clickItem(index: number): void;
-}
-
 export function renderTrackingChild(
 	container: Container,
 	tracked: Component | undefined,
@@ -69,32 +61,6 @@ export abstract class MouseRoutedSubmenu extends Container {
 
 	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
 		routeTrackedMouse(this.mouseTarget(), event, line, this.#mouseTargetLineOffset, col);
-	}
-}
-
-export function routeSelectListMouseWithTopBorder(
-	selectList: SelectList,
-	event: SgrMouseEvent,
-	line: number,
-	col: number,
-): void {
-	const localLine = line - 1;
-	const target = selectList as RoutableSelectList;
-	if (typeof target.routeMouse === "function") {
-		target.routeMouse(event, localLine, col);
-		return;
-	}
-	if (event.wheel !== null) {
-		target.handleWheel(event.wheel);
-		return;
-	}
-	const index = target.hitTest(localLine);
-	if (event.motion) {
-		target.setHoverIndex(index ?? null);
-		return;
-	}
-	if (event.leftClick && index !== undefined) {
-		target.clickItem(index);
 	}
 }
 

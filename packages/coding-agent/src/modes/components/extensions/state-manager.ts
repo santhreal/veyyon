@@ -286,62 +286,6 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 	return extensions;
 }
 
-export function buildSidebarTree(extensions: ExtensionRow[]): TreeNode[] {
-	const providers = getAllProvidersInfo();
-	const tree: TreeNode[] = [];
-
-	const byProvider = new Map<string, Map<ExtensionKind, ExtensionRow[]>>();
-
-	for (const ext of extensions) {
-		const providerId = ext.source.provider;
-		if (!byProvider.has(providerId)) {
-			byProvider.set(providerId, new Map());
-		}
-		const byKind = byProvider.get(providerId)!;
-		if (!byKind.has(ext.kind)) {
-			byKind.set(ext.kind, []);
-		}
-		byKind.get(ext.kind)!.push(ext);
-	}
-
-	for (const provider of providers) {
-		if (provider.id === "native") continue;
-
-		const byKind = byProvider.get(provider.id);
-		const kindNodes: TreeNode[] = [];
-		let totalCount = 0;
-
-		if (byKind && byKind.size > 0) {
-			for (const [kind, exts] of byKind) {
-				totalCount += exts.length;
-				kindNodes.push({
-					id: `${provider.id}:${kind}`,
-					label: getKindDisplayName(kind),
-					type: "kind",
-					enabled: provider.enabled,
-					collapsed: true,
-					children: [],
-					count: exts.length,
-				});
-			}
-
-			kindNodes.sort((a, b) => (b.count || 0) - (a.count || 0));
-		}
-
-		tree.push({
-			id: provider.id,
-			label: provider.displayName,
-			type: "provider",
-			enabled: provider.enabled,
-			collapsed: false,
-			children: kindNodes,
-			count: totalCount,
-		});
-	}
-
-	return tree;
-}
-
 export function flattenTree(tree: TreeNode[]): FlatTreeItem[] {
 	const flat: FlatTreeItem[] = [];
 	let index = 0;
@@ -388,33 +332,6 @@ export function applyFilter(extensions: ExtensionRow[], query: string): Extensio
 
 		return tokens.every(token => fuzzyMatch(token, searchable).matches);
 	});
-}
-
-function getKindDisplayName(kind: ExtensionKind): string {
-	switch (kind) {
-		case "extension-module":
-			return "Extension Modules";
-		case "skill":
-			return "Skills";
-		case "rule":
-			return "Rules";
-		case "tool":
-			return "Tools";
-		case "mcp":
-			return "MCP Servers";
-		case "prompt":
-			return "Prompts";
-		case "instruction":
-			return "Instructions";
-		case "context-file":
-			return "Context Files";
-		case "hook":
-			return "Hooks";
-		case "slash-command":
-			return "Slash Commands";
-		default:
-			return kind;
-	}
 }
 
 export function buildProviderTabs(extensions: ExtensionRow[]): ProviderTab[] {

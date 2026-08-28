@@ -43,12 +43,6 @@ export const WORKSPACE_WRITING_TOOL_NAMES = ["edit", "write", "ast_edit", "memor
 
 export type WorkspaceWritingToolName = (typeof WORKSPACE_WRITING_TOOL_NAMES)[number];
 
-const WORKSPACE_WRITING_TOOL_SET: ReadonlySet<string> = new Set(WORKSPACE_WRITING_TOOL_NAMES);
-
-export function isWorkspaceWritingTool(name: string): boolean {
-	return WORKSPACE_WRITING_TOOL_SET.has(normalizeToolNames([name])[0] ?? name);
-}
-
 export const HIDDEN_TOOL_NAMES = ["yield", "report_finding", "report_tool_issue", "resolve", "goal"] as const;
 
 export type HiddenToolName = (typeof HIDDEN_TOOL_NAMES)[number];

@@ -174,11 +174,6 @@ export function extractImagePastePathsFromText(text: string): string[] | undefin
 	return paths?.every(isImagePath) ? paths : undefined;
 }
 
-export function extractBracketedImagePastePath(data: string): string | undefined {
-	const paths = extractBracketedImagePastePaths(data);
-	return paths?.length === 1 ? paths[0] : undefined;
-}
-
 export function extractImagePathFromText(text: string): string | undefined {
 	const paths = extractPastePathsFromText(text);
 	if (paths?.length === 1 && isImagePath(paths[0])) return paths[0];

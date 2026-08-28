@@ -14,11 +14,6 @@ export function asyncToolState(details: unknown): string | undefined {
 }
 
 /** Whether the tool reported work that has finished, either way. */
-export function isFinalAsyncToolState(details: unknown): boolean {
-	const state = asyncToolState(details);
-	return state === "completed" || state === "failed";
-}
-
 /** Whether this result belongs to a subagent still running in the background. `task` only: a backgrounded `bash` job also reports `state: "running"`, but its */
 export function isLiveBackgroundTask(toolName: string | undefined, details: unknown): boolean {
 	return toolName === "task" && asyncToolState(details) === "running";

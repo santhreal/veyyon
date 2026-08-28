@@ -265,19 +265,3 @@ export async function discoverCustomToolPaths(
 
 	return allPathsWithSources;
 }
-
-export async function discoverAndLoadCustomTools(
-	configuredPaths: string[],
-	cwd: string,
-	builtInToolNames: string[],
-	pushPendingAction?: (action: {
-		label: string;
-		sourceToolName: string;
-		apply(reason: string): Promise<AgentToolResult<unknown>>;
-		reject?(reason: string): Promise<AgentToolResult<unknown> | undefined>;
-	}) => void,
-	agentDir?: string,
-) {
-	const pathsWithSources = await discoverCustomToolPaths(configuredPaths, cwd, agentDir);
-	return loadCustomTools(pathsWithSources, cwd, builtInToolNames, pushPendingAction);
-}

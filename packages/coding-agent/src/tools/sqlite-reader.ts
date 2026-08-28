@@ -576,16 +576,6 @@ export function getTableSchema(db: Database, table: string): string {
 	return row.sql;
 }
 
-export function getTablePrimaryKey(db: Database, table: string): { column: string; type: string } | null {
-	const primaryKeyColumns = getPrimaryKeyColumns(db, table);
-	if (primaryKeyColumns.length !== 1) {
-		return null;
-	}
-
-	const column = primaryKeyColumns[0]!;
-	return { column: column.name, type: column.type };
-}
-
 export function resolveTableRowLookup(db: Database, table: string): SqliteRowLookup {
 	const primaryKeyColumns = getPrimaryKeyColumns(db, table);
 	if (primaryKeyColumns.length === 1) {

@@ -15,15 +15,10 @@ import { disposeAllJuliaKernelSessions } from "./eval/jl/executor";
 import { disposeAllVmContexts } from "./eval/js/context-manager";
 import { disposeAllKernelSessions } from "./eval/py/executor";
 import { disposeAllRubyKernelSessions } from "./eval/rb/executor";
-import {
-	type CustomCommandsLoadResult,
-	type LoadedCustomCommand,
-	loadCustomCommands as loadCustomCommandsInternal,
-} from "./extensibility/custom-commands";
+import type { LoadedCustomCommand } from "./extensibility/custom-commands";
 import type { ToolPathWithSource } from "./extensibility/custom-tools";
 import type { CustomTool, CustomToolContext, CustomToolSessionEvent } from "./extensibility/custom-tools/types";
 import {
-	discoverAndLoadExtensions,
 	discoverExtensionPaths,
 	type ExtensionContext,
 	type ExtensionFactory,
@@ -37,13 +32,7 @@ import { type FileSlashCommand, loadSlashCommands as loadSlashCommandsInternal }
 import type { HindsightSessionState } from "./hindsight/state";
 import type { LocalProtocolOptions } from "./internal-urls";
 import type { LspStartupServerInfo } from "./lsp";
-import {
-	discoverAndLoadMCPTools,
-	type MCPLoadResult,
-	type MCPManager,
-	type MCPToolsLoadResult,
-	parseMCPToolName,
-} from "./mcp";
+import { type MCPLoadResult, type MCPManager, parseMCPToolName } from "./mcp";
 import type { MnemopiSessionState } from "./mnemopi/state";
 import { toolsPrompts } from "./prompts/tools/rows";
 import type { AgentRegistry } from "./registry/agent-registry";
@@ -662,12 +651,6 @@ export { discoverAuthStorage };
 /**
  * Discover extensions from cwd.
  */
-export async function discoverExtensions(cwd?: string): Promise<LoadExtensionsResult> {
-	const resolvedCwd = cwd ?? getProjectDir();
-
-	return discoverAndLoadExtensions([], resolvedCwd);
-}
-
 /**
  * Path-only counterpart of {@link loadSessionExtensions}: the FS-heavy scan
  * without the per-session module load. Subagents reuse the parent's path list
@@ -891,25 +874,10 @@ export async function discoverSlashCommands(cwd?: string, agentDir?: string): Pr
 /**
  * Discover custom commands (TypeScript slash commands) from cwd and agentDir.
  */
-export async function discoverCustomTSCommands(cwd?: string, agentDir?: string): Promise<CustomCommandsLoadResult> {
-	const resolvedCwd = cwd ?? getProjectDir();
-	const resolvedAgentDir = agentDir ?? getAgentDir();
-
-	return loadCustomCommandsInternal({
-		cwd: resolvedCwd,
-		agentDir: resolvedAgentDir,
-	});
-}
-
 /**
  * Discover MCP servers from .mcp.json files.
  * Returns the manager and loaded tools.
  */
-export async function discoverMCPServers(cwd?: string): Promise<MCPToolsLoadResult> {
-	const resolvedCwd = cwd ?? getProjectDir();
-	return discoverAndLoadMCPTools(resolvedCwd);
-}
-
 // API Key Helpers
 
 // System Prompt

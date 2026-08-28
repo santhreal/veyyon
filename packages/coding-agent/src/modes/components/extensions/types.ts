@@ -79,15 +79,6 @@ export function makeExtensionId(kind: ExtensionKind, name: string): string {
 	return `${kind}:${name}`;
 }
 
-export function parseExtensionId(id: string): { kind: ExtensionKind; name: string } | null {
-	const colonIdx = id.indexOf(":");
-	if (colonIdx === -1) return null;
-	return {
-		kind: id.slice(0, colonIdx) as ExtensionKind,
-		name: id.slice(colonIdx + 1),
-	};
-}
-
 export function sourceFromMeta(meta: SourceMeta): ExtensionRow["source"] {
 	return {
 		provider: meta.provider,

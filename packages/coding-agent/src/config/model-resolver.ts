@@ -798,32 +798,6 @@ export function resolveCliModel(options: {
 	};
 }
 
-export async function findSmolModel(
-	modelRegistry: ModelLookupRegistry,
-	savedModel?: string,
-): Promise<Model<Api> | undefined> {
-	const availableModels = modelRegistry.getAvailable();
-	if (availableModels.length === 0) return undefined;
-
-	if (savedModel) {
-		const match = resolveModelFromString(savedModel, availableModels, undefined);
-		if (match) return match;
-	}
-
-	for (const pattern of MODEL_PRIO.smol) {
-		const providerMatch = availableModels.find(m => `${m.provider}/${m.id}`.toLowerCase() === pattern);
-		if (providerMatch) return providerMatch;
-
-		const exactMatch = parseModelPattern(pattern, availableModels, undefined).model;
-		if (exactMatch) return exactMatch;
-
-		const fuzzyMatch = availableModels.find(m => m.id.toLowerCase().includes(pattern));
-		if (fuzzyMatch) return fuzzyMatch;
-	}
-
-	return availableModels[0];
-}
-
 export async function findSlowModel(
 	modelRegistry: ModelLookupRegistry,
 	savedModel?: string,

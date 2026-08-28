@@ -13,10 +13,6 @@ export interface RecordingHandle {
 
 const isWindows = process.platform === "win32";
 
-export function detectRecordingTools(): string[] {
-	return Array.from(new Set(detectRecorders().map(recorder => recorder.tool)));
-}
-
 async function detectWindowsAudioDevice(bin: string): Promise<string> {
 	const result = await $`${bin} -f dshow -list_devices true -i dummy`.quiet().nothrow();
 	const output = result.stderr.toString();

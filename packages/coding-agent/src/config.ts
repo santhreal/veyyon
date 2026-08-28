@@ -117,22 +117,6 @@ export function findConfigFile(subpath: string, options: GetConfigDirsOptions = 
 	return undefined;
 }
 
-export function findConfigFileWithMeta(
-	subpath: string,
-	options: GetConfigDirsOptions = {},
-): Omit<ConfigFileResult<never>, "content"> | undefined {
-	const dirs = getConfigDirs("", { ...options, existingOnly: false });
-
-	for (const { path: base, source, level } of dirs) {
-		const filePath = path.join(base, subpath);
-		if (fs.existsSync(filePath)) {
-			return { path: filePath, source, level };
-		}
-	}
-
-	return undefined;
-}
-
 export function findAllNearestProjectConfigDirs(subpath: string, cwd: string = getProjectDir()): ConfigDirEntry[] {
 	const results: ConfigDirEntry[] = [];
 	const foundBases = new Set<string>();

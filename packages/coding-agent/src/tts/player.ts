@@ -1,5 +1,3 @@
-/** Cross-platform audio-file playback via the system's built-in players. The selection logic is split into a pure, injectable builder */
-import * as fs from "node:fs/promises";
 import { $which, errorMessage, readPipeText } from "@veyyon/utils";
 import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import { getToolPath } from "../utils/tools-manager";
@@ -113,6 +111,3 @@ export async function playAudioFile(filePath: string, options: PlayAudioOptions 
 }
 
 /** Best-effort temp-file cleanup used by callers after playback. */
-export async function removeTempFile(filePath: string): Promise<void> {
-	await fs.unlink(filePath).catch(() => {});
-}

@@ -116,15 +116,3 @@ export function loadBundledAgents(): AgentDefinition[] {
 export function getBundledAgent(name: string): AgentDefinition | undefined {
 	return loadBundledAgents().find(a => a.name === name);
 }
-
-export function getBundledAgentsMap(): Map<string, AgentDefinition> {
-	const map = new Map<string, AgentDefinition>();
-	for (const agent of loadBundledAgents()) {
-		map.set(agent.name, agent);
-	}
-	return map;
-}
-
-export function clearBundledAgentsCache(): void {
-	bundledAgentsCache = null;
-}
