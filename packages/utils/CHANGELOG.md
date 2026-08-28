@@ -16,6 +16,8 @@
 
 ### Fixed
 
+- An empty `~/.veyyon/agent` beside a migrated `profiles/default` no longer refuses to start; a directory holding nothing is not a second candidate profile, so it is removed and startup continues, while one holding data still fails closed.
+- The legacy-layout migration leaves cross-profile state at the config root instead of sweeping it into `profiles/default`: `shared-auth/`, the global `AGENTS.md`, `vault.json` and `vault.key` stay where every profile reads them.
 - `extractHttpStatusFromError` reads the status line a message opens with whatever wording follows it, so `401 Your session has expired`, `403 You have run out of credits` and `503 {"type":"error",...}` report their codes again; pinning a reason phrase to its own code had also stopped a status line naming its own reason from reporting anything, and 401 is what credential rotation reads.
 - `extractHttpStatusFromError` reads a status field anywhere in an error's cause chain before falling back to prose anywhere in it, and matches the `status_code: 503` and `429 Too Many Requests` spellings it previously missed.
 - `extractHttpStatusFromError` reads a reason phrase only when it is the phrase that belongs to the code beside it, so `Processed 200 Total Records` and `gave up after 401 Failed Attempts` no longer report a status, the second of which reached credential rotation.
