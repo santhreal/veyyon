@@ -10,6 +10,7 @@
 - 135 free helper functions, types, and constants extracted from `gh.ts` (2,642→964 lines) into `gh-helpers.ts`.
 - 80 free helper functions, types, and constants extracted from `lsp/index.ts` (2,560→1,410 lines) into `lsp-helpers.ts`.
 - 51 free helper functions, types, and constants extracted from `sdk.ts` (4,059→3,196 lines) into `sdk-helpers.ts`.
+- 33 free helper functions, types, and constants extracted from `acp-agent.ts` (2,289→2,026 lines) into `acp-helpers.ts`.
 - `createAgentSession` in `sdk.ts` is now a 77-line dispatcher calling extracted setup functions (`setupSessionInfrastructure`, `discoverSessionEnvironment`, `setupSecretRuntime`, `resolveSessionModelAndThinking`, `setupSessionToolsAndExtensions`, `setupSystemPromptAndToolSelection`, `initializeAgentAndSession`).
 - `#processAgentEvent` in `agent-session.ts` is now a 35-line dispatcher calling 12 extracted event handler methods.
 - `GrepTool.execute` and `ReadTool.execute` are now 21-line and 52-line dispatchers calling extracted phase handlers.

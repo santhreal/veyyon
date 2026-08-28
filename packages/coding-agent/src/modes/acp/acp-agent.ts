@@ -9,9 +9,6 @@ import {
 	type ClientCapabilities,
 	type CloseSessionRequest,
 	type CloseSessionResponse,
-	type CreateElicitationResponse,
-	type ElicitationContentValue,
-	type ElicitationPropertySchema,
 	type ForkSessionRequest,
 	type ForkSessionResponse,
 	type InitializeRequest,
@@ -45,11 +42,6 @@ import { clampLow, getBlobsDir, isEnoent, logger, VERSION } from "@veyyon/utils"
 import { disableProvider, enableProvider, reset as resetCapabilities } from "../../capability";
 import { Settings } from "../../config/settings";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
-import {
-	type ExtensionUIContext,
-	type ExtensionUIDialogOptions,
-	getExtensionUISelectOptionLabel,
-} from "../../extensibility/extensions";
 import { runExtensionCompact } from "../../extensibility/extensions/compact-handler";
 import { getSessionSlashCommands } from "../../extensibility/extensions/get-commands-handler";
 import { buildSkillPromptMessage, parseSkillInvocation } from "../../extensibility/skills";
@@ -58,7 +50,6 @@ import { listLocalPlanFileUrls } from "../../internal-urls/local-protocol";
 import { MCPManager } from "../../mcp/manager";
 import type { MCPServerConfig } from "../../mcp/types";
 import { loadAllExtensions } from "../../modes/components/extensions/state-manager";
-import { theme } from "../../modes/theme/theme";
 import { type PlanApprovalDetails, resolveApprovedPlan } from "../../plan-mode/approved-plan";
 import { DEFAULT_PLAN_FILE_URL } from "../../plan-mode/plan-file-url";
 import { resolvePlanFilePath } from "../../plan-mode/plan-path";
@@ -71,7 +62,6 @@ import type { SessionInfo as StoredSessionInfo } from "../../session/session-lis
 import { SessionManager } from "../../session/session-manager";
 import { executeAcpBuiltinSlashCommand } from "../../slash-commands/acp-builtins";
 import { buildAvailableSlashCommands, toAcpAvailableCommands } from "../../slash-commands/available-commands";
-import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS } from "../../stt/models";
 import {
 	configuredThinkingLevelsForModel,
 	getConfiguredThinkingLevelMetadata,
@@ -79,12 +69,6 @@ import {
 } from "../../thinking";
 import { runResolveInvocation } from "../../tools/resolve";
 import { ToolError } from "../../tools/tool-errors";
-import {
-	DEFAULT_TTS_LOCAL_MODEL_KEY,
-	DEFAULT_TTS_VOICE,
-	TTS_LOCAL_MODELS,
-	TTS_LOCAL_VOICE_OPTIONS,
-} from "../../tts/models";
 import { canonicalizeMessage } from "../../utils/thinking-display";
 import { createAcpClientBridge } from "./acp-client-bridge";
 import {
@@ -93,290 +77,38 @@ import {
 	mapAgentSessionEventToAcpSessionUpdates,
 	normalizeReplayToolArguments,
 } from "./acp-event-mapper";
+import {
+	ACP_ASYNC_DELIVERY_DRAIN_MAX_PASSES,
+	ACP_ASYNC_DELIVERY_DRAIN_TIMEOUT_MS,
+	ACP_BOOTSTRAP_RACE_GUARD_MS,
+	ACP_CANCEL_CLEANUP_TIMEOUT_MS,
+	ACP_DEFAULT_MODE_ID,
+	ACP_PLAN_MODE_ID,
+	type AgentImageContent,
+	APPROVE_OPTION,
+	buildAcpSpeechModelsCatalog,
+	type CreateAcpSession,
+	createAcpExtensionUiContext,
+	elicitFromAcpClient,
+	isPromptTurnInFlight,
+	type ManagedSessionRecord,
+	type MCPConfigMap,
+	type MCPSourceMap,
+	MODE_CONFIG_ID,
+	MODEL_CONFIG_ID,
+	type PromptLifecycleError,
+	type PromptTurnState,
+	REFINE_OPTION,
+	type ReplayableMessage,
+	type ReplayableToolItem,
+	SESSION_PAGE_SIZE,
+	SPEECH_MODELS_LIST_METHOD,
+	THINKING_CONFIG_ID,
+	THINKING_OFF,
+} from "./acp-helpers";
 import { ACP_TERMINAL_AUTH_FLAG } from "./terminal-auth";
 
-const ACP_DEFAULT_MODE_ID = "default";
-const ACP_PLAN_MODE_ID = "plan";
-const APPROVE_OPTION = "Approve and execute";
-const REFINE_OPTION = "Refine plan";
-const MODE_CONFIG_ID = "mode";
-const MODEL_CONFIG_ID = "model";
-const THINKING_CONFIG_ID = "thinking";
-const THINKING_OFF = "off";
-const SESSION_PAGE_SIZE = 50;
-const SPEECH_MODELS_LIST_METHOD = "speech.models.list";
-export const ACP_BOOTSTRAP_RACE_GUARD_MS = 50;
-const ACP_CANCEL_CLEANUP_TIMEOUT_MS = 5_000;
-const ACP_ASYNC_DELIVERY_DRAIN_TIMEOUT_MS = 250;
-const ACP_ASYNC_DELIVERY_DRAIN_MAX_PASSES = 3;
-
-type AgentImageContent = {
-	type: "image";
-	data: string;
-	mimeType: string;
-};
-
-type PromptQueueState = {
-	promise: Promise<void>;
-	release: (() => void) | undefined;
-};
-type PromptLifecycleError = Error & { readonly code: "ACP_SESSION_CLOSED" };
-
-type PromptTurnState = {
-	cancelRequested: boolean;
-	settled: boolean;
-	errorTextDelivery: Promise<boolean> | undefined;
-	cleanup: Promise<void> | undefined;
-	usageBaseline: UsageStatistics;
-	unsubscribe: (() => void) | undefined;
-	resolve: (value: PromptResponse) => void;
-	reject: (reason?: unknown) => void;
-	promise: Promise<PromptResponse>;
-};
-
-function isPromptTurnInFlight(turn: PromptTurnState | undefined): turn is PromptTurnState {
-	return turn !== undefined && (!turn.settled || turn.cleanup !== undefined);
-}
-
-type ManagedSessionRecord = {
-	session: AgentSession;
-	mcpManager: MCPManager | undefined;
-	promptTurn: PromptTurnState | undefined;
-	promptQueue: PromptQueueState;
-	liveMessageId: string | undefined;
-	liveMessageProgress: { textEmitted: boolean; thoughtEmitted: boolean } | undefined;
-	toolArgsById: Map<string, unknown>;
-	extensionsConfigured: boolean;
-	lifetimeUnsubscribe: (() => void) | undefined;
-	closedError: PromptLifecycleError | undefined;
-	promptEventHandlers: Set<Promise<void>>;
-	extensionUserMessageTasks: Set<Promise<void>>;
-};
-
-type ReplayableMessage = {
-	role: string;
-	content?: unknown;
-	errorMessage?: string;
-	toolCallId?: string;
-	toolName?: string;
-	details?: unknown;
-	isError?: boolean;
-};
-
-type ReplayableToolItem = {
-	type?: unknown;
-	id?: unknown;
-	name?: unknown;
-	arguments?: unknown;
-	input?: unknown;
-};
-
-type MCPConfigMap = {
-	[name: string]: MCPServerConfig;
-};
-
-type MCPSource = {
-	provider: string;
-	providerName: string;
-	path: string;
-	level: "project";
-};
-
-type MCPSourceMap = {
-	[name: string]: MCPSource;
-};
-
-type CreateAcpSession = (cwd: string) => Promise<AgentSession>;
-
-type AcpSpeechOption = {
-	value: string;
-	label: string;
-	description?: string;
-};
-
-type AcpSpeechVoiceOption = {
-	value: string;
-	label: string;
-};
-
-type AcpSpeechTtsModelOption = AcpSpeechOption & {
-	voices: AcpSpeechVoiceOption[];
-};
-
-function buildAcpSpeechModelsCatalog(): Record<string, unknown> {
-	const voices = TTS_LOCAL_VOICE_OPTIONS.map(({ value, label }) => ({ value, label }));
-	return {
-		settings: {
-			speechToTextModel: "stt.modelName",
-			textToSpeechModel: "tts.localModel",
-			textToSpeechVoice: "tts.localVoice",
-			speechVoice: "speech.voice",
-		},
-		defaults: {
-			speechToTextModel: DEFAULT_STT_MODEL_KEY,
-			textToSpeechModel: DEFAULT_TTS_LOCAL_MODEL_KEY,
-			voice: DEFAULT_TTS_VOICE,
-		},
-		speechToText: {
-			setting: "stt.modelName",
-			defaultValue: DEFAULT_STT_MODEL_KEY,
-			models: STT_MODEL_OPTIONS.map(({ value, label, description }) => ({ value, label, description })),
-		},
-		textToSpeech: {
-			modelSetting: "tts.localModel",
-			voiceSetting: "tts.localVoice",
-			speechVoiceSetting: "speech.voice",
-			defaultModel: DEFAULT_TTS_LOCAL_MODEL_KEY,
-			defaultVoice: DEFAULT_TTS_VOICE,
-			models: TTS_LOCAL_MODELS.map(
-				({ key, label, description, voices: modelVoices }): AcpSpeechTtsModelOption => ({
-					value: key,
-					label,
-					description,
-					voices: modelVoices.map(({ id, label: voiceLabel }) => ({ value: id, label: voiceLabel })),
-				}),
-			),
-			voices,
-		},
-	};
-}
-
-async function elicitFromAcpClient(
-	connection: AgentSideConnection,
-	sessionId: string,
-	method: "select" | "confirm" | "input",
-	message: string,
-	property: ElicitationPropertySchema,
-	dialogOptions: ExtensionUIDialogOptions | undefined,
-): Promise<ElicitationContentValue | undefined> {
-	const signal = dialogOptions?.signal;
-	if (signal?.aborted) {
-		return undefined;
-	}
-	const { promise, resolve } = Promise.withResolvers<CreateElicitationResponse | undefined>();
-	let settled = false;
-	let timeoutId: NodeJS.Timeout | undefined;
-	const finish = (value: CreateElicitationResponse | undefined) => {
-		if (settled) return;
-		settled = true;
-		if (timeoutId !== undefined) clearTimeout(timeoutId);
-		signal?.removeEventListener("abort", onAbort);
-		resolve(value);
-	};
-	const onAbort = () => finish(undefined);
-	signal?.addEventListener("abort", onAbort, { once: true });
-	if (dialogOptions?.timeout !== undefined) {
-		timeoutId = setTimeout(() => {
-			if (settled) return;
-			try {
-				dialogOptions.onTimeout?.();
-			} catch (error) {
-				logger.warn("ACP elicitation onTimeout threw", { sessionId, method, error });
-			}
-			finish(undefined);
-		}, dialogOptions.timeout);
-
-		timeoutId.unref();
-	}
-	connection
-		.unstable_createElicitation({
-			mode: "form",
-			sessionId,
-			message,
-			requestedSchema: {
-				type: "object",
-				properties: { value: property },
-				required: ["value"],
-			},
-		})
-		.then(finish, error => {
-			if (settled) return;
-			logger.warn("ACP elicitation failed", { sessionId, method, error });
-			finish(undefined);
-		});
-	const response = await promise;
-	if (!isAcceptedElicitation(response) || !response.content) {
-		return undefined;
-	}
-	return response.content.value;
-}
-
-function isAcceptedElicitation(
-	response: CreateElicitationResponse | undefined,
-): response is Extract<CreateElicitationResponse, { action: "accept" }> {
-	return response?.action === "accept";
-}
-
-export function createAcpExtensionUiContext(
-	connection: AgentSideConnection,
-	getSessionId: () => string,
-	clientCapabilities: ClientCapabilities | undefined,
-): ExtensionUIContext {
-	const supportsForm = clientCapabilities?.elicitation?.form != null;
-	return {
-		select: async (title, options, dialogOptions) => {
-			if (!supportsForm) return undefined;
-			const value = await elicitFromAcpClient(
-				connection,
-				getSessionId(),
-				"select",
-				title,
-				{ type: "string", enum: options.map(getExtensionUISelectOptionLabel) },
-				dialogOptions,
-			);
-			return typeof value === "string" ? value : undefined;
-		},
-		confirm: async (title, message, dialogOptions) => {
-			if (!supportsForm) return false;
-			const value = await elicitFromAcpClient(
-				connection,
-				getSessionId(),
-				"confirm",
-				message.trim().length > 0 ? `${title}\n\n${message}` : title,
-				{ type: "boolean" },
-				dialogOptions,
-			);
-			return typeof value === "boolean" ? value : false;
-		},
-		input: async (title, placeholder, dialogOptions) => {
-			if (!supportsForm) return undefined;
-			const value = await elicitFromAcpClient(
-				connection,
-				getSessionId(),
-				"input",
-				title,
-				{ type: "string", ...(placeholder?.trim() ? { description: placeholder } : {}) },
-				dialogOptions,
-			);
-			return typeof value === "string" ? value : undefined;
-		},
-		notify: (message, type) => {
-			logger.debug("ACP extension notification", { message, type });
-		},
-		onTerminalInput: () => () => {},
-		setStatus: () => {},
-		setWorkingMessage: () => {},
-		setWidget: () => {},
-		setFooter: () => {},
-		setHeader: () => {},
-		setTitle: () => {},
-		custom: async () => undefined as never,
-		pasteToEditor: () => {},
-		setEditorText: () => {},
-		getEditorText: () => "",
-		editor: async () => undefined,
-		addAutocompleteProvider: () => {},
-		setEditorComponent: () => {},
-		get theme() {
-			return theme;
-		},
-		getAllThemes: async () => [],
-		getTheme: async () => undefined,
-		setTheme: async () => ({ success: false, error: "Theme changes are unavailable in ACP mode" }),
-		getToolsExpanded: () => false,
-		setToolsExpanded: () => {},
-	};
-}
+export { ACP_BOOTSTRAP_RACE_GUARD_MS, createAcpExtensionUiContext } from "./acp-helpers";
 
 export class AcpAgent implements Agent {
 	#connection: AgentSideConnection;
