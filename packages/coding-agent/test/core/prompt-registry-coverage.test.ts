@@ -358,7 +358,7 @@ describe("a registry's directory is written down once", () => {
 		const found = (await packageSources()).filter(
 			source =>
 				!source.file.endsWith(".test.ts") &&
-			source.text.includes('"packages/evals/suites/typescript-edit/prompts"'),
+				source.text.includes('"packages/evals/suites/typescript-edit/prompts"'),
 		).length;
 
 		expect(found).toBe(1);
