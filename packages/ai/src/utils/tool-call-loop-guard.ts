@@ -11,7 +11,7 @@ const ARGUMENT_SUMMARY_LIMIT = 400;
 export interface ToolCallLoopGuardOptions {
 	readonly threshold: number;
 	readonly exemptTools: readonly string[];
-	/** Threshold of consecutive fully-subsumed / redundant read calls before steering (default 2). */
+	/** Threshold of consecutive fully-subsumed / redundant read calls before steering (default 3). */
 	readonly readSubsumptionThreshold?: number;
 }
 
