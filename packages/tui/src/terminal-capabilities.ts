@@ -2,6 +2,7 @@ import { encodeSixel } from "@veyyon/natives";
 import { APP_DISPLAY_NAME } from "@veyyon/utils/app-identity";
 import { setAnsiColorFormat } from "@veyyon/utils/color-format";
 import { $env, isBunTestRuntime, isTerminalHeadless } from "@veyyon/utils/env";
+import type { ImageFallbackReason } from "@veyyon/utils/image-fallback";
 import {
 	detectKittyUnicodePlaceholdersSupport,
 	getKittyGraphics,
@@ -1127,8 +1128,8 @@ export function renderImage(
 	return null;
 }
 
-/** Why a picture was replaced by a row of text. */
-export type ImageFallbackReason = "no-protocol" | "images-off" | "over-budget" | "unsupported-format";
+// `ImageFallbackReason` is not declared here: the session states the reason to the
+// model and cannot import a renderer, so the vocabulary belongs to neither side.
 
 /** What the placeholder row states about the image it stands in for. */
 export interface ImageFallbackText {

@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getTerminalId } from "@veyyon/tui";
 import {
 	errorMessage,
 	getSessionsDir,
@@ -10,6 +9,7 @@ import {
 	logger,
 	resolveEquivalentPath,
 } from "@veyyon/utils";
+import { getTerminalId } from "@veyyon/utils/ttyid";
 import type { SessionStorage } from "./session-storage";
 
 const migratedSessionRoots = new Set<string>();

@@ -465,6 +465,31 @@ block and never shifts committed content below it.
 default-on only for kitty/ghostty (`VEYYON_NO_KITTY_PLACEHOLDERS` /
 `VEYYON_KITTY_PLACEHOLDERS`).
 
+### 8a. Who decides a picture was drawn
+
+A tool result carrying an image also carries a sentence to the model about
+whether the user saw it, written by `session/image-visibility.ts` in
+`coding-agent`. The renderer answers half of that question and the session owns
+the other half, so the two halves are wired rather than shared:
+
+- The **vocabulary** is `@veyyon/utils/image-fallback`:
+  `IMAGE_FALLBACK_REASONS` plus the `ImageFallbackReason` union built from it.
+  It sits in utils because both ends name it and neither can import the other —
+  a conversation engine cannot depend on a renderer, and `imageFallback()` here
+  turns the same cause into the placeholder row the user reads. The value form
+  exists so a check can sweep every cause; a union alone cannot be enumerated.
+- The **capability** travels the other way. The session cannot read `TERMINAL`
+  to learn whether a picture reached a screen, because a `-p` run, an rpc client
+  and a browser guest are not this terminal. The front end installs the answer
+  with `setImageDisplayProbe(() => TERMINAL.imageProtocol !== null)` —
+  `InteractiveMode`'s constructor does it, beside the other capability reads —
+  and an uninstalled probe means the client draws nothing, which is the truthful
+  answer for every headless mode.
+
+A late demotion is a third case and stays where it is: the block reports through
+`recordImageDisplay` once `ImageBudget` has taken the pixels back, because only
+the block knows a picture it already drew is gone.
+
 ---
 
 ## 9. Escape hatches (env vars)

@@ -36,6 +36,7 @@
 - Settings → Stream Interrupts (TTSR) groups the profile's own rules under a leading `User created` section instead of `From native`, ahead of foreign-tool and built-in sections.
 - The `/providers` account card filters its provider sidebar: `ctrl+s` enters search, typing narrows the list by fuzzy match on provider name and id, the arrows move within the matches, and `esc` leaves search before it closes the card ([#922](https://github.com/santhreal/veyyon/pull/922) by [@Crqptx](https://github.com/Crqptx)).
 - `@veyyon/coding-agent/session/facade` exposes `AgentSessionFacade`, a thirteen-member session API a front end drives — start, stop, submit, interrupt, retry, per-call tool approval, six event streams and the model, provider and context-usage readings — over a live `AgentSession`; the facade owns the permission prompt while it is started, and refuses a session another host already routes through.
+- `setImageDisplayProbe` lets a front end state whether it draws pictures, which is what the session reports to the model about an image a tool returned; a client that installs nothing draws nothing, so a host embedding the engine no longer inherits a terminal's answer.
 - A ChatGPT OAuth (Codex) session compacts server-side via the Responses compaction endpoint, preserving encrypted reasoning state.
 - `ToolCallLoopGuard` detects consecutive redundant reads of unchanged files whose requested line ranges are already fully present in recent context, steering runaway exploration loops while preserving prompt cache prefixes.
 - Added Command Code API-key login through the Studio Provider page, with validation against its Provider API, and Nous Research Portal OAuth device login with rotating refresh tokens and short-lived inference JWTs.
@@ -57,6 +58,7 @@
 - `Editor.discardDraft()` clears the composer and records an undo state first, so the discarded draft comes back with undo; `setText` still drops the undo history, because it loads text from elsewhere rather than editing what was typed.
 - The string, escape, keyboard, mouse, motion and layout-math primitives that `@veyyon/tui` used to own are `@veyyon/utils` modules, reachable by subpath and not on the barrel, so a caller that needs the escape bytes or the fuzzy matcher no longer declares a dependency on the terminal renderer.
 - `@veyyon/utils/color-format` states whether escape sequences are written as 24-bit or 256-colour SGR; `@veyyon/tui` sets it once the terminal's capabilities resolve, which is how a utils module renders colour without reading terminal state.
+- `@veyyon/utils/ttyid` reads the controlling terminal's identity, and `@veyyon/utils/image-fallback` states the four causes a client can fail to draw a picture for, as `IMAGE_FALLBACK_REASONS` and the `ImageFallbackReason` union over it. Both moved out of `@veyyon/tui`, so a conversation engine can name a session or a cause without importing a renderer.
 - `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
 - `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
 - `@veyyon/wire/presentation` states the renderer contract: `PresentationContext`, the transcript, status, composer and overlay view-models, the `UIEvent` union and an abstract hex-colour theme. A renderer implementing it draws a session without importing coding-agent. The subpath adds no dependencies.
@@ -65,6 +67,7 @@
 
 - Source-path comments in `prompts/all-registries.ts`, `prompts/eval-overrides.ts` and `tools/reroot-hint.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - Imports of the string, escape, keyboard, mouse and motion primitives name `@veyyon/utils` instead of `@veyyon/tui`, which no longer re-exports them. No user-visible behavior changes.
+- No file under `session/` names the terminal renderer: the session id comes from `@veyyon/utils/ttyid` and image visibility from the front end's probe, so `@veyyon/tui` is no longer loaded on the conversation engine's account. No user-visible behavior changes.
 - Source directories are consolidated: memory (`memories`, `memory-backend`, `mnemopi`, `hindsight`), discovery (`tool-discovery`, `capability`), speech (`tts`, `stt`) and debugging (`dap`) each live under one directory, and seventeen single-module directories fold into the concern they belong to. Subpath imports of `@veyyon/coding-agent` follow the new layout. No user-visible behavior changes.
 - The terminal component tree is grouped by concern: the 94 modules that sat flat in `src/modes/terminal/components/` now live under `transcript/`, `composer/`, `selectors/`, `dialogs/`, `chrome/`, `dashboard/` and `account/`. Subpath imports of `@veyyon/coding-agent/modes/terminal/components/*` follow the new layout. No user-visible behavior changes.
 - The interactive terminal lives under `src/modes/terminal/`, and the modes that draw no terminal — `print-mode.ts`, `rpc/`, `acp/` and the magic-keyword parsing in `keywords/` — sit beside it rather than inside it. The palette moves to `src/theme/` and extension state aggregation to `src/extensibility/extension-state/`, both of which a headless run reads. Subpath imports of `@veyyon/coding-agent/modes/*` and `@veyyon/coding-agent/theme/*` follow the new layout. No user-visible behavior changes.
@@ -136,6 +139,7 @@
 ### Fixed
 
 - A submission arriving in the tick after the terminal asks for input is no longer dropped, and loop mode's auto-submit timer no longer arms a tick late: the goal-mode exit check ran as an `await` on every turn, and an `async` guard that returns early still yields before the input callback is installed.
+- A run that draws nothing no longer tells the model its picture is on screen. `-p`, rpc and acp emit text, and the sentence attached to an image a tool returned was written from the launching terminal's graphics protocol, so the same read in a Kitty window reported the image as displayed to a pipe; the front end now states whether it draws, and a client that says nothing is taken at its word.
 - An extension published against the old `@veyyon/tui` barrel loads again. Moving the width, key, mouse, motion, LaTeX, fuzzy and paint primitives to `@veyyon/utils` removed them from that barrel, so a plugin importing `visibleWidth` or `Key` from `@earendil-works/pi-tui` failed at import time and its whole extension went inactive; the bare tui package root now resolves to a compatibility surface carrying the renderer plus every module the barrel dropped.
 - A model selector that names a provider and no model (`openai/`, `openai/:high`) is rejected where it is written instead of parsing to a model id of the empty string, which every caller then carried until a lookup failed somewhere else.
 - A settings search box reduced to nothing but spaces leaves search and shows the settings list again, instead of holding an apparently empty box over zero matches until `esc`.
@@ -374,6 +378,7 @@
 - `EditorComponent` is `@veyyon/tui/components/editor-component`.
 - The render engine is `@veyyon/tui/core/*`: `component-types`, `container`, `cursor`, `image-budget`, `mouse-routing`, `overlay`, `renderer`, `scroll`, `terminal-session` and `tui`. `@veyyon/tui/tui` re-exports all of it, so an existing import path keeps resolving.
 - `TUI.overlayStack` is private. The overlay stack's behavior is `OverlayStack` in `@veyyon/tui/core/overlay`.
+- `getTerminalId` is `@veyyon/utils/ttyid`, and `ImageFallbackReason` is `@veyyon/utils/image-fallback`. Neither is rendering, and a caller that needs a session id or the name of a cause no longer depends on the terminal renderer to get it.
 
 ## [1.2.0] - 2026-08-23
 

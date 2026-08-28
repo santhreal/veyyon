@@ -1,11 +1,11 @@
 import { SGR_RESET } from "@veyyon/utils/ansi";
+import type { ImageFallbackReason } from "@veyyon/utils/image-fallback";
 import { getKittyGraphics } from "@veyyon/utils/kitty-graphics";
 import type { ImageBudget } from "../core/image-budget";
 import {
 	getCellDimensions,
 	getImageDimensions,
 	type ImageDimensions,
-	type ImageFallbackReason,
 	imageFallback,
 	renderImage,
 	TERMINAL,

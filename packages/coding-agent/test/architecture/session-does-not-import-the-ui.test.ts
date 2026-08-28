@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
+import { moduleSpecifiersIn, typeOnlyModuleSpecifiersIn } from "@veyyon/utils/module-reach";
+import { repoRelative, resolveSpecifier, valueImportSpecifiers } from "./helpers/module-graph";
 
 const SRC = path.join(import.meta.dir, "..", "..", "src");
 const SESSION = path.join(SRC, "session");
@@ -151,5 +152,173 @@ describe("session does not import the terminal UI", () => {
 		const file = path.join(SRC, `${relative}.ts`);
 
 		expect(uiImportsIn(file).concat(specifiersIn(file))).not.toContain("./gradient-highlight");
+	});
+});
+
+/**
+ * The same boundary, stated against the TUI PACKAGE rather than this package's
+ * terminal tree, and the reason a GUI can attach where the terminal does.
+ *
+ * `modes/` was only ever the near half of the crossing. A session file that
+ * imported `@veyyon/tui` directly satisfied every case above and still made the
+ * engine unusable without a terminal: `session/session-paths.ts` took a session
+ * id from a TTY, and `session/image-visibility.ts` read a rendering singleton to
+ * tell the model whether a picture reached the screen. The first was a string
+ * function filed in the wrong package and moved to `@veyyon/utils/ttyid`; the
+ * second was a question only the client can answer, so the client installs the
+ * answer through `setImageDisplayProbe` and an uninstalled probe means "draws
+ * nothing", which is what a piped run does.
+ *
+ * Runtime and erased edges are separated because they are different claims. A
+ * type-only edge costs nothing at runtime and blocks no front end; a runtime one
+ * puts a terminal renderer in the engine's graph.
+ */
+describe("the conversation engine does not instantiate the TUI package", () => {
+	const TASK = path.join(SRC, "task");
+	const engineFiles = [...sessionFiles(SESSION), ...sessionFiles(TASK)];
+
+	/** Runtime and type-only `@veyyon/tui` specifiers, as `file -> specifier` rows. */
+	function tuiEdges(kind: "runtime" | "type"): string[] {
+		const rows: string[] = [];
+		for (const file of engineFiles) {
+			const source = fs.readFileSync(file, "utf-8");
+			const found = kind === "runtime" ? moduleSpecifiersIn(source) : typeOnlyModuleSpecifiersIn(source);
+			for (const specifier of found) {
+				if (!specifier.startsWith("@veyyon/tui")) continue;
+				rows.push(`${path.relative(SRC, file).replace(/\\/g, "/")} -> ${specifier}`);
+			}
+		}
+		return [...new Set(rows)].sort();
+	}
+
+	/**
+	 * The one runtime edge left, pinned by exact equality so a second turns this
+	 * red. Shrink-only: an entry leaves when the edge is gone, and none is added.
+	 *
+	 * `task/render.ts` is 1886 lines of terminal drawing that happens to be filed
+	 * under `task/`. It stays until the contract above it moves: a tool's
+	 * `renderCall`/`renderResult` returns a TUI `Component`, and that signature is
+	 * public extension API (`extensibility/custom-tools/types.ts`,
+	 * `extensibility/extensions/types.ts`), so replacing it with a view-model needs
+	 * a versioned deprecation rather than a rename.
+	 */
+	const RUNTIME_EDGES = ["task/render.ts -> @veyyon/tui"];
+
+	/**
+	 * Erased edges, pinned the same way and for the same reason: each one is a
+	 * decision, not an accident.
+	 *
+	 * `session/factory-tools.ts` and `task/subprocess-tool-registry.ts` name
+	 * `Component` because a tool definition's renderer returns one, which is the
+	 * public signature above. `task/render.ts` names more of the same package it
+	 * already draws with.
+	 */
+	const TYPE_EDGES = [
+		"session/factory-tools.ts -> @veyyon/tui",
+		"task/render.ts -> @veyyon/tui",
+		"task/subprocess-tool-registry.ts -> @veyyon/tui",
+	];
+
+	/**
+	 * Anti-vacuity. Both cases below are absence checks over a list this walker
+	 * produces, so a walker that reads nothing passes them; `task/render.ts` is the
+	 * positive control, and it is here because it really does import the package.
+	 */
+	it("reads the whole engine and does find TUI imports where they exist", () => {
+		expect(engineFiles.length).toBeGreaterThan(40);
+		expect(engineFiles.some(file => file.endsWith(`${path.sep}factory-tools.ts`))).toBe(true);
+		expect(tuiEdges("runtime")).toContain("task/render.ts -> @veyyon/tui");
+	});
+
+	it("instantiates the TUI package only in the recorded renderer", () => {
+		expect(tuiEdges("runtime")).toEqual(RUNTIME_EDGES);
+	});
+
+	it("names the TUI package for types only where recorded", () => {
+		expect(tuiEdges("type")).toEqual(TYPE_EDGES);
+	});
+
+	/**
+	 * The two files this suite was written for. Named one by one, because the
+	 * equality above would also pass if `session/` grew an edge and `task/render.ts`
+	 * lost one.
+	 */
+	it.each(["session/session-paths.ts", "session/image-visibility.ts"])("%s names no TUI package at all", relative => {
+		const source = fs.readFileSync(path.join(SRC, relative), "utf-8");
+		const named = [...moduleSpecifiersIn(source), ...typeOnlyModuleSpecifiersIn(source)];
+
+		expect(named.filter(specifier => specifier.startsWith("@veyyon/tui"))).toEqual([]);
+	});
+
+	/**
+	 * The ledger of what a mode that draws nothing still loads, and the measure of
+	 * this boundary's progress.
+	 *
+	 * `-p` writes text to a pipe and renders no frame, yet its runtime graph
+	 * instantiates `@veyyon/tui` through four clusters: the theme engine, the
+	 * `src/tui/` block helpers that lay out tool output, `tools/todo`, and the
+	 * slash-command registry that reaches a dialog. Each is a front-end concern
+	 * filed outside the front end, and each is its own piece of work.
+	 *
+	 * `session/image-visibility.ts` used to be on this list. That is the delta the
+	 * probe bought: a question about a pipe is no longer answered by loading a
+	 * renderer. Shrink-only — a row leaves when the edge is cut, and none is added,
+	 * so a new module reaching the package from print mode's graph reds this.
+	 *
+	 * Walked over VALUE imports only, and that is the whole claim: a type edge is
+	 * erased, and following one reports the entire component tree as loaded by a
+	 * mode that renders nothing. `reachableFrom` follows every import and is the
+	 * wrong tool here for exactly that reason.
+	 */
+	const PRINT_MODE_TUI_EDGES = [
+		"packages/coding-agent/src/modes/terminal/components/dialogs/pause-screen.ts -> @veyyon/tui",
+		"packages/coding-agent/src/slash-commands/builtin-registry.ts -> @veyyon/tui",
+		"packages/coding-agent/src/slash-commands/helpers/secret.ts -> @veyyon/tui",
+		"packages/coding-agent/src/theme/theme-class.ts -> @veyyon/tui",
+		"packages/coding-agent/src/theme/theme.ts -> @veyyon/tui",
+		"packages/coding-agent/src/tools/todo.ts -> @veyyon/tui",
+		"packages/coding-agent/src/tui/code-cell.ts -> @veyyon/tui",
+		"packages/coding-agent/src/tui/hyperlink.ts -> @veyyon/tui",
+		"packages/coding-agent/src/tui/output-block.ts -> @veyyon/tui",
+		"packages/coding-agent/src/tui/width-aware-text.ts -> @veyyon/tui",
+	];
+
+	/** Files print mode loads at runtime, and the TUI edges among them. */
+	function printModeRuntimeGraph(): { files: Set<string>; tuiEdges: string[] } {
+		const files = new Set<string>();
+		const pending = [path.join(SRC, "modes", "print-mode.ts")];
+		const tuiEdges: string[] = [];
+		while (pending.length > 0) {
+			const file = pending.pop();
+			if (file === undefined || files.has(file)) continue;
+			files.add(file);
+			for (const specifier of valueImportSpecifiers(file)) {
+				if (specifier.startsWith("@veyyon/tui")) tuiEdges.push(`${repoRelative(file)} -> ${specifier}`);
+				const target = resolveSpecifier(file, specifier);
+				if (target !== undefined) pending.push(target);
+			}
+		}
+		return { files, tuiEdges: [...new Set(tuiEdges)].sort() };
+	}
+
+	it("loads the TUI package only through the recorded front-end clusters", () => {
+		const { files, tuiEdges } = printModeRuntimeGraph();
+
+		expect(files.size).toBeGreaterThan(40);
+		expect(tuiEdges).toEqual(PRINT_MODE_TUI_EDGES);
+	});
+
+	/**
+	 * The rule the ledger above is measured against, and the one this PR closes:
+	 * whatever else print mode drags in, no part of the conversation engine is in
+	 * it. Stated separately because the equality above would still pass if a
+	 * `session/` row replaced a front-end one.
+	 */
+	it("reaches the TUI package through no engine module", () => {
+		const engine = printModeRuntimeGraph().tuiEdges.filter(row =>
+			/\/src\/(session|task)\//.test(row.slice(0, row.indexOf(" -> "))),
+		);
+
+		expect(engine).toEqual([]);
 	});
 });

@@ -33,8 +33,6 @@ export * from "./stdin-buffer";
 export * from "./terminal";
 // Terminal capability probing (image protocols, DECCARA, hyperlinks)
 export * from "./terminal-capabilities";
-// TTY ID
-export * from "./ttyid";
 export * from "./tui";
 // Terminal window focus (DECSET 1004), read by the notification gate
 export * from "./window-focus";

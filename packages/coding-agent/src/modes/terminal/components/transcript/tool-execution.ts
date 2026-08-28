@@ -6,7 +6,6 @@ import {
 	Container,
 	getImageDimensions,
 	Image,
-	type ImageFallbackReason,
 	ImageProtocol,
 	imageFallback,
 	type NativeScrollbackLiveRegion,
@@ -16,6 +15,7 @@ import {
 	type TUI,
 } from "@veyyon/tui";
 import { clampLow, formatMoreLines, getProjectDir, logger, sanitizeText } from "@veyyon/utils";
+import type { ImageFallbackReason } from "@veyyon/utils/image-fallback";
 import { EDIT_MODE_STRATEGIES, type EditMode, type PerFileDiffPreview } from "../../../../edit";
 import { recordImageDisplay } from "../../../../session/image-visibility";
 import { transitionsEnabled } from "../../../../theme/shimmer";
