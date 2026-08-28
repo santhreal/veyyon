@@ -4732,7 +4732,7 @@ export class AgentSession {
 	getRunningNonTaskJobCount(): number {
 		const manager = this.#asyncJobManager;
 		if (!manager) return 0;
-		return manager.countRunningJobsExcludingType("task", this.#agentId);
+		return manager.countRunningJobsExcludingType("task", this.#agentId); // not-a-tool-name: job type filter
 	}
 
 	/**
