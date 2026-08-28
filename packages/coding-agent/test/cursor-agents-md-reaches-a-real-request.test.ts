@@ -3,28 +3,31 @@
  *
  * WHY THIS SUITE EXISTS, and what class it closes.
  *
- * Cursor's server discards the client's system-prompt blobs and replaces them with its own, so
- * `requestContext.rules` is the only channel that reaches the model. The delivery used to be
- * split in two: the session inlined NOTHING in the prompt on this api and shipped a separately
- * composed list of file units instead, and that list was filtered to the operator's own scopes.
- * Each half was correct on its own terms and the join was not: a repository's `AGENTS.md` was
- * excluded from the rules list because it was "repository content", and excluded from the prompt
- * because "the rules list carries it", so on cursor-agent alone it reached the model nowhere,
- * while every other api rendered it. The operator reported it as veyyon not loading AGENTS.md.
+ * Cursor's server discards the client's system-prompt blobs, rebuilds the prompt head with its
+ * own, and applies none of `requestContext.rules`. The active user turn is the one thing it
+ * delivers to the model verbatim. The delivery used to be split in two: the session inlined
+ * NOTHING in the prompt on this api and shipped a separately composed list of file units as
+ * rules instead, and that list was filtered to the operator's own scopes. Each half was correct
+ * on its own terms and the join was not: a repository's `AGENTS.md` was excluded from the rules
+ * list because it was "repository content", and excluded from the prompt because "the rules list
+ * carries it", so on cursor-agent alone it reached the model nowhere, while every other api
+ * rendered it. The operator reported it as veyyon not loading AGENTS.md. Even repaired, that
+ * channel delivered nothing, because no rule the client sends is applied at all.
  *
  * The class is "one api composes instructions its own way". It is closed by deleting the second
- * channel: the session assembles ONE prompt for every api, and the provider wraps that prompt as
- * the single rule it sends. A layer can no longer be dropped for cursor-agent without being
+ * channel: the session assembles ONE prompt for every api, and the provider prepends that prompt
+ * to the active user turn. A layer can no longer be dropped for cursor-agent without being
  * dropped for every api, which the per-api suite catches.
  *
  * WHAT IS PINNED. Every case below drives the real session (its own discovery, its own prompt
  * build, the real provider) against a Cursor server that speaks the real protocol; nothing is
- * stubbed but the socket. The layers are swept from `ContextFile["level"]`, so a new scope does
- * not compile until someone records what it does here.
+ * stubbed but the socket, and every assertion reads the decoded user turn rather than a payload
+ * the server ignores. The layers are swept from `ContextFile["level"]`, so a new scope does not
+ * compile until someone records what it does here.
  *
- * WHAT IT DOES NOT CATCH. It says nothing about whether Cursor's SERVER honors the rule it is
- * handed — only that veyyon's bytes reach the wire — and nothing about apis other than
- * cursor-agent, which `operator-instructions-reach-every-api.test.ts` owns.
+ * WHAT IT DOES NOT CATCH. It cannot prove Cursor's SERVER hands the turn to the model unchanged
+ * — only a live run does that — and it says nothing about apis other than cursor-agent, which
+ * `operator-instructions-reach-every-api.test.ts` owns.
  */
 import { afterEach, describe, expect, it, setDefaultTimeout } from "bun:test";
 import * as fs from "node:fs";
@@ -149,6 +152,27 @@ function deliveredRules(clientFrames: Buffer[]): CursorRule[] {
 		return (result.value as RequestContextSuccess).requestContext?.rules ?? [];
 	}
 	return [];
+}
+
+/**
+ * The text of the active user turn this stream sent, decoded from the raw bytes the server
+ * received. This is the field Cursor's server delivers to the model verbatim, so it is what
+ * "reached the model" means on this api.
+ */
+function deliveredUserTurn(clientFrames: Buffer[]): string {
+	let buffer = Buffer.concat(clientFrames);
+	while (buffer.length >= 5) {
+		const length = buffer.readUInt32BE(1);
+		if (buffer.length < 5 + length) break;
+		const body = buffer.subarray(5, 5 + length);
+		buffer = buffer.subarray(5 + length);
+		const message = fromBinary(AgentClientMessageSchema, new Uint8Array(body));
+		if (message.message.case !== "runRequest") continue;
+		const action = message.message.value.action?.action;
+		if (action?.case !== "userMessageAction") continue;
+		return action.value.userMessage?.text ?? "";
+	}
+	return "";
 }
 
 interface FakeCursorServer {
@@ -305,14 +329,18 @@ describe("a cursor-agent turn carries every instruction layer the session found"
 		return server.turns.filter(turn => deliveredRules(turn).length > 0);
 	}
 
-	/** Everything the client sent as rules on one turn, joined. */
-	function ruleText(turn: Buffer[]): string {
-		return deliveredRules(turn)
-			.map(rule => rule.content)
-			.join("\n\n");
+	/**
+	 * What the model receives on this turn: the text of the active user message.
+	 *
+	 * NOT the rules. The server applies none of them, so a case that reads the rules payload
+	 * proves only that bytes left this process — which is exactly how the defect stayed green
+	 * through two suites.
+	 */
+	function turnText(turn: Buffer[]): string {
+		return deliveredUserTurn(turn);
 	}
 
-	/** Run one turn and return the rules of the first turn that answered. */
+	/** Run one turn and return what the first answering turn delivered. */
 	async function turnOnTheWire(ws: OperatorWorkspace, overrides: { cwd?: string; agentDir?: string } = {}) {
 		srv = await startFakeCursor();
 		session = await startSession(ws, srv.baseUrl, overrides);
@@ -320,7 +348,7 @@ describe("a cursor-agent turn carries every instruction layer the session found"
 		await session.waitForIdle();
 		const turns = answeredTurns(srv);
 		expect(turns.length).toBeGreaterThan(0);
-		return { turns, first: turns[0], text: ruleText(turns[0]) };
+		return { turns, first: turns[0], text: turnText(turns[0]) };
 	}
 
 	it("delivers every scope it discovered, one recorded decision per level", async () => {
@@ -349,7 +377,7 @@ describe("a cursor-agent turn carries every instruction layer the session found"
 		const { text } = await turnOnTheWire(ws);
 
 		expect(text).toContain(PROJECT_ROOT_MARKER);
-		expect(text).toContain(ws.rootAgentsPath);
+		expect(text).toContain(fs.readFileSync(ws.rootAgentsPath, "utf8").trim());
 	});
 
 	it("delivers a package's own AGENTS.md beside the repository root's", async () => {
@@ -362,14 +390,33 @@ describe("a cursor-agent turn carries every instruction layer the session found"
 		expect(text).toContain(PROJECT_NESTED_MARKER);
 	});
 
-	it("answers with exactly one rule, the assembled prompt", async () => {
-		// The structural half of the fix. A second rule means a second composer, and a second
-		// composer is what disagreed with the prompt build in the first place.
+	it("carries the operator's instructions inside a delimited block, ahead of the question", async () => {
+		// The shape the model receives. The instructions are marked off from the operator's own
+		// words, and the question stays after them, so a turn does not read as the operator
+		// reciting their own configuration file.
+		const ws = operatorWorkspace();
+		const { text } = await turnOnTheWire(ws);
+
+		const open = text.indexOf("<operator-instructions>");
+		const close = text.indexOf("</operator-instructions>");
+		expect(open).toBe(0);
+		expect(close).toBeGreaterThan(open);
+		expect(text.indexOf("what are my standing orders?")).toBeGreaterThan(close);
+		for (const marker of [GLOBAL_MARKER, PROFILE_MARKER, PROJECT_ROOT_MARKER, PROJECT_NESTED_MARKER]) {
+			expect(text.slice(open, close)).toContain(marker);
+		}
+	});
+
+	it("still answers the request-context ask with the assembled prompt as one rule", async () => {
+		// The fail-closed exchange. The server applies no rule, but a turn that never sees the
+		// ask never delivered anything, so the provider's invariant needs the payload present.
 		const ws = operatorWorkspace();
 		const { first } = await turnOnTheWire(ws);
 
-		expect(deliveredRules(first).map(rule => rule.fullPath)).toEqual([SYSTEM_PROMPT_RULE]);
-		expect(deliveredRules(first)[0].type?.type.case).toBe("global");
+		const rules = deliveredRules(first);
+		expect(rules.map(rule => rule.fullPath)).toEqual([SYSTEM_PROMPT_RULE]);
+		expect(rules[0]?.content).toContain(PROJECT_ROOT_MARKER);
+		expect(rules[0]?.type?.type.case).toBe("global");
 	});
 
 	it("delivers each layer's bytes exactly once", async () => {
@@ -410,8 +457,8 @@ describe("a cursor-agent turn carries every instruction layer the session found"
 		const all = answeredTurns(srv as FakeCursorServer);
 		expect(all.length).toBeGreaterThan(turns.length);
 		for (const turn of all) {
-			expect(ruleText(turn)).toContain(GLOBAL_MARKER);
-			expect(ruleText(turn)).toContain(PROJECT_ROOT_MARKER);
+			expect(turnText(turn)).toContain(GLOBAL_MARKER);
+			expect(turnText(turn)).toContain(PROJECT_ROOT_MARKER);
 		}
 	});
 
@@ -422,7 +469,7 @@ describe("a cursor-agent turn carries every instruction layer the session found"
 		// the new instructions are live while the model keeps reading the old ones.
 		const ws = operatorWorkspace();
 		const { first } = await turnOnTheWire(ws);
-		expect(ruleText(first)).not.toContain(EDITED_MARKER);
+		expect(turnText(first)).not.toContain(EDITED_MARKER);
 		if (!session) throw new Error("session not started");
 
 		ws.writeFile(ws.globalAgentsPath, `${GLOBAL_BODY}\nEdited: ${EDITED_MARKER}.`);
@@ -436,7 +483,7 @@ describe("a cursor-agent turn carries every instruction layer the session found"
 
 		const turns = answeredTurns(srv as FakeCursorServer);
 		expect(turns.length).toBeGreaterThanOrEqual(2);
-		expect(ruleText(turns[turns.length - 1])).toContain(EDITED_MARKER);
+		expect(turnText(turns[turns.length - 1])).toContain(EDITED_MARKER);
 	});
 
 	it("keeps delivering the other layers when one of them is empty", async () => {

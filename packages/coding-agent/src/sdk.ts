@@ -3767,12 +3767,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				agentDir,
 				resolvedCustomPrompt: options.customSystemPrompt,
 				skills: promptSkills,
-				// Every api inlines the operator's layers here, cursor-agent included. Cursor's
-				// server discards the client's system-prompt BLOBS, but the assembled prompt
-				// still reaches the model as the session rule the provider builds from it, so
-				// the context block travels with it. Routing the files through a second,
-				// scope-filtered channel instead is what dropped the project layer on that one
-				// api while every other api rendered it.
+				// Every api inlines the operator's layers here, cursor-agent included. That api's
+				// server discards the client's system-prompt blobs and applies none of the
+				// request-context rules, so the provider carries the assembled prompt on the
+				// active user turn — the one thing it delivers verbatim. Either way the prompt
+				// IS the instruction payload, and one composer builds it for every api.
 				contextFiles: promptContextFiles,
 				tools: promptTools,
 				toolNames,

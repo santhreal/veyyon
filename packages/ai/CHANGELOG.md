@@ -26,6 +26,7 @@
 
 ### Fixed
 
+- A `cursor-agent` model receives the operator's instructions again: the server rebuilds the prompt head with its own system prompt and applies none of the request-context rules, so the assembled prompt now rides on the active user turn inside an `<operator-instructions>` block.
 - A `503 auth_unavailable` refusal is classified as an authentication failure rather than a bare server status, so compaction falls back to an authenticated model instead of failing the whole compaction ([#986](https://github.com/santhreal/veyyon/issues/986)).
 - A llama.cpp tool-call JSON parse failure explains itself and names the fix on every route to a local server, not only when the provider id is `ollama`, so an LM Studio or llama-cpp user sees why the turn stopped instead of a bare HTTP 500 whose retry was already being suppressed.
 - A llama.cpp tool-call JSON parse failure stops the retry ladder whether it arrives thrown from a request or recorded on an assistant message; the two classifier entry points share one post-walk latch instead of each deciding, so the same 500 no longer burned every attempt on one route while surfacing immediately on the other.
