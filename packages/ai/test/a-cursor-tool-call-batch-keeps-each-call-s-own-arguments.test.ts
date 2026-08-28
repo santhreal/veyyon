@@ -33,7 +33,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { create } from "@bufbuild/protobuf";
-import { handleServerMessage, type ToolCallState } from "@veyyon/ai/providers/cursor";
+import { handleServerMessage } from "@veyyon/ai/providers/cursor";
 import type { CursorExecHandlers, ToolCall, ToolResultMessage } from "@veyyon/ai/types";
 import {
 	type CursorExecResolvedCarrier,
