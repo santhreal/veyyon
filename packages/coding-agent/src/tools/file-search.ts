@@ -8,7 +8,7 @@ import { formatGroupedPaths, isCancellation, isEnoent, untilAborted } from "@vey
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { InternalUrlRouter } from "../internal-urls";
 import type { Theme } from "../modes/theme/theme";
-import { type TruncationResult, truncateHead } from "../session/streaming-output";
+import { artifactFooter, type TruncationResult, truncateHead } from "../session/streaming-output";
 import {
 	Ellipsis,
 	fileHyperlink,
@@ -21,6 +21,7 @@ import {
 import { isTimeoutError, scopedTimeoutSignal } from "../utils/fetch-timeout";
 import type { ToolSession } from ".";
 import { applyListLimit } from "./list-limit";
+import { inlineBudgetFor, saveOutputArtifact } from "./output-artifact";
 import { formatFullOutputReference, type OutputMeta } from "./output-meta";
 import {
 	expandDelimitedPathEntries,
@@ -48,6 +49,12 @@ export interface FileSearchInput {
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 200;
 const DEFAULT_GLOB_TIMEOUT_MS = 5000;
+
+// File paths are far denser than match lines (no content per result), and
+// results are mtime-sorted with the most recently modified file on top, so a
+// 4 KB head window delivers the relevant files without spending 8 KB on paths
+// the agent will never read.
+const FILE_SEARCH_INLINE_MAX_BYTES = 4 * 1024;
 
 interface FileSearchResultEntry {
 	path: string;
@@ -242,10 +249,10 @@ export async function executeFileSearch(
 		const missingPathsNote =
 			missingPaths.length > 0 ? `Skipped missing paths: ${missingPaths.join(", ")}` : undefined;
 
-		const buildResult = (
+		const buildResult = async (
 			files: string[],
 			opts?: { notice?: string; forceTruncated?: boolean; timedOut?: boolean },
-		): AgentToolResult<FileSearchDetails> => {
+		): Promise<AgentToolResult<FileSearchDetails>> => {
 			const notice = opts?.notice;
 			const forceTruncated = opts?.forceTruncated ?? false;
 			if (files.length === 0) {
@@ -276,14 +283,25 @@ export async function executeFileSearch(
 			if (notice) trailingNotes.push(notice);
 			if (missingPathsNote) trailingNotes.push(missingPathsNote);
 			const rawOutput = trailingNotes.length > 0 ? `${baseOutput}\n\n${trailingNotes.join("\n")}` : baseOutput;
-			// No byte bound here. Every tool result except `read` passes the shared spill layer in
-			// `output-meta.ts`, which holds the inline window to `tools.artifactSpillThreshold` and
-			// keeps the elided paths recoverable through an `artifact://` id. A cap here would
-			// deliver the same bytes, lose that recovery, and ignore a threshold raised past it.
-			const truncation = truncateHead(rawOutput, {
-				maxBytes: Number.MAX_SAFE_INTEGER,
+			// Head-truncate at the file-search byte budget and save the full output
+			// to an artifact for recovery. Results are mtime-sorted, so the head
+			// carries the most recently modified files — the tail is the least
+			// useful part to lose.
+			const budget = inlineBudgetFor(session, FILE_SEARCH_INLINE_MAX_BYTES);
+			const headTruncation = truncateHead(rawOutput, {
+				maxBytes: budget,
 				maxLines: Number.MAX_SAFE_INTEGER,
 			});
+			let output = headTruncation.content;
+			let spillArtifactId: string | undefined;
+			if (headTruncation.truncated) {
+				spillArtifactId = await saveOutputArtifact(session, "search-files", rawOutput);
+				if (spillArtifactId) {
+					const sep = output.endsWith("\n") ? "" : "\n";
+					output += `${sep}${artifactFooter(spillArtifactId)}`;
+				}
+			}
+			const truncation = headTruncation;
 
 			const details: FileSearchDetails = {
 				scopePath,
@@ -296,9 +314,7 @@ export async function executeFileSearch(
 				missingPaths: missingPaths.length > 0 ? missingPaths : undefined,
 			};
 
-			const resultBuilder = toolResult(details)
-				.text(truncation.content)
-				.limits({ resultLimit: limitMeta.resultLimit?.reached });
+			const resultBuilder = toolResult(details).text(output).limits({ resultLimit: limitMeta.resultLimit?.reached });
 			if (truncation.truncated) {
 				resultBuilder.truncation(truncation, { direction: "head" });
 			}
@@ -338,7 +354,7 @@ export async function executeFileSearch(
 					merged.push(entry);
 				}
 			}
-			return buildResult(merged);
+			return await buildResult(merged);
 		}
 
 		const onUpdateMatches: string[] = [];
@@ -475,7 +491,7 @@ export async function executeFileSearch(
 				sortedPaths.length > 0
 					? `File search timed out after ${seconds}s; returning ${sortedPaths.length} partial matches — results are incomplete, scope to a deeper directory instead of retrying blindly`
 					: `File search timed out after ${seconds}s before finding any matches — the scan is incomplete, NOT proof of absence. The walk is bounded by directory size, not pattern width; scope the search to a deeper directory (e.g. \`sub/dir/*.ext\` instead of \`*.ext\` at a huge root).`;
-			return buildResult(sortedPaths, { notice, forceTruncated: true, timedOut: true });
+			return await buildResult(sortedPaths, { notice, forceTruncated: true, timedOut: true });
 		}
 
 		// Merge per-target results: native glob already ranks each target's own
@@ -491,7 +507,7 @@ export async function executeFileSearch(
 			}
 		}
 		merged.sort(compareFileSearchResults);
-		return buildResult(merged.map(entry => entry.path));
+		return await buildResult(merged.map(entry => entry.path));
 	});
 }
 
