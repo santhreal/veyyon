@@ -48,7 +48,7 @@ describe("the ANSI primitives", () => {
 	/**
 	 * `ESC [`, the Control Sequence Introducer, which starts every cursor move, erase and SGR change.
 	 *
-	 * Named CSI rather than `ESC`, and that distinction is the point. `packages/metaharness/src/runner.ts`
+	 * Named CSI rather than `ESC`, and that distinction is the point. `packages/bench/src/metaharness/runner.ts`
 	 * declared `const ESC = "\x1b["`, so one name meant the escape byte here and the full introducer there, and
 	 * its `${ESC}0m` read as an escape byte followed by the text "0m" when it was really a complete SGR reset. A
 	 * reader who learned the name in one package carried the wrong bytes into the other.

@@ -2,7 +2,7 @@
 """
 Edit benchmark: tests the edit tool across models with a simple edit task.
 
-NOT the same thing as `@veyyon/typescript-edit-benchmark`, despite the name.
+NOT the same thing as `@veyyon/bench`'s `src/typescript-edit`, despite the name.
 That package mutates TypeScript source in process and scores the result against
 generated tasks; it is what CI runs and it never calls a model. This makes LIVE
 model calls and asks a different question: can a real model drive each edit-tool

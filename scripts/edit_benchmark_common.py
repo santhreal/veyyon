@@ -8,7 +8,7 @@ and `rate-edit-tool.py`. A library, not a command.
 Run: not directly. Run a benchmark that imports it:
     VEYYON_EDIT_VARIANT=vim scripts/edit-benchmark.py
 
-Unrelated to `@veyyon/typescript-edit-benchmark`, which is the in-process
+Unrelated to `@veyyon/bench`'s `src/typescript-edit`, which is the in-process
 TypeScript-mutation suite CI runs. See `edit-benchmark.py` for why both exist.
 """
 

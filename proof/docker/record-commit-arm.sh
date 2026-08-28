@@ -63,14 +63,14 @@ git -C "${REPO_ROOT}" archive "${REF}" | tar -x -C "${TREE}" --exclude='proof/ca
 # record a missing file instead of a failing assertion. Every non-shipped file
 # the commit touched is copied into the before tree: the test is then identical
 # in both arms and the only variable left is the shipped source it is pointed at.
-# `packages/simulations` is the whole test-harness package (private, never
+# `packages/bench/src/simulations` is the whole test-harness package (private, never
 # published), so a suite whose harness grew a measurement in the same commit
 # still compiles against the parent instead of dying on a missing export.
 if [[ "${ARM}" == "before" && "${OVERLAY_TESTS:-1}" == "1" ]]; then
 	while IFS= read -r f; do
 		[[ -z "${f}" ]] && continue
 		case "${f}" in
-		*.test.ts | packages/simulations/src/*.ts | packages/simulations/src/*/*.ts | scripts/demos/*.ts | proof/scenes/*.sh) ;;
+		*.test.ts | packages/bench/src/simulations/*.ts | packages/bench/src/simulations/*/*.ts | scripts/demos/*.ts | proof/scenes/*.sh) ;;
 		*) continue ;;
 		esac
 		mkdir -p "${TREE}/$(dirname "${f}")"

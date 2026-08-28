@@ -20,7 +20,7 @@
  * cascade, and the red lands on the test that leaked, which is the only place the fix belongs.
  *
  * The simpler rule, fail when anything is installed at all, is wrong for a caller that already
- * exists: `packages/simulations/src/turn-sim/harness.ts` replaces all twelve apis at module scope on
+ * exists: `packages/bench/src/simulations/turn-sim/harness.ts` replaces all twelve apis at module scope on
  * purpose and holds them for the life of the process. In a process that loads a simulation and an
  * `ai` suite together, every `ai` test inherits those twelve, and each one that restores its own stub
  * with `setCursorProviderModule()` is doing the right thing — under an empty-set rule all 27 of them

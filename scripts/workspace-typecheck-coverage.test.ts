@@ -8,7 +8,8 @@
  * success: the run prints a green line per package that HAS the script and says
  * nothing at all about the ones that do not. Absence reads as coverage.
  *
- * That is not hypothetical. `@veyyon/deepswe-bench` had no `check:types`, and a
+ * That is not hypothetical. The DeepSWE bench had no `check:types` while it was its
+ * own package, and a
  * full `bun run check:ts` listed 17 green workspaces without it. When the script
  * was finally added (2026-07-24) it immediately surfaced two real errors in
  * `run.ts`: three hand-written copies of the blank `ArmResult` had drifted, and

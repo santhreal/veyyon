@@ -49,7 +49,7 @@ if [[ "${1:-}" == "--one" ]]; then
 		while IFS= read -r f; do
 			[[ -z "${f}" ]] && continue
 			case "${f}" in
-			*.test.ts | packages/simulations/src/*.ts | packages/simulations/src/*/*.ts | scripts/demos/*.ts | proof/scenes/*.sh) ;;
+			*.test.ts | packages/bench/src/simulations/*.ts | packages/bench/src/simulations/*/*.ts | scripts/demos/*.ts | proof/scenes/*.sh) ;;
 			*) continue ;;
 			esac
 			mkdir -p "${TREE}/$(dirname "${f}")"

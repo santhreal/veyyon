@@ -36,6 +36,7 @@
 
 ### Changed
 
+- Source-path comments in `prompts/all-registries.ts`, `prompts/eval-overrides.ts` and `tools/reroot-hint.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - Imports of the string, escape, keyboard, mouse and motion primitives name `@veyyon/utils` instead of `@veyyon/tui`, which no longer re-exports them. No user-visible behavior changes.
 - Source directories are consolidated: memory (`memories`, `memory-backend`, `mnemopi`, `hindsight`), discovery (`tool-discovery`, `capability`), speech (`tts`, `stt`) and debugging (`dap`) each live under one directory, and seventeen single-module directories fold into the concern they belong to. Subpath imports of `@veyyon/coding-agent` follow the new layout. No user-visible behavior changes.
 - The terminal component tree is grouped by concern: the 94 modules that sat flat in `src/modes/terminal/components/` now live under `transcript/`, `composer/`, `selectors/`, `dialogs/`, `chrome/`, `dashboard/` and `account/`. Subpath imports of `@veyyon/coding-agent/modes/terminal/components/*` follow the new layout. No user-visible behavior changes.
