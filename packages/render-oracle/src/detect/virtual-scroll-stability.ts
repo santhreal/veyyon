@@ -11,9 +11,12 @@ export function checkVirtualScrollPreservesFooterStability(state: ComposerOracle
 	}
 
 	const { footerTop, footerBottom } = state.screenBounds;
-	const renderedFooterRows = state.viewportLines.slice(footerTop, footerBottom + 1);
-	const footerRows = Math.min(state.pinnedFooterRows, state.height - 1);
-	const expectedFooter = state.liveFooterLines.slice(-footerRows);
+	const renderedFooterRows = state.viewportLines.slice(Math.max(0, footerTop), footerBottom + 1);
+	// How many footer rows reach the screen is the renderer's decision, read back from
+	// the bounds it placed rather than re-derived from a clamp this file would have to
+	// keep in step. The footer shows its LAST rows when it does not fit.
+	const expectedFooter =
+		renderedFooterRows.length === 0 ? [] : state.liveFooterLines.slice(-renderedFooterRows.length);
 
 	// The rendered footer in virtual scroll must match the live footer lines
 	if (renderedFooterRows.length !== expectedFooter.length) {

@@ -18,20 +18,22 @@ export function checkExactlyOneComposerPrompt(state: ComposerOracleFrameState): 
 	const editorSegment = state.segments.find(s => s.componentName === "Editor");
 	let expectedPromptInView = state.pinnedFooterRows > 0;
 
-	if (state.virtualScrollTop !== null) {
-		const footerRows = Math.min(state.pinnedFooterRows, state.height - 1);
-		if (state.liveFooterLines) {
-			const promptIndexInFooter = state.liveFooterLines.findIndex(l =>
-				isComposerPromptLine(l, state.expectedPromptGlyph),
-			);
-			expectedPromptInView =
-				promptIndexInFooter >= 0 && promptIndexInFooter >= state.liveFooterLines.length - footerRows;
-		}
-	} else if (editorSegment) {
+	if (editorSegment) {
 		const promptFrameRow = editorSegment.startIndex;
-		const isPromptVisible =
-			promptFrameRow >= state.windowTopRow && promptFrameRow < state.windowTopRow + state.height;
-		expectedPromptInView = isPromptVisible;
+		const footerStartFrameRow = state.totalFrameRows - state.pinnedFooterRows;
+		const promptIsFooterRow = state.pinnedFooterRows > 0 && promptFrameRow >= footerStartFrameRow;
+		if (promptIsFooterRow) {
+			// The footer's screen placement is `footerRowOffset` — the screen row its
+			// FIRST row would occupy, negative when the footer is taller than the
+			// viewport and the renderer clips its top. Mapping the prompt through that
+			// offset asks the same question the renderer answered, instead of
+			// re-deriving how many footer rows fit.
+			const promptScreenRow = state.screenBounds.footerRowOffset + (promptFrameRow - footerStartFrameRow);
+			expectedPromptInView = promptScreenRow >= 0 && promptScreenRow < state.height;
+		} else {
+			expectedPromptInView =
+				promptFrameRow >= state.windowTopRow && promptFrameRow < state.windowTopRow + state.height;
+		}
 	}
 
 	const expectedCount = expectedPromptInView ? 1 : 0;

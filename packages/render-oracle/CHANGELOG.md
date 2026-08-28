@@ -14,3 +14,4 @@
 
 - The package exposes a single entry point. Deep subpath imports are no longer resolvable, so consumers import `@veyyon/render-oracle` and nothing beneath it.
 - Every renderer regression test moved into this package, replacing copies previously spread across `tui` and `coding-agent`.
+- The prompt-visibility and virtual-scroll footer checks read the footer placement the renderer produced instead of re-deriving it, so a footer taller than the viewport is judged against the rows the renderer painted.
