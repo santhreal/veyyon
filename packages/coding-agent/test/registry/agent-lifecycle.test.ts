@@ -70,7 +70,7 @@ describe("AgentLifecycleManager", () => {
 
 	/**
 	 * The deadline is inclusive, and expiry retains the durable transcript
-	 * reference while closing only the live session.
+	 * reference while pruning only the live session.
 	 */
 	it("parks an idle agent exactly at its deadline and retains its transcript reference", async () => {
 		vi.useFakeTimers();
@@ -120,12 +120,12 @@ describe("AgentLifecycleManager", () => {
 	});
 
 	/** Durable state lands before live teardown, followed by the ordinary registry lifecycle notification. */
-	it("flushes before close and publishes the parked transition", async () => {
+	it("flushes before prune and publishes the parked transition", async () => {
 		vi.useFakeTimers();
 		const order: string[] = [];
 		const stub = makeSessionStub(
 			async () => {
-				order.push("close");
+				order.push("prune");
 			},
 			async () => {
 				order.push("persist");
@@ -143,7 +143,7 @@ describe("AgentLifecycleManager", () => {
 		await flushAsync();
 		unsubscribe();
 
-		expect(order).toEqual(["persist", "close", "status:parked"]);
+		expect(order).toEqual(["persist", "prune", "status:parked"]);
 		expect(registry.get("ordered")).toMatchObject({
 			status: "parked",
 			session: null,
@@ -275,43 +275,43 @@ describe("AgentLifecycleManager", () => {
 	/**
 	 * A ref revived from disk must rejoin the CLOSE stage, not just the park stage.
 	 *
-	 * It used to be cold-adopted with both close budgets hardcoded to zero, so an agent
+	 * It used to be cold-adopted with both prune budgets hardcoded to zero, so an agent
 	 * restored from disk and woken once parked on its idle TTL and then stayed listed for
-	 * the rest of the session whatever `subagent.autoClose.*` said. Resume a session,
+	 * the rest of the session whatever `subagent.prune.*` said. Resume a session,
 	 * message a few old agents, and the roster grew monotonically, which is the one thing
-	 * the close stage exists to prevent. Locks the budgets travelling through the same
+	 * the prune stage exists to prevent. Locks the budgets travelling through the same
 	 * injected seam as the idle TTL.
 	 */
-	it("closes a cold-revived ref on the injected close budget instead of listing it forever", async () => {
+	it("prunes a cold-revived ref on the injected prune budget instead of listing it forever", async () => {
 		vi.useFakeTimers();
 		const revived = makeSessionStub();
 		registry.register({
-			id: "Cold-Closes",
+			id: "Cold-Prunes",
 			displayName: "task",
 			kind: "sub",
 			session: null,
-			sessionFile: "/tmp/Cold-Closes.jsonl",
+			sessionFile: "/tmp/Cold-Prunes.jsonl",
 			status: "parked",
 		});
 		lifecycle.setPersistedSubagentReviverFactory(async () => async () => revived.session, TTL, {
-			parkedMs: TTL * 3,
-			waitingMs: TTL * 3,
+			afterMs: TTL * 3,
+			waitingAfterMs: TTL * 3,
 		});
 
-		await lifecycle.ensureLive("Cold-Closes");
-		expect(registry.get("Cold-Closes")?.status).toBe("idle");
+		await lifecycle.ensureLive("Cold-Prunes");
+		expect(registry.get("Cold-Prunes")?.status).toBe("idle");
 
 		// Parks on the idle TTL, exactly as before.
 		vi.advanceTimersByTime(TTL);
 		await flushAsync();
-		expect(registry.get("Cold-Closes")?.status).toBe("parked");
+		expect(registry.get("Cold-Prunes")?.status).toBe("parked");
 
 		// And is then CLOSED on the injected budget. Before the fix it stayed parked here
 		// forever, so this is the assertion that goes red on a hardcoded zero.
 		vi.advanceTimersByTime(TTL * 3);
 		await flushAsync();
-		expect(registry.get("Cold-Closes")).toBeUndefined();
-		expect(lifecycle.has("Cold-Closes")).toBe(false);
+		expect(registry.get("Cold-Prunes")).toBeUndefined();
+		expect(lifecycle.has("Cold-Prunes")).toBe(false);
 	});
 
 	/**
@@ -334,8 +334,8 @@ describe("AgentLifecycleManager", () => {
 			status: "parked",
 		});
 		lifecycle.setPersistedSubagentReviverFactory(async () => async () => revived.session, TTL, {
-			parkedMs: TTL * 2,
-			waitingMs: TTL * 6,
+			afterMs: TTL * 2,
+			waitingAfterMs: TTL * 6,
 		});
 
 		await lifecycle.ensureLive("Cold-Waits");
@@ -356,14 +356,14 @@ describe("AgentLifecycleManager", () => {
 	});
 
 	/**
-	 * A host that installs a factory WITHOUT budgets keeps the old never-close behaviour.
+	 * A host that installs a factory WITHOUT budgets keeps the old never-prune behaviour.
 	 *
 	 * The control for the two cases above. ACP installs no factory at all and other
 	 * embedders may install one without budgets, so the default must not silently acquire
-	 * a close stage nobody asked for. This also stops the two tests above from passing
-	 * because closing became unconditional.
+	 * a prune stage nobody asked for. This also stops the two tests above from passing
+	 * because pruning became unconditional.
 	 */
-	it("never closes a cold-revived ref when the host injected no close budget", async () => {
+	it("never prunes a cold-revived ref when the host injected no prune budget", async () => {
 		vi.useFakeTimers();
 		const revived = makeSessionStub();
 		registry.register({
@@ -603,17 +603,17 @@ describe("AgentLifecycleManager", () => {
 	/**
 	 * BUG: `park()` disarmed the deadline and rescheduled BEFORE checking whether the
 	 * agent was parkable at all. Called on an already-parked agent it wiped the armed
-	 * close deadline and returned without re-arming, and `parked` is a stable state,
+	 * prune deadline and returned without re-arming, and `parked` is a stable state,
 	 * so no later `status_changed` ever re-derived one: the agent stayed listed for
-	 * the rest of the run and never closed.
+	 * the rest of the run and never pruned.
 	 *
-	 * If this regresses: the close below never fires and the ref is still registered.
+	 * If this regresses: the prune below never fires and the ref is still registered.
 	 */
-	it("park() on an already-parked agent leaves its close deadline armed", async () => {
+	it("park() on an already-parked agent leaves its prune deadline armed", async () => {
 		vi.useFakeTimers();
 		const stub = makeSessionStub();
 		registerIdleSub("Twice", stub.session, "/tmp/Twice.jsonl");
-		lifecycle.adopt("Twice", { idleTtlMs: TTL, closeParkedMs: TTL * 5 });
+		lifecycle.adopt("Twice", { idleTtlMs: TTL, pruneAfterMs: TTL * 5 });
 
 		vi.advanceTimersByTime(TTL);
 		await flushAsync();
@@ -630,19 +630,19 @@ describe("AgentLifecycleManager", () => {
 	});
 
 	/**
-	 * BUG: `close()` refused a reviving agent and then re-derived its deadline through
+	 * BUG: `prune()` refused a reviving agent and then re-derived its deadline through
 	 * `#refreshDeadline`. The ref is still `parked` during a revive, so the derivation
-	 * produced `lastActivity + closeParkedMs` — the very instant that had just fired —
-	 * and `#scheduleNext` armed a `setTimeout` of 0. That timer re-entered `close`,
+	 * produced `lastActivity + pruneAfterMs` — the very instant that had just fired —
+	 * and `#scheduleNext` armed a `setTimeout` of 0. That timer re-entered `prune`,
 	 * which refused and armed 0 again: a hot loop for the whole duration of the wake,
 	 * starving the event loop the revive is waiting on. The operator sees veyyon peg a
 	 * core and hang the moment they message a long-parked agent.
 	 *
-	 * If this regresses: `close` is re-entered once per millisecond for the whole
-	 * revive, and the failed-revive close below never fires because nothing else
+	 * If this regresses: `prune` is re-entered once per millisecond for the whole
+	 * revive, and the failed-revive prune below never fires because nothing else
 	 * re-examines a ref whose revive threw.
 	 */
-	it("close() during an in-flight revive arms a future re-check instead of spinning", async () => {
+	it("prune() during an in-flight revive arms a future re-check instead of spinning", async () => {
 		vi.useFakeTimers();
 		registry.register({
 			id: "Waking",
@@ -653,13 +653,13 @@ describe("AgentLifecycleManager", () => {
 			status: "parked",
 		});
 		const gate = Promise.withResolvers<AgentSession>();
-		lifecycle.adopt("Waking", { idleTtlMs: 0, closeParkedMs: TTL, revive: () => gate.promise });
-		const closeCalls = vi.spyOn(lifecycle, "close");
+		lifecycle.adopt("Waking", { idleTtlMs: 0, pruneAfterMs: TTL, revive: () => gate.promise });
+		const closeCalls = vi.spyOn(lifecycle, "prune");
 
 		const waking = lifecycle.ensureLive("Waking");
 		await flushAsync();
 
-		// Drive the clock past the close budget one millisecond at a time, draining the
+		// Drive the clock past the prune budget one millisecond at a time, draining the
 		// scheduler's async expiry drain between steps, while the wake is still
 		// rebuilding the session. The spin needs exactly this interleaving to show up.
 		for (let elapsed = 0; elapsed < TTL * 5; elapsed++) {
@@ -672,7 +672,7 @@ describe("AgentLifecycleManager", () => {
 		expect(registry.get("Waking")?.status).toBe("parked");
 
 		// A revive that THROWS leaves the ref `parked` with no status change, so the
-		// re-check armed by that refusal is the only thing that can ever close it.
+		// re-check armed by that refusal is the only thing that can ever prune it.
 		gate.reject(new Error("stale context"));
 		await expect(waking).rejects.toThrow("stale context");
 		for (let elapsed = 0; elapsed < 1_000; elapsed += TTL) {

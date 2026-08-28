@@ -8,13 +8,13 @@
  * over two hours, so `irc list` and the Control Center fill with agents nobody is
  * going to message again.
  *
- * The second stage closes them. It is deliberately NOT symmetric: an agent whose
+ * The second stage prunes them. It is deliberately NOT symmetric: an agent whose
  * last message said it was waiting on another agent stopped on purpose to let a peer
  * finish, and it is the one most likely to be messaged next, so it gets a longer
- * grace. Closing it on the ordinary timer would drop exactly the peer the operator
+ * grace. Pruning it on the ordinary timer would drop exactly the peer the operator
  * is about to need.
  *
- * What closing costs is bounded on purpose: the transcript is untouched and stays
+ * What pruning costs is bounded on purpose: the transcript is untouched and stays
  * readable through `history://`. What is dropped is the live reference and the
  * ability to wake it by messaging, not the record of what it did.
  *
@@ -33,7 +33,7 @@ import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { finalizeSubagentLifecycle, runSubprocess, saysItIsWaitingOnAPeer } from "@veyyon/coding-agent/task/executor";
-import { resolveSubagentAutoCloseBudget } from "@veyyon/coding-agent/task/subagent-settings";
+import { resolveSubagentPruneBudget } from "@veyyon/coding-agent/task/subagent-settings";
 import {
 	createAssistantStopMessage,
 	createAssistantToolCallMessage,
@@ -42,8 +42,8 @@ import {
 } from "./helpers/subagent-session";
 
 const IDLE_TTL_MS = 5 * 60_000;
-const CLOSE_PARKED_MS = 5 * 60_000;
-const CLOSE_WAITING_MS = 30 * 60_000;
+const PRUNE_AFTER_MS = 5 * 60_000;
+const PRUNE_WAITING_AFTER_MS = 30 * 60_000;
 
 /**
  * The two calls `park` makes on a session: a durable flush, then dispose. Nothing
@@ -78,8 +78,8 @@ function adoptIdleAgent(
 	id: string,
 	options: {
 		waitingOnPeer?: boolean;
-		closeParkedMs?: number;
-		closeWaitingMs?: number;
+		pruneAfterMs?: number;
+		pruneWaitingAfterMs?: number;
 		session?: AgentSession;
 		/** Overrides the reviver, for cases that need to hold a wake open. */
 		revive?: AgentReviver;
@@ -92,8 +92,8 @@ function adoptIdleAgent(
 	registry.setStatus(id, "idle");
 	AgentLifecycleManager.global().adopt(id, {
 		idleTtlMs: IDLE_TTL_MS,
-		closeParkedMs: options.closeParkedMs ?? CLOSE_PARKED_MS,
-		closeWaitingMs: options.closeWaitingMs ?? CLOSE_WAITING_MS,
+		pruneAfterMs: options.pruneAfterMs ?? PRUNE_AFTER_MS,
+		pruneWaitingAfterMs: options.pruneWaitingAfterMs ?? PRUNE_WAITING_AFTER_MS,
 		revive: options.revive ?? (async () => fakeSession()),
 	});
 }
@@ -112,7 +112,7 @@ function countSchedulerWakes(): { count: () => number; restore: () => void } {
 	return { count: () => spy.mock.calls.length, restore: () => spy.mockRestore() };
 }
 
-/** Advance the clock and let the manager's async park/close work settle. */
+/** Advance the clock and let the manager's async park/prune work settle. */
 async function advance(ms: number): Promise<void> {
 	vi.advanceTimersByTime(ms);
 	// The expiry handler runs its stages in an async drain, so the microtask queue
@@ -121,15 +121,15 @@ async function advance(ms: number): Promise<void> {
 }
 
 /**
- * The WIRING from the operator's setting to the close stage, which nothing else covers.
+ * The WIRING from the operator's setting to the prune stage, which nothing else covers.
  *
  * Every other case in this file hands `adopt()` a budget directly, so the suite proves the
  * MECHANISM works GIVEN a budget and says nothing about whether a budget ever arrives. The supply
- * line is `resolveSubagentAutoCloseBudget(settings)` -> `autoClose` -> `finalizeSubagentLifecycle`
- * -> `adopt`. Drop the `autoClose` argument at the executor call site, or return zeros from the
- * resolver, and nothing closes an agent ever again while this suite stays fully green.
+ * line is `resolveSubagentPruneBudget(settings)` -> `prune` -> `finalizeSubagentLifecycle`
+ * -> `adopt`. Drop the `prune` argument at the executor call site, or return zeros from the
+ * resolver, and nothing prunes an agent ever again while this suite stays fully green.
  */
-describe("the operator's setting reaches the close stage", () => {
+describe("the operator's setting reaches the prune stage", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		AgentRegistry.resetGlobalForTests();
@@ -145,27 +145,27 @@ describe("the operator's setting reaches the close stage", () => {
 	/**
 	 * A default install resolves a REAL budget, not zero.
 	 *
-	 * Zero is the documented "never close" value, so a resolver returning it by accident disables
+	 * Zero is the documented "never prune" value, so a resolver returning it by accident disables
 	 * the feature for everyone with no error anywhere. Asserted as literals rather than against the
 	 * constants the resolver reads, because a test that imports the number it pins follows that
 	 * number wherever somebody moves it.
 	 */
-	it("resolves five minutes quiet and thirty minutes waiting on a default install", () => {
-		const budget = resolveSubagentAutoCloseBudget(Settings.isolated({}));
+	it("resolves one hour quiet and two hours waiting on a default install", () => {
+		const budget = resolveSubagentPruneBudget(Settings.isolated({}));
 
-		expect(budget.parkedMs).toBe(5 * 60_000);
-		expect(budget.waitingMs).toBe(30 * 60_000);
+		expect(budget.afterMs).toBe(60 * 60_000);
+		expect(budget.waitingAfterMs).toBe(120 * 60_000);
 	});
 
 	/**
-	 * That resolved budget, handed to the real finalizer the way production hands it, closes.
+	 * That resolved budget, handed to the real finalizer the way production hands it, prunes.
 	 *
 	 * `finalizeSubagentLifecycle` is the only production caller of `adopt`, and it reads
-	 * `args.autoClose?.parkedMs ?? 0`, so the `?? 0` silently disables the whole stage the moment
+	 * `args.prune?.afterMs ?? 0`, so the `?? 0` silently disables the whole stage the moment
 	 * the argument stops being passed.
 	 */
-	it("closes an agent finished through the real finalizer with the resolved budget", async () => {
-		const budget = resolveSubagentAutoCloseBudget(Settings.isolated({}));
+	it("prunes an agent finished through the real finalizer with the resolved budget", async () => {
+		const budget = resolveSubagentPruneBudget(Settings.isolated({}));
 		const registry = AgentRegistry.global();
 		const session = fakeSession();
 		registry.register({
@@ -183,7 +183,7 @@ describe("the operator's setting reaches the close stage", () => {
 			keepAlive: true,
 			isolated: false,
 			agentIdleTtlMs: IDLE_TTL_MS,
-			autoClose: budget,
+			prune: budget,
 			reviveSession: async () => fakeSession(),
 		});
 
@@ -192,18 +192,18 @@ describe("the operator's setting reaches the close stage", () => {
 		await advance(IDLE_TTL_MS);
 		expect(registry.get("Wired")?.status).toBe("parked");
 
-		await advance(budget.parkedMs);
+		await advance(budget.afterMs);
 		expect(registry.get("Wired")).toBeUndefined();
 	});
 
 	/**
 	 * And the off switch really switches it off, through the same path.
 	 *
-	 * Pairs with the case above so neither can pass by closing unconditionally.
+	 * Pairs with the case above so neither can pass by pruning unconditionally.
 	 */
-	it("never closes when the operator turned auto-close off", async () => {
-		const budget = resolveSubagentAutoCloseBudget(Settings.isolated({ "subagent.autoClose.enabled": false }));
-		expect(budget).toEqual({ parkedMs: 0, waitingMs: 0 });
+	it("never prunes when the operator turned prune off", async () => {
+		const budget = resolveSubagentPruneBudget(Settings.isolated({ "subagent.prune.enabled": false }));
+		expect(budget).toEqual({ afterMs: 0, waitingAfterMs: 0 });
 
 		const registry = AgentRegistry.global();
 		const session = fakeSession();
@@ -222,18 +222,18 @@ describe("the operator's setting reaches the close stage", () => {
 			keepAlive: true,
 			isolated: false,
 			agentIdleTtlMs: IDLE_TTL_MS,
-			autoClose: budget,
+			prune: budget,
 			reviveSession: async () => fakeSession(),
 		});
 
 		await advance(IDLE_TTL_MS);
 		expect(registry.get("Kept")?.status).toBe("parked");
-		await advance(CLOSE_WAITING_MS * 4);
+		await advance(PRUNE_WAITING_AFTER_MS * 4);
 		expect(registry.get("Kept")?.status).toBe("parked");
 	});
 });
 
-describe("parked subagents are closed once they are quiet", () => {
+describe("parked subagents are pruned once they are quiet", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		AgentRegistry.resetGlobalForTests();
@@ -248,30 +248,30 @@ describe("parked subagents are closed once they are quiet", () => {
 
 	/**
 	 * The headline, in two stages. The idle TTL parks (session released, ref kept),
-	 * and the close budget then drops the ref, which is what stops rosters from
+	 * and the prune budget then drops the ref, which is what stops rosters from
 	 * accumulating finished agents.
 	 */
-	it("parks on the idle TTL, then closes on the close budget", async () => {
+	it("parks on the idle TTL, then prunes on the prune budget", async () => {
 		adoptIdleAgent("Quiet");
 
 		await advance(IDLE_TTL_MS);
 		expect(AgentRegistry.global().get("Quiet")?.status).toBe("parked");
 		expect(AgentRegistry.global().get("Quiet")?.session).toBeNull();
 
-		await advance(CLOSE_PARKED_MS);
+		await advance(PRUNE_AFTER_MS);
 		expect(AgentRegistry.global().get("Quiet")).toBeUndefined();
 	});
 
 	/**
-	 * The close budget is counted from the PARK, not from the spawn. Asserted by
+	 * The prune budget is counted from the PARK, not from the spawn. Asserted by
 	 * checking the agent is still listed one tick before its budget elapses: a
-	 * deadline measured from the wrong origin would have closed it already.
+	 * deadline measured from the wrong origin would have pruned it already.
 	 */
-	it("counts the close budget from the moment it parked", async () => {
+	it("counts the prune budget from the moment it parked", async () => {
 		adoptIdleAgent("Quiet");
 		await advance(IDLE_TTL_MS);
 
-		await advance(CLOSE_PARKED_MS - 1_000);
+		await advance(PRUNE_AFTER_MS - 1_000);
 		expect(AgentRegistry.global().get("Quiet")?.status).toBe("parked");
 
 		await advance(1_000);
@@ -280,7 +280,7 @@ describe("parked subagents are closed once they are quiet", () => {
 
 	/**
 	 * The waiting case. Same park, longer hold: at the ordinary budget it is still
-	 * there, and only the waiting budget closes it. This is the whole asymmetry, so
+	 * there, and only the waiting budget prunes it. This is the whole asymmetry, so
 	 * both halves are asserted rather than just the end state.
 	 */
 	it("holds a waiting agent for the longer budget", async () => {
@@ -288,10 +288,10 @@ describe("parked subagents are closed once they are quiet", () => {
 		await advance(IDLE_TTL_MS);
 		expect(AgentRegistry.global().get("Waiter")?.status).toBe("parked");
 
-		await advance(CLOSE_PARKED_MS);
+		await advance(PRUNE_AFTER_MS);
 		expect(AgentRegistry.global().get("Waiter")?.status).toBe("parked");
 
-		await advance(CLOSE_WAITING_MS - CLOSE_PARKED_MS);
+		await advance(PRUNE_WAITING_AFTER_MS - PRUNE_AFTER_MS);
 		expect(AgentRegistry.global().get("Waiter")).toBeUndefined();
 	});
 
@@ -300,12 +300,12 @@ describe("parked subagents are closed once they are quiet", () => {
 	 * next-deadline timer for every adopted agent, so a per-agent budget is only real
 	 * if the shorter one firing leaves the longer one alone.
 	 */
-	it("closes a quiet agent while a waiting one keeps its longer hold", async () => {
+	it("prunes a quiet agent while a waiting one keeps its longer hold", async () => {
 		adoptIdleAgent("Quiet");
 		adoptIdleAgent("Waiter", { waitingOnPeer: true });
 
 		await advance(IDLE_TTL_MS);
-		await advance(CLOSE_PARKED_MS);
+		await advance(PRUNE_AFTER_MS);
 
 		expect(AgentRegistry.global().get("Quiet")).toBeUndefined();
 		expect(AgentRegistry.global().get("Waiter")?.status).toBe("parked");
@@ -313,11 +313,11 @@ describe("parked subagents are closed once they are quiet", () => {
 
 	/**
 	 * The off switch has to be an off switch, not a very long timer. A zero budget
-	 * (what `subagent.autoClose.enabled: false` resolves to) leaves the agent parked
+	 * (what `subagent.prune.enabled: false` resolves to) leaves the agent parked
 	 * and revivable for the rest of the session.
 	 */
-	it("never closes when the budget is disabled", async () => {
-		adoptIdleAgent("Kept", { closeParkedMs: 0, closeWaitingMs: 0 });
+	it("never prunes when the budget is disabled", async () => {
+		adoptIdleAgent("Kept", { pruneAfterMs: 0, pruneWaitingAfterMs: 0 });
 
 		await advance(IDLE_TTL_MS);
 		expect(AgentRegistry.global().get("Kept")?.status).toBe("parked");
@@ -327,16 +327,16 @@ describe("parked subagents are closed once they are quiet", () => {
 	});
 
 	/**
-	 * Reviving cancels the close. An agent someone messaged is live again, so the
-	 * close deadline armed when it parked must not fire underneath the operator who
+	 * Reviving cancels the prune. An agent someone messaged is live again, so the
+	 * prune deadline armed when it parked must not fire underneath the operator who
 	 * just woke it.
 	 *
 	 * After the wake it re-enters the ordinary cycle: idle, then parked again once
-	 * its idle TTL elapses. So the assertion is that it still EXISTS after the close
+	 * its idle TTL elapses. So the assertion is that it still EXISTS after the prune
 	 * budget would have dropped it, not that it stays live. A second park is the
-	 * correct outcome and the close budget starts over from it.
+	 * correct outcome and the prune budget starts over from it.
 	 */
-	it("does not close an agent that was revived", async () => {
+	it("does not prune an agent that was revived", async () => {
 		adoptIdleAgent("Woken");
 		await advance(IDLE_TTL_MS);
 		expect(AgentRegistry.global().get("Woken")?.status).toBe("parked");
@@ -344,27 +344,27 @@ describe("parked subagents are closed once they are quiet", () => {
 		await AgentLifecycleManager.global().ensureLive("Woken");
 		expect(AgentRegistry.global().get("Woken")?.status).toBe("idle");
 
-		await advance(CLOSE_PARKED_MS);
+		await advance(PRUNE_AFTER_MS);
 
-		// Re-parked by its idle TTL rather than closed: the wake reset the cycle.
+		// Re-parked by its idle TTL rather than pruned: the wake reset the cycle.
 		expect(AgentRegistry.global().get("Woken")?.status).toBe("parked");
 	});
 
 	/**
 	 * The off switch cannot be half-off. A zero quiet budget beside a live waiting
 	 * budget is a reachable adoption (the two arrive as separate fields), and honouring
-	 * the waiting one would close precisely the agents an operator is most likely to
+	 * the waiting one would prune precisely the agents an operator is most likely to
 	 * message while keeping every ordinary finished agent listed: the exact inverse of
 	 * both settings. `adopt` normalizes it rather than trusting the caller, so this
 	 * holds for any adoption and not only the one the settings resolver produces.
 	 */
-	it("never closes a waiting agent when the quiet budget is disabled", async () => {
-		adoptIdleAgent("Waiter", { waitingOnPeer: true, closeParkedMs: 0, closeWaitingMs: CLOSE_WAITING_MS });
+	it("never prunes a waiting agent when the quiet budget is disabled", async () => {
+		adoptIdleAgent("Waiter", { waitingOnPeer: true, pruneAfterMs: 0, pruneWaitingAfterMs: PRUNE_WAITING_AFTER_MS });
 
 		await advance(IDLE_TTL_MS);
 		expect(AgentRegistry.global().get("Waiter")?.status).toBe("parked");
 
-		await advance(CLOSE_WAITING_MS * 2);
+		await advance(PRUNE_WAITING_AFTER_MS * 2);
 		expect(AgentRegistry.global().get("Waiter")?.status).toBe("parked");
 	});
 
@@ -388,7 +388,7 @@ describe("parked subagents are closed once they are quiet", () => {
 		await advance(IDLE_TTL_MS);
 		expect(AgentRegistry.global().get("Revised")?.status).toBe("parked");
 
-		await advance(CLOSE_PARKED_MS);
+		await advance(PRUNE_AFTER_MS);
 		expect(AgentRegistry.global().get("Revised")).toBeUndefined();
 	});
 
@@ -398,23 +398,23 @@ describe("parked subagents are closed once they are quiet", () => {
 		AgentRegistry.global().setWaitingOnPeer("LateWaiter", true);
 
 		await advance(IDLE_TTL_MS);
-		await advance(CLOSE_PARKED_MS);
+		await advance(PRUNE_AFTER_MS);
 		expect(AgentRegistry.global().get("LateWaiter")?.status).toBe("parked");
 
-		await advance(CLOSE_WAITING_MS - CLOSE_PARKED_MS);
+		await advance(PRUNE_WAITING_AFTER_MS - PRUNE_AFTER_MS);
 		expect(AgentRegistry.global().get("LateWaiter")).toBeUndefined();
 	});
 
 	/**
 	 * A running agent is never touched by either stage. This is the distinction the
 	 * whole feature rests on: an agent blocked on a long test is working, not quiet,
-	 * and closing it would kill live work.
+	 * and pruning it would kill live work.
 	 */
 	it("leaves a running agent alone", async () => {
 		adoptIdleAgent("Busy");
 		AgentRegistry.global().setStatus("Busy", "running");
 
-		await advance(IDLE_TTL_MS + CLOSE_WAITING_MS);
+		await advance(IDLE_TTL_MS + PRUNE_WAITING_AFTER_MS);
 
 		const ref = AgentRegistry.global().get("Busy");
 		expect(ref?.status).toBe("running");
@@ -426,7 +426,7 @@ describe("parked subagents are closed once they are quiet", () => {
 	 * scheduler.
 	 *
 	 * WHY THIS EXISTS. The two-stage rewrite made the expiry read a `stage` field to
-	 * decide between parking and closing, and it skipped any due deadline that carried
+	 * decide between parking and pruning, and it skipped any due deadline that carried
 	 * no stage. `park` re-arms its own deadline when the flush fails, and the expiry
 	 * that invoked it had already cleared the stage, so the re-armed deadline had none:
 	 * the entry became permanently unactionable. Worse than the missed park, the
@@ -454,8 +454,8 @@ describe("parked subagents are closed once they are quiet", () => {
 		await advance(IDLE_TTL_MS);
 		expect(AgentRegistry.global().get("Flaky")?.status).toBe("parked");
 
-		// And the ordinary close still follows the retried park.
-		await advance(CLOSE_PARKED_MS);
+		// And the ordinary prune still follows the retried park.
+		await advance(PRUNE_AFTER_MS);
 		expect(AgentRegistry.global().get("Flaky")).toBeUndefined();
 	});
 });
@@ -470,7 +470,7 @@ describe("parked subagents are closed once they are quiet", () => {
  * leaves every case above green and the feature completely inert, which is the
  * failure this pins.
  */
-describe("a finished run arms the close through the executor", () => {
+describe("a finished run arms the prune through the executor", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		AgentRegistry.resetGlobalForTests();
@@ -503,20 +503,20 @@ describe("a finished run arms the close through the executor", () => {
 			keepAlive: true,
 			isolated,
 			agentIdleTtlMs: IDLE_TTL_MS,
-			autoClose: { parkedMs: CLOSE_PARKED_MS, waitingMs: CLOSE_WAITING_MS },
+			prune: { afterMs: PRUNE_AFTER_MS, waitingAfterMs: PRUNE_WAITING_AFTER_MS },
 			signOff,
 			reviveSession: isolated ? null : async () => fakeSession(),
 		});
 	}
 
-	/** An ordinary sign-off parks and then closes on the quiet budget. */
-	it("closes an ordinary finished subagent", async () => {
+	/** An ordinary sign-off parks and then prunes on the quiet budget. */
+	it("prunes an ordinary finished subagent", async () => {
 		await finishRun("Reporter", "Landed the parser fix and pushed it.");
 
 		await advance(IDLE_TTL_MS);
 		expect(AgentRegistry.global().get("Reporter")?.status).toBe("parked");
 
-		await advance(CLOSE_PARKED_MS);
+		await advance(PRUNE_AFTER_MS);
 		expect(AgentRegistry.global().get("Reporter")).toBeUndefined();
 	});
 
@@ -529,10 +529,10 @@ describe("a finished run arms the close through the executor", () => {
 		await finishRun("Blocked", "Waiting on InstallerTests before I can integrate.");
 
 		await advance(IDLE_TTL_MS);
-		await advance(CLOSE_PARKED_MS);
+		await advance(PRUNE_AFTER_MS);
 		expect(AgentRegistry.global().get("Blocked")?.status).toBe("parked");
 
-		await advance(CLOSE_WAITING_MS - CLOSE_PARKED_MS);
+		await advance(PRUNE_WAITING_AFTER_MS - PRUNE_AFTER_MS);
 		expect(AgentRegistry.global().get("Blocked")).toBeUndefined();
 	});
 
@@ -552,37 +552,37 @@ describe("a finished run arms the close through the executor", () => {
 	});
 
 	/**
-	 * An isolated run is parked immediately, with no reviver, and must still be closed.
+	 * An isolated run is parked immediately, with no reviver, and must still be pruned.
 	 *
-	 * WHY THIS EXISTS. The first version of this feature closed nothing here. Isolated
+	 * WHY THIS EXISTS. The first version of this feature pruned nothing here. Isolated
 	 * runs take a different branch that parks the ref directly and never handed it to
-	 * the lifecycle manager, so the close stage was never armed and every isolated
+	 * the lifecycle manager, so the prune stage was never armed and every isolated
 	 * subagent stayed in the roster for the whole session. That is the worst version of
 	 * the accumulation this feature exists to stop, because an isolated agent has no
 	 * reviver: messaging it cannot work, so the roster offered a peer that could never
 	 * answer.
 	 *
-	 * There is no park stage to wait through, so the close is counted from the run
+	 * There is no park stage to wait through, so the prune is counted from the run
 	 * ending, which is why this advances the quiet budget alone.
 	 */
-	it("closes an isolated subagent, which parks with no reviver", async () => {
+	it("prunes an isolated subagent, which parks with no reviver", async () => {
 		await finishRun("Worktree", "Merged the patch and cleaned the worktree.", true);
 
 		const parked = AgentRegistry.global().get("Worktree");
 		expect(parked?.status).toBe("parked");
 		expect(parked?.session).toBeNull();
 
-		await advance(CLOSE_PARKED_MS);
+		await advance(PRUNE_AFTER_MS);
 		expect(AgentRegistry.global().get("Worktree")).toBeUndefined();
 	});
 
 	/**
-	 * An isolated agent stays un-revivable right up to the close. Arming the close
+	 * An isolated agent stays un-revivable right up to the prune. Arming the prune
 	 * required adopting it, and adoption is also what `ensureLive` consults, so this
 	 * pins that the adoption carries no reviver: a caller must still be told the run is
 	 * gone and pointed at the transcript, not handed a broken session.
 	 */
-	it("keeps an isolated subagent un-revivable while it waits to be closed", async () => {
+	it("keeps an isolated subagent un-revivable while it waits to be pruned", async () => {
 		await finishRun("Worktree", "Merged the patch.", true);
 
 		await expect(AgentLifecycleManager.global().ensureLive("Worktree")).rejects.toThrow(/history:\/\/Worktree/);
@@ -592,10 +592,10 @@ describe("a finished run arms the close through the executor", () => {
 	it("gives an isolated subagent the longer hold when it says it is waiting", async () => {
 		await finishRun("Worktree", "Waiting on Main to pick a merge strategy.", true);
 
-		await advance(CLOSE_PARKED_MS);
+		await advance(PRUNE_AFTER_MS);
 		expect(AgentRegistry.global().get("Worktree")?.status).toBe("parked");
 
-		await advance(CLOSE_WAITING_MS - CLOSE_PARKED_MS);
+		await advance(PRUNE_WAITING_AFTER_MS - PRUNE_AFTER_MS);
 		expect(AgentRegistry.global().get("Worktree")).toBeUndefined();
 	});
 });
@@ -701,7 +701,7 @@ describe("no due deadline survives an expiry unactioned", () => {
 	 * that creates it: `#scheduleNext` re-arms with a zero delay only after the
 	 * expiry callback returns, so the loop needs further clock time to compound. The
 	 * measurement window is therefore taken AFTER the agent has parked, when a healthy
-	 * manager has exactly one deadline left (the close budget, five minutes out) and
+	 * manager has exactly one deadline left (the prune budget, five minutes out) and
 	 * must not wake the scheduler even once. A stranded deadline wakes it on every
 	 * millisecond of that window instead.
 	 *
@@ -787,9 +787,9 @@ describe("no due deadline survives an expiry unactioned", () => {
 });
 
 /**
- * Closing must not drop a ref somebody is currently waking.
+ * Pruning must not drop a ref somebody is currently waking.
  *
- * THE INTERLEAVING. `close` runs off the shared timer while `ensureLive` is awaiting
+ * THE INTERLEAVING. `prune` runs off the shared timer while `ensureLive` is awaiting
  * a rebuilt session, and a reviving agent is still `parked` right up until its new
  * session is attached, so a status check alone cannot see the wake. `release` then
  * unregisters the ref, and `attachSession`/`setStatus` both no-op on an unknown id:
@@ -797,10 +797,10 @@ describe("no due deadline survives an expiry unactioned", () => {
  * lists, and nothing will ever dispose. Silent on every channel.
  *
  * A cold revive is slow on purpose (transcript replay, MCP, auth), and the waiting
- * grace means the agents carrying a close deadline are exactly the ones an operator
+ * grace means the agents carrying a prune deadline are exactly the ones an operator
  * is most likely to message, so the window is not theoretical.
  */
-describe("a revive in flight is not closed underneath", () => {
+describe("a revive in flight is not pruned underneath", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		AgentRegistry.resetGlobalForTests();
@@ -813,7 +813,7 @@ describe("a revive in flight is not closed underneath", () => {
 		vi.useRealTimers();
 	});
 
-	it("keeps the ref and completes the wake when the close budget elapses mid-revive", async () => {
+	it("keeps the ref and completes the wake when the prune budget elapses mid-revive", async () => {
 		const gate = Promise.withResolvers<void>();
 		const revived = fakeSession();
 		adoptIdleAgent("Woken", {
@@ -827,9 +827,9 @@ describe("a revive in flight is not closed underneath", () => {
 		expect(AgentRegistry.global().get("Woken")?.status).toBe("parked");
 
 		const waking = AgentLifecycleManager.global().ensureLive("Woken");
-		await advance(CLOSE_PARKED_MS);
+		await advance(PRUNE_AFTER_MS);
 
-		// The close fired here. It must have deferred rather than dropped the ref.
+		// The prune fired here. It must have deferred rather than dropped the ref.
 		expect(AgentRegistry.global().get("Woken")?.status).toBe("parked");
 
 		gate.resolve();
@@ -840,10 +840,10 @@ describe("a revive in flight is not closed underneath", () => {
 
 	/**
 	 * The deferral is a deferral, not a cancellation: once the woken agent goes quiet
-	 * again it parks and closes on the ordinary budget, so a wake cannot make an agent
+	 * again it parks and prunes on the ordinary budget, so a wake cannot make an agent
 	 * permanently unclosable.
 	 */
-	it("still closes the agent once the wake has settled and it goes quiet again", async () => {
+	it("still prunes the agent once the wake has settled and it goes quiet again", async () => {
 		const gate = Promise.withResolvers<void>();
 		adoptIdleAgent("Woken", {
 			revive: async () => {
@@ -854,14 +854,14 @@ describe("a revive in flight is not closed underneath", () => {
 
 		await advance(IDLE_TTL_MS);
 		const waking = AgentLifecycleManager.global().ensureLive("Woken");
-		await advance(CLOSE_PARKED_MS);
+		await advance(PRUNE_AFTER_MS);
 		gate.resolve();
 		await waking;
 
 		await advance(IDLE_TTL_MS);
 		expect(AgentRegistry.global().get("Woken")?.status).toBe("parked");
 
-		await advance(CLOSE_PARKED_MS);
+		await advance(PRUNE_AFTER_MS);
 		expect(AgentRegistry.global().get("Woken")).toBeUndefined();
 	});
 
@@ -911,7 +911,7 @@ describe("a revive in flight is not closed underneath", () => {
  * That wake is not exotic. An agent that just failed is the one an operator messages
  * next, and an `irc` message to a subagent goes through `ensureLive`.
  *
- * NOT a close-budget case: the sdk's dispose wrapper unregisters any ref that is not
+ * NOT a prune-budget case: the sdk's dispose wrapper unregisters any ref that is not
  * `parked`, so an aborted ref is removed by its own teardown and needs no second
  * stage. This suite fakes the session, so the ref survives here and the refusal can
  * be observed on its own.
@@ -956,7 +956,7 @@ describe("an aborted subagent refuses a wake", () => {
 			keepAlive: true,
 			isolated: false,
 			agentIdleTtlMs: IDLE_TTL_MS,
-			autoClose: { parkedMs: CLOSE_PARKED_MS, waitingMs: CLOSE_WAITING_MS },
+			prune: { afterMs: PRUNE_AFTER_MS, waitingAfterMs: PRUNE_WAITING_AFTER_MS },
 			signOff: "Waiting on ReviewBot before I can continue.",
 			reviveSession: async () => fakeSession(),
 		});

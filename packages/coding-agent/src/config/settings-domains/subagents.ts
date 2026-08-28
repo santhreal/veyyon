@@ -136,24 +136,42 @@ export const DEFAULT_ENABLED_BUNDLED_AGENT = "deep";
 
 export const DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH = 0;
 
-/** Default time a finished subagent remains live and immediately revivable. */
+/**
+ * A finished subagent goes through TWO stages, and they are not the same event.
+ *
+ * PARK ({@link DEFAULT_SUBAGENT_IDLE_TTL_MS}) releases the live session: the
+ * process, its MCP clients and its file handles go, the memory is freed. The row
+ * stays in the roster, the transcript stays on disk, and messaging or opening the
+ * agent rebuilds it. Nothing is lost by parking.
+ *
+ * PRUNE ({@link DEFAULT_SUBAGENT_PRUNE_MS}) drops the parked row: the roster
+ * stops listing it and it can no longer be woken. It deletes nothing — the
+ * transcript stays on disk and stays readable at `history://<agent>` — so what a
+ * prune costs is the ability to continue that agent, not the record of what it
+ * did.
+ */
+
+/** Stage one: how long a finished subagent stays live before it parks. */
 export const DEFAULT_SUBAGENT_IDLE_TTL_MS = 5 * 60_000;
 
 /**
- * Default time a PARKED subagent is kept in the roster before it is closed for
- * good. Parking already released the session; this is how long the revivable ref
- * survives after that, so a finished agent stops accumulating in `irc list` and
- * the Control Center forever.
+ * Stage two: how long a parked subagent keeps its row before it is pruned.
+ *
+ * An hour, counted from the agent's last activity. Long enough that everything
+ * from the session you are in is still there to open, short enough that a
+ * conversation resumed tomorrow does not begin behind every subagent it has ever
+ * written — the roster of one such session held eighty rows.
  */
-export const DEFAULT_SUBAGENT_PARKED_CLOSE_MS = 5 * 60_000;
+export const DEFAULT_SUBAGENT_PRUNE_MS = 60 * 60_000;
 
 /**
  * The same budget for an agent whose last words said it was waiting on another
- * agent. It stopped on purpose to let a peer finish, so closing it on the ordinary
- * timer would throw away the one agent most likely to be messaged next. Six times
- * the ordinary grace, because the thing it waits for is another agent's whole run.
+ * agent. It stopped on purpose to let a peer finish, so pruning it on the
+ * ordinary budget would throw away the one agent most likely to be messaged next.
+ * Twice the ordinary grace, because the thing it waits for is another agent's
+ * whole run.
  */
-export const DEFAULT_SUBAGENT_WAITING_CLOSE_MS = 30 * 60_000;
+export const DEFAULT_SUBAGENT_WAITING_PRUNE_MS = 2 * 60 * 60_000;
 
 /** Shared recursion choices for the blanket setting and each per-agent override. */
 export const SUBAGENT_RECURSION_DEPTH_OPTIONS = [
@@ -393,23 +411,21 @@ export const SUBAGENTS_SETTINGS = {
 		default: DEFAULT_SUBAGENT_IDLE_TTL_MS,
 		ui: {
 			tab: "subagents",
-			// Stage ONE of the same two-stage lifecycle the close budgets below finish, so it
-			// belongs in their group rather than under Limits: an operator reading "Close After"
-			// needs to see what has to happen first. Labelled "Park After" for the same reason,
-			// so the group reads as a sequence rather than as one stray timeout beside two others.
-			//
-			// Deliberately NOT gated on `subagentAutoCloseEnabled`. Parking is what releases the
-			// session and it happens whether or not the ref is eventually dropped, so hiding this
-			// row when closing is off would hide the only control over stage one.
-			group: "Auto Close",
+			// Stage ONE, and its own group. Park and prune answer different questions —
+			// one releases the session, the other drops the row — and one shared "Auto
+			// Close" group asked the operator to read three rows to find out which did
+			// which. Parking is also NOT gated on the prune switch: it happens whether
+			// or not the ref is eventually dropped, so hiding this row when pruning is
+			// off would hide the only control over stage one.
+			group: "Park",
 			label: "Park After",
 			description:
-				"How long a finished subagent stays live before parking (ms). The default is 5 minutes. Parking releases the live session and keeps the transcript, so a parked agent revives automatically when messaged or resumed. Set 'Until exit' to keep idle agents live for the whole session. Counted from the agent's last activity, so a revived agent starts this budget again from the revival.",
+				"Stage one. How long a finished subagent stays live before it parks (ms). Parking releases the live session — the process, its MCP clients, its memory — and keeps everything else: the row stays in the roster and the agent rebuilds itself when messaged or opened. Counted from the agent's last activity, so a revived agent starts this budget again from the revival. 'Until exit' keeps idle agents live for the whole session.",
 			// A numeric setting with no option list is dropped by the UI adapter
 			// (`pathToSettingDef` treats optionless numbers as schema-only), so stage one
-			// of the park/close lifecycle was documented, defaulted and honored while
-			// being unreachable from /settings. The list is what makes the row exist, and
-			// what renders 300000 as "5 minutes" beside the close budgets below it.
+			// of the lifecycle was documented, defaulted and honored while being
+			// unreachable from /settings. The list is what makes the row exist, and what
+			// renders 300000 as "5 minutes".
 			options: [
 				{ value: "0", label: "Until exit" },
 				{ value: "60000", label: "1 minute" },
@@ -420,53 +436,54 @@ export const SUBAGENTS_SETTINGS = {
 		},
 	},
 
-	"subagent.autoClose.enabled": {
+	"subagent.prune.enabled": {
 		type: "boolean",
 		default: true,
 		ui: {
 			tab: "subagents",
-			group: "Auto Close",
-			label: "Close Parked Subagents",
+			group: "Prune",
+			label: "Prune Parked Subagents",
 			description:
-				"Close a parked subagent for good once it has been quiet long enough, instead of keeping it in the roster for the whole session. Parking already released the session; this decides whether the revivable reference is eventually dropped too. Turn it off to keep every finished subagent listed and revivable until you exit.",
+				"Stage two, and a different thing from parking. Pruning takes a parked subagent out of the roster and gives up the ability to wake it; parking only released its session. Nothing on disk is touched: the transcript stays where it is and stays readable at `history://<agent>`. Off keeps every parked subagent listed and wakeable until you exit.",
 		},
 	},
 
-	"subagent.autoClose.parkedMs": {
+	"subagent.prune.afterMs": {
 		type: "number",
-		default: DEFAULT_SUBAGENT_PARKED_CLOSE_MS,
+		default: DEFAULT_SUBAGENT_PRUNE_MS,
 		ui: {
 			tab: "subagents",
-			group: "Auto Close",
-			label: "Close After",
+			group: "Prune",
+			label: "Prune After",
 			description:
-				"How long a parked subagent stays listed and revivable before it is closed (ms). Counted from the moment it parked, not from when it started. Its transcript survives either way and stays readable through `history://`.",
+				"How long a parked subagent stays in the roster before it is pruned (ms). Counted from its last activity, so a subagent read back from a previous run is judged on when its transcript was last written rather than on when this session found it.",
 			options: [
-				{ value: "300000", label: "5 minutes", description: "Default" },
 				{ value: "900000", label: "15 minutes" },
 				{ value: "1800000", label: "30 minutes" },
-				{ value: "3600000", label: "1 hour" },
+				{ value: "3600000", label: "1 hour", description: "Default" },
+				{ value: "14400000", label: "4 hours" },
+				{ value: "86400000", label: "1 day" },
 			],
-			condition: "subagentAutoCloseEnabled",
+			condition: "subagentPruneEnabled",
 		},
 	},
 
-	"subagent.autoClose.waitingMs": {
+	"subagent.prune.waitingAfterMs": {
 		type: "number",
-		default: DEFAULT_SUBAGENT_WAITING_CLOSE_MS,
+		default: DEFAULT_SUBAGENT_WAITING_PRUNE_MS,
 		ui: {
 			tab: "subagents",
-			group: "Auto Close",
-			label: "Close After (Waiting)",
+			group: "Prune",
+			label: "Prune After While Waiting",
 			description:
-				"The same budget for a subagent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it gets a longer grace than one that simply went quiet: closing it on the ordinary timer would drop the agent you are most likely to message next. Set it equal to Close After to treat both the same.",
+				"The same budget for a subagent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it keeps its row longer than one that simply went quiet: pruning it on the ordinary budget would drop the agent you are most likely to message next. Set it equal to Prune After to treat both the same; a shorter value is raised to it.",
 			options: [
-				{ value: "900000", label: "15 minutes" },
-				{ value: "1800000", label: "30 minutes", description: "Default" },
 				{ value: "3600000", label: "1 hour" },
-				{ value: "7200000", label: "2 hours" },
+				{ value: "7200000", label: "2 hours", description: "Default" },
+				{ value: "14400000", label: "4 hours" },
+				{ value: "86400000", label: "1 day" },
 			],
-			condition: "subagentAutoCloseEnabled",
+			condition: "subagentPruneEnabled",
 		},
 	},
 

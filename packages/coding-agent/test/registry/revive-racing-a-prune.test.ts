@@ -1,11 +1,11 @@
 /**
- * A revive racing a close must never leave a live `AgentSession` that no registry
+ * A revive racing a prune must never leave a live `AgentSession` that no registry
  * entry owns.
  *
  * THE BUG THIS LOCKS OUT. Reviving a parked agent means calling its reviver
  * (transcript replay, MCP handshake, auth), which is slow, and then attaching the
- * rebuilt session to its ref. The close timer fires independently. In the window
- * between those two, the close path unregistered the ref — and `attachSession` and
+ * rebuilt session to its ref. The prune timer fires independently. In the window
+ * between those two, the prune path unregistered the ref — and `attachSession` and
  * `setStatus` both NO-OP on an unknown id. So `#revive` sailed through both calls
  * without touching anything and `ensureLive` RESOLVED, handing the caller a fully
  * live session: MCP clients connected, file handles open, LSP running, owned by
@@ -13,16 +13,16 @@
  * it. The agent looked awake to whoever woke it and was invisible to `dispose()`.
  *
  * TWO GUARDS, BOTH ASSERTED HERE, because either alone leaves the hole open:
- *  1. `close()` refuses while a revive is recorded in `#revivals`. Status cannot
+ *  1. `prune()` refuses while a revive is recorded in `#revivals`. Status cannot
  *     see an in-flight wake — a reviving agent reads `parked` right up until its
- *     session attaches — so the close must consult the revival set. The wake wins
+ *     session attaches — so the prune must consult the revival set. The wake wins
  *     and the ref survives.
  *  2. `#revive()` re-reads the ref AFTER the rebuild and, if it is gone, disposes
  *     the session it just built and throws. This is the backstop for every path
  *     that drops a ref without consulting `#revivals` (explicit release, process
  *     teardown).
  *
- * IF THIS REGRESSES: waking a subagent that was closing leaks its whole live
+ * IF THIS REGRESSES: waking a subagent that was pruning leaks its whole live
  * resource set for the lifetime of the process, and the leak is unobservable —
  * nothing holds a reference to report on.
  */
@@ -61,7 +61,7 @@ async function flushAsync(): Promise<void> {
 	for (let i = 0; i < 8; i++) await Promise.resolve();
 }
 
-describe("a revive racing a close leaks no session", () => {
+describe("a revive racing a prune leaks no session", () => {
 	let registry: AgentRegistry;
 	let lifecycle: AgentLifecycleManager;
 
@@ -89,7 +89,7 @@ describe("a revive racing a close leaks no session", () => {
 		});
 		lifecycle.adopt(id, {
 			idleTtlMs: 0,
-			closeParkedMs: 0,
+			pruneAfterMs: 0,
 			revive: async () => {
 				reviverRuns.n++;
 				await gate;
@@ -99,12 +99,12 @@ describe("a revive racing a close leaks no session", () => {
 	}
 
 	/**
-	 * GUARD 1. The close lands squarely inside the revive window. It must decline,
+	 * GUARD 1. The prune lands squarely inside the revive window. It must decline,
 	 * the ref must survive, and the woken session must be the one the registry now
 	 * holds — an attach that no-opped onto a dropped ref is exactly what produced
 	 * the orphan.
 	 */
-	it("refuses a close while a revive is in flight, and the woken session is the one the registry owns", async () => {
+	it("refuses a prune while a revive is in flight, and the woken session is the one the registry owns", async () => {
 		const gate = deferred();
 		const revived = makeSessionStub();
 		const runs = { n: 0 };
@@ -117,8 +117,8 @@ describe("a revive racing a close leaks no session", () => {
 		expect(runs.n).toBe(1);
 		expect(registry.get("Waking")?.status).toBe("parked");
 
-		// The close deadline fires right here.
-		await lifecycle.close("Waking");
+		// The prune deadline fires right here.
+		await lifecycle.prune("Waking");
 		// Refused: the ref is still registered and still adopted.
 		expect(registry.get("Waking")).toBeDefined();
 		expect(lifecycle.has("Waking")).toBe(true);
@@ -239,12 +239,12 @@ describe("a revive racing a close leaks no session", () => {
 
 	/**
 	 * The same race one step later: the revive completed and attached, and only THEN
-	 * does the close deadline fire. Now there is nothing in flight and the agent is
-	 * `idle`, so the close must decline on status and leave the live session alone.
-	 * This is the case that keeps guard 1 from being written as "never close", which
-	 * would make the close budget dead.
+	 * does the prune deadline fire. Now there is nothing in flight and the agent is
+	 * `idle`, so the prune must decline on status and leave the live session alone.
+	 * This is the case that keeps guard 1 from being written as "never prune", which
+	 * would make the prune budget dead.
 	 */
-	it("still declines to close an agent that finished waking, and disposes nothing", async () => {
+	it("still declines to prune an agent that finished waking, and disposes nothing", async () => {
 		const gate = deferred();
 		const revived = makeSessionStub();
 		const runs = { n: 0 };
@@ -254,7 +254,7 @@ describe("a revive racing a close leaks no session", () => {
 		const session = await lifecycle.ensureLive("Awake");
 		expect(registry.get("Awake")?.status).toBe("idle");
 
-		await lifecycle.close("Awake");
+		await lifecycle.prune("Awake");
 
 		expect(registry.get("Awake")?.session).toBe(session);
 		expect(registry.get("Awake")?.status).toBe("idle");
