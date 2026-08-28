@@ -63,70 +63,56 @@ async function answerRules(rules: CursorRule[]): Promise<CursorRule[]> {
 }
 
 describe("buildCursorRules", () => {
-	it("composes the system prompt as one global rule followed by one rule per file", () => {
-		const rules = buildCursorRules(
-			[SYSTEM_PROMPT, APPEND_SECTION],
-			[
-				{ fullPath: PROFILE_AGENTS, content: PROFILE_CONTENT },
-				{ fullPath: HOME_AGENTS, content: HOME_CONTENT },
-			],
-		);
+	it("composes the whole instruction payload as one always-apply rule", () => {
+		const rules = buildCursorRules([SYSTEM_PROMPT, APPEND_SECTION]);
 
-		expect(rules).toHaveLength(3);
-		const [systemRule, profileRule, homeRule] = rules;
-		// The system prompt is compiled, not file-backed: a stable synthetic path.
+		expect(rules).toHaveLength(1);
+		const [systemRule] = rules;
+		// The prompt is compiled, not file-backed: a stable synthetic path.
 		expect(systemRule.fullPath).toBe("veyyon://system-prompt.mdc");
 		expect(systemRule.content).toBe(`${SYSTEM_PROMPT}\n\n${APPEND_SECTION}`);
-		// File units keep their real path and full content, in caller (ascending-authority) order.
-		expect(profileRule.fullPath).toBe(PROFILE_AGENTS);
-		expect(profileRule.content).toBe(PROFILE_CONTENT);
-		expect(homeRule.fullPath).toBe(HOME_AGENTS);
-		expect(homeRule.content).toBe(HOME_CONTENT);
-		// Every rule is always-apply with the default source, cursor-agent's own AGENTS.md shape.
-		for (const rule of rules) {
-			expect(rule.type?.type.case).toBe("global");
-			expect(rule.source).toBe(0);
-		}
+		// Always-apply with the default source, cursor-agent's own AGENTS.md shape.
+		expect(systemRule.type?.type.case).toBe("global");
+		expect(systemRule.source).toBe(0);
 	});
 
-	it("emits no system rule for an empty prompt and skips empty files", () => {
-		expect(buildCursorRules(undefined, undefined)).toEqual([]);
-		expect(buildCursorRules(["", "   "], undefined)).toEqual([]);
-		const rules = buildCursorRules(undefined, [
-			{ fullPath: "/empty/AGENTS.md", content: "  \n" },
-			{ fullPath: HOME_AGENTS, content: HOME_CONTENT },
-		]);
-		expect(rules.map(rule => rule.fullPath)).toEqual([HOME_AGENTS]);
+	it("carries the caller's context files, because they are part of the prompt it is given", () => {
+		// The composer takes ONE argument. A second, separately filtered list of file units is
+		// exactly what let a scope be dropped from the wire while the prompt on every other api
+		// carried it, so the instruction layers arrive here already assembled.
+		const rules = buildCursorRules([SYSTEM_PROMPT, `<file path="${HOME_AGENTS}">\n${HOME_CONTENT}\n</file>`]);
+
+		expect(rules).toHaveLength(1);
+		expect(rules[0].content).toContain(HOME_CONTENT);
+		expect(rules[0].content).toContain(HOME_AGENTS);
+	});
+
+	it("emits no rule for an empty prompt", () => {
+		expect(buildCursorRules(undefined)).toEqual([]);
+		expect(buildCursorRules([])).toEqual([]);
+		expect(buildCursorRules(["", "   "])).toEqual([]);
 	});
 });
 
 describe("Cursor requestContext rules on the wire", () => {
-	it("answers requestContextArgs with the system prompt and the operator's files, and nothing else", async () => {
-		const composed = buildCursorRules(
-			[SYSTEM_PROMPT, APPEND_SECTION],
-			[
-				{ fullPath: PROFILE_AGENTS, content: PROFILE_CONTENT },
-				{ fullPath: HOME_AGENTS, content: HOME_CONTENT },
-			],
-		);
+	it("answers requestContextArgs with the assembled prompt, and nothing else", async () => {
+		const composed = buildCursorRules([
+			SYSTEM_PROMPT,
+			`<file path="${PROFILE_AGENTS}">\n${PROFILE_CONTENT}\n</file>`,
+		]);
 
 		const answered = await answerRules(composed);
 
-		// Exactly the composed set reaches the server: the system prompt and the
-		// operator's home/profile context, one rule each. The provider reads no
-		// filesystem, so no repository file can appear beside them.
-		expect(answered.map(rule => rule.fullPath)).toEqual(["veyyon://system-prompt.mdc", PROFILE_AGENTS, HOME_AGENTS]);
+		// One rule reaches the server, and it is the payload the caller assembled. The provider
+		// reads no filesystem, so nothing can join it between here and the wire.
+		expect(answered.map(rule => rule.fullPath)).toEqual(["veyyon://system-prompt.mdc"]);
 		expect(answered[0].content).toContain(SYSTEM_PROMPT);
-		expect(answered[0].content).toContain(APPEND_SECTION);
-		expect(answered[1].content).toBe(PROFILE_CONTENT);
-		expect(answered[2].content).toBe(HOME_CONTENT);
-		for (const rule of answered) {
-			expect(rule.type?.type.case).toBe("global");
-		}
+		expect(answered[0].content).toContain(PROFILE_CONTENT);
+		expect(answered[0].type?.type.case).toBe("global");
 	});
 
 	it("answers with no rules when the caller has no instructions", async () => {
-		const answered = await answerRules(buildCursorRules(undefined, undefined));
+		const answered = await answerRules(buildCursorRules(undefined));
 		expect(answered).toEqual([]);
 	});
 });

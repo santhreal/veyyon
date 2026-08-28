@@ -3,10 +3,9 @@
  *
  * WHY THIS SUITE EXISTS. `requestContext.rules` is the ONLY channel Cursor honors for client
  * instructions: the system-prompt blobs at the `rootPromptMessagesJson` head are fetched and then
- * replaced by the server's own canned prompt, and on a cursor-agent model the coding-agent
- * therefore inlines no context files in the prompt at all (`sdk.ts`, `usesCursorRuleDelivery`).
- * So the rules array carries the whole of it: veyyon's system prompt and the operator's global and
- * profile `AGENTS.md`.
+ * replaced by the server's own canned prompt. The rule the provider composes from the caller's
+ * assembled prompt therefore carries the whole of it: veyyon's system prompt and every context
+ * file inlined in it, the operator's global and profile `AGENTS.md` included.
  *
  * Nothing in the client pushes that array. `handleExecServerMessage` answers a `requestContextArgs`
  * ask, and if the ask never arrives the array is composed, logged at a level nobody has on, and
@@ -53,9 +52,22 @@ const GLOBAL_BODY = "# Global standing orders\nMarker: GLOBAL-SCOPE-BYTES-c3f1."
 const PROFILE_PATH = "/home/operator/.veyyon/profiles/work/agent/AGENTS.md";
 const PROFILE_BODY = "# Work profile orders\nMarker: PROFILE-SCOPE-BYTES-9a20.";
 
-const OPERATOR_RULES = [
-	{ fullPath: PROFILE_PATH, content: PROFILE_BODY },
-	{ fullPath: GLOBAL_PATH, content: GLOBAL_BODY },
+/**
+ * The prompt a session hands the provider: veyyon's own sections plus the operator's context
+ * files, inlined the way `buildSystemPrompt` inlines them for every other api. The provider takes
+ * no second list of files, so this array is the entire instruction payload.
+ */
+const OPERATOR_PROMPT = [
+	SYSTEM_PROMPT,
+	`<file path="${PROFILE_PATH}">\n${PROFILE_BODY}\n</file>`,
+	`<file path="${GLOBAL_PATH}">\n${GLOBAL_BODY}\n</file>`,
+];
+const OPERATOR_PROMPT_TEXT = OPERATOR_PROMPT.join("\n\n");
+/** The same layers after the operator edits the global file: different bytes, same shape. */
+const EDITED_PROMPT = [
+	SYSTEM_PROMPT,
+	`<file path="${PROFILE_PATH}">\n${PROFILE_BODY}\n</file>`,
+	`<file path="${GLOBAL_PATH}">\n${GLOBAL_BODY}\nNEW: never ship on a Friday.\n</file>`,
 ];
 
 function frame(payload: Uint8Array): Buffer {
@@ -161,7 +173,6 @@ interface TurnInput {
 	baseUrl: string;
 	conversationId: string;
 	systemPrompt?: string[];
-	cursorRules?: { fullPath: string; content: string }[];
 }
 
 async function runTurn(input: TurnInput): Promise<AssistantMessage> {
@@ -173,7 +184,6 @@ async function runTurn(input: TurnInput): Promise<AssistantMessage> {
 	for await (const event of streamCursor(cursorModel(input.baseUrl), context, {
 		apiKey: "test-token",
 		conversationId: input.conversationId,
-		cursorRules: input.cursorRules,
 	})) {
 		if (event.type === "done") message = event.message;
 		if (event.type === "error") message = event.error;
@@ -232,36 +242,34 @@ describe("Cursor request-context delivery", () => {
 		const message = await runTurn({
 			baseUrl: srv.baseUrl,
 			conversationId: nextConversationId(),
-			systemPrompt: [SYSTEM_PROMPT],
-			cursorRules: OPERATOR_RULES,
+			systemPrompt: OPERATOR_PROMPT,
 		});
 
 		// The client never answered at all, which is stronger than answering with nothing and is
 		// the whole point of the failure.
 		expect(answeredRules(srv.clientFrames)).toBeUndefined();
 		expect(message.stopReason).toBe("error");
-		// Three rules: the system prompt plus the operator's two files. The count is in the
-		// message so an operator reading it knows how much was lost, not merely that something was.
+		// One rule, and it is everything: the assembled prompt with the operator's files in it.
 		expect(message.errorMessage).toContain("without ever requesting the request context");
-		expect(message.errorMessage).toContain("3 rule(s)");
+		expect(message.errorMessage).toContain("1 rule(s)");
 	});
 
-	it("delivers the system prompt and both operator files verbatim when the server asks", async () => {
+	it("delivers the assembled prompt, operator files and all, when the server asks", async () => {
 		srv = await startH2Server({ askForContext: true });
 
 		const message = await runTurn({
 			baseUrl: srv.baseUrl,
 			conversationId: nextConversationId(),
-			systemPrompt: [SYSTEM_PROMPT],
-			cursorRules: OPERATOR_RULES,
+			systemPrompt: OPERATOR_PROMPT,
 		});
 
 		expect(message.stopReason).toBe("stop");
 		const rules = answeredRules(srv.clientFrames) ?? [];
-		// Order is the delivery contract: ascending authority, so the operator's global file
+		expect(rules.map(rule => rule.fullPath)).toEqual(["veyyon://system-prompt.mdc"]);
+		// Verbatim, in the caller's order: ascending authority, so the operator's global file
 		// keeps the last and highest-recency slot.
-		expect(rules.map(rule => rule.fullPath)).toEqual(["veyyon://system-prompt.mdc", PROFILE_PATH, GLOBAL_PATH]);
-		expect(rules.map(rule => rule.content)).toEqual([SYSTEM_PROMPT, PROFILE_BODY, GLOBAL_BODY]);
+		expect(rules[0].content).toBe(OPERATOR_PROMPT_TEXT);
+		expect(rules[0].content.indexOf(PROFILE_BODY)).toBeLessThan(rules[0].content.indexOf(GLOBAL_BODY));
 	});
 
 	it("accepts a later turn with no ask once the conversation has been delivered", async () => {
@@ -270,11 +278,10 @@ describe("Cursor request-context delivery", () => {
 		const first = await runTurn({
 			baseUrl: srv.baseUrl,
 			conversationId,
-			systemPrompt: [SYSTEM_PROMPT],
-			cursorRules: OPERATOR_RULES,
+			systemPrompt: OPERATOR_PROMPT,
 		});
 		expect(first.stopReason).toBe("stop");
-		expect(answeredRules(srv.clientFrames) ?? []).toHaveLength(3);
+		expect(answeredRules(srv.clientFrames) ?? []).toHaveLength(1);
 		await srv.close();
 
 		// Second turn, same conversation, server stays quiet: it already holds the context.
@@ -282,8 +289,7 @@ describe("Cursor request-context delivery", () => {
 		const second = await runTurn({
 			baseUrl: srv.baseUrl,
 			conversationId,
-			systemPrompt: [SYSTEM_PROMPT],
-			cursorRules: OPERATOR_RULES,
+			systemPrompt: OPERATOR_PROMPT,
 		});
 
 		expect(second.stopReason).toBe("stop");
@@ -300,8 +306,7 @@ describe("Cursor request-context delivery", () => {
 		const first = await runTurn({
 			baseUrl: srv.baseUrl,
 			conversationId,
-			systemPrompt: [SYSTEM_PROMPT],
-			cursorRules: OPERATOR_RULES,
+			systemPrompt: OPERATOR_PROMPT,
 		});
 		expect(first.stopReason).toBe("stop");
 		await srv.close();
@@ -310,11 +315,7 @@ describe("Cursor request-context delivery", () => {
 		const second = await runTurn({
 			baseUrl: srv.baseUrl,
 			conversationId,
-			systemPrompt: [SYSTEM_PROMPT],
-			cursorRules: [
-				{ fullPath: PROFILE_PATH, content: PROFILE_BODY },
-				{ fullPath: GLOBAL_PATH, content: `${GLOBAL_BODY}\nNEW: never ship on a Friday.` },
-			],
+			systemPrompt: EDITED_PROMPT,
 		});
 
 		expect(second.stopReason).toBe("error");
@@ -327,17 +328,12 @@ describe("Cursor request-context delivery", () => {
 		// bytes; a ledger that kept recording the first delivery would fail every quiet turn for
 		// the rest of the session and the operator could only get rid of it by starting over.
 		const conversationId = nextConversationId();
-		const edited = [
-			{ fullPath: PROFILE_PATH, content: PROFILE_BODY },
-			{ fullPath: GLOBAL_PATH, content: `${GLOBAL_BODY}\nNEW: never ship on a Friday.` },
-		];
 
 		srv = await startH2Server({ askForContext: true });
 		const first = await runTurn({
 			baseUrl: srv.baseUrl,
 			conversationId,
-			systemPrompt: [SYSTEM_PROMPT],
-			cursorRules: OPERATOR_RULES,
+			systemPrompt: OPERATOR_PROMPT,
 		});
 		expect(first.stopReason).toBe("stop");
 		await srv.close();
@@ -346,8 +342,7 @@ describe("Cursor request-context delivery", () => {
 		const second = await runTurn({
 			baseUrl: srv.baseUrl,
 			conversationId,
-			systemPrompt: [SYSTEM_PROMPT],
-			cursorRules: edited,
+			systemPrompt: EDITED_PROMPT,
 		});
 		expect(second.stopReason).toBe("stop");
 		await srv.close();
@@ -356,8 +351,7 @@ describe("Cursor request-context delivery", () => {
 		const third = await runTurn({
 			baseUrl: srv.baseUrl,
 			conversationId,
-			systemPrompt: [SYSTEM_PROMPT],
-			cursorRules: edited,
+			systemPrompt: EDITED_PROMPT,
 		});
 
 		expect(third.stopReason).toBe("stop");
@@ -378,8 +372,7 @@ describe("Cursor request-context delivery", () => {
 		const second = await runTurn({
 			baseUrl: srv.baseUrl,
 			conversationId,
-			systemPrompt: [SYSTEM_PROMPT],
-			cursorRules: OPERATOR_RULES,
+			systemPrompt: OPERATOR_PROMPT,
 		});
 
 		expect(second.stopReason).toBe("error");
@@ -393,8 +386,7 @@ describe("Cursor request-context delivery", () => {
 		const message = await runTurn({
 			baseUrl: srv.baseUrl,
 			conversationId: nextConversationId(),
-			systemPrompt: [SYSTEM_PROMPT],
-			cursorRules: OPERATOR_RULES,
+			systemPrompt: OPERATOR_PROMPT,
 		});
 
 		expect(message.stopReason).toBe("error");
@@ -442,7 +434,7 @@ describe("Cursor request-context delivery", () => {
 			undefined,
 			undefined,
 			[],
-			buildCursorRules([SYSTEM_PROMPT], OPERATOR_RULES),
+			buildCursorRules(OPERATOR_PROMPT),
 			undefined,
 			{
 				systemPromptBlobIds: new Set<string>(),

@@ -266,7 +266,6 @@ import {
 	onModelRolesChanged,
 	validateProviderMaxInFlightRequests,
 } from "../config/settings";
-import { usesCursorRuleDelivery } from "../cursor";
 import { RawSseDebugBuffer } from "../debug/raw-sse-buffer";
 import { loadCapability } from "../discovery";
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
@@ -8971,12 +8970,7 @@ export class AgentSession {
 	#currentPromptModelKey(): string | undefined {
 		const model = this.model ? formatModelString(this.model) : undefined;
 		if (!model || this.settings.get("includeModelInPrompt")) return model;
-		const taskPolicy = usesCodexTaskPrompt(model) ? "task-policy:gpt-5.6" : "task-policy:default";
-		// Context-file delivery is model policy too: cursor-agent models inline no context
-		// files (operator layers travel as requestContext rules, repository files nowhere),
-		// so switching to or from one must rebuild the prompt even when both models share
-		// a task-policy cohort and this key would otherwise not change.
-		return usesCursorRuleDelivery(this.model) ? `${taskPolicy}:cursor-rules` : taskPolicy;
+		return usesCodexTaskPrompt(model) ? "task-policy:gpt-5.6" : "task-policy:default";
 	}
 
 	/**

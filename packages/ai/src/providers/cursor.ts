@@ -124,7 +124,6 @@ import type {
 	CursorExecHandlerResult,
 	CursorExecHandlers,
 	CursorMcpCall,
-	CursorRuleInput,
 	CursorShellStreamCallbacks,
 	CursorToolResultHandler,
 	ImageContent,
@@ -243,8 +242,6 @@ export interface CursorOptions extends StreamOptions {
 	customSystemPrompt?: string;
 	execHandlers?: CursorExecHandlers;
 	onToolResult?: CursorToolResultHandler;
-	/** Operator-owned instruction files for the `requestContext.rules` channel (see {@link CursorRuleInput}). */
-	cursorRules?: CursorRuleInput[];
 	/** Wire model uid selected after thinking-effort routing (see mapOptionsForApi). */
 	wireModelId?: string;
 }
@@ -503,9 +500,10 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			);
 			conversationStateCache.set(conversationId, conversationState);
 			const requestContextTools = buildMcpToolDefinitions(context.tools);
-			// Composed once per request: the system prompt plus the caller's operator-owned
-			// files, delivered when the server asks for the request context (see buildCursorRules).
-			const requestContextRules = buildCursorRules(context.systemPrompt, options?.cursorRules);
+			// Composed once per request: the assembled session prompt, which carries every
+			// instruction layer the caller resolved, delivered when the server asks for the
+			// request context (see buildCursorRules).
+			const requestContextRules = buildCursorRules(context.systemPrompt);
 
 			const baseUrl = model.baseUrl || CURSOR_API_URL;
 			const requestPath = "/agent.v1.AgentService/Run";
@@ -1531,16 +1529,11 @@ async function handleExecServerMessage(
 			// own canned prompt (wire capture, 2026-08: the checkpoint head rebuilt as
 			// [Cursor's system prompt, an empty bookkeeping blob, the user turn], our two
 			// blobs nowhere in it), so a veyyon turn ran with zero veyyon context. The
-			// system prompt therefore goes here as one `global` rule, followed by the
-			// operator-owned context files the caller composed (veyyon's global and profile
-			// AGENTS.md, one rule per file with its real path, the shape cursor-agent itself
-			// uses for AGENTS.md). What must NEVER appear here is repository content
-			// (`.cursor/rules/*.mdc`, a checked-in AGENTS.md): a repository may not configure
-			// the agent. That exclusion cannot be re-implemented at this layer, because the
-			// provider never reads the filesystem: rule content arrives pre-composed from
-			// the caller, which owns provenance. Emptying this field again reverts every
-			// Cursor model to Cursor's canned CLI prompt with none of the operator's
-			// instructions; do not.
+			// assembled session prompt therefore goes here as one `global` rule, and it is
+			// the whole instruction payload: the caller inlines its context files into that
+			// prompt exactly as it does for every other api. Emptying this field again
+			// reverts every Cursor model to Cursor's canned CLI prompt with none of the
+			// operator's instructions; do not.
 			rules: requestContextRules,
 			repositoryInfo: [],
 			tools: requestContextTools,
@@ -3136,34 +3129,25 @@ function createCursorRule(fullPath: string, content: string): CursorRule {
 }
 
 /**
- * Compose the `requestContext.rules` payload: the session system prompt as one rule,
- * followed by the caller-supplied file units in caller order (the coding-agent hands
- * them over in ascending authority, so the operator's global file keeps the last,
- * highest-recency slot, same as in the prompt).
+ * Compose the `requestContext.rules` payload: the session system prompt, as one rule.
  *
  * Rules are Cursor's only honored client-instruction channel: the system-prompt blobs
  * at the `rootPromptMessagesJson` head are fetched and then replaced by the server's
  * own prompt (wire capture, 2026-08), so without this the model runs with none of the
- * caller's instructions. One rule per unit, not one joined blob, so the server's
- * content-keyed rule cache stays warm for every file that did not change.
+ * caller's instructions.
+ *
+ * The prompt is the WHOLE instruction payload, context files included, exactly as every
+ * other api receives it. This function used to take a second, separately composed list
+ * of file units, and the caller filtered that list by scope while inlining nothing in
+ * the prompt: the two halves disagreed, and a whole scope reached the model on no
+ * channel at all. There is one channel and one composer now, so they cannot disagree.
  *
  * Exported for tests.
  */
-export function buildCursorRules(
-	systemPrompt: readonly string[] | undefined,
-	inputRules: readonly CursorRuleInput[] | undefined,
-): CursorRule[] {
-	const rules: CursorRule[] = [];
+export function buildCursorRules(systemPrompt: readonly string[] | undefined): CursorRule[] {
 	const systemPrompts = normalizeSystemPrompts(systemPrompt);
-	if (systemPrompts.length > 0) {
-		rules.push(createCursorRule(CURSOR_SYSTEM_PROMPT_RULE_PATH, systemPrompts.join("\n\n")));
-	}
-	for (const input of inputRules ?? []) {
-		// An empty file is no instruction. cursor-agent skips empty AGENTS.md the same way.
-		if (input.content.trim().length === 0) continue;
-		rules.push(createCursorRule(input.fullPath, input.content));
-	}
-	return rules;
+	if (systemPrompts.length === 0) return [];
+	return [createCursorRule(CURSOR_SYSTEM_PROMPT_RULE_PATH, systemPrompts.join("\n\n"))];
 }
 
 function buildRootPromptMessagesJson(
