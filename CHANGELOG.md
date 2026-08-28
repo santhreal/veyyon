@@ -44,14 +44,21 @@
 - `ProviderWireCapabilities.anthropicMessages` declares how a provider serves the Anthropic Messages API — its endpoint, credential placement, rejected request features and retryable model errors — and `declaredProviders()` and `declaredCapabilityNames()` derive the declaring sets from the table.
 - Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
 - Added `supportsServerCompaction` capability data for ChatGPT Codex backend models on the Responses API.
+- New package: the terminal renderer defect oracle, holding the virtual terminal, frame capture, state-relative invariant detectors, the fuzz driver and the replayable defect corpus.
+- `defaultImageTheme` test fixture, so no suite hand-rolls an image theme.
+- `findViewportHoles` and `findStrandedChrome` decide the two blank-space defect classes from the frame's own state, taking no size threshold: a hole is a blank run with paint on both sides, and chrome is stranded when a painted row sits below it.
+- Added `ThemeToggle` component to shared React renderers for cycling system, light, and dark theme preferences.
+- `@veyyon/tui/test-support` exports the shared test themes and destructive-paint counter, so a suite in another package no longer reaches into this package's test directory by relative path.
 - `TUI.onBeforeCompose` runs at the top of every frame, before any root child renders, so a layout whose height is a function of its siblings' heights is sized against the children about to render rather than the previous frame's.
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
 - `MOTION.reflow` states the curve for a row that reflows its content sideways: 320ms, symmetric, where `expand` is 180ms and front-loaded.
+- `TUI.composedFrameLines` exposes the rows of the frame just composed, so a check can tell a row the layout composed blank from a row the renderer composed with content and failed to paint.
 - `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
 - `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
 
 ### Changed
 
+- The Julia, Python and Ruby eval kernels share one execution loop instead of three copies of it; no change to how a kernel behaves.
 - Reading a file or fetching a URL no longer loads the document converters, and a web search no longer loads the browser fingerprint generator, because the constants those paths wanted are separated from the libraries that sat behind them, taking about 40ms off session startup.
 - The launch card is painted and flushed before the agent runtime graph is loaded, taking an interactive launch from a blank terminal for 760ms to a typable composer at 111ms.
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
@@ -88,6 +95,9 @@
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
 - `core/embeddings.ts` imports `ProviderHttpError` from `@veyyon/ai/error/classes` instead of the error barrel, cutting twelve modules off the import graph of every module that can remember something; behavior is unchanged.
+- The package exposes a single entry point. Deep subpath imports are no longer resolvable, so consumers import `@veyyon/render-oracle` and nothing beneath it.
+- Every renderer regression test moved into this package, replacing copies previously spread across `tui` and `coding-agent`.
+- Migrated dashboard theme toggle to shared `ThemeToggle` from `@veyyon/tool-render`.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
@@ -96,9 +106,11 @@
 ### Removed
 
 - The `/providers` account card no longer writes `accounts.loadBalancing`: its `b` key and footer chip are gone, Settings → Providers → Accounts is the one writer, and the card reports the stored value.
+- A launch from your home directory no longer prints the three-line notice about relocating to a scratch directory; the relocation is unchanged, and `/cwd` and the status line state the session's directory.
 
 ### Fixed
 
+- A `cursor-agent` model receives the operator's global, profile and project instruction files again: the assembled prompt was blanked for that api in favour of a channel the server ignores, so every layer reached the model on no channel at all; one prompt is now built for every api and carried to Cursor on the active user turn.
 - A personality named after a property JavaScript objects inherit, such as `toString` or `constructor`, is reported as unknown and falls back to the default like any other unrecognized name; the built-in catalog was indexed without an own-property check, so those names resolved to a function, the system prompt build failed silently, and the default was substituted with no warning and any `personality/default.md` override ignored.
 - A personality spec can no longer spell a prompt tag such as `<critical>` and have it render as prompt structure; only `<personality>` was neutralized before, and a project's `.veyyon/personalities` file, which arrives with a cloned repository and outranks the user's own, is injected into every request.
 - `plugin install <name>@<marketplace> --dry-run` no longer performs the install: the marketplace branch never read the flag, so it fetched the plugin, wrote the cache and both registries, and reported a completed install; it now resolves the version from the catalog and writes nothing.
@@ -245,6 +257,8 @@
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
 - A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
 - A tool result that ran and failed no longer supersedes an earlier successful read of the same path, which replaced that file's content with a supersede notice and left the conversation only the error text.
+- A `cursor-agent` model receives the operator's instructions again: the server rebuilds the prompt head with its own system prompt and applies none of the request-context rules, so the assembled prompt now rides on the active user turn inside an `<operator-instructions>` block.
+- A `cursor-agent` request uploads the operator's instructions once instead of three times: the request-context rule payload and the prompt-head blobs, both discarded by that server, no longer carry a copy, and a request that would send any count other than one fails before it is written.
 - A `503 auth_unavailable` refusal is classified as an authentication failure rather than a bare server status, so compaction falls back to an authenticated model instead of failing the whole compaction ([#986](https://github.com/santhreal/veyyon/issues/986)).
 - A llama.cpp tool-call JSON parse failure explains itself and names the fix on every route to a local server, not only when the provider id is `ollama`, so an LM Studio or llama-cpp user sees why the turn stopped instead of a bare HTTP 500 whose retry was already being suppressed.
 - A llama.cpp tool-call JSON parse failure stops the retry ladder whether it arrives thrown from a request or recorded on an assistant message; the two classifier entry points share one post-walk latch instead of each deciding, so the same 500 no longer burned every attempt on one route while surfacing immediately on the other.
@@ -297,6 +311,13 @@
 - Nested optional-argument LaTeX constructs parse in linear time without character-by-character concatenation allocations.
 - Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
 - Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
+- Pinned footer screen bounds derive the live-tail window anchor from the current viewport height instead of the last painted one, so a resize whose repaint is deferred by the multiplexer settle timer no longer routes footer clicks to transcript rows.
+- A pinned footer keeps the bottom rows of the viewport when the terminal is shorter than the footer itself, rather than reserving a content row that cannot exist.
+- A bracketed paste whose end marker never arrives is released after one second of no further paste bytes, so keystrokes typed after a truncated paste reach the editor instead of being swallowed until 64 MiB accumulate. `PASTE_INACTIVITY_TIMEOUT_MS` is the one owner of that bound, consulted by both `BracketedPasteHandler` and `StdinBuffer`.
+- A click in the composer places the caret in a session that never scrolled. `Editor` routed clicks to the caret without declaring `MouseRoutable.wantsPointer()`, and `Container` never forwarded a child's declaration, so a host that mounts its editor inside a container — the usual shape — took no mouse until the transcript overflowed the viewport or a sibling chip happened to ask for it. `Editor` asks while it holds text or an open suggestion popup, `SelectList` while it painted an item row, and `Container` whenever any child asks; an empty idle composer still asks for nothing, so the terminal keeps native drag-select.
+- An inline image drawn inside a tmux pane reaches the outer terminal. `encodeITerm2` emitted a bare OSC 1337, which tmux swallows, while every Kitty emitter already wrapped its payload in tmux's DCS passthrough envelope; Sixel stays raw, because it is selected only when the DA1 answer reported it and inside tmux that answer is tmux's own.
+- A frame identical to the one on screen writes nothing. An overlay, a frozen scroll view or a slid window widened the repaint span to the whole viewport before the diff ran, so every such frame erased and reprinted rows it had just painted; what changed now decides whether anything is written, and the frame kind only decides how wide the walk is, with rows already matching the screen skipped inside it.
+- A keystroke typed during a heavy stream paints on the next frame instead of waiting out adaptive backpressure. The 50% duty-cycle floor, up to 200ms, was charged to every frame including one input asked for, and a frame already armed at that delay was never pulled earlier; an input-caused frame now skips the adaptive floor, keeps the cadence and input-grace floors, and re-arms a pending frame whenever it can start sooner.
 - `extractHttpStatusFromError` reads the status line a message opens with whatever wording follows it, so `401 Your session has expired`, `403 You have run out of credits` and `503 {"type":"error",...}` report their codes again; pinning a reason phrase to its own code had also stopped a status line naming its own reason from reporting anything, and 401 is what credential rotation reads.
 - `extractHttpStatusFromError` reads a status field anywhere in an error's cause chain before falling back to prose anywhere in it, and matches the `status_code: 503` and `429 Too Many Requests` spellings it previously missed.
 - `extractHttpStatusFromError` reads a reason phrase only when it is the phrase that belongs to the code beside it, so `Processed 200 Total Records` and `gave up after 401 Failed Attempts` no longer report a status, the second of which reached credential rotation.
@@ -306,6 +327,11 @@
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
 - `relativePathWithinRoot` returns the candidate's own spelling instead of the case-folded copy the containment check used, so on Windows a path under `C:\Users\dev\Projects` no longer comes back lowercased, and a root configured in a different case than the directory on disk resolves to the tail rather than to a `..` walk.
+
+### Breaking Changes
+
+- `AgentOptions.cursorRulesResolver` is removed: an agent no longer supplies a second, per-api rule channel beside its system prompt.
+- `StreamOptions.cursorRules` and the exported `CursorRuleInput` type are removed, and `buildCursorRules` takes only the system prompt: the Cursor provider builds exactly one request-context rule, the assembled prompt.
 
 ## [1.2.0] - 2026-08-23
 
