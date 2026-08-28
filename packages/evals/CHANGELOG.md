@@ -25,6 +25,7 @@ All notable changes to `@veyyon/evals` will be documented in this file.
 - Moved benchmark and trace reporting tools into `tools/`.
 - Harness adapters declare their supported execution backends in their backend map, refusing planning for unbound backend pairs and supporting multi-harness trial matrix generation.
 - The in-process backend loads a config overlay and a prompt-variant overlay per trial, applying settings to the agent session and the prompt text through `VEYYON_EVAL_PROMPTS`, and refuses a missing file, an unknown setting key or a prompt id no registry holds before any trial starts.
+- The omp harness stages an OAuth credential store (`auth-agent.db`) into the container when no API key is resolved, copying it to `~/.omp/agent/agent.db` in the setup step. Preflight accepts the auth DB as an alternative to `--omp-api-key` or `$PROVIDER_API_KEY`, probing it can serve the run's model.
 
 ### Changed
 
