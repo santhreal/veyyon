@@ -3062,10 +3062,10 @@ describe("no second blank-ArmResult literal may reappear", () => {
 	 */
 	const BLANK_SHAPE = /reward:\s*null,\s*\n\s*partial:\s*null,\s*\n\s*f2p:\s*null,/;
 
-	test("only aggregate.ts spells out the blank trial result", () => {
+	test("only aggregate-helpers.ts spells out the blank trial result", () => {
 		const dir = fileURLToPath(new URL(".", import.meta.url));
 		const offenders = readdirSync(dir)
-			.filter(name => name.endsWith(".ts") && name !== "aggregate.ts")
+			.filter(name => name.endsWith(".ts") && name !== "aggregate-helpers.ts")
 			.filter(name => BLANK_SHAPE.test(readFileSync(join(dir, name), "utf8")));
 		expect(
 			offenders,
@@ -3076,9 +3076,9 @@ describe("no second blank-ArmResult literal may reappear", () => {
 
 	/** The positive twin: an empty offender list is also what deleting the factory
 	 * produces, so pin that the one owner still spells the shape out. */
-	test("aggregate.ts still owns the spelled-out shape", () => {
+	test("aggregate-helpers.ts still owns the spelled-out shape", () => {
 		const dir = fileURLToPath(new URL(".", import.meta.url));
-		expect(BLANK_SHAPE.test(readFileSync(join(dir, "aggregate.ts"), "utf8"))).toBe(true);
+		expect(BLANK_SHAPE.test(readFileSync(join(dir, "aggregate-helpers.ts"), "utf8"))).toBe(true);
 	});
 });
 
