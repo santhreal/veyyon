@@ -6,8 +6,8 @@ import * as path from "node:path";
 import { isRecord } from "@veyyon/utils";
 import type { ComparisonArmResult, ComparisonExecution, NativeCompactionEvidence } from "../../../engine/arm-result";
 import type { ComparisonSystem } from "../../../engine/system-comparison";
+import { emptyArmResult } from "../aggregate/empty-result";
 import {
-	emptyArmResult,
 	finishedWithoutPatch,
 	isAgentTimeoutException,
 	NO_REWARD_ERROR,
@@ -15,7 +15,7 @@ import {
 	providerFinishReason,
 	providerQuotaStop,
 	quotaStopMarker,
-} from "../aggregate/index";
+} from "../aggregate/error-classification";
 import type { LoadedReplayManifest } from "../replay-manifest";
 import { parseSessionsUsage } from "./session-transcript";
 

@@ -12,6 +12,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { emptyArmResult } from "../../../suites/deep-swe/aggregate/empty-result";
 import {
 	classifyError,
 	finishedWithoutPatch,
@@ -21,7 +22,6 @@ import {
 	providerQuotaStop,
 	quotaStopMarker,
 } from "../../../suites/deep-swe/aggregate/error-classification";
-import { emptyArmResult } from "../../../suites/deep-swe/aggregate/index";
 import { renderQuotaTruncationBanner, renderReport } from "../../../suites/deep-swe/aggregate/report-render";
 import { summarizeCell } from "../../../suites/deep-swe/aggregate/stats";
 import type { ArmResult } from "../../../suites/deep-swe/aggregate/types";

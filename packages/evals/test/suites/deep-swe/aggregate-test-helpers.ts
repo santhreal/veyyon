@@ -1,4 +1,4 @@
-import { emptyArmResult } from "../../../suites/deep-swe/aggregate/index";
+import { emptyArmResult } from "../../../suites/deep-swe/aggregate/empty-result";
 import type { ArmResult } from "../../../suites/deep-swe/aggregate/types";
 
 /**

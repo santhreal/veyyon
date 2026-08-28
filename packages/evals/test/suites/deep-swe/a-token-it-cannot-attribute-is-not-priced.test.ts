@@ -18,7 +18,7 @@
 import { describe, expect, test } from "bun:test";
 import * as path from "node:path";
 import { evalsPackageDir } from "../../../engine/package-paths";
-import { emptyArmResult } from "../../../suites/deep-swe/aggregate/index";
+import { emptyArmResult } from "../../../suites/deep-swe/aggregate/empty-result";
 import { renderReferenceCostSection } from "../../../suites/deep-swe/aggregate/report-render";
 import { summarizeCell } from "../../../suites/deep-swe/aggregate/stats";
 import type { ArmResult } from "../../../suites/deep-swe/aggregate/types";

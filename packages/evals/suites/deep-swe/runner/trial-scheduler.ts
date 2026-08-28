@@ -1,4 +1,4 @@
-import type { QueuedTrial } from "../aggregate/index";
+import type { QueuedTrial } from "../aggregate/merge";
 
 export interface PairedWaveSchedulerOptions {
 	armsPerWave: number;

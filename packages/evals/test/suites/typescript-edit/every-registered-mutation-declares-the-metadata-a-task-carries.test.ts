@@ -16,6 +16,9 @@ import * as callFamily from "../../../suites/typescript-edit/mutations/call";
 import * as duplicateFamily from "../../../suites/typescript-edit/mutations/duplicate";
 import * as identifierFamily from "../../../suites/typescript-edit/mutations/identifier";
 import * as importFamily from "../../../suites/typescript-edit/mutations/import";
+import * as literalFamily from "../../../suites/typescript-edit/mutations/literal";
+import * as operatorFamily from "../../../suites/typescript-edit/mutations/operator";
+import * as regexFamily from "../../../suites/typescript-edit/mutations/regex";
 import {
 	ALL_MUTATIONS,
 	allMutations,
@@ -29,10 +32,7 @@ import {
 	mutationCategoryMap,
 	mutationIds,
 	requireMutation,
-} from "../../../suites/typescript-edit/mutations/index";
-import * as literalFamily from "../../../suites/typescript-edit/mutations/literal";
-import * as operatorFamily from "../../../suites/typescript-edit/mutations/operator";
-import * as regexFamily from "../../../suites/typescript-edit/mutations/regex";
+} from "../../../suites/typescript-edit/mutations/registry";
 import * as structuralFamily from "../../../suites/typescript-edit/mutations/structural";
 import * as unicodeFamily from "../../../suites/typescript-edit/mutations/unicode";
 

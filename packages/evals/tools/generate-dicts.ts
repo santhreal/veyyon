@@ -47,7 +47,7 @@ import { errorMessage } from "@veyyon/utils";
 import { generateDictFromRepo } from "argot";
 import { type FlagGrammar, flagCount, parseFlags } from "../engine/flag-grammar";
 import { dictsDir, evalsPackageDir, resolvePackagePath, taskCorpusDir } from "../engine/package-paths";
-import { OBSERVED_TYPEABLE_EMISSION_RATE, typeableHandleMass } from "../suites/deep-swe/aggregate/index";
+import { OBSERVED_TYPEABLE_EMISSION_RATE, typeableHandleMass } from "../suites/deep-swe/aggregate/usage";
 
 export interface DictRow {
 	task: string;

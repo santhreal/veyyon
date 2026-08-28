@@ -33,28 +33,25 @@ import {
 	taskCorpusDir,
 	taskListsDir,
 } from "../../../engine/package-paths";
+import { type ArmResult } from "../aggregate/types";
+import { armCanaryFailure, mostCommonAgentReason, shouldTripCanary } from "../aggregate/canary";
+import { emptyArmResult } from "../aggregate/empty-result";
+import { isHardError, providerQuotaStop } from "../aggregate/error-classification";
 import {
-	type ArmResult,
-	armCanaryFailure,
-	emptyArmResult,
-	isHardError,
 	jobNameOf,
 	MergeRefused,
 	mergeRuns,
-	mostCommonAgentReason,
 	onPairedTasks,
 	PINNED_TEMPERATURE,
 	parseJobName,
 	parseTaskListProvenance,
 	predictedVsActual,
-	providerQuotaStop,
 	type RunToMerge,
-	renderReport,
 	selectTasks,
-	shouldTripCanary,
 	type TaskSetProvenance,
 	trialQueue,
-} from "../aggregate/index";
+} from "../aggregate/merge";
+import { renderReport } from "../aggregate/report-render";
 import { isArmConfigFile } from "../arm-fingerprint";
 import { formatArmPrediction, predictArmSaving } from "../arm-prediction";
 import { resolveBinaryPin } from "../binary-pin";

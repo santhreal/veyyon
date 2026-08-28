@@ -11,7 +11,7 @@
 import { describe, expect, it } from "bun:test";
 import Handlebars from "handlebars";
 import { buildPrompt, type FileEntry } from "../../../suites/typescript-edit/generate";
-import type { Mutation, MutationInfo } from "../../../suites/typescript-edit/mutations/index";
+import type { Mutation, MutationInfo } from "../../../suites/typescript-edit/mutations/registry";
 import forcedAdoptionPromptText from "../../../suites/typescript-edit/prompts/argot-forced-adoption.md" with {
 	type: "text",
 };

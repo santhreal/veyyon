@@ -1,3 +1,5 @@
+export type { Mutation, MutationInfo } from "./types";
+export { BaseAstMutation } from "./base";
 import { OptionalChainRemovalMutation } from "./access";
 import { CallArgumentSwapMutation } from "./call";
 import { DuplicateLineLiteralFlipMutation } from "./duplicate";
