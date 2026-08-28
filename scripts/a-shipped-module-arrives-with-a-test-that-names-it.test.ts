@@ -250,7 +250,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/commit/analysis/conventional.ts",
 	"packages/coding-agent/src/commit/pipeline.ts",
 	"packages/coding-agent/src/config/dialect-format.ts",
-	"packages/coding-agent/src/config/settings-domains/interaction.ts",
 	"packages/coding-agent/src/config/settings-domains/tasks.ts",
 	"packages/coding-agent/src/debug/remote-debugger.ts",
 	"packages/coding-agent/src/discovery/windsurf.ts",
