@@ -105,7 +105,6 @@ const THINKING_CONFIG_ID = "thinking";
 const THINKING_OFF = "off";
 const SESSION_PAGE_SIZE = 50;
 const SPEECH_MODELS_LIST_METHOD = "speech.models.list";
-/** Delay before firing initial notifications on session creation. */
 export const ACP_BOOTSTRAP_RACE_GUARD_MS = 50;
 const ACP_CANCEL_CLEANUP_TIMEOUT_MS = 5_000;
 const ACP_ASYNC_DELIVERY_DRAIN_TIMEOUT_MS = 250;
@@ -126,9 +125,7 @@ type PromptLifecycleError = Error & { readonly code: "ACP_SESSION_CLOSED" };
 type PromptTurnState = {
 	cancelRequested: boolean;
 	settled: boolean;
-	/** Delivery promise for streamed assistant error chunks this turn. */
 	errorTextDelivery: Promise<boolean> | undefined;
-	/** In-flight abort cleanup barrier. */
 	cleanup: Promise<void> | undefined;
 	usageBaseline: UsageStatistics;
 	unsubscribe: (() => void) | undefined;
@@ -137,7 +134,6 @@ type PromptTurnState = {
 	promise: Promise<PromptResponse>;
 };
 
-/** True when a turn is running or actively aborting. */
 function isPromptTurnInFlight(turn: PromptTurnState | undefined): turn is PromptTurnState {
 	return turn !== undefined && (!turn.settled || turn.cleanup !== undefined);
 }
@@ -152,7 +148,6 @@ type ManagedSessionRecord = {
 	toolArgsById: Map<string, unknown>;
 	extensionsConfigured: boolean;
 	// Installed inside `#scheduleBootstrapUpdates` (post-race-guard); released
-	// in `#disposeSessionRecord`. Lives independent of any prompt turn.
 	lifetimeUnsubscribe: (() => void) | undefined;
 	closedError: PromptLifecycleError | undefined;
 	promptEventHandlers: Set<Promise<void>>;
@@ -247,7 +242,6 @@ function buildAcpSpeechModelsCatalog(): Record<string, unknown> {
 	};
 }
 
-/** Bridge ExtensionUIContext elicitation calls to ACP protocol. */
 async function elicitFromAcpClient(
 	connection: AgentSideConnection,
 	sessionId: string,
@@ -279,7 +273,6 @@ async function elicitFromAcpClient(
 				dialogOptions.onTimeout?.();
 			} catch (error) {
 				// A throwing `onTimeout` must not leave the elicitation promise
-				// pending — settle it via `finish` below regardless.
 				logger.warn("ACP elicitation onTimeout threw", { sessionId, method, error });
 			}
 			finish(undefined);
@@ -299,7 +292,6 @@ async function elicitFromAcpClient(
 			},
 		})
 		.then(finish, error => {
-			// Caller may already have moved on via abort/timeout; suppress noise.
 			if (settled) return;
 			logger.warn("ACP elicitation failed", { sessionId, method, error });
 			finish(undefined);
@@ -311,14 +303,12 @@ async function elicitFromAcpClient(
 	return response.content.value;
 }
 
-/** Narrows a `CreateElicitationResponse` to the accepted-with-content branch; the SDK's `action: string` catch-all arm otherwise defeats literal narrowing on `action !== "accept"`. */
 function isAcceptedElicitation(
 	response: CreateElicitationResponse | undefined,
 ): response is Extract<CreateElicitationResponse, { action: "accept" }> {
 	return response?.action === "accept";
 }
 
-/** Build an ExtensionUIContext for ACP sessions. */
 export function createAcpExtensionUiContext(
 	connection: AgentSideConnection,
 	getSessionId: () => string,
@@ -357,7 +347,6 @@ export function createAcpExtensionUiContext(
 				getSessionId(),
 				"input",
 				title,
-				// ACP's `StringPropertySchema` has no `placeholder` field, so we surface the placeholder text as `description` — the closest
 				{ type: "string", ...(placeholder?.trim() ? { description: placeholder } : {}) },
 				dialogOptions,
 			);
@@ -461,8 +450,6 @@ export class AcpAgent implements Agent {
 
 	async authenticate(params: AuthenticateRequest): Promise<AuthenticateResponse> {
 		// ACP spec: `methodId` must be one of the methods advertised by `initialize`.
-		// Reject anything else so malformed clients fail fast rather than appearing
-		// authenticated and surfacing a downstream model failure later.
 		const supportsTerminalAuth = this.#clientCapabilities?.auth?.terminal === true;
 		const validMethods = supportsTerminalAuth ? ["agent", "terminal"] : ["agent"];
 		if (!validMethods.includes(params.methodId)) {
@@ -575,9 +562,6 @@ export class AcpAgent implements Agent {
 				throw new Error(`Unknown ACP config option: ${params.configId}`);
 		}
 
-		// When mode is changed via the generic config-option API, mirror the
-		// `current_mode_update` notification that `setSessionMode` emits so
-		// ACP clients tracking session-mode state see a consistent transition.
 		if (params.configId === MODE_CONFIG_ID) {
 			await this.#connection.sessionUpdate({
 				sessionId: record.session.sessionId,
@@ -585,9 +569,6 @@ export class AcpAgent implements Agent {
 			});
 		}
 
-		// For `thinking` the lifetime subscription pushes post-bootstrap; only
-		// push here when it's not yet installed so pre-bootstrap callers still
-		// see the change without a post-bootstrap duplicate.
 		const thinkingHandledBySubscription =
 			params.configId === THINKING_CONFIG_ID && record.lifetimeUnsubscribe !== undefined;
 		if (!thinkingHandledBySubscription) {
@@ -600,7 +581,6 @@ export class AcpAgent implements Agent {
 		const record = this.#getSessionRecord(params.sessionId);
 		const activeTurn = record.promptTurn;
 		if (activeTurn && !activeTurn.settled && record.session.isStreaming) {
-			// New prompt arrived while the previous turn is still in-flight (e.g. the client sent a message immediately after pressing stop, before or without
 			this.#beginCancelCleanup(record, activeTurn).catch(async (error: unknown) => {
 				logger.warn("ACP cancel cleanup timed out; closing session", {
 					sessionId: record.session.sessionId,
@@ -612,7 +592,6 @@ export class AcpAgent implements Agent {
 		return await this.#queuePrompt(record, async () => {
 			const previousTurn = record.promptTurn;
 			if (previousTurn) {
-				// Await pending cancel cleanup before starting next prompt.
 				await previousTurn.promise.catch(() => undefined);
 				await previousTurn.cleanup;
 			}
@@ -760,7 +739,6 @@ export class AcpAgent implements Agent {
 
 		const extensionPromptBaseline = new Set(record.extensionUserMessageTasks);
 		const agentInvoked = await record.session.prompt(text, { images });
-		// Keep ACP turn subscribed until async nested prompts from extensions drain.
 		if (!agentInvoked) {
 			await this.#waitForExtensionUserMessages(record, extensionPromptBaseline);
 			await this.#waitForPromptEventHandlers(record);
@@ -809,7 +787,6 @@ export class AcpAgent implements Agent {
 		}
 	}
 
-	/** Transition in-flight turn to cancelled state and race abort cleanup. */
 	#beginCancelCleanup(record: ManagedSessionRecord, promptTurn: PromptTurnState): Promise<void> {
 		if (promptTurn.cleanup) {
 			return promptTurn.cleanup;
@@ -834,8 +811,6 @@ export class AcpAgent implements Agent {
 			await Promise.race([record.session.abort({ reason: USER_INTERRUPT_LABEL }), timeout]);
 		} finally {
 			if (timer) clearTimeout(timer);
-			// Order matters: clear `cleanup` before evicting the slot so the slot-eviction
-			// branch matches what `#finishPrompt` saw if it ran first.
 			promptTurn.cleanup = undefined;
 			if (promptTurn.settled && record.promptTurn === promptTurn) {
 				record.promptTurn = undefined;
@@ -844,8 +819,6 @@ export class AcpAgent implements Agent {
 	}
 
 	async extMethod(method: string, params: { [key: string]: unknown }): Promise<{ [key: string]: unknown }> {
-		// Canonical ext methods are `_veyyon/*`; `_omp/*` is accepted for ACP
-		// clients wired up before the rebrand.
 		const canonical = method.startsWith("_omp/") ? `_veyyon/${method.slice("_omp/".length)}` : method;
 		switch (canonical) {
 			case SPEECH_MODELS_LIST_METHOD:
@@ -1032,7 +1005,6 @@ export class AcpAgent implements Agent {
 	async #registerPreparedSession(session: AgentSession, mcpServers: McpServer[]): Promise<ManagedSessionRecord> {
 		const record = this.#createManagedSessionRecord(session);
 		session.setClientBridge(createAcpClientBridge(this.#connection, session.sessionId, this.#clientCapabilities));
-		// `record.lifetimeUnsubscribe` is installed in `#scheduleBootstrapUpdates`
 		// so it shares the bootstrap race guard — see that comment for why.
 		try {
 			await this.#configureExtensions(record);
@@ -1146,8 +1118,6 @@ export class AcpAgent implements Agent {
 		})) {
 			const delivery = this.#connection.sessionUpdate(notification);
 			if (streamedAssistantError) {
-				// Resolves true only once the error chunk actually reached the
-				// client — a failed delivery keeps the agent_end fallback armed.
 				const outcome = delivery.then(
 					() => true,
 					() => false,
@@ -1176,7 +1146,6 @@ export class AcpAgent implements Agent {
 		}
 	}
 
-	/** Deliver final assistant answer if message_end was not received before agent_end. */
 	async #flushMissedFinalAssistantText(
 		record: ManagedSessionRecord,
 		event: Extract<AgentSessionEvent, { type: "agent_end" }>,
@@ -1211,7 +1180,6 @@ export class AcpAgent implements Agent {
 		});
 	}
 
-	/** Surface unstreamed fatal provider errors on agent_end. */
 	async #flushUnreportedTurnError(
 		record: ManagedSessionRecord,
 		event: Extract<AgentSessionEvent, { type: "agent_end" }>,
@@ -1270,7 +1238,6 @@ export class AcpAgent implements Agent {
 		}
 	}
 
-	/** Reset live-message tracking state. */
 	#clearLiveAssistantMessageAfterEvent(record: ManagedSessionRecord, event: AgentSessionEvent): void {
 		if (event.type === "message_end" && event.message.role === "assistant") {
 			record.liveMessageId = undefined;
@@ -1304,8 +1271,6 @@ export class AcpAgent implements Agent {
 		}
 		promptTurn.settled = true;
 		promptTurn.unsubscribe?.();
-		// Keep the slot occupied until cancel cleanup finishes — `#runCancelCleanup`
-		// evicts the slot in its finally block once both flags say it's safe.
 		if (!promptTurn.cleanup && record.promptTurn === promptTurn) {
 			record.promptTurn = undefined;
 		}
@@ -1384,7 +1349,6 @@ export class AcpAgent implements Agent {
 					if ("text" in block.resource) {
 						textParts.push(block.resource.text);
 					} else if (typeof block.resource.mimeType === "string" && block.resource.mimeType.startsWith("image/")) {
-						// `embeddedContext: true` covers both text and blob resources, but blobs aren't directly consumable by the LLM. Route image blobs
 						images.push({ type: "image", data: block.resource.blob, mimeType: block.resource.mimeType });
 					} else {
 						textParts.push(`[embedded resource: ${block.resource.uri}]`);
@@ -1454,9 +1418,6 @@ export class AcpAgent implements Agent {
 		}
 
 		const thinkingOptions = this.#buildThinkingOptions(session);
-		// A model with no controllable effort surface (non-reasoning, or effort
-		// baked into the model id) gets no Thinking option at all: an empty
-		// select would offer choices that all refuse.
 		if (thinkingOptions.length > 0) {
 			configOptions.push({
 				id: THINKING_CONFIG_ID,
@@ -1473,8 +1434,6 @@ export class AcpAgent implements Agent {
 	}
 
 	#buildThinkingOptions(session: AgentSession): Array<{ value: string; name: string; description?: string }> {
-		// The row's declared choices, in cycle order: off/auto only when the row
-		// accepts them, levels exactly as declared. Never the fixed ladder.
 		return configuredThinkingLevelsForModel(session.model).map(level => {
 			const metadata = getConfiguredThinkingLevelMetadata(level);
 			return { value: level, name: metadata.label, description: metadata.description };
@@ -1505,9 +1464,6 @@ export class AcpAgent implements Agent {
 		if (!thinkingLevel) {
 			throw new Error(`Unknown ACP thinking level: ${value}`);
 		}
-		// A session with no resolved model has no row to narrow against, so the
-		// level is stored and clamped when one arrives. The narrowing helper offers
-		// nothing for a model it cannot read, so the skip is stated here.
 		if (!session.model) {
 			session.setThinkingLevel(thinkingLevel);
 			return;
@@ -1556,7 +1512,6 @@ export class AcpAgent implements Agent {
 				workflow: previous?.workflow ?? "parallel",
 				reentry: previous !== undefined,
 			});
-			// Mirror `InteractiveMode.#enterPlanMode`: register the standing resolve handler that consumes `resolve { action: "apply" }` from plan-mode.
 			session.setStandingResolveHandler?.(input => this.#runAcpPlanApprovalResolve(session, input));
 		} else {
 			session.setStandingResolveHandler?.(null);
@@ -1564,7 +1519,6 @@ export class AcpAgent implements Agent {
 		}
 	}
 
-	/** Standing resolve handler for ACP plan mode confirmation. */
 	#runAcpPlanApprovalResolve(session: AgentSession, input: unknown): Promise<AgentToolResult<unknown>> {
 		return runResolveInvocation(input as Parameters<typeof runResolveInvocation>[0], {
 			sourceToolName: "plan_approval",
@@ -1587,8 +1541,6 @@ export class AcpAgent implements Agent {
 					planExists: true,
 				};
 				if (!approved) {
-					// User chose to refine: leave plan mode active so the agent
-					// keeps the read-only toolset and can iterate on the plan file.
 					return {
 						content: [
 							{
@@ -1599,9 +1551,6 @@ export class AcpAgent implements Agent {
 						details,
 					};
 				}
-				// Approved. Set the plan reference so the next turn injects the plan
-				// content as context (the file keeps its agent-chosen name — no
-				// rename), then exit plan mode so the agent regains full tools.
 				session.setPlanReferencePath(planFilePath);
 				session.setStandingResolveHandler?.(null);
 				session.setPlanModeState(undefined);
@@ -1652,19 +1601,13 @@ export class AcpAgent implements Agent {
 		}
 	}
 
-	/** `local://` URLs of plan files in the session-local root, newest first —
-	 *  the `resolveApprovedPlan` fallback for a dropped `extra.title`. */
 	async #listAcpLocalPlanFiles(session: AgentSession): Promise<string[]> {
 		return listLocalPlanFileUrls(this.#resolveAcpPlanFilePath(session, "local://"));
 	}
 
-	/** Request ACP client confirmation for plan approval. */
 	async #requestAcpPlanApprovalChoice(sessionId: string, title: string, planContent: string): Promise<boolean> {
 		const supportsForm = this.#clientCapabilities?.elicitation?.form != null;
 		if (!supportsForm) return true;
-		// Include a short preview of the plan so the user has context in the
-		// dialog. Keep the body bounded — Zed renders elicitation messages
-		// inline and a multi-thousand-line plan blows out the dialog.
 		const allLines = planContent.split("\n");
 		const previewLines = allLines.slice(0, 12).join("\n");
 		const ellipsis = allLines.length > 12 ? "\n…" : "";
@@ -1677,9 +1620,6 @@ export class AcpAgent implements Agent {
 			{ type: "string", enum: [APPROVE_OPTION, REFINE_OPTION] },
 			undefined,
 		);
-		// Approve ONLY on the explicit approve selection. Dismissal, cancel,
-		// timeout, or any other non-approve response falls through to refine
-		// semantics so closing the dialog can never grant write access.
 		return value === APPROVE_OPTION;
 	}
 
@@ -1764,7 +1704,6 @@ export class AcpAgent implements Agent {
 		});
 	}
 
-	/** Reload plugin and registry state for an ACP session. */
 	async #reloadPluginState(record: ManagedSessionRecord): Promise<void> {
 		const cwd = record.session.sessionManager.getCwd();
 		const projectPath = await resolveActiveProjectRegistryPath(cwd);
@@ -2042,9 +1981,6 @@ export class AcpAgent implements Agent {
 			toolCallId: message.toolCallId,
 			toolName: message.toolName,
 			isError: message.isError === true,
-			// Replayed from persisted session state: the on-disk shape is the
-			// tool-result content the session originally recorded, plus the legacy
-			// `errorMessage` field the ACP mapper still coerces into readable text.
 			result: {
 				content: message.content,
 				details: message.details,
@@ -2199,7 +2135,6 @@ export class AcpAgent implements Agent {
 				},
 				compact: instructionsOrOptions => runExtensionCompact(record.session, instructionsOrOptions),
 			},
-			// Read sessionId lazily per elicitation to handle mid-session switches.
 			createAcpExtensionUiContext(this.#connection, () => record.session.sessionId, this.#clientCapabilities),
 		);
 		await extensionRunner.emit({ type: "session_start" });
@@ -2265,8 +2200,6 @@ export class AcpAgent implements Agent {
 				headers: this.#toNameValueMap(server.headers),
 			};
 		}
-		// The experimental ACP-channel transport (`type: "acp"`) is not advertised in
-		// `mcpCapabilities`, so a spec-compliant client never sends it; reject defensively.
 		throw new Error(`Unsupported MCP server transport: ${server.type}`);
 	}
 

@@ -1,9 +1,4 @@
-/**
- * Edit benchmark runner.
- *
- * Orchestrates benchmark runs by launching RPC clients, sending prompts,
- * and verifying results. Supports parallel runs for reliability measurement.
- */
+
 /// <reference types="./bun-imports.d.ts" />
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -36,7 +31,6 @@ function formatLogPath(logFile: string): string {
 	return relativePath === "" ? "." : relativePath;
 }
 
-/** Subset of session state used for markdown conversation dumps (parity with /dump). */
 type ConversationDumpSessionState = {
 	sessionFile?: string;
 	systemPrompt?: string[];
@@ -45,7 +39,6 @@ type ConversationDumpSessionState = {
 	dumpTools?: Array<{ name: string; description: string; parameters: unknown; examples?: readonly ToolExample[] }>;
 };
 
-/** Common interface for both RPC and in-process clients */
 interface BenchmarkClient {
 	start(): Promise<void>;
 	setThinkingLevel(level: ResolvedThinkingLevel): Promise<void>;
@@ -85,7 +78,7 @@ export interface BenchmarkConfig {
 	thinkingLevel?: ResolvedThinkingLevel;
 	runsPerTask: number;
 	timeout: number;
-	/** Timeout for the first event to arrive. If no events are observed within this window, abort early. Default: 30000 */
+	
 	connectionTimeout?: number;
 	maxTurns?: number;
 	taskConcurrency: number;
@@ -93,7 +86,7 @@ export interface BenchmarkConfig {
 	requireReadToolCall?: boolean;
 	noEditRequired?: boolean;
 	autoFormat?: boolean;
-	/** If true, abort the agent loop as soon as the formatted file content matches the expected fixture. Default: true. */
+	
 	earlyStopOnMatch?: boolean;
 	editVariant?: string;
 	editFuzzy?: boolean | "auto";
@@ -105,7 +98,7 @@ export interface BenchmarkConfig {
 	maxProviderFailureRetries?: number;
 	mutationScopeWindow?: number;
 	conversationDumpDir?: string;
-	/** Use in-process agent sessions instead of spawning CLI subprocesses. Default: true */
+	
 	inProcess?: boolean;
 }
 
@@ -126,7 +119,6 @@ function getConversationDumpPath(dumpDir: string, taskId: string, runIndex: numb
 	return path.join(dumpDir, sanitizeDumpPathSegment(taskId), `run-${runIndex + 1}.md`);
 }
 
-/** Artifacts directory for a session dump file (.md or legacy .jsonl). */
 function dumpArtifactsDir(dumpFilePath: string): string {
 	if (dumpFilePath.endsWith(".md")) {
 		return dumpFilePath.slice(0, -3);
@@ -536,11 +528,6 @@ async function evaluateMutationIntent(
 	};
 }
 
-/**
- * Build a textual hashline patch (with `¶path#tag` section header) that
- * transforms `actual` into `expected`. Returns null when no changes are
- * needed or the diff isn't expressible as straight insert/replace/delete ops.
- */
 function buildGuidedHashlinePatch(file: string, actual: string, expected: string): string | null {
 	const changes = diffLines(actual, expected);
 	const actualLines = actual.split("\n");
@@ -823,14 +810,14 @@ export interface TaskRunResult {
 	editFailures: EditFailure[];
 	editWarnings: string[];
 	editAutocorrectCount: number;
-	/** Hashline edit subtype counts (replaceLine, replaceLines, etc.) — only when editVariant is hashline */
+	
 	hashlineEditSubtypes?: Record<string, number>;
 	mutationIntentMatched?: boolean;
 	mutationIntentReason?: string;
 	timeoutTelemetry?: PromptAttemptTelemetry;
-	/** True when the run terminated early because the formatted file content matched the expected fixture. */
+	
 	earlyStopped?: boolean;
-	/** Retry telemetry: how many retries of each type were used */
+	
 	retryStats?: {
 		timeoutRetries: number;
 		zeroToolRetries: number;
@@ -850,96 +837,96 @@ export interface TaskResult {
 	name: string;
 	files: string[];
 	runs: TaskRunResult[];
-	/** Index into `runs` (ordered by runIndex) of the selected best run; -1 if no runs completed. */
+	
 	bestRunIndex: number;
-	/** True when the selected best run succeeded. */
+	
 	success: boolean;
-	/** Token usage of the best run. */
+	
 	tokens: TokenStats;
-	/** Duration (ms) of the best run. */
+	
 	duration: number;
-	/** Indent score of the best run, or 0 if unscored. */
+	
 	indentScore: number;
-	/** Tool call stats of the best run. */
+	
 	toolCalls: ToolCallStats;
-	/** Edit-tool success rate of the best run (defaults to 1 when no edit attempts). */
+	
 	editSuccessRate: number;
-	/** True if the best run succeeded with zero autocorrects. */
+	
 	autocorrectFreeSuccess: boolean;
-	/** Fraction of completed (non-ghost) runs that succeeded — flakiness indicator. */
+	
 	flakeSuccessRate: number;
 }
 
 export interface BenchmarkSummary {
 	totalTasks: number;
-	/** Total completed runs across all tasks (excludes ghost runs). */
+	
 	totalRuns: number;
-	/** Successful runs across every executed run (any of N). Diagnostic. */
+	
 	successfulRuns: number;
-	/** Tasks whose best run succeeded (best-of-N). Primary headline metric. */
+	
 	successfulTasks: number;
-	/** successfulTasks / totalTasks. */
+	
 	taskSuccessRate: number;
-	/** Tasks where best succeeded but at least one of N failed (flakiness). */
+	
 	flakyTasks: number;
-	/** Tasks where every executed non-ghost run succeeded. */
+	
 	consistentlyPassingTasks: number;
-	/** Tasks whose first run succeeded. */
+	
 	successfulOneShotTasks: number;
-	/** Tokens summed over the first run of each successfully one-shot task. */
+	
 	totalOneShotSuccessTokens: TokenStats;
-	/** Average tokens per successfully one-shot task. */
+	
 	avgOneShotSuccessTokensPerTask: TokenStats;
-	/** Median tokens across successfully one-shot tasks. */
+	
 	medianOneShotSuccessTokensPerTask: TokenStats;
-	/** 1st-percentile tokens across successfully one-shot tasks. */
+	
 	p1OneShotSuccessTokensPerTask: TokenStats;
-	/** 99th-percentile tokens across successfully one-shot tasks. */
+	
 	p99OneShotSuccessTokensPerTask: TokenStats;
-	/** Tokens summed over the best run of each task. */
+	
 	totalTokens: TokenStats;
-	/** Average tokens per task (sum of best runs / number of tasks). */
+	
 	avgTokensPerTask: TokenStats;
-	/** Median tokens across best runs (per-task distribution). */
+	
 	medianTokensPerTask: TokenStats;
-	/** 1st-percentile tokens across best runs (per-task distribution). */
+	
 	p1TokensPerTask: TokenStats;
-	/** 99th-percentile tokens across best runs (per-task distribution). */
+	
 	p99TokensPerTask: TokenStats;
-	/** Duration summed over best runs. */
+	
 	totalDuration: number;
-	/** Average duration of the best run per task. */
+	
 	avgDurationPerTask: number;
-	/** Average indent score over best runs (only counts runs with a score). */
+	
 	avgIndentScore: number;
-	/** Tool calls summed over best runs. */
+	
 	totalToolCalls: ToolCallStats;
-	/** Average tool calls per task (sum of best runs / number of tasks). */
+	
 	avgToolCallsPerTask: ToolCallStats;
-	/** Edit-tool success rate aggregated across best runs. */
+	
 	editSuccessRate: number;
-	/** Tasks where the best run succeeded without any autocorrects. */
+	
 	autocorrectFreeSuccessfulTasks: number;
-	/** autocorrectFreeSuccessfulTasks / totalTasks. */
+	
 	autocorrectFreeSuccessRate: number;
-	/** Best runs with any autocorrects. */
+	
 	autocorrectedBestRuns: number;
-	/** Autocorrect rate across best-run edit successes. */
+	
 	editAutocorrectRate: number;
-	/** Diagnostic: runs (across all N) that timed out. */
+	
 	timeoutRuns: number;
-	/** Diagnostic: total retry counts across all runs. */
+	
 	totalTimeoutRetries: number;
 	totalZeroToolRetries: number;
 	totalProviderFailureRetries: number;
-	/** Diagnostic: ghost runs (0 tokens, 0 tool calls) across all N. */
+	
 	ghostRuns: number;
-	/** Diagnostic: runs excluded because provider/transport stalls exhausted retries. */
+	
 	transportFailureRuns: number;
 	mutationIntentMatchRate?: number;
-	/** Edit failure categories across all runs. */
+	
 	editFailureCategories: Record<EditFailureCategory, number>;
-	/** Hashline edit subtype totals across all runs — only when editVariant is hashline. */
+	
 	hashlineEditSubtypes?: Record<string, number>;
 }
 
@@ -1255,7 +1242,7 @@ async function runSingleTask(
 							toolStats.write++;
 						}
 
-						// Count input chars from args
+						
 						if (e.args) {
 							toolStats.totalInputChars += JSON.stringify(e.args).length;
 						}
@@ -1304,7 +1291,7 @@ async function runSingleTask(
 					}
 				}
 
-				// Retry if the model didn't attempt any edit/write (read-only or no tool calls)
+				
 				const madeEditAttempt = toolStats.edit > 0 || toolStats.write > 0;
 				if (!madeEditAttempt && zeroToolRetries < noOpRetryLimit) {
 					zeroToolRetries++;
@@ -1585,7 +1572,7 @@ async function collectPromptEvents(
 					try {
 						await earlyStop.onMatch();
 					} catch {
-						// Swallow callback errors; we still want to short-circuit.
+						
 					}
 					client.abort?.();
 					resolveWait();
@@ -1593,7 +1580,7 @@ async function collectPromptEvents(
 				.catch(() => {});
 		};
 
-		// Start with the shorter connection timeout; upgrade to full timeout on first event
+		
 		timer = setTimeout(fireTimeout, connectionTimeout);
 
 		unsubscribe = client.onEvent(event => {
@@ -1602,7 +1589,7 @@ async function collectPromptEvents(
 			}
 			const typedEvent = event as { type: string; [key: string]: unknown };
 
-			// First event arrived: switch to the full activity timeout
+			
 			if (!receivedFirstEvent) {
 				receivedFirstEvent = true;
 				if (timer) {
@@ -1754,13 +1741,6 @@ const EMPTY_TOOL_CALL_STATS: ToolCallStats = {
 	totalInputChars: 0,
 };
 
-/**
- * Strict ordering used to pick the "best" run for a task:
- *   1. Successful runs win over failed runs.
- *   2. Then prefer non-ghost runs (real work over 0/0/0 stalls).
- *   3. Then prefer the run with lower total token usage.
- *   4. Then prefer the earlier runIndex for stability.
- */
 function isBetterRun(a: TaskRunResult, b: TaskRunResult): boolean {
 	if (a.success !== b.success) return a.success;
 	const aGhost = isGhostRun(a);
@@ -1858,10 +1838,6 @@ async function runConcurrentBenchmarkRun(
 	}
 }
 
-/**
- * Linear-interpolated percentile (NumPy "linear" / type-7) over an ascending-sorted
- * sample. `p` is a percentage in [0, 100]. Returns 0 for an empty sample.
- */
 export function percentile(sortedAscending: readonly number[], p: number): number {
 	const n = sortedAscending.length;
 	if (n === 0) return 0;
@@ -1874,14 +1850,12 @@ export function percentile(sortedAscending: readonly number[], p: number): numbe
 	return loVal + (sortedAscending[hi]! - loVal) * (rank - lo);
 }
 
-/** Median / 1st / 99th percentile token stats over a set of runs (one sample per run). */
 export interface TokenDistribution {
 	median: TokenStats;
 	p1: TokenStats;
 	p99: TokenStats;
 }
 
-/** Compute the per-run token distribution (median, p1, p99) across the given runs. */
 export function summarizeTokenDistribution(runs: readonly TaskRunResult[]): TokenDistribution {
 	const input = runs.map(r => r.tokens.input).sort((a, b) => a - b);
 	const output = runs.map(r => r.tokens.output).sort((a, b) => a - b);
@@ -1907,7 +1881,7 @@ export function buildBenchmarkResult(params: {
 
 	const endTime = params.endTime ?? new Date().toISOString();
 
-	// Diagnostic aggregates run over *every* executed run (across all N) so the
+	
 	// report still surfaces ghost/timeout/retry signals.
 	const allRuns = taskResults.flatMap(t => t.runs);
 	const ghostRuns = allRuns.filter(r => isGhostRun(r)).length;
@@ -1932,7 +1906,7 @@ export function buildBenchmarkResult(params: {
 				)
 			: undefined;
 
-	// Primary aggregates run over the *best* run of each completed task.
+	
 	const bestRuns: TaskRunResult[] = [];
 	for (const task of taskResults) {
 		if (task.bestRunIndex < 0) continue;
@@ -2077,7 +2051,7 @@ export async function runBenchmark(
 ): Promise<BenchmarkResult> {
 	const startTime = new Date().toISOString();
 
-	// Discover shared infrastructure once for in-process mode
+	
 	const useInProcess = config.inProcess !== false;
 	const shared = useInProcess
 		? await discoverSharedInfra({

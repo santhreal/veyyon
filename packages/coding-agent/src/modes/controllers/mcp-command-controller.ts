@@ -1,4 +1,3 @@
-/** MCP Command Controller Handles /mcp subcommands for managing MCP servers. */
 import { type Component, type OverlayHandle, replaceTabs, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, getMCPConfigPath, getProjectDir, isAbortError } from "@veyyon/utils";
 import type { SourceMeta } from "../../capability/types";
@@ -58,7 +57,6 @@ import { theme } from "../theme/theme";
 import type { InteractiveModeContext } from "../types";
 import { groupBySource, showCommandMessage } from "./command-controller-shared";
 
-/** Context slice required by MCPCommandController. */
 export type McpCommandControllerContext = Pick<
 	InteractiveModeContext,
 	| "editor"
@@ -96,10 +94,8 @@ function raceAbortSignal<T>(promise: Promise<T>, signal: AbortSignal, createErro
 	});
 }
 
-/** Minimum column budget for URL wrapping. */
 const MCP_AUTH_MIN_WRAP_WIDTH = 16;
 
-/** Wrap URL into rows that fit inside width. */
 function wrapUrlRows(label: string, url: string, width: number): string[] {
 	const indent = " ";
 	const sanitized = replaceTabs(url);
@@ -115,7 +111,6 @@ function wrapUrlRows(label: string, url: string, width: number): string[] {
 	return rows;
 }
 
-/** Renders the MCP OAuth fallback URL. */
 export class MCPAuthorizationLinkPrompt implements Component {
 	readonly #fullUrl: string;
 	readonly #launchUrl: string | undefined;
@@ -142,7 +137,6 @@ export class MCPAuthorizationLinkPrompt implements Component {
 	}
 }
 
-/** Animated connecting transcript block with spinner. */
 class McpConnectingBlock extends ChatBlock {
 	readonly #text: Text;
 
@@ -167,21 +161,18 @@ class McpConnectingBlock extends ChatBlock {
 		this.onCleanup(() => clearInterval(interval));
 	}
 
-	/** Replace the spinner line with a terminal status; pair with {@link finish}. */
 	setStatus(text: string): void {
 		this.#text.setText(text);
 		this.requestRender();
 	}
 }
 
-/** Outcome of MCPCommandController OAuth handler. */
 interface OAuthFlowResult {
 	credentialId: string;
 	clientId?: string;
 	resource?: string;
 }
 
-/** Thrown when MCP OAuth flow is cancelled by user or signal. */
 export class MCPOAuthCancelledError extends Error {
 	constructor(message = "OAuth flow cancelled") {
 		super(message);
@@ -189,7 +180,6 @@ export class MCPOAuthCancelledError extends Error {
 	}
 }
 
-/** Reason recorded on the OAuth flow's AbortController when the user hits Esc. */
 const MCP_OAUTH_USER_CANCEL_REASON = "MCP OAuth flow cancelled by user";
 
 type MCPAddTransport = "http" | "sse";
@@ -200,7 +190,6 @@ const MCP_SEARCH_USAGE = "Usage: /mcp smithery-search <keyword...> [<limit 1-100
 
 const MCP_REMOVE_USAGE = "Usage: /mcp remove <name>";
 
-/** Retired /mcp add options and their migration guidance. */
 const MCP_ADD_REMOVED_OPTIONS: Record<string, string> = {
 	"": "write `run <command...>`, which takes the whole rest of the line",
 	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
@@ -211,7 +200,6 @@ const MCP_ADD_REMOVED_OPTIONS: Record<string, string> = {
 	token: "write `token <token>`",
 };
 
-/** The option spellings `/mcp smithery-search` no longer has, keyed by bare name. */
 const MCP_SEARCH_REMOVED_OPTIONS: Record<string, string> = {
 	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
 	project: MCP_SCOPE_REMOVED_REPLACEMENT,
@@ -220,7 +208,6 @@ const MCP_SEARCH_REMOVED_OPTIONS: Record<string, string> = {
 	semantic: "write `semantic` as a plain word",
 };
 
-/** The option spellings `/mcp remove` no longer has, keyed by bare name. */
 const MCP_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
 	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
 	project: MCP_SCOPE_REMOVED_REPLACEMENT,
@@ -245,7 +232,6 @@ type MCPSearchParsed = {
 export class MCPCommandController {
 	constructor(private ctx: McpCommandControllerContext) {}
 
-	/** Handle /mcp command and route to subcommands. */
 	async handle(text: string): Promise<void> {
 		const parts = text.trim().split(/\s+/);
 		const subcommand = parts[1]?.toLowerCase();
@@ -343,7 +329,6 @@ export class MCPCommandController {
 		this.#showMessage(helpText);
 	}
 
-	/** Parse arguments for `/mcp add`. */
 	#parseAddCommand(text: string): MCPAddParsed {
 		const prefixMatch = text.match(/^\/mcp\s+add\b\s*(.*)$/i);
 		const tokens = parseCommandArgs(prefixMatch?.[1]?.trim() ?? "");
@@ -426,7 +411,6 @@ export class MCPCommandController {
 		};
 	}
 
-	/** Parse arguments for `/mcp smithery-search`. */
 	#parseSearchCommand(text: string): MCPSearchParsed {
 		const prefixMatch = text.match(/^\/mcp\s+smithery-search\b\s*(.*)$/i);
 		const tokens = parseCommandArgs(prefixMatch?.[1]?.trim() ?? "");
@@ -472,7 +456,6 @@ export class MCPCommandController {
 		return { keyword: tokens.slice(0, end).join(" "), limit, semantic };
 	}
 
-	/** Handle /mcp add. */
 	async #handleAdd(text: string): Promise<void> {
 		const parsed = this.#parseAddCommand(text);
 		if (parsed.error) {
@@ -482,8 +465,6 @@ export class MCPCommandController {
 		if (parsed.quickConfig && parsed.initialName) {
 			let finalConfig = parsed.quickConfig;
 
-			// Quick-add with URL should still perform auth detection and OAuth flow,
-			// matching wizard behavior. Command quick-add intentionally skips this.
 			if (!parsed.isCommandQuickAdd && (finalConfig.type === "http" || finalConfig.type === "sse")) {
 				try {
 					await this.#handleTestConnection(finalConfig);
@@ -503,13 +484,9 @@ export class MCPCommandController {
 									authResult.resourceMetadataUrl,
 									{ protectedScopes: authResult.scopes },
 								);
-							} catch {
-								// Ignore discovery error and handle below.
-							}
+							} catch {}
 						}
 						if (oauth && !oauth.scopes && authResult.resourceMetadataUrl) {
-							// JSON-error-body path skips `discoverOAuthEndpoints`; fetch the
-							// advertised protected-resource metadata for the required scopes.
 							const scopes = await fetchResourceMetadataScopes(authResult.resourceMetadataUrl);
 							if (scopes) oauth = { ...oauth, scopes };
 						}
@@ -565,11 +542,7 @@ export class MCPCommandController {
 			return;
 		}
 
-		// The wizard is a floating card on the alternate screen, so its close
-		// glyph and chips have somewhere to live and the transcript stays put.
 		let overlayHandle: OverlayHandle | undefined;
-		// The wizard holds a pointer band on the shared motion clock, and hiding an overlay only
-		// stops painting it. The show site created the card, so the show site hands it back.
 		let card: MCPAddWizard | undefined;
 		let closed = false;
 		const done = () => {
@@ -581,7 +554,6 @@ export class MCPCommandController {
 			this.ctx.ui.requestRender();
 		};
 
-		// Create wizard with OAuth handler and connection test
 		const wizard = new MCPAddWizard(
 			async (name: string, config: MCPServerConfig) => {
 				done();
@@ -616,7 +588,6 @@ export class MCPCommandController {
 		this.ctx.ui.requestRender();
 	}
 
-	/** Handle OAuth authentication flow for MCP server. */
 	async #handleOAuthFlow(
 		authUrl: string,
 		tokenUrl: string,
@@ -632,14 +603,12 @@ export class MCPCommandController {
 			registrationUrl?: string;
 			resource?: string;
 			stripSameOriginResource?: boolean;
-			/** External cancellation signal for in-flight OAuth flow. */
 			abortSignal?: AbortSignal;
 		},
 	): Promise<OAuthFlowResult> {
 		const authStorage = this.ctx.session.modelRegistry.authStorage;
 		let parsedAuthUrl: URL;
 
-		// Validate OAuth URLs
 		try {
 			parsedAuthUrl = new URL(authUrl);
 			new URL(tokenUrl);
@@ -680,7 +649,6 @@ export class MCPCommandController {
 			externalSignal?.addEventListener("abort", onExternalAbort, { once: true });
 		}
 		try {
-			// Create OAuth flow
 			const flow = new MCPOAuthFlow(
 				{
 					authorizationUrl: authUrl,
@@ -698,7 +666,6 @@ export class MCPCommandController {
 				},
 				{
 					onAuth: (info: { url: string; launchUrl?: string; instructions?: string }) => {
-						// Show auth URL prominently in chat as one block
 						const block = new TranscriptBlock();
 						this.ctx.present(block);
 						block.addChild(new Text(theme.fg("accent", "━━━ OAuth Authorization Required ━━━"), 1, 0));
@@ -717,7 +684,6 @@ export class MCPCommandController {
 						block.addChild(new Text(theme.fg("accent", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"), 1, 0));
 
 						openPath(info.url);
-						// Stage authorization URL on clipboard via OSC 52.
 						void copyToClipboard(info.url).catch(() => {});
 						block.addChild(new Spacer(1));
 						block.addChild(new Text(theme.fg("success", "→ Attempting to open browser..."), 1, 0));
@@ -751,7 +717,6 @@ export class MCPCommandController {
 			};
 			if (oauthTimeout.signal.aborted) throw createAbortError();
 
-			// Execute OAuth flow with 5-minute timeout, racing against abort.
 			const credentials = await withTimeout(
 				raceAbortSignal(flow.login(), oauthTimeout.signal, createAbortError),
 				5 * 60 * 1000,
@@ -768,7 +733,6 @@ export class MCPCommandController {
 				? mcpOAuthCredentialId(opts.serverUrl)
 				: `mcp_oauth_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
-			// Embed refresh material so the credential is self-contained: token
 			// refresh must work for configs that carry no auth block at all.
 			const oauthCredential: MCPStoredOAuthCredential = {
 				type: "oauth",
@@ -794,7 +758,6 @@ export class MCPCommandController {
 
 			const errorMsg = errorMessage(error);
 
-			// Provide helpful error messages based on failure type
 			if (errorMsg.includes("timeout") || errorMsg.includes("timed out")) {
 				throw new Error("OAuth flow timed out. Please try again.");
 			} else if (errorMsg.includes("403") || errorMsg.includes("unauthorized")) {
@@ -813,7 +776,6 @@ export class MCPCommandController {
 		}
 	}
 
-	/** Fold completed OAuth credentials back into server config. */
 	#persistOAuthResult(
 		config: MCPServerConfig,
 		result: OAuthFlowResult,
@@ -845,9 +807,7 @@ export class MCPCommandController {
 		};
 	}
 
-	/** Test connection to an MCP server. */
 	async #handleTestConnection(config: MCPServerConfig, options?: { oauth?: boolean }): Promise<void> {
-		// Create temporary connection using a test name
 		const testName = `test_${Date.now()}`;
 		let resolvedConfig: MCPServerConfig;
 		if (this.ctx.mcpManager) {
@@ -862,7 +822,6 @@ export class MCPCommandController {
 		await disconnectServer(connection);
 	}
 
-	/** Find server in the active profile's mcp.json. */
 	async #findConfiguredServer(
 		name: string,
 	): Promise<{ filePath: string; scope: "user"; config: MCPServerConfig } | null> {
@@ -873,7 +832,6 @@ export class MCPCommandController {
 		return { filePath: userPath, scope: "user", config };
 	}
 
-	/** Resolve configured or runtime-discovered server for auth/test. */
 	async #resolveServerForAuth(name: string): Promise<{
 		filePath: string;
 		scope: "user";
@@ -902,7 +860,6 @@ export class MCPCommandController {
 	}
 
 	async #resolveOAuthEndpointsFromServer(config: MCPServerConfig): Promise<OAuthEndpoints> {
-		// Stdio servers manage credentials internally; OAuth only applies to HTTP/SSE.
 		if (config.type !== "http" && config.type !== "sse") {
 			const remoteUrl = config.args?.find(arg => /^https?:\/\//.test(arg));
 			const httpHint = `{ "type": "http", "url": ${JSON.stringify(remoteUrl ?? "<remote url>")} }`;
@@ -913,7 +870,6 @@ export class MCPCommandController {
 					: `stdio servers manage their own credentials, so Veyyon has no OAuth to reauthorize. If the service supports OAuth over HTTP, configure it as ${httpHint} instead.`,
 			);
 		}
-		// First test if server actually needs auth by connecting without OAuth
 		let connectionSucceeded = false;
 		let connectionError: Error | undefined;
 		try {
@@ -923,12 +879,10 @@ export class MCPCommandController {
 			connectionError = error as Error;
 		}
 
-		// Server connected fine without auth — reauth is not needed
 		if (connectionSucceeded) {
 			throw new Error("Server connection succeeded without OAuth; reauthorization is not required.");
 		}
 
-		// Analyze the connection error to extract OAuth endpoints
 		const authResult = analyzeAuthError(connectionError!, "url" in config ? config.url : undefined);
 		let oauth = authResult.authType === "oauth" ? (authResult.oauth ?? null) : null;
 
@@ -938,8 +892,6 @@ export class MCPCommandController {
 			});
 		}
 		if (oauth && !oauth.scopes && authResult.resourceMetadataUrl) {
-			// JSON-error-body path skips `discoverOAuthEndpoints`; fetch the
-			// advertised protected-resource metadata for the required scopes.
 			const scopes = await fetchResourceMetadataScopes(authResult.resourceMetadataUrl);
 			if (scopes) oauth = { ...oauth, scopes };
 		}
@@ -963,12 +915,9 @@ export class MCPCommandController {
 		try {
 			try {
 				await withTimeout(this.ctx.mcpManager.waitForConnection(name), 10_000, "Connection still pending");
-			} catch {
-				// Ignore timeout/errors here and use status check below.
-			}
+			} catch {}
 			const state = this.ctx.mcpManager.getConnectionStatus(name);
 			if (state === "connected") {
-				// Connection may complete after initial reload; rebind runtime MCP tools now.
 				await this.ctx.session.refreshMCPTools(this.ctx.mcpManager.getTools());
 			}
 			if (state === "connected") {
@@ -1001,10 +950,8 @@ export class MCPCommandController {
 		try {
 			const filePath = getMCPConfigPath("user", getProjectDir());
 
-			// Add server to config
 			await addMCPServer(filePath, name, config);
 
-			// Reload MCP manager
 			await this.#reloadMCP();
 			const state =
 				config.enabled === false
@@ -1013,19 +960,14 @@ export class MCPCommandController {
 			let isConnected = state === "connected";
 			const isConnecting = state === "connecting";
 
-			// Fallback: if manager state is still disconnected but direct test works,
-			// report as connected to avoid false-negative messaging.
 			if (!isConnected && !isConnecting && config.enabled !== false) {
 				try {
 					await this.#handleTestConnection(config);
 					isConnected = true;
 					await this.#syncManagerConnection(name, config);
-				} catch {
-					// Keep disconnected status
-				}
+				} catch {}
 			}
 
-			// Activate newly added server tools in registry.
 			if (isConnected && this.ctx.mcpManager) {
 				const serverTools = this.ctx.mcpManager.getTools().filter(t => t.mcpServerName === name);
 				if (serverTools.length > 0) {
@@ -1037,7 +979,6 @@ export class MCPCommandController {
 				}
 			}
 
-			// Show success message
 			const lines = ["", theme.fg("success", `+ Added server "${name}" to ${shortenPath(filePath)}`), ""];
 
 			if (isConnected) {
@@ -1060,7 +1001,6 @@ export class MCPCommandController {
 		} catch (error) {
 			const errorMsg = errorMessage(error);
 
-			// Provide helpful error messages
 			let helpText = "";
 			if (errorMsg.includes("EACCES") || errorMsg.includes("permission denied")) {
 				helpText = "\n\nTip: Check file permissions for the config directory.";
@@ -1086,8 +1026,6 @@ export class MCPCommandController {
 		);
 	}
 
-	/** Handle /mcp list. */
-	/** Render server rows for /mcp list with status details. */
 	#serverStatusRows(name: string, state: string, type?: string): string[] {
 		const status =
 			state === "inactive"
@@ -1114,7 +1052,6 @@ export class MCPCommandController {
 
 			const userServers = Object.keys(userConfig.mcpServers ?? {});
 
-			// Collect runtime-discovered servers not in config files
 			const configServerNames = new Set(userServers);
 			const disabledServerNames = new Set(await readDisabledServers(userPath));
 			const discoveredServers: { name: string; source: SourceMeta }[] = [];
@@ -1144,7 +1081,6 @@ export class MCPCommandController {
 
 			const lines: string[] = ["", theme.bold("Configured MCP Servers"), ""];
 
-			// Show user-level servers
 			if (userServers.length > 0) {
 				lines.push(theme.fg("accent", "User level") + theme.fg("muted", ` (${userPathLabel}):`));
 				for (const name of userServers) {
@@ -1160,7 +1096,6 @@ export class MCPCommandController {
 				lines.push("");
 			}
 
-			// Show discovered servers (from .claude.json, .cursor/mcp.json, .vscode/mcp.json, etc.)
 			if (discoveredServers.length > 0) {
 				for (const { providerName, shortPath, items: entries } of groupBySource(discoveredServers, e => e.source)) {
 					lines.push(theme.fg("accent", providerName) + theme.fg("muted", ` (${shortPath}):`));
@@ -1173,7 +1108,6 @@ export class MCPCommandController {
 				}
 			}
 
-			// Show servers disabled via /mcp disable (from third-party configs)
 			const relevantDisabled = Array.from(disabledServerNames).filter(n => !configServerNames.has(n));
 			if (relevantDisabled.length > 0) {
 				lines.push(theme.fg("accent", "Disabled") + theme.fg("muted", " (discovered servers):"));
@@ -1190,7 +1124,6 @@ export class MCPCommandController {
 		}
 	}
 
-	/** Handle /mcp remove. */
 	async #handleRemove(text: string): Promise<void> {
 		const match = text.match(/^\/mcp\s+(?:remove|rm)\b\s*(.*)$/i);
 		const rest = match?.[1]?.trim() ?? "";
@@ -1220,15 +1153,12 @@ export class MCPCommandController {
 				return;
 			}
 
-			// Disconnect if connected
 			if (this.ctx.mcpManager?.getConnection(name)) {
 				await this.ctx.mcpManager.disconnectServer(name);
 			}
 
-			// Remove from config
 			await removeMCPServer(filePath, name);
 
-			// Reload MCP manager
 			await this.#reloadMCP();
 
 			this.#showMessage(
@@ -1239,7 +1169,6 @@ export class MCPCommandController {
 		}
 	}
 
-	/** Handle /mcp test. */
 	async #handleTest(name: string | undefined): Promise<void> {
 		if (!name) {
 			this.ctx.showError("Server name required. Usage: /mcp test <name>");
@@ -1273,7 +1202,6 @@ export class MCPCommandController {
 				["", theme.fg("muted", `Testing connection to "${name}"... (esc to cancel)`), ""].join("\n"),
 			);
 
-			// Resolve auth config if needed
 			let resolvedConfig: MCPServerConfig;
 			if (this.ctx.mcpManager) {
 				resolvedConfig = await this.ctx.mcpManager.prepareConfig(config);
@@ -1283,10 +1211,8 @@ export class MCPCommandController {
 				resolvedConfig = await tempManager.prepareConfig(config);
 			}
 
-			// Create temporary connection
 			connection = await connectToServer(name, resolvedConfig, { signal: abortController.signal });
 
-			// List tools to verify connection
 			const tools = await listTools(connection, { signal: abortController.signal });
 
 			const lines = [
@@ -1297,7 +1223,6 @@ export class MCPCommandController {
 				`  Tools: ${tools.length}`,
 			];
 
-			// Show tool names if there are any
 			if (tools.length > 0 && tools.length <= 10) {
 				lines.push("");
 				lines.push("  Available tools:");
@@ -1317,7 +1242,6 @@ export class MCPCommandController {
 
 			const errorMsg = errorMessage(error);
 
-			// Provide helpful error messages
 			let helpText = "";
 			if (errorMsg.includes("ENOENT") || errorMsg.includes("not found")) {
 				helpText = "\n\nTip: Check that the command or URL is correct.";
@@ -1335,7 +1259,6 @@ export class MCPCommandController {
 		} finally {
 			this.ctx.editor.onEscape = originalOnEscape;
 			if (connection) {
-				// Best-effort: don't block UI on cleanup.
 				void disconnectServer(connection);
 			}
 		}
@@ -1350,7 +1273,6 @@ export class MCPCommandController {
 		try {
 			const found = await this.#findConfiguredServer(name);
 			if (!found) {
-				// Check if this is a discovered server from a third-party config
 				const userConfigPath = getMCPConfigPath("user", getProjectDir());
 				const disabledServers = new Set(await readDisabledServers(userConfigPath));
 				const isDiscovered = this.ctx.mcpManager?.getSource(name);
@@ -1519,13 +1441,10 @@ export class MCPCommandController {
 			const currentAuth = (found.config as MCPServerConfig & { auth?: MCPAuthConfig }).auth;
 			const authStorage = this.ctx.session.modelRegistry.authStorage;
 			const baseConfig = this.#stripOAuthAuth(found.config);
-			// The connect guard is the enforcement point and names the field and the variable in the
-			// refusal the operator sees, so reporting here would say it twice.
 			const refusedAtConnect = unresolvedRefusedDownstream(
 				"the MCP connect guard refuses an unresolved structural field before a transport exists",
 			);
 			const runtimeBaseConfig = expandEnvVarsDeep(baseConfig, refusedAtConnect);
-			// Resolve endpoints first with expanded environment variables.
 			const oauth = await this.#resolveOAuthEndpointsFromServer(runtimeBaseConfig);
 			const serverUrl =
 				runtimeBaseConfig.type === "http" || runtimeBaseConfig.type === "sse" ? runtimeBaseConfig.url : undefined;
@@ -1569,8 +1488,6 @@ export class MCPCommandController {
 				await removeManagedMcpOAuthCredential(authStorage, currentAuth.credentialId);
 			}
 
-			// Definition-only entries resolve through the url-keyed binding alone;
-			// skip the write-back so a committed project mcp.json stays clean.
 			const urlKeyedId = serverUrl ? mcpOAuthCredentialId(serverUrl) : undefined;
 			if (currentAuth || oauthResult.credentialId !== urlKeyedId) {
 				const updated = this.#persistOAuthResult(baseConfig, oauthResult, {
@@ -1626,7 +1543,6 @@ export class MCPCommandController {
 		}
 	}
 
-	/** Handle /mcp reconnect. */
 	async #handleReconnect(name: string | undefined): Promise<void> {
 		if (!name) {
 			this.ctx.showError("Server name required. Usage: /mcp reconnect <name>");
@@ -1691,7 +1607,6 @@ export class MCPCommandController {
 		this.#showMessage(errorLines.join("\n"));
 	}
 
-	/** Reload MCP manager with new configs. */
 	async #reloadMCP(): Promise<void> {
 		if (!this.ctx.mcpManager) {
 			return;
@@ -1699,17 +1614,14 @@ export class MCPCommandController {
 
 		this.ctx.mcpManager.invalidateCommandCredentials();
 
-		// Disconnect all existing servers
 		await this.ctx.mcpManager.disconnectAll();
 
-		// Rediscover and connect
 		const result = await this.ctx.mcpManager.discoverAndConnect();
 		await this.ctx.session.refreshMCPTools(this.ctx.mcpManager.getTools());
 
 		this.#showMCPConnectionErrors(result.errors);
 	}
 
-	/** Handle /mcp resources. */
 	async #handleResources(): Promise<void> {
 		if (!this.ctx.mcpManager) {
 			this.ctx.showError("No MCP manager available.");
@@ -1750,7 +1662,6 @@ export class MCPCommandController {
 		this.#showMessage(lines.join("\n"));
 	}
 
-	/** Handle /mcp prompts. */
 	async #handlePrompts(): Promise<void> {
 		if (!this.ctx.mcpManager) {
 			this.ctx.showError("No MCP manager available.");
@@ -1789,7 +1700,6 @@ export class MCPCommandController {
 		this.#showMessage(lines.join("\n"));
 	}
 
-	/** Handle /mcp notifications. */
 	async #handleNotifications(): Promise<void> {
 		if (!this.ctx.mcpManager) {
 			this.ctx.showError("No MCP manager available.");
@@ -1926,9 +1836,7 @@ export class MCPCommandController {
 		);
 		try {
 			openPath(session.authUrl);
-		} catch {
-			// URL is already shown above.
-		}
+		} catch {}
 
 		const apiKey = await this.#waitForSmitheryCliApiKey(session.sessionId, new AbortController().signal);
 		await this.#validateSmitheryApiKey(apiKey);

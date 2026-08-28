@@ -1,9 +1,5 @@
-/** Settings singleton with sync get/set and background persistence. */
-
 import * as fs from "node:fs";
 import * as path from "node:path";
-// this setter and importing it there cost 285 modules for one function; ~530 test files import
-// `Settings`, so this file's graph is the most leveraged one in the package.
 import { configureProviderMaxInFlightRequests } from "@veyyon/ai/provider-inflight-limits";
 import { atomicWriteFile } from "@veyyon/utils/atomic-write";
 import {
@@ -55,55 +51,37 @@ import {
 export type * from "./settings-schema";
 export * from "./settings-schema";
 
-/** Raw settings object as stored in YAML */
 export interface RawSettings {
 	[key: string]: unknown;
 }
 
-/** A settings file that failed to parse, and where its bytes were preserved. */
 export type QuarantinedSettingsFile = QuarantinedFile;
 
-/** A config file this session repeatedly could not write, and why. */
 export interface SettingsSaveFailure {
 	path: string;
 	reason: string;
 	attempts: number;
 }
 
-/** Consecutive failed saves before reporting to user. */
 const SAVE_FAILURE_REPORT_AFTER = 3;
 
-/** A configured setting whose value does not match the type the schema declares. */
 export interface InvalidSettingValue {
-	/** Dotted setting path, e.g. `startup.autoUpdate`. */
 	path: SettingPath;
-	/** The file the bad value came from, so the user knows which line to edit. */
 	file: string;
-	/** Human-readable explanation naming the expected type and what was found. */
 	reason: string;
 }
 
-/** Layer that currently supplies a setting's effective value. */
 export type SettingSource = "default" | "profile" | "config-file" | "runtime" | "global";
 
 export interface SettingsOptions {
-	/** Current working directory, used to resolve path-scoped settings */
 	cwd?: string;
-	/** Agent directory for config.yml/config.yaml storage */
 	agentDir?: string;
-	/** Don't persist to disk (for tests) */
 	inMemory?: boolean;
-	/** Read config sources without opening storage or writing migrations */
 	readOnly?: boolean;
-	/** Initial overrides */
 	overrides?: Partial<Record<SettingPath, unknown>>;
-	/** Extra config.yml-style overlays loaded after the profile settings */
 	configFiles?: string[];
 }
 
-/**
- * Get a nested value from an object by path segments.
- */
 function getByPath(obj: RawSettings, segments: readonly string[]): unknown {
 	let current: unknown = obj;
 	for (const segment of segments) {
@@ -119,23 +97,17 @@ const SETTING_PATH_SEGMENTS: Record<SettingPath, readonly string[]> = Object.fro
 	(Object.keys(SETTINGS_SCHEMA) as SettingPath[]).map(settingPath => [settingPath, settingPath.split(".")]),
 ) as unknown as Record<SettingPath, readonly string[]>;
 
-/** Paths that store optional numeric values where absent means unset. */
-
-/** Migration version numbers for one-shot settings migrations. */
 export const SETTINGS_MIGRATION_VERSION_UNSET_ABSENT_KEY = 1;
 export const SETTINGS_MIGRATION_VERSION = SETTINGS_MIGRATION_VERSION_UNSET_ABSENT_KEY;
 
-/** Represents an unreadable config file. */
 class UnreadableConfig {
 	constructor(readonly cause: unknown) {}
 }
 
-/** Current migration version in raw settings. */
 function appliedMigrationVersion(raw: RawSettings): number {
 	return typeof raw.settingsMigrationVersion === "number" ? raw.settingsMigrationVersion : 0;
 }
 
-/** Drop legacy unset sentinels from raw settings in memory. */
 export function stripLegacyUnsetSentinels(raw: RawSettings): string[] {
 	if (appliedMigrationVersion(raw) >= SETTINGS_MIGRATION_VERSION_UNSET_ABSENT_KEY) return [];
 	const removed: string[] = [];
@@ -147,7 +119,6 @@ export function stripLegacyUnsetSentinels(raw: RawSettings): string[] {
 	return removed;
 }
 
-/** Commit one-shot migrations and stamp version. */
 export function stampOwnedConfigMigrations(raw: RawSettings): string[] {
 	const changed = stripLegacyUnsetSentinels(raw);
 	if (appliedMigrationVersion(raw) < SETTINGS_MIGRATION_VERSION) {
@@ -160,7 +131,6 @@ const LEGACY_UNSET_SENTINEL_PATHS: readonly (readonly string[])[] = (Object.keys
 	.filter(settingPath => isUnsetNumberPath(settingPath))
 	.map(settingPath => settingPath.split("."));
 
-/** Set a nested value in an object by path segments. Creates intermediate objects as needed. */
 function setByPath(obj: RawSettings, segments: string[], value: unknown): void {
 	let current = obj;
 	for (let i = 0; i < segments.length - 1; i++) {
@@ -173,7 +143,6 @@ function setByPath(obj: RawSettings, segments: string[], value: unknown): void {
 	current[segments[segments.length - 1]] = value;
 }
 
-/** Delete a nested value by path segments. */
 function deleteByPath(obj: RawSettings, segments: readonly string[]): void {
 	const parent = segments.length > 1 ? getByPath(obj, segments.slice(0, -1)) : obj;
 	if (!isRecord(parent)) return;
@@ -209,7 +178,6 @@ export function validateProviderMaxInFlightRequests(value: unknown): Record<stri
 
 const PATH_SCOPED_ARRAY_SETTINGS = new Set<SettingPath>(["enabledModels", "disabledProviders"]);
 
-/** Threshold to detect legacy millisecond timeouts in `ask.timeout`. */
 export const MAX_ASK_TIMEOUT_SECONDS = 1000;
 type PathScopedStringArrayEntry = {
 	path?: unknown;
@@ -295,48 +263,30 @@ export class Settings {
 	#storage: AgentStorage | null = null;
 
 	#configFiles: string[] = [];
-	/** Global settings from config.yml/config.yaml */
 	#global: RawSettings = {};
-	/** Extra config.yml-style overlays passed by CLI */
 	#configOverlay: RawSettings = {};
-	/** Runtime overrides (not persisted) */
 	#overrides: RawSettings = {};
-	/** Runtime forks must not apply project-scoped hooks to their parent process. */
 	#activateProcessHooks = true;
-	/** Settings files that could not be parsed, and where their bytes were kept. */
 	#quarantined: QuarantinedSettingsFile[] = [];
-	/** Consecutive failed saves of one config file, and why the last one failed. */
 	#saveFailure: { path: string; reason: string; attempts: number } | undefined;
-	/** Previously announced failure to replay to late subscribers. */
 	#reportedSaveFailure: SettingsSaveFailure | undefined;
-	/** Told when a save has failed often enough that the user has to hear about it. */
 	#saveFailureListeners = new Set<(failure: SettingsSaveFailure) => void>();
 	#effectiveSettingListeners = new Set<(path: SettingPath, value: unknown, previous: unknown) => void>();
-	/** Configured values whose type contradicts the schema, found during load. */
 	#invalidValues: InvalidSettingValue[] = [];
-	/** Merged view (profile + config overlays + overrides) */
 	#merged: RawSettings = {};
-	/** Cached resolved values from the merged view, including defaults/path scoping */
 	#resolvedCache = new Map<SettingPath, unknown>();
 	#editVariantCache: readonly EditVariantEntry[] | undefined;
 
-	/** Paths modified during this session (for partial save) */
 	#modified = new Set<string>();
-	/** Legacy unset sentinels awaiting removal on next write. */
 	#pendingSentinelStrips: string[] = [];
 
-	/** Legacy `lastChangelogVersion` captured from config.yml during migration (now a marker file). */
 	#legacyLastChangelogVersion?: string;
-	/** Set once `ask.timeout` has been reported as rewritten, so the warning does not repeat on every read. */
 	#reportedAskTimeoutRewrite = false;
-	/** Dotted-key problems already reported, so each one is said once per process rather than once per read. */
 	#reportedDottedKeyProblems = new Set<string>();
 
-	/** Pending save (debounced) */
 	#saveTimer?: NodeJS.Timeout;
 	#savePromise?: Promise<void>;
 
-	/** Whether to persist changes */
 	#persist: boolean;
 
 	private constructor(options: SettingsOptions = {}) {
@@ -355,12 +305,10 @@ export class Settings {
 		}
 	}
 
-	/** Initialize the global singleton. Call once at startup before accessing `settings`. */
 	static init(options: SettingsOptions = {}): Promise<Settings> {
 		const inFlight = settingsInstancePromise();
 		if (inFlight) return inFlight;
 
-		// interchangeable: the bare load settles first, so a second caller awaiting it could resume before `globalInstance` was set and see `isSettingsInitialized()` return false straight after `await
 		const instance = new Settings(options);
 		const ready = instance.#load().then(
 			loaded => {
@@ -377,33 +325,27 @@ export class Settings {
 		return ready;
 	}
 
-	/** Load effective settings in read-only mode without opening storage. */
 	static loadReadOnly(options: SettingsOptions = {}): Promise<Settings> {
 		const instance = new Settings({ ...options, readOnly: true });
 		return instance.#loadReadOnly();
 	}
 
-	/** Load a persisted settings instance. */
 	static loadIsolated(options: SettingsOptions = {}): Promise<Settings> {
 		const instance = new Settings(options);
 		return instance.#load();
 	}
 
-	/** Create an isolated instance for testing. */
 	static isolated(overrides: Partial<Record<SettingPath, unknown>> = {}): Settings {
 		const instance = new Settings({ inMemory: true, overrides });
 		instance.#rebuildMerged();
 		return instance;
 	}
 
-	/** Get the global singleton. Throws if not initialized. */
 	static get instance(): Settings {
 		return settingsOrThrow();
 	}
 
-	/** Get a setting value (sync). */
 	get<P extends SettingPath>(path: P): SettingValue<P> {
-		// store. Read them live through their binding (never cached) so the UI always reflects the current global config, and fall back to the schema
 		const globalBinding = GLOBAL_SETTING_BINDINGS[path];
 		if (globalBinding) {
 			const override = getByPath(this.#overrides, path.split("."));
@@ -420,7 +362,6 @@ export class Settings {
 			return this.#resolvedCache.get(path) as SettingValue<P>;
 		}
 
-		// new subsystems reading `harness.profiles` before it lands in the schema). Fall back to splitting the path — the same computation
 		const registered = SETTING_PATH_SEGMENTS[path] !== undefined;
 		const segments = registered ? SETTING_PATH_SEGMENTS[path] : path.split(".");
 		const value = getByPath(this.#merged, segments);
@@ -434,12 +375,10 @@ export class Settings {
 		return resolved as SettingValue<P>;
 	}
 
-	/** Settings files that could not be parsed during load. */
 	get quarantinedFiles(): readonly QuarantinedSettingsFile[] {
 		return this.#quarantined;
 	}
 
-	/** The active save failure when threshold is exceeded. */
 	get saveFailure(): SettingsSaveFailure | undefined {
 		if (!this.#saveFailure) return undefined;
 		const { path: failedPath, reason, attempts } = this.#saveFailure;
@@ -447,16 +386,13 @@ export class Settings {
 		return { path: failedPath, reason, attempts };
 	}
 
-	/** The last save error on this instance without retry threshold. */
 	get lastSaveError(): { path: string; reason: string } | undefined {
 		if (!this.#saveFailure) return undefined;
 		return { path: this.#saveFailure.path, reason: this.#saveFailure.reason };
 	}
 
-	/** Subscribe to save failure notifications. Returns unsubscribe function. */
 	onSaveFailure(listener: (failure: SettingsSaveFailure) => void): () => void {
 		this.#saveFailureListeners.add(listener);
-		// promotion writes the global config during startup, before the interactive mode exists to subscribe, so its refusal would otherwise be announced to an
 		if (this.#reportedSaveFailure) this.#deliverSaveFailure(listener, this.#reportedSaveFailure);
 		return () => {
 			this.#saveFailureListeners.delete(listener);
@@ -470,22 +406,17 @@ export class Settings {
 		};
 	}
 
-	/** Configured settings whose value contradicts schema types. */
 	get invalidValues(): readonly InvalidSettingValue[] {
 		return this.#invalidValues;
 	}
 
-	/** Whether `path` has an explicitly configured value. */
 	isConfigured(path: SettingPath): boolean {
-		// Global-scoped paths are not in the profile-merged tree; treat a value that
-		// differs from the schema default as explicitly configured.
 		if (GLOBAL_SETTING_BINDINGS[path]) {
 			return !Object.is(this.get(path), getDefault(path));
 		}
 		return getByPath(this.#merged, SETTING_PATH_SEGMENTS[path] ?? path.split(".")) !== undefined;
 	}
 
-	/** Identify the highest-precedence layer supplying `path`. */
 	getSource(path: string): SettingSource {
 		const segments = SETTING_PATH_SEGMENTS[path as SettingPath] ?? path.split(".");
 		if (getByPath(this.#overrides, segments) !== undefined) return "runtime";
@@ -497,11 +428,9 @@ export class Settings {
 		return "default";
 	}
 
-	/** Set a setting value (sync). */
 	set<P extends SettingPath>(path: P, value: SettingValue<P>): void {
 		const prev = this.get(path);
 
-		// binding, never the profile store. Write synchronously (the binding does its own file lock) so a subsequent get() reflects it immediately. A
 		const globalBinding = GLOBAL_SETTING_BINDINGS[path];
 		if (globalBinding) {
 			if (this.#persist) {
@@ -524,7 +453,6 @@ export class Settings {
 			return;
 		}
 
-		// migration and stamp it: the value being written may itself be the `-1` that used to mean "unset", and only an on-disk stamp keeps the next load
 		this.#stampOwnedMigrationsFor(path);
 		const segments = path.split(".");
 		setByPath(this.#global, segments, value);
@@ -533,7 +461,6 @@ export class Settings {
 		const next = this.get(path);
 		this.#queueSave();
 
-		// Trigger hook if exists
 		const hook = SETTING_HOOKS[path];
 		if (hook) {
 			hook(next, prev);
@@ -541,7 +468,6 @@ export class Settings {
 		this.#fireEffectiveSettingChanged(path, next, prev);
 	}
 
-	/** Return a setting to its default by removing the key. */
 	unset(path: SettingPath): void {
 		const prev = this.get(path);
 
@@ -569,7 +495,6 @@ export class Settings {
 		this.#stampOwnedMigrationsFor(path);
 		const segments = SETTING_PATH_SEGMENTS[path] ?? path.split(".");
 		deleteByPath(this.#global, segments);
-		// process owns, and leaving the override in place would make "Default" appear to do nothing whenever a flag or overlay had set the same knob. A
 		deleteByPath(this.#overrides, segments);
 		this.#modified.add(path);
 		this.#rebuildMerged();
@@ -579,20 +504,13 @@ export class Settings {
 		this.#fireEffectiveSettingChanged(path, next, prev);
 	}
 
-	/** Stamp one-shot migrations for governed paths. */
 	#stampOwnedMigrationsFor(path: SettingPath): void {
 		if (!isUnsetNumberPath(path)) return;
-		// they are marked modified from the record kept then: without that the file
-		// would keep a `-1` while the stamp said "migrated", and the next load would
-		// read that `-1` as the VALUE minus one and send it to the provider.
 		for (const strippedPath of this.#pendingSentinelStrips) this.#modified.add(strippedPath);
 		this.#pendingSentinelStrips = [];
 		for (const changedPath of stampOwnedConfigMigrations(this.#global)) this.#modified.add(changedPath);
 	}
 
-	/**
-	 * Apply runtime overrides (not persisted).
-	 */
 	override<P extends SettingPath>(path: P, value: SettingValue<P>): void {
 		const prev = this.get(path);
 		const segments = path.split(".");
@@ -601,9 +519,6 @@ export class Settings {
 		this.#fireEffectiveSettingChanged(path, this.get(path), prev);
 	}
 
-	/**
-	 * Clear a runtime override.
-	 */
 	clearOverride(path: SettingPath): void {
 		const prev = this.get(path);
 		const segments = path.split(".");
@@ -630,7 +545,6 @@ export class Settings {
 		}
 	}
 
-	/** Flush any pending saves to disk. */
 	async flush(): Promise<void> {
 		if (this.#saveTimer) {
 			clearTimeout(this.#saveTimer);
@@ -644,7 +558,6 @@ export class Settings {
 		}
 	}
 
-	/** Create a non-persisting runtime fork preserving layer provenance. */
 	forkWithRuntimeOverrides(overrides: Partial<Record<SettingPath, unknown>> = {}): Settings {
 		const forked = new Settings({
 			cwd: this.#cwd,
@@ -682,7 +595,6 @@ export class Settings {
 		return cloned;
 	}
 
-	/** Re-scope this instance to a new working directory in place. */
 	async reloadForCwd(cwd: string): Promise<void> {
 		const normalized = path.normalize(cwd);
 		if (normalized === this.#cwd) return;
@@ -712,17 +624,11 @@ export class Settings {
 		return path.join(this.#agentDir, "plans");
 	}
 
-	/**
-	 * Get shell configuration based on settings.
-	 */
 	getShellConfig() {
 		const shell = this.get("shellPath");
 		return procmgr.getShellConfig(shell);
 	}
 
-	/**
-	 * Get all settings in a group with full type safety.
-	 */
 	getGroup<G extends GroupPrefix>(prefix: G): GroupTypeMap[G] {
 		const result: Record<string, unknown> = {};
 		for (const key of Object.keys(SETTINGS_SCHEMA) as SettingPath[]) {
@@ -734,7 +640,6 @@ export class Settings {
 		return result as unknown as GroupTypeMap[G];
 	}
 
-	/** Resolve all known settings to their effective values. */
 	getEffectiveSnapshot(): Record<string, unknown> {
 		const result: Record<string, unknown> = {};
 		for (const key of (Object.keys(SETTINGS_SCHEMA) as SettingPath[]).sort()) {
@@ -743,7 +648,6 @@ export class Settings {
 		return result;
 	}
 
-	/** Get edit variant for a specific model. */
 	getEditVariantForModel(model: string | undefined): EditMode | null {
 		if (!model) return null;
 		const variants = this.#getEditVariantEntries();
@@ -784,9 +688,6 @@ export class Settings {
 		return variants;
 	}
 
-	/**
-	 * Get bash interceptor rules (typed accessor for complex array config).
-	 */
 	getBashInterceptorRules(): BashInterceptorRule[] {
 		return this.get("bashInterceptor.patterns");
 	}
@@ -812,12 +713,10 @@ export class Settings {
 		return roles;
 	}
 
-	/** Return one role from the profile layer, excluding project and runtime overrides. */
 	getPersistedModelRole(role: ModelRole | string): string | undefined {
 		return this.#modelRoleFromLayer(this.#global, role);
 	}
 
-	/** Identify the layer that supplies one effective model-role slot. */
 	getModelRoleSource(role: ModelRole | string): SettingSource {
 		if (this.#modelRoleFromLayer(this.#overrides, role) !== undefined) return "runtime";
 		if (this.#modelRoleFromLayer(this.#configOverlay, role) !== undefined) return "config-file";
@@ -825,7 +724,6 @@ export class Settings {
 		return "default";
 	}
 
-	/** Persist one profile role without rewriting higher-precedence overrides. */
 	setPersistedModelRole(role: ModelRole | string, modelId: string | undefined): void {
 		const current = this.#modelRolesFromLayer(this.#global);
 		if (modelId === undefined) delete current[role];
@@ -833,7 +731,6 @@ export class Settings {
 		this.set("modelRoles", current);
 	}
 
-	/** Set a model role. */
 	setModelRole(role: ModelRole | string, modelId: string | undefined): void {
 		const current = this.#modelRolesFromLayer(this.#global);
 		const runtimeOverrides = getByPath(this.#overrides, ["modelRoles"]);
@@ -861,18 +758,12 @@ export class Settings {
 		}
 	}
 
-	/**
-	 * Get a model role (helper for modelRoles record).
-	 */
 	getModelRole(role: ModelRole | string): string | undefined {
 		const roles: unknown = this.get("modelRoles");
 		if (!isRecord(roles)) return undefined;
 		return modelRoleValueFromUnknown(roles[role]);
 	}
 
-	/**
-	 * Get all model roles (helper for modelRoles record).
-	 */
 	getModelRoles(): ReadOnlyDict<string> {
 		const roles: unknown = this.get("modelRoles");
 		if (!isRecord(roles)) return {};
@@ -888,7 +779,6 @@ export class Settings {
 		return normalized;
 	}
 
-	/** Override model roles. */
 	overrideModelRoles(roles: ReadOnlyDict<string>): void {
 		const next = this.#modelRolesFromLayer(this.#overrides);
 		for (const [role, modelId] of Object.entries(roles)) {
@@ -899,9 +789,6 @@ export class Settings {
 		this.override("modelRoles", next);
 	}
 
-	/**
-	 * Set disabled providers (for compatibility with discovery system).
-	 */
 	setDisabledProviders(ids: string[]): void {
 		this.set("disabledProviders", ids);
 	}
@@ -917,7 +804,6 @@ export class Settings {
 				this.#global = await this.#loadYaml(this.#configPath!);
 			}
 			await this.#seedLastChangelogVersionMarker();
-			// stamped here: the stamp goes in when one of those paths is written (see stampOwnedConfigMigrations), so an upgrade does not add a line to every
 			this.#pendingSentinelStrips = stripLegacyUnsetSentinels(this.#global);
 		}
 
@@ -925,7 +811,6 @@ export class Settings {
 		this.#collectInvalidValues(this.#global, this.#configPath ?? "");
 		this.#reportShadowedConfigFiles();
 
-		// Build merged view (profile → config overlays → overrides)
 		this.#rebuildMerged();
 		this.#fireAllHooks();
 		return this;
@@ -943,7 +828,6 @@ export class Settings {
 		return this;
 	}
 
-	/** Warn about shadowed config files. */
 	#reportShadowedConfigFiles(): void {
 		for (const shadowed of findShadowedGlobalConfigFiles()) {
 			logger.warn("Global config file is being ignored because a higher-precedence one exists", {
@@ -954,7 +838,6 @@ export class Settings {
 		}
 	}
 
-	/** Collect invalid setting values found in a config tree. */
 	#collectInvalidValues(tree: RawSettings, file: string): void {
 		if (!file) return;
 		for (const path of Object.keys(SETTINGS_SCHEMA) as SettingPath[]) {
@@ -964,8 +847,6 @@ export class Settings {
 			if (reason === undefined) continue;
 			if (this.#invalidValues.some(entry => entry.path === path && entry.file === file)) continue;
 			this.#invalidValues.push({ path, file, reason });
-			// developer reading a session afterwards, the accessor is for a surface
-			// that can actually put it in front of the person who wrote the file.
 			logger.warn("Settings: configured value does not match its declared type", { file, reason });
 		}
 	}
@@ -976,7 +857,6 @@ export class Settings {
 		return loaded ?? {};
 	}
 
-	/** Re-read a config file for saving. */
 	async #loadYamlForSave(filePath: string): Promise<RawSettings> {
 		const loaded = await this.#loadYamlIfPresent(filePath);
 		if (loaded instanceof UnreadableConfig) throw loaded.cause;
@@ -995,12 +875,9 @@ export class Settings {
 
 		try {
 			const parsed = YAML.parse(content);
-			// A blank or comments-only file parses to null/undefined: that is a
-			// legitimately empty settings file, so an empty view is the truth.
 			if (parsed === null || parsed === undefined) {
 				return {};
 			}
-			// sequence, a string) is malformed exactly like an unparseable one: the user wrote a settings file, and silently returning {} would drop every
 			if (!isRecord(parsed)) {
 				await this.#quarantineUnparseableSettings(
 					filePath,
@@ -1016,7 +893,6 @@ export class Settings {
 		}
 	}
 
-	/** Quarantine an unparseable settings file. */
 	async #quarantineUnparseableSettings(filePath: string, content: string, error: unknown): Promise<void> {
 		const quarantinePath = await quarantineUnparseableFile(filePath, content, error);
 		if (!quarantinePath) return;
@@ -1031,8 +907,6 @@ export class Settings {
 			const configPath = path.join(this.#agentDir, filename);
 			const loaded = await this.#loadYamlIfPresent(configPath);
 			if (loaded instanceof UnreadableConfig) {
-				// read failed. Falling through to the next candidate would start
-				// writing a different file and strand the operator's real one.
 				this.#configPath = configPath;
 				return {};
 			}
@@ -1053,7 +927,6 @@ export class Settings {
 		return merged;
 	}
 
-	/** Load a CLI config overlay file. */
 	async #loadOverlayYaml(filePath: string): Promise<RawSettings> {
 		let content: string;
 		try {
@@ -1084,7 +957,6 @@ export class Settings {
 		let settings: RawSettings = {};
 		let migrated = false;
 
-		// 1. Migrate from settings.json
 		const settingsJsonPath = path.join(this.#agentDir, "settings.json");
 		try {
 			const parsed: unknown = JSONC.parse(await Bun.file(settingsJsonPath).text());
@@ -1094,8 +966,6 @@ export class Settings {
 				try {
 					fs.renameSync(settingsJsonPath, `${settingsJsonPath}.bak`);
 				} catch (error) {
-					// The settings were migrated in memory; only the archival rename
-					// failed. Non-fatal (the next run re-migrates), but surface it.
 					logger.warn("Settings: could not archive legacy settings.json after migration", {
 						path: settingsJsonPath,
 						error: errorMessage(error),
@@ -1103,8 +973,6 @@ export class Settings {
 				}
 			}
 		} catch (error) {
-			// that exists but cannot be read or parsed means the user's legacy
-			// settings would be dropped silently — surface that instead (Law 10).
 			if (!isEnoent(error)) {
 				logger.warn("Settings: legacy settings.json exists but could not be migrated", {
 					path: settingsJsonPath,
@@ -1113,7 +981,6 @@ export class Settings {
 			}
 		}
 
-		// 2. Migrate from agent.db
 		try {
 			const dbSettings = this.#storage?.getSettings();
 			if (dbSettings) {
@@ -1131,8 +998,6 @@ export class Settings {
 				await this.#writeConfigPreservingText(this.#configPath, settings);
 				logger.debug("Settings: migrated to config.yml", { path: this.#configPath });
 			} catch (error) {
-				// the migrated settings are lost for this run. Surface it loudly
-				// rather than silently discarding the user's settings (Law 10).
 				logger.warn("Settings: migrated settings could not be written to config.yml", {
 					path: this.#configPath,
 					error: errorMessage(error),
@@ -1141,16 +1006,12 @@ export class Settings {
 		}
 	}
 
-	/** Report ask.timeout migration once per process. */
-	/** Expand every top-level dotted key that names a registered setting into the nested tree it belongs in. */
 	#expandDottedSettingKeys(raw: RawSettings): void {
 		for (const key of Object.keys(raw)) {
 			if (!key.includes(".")) continue;
 			const segments = SETTING_PATH_SEGMENTS[key as SettingPath];
 			if (segments === undefined) continue;
 
-			// non-object: writing through would replace whatever the operator has
-			// there. Keep the flat key (so nothing is lost) and say so.
 			const parentSegments = segments.slice(0, -1);
 			let blocked: string | undefined;
 			for (let depth = 1; depth <= parentSegments.length; depth++) {
@@ -1173,8 +1034,6 @@ export class Settings {
 			delete raw[key];
 			const nested = getByPath(raw, segments);
 			if (nested !== undefined) {
-				// it wins. The flat one is dropped, and never silently: the operator wrote
-				// two values for one setting and needs to know which one is live.
 				this.#reportDottedKeyProblem(
 					`Settings: "${key}" is set twice, flat and nested. The nested value is used and the flat key is dropped.`,
 					{ key, used: nested, dropped: flat },
@@ -1185,7 +1044,6 @@ export class Settings {
 		}
 	}
 
-	/** Report a dotted-key problem once per message per process. */
 	#reportDottedKeyProblem(message: string, context: Record<string, unknown>): void {
 		if (this.#reportedDottedKeyProblems.has(message)) return;
 		this.#reportedDottedKeyProblems.add(message);
@@ -1202,9 +1060,7 @@ export class Settings {
 		);
 	}
 
-	/** Fold legacy subagent/task keys to subagent.* */
 	#migrateSubagentSettings(raw: RawSettings): void {
-		// with `setByPath` and `get` reads it back segment by segment — so a dotted key written at the top level here would be stored but never read. That is
 		const read = (segments: string[]): unknown => getByPath(raw, segments);
 		const take = (segments: string[]): unknown => {
 			const value = getByPath(raw, segments);
@@ -1213,22 +1069,16 @@ export class Settings {
 		};
 		const setNew = (key: string[], value: unknown): void => {
 			if (value === undefined) return;
-			// An explicit new-key value already on disk is authoritative: an operator
-			// who has set the new setting is never overwritten by a stale legacy key.
 			if (read(["subagent", ...key]) !== undefined) return;
 			setByPath(raw, ["subagent", ...key], value);
 		};
 
 		const eager = take(["task", "eager"]);
 		if (typeof eager === "string") {
-			// bottom value lands on `allowed`: someone with eager delegation switched
-			// off still delegated by hand, and taking the task tool away would change
-			// what their sessions can do.
 			const delegation = eager === "always" ? "required" : eager === "preferred" ? "preferred" : "allowed";
 			setNew(["delegation"], delegation);
 		}
 
-		// existed, so one setting answered two questions: whether subagents exist, and how hard to push them. Someone who wrote `off` was turning subagents OFF —
 		if (read(["subagent", "delegation"]) === "off") {
 			deleteByPath(raw, ["subagent", "delegation"]);
 			if (read(["subagent", "enabled"]) === undefined) {
@@ -1249,7 +1099,6 @@ export class Settings {
 			setNew([next], take(["task", legacy]));
 		}
 
-		// nested subagent levels, so old 1 becomes new 0. Old 0 disabled even the root task tool; preserve that behavior through the dedicated master
 		const legacyTaskDepth = take(["task", "maxRecursionDepth"]);
 		const legacySubagentDepth = take(["subagent", "maxRecursionDepth"]);
 		const legacyDepth = legacySubagentDepth ?? legacyTaskDepth;
@@ -1264,13 +1113,10 @@ export class Settings {
 			setNew(["maxNestedSpawnDepth"], nestedDepth);
 		}
 
-		// task.isolation.* -> subagent.isolation.*
 		for (const key of ["mode", "merge", "commits"] as const) {
 			setNew(["isolation", key], take(["task", "isolation", key]));
 		}
 
-		// two lookups that could disagree, which is how an agent could read as off on
-		// one surface while a model override for it lived on invisibly.
 		const agents: Record<string, Record<string, unknown>> = {};
 		const disabled = take(["task", "disabledAgents"]);
 		if (Array.isArray(disabled)) {
@@ -1279,7 +1125,6 @@ export class Settings {
 				agents[name.trim()] = { ...(agents[name.trim()] ?? {}), enabled: false };
 			}
 		}
-		// subagent model question, above the blanket setting and invisible from it, and they are gone; writing them into the new section would only recreate
 		const overrides = take(["task", "agentModelOverrides"]);
 		if (isRecord(overrides)) {
 			const dropped = Object.entries(overrides)
@@ -1294,19 +1139,14 @@ export class Settings {
 				);
 			}
 		}
-		// `disabledAgents` is the only legacy map with a home in the new section, so a
-		// row written here carries exactly one fact: whether the agent runs.
 		if (Object.keys(agents).length > 0) setNew(["agents"], agents);
 
-		// existed. It folds into the blanket subagent model AND the role entry goes: leaving it would restore two owners for one value, with role expansion
 		const legacyRoleModel = read(["modelRoles", "task"]);
 		if (typeof legacyRoleModel === "string" && legacyRoleModel.trim()) {
 			setNew(["model"], legacyRoleModel.trim());
 			deleteByPath(raw, ["modelRoles", "task"]);
 		}
 
-		// Leave no empty husk behind: a surviving `task: {}` block is a second place
-		// to look for settings that no longer live there.
 		if (isRecord(raw.task) && Object.keys(raw.task).length === 0) delete raw.task;
 		const isolation = getByPath(raw, ["task", "isolation"]);
 		if (isRecord(isolation) && Object.keys(isolation).length === 0) {
@@ -1315,10 +1155,7 @@ export class Settings {
 		}
 	}
 
-	/** Apply schema migrations to raw settings. */
 	#migrateRawSettings(raw: RawSettings): RawSettings {
-		// Both spellings of a key mean the same thing, and only the nested one used
-		// to be readable. Runs FIRST so every migration below sees one shape.
 		this.#expandDottedSettingKeys(raw);
 
 		this.#migrateQueueMode(raw);
@@ -1356,7 +1193,6 @@ export class Settings {
 	}
 
 	#migrateQueueMode(raw: RawSettings): void {
-		// queueMode -> steeringMode
 		if ("queueMode" in raw && !("steeringMode" in raw)) {
 			raw.steeringMode = raw.queueMode;
 			delete raw.queueMode;
@@ -1364,7 +1200,6 @@ export class Settings {
 	}
 
 	#migrateLastChangelogVersion(raw: RawSettings): void {
-		// <agentDir>/last-changelog-version marker file so version bumps no longer dirty user-tracked configs. Capture for marker seeding (see
 		if (typeof raw.lastChangelogVersion === "string") {
 			this.#legacyLastChangelogVersion ??= raw.lastChangelogVersion;
 		}
@@ -1372,12 +1207,10 @@ export class Settings {
 	}
 
 	#migrateCollapseChangelog(raw: RawSettings): void {
-		// terminal. Startup no longer prints release notes at all — it prints one line and `/changelog` opens them on the web — so the old key has no
 		delete raw.collapseChangelog;
 	}
 
 	#migrateAskTimeout(raw: RawSettings): void {
-		// ask.timeout: ms -> seconds, guessed from the magnitude of the value. Every other migration here is a fixed point: re-running it on its own
 		if (raw.ask && typeof (raw.ask as Record<string, unknown>).timeout === "number") {
 			const oldValue = (raw.ask as Record<string, unknown>).timeout as number;
 			if (oldValue > MAX_ASK_TIMEOUT_SECONDS) {
@@ -1389,7 +1222,6 @@ export class Settings {
 	}
 
 	#migrateCompactionThreshold(raw: RawSettings): void {
-		// compaction.thresholdTokens / compaction.thresholdPercent -> compaction.threshold Two keys wrote one axis with an invisible precedence. Fold them into the one
 		const compaction = raw.compaction as Record<string, unknown> | undefined;
 		if (compaction && ("thresholdTokens" in compaction || "thresholdPercent" in compaction)) {
 			if (compaction.threshold === undefined) {
@@ -1407,14 +1239,11 @@ export class Settings {
 	}
 
 	#migrateThemeString(raw: RawSettings): void {
-		// Migrate old flat "theme" string to nested theme.dark/theme.light
 		if (typeof raw.theme === "string") {
 			const oldTheme = raw.theme;
 			if (oldTheme === "light" || oldTheme === "dark") {
-				// Built-in defaults — just remove, let new defaults apply
 				delete raw.theme;
 			} else {
-				// Custom theme — detect luminance to place in correct slot
 				const slot = isLightTheme(oldTheme) ? "light" : "dark";
 				raw.theme = { [slot]: oldTheme };
 			}
@@ -1422,7 +1251,6 @@ export class Settings {
 	}
 
 	#migrateTaskIsolation(raw: RawSettings): void {
-		// task.isolation.enabled (boolean) -> task.isolation.mode (enum)
 		const taskObj = raw.task as Record<string, unknown> | undefined;
 		const isolationObj = taskObj?.isolation as Record<string, unknown> | undefined;
 		if (isolationObj && "enabled" in isolationObj) {
@@ -1434,8 +1262,6 @@ export class Settings {
 	}
 
 	#migrateTaskSimple(raw: RawSettings): void {
-		// schema (workflows drive structured output via eval agent()) and the
-		// batch/context shape is gated by task.batch instead.
 		const taskObj = raw.task as Record<string, unknown> | undefined;
 		if (taskObj && "simple" in taskObj) {
 			delete taskObj.simple;
@@ -1443,8 +1269,6 @@ export class Settings {
 	}
 
 	#migrateTaskEager(raw: RawSettings): void {
-		// task.eager / todo.eager: boolean -> enum (default | preferred | always).
-		// `true` reproduced the previous "on" behavior, which is now `always`.
 		const taskObj = raw.task as Record<string, unknown> | undefined;
 		if (taskObj && typeof taskObj.eager === "boolean") {
 			taskObj.eager = taskObj.eager ? "always" : "default";
@@ -1456,7 +1280,6 @@ export class Settings {
 	}
 
 	#migrateTaskIsolationMode(raw: RawSettings): void {
-		// `worktree` was git worktree → now lives under `rcopy`. `fuse-overlay` and `fuse-projfs` are now the platform-named `overlayfs` / `projfs`
 		const taskObj = raw.task as Record<string, unknown> | undefined;
 		const isolationObj = taskObj?.isolation as Record<string, unknown> | undefined;
 		if (isolationObj && typeof isolationObj.mode === "string") {
@@ -1473,7 +1296,6 @@ export class Settings {
 	}
 
 	#migrateEditMode(raw: RawSettings): void {
-		// edit.mode: removed "atom" and "vim" variants map back to "hashline"
 		const editObj = raw.edit as Record<string, unknown> | undefined;
 		if (editObj) {
 			if (editObj.mode === "atom" || editObj.mode === "vim") {
@@ -1491,7 +1313,6 @@ export class Settings {
 	}
 
 	#migrateCompactionStrategy(raw: RawSettings): void {
-		// compaction.strategy: collapse every legacy strategy to summary; off also disables compaction.
 		const compactionObj = raw.compaction as Record<string, unknown> | undefined;
 		if (compactionObj) {
 			if (compactionObj.strategy === "off") {
@@ -1514,9 +1335,6 @@ export class Settings {
 	}
 
 	#migrateCompactionModel(raw: RawSettings): void {
-		// expansion above (only registered paths are expanded) and both spellings of it
-		// still have to be folded. The destination is always nested: a flat
-		// `compaction.model` would be written into the tree and then never read.
 		const legacyFlatCompactionModel = raw["compaction.compactionModel"];
 		if (legacyFlatCompactionModel !== undefined && getByPath(raw, ["compaction", "model"]) === undefined) {
 			setByPath(raw, ["compaction", "model"], legacyFlatCompactionModel);
@@ -1542,7 +1360,6 @@ export class Settings {
 	}
 
 	#migrateCycleOrder(raw: RawSettings): void {
-		// cycleOrder: drop legacy default pseudo-role from ctrl+p order.
 		const cycleOrder = raw.cycleOrder;
 		if (Array.isArray(cycleOrder)) {
 			raw.cycleOrder = cycleOrder.filter(role => role !== "default");
@@ -1550,8 +1367,6 @@ export class Settings {
 	}
 
 	#migrateSnapcompact(raw: RawSettings): void {
-		// The snapcompact image-archive engine was removed; drop any persisted
-		// snapcompact.* settings so schema validation does not trip on stale keys.
 		delete raw.snapcompact;
 		for (const key of Object.keys(raw)) {
 			if (key.startsWith("snapcompact.")) delete raw[key];
@@ -1559,16 +1374,12 @@ export class Settings {
 	}
 
 	#migrateInlineToolDescriptors(raw: RawSettings): void {
-		// `true`/`false` mapped directly onto inline-on/inline-off, so preserve
-		// the user's explicit choice; new installs get the `auto` default that
-		// turns it on only for Gemini models.
 		if (typeof raw.inlineToolDescriptors === "boolean") {
 			raw.inlineToolDescriptors = raw.inlineToolDescriptors ? "on" : "off";
 		}
 	}
 
 	#migrateStatusLinePlanMode(raw: RawSettings): void {
-		// statusLine: rename "plan_mode" segment to "mode"
 		const statusLineObj = raw.statusLine as Record<string, unknown> | undefined;
 		if (statusLineObj) {
 			for (const key of ["leftSegments", "rightSegments"] as const) {
@@ -1586,7 +1397,6 @@ export class Settings {
 	}
 
 	#migrateProvidersParallelFetch(raw: RawSettings): void {
-		// priority enum. The new default ("auto") supersedes both old values — Parallel is now a deep fallback in the auto chain rather than the first
 		const providersObj = raw.providers as Record<string, unknown> | undefined;
 		if (providersObj && "parallelFetch" in providersObj) {
 			delete providersObj.parallelFetch;
@@ -1595,9 +1405,6 @@ export class Settings {
 	}
 
 	#migrateCodexResetsAutoRedeem(raw: RawSettings): void {
-		// Existing explicit false keeps the old "do not run" behavior; missing
-		// config now falls through to the new "unset" default, which asks before
-		// the first eligible spend.
 		const codexResetsObj = raw.codexResets as Record<string, unknown> | undefined;
 		if (codexResetsObj && typeof codexResetsObj.autoRedeem === "boolean") {
 			codexResetsObj.autoRedeem = codexResetsObj.autoRedeem ? "yes" : "no";
@@ -1605,8 +1412,6 @@ export class Settings {
 	}
 
 	#migrateMemoryBackend(raw: RawSettings): void {
-		// enum if the latter hasn't been set yet. Idempotent: subsequent
-		// migrations are no-ops once memory.backend is materialised.
 		const memoryBackendObj = raw.memory as Record<string, unknown> | undefined;
 		const memoryBackendSet = memoryBackendObj && typeof memoryBackendObj.backend === "string";
 		const memoriesObj = raw.memories as Record<string, unknown> | undefined;
@@ -1619,9 +1424,6 @@ export class Settings {
 	}
 
 	#migrateMnemosyneRename(raw: RawSettings): void {
-		// - `memory.backend: "mnemosyne"` now selects the renamed backend.
-		// - the top-level `mnemosyne` settings object becomes `mnemopi`.
-		// Idempotent: skips the object move once `mnemopi` is materialised.
 		const memoryBackendObj = raw.memory as Record<string, unknown> | undefined;
 		if (memoryBackendObj && memoryBackendObj.backend === "mnemosyne") {
 			memoryBackendObj.backend = "mnemopi";
@@ -1633,7 +1435,6 @@ export class Settings {
 	}
 
 	#migrateHindsight(raw: RawSettings): void {
-		// - dynamicBankId=true → scoping="per-project" (closest semantic match; the legacy `agent::project::channel::user` tuple was per-project in
 		const hindsightObj = raw.hindsight as Record<string, unknown> | undefined;
 		if (hindsightObj) {
 			if ("dynamicBankId" in hindsightObj) {
@@ -1659,7 +1460,6 @@ export class Settings {
 	}
 
 	#migratePowerSleepPrevention(raw: RawSettings): void {
-		// / power.preventDisplaySleep (four booleans) → power.sleepPrevention enum. The enum is cumulative: each level adds the flags of all lower levels.
 		if (!("sleepPrevention" in ((raw.power as Record<string, unknown>) ?? {}))) {
 			const powerObj = raw.power as Record<string, unknown> | undefined;
 			const getFlag = (key: string): boolean | undefined => {
@@ -1679,7 +1479,6 @@ export class Settings {
 				powerRoot.sleepPrevention = mode;
 				raw.power = powerRoot;
 			}
-			// Clean up old keys (nested + flat)
 			if (powerObj) {
 				delete powerObj.preventIdleSleep;
 				delete powerObj.preventSystemSleep;
@@ -1710,8 +1509,6 @@ export class Settings {
 	}
 
 	#migrateNestedSearchFind(raw: RawSettings): void {
-		// Migration for renamed settings grep.* and glob.* from search.* and find.*:
-		// 1. Nested settings: find -> glob, search -> grep (per-property merge to avoid clobbering)
 		if ("find" in raw) {
 			const findObj = raw.find;
 			if (isRecord(findObj)) {
@@ -1746,7 +1543,6 @@ export class Settings {
 	}
 
 	#migrateFlatSearchFind(raw: RawSettings): void {
-		// 2. Flat settings keys: map them to the proper nested target so get/set resolves them correctly
 		if ("find.enabled" in raw) {
 			const globObj = this.#ensureRawObject(raw, "glob");
 			if (!("enabled" in globObj)) {
@@ -1778,7 +1574,6 @@ export class Settings {
 	}
 
 	#cleanEmptyGlobGrep(raw: RawSettings): void {
-		// Clean up any empty nested objects we might have created or left behind
 		if (raw.glob && typeof raw.glob === "object" && Object.keys(raw.glob).length === 0) {
 			delete raw.glob;
 		}
@@ -1813,8 +1608,6 @@ export class Settings {
 	}
 
 	#migrateToolNameLists(raw: RawSettings): void {
-		// Tool-name arrays use wire IDs too. Preserve user overrides across
-		// the rename without duplicating entries if they already added grep/glob.
 		const toolsObj = raw.tools as Record<string, unknown> | undefined;
 		if (toolsObj && "essentialOverride" in toolsObj) {
 			toolsObj.essentialOverride = this.#migrateToolNameList(toolsObj.essentialOverride);
@@ -1829,8 +1622,6 @@ export class Settings {
 	}
 
 	#migrateReadHashLines(raw: RawSettings): void {
-		// edit.mode === "hashline"; the separate read toggle only ever produced
-		// the incoherent "hashline edits without addressable anchors" state.
 		delete raw.readHashLines;
 	}
 
@@ -1839,9 +1630,6 @@ export class Settings {
 	}
 
 	#migrateServiceTier(raw: RawSettings): void {
-		// → per-family tier.openai/tier.anthropic/tier.google; serviceTierSubagent
-		// → tier.subagent; serviceTierAdvisor → tier.advisor. `fastModeScope` is
-		// dropped — per-family scoping is now expressed by the three tier settings.
 		const tierObj = isRecord(raw.tier) ? raw.tier : {};
 		let tierTouched = false;
 		const setTier = (family: string, value: unknown): void => {
@@ -1885,7 +1673,6 @@ export class Settings {
 	}
 
 	#migrateArgotEncode(raw: RawSettings): void {
-		// The two keys that gate ENCODING are grouped under the sub-feature they belong to, the way `read.summarize.*` and `bash.autoBackground.*` are.
 		for (const key of ["models", "disableAboveTokens"] as const) {
 			const flat = `argot.${key}`;
 			if (!(flat in raw)) continue;
@@ -1899,8 +1686,6 @@ export class Settings {
 		if (argotObj) {
 			for (const key of ["models", "disableAboveTokens"] as const) {
 				if (!(key in argotObj)) continue;
-				// stale `undefined` captured before that would make the second key replace
-				// the block instead of joining it, silently dropping the first value.
 				const encode = isRecord(argotObj.encode) ? argotObj.encode : {};
 				if (!(key in encode)) encode[key] = argotObj[key];
 				argotObj.encode = encode;
@@ -1909,7 +1694,6 @@ export class Settings {
 		}
 	}
 
-	/** Seed last-changelog-version marker file from legacy config key. */
 	async #seedLastChangelogVersionMarker(): Promise<void> {
 		const legacy = this.#legacyLastChangelogVersion;
 		if (!legacy) return;
@@ -1926,21 +1710,17 @@ export class Settings {
 		}
 	}
 
-	/** Write settings to disk preserving file structure and comments. */
 	async #writeConfigPreservingText(configPath: string, settings: RawSettings): Promise<void> {
 		let existing = "";
 		try {
 			existing = await Bun.file(configPath).text();
 		} catch (error) {
-			// Anything else is a read this process should not paper over: writing as if the
-			// file were empty would drop every comment and every externally-added key in it.
 			if (!isEnoent(error)) throw error;
 		}
 		let text: string;
 		try {
 			text = syncYamlTextToSettings(existing, settings);
 		} catch (error) {
-			// destroy content nothing else preserved. There is exactly one case where the content HAS been preserved: the loader already copied this file to its
 			const rescued = this.#quarantined.find(entry => entry.path === configPath);
 			if (!rescued) throw error;
 			logger.warn("Settings: rewriting a config file that could not be parsed; the original was preserved", {
@@ -1953,18 +1733,14 @@ export class Settings {
 		await atomicWriteFile(configPath, text);
 	}
 
-	/** Record a save failure and notify listeners when retry threshold is reached. */
 	#recordSaveFailure(configPath: string, error: unknown): void {
 		const reason = errorMessage(error);
 		const attempts = (this.#saveFailure?.path === configPath ? this.#saveFailure.attempts : 0) + 1;
 		this.#saveFailure = { path: configPath, reason, attempts };
 		if (attempts !== SAVE_FAILURE_REPORT_AFTER) return;
-		// Exactly at the threshold, so a filesystem that stays broken reports once rather
-		// than on every retry for the rest of the session.
 		this.#announceSaveFailure({ path: configPath, reason, attempts });
 	}
 
-	/** Record a global save failure. */
 	#recordGlobalWriteFailure(error: unknown): void {
 		const filePath = getGlobalConfigFilePath();
 		const reason = errorMessage(error);
@@ -1974,9 +1750,7 @@ export class Settings {
 		this.#announceSaveFailure({ path: filePath, reason, attempts });
 	}
 
-	/** The global config took a write, so a failure recorded against it is over. */
 	#clearGlobalWriteFailure(): void {
-		// Only when a global failure is actually pending: resolving the path costs
 		// filesystem probes, and a pending PROFILE failure must survive untouched.
 		if (!this.#saveFailure) return;
 		if (this.#saveFailure.path !== getGlobalConfigFilePath()) return;
@@ -1984,7 +1758,6 @@ export class Settings {
 		this.#reportedSaveFailure = undefined;
 	}
 
-	/** Hand a failure to every listener, and keep it for anyone who subscribes later. */
 	#announceSaveFailure(failure: SettingsSaveFailure): void {
 		this.#reportedSaveFailure = failure;
 		for (const listener of this.#saveFailureListeners) {
@@ -1992,7 +1765,6 @@ export class Settings {
 		}
 	}
 
-	/** One listener call, isolated so a listener that throws cannot silence the rest. */
 	#deliverSaveFailure(listener: (failure: SettingsSaveFailure) => void, failure: SettingsSaveFailure): void {
 		try {
 			listener(failure);
@@ -2004,7 +1776,6 @@ export class Settings {
 	#queueSave(): void {
 		if (!this.#persist || !this.#configPath) return;
 
-		// Debounce: wait 100ms for more changes
 		if (this.#saveTimer) {
 			clearTimeout(this.#saveTimer);
 		}
@@ -2025,27 +1796,21 @@ export class Settings {
 
 		try {
 			await withFileLock(configPath, async () => {
-				// Re-read to preserve external changes. Strict: an unreadable file
-				// fails the save rather than being written over as if it were empty.
 				const current = await this.#loadYamlForSave(configPath);
 
-				// Apply only our modified paths
 				for (const modPath of modifiedPaths) {
 					const segments = modPath.split(".");
 					const value = getByPath(this.#global, segments);
 					setByPath(current, segments, value);
 				}
 
-				// Update our global with any external changes we preserved
 				this.#global = current;
 				await this.#writeConfigPreservingText(configPath, this.#global);
 			});
-			// The file took the write, so whatever was wrong is over.
 			this.#saveFailure = undefined;
 			this.#reportedSaveFailure = undefined;
 		} catch (error) {
 			logger.warn("Settings: save failed", { error: String(error) });
-			// Re-add failed paths for retry
 			for (const p of modifiedPaths) {
 				this.#modified.add(p);
 			}
@@ -2101,40 +1866,32 @@ export class Settings {
 
 type SettingHook<P extends SettingPath> = (value: SettingValue<P>, prev: SettingValue<P>) => void;
 
-/** Change notification primitive for setting signals. */
-/** Every signal declared in this module, in declaration order. The registry exists so there is ONE place that knows the full set. Without it, clearing the */
 const SETTING_SIGNALS: SettingSignal<never[]>[] = [];
 
 class SettingSignal<A extends unknown[] = []> {
 	#listeners = new Set<(...args: A) => void>();
-	/** Permanent subscribers registered at module import. */
 	#permanent = new Set<(...args: A) => void>();
 
 	constructor(private readonly label: string) {
 		SETTING_SIGNALS.push(this as unknown as SettingSignal<never[]>);
 	}
 
-	/** Count of releasable listeners. */
 	get listenerCount(): number {
 		return this.#listeners.size;
 	}
 
-	/** How many import-time subscribers are attached. One per importing module, and it stays. */
 	get permanentListenerCount(): number {
 		return this.#permanent.size;
 	}
 
-	/** The signal's name, so a leak report can say WHICH signal is holding listeners. */
 	get name(): string {
 		return this.label;
 	}
 
-	/** Drop every releasable listener, keeping import-time ones. Only `resetSettingsForTest` calls this. */
 	clear(): void {
 		this.#listeners.clear();
 	}
 
-	/** Subscribe callback to setting changes. */
 	on(cb: (...args: A) => void, options?: { readonly permanent?: boolean }): () => void {
 		const set = options?.permanent ? this.#permanent : this.#listeners;
 		set.add(cb);
@@ -2143,7 +1900,6 @@ class SettingSignal<A extends unknown[] = []> {
 		};
 	}
 
-	/** Invoke all listeners with args. */
 	fire(...args: A): void {
 		for (const cb of Array.from(this.#permanent).concat(Array.from(this.#listeners))) {
 			try {
@@ -2189,8 +1945,6 @@ const SETTING_HOOKS: Partial<Record<SettingPath, SettingHook<any>>> = {
 	"hindsight.scoping": () => hindsightScopeSignal.fire(),
 	"worktree.base": value => {
 		const dir = typeof value === "string" && value.trim() ? value : undefined;
-		// setWorktreesDir expands `~`, rejects relative paths, and returns the
-		// applied absolute path (or undefined when cleared/rejected).
 		if (dir && !setWorktreesDir(dir)) {
 			logger.warn("Settings: worktree.base must be an absolute or ~-relative path; ignoring", { value: dir });
 		} else if (!dir) {
@@ -2198,59 +1952,43 @@ const SETTING_HOOKS: Partial<Record<SettingPath, SettingHook<any>>> = {
 		}
 	},
 };
-/** Fires when theme.dark or theme.light changes at runtime. */
 const autoThemeMappingSignal = new SettingSignal<[slot: "dark" | "light", themeName: string]>("theme mapping");
 
-/** Subscribe to theme changes. Returns unsubscribe function. */
 export const onAutoThemeMappingChanged = (
 	cb: (slot: "dark" | "light", themeName: string) => void,
 	options?: { readonly permanent?: boolean },
 ) => autoThemeMappingSignal.on(cb, options);
 
-/** Fires when `symbolPreset` changes at runtime. */
 const symbolPresetSignal = new SettingSignal<[preset: "unicode" | "nerd" | "ascii"]>("symbolPreset");
 
-/** Subscribe to `symbolPreset` changes. Returns an unsubscribe function. */
 export const onSymbolPresetChanged = (
 	cb: (preset: "unicode" | "nerd" | "ascii") => void,
 	options?: { readonly permanent?: boolean },
 ) => symbolPresetSignal.on(cb, options);
 
-/** Fires when `colorBlindMode` changes at runtime. */
 const colorBlindModeSignal = new SettingSignal<[enabled: boolean]>("colorBlindMode");
 
-/** Subscribe to `colorBlindMode` changes. Returns an unsubscribe function. */
 export const onColorBlindModeChanged = (cb: (enabled: boolean) => void, options?: { readonly permanent?: boolean }) =>
 	colorBlindModeSignal.on(cb, options);
 
-/** Fires when `provider.appendOnlyContext` changes at runtime. */
 const appendOnlyModeSignal = new SettingSignal<[value: string]>("provider.appendOnlyContext");
 
-/** Subscribe to append-only mode setting changes. Returns unsubscribe function. */
 export const onAppendOnlyModeChanged = (cb: (value: string) => void) => appendOnlyModeSignal.on(cb);
 
-/** Fires when any model role changes at runtime. */
 const modelRolesSignal = new SettingSignal("modelRoles");
 
-/** Subscribe to model role changes. Returns an unsubscribe function. */
 export const onModelRolesChanged: (cb: () => void) => () => void = modelRolesSignal.on.bind(modelRolesSignal);
 
-/** Fires when `statusLine.sessionAccent` changes at runtime. */
 const statusLineSessionAccentSignal = new SettingSignal("statusLine.sessionAccent");
 
-/** Subscribe to session-accent setting changes. Returns unsubscribe function. */
 export const onStatusLineSessionAccentChanged = (cb: () => void) => statusLineSessionAccentSignal.on(cb);
 
-/** Fires when any `hindsight.bankId` / `bankIdPrefix` / `scoping` value changes. */
 const hindsightScopeSignal = new SettingSignal("hindsight scope");
 
-/** Subscribe to Hindsight bank-scoping changes. Returns unsubscribe function. */
 export const onHindsightScopeChanged = (cb: () => void) => hindsightScopeSignal.on(cb);
 
-/** Test reset hook. */
 export { registerSettingsTestResetHook } from "./settings-instance";
 
-/** Reset settings for testing. */
 export function resetSettingsForTest(): void {
 	setSettingsInstance(null);
 	setSettingsInstancePromise(null);
@@ -2259,10 +1997,8 @@ export function resetSettingsForTest(): void {
 	runSettingsTestResetHooks();
 }
 
-/** Return listener counts per setting signal. */
 export function settingSignalListenerCounts(): Record<string, number> {
 	return Object.fromEntries(SETTING_SIGNALS.map(signal => [signal.name, signal.listenerCount]));
 }
 
-/** Global settings instance and initialization check. */
 export { isSettingsInitialized, settings } from "./settings-instance";

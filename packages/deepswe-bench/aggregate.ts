@@ -1,19 +1,4 @@
-/**
- * Pure result aggregation and report rendering for the DeepSWE bench.
- *
- * This lives apart from run.ts on purpose: run.ts is the entrypoint and ends with
- * a top-level `await main()`, so importing it to unit-test the math would launch a
- * benchmark. Everything here is a pure function of already-collected results, so a
- * test can feed it fixtures and assert exact numbers. run.ts imports {@link
- * ArmResult} and {@link renderReport} from here.
- *
- * The statistical core is {@link summarizeCell}: with `--repeats K`, an
- * (arm, task) cell holds up to K samples, and a single number cannot describe K
- * stochastic runs. A cell is summarized as a pass RATE with a 95% Wilson
- * confidence interval (see {@link wilsonInterval}), which is what lets a reader
- * tell a real arm effect from run-to-run noise without being fooled by the
- * zero-width standard error a boundary cell produces.
- */
+/** Pure result aggregation and report rendering for the DeepSWE bench. */
 
 import { ARGOT_PREAMBLE, DEFAULT_SIGIL } from "argot";
 import {
@@ -25,53 +10,16 @@ import {
 	type TokenMix,
 } from "./cost-model";
 
-/**
- * Heading line of argot's teaching preamble, taken from argot's OWN rendered
- * preamble ({@link ARGOT_PREAMBLE}) so this marker can never drift from the text
- * the runtime injects. `renderPreamble`'s `tools` option changes only the body,
- * not this `## Project shorthand (Argot)` heading, so a single substring match on
- * it is a sound "was the model taught to encode this session" probe regardless of
- * which preamble variant fired.
- */
+/** Heading line of argot's teaching preamble, taken from argot's OWN rendered */
 export const ARGOT_PREAMBLE_HEADING: string = ARGOT_PREAMBLE.split("\n", 1)[0] ?? "";
 
-/**
- * True when a session's system prompt contains argot's teaching preamble, i.e.
- * the ENCODE treatment actually fired for that session.
- *
- * This is the authoritative, post-run treatment-applied probe, and it is the one
- * check the pre-run allowlist guard ({@link ../treatment-guard!encodeArmModelMismatch})
- * structurally cannot make: the pre-run guard matches the REQUESTED `--model`
- * string against the allowlist, but the runtime resolves that id through the
- * catalog (provider aliases, effort-tier collapsing) to a different logical id
- * BEFORE the encode gate sees it. This really happened: `google-antigravity` once
- * aliased `gemini-3.6-flash` onto the 3.5 flash family, so a run requesting 3.6
- * passed the pre-run guard (3.6 was on the list) yet failed the gate (the resolved
- * 3.5 was not) and silently degraded to decode-only. The alias is gone, but the
- * gap is permanent, because no pre-run check can see a resolution that has not
- * happened yet. Reading the actual system prompt the model was given
- * reflects the model AFTER resolution and catches exactly that silent degrade.
- */
+/** True when a session's system prompt contains argot's teaching preamble, i.e. */
 export function systemPromptTeachesArgot(systemPrompt: string): boolean {
 	if (ARGOT_PREAMBLE_HEADING === "") return false;
 	return systemPrompt.includes(ARGOT_PREAMBLE_HEADING);
 }
 
-/**
- * Whether an assistant content block carries an argot handle (a `§name` token).
- *
- * This is the primitive behind the "did the encode treatment fire" probe. The
- * subtlety it exists to fix: encode does NOT only surface in prose. The argot
- * preamble tells the model to write a handle "in prose, a command, or a diff", so
- * on a coding agent a handle most often lands inside a tool call's `arguments` (a
- * shell command string, an edit diff), NOT a text block. A probe that scanned only
- * text blocks would undercount encode and could read a heavy-encode arm as
- * `0 encoded`, which would falsely conclude the treatment never fired and silently
- * invalidate every token delta. So this checks the text block AND the serialized
- * tool-call arguments. The sigil is argot's own {@link DEFAULT_SIGIL} (one place —
- * the bench never customizes it, and a divergence would show up as zero encoded
- * rows rather than a wrong count).
- */
+/** Whether an assistant content block carries an argot handle (a `§name` token). */
 export function blockContainsSigil(block: unknown, sigil: string = DEFAULT_SIGIL): boolean {
 	if (typeof block !== "object" || block === null) return false;
 	const b = block as Record<string, unknown>;
@@ -92,14 +40,7 @@ export function blockContainsSigil(block: unknown, sigil: string = DEFAULT_SIGIL
 export interface SessionUsage {
 	inputTokens: number;
 	outputTokens: number;
-	/**
-	 * Cache reads and cache writes summed.
-	 *
-	 * Kept because callers and older `results.json` files use it, but never used
-	 * for pricing: a read costs a quarter of a fresh input token and a write
-	 * costs more than one, so the sum has no price and a change that turns reads
-	 * into writes is invisible in it. Price from the two fields below.
-	 */
+	/** Cache reads and cache writes summed. */
 	cacheTokens: number;
 	cacheReadTokens: number;
 	cacheWriteTokens: number;
@@ -109,23 +50,7 @@ export interface SessionUsage {
 	toolCalls: Record<string, number>;
 }
 
-/**
- * Tally token usage and tool telemetry from a session's messages.
- *
- * The bug this consolidates and fixes: one tool invocation appears in the
- * transcript TWICE — as a `toolCall` block on the assistant message that
- * requested it, and again as a `toolResult` message carrying its output. The
- * old parser incremented the distribution on BOTH, so every tool count was
- * doubled (a run with 40 real `eval` calls reported 80). Tools are now tallied
- * exactly once, from the assistant's `toolCall` blocks — the model's actual
- * invocations — and `argot_load` is counted from that same place, so the
- * treatment probe and the tool distribution can never disagree about how many
- * times the model called it.
- *
- * `messages` is the ordered sequence of `entry.message` objects from a session
- * jsonl (already JSON-parsed by the caller; malformed lines dropped upstream).
- * Token fields read veyyon's own `usage` accounting on each assistant message.
- */
+/** Tally token usage and tool telemetry from a session's messages. */
 export function tallyUsage(messages: Array<Record<string, unknown>>): SessionUsage {
 	let inputTokens = 0;
 	let outputTokens = 0;
@@ -173,19 +98,7 @@ export function tallyUsage(messages: Array<Record<string, unknown>>): SessionUsa
 	};
 }
 
-/**
- * Extract a provider "finish reason" (e.g. `PROHIBITED_CONTENT`, `SAFETY`,
- * `RECITATION`) from captured agent output, if one is present.
- *
- * These are content-filter / policy stops: the provider aborts generation
- * mid-turn and the agent process exits non-zero, which the bench records as an
- * errored (excluded) sample. Naming the reason matters because a provider refusal
- * is NOT the same failure as a genuine agent crash, and — critically — a refusal
- * that hits one arm more than another is a confound (or, if it tracks the
- * treatment such as an injected preamble, a real effect). Either way it must be
- * distinguishable, not folded into a generic error bucket. Returns null when no
- * finish-reason marker is found. Matches both `finish reason:` and `finish_reason`.
- */
+/** Extract a provider "finish reason" (e.g. `PROHIBITED_CONTENT`, `SAFETY`, */
 export function providerFinishReason(text: string): string | null {
 	const m = text.match(/finish[ _]reason:?\s*([A-Z][A-Z_]{2,})/);
 	return m ? (m[1] as string) : null;
@@ -199,33 +112,7 @@ export interface ProviderQuotaStop {
 	model: string | null;
 }
 
-/**
- * Whether captured output shows the PROVIDER refusing on quota, and what it said
- * about recovery.
- *
- * This is the one failure the bench must abort on IMMEDIATELY, and neither canary
- * catches it. `shouldTripCanary` needs every completed trial to be a hard error,
- * so one early success disarms it for the whole run. `armCanaryFailure` needs a
- * full wave per arm. Quota exhaustion respects neither shape: it strikes
- * mid-run, kills every trial from that moment on regardless of arm, and cannot
- * recover until a timestamp the provider names out loud.
- *
- * Seen live in `runs/2026-07-25T20-46-08-607Z`, which is why this exists. Ten
- * baseline trials scored normally, then quota ran out and the next 26 trials
- * produced zero output tokens each. Neither canary fired. Left alone the run
- * would have written a report comparing a 10-sample baseline against an arm with
- * no samples at all, and the arm's absence would have looked like data.
- *
- * One occurrence is proof, unlike a statistical canary, because the provider is
- * declaring a global state rather than failing a task. So the caller should stop
- * on the first hit rather than wait for a wave. The reset timestamp is extracted
- * because "come back in three hours" is the only useful next action, and an
- * operator who does not know when to retry will just rerun into the same wall.
- *
- * Matches both the raw provider payload and the compact marker the runner folds
- * into an error string, so a live trial and a re-read `results.json` classify
- * identically. Returns null when no quota stop is present.
- */
+/** Whether captured output shows the PROVIDER refusing on quota, and what it said */
 export function providerQuotaStop(text: string | null | undefined): ProviderQuotaStop | null {
 	if (!text) return null;
 	if (!/RESOURCE_EXHAUSTED|QUOTA_EXHAUSTED/.test(text)) return null;
@@ -234,12 +121,7 @@ export function providerQuotaStop(text: string | null | undefined): ProviderQuot
 	return { resetAt, model };
 }
 
-/**
- * The compact, re-parseable form of a quota stop, folded into a trial's error
- * string by the runner. The provider's own payload is a multi-kilobyte JSON blob
- * that the error field truncates, so the two facts worth keeping are restated in
- * a shape {@link providerQuotaStop} can read back out of `results.json`.
- */
+/** The compact, re-parseable form of a quota stop, folded into a trial's error */
 export function quotaStopMarker(stop: ProviderQuotaStop): string {
 	const parts = ["QUOTA_EXHAUSTED"];
 	if (stop.resetAt) parts.push(`resets_at=${stop.resetAt}`);
@@ -247,133 +129,35 @@ export function quotaStopMarker(stop: ProviderQuotaStop): string {
 	return parts.join(" ");
 }
 
-/**
- * Group an errored sample under a short, comparable failure label.
- *
- * The stored error is either pier's stringified `exception_info`
- * (`{"exception_type":"…","exception_message":"…"}`) or a runner-side string
- * (a timeout, a pier exit line). This pulls out a stable label — the exception
- * type, refined with a provider finish reason when one is embedded — so the
- * report can show WHICH failure mode hit each arm and expose an asymmetry rather
- * than an anonymous count. Never throws on non-JSON input.
- */
-/**
- * Error string stamped on a trial the agent RAN to completion (no exception) but the
- * verifier never scored — `verifier_result` is missing or its `reward` is not a
- * finite number. This is NOT a task failure: a failure is reward=0 (a real number the
- * verifier assigned), whereas a missing reward means the scorer itself did not run.
- */
+/** Group an errored sample under a short, comparable failure label. */
+/** Error string stamped on a trial the agent RAN to completion (no exception) but the */
 export const NO_REWARD_ERROR = "verifier produced no reward: missing verifier_result.rewards.reward";
 
-/**
- * Whether a parsed verifier reward means "the verifier did not score this trial".
- * True for null/undefined/NaN/±Infinity; false for any finite number INCLUDING 0
- * (0 is a legitimate scored failure, not a missing score). The runner uses this to
- * fail closed — reclassifying an unscored trial as an error so it is excluded from
- * every rate and mean instead of being silently counted as a fail (reward !== 1),
- * which would understate the pass rate and, if the verifier trips more on one arm's
- * outputs, score a scorer confound as a correctness loss (Law 10, no silent fallback).
- */
+/** Whether a parsed verifier reward means "the verifier did not score this trial". */
 export function noRewardError(reward: number | null): boolean {
 	return !Number.isFinite(reward ?? Number.NaN);
 }
 
-/**
- * Whether an error string means "the agent ran out its whole time budget", as
- * opposed to "the agent never got a fair run".
- *
- * This distinction is the difference between a measurement and a lie. A trial
- * that hits the bench's own `--trial-timeout` (run.ts throws
- * `trial timed out after Ns`) records an error and no token counts, which made it
- * look exactly like an unservable model or a container-build failure, so it was
- * dropped from the pass-rate denominator. But a timeout is the agent using every
- * second it was given and producing no passing patch: the strongest FAIL signal
- * the bench can collect, not missing data. Excluding it inflated every arm's pass
- * rate by removing the hardest tasks, and worse, it hid exactly the effect an
- * A/B run exists to find: an arm whose overhead makes it marginally slower times
- * out MORE, and dropping those timeouts credited the slower arm instead of
- * charging it. Seen live in `runs/argot-budget16k-diverse`, where
- * `scriggo-method-declarations` timed out on all three repeats and all three were
- * excluded.
- *
- * One place, so the canary, the classifier and the cell summary cannot disagree
- * about what a timeout is.
- */
+/** Whether an error string means "the agent ran out its whole time budget", as */
 export function isAgentTimeout(error: string | null): boolean {
 	if (error === null) return false;
 	return /trial timed out after \d+s/i.test(error) || error.includes("AgentTimeoutError");
 }
 
-/**
- * The docker daemon's answer when the harness asks a container for a patch the
- * agent never wrote. Pier grades by copying `/logs/artifacts/model.patch` out of
- * the environment, so this exact line is the only place "there is no patch"
- * becomes observable, and it is matched as a phrase rather than reconstructed
- * from the path so a change to either half breaks the test rather than the run.
- */
+/** The docker daemon's answer when the harness asks a container for a patch the */
 const NO_PATCH_IN_CONTAINER = "Could not find the file /logs/artifacts/model.patch in container";
 
-/**
- * Markers that mean the trial was STOPPED rather than finished: pier's SIGTERM
- * handler (`pier/cli/jobs.py` raises `KeyboardInterrupt`), asyncio cancellation
- * propagating out of `_execute_agent`, and the agent-side wall-clock timeout.
- * Any of these appearing above a failed artifact download changes its meaning
- * completely, which is the whole point of {@link finishedWithoutPatch}.
- */
+/** Markers that mean the trial was STOPPED rather than finished: pier's SIGTERM */
 const CANCELLATION_MARKERS = ["KeyboardInterrupt", "CancelledError", "AgentTimeoutError"] as const;
 
-/**
- * Whether a trial's traceback means "the agent ran to completion and produced no
- * patch", as opposed to "the agent was killed before it could".
- *
- * Both look identical at the surface: pier tries `docker compose cp
- * main:/logs/artifacts/model.patch` during teardown, the file is not there, and
- * the `RuntimeError` cancels the trial into `n_errored_trials`. But they are
- * opposite facts. An agent that finished with nothing to show has FAILED THE
- * TASK, and its honest score is reward 0. An agent killed mid-turn never got a
- * fair run, and scoring it 0 would charge an arm for the operator's Ctrl-C.
- *
- * WHY THIS MATTERS BEYOND TIDINESS. An errored sample is EXCLUDED from every
- * rate and mean in the report, so an arm that errors more is silently measured
- * on fewer, easier trials. Every context-shrinking lever in this bench (thought
- * signature retention, thinking retention, the inline spill floor) risks exactly
- * one failure mode: the agent loses something it needed and never lands a patch.
- * If that failure deletes itself from the measurement, a lever that causes it
- * reads as neutral or better, and a cost win looks clean while the arm is
- * quietly failing more tasks.
- *
- * Detection is deliberately TWO-PART. Matching the download failure alone is the
- * wrong fix and would have mis-scored the one real instance in hand
- * (`runs/2026-07-25T19-51-41-474Z/jobs/baseline__scriggo-method-declarations`),
- * where a SIGTERM sits above the same cp failure and the agent's own log tail is
- * still `Working...`. So: the artifact must be the missing patch AND no
- * cancellation marker may appear anywhere in the log. Fail closed, in the sense
- * that an ambiguous log stays an excluded error rather than becoming a scored
- * zero. Returns false on empty input.
- *
- * Give it the JOB log. The trial's own `exception.txt` is not enough: on that
- * same instance it records the cancellation and nothing else, because the failed
- * artifact download happens afterwards during teardown. A caller that passes the
- * narrower file would see no patch signature at all and silently never fire,
- * which is the quiet half of the same bias.
- */
+/** Whether a trial's traceback means "the agent ran to completion and produced no */
 export function finishedWithoutPatch(traceback: string | null | undefined): boolean {
 	if (!traceback) return false;
 	if (!traceback.includes(NO_PATCH_IN_CONTAINER)) return false;
 	return !CANCELLATION_MARKERS.some(marker => traceback.includes(marker));
 }
 
-/**
- * A "hard error" is a trial the agent never produced any output for: an error is
- * recorded AND no session was parsed, so `outputTokens` is null. This is the
- * signature of a SYSTEMATIC config failure — an unservable model id, a bad auth
- * DB, a missing binary — where the agent process died before running. It is
- * deliberately distinct from a SCORED FAIL (real output, `reward` 0, error null)
- * and from a partial/timed-out run that still produced tokens: those reflect the
- * task or the arm, and must never trip the fail-fast canary. Keeping the predicate
- * here (one place) lets the canary and any future report annotation agree on what
- * "the agent never ran" means.
- */
+/** A "hard error" is a trial the agent never produced any output for: an error is */
 export function isHardError(result: { error: string | null; outputTokens: number | null }): boolean {
 	// A timeout is explicitly NOT a hard error, however little the trial recorded.
 	// The canary aborts a whole run on the strength of this predicate, and a batch
@@ -383,29 +167,8 @@ export function isHardError(result: { error: string | null; outputTokens: number
 	return result.error !== null && result.outputTokens === null;
 }
 
-/**
- * The single most common failure reason across a set of hard-error strings, for
- * the fail-fast canary's abort message. Each string is the agent-side reason the
- * bench captured (e.g. `Model "…" not found`); this returns the mode so the
- * operator sees the ONE cause that is killing every run, not a wall of repeats.
- * Ties break toward the first-seen reason (stable across identical counts). An
- * empty input returns a generic message rather than throwing, since the caller
- * only reaches it when at least one hard error exists.
- */
-/**
- * The fail-fast canary's abort decision, as a pure predicate so it can be tested
- * without running a whole bench (run.ts's entrypoint is un-importable). Trip when
- * the first `canarySize` completed trials have arrived AND every one of them is a
- * {@link isHardError} — i.e. one full concurrent wave produced nothing but "the
- * agent never ran" failures. That is the signature of a systematic config failure
- * (an unservable model, a bad auth DB) that would fail every remaining trial
- * identically, so aborting now saves the rest of the run.
- *
- * It does NOT trip on a partial mix (some runs produced output): a real workload
- * has flaky tasks, and one scored fail among successes is data, not a config bug.
- * `canarySize` is the wave width (min of the worker-pool size and the queue), so
- * on a tiny queue the whole queue is the window. An empty result set never trips.
- */
+/** The single most common failure reason across a set of hard-error strings, for */
+/** The fail-fast canary's abort decision, as a pure predicate so it can be tested */
 export function shouldTripCanary(
 	results: ReadonlyArray<{ error: string | null; outputTokens: number | null }>,
 	canarySize: number,
@@ -413,30 +176,7 @@ export function shouldTripCanary(
 	return results.length >= canarySize && results.length > 0 && results.every(isHardError);
 }
 
-/**
- * The per-ARM half of the fail-fast canary, as a pure predicate. Returns the
- * name of the first arm (in the order its trials completed) that has finished
- * at least `canarySize` trials and whose completed trials are ALL hard errors,
- * or `undefined` when no arm qualifies.
- *
- * {@link shouldTripCanary} alone is blind to exactly the failure this bench
- * exists to catch. It trips only when EVERY completed trial is a hard error, so
- * one success anywhere disarms it for the rest of the run, permanently. An arm
- * that is 100% dead beside a healthy control therefore never trips it: the run
- * burns the entire queue and then reports a comparison against an arm that
- * produced nothing at all. That is not hypothetical, it is the argot failure
- * already seen once, where an encode arm degraded silently while its control ran
- * clean.
- *
- * The queue is arm-major, so an arm's window fills sequentially and a per-arm
- * count is well defined. Both predicates are kept: the global one trips sooner
- * when the first wave spans arms, and this one catches the case the global one
- * structurally cannot see.
- *
- * A partial mix never trips, for the same reason as the global predicate: a real
- * workload has flaky tasks, and a scored fail among successes is data rather
- * than a config bug.
- */
+/** The per-ARM half of the fail-fast canary, as a pure predicate. Returns the */
 export function armCanaryFailure(
 	results: ReadonlyArray<{ arm: string; error: string | null; outputTokens: number | null }>,
 	canarySize: number,
@@ -492,38 +232,12 @@ export function classifyError(error: string): string {
 	return finish ? `${base} (${finish})` : base;
 }
 
-/**
- * The job name is the single identifier for a container run, a config file, and a
- * jobs/ subdirectory, so its format lives in exactly this pair of functions and
- * nowhere else. A repeat suffix (`__r<n>`) is appended only when a cell is sampled
- * more than once; a single-sample run keeps the historic `arm__task` name so runs
- * produced before --repeats existed still reaggregate. The scheme relies on two
- * facts about the inputs: arm names never contain `__`, and DeepSWE task names are
- * hyphenated (never `__`). So the FIRST `__` splits arm from the rest, and a
- * trailing `__r<digits>` is the repeat index. {@link parseJobName} is the exact
- * inverse of {@link jobNameOf}; the round-trip is what keeps reaggregate from
- * mis-attributing a sample to the wrong task or repeat.
- */
+/** The job name is the single identifier for a container run, a config file, and a */
 export function jobNameOf(arm: string, task: string, repeat: number, repeats: number): string {
 	return repeats > 1 ? `${arm}__${task}__r${repeat}` : `${arm}__${task}`;
 }
 
-/**
- * Pick `limit` tasks spread EVENLY across the sorted task set, for a smoke/debug
- * run that cannot afford the full suite.
- *
- * The obvious `sorted.slice(0, limit)` is unsound as a sample: DeepSWE task names
- * are repo-prefixed (`astropy__...`, `django__...`), so the alphabetically-first
- * N cluster on the first repo or two, and a pass rate measured over them is not an
- * estimate of the pass rate over the whole suite — it silently benches a biased
- * slice. An even stride across the sorted list spans the whole task space instead,
- * so a limited run is a representative subsample of the full one.
- *
- * The stride is fully deterministic (no RNG), so the same `limit` always selects
- * the same tasks and a limited run stays reproducible and reaggregatable. Returns
- * the full set (a copy) when `limit` is undefined or at least the set size, and the
- * empty set when `limit <= 0`.
- */
+/** Pick `limit` tasks spread EVENLY across the sorted task set, for a smoke/debug */
 export function selectTasks(sorted: readonly string[], limit: number | undefined): string[] {
 	if (limit === undefined || limit >= sorted.length) return [...sorted];
 	if (limit <= 0) return [];
@@ -536,21 +250,7 @@ export function selectTasks(sorted: readonly string[], limit: number | undefined
 	return out;
 }
 
-/**
- * Provenance of a task list: is it safe to report as a headline number, or is it a
- * selection-biased subset? A task-list `.txt` may declare this in its header comments
- * with a directive line:
- *
- *   `# @headline` (optionally `: note`) — an unbiased set (held-out, representative),
- *   whose efficiency/pass numbers can be reported as a headline.
- *   `# @biased: <reason>` — a set curated to favour the feature under test (e.g. the
- *   repos with the most repeated-token mass for a compressor), which yields a
- *   best-case UPPER BOUND, never a headline.
- *
- * This matters because a feature measured only on the tasks hand-picked to make it
- * look good is not measured honestly. Marking the set lets the report warn loudly so
- * a best-case subset is never mistaken for the real-world expected effect.
- */
+/** Provenance of a task list: is it safe to report as a headline number, or is it a */
 export interface TaskSetProvenance {
 	/** Whether a `@headline` or `@biased` directive was found in the header. */
 	marked: boolean;
@@ -560,13 +260,7 @@ export interface TaskSetProvenance {
 	note: string | null;
 }
 
-/**
- * Parse a task list's header comments for its {@link TaskSetProvenance} directive.
- * Only the leading comment block is scanned — a directive must sit in the header,
- * above the first task line — so a `@`-looking token in a task name cannot spoof it.
- * Returns `marked: false` when no directive is present, which the report surfaces as
- * "provenance unmarked" so every task list is nudged toward declaring its status.
- */
+/** Parse a task list's header comments for its {@link TaskSetProvenance} directive. */
 export function parseTaskListProvenance(content: string): TaskSetProvenance {
 	for (const raw of content.split("\n")) {
 		const line = raw.trim();
@@ -581,23 +275,7 @@ export function parseTaskListProvenance(content: string): TaskSetProvenance {
 	return { marked: false, biased: false, note: null };
 }
 
-/**
- * The banner a report prints when the run it describes was cut short by the
- * provider running out of quota, or null when no sample carries a quota stop.
- *
- * The live runner aborts on the first quota refusal and writes no report at all,
- * which is the right answer for that path. `--reaggregate` is the hole: it reads
- * whatever jobs are on disk, and a truncated run's surviving jobs aggregate into
- * a report that looks exactly like a complete one. In the run that motivated this,
- * ten baseline trials survived and every trial of the arm under test did not, so
- * the honest reading is "no comparison" while the arithmetic would happily print
- * a per-arm table with one arm missing.
- *
- * So the banner names the count and the arms that lost samples, since which arm
- * was truncated decides whether anything in the report can be believed. It is
- * loud and blockquoted for the same reason as the provenance banner: a caveat a
- * reader can skim past is a caveat that does not exist.
- */
+/** The banner a report prints when the run it describes was cut short by the */
 export function renderQuotaTruncationBanner(results: readonly ArmResult[]): string | null {
 	const stopped = results.filter(r => providerQuotaStop(r.error) !== null);
 	if (stopped.length === 0) return null;
@@ -613,11 +291,7 @@ export function renderQuotaTruncationBanner(results: readonly ArmResult[]): stri
 	);
 }
 
-/**
- * The one-line banner the report prints for a task set's provenance, so a reader can
- * never miss that a set is selection-biased (or unmarked). Blockquoted so it stands
- * out at the top of the markdown report.
- */
+/** The one-line banner the report prints for a task set's provenance, so a reader can */
 export function renderTaskSetProvenanceBanner(prov: TaskSetProvenance): string {
 	if (prov.biased) {
 		const why = prov.note ? ` ${prov.note}` : "";
@@ -656,97 +330,28 @@ export interface ArmResult {
 	inputTokens: number | null;
 	outputTokens: number | null;
 	cacheTokens: number | null;
-	/**
-	 * Cache reads and cache writes, separately, because they are priced 4x apart
-	 * and every cost claim this bench makes depends on telling them apart. Older
-	 * `results.json` files predate the split and carry `null` here; the report
-	 * prints the priced columns only when they are present, rather than pricing
-	 * an absent write line as zero and quietly understating cost.
-	 */
+	/** Cache reads and cache writes, separately, because they are priced 4x apart */
 	cacheReadTokens: number | null;
 	cacheWriteTokens: number | null;
-	/**
-	 * Reasons for every mid-session system-prompt change, in order, one per full
-	 * provider prefix-cache invalidation. `null` for runs recorded before this was
-	 * instrumented, which is not the same as an empty array: empty means the
-	 * prompt never changed and the whole session was served from cache.
-	 */
+	/** Reasons for every mid-session system-prompt change, in order, one per full */
 	promptCacheInvalidations: string[] | null;
 	costUsd: number | null;
 	agentSeconds: number | null;
 	argotLoadCalls: number | null;
 	assistantMsgsWithSigil: number | null;
-	/**
-	 * Whether this trial's session system prompt actually taught argot's encode
-	 * preamble (see {@link systemPromptTeachesArgot}). `true` = encode fired,
-	 * `false` = a session was present but was NOT taught to encode (the silent
-	 * decode-only degrade an encode arm must never hide), `null` = no readable
-	 * session, so presence is unknown. This is the authoritative treatment-applied
-	 * signal, resolved from the prompt the model was actually given.
-	 */
+	/** Whether this trial's session system prompt actually taught argot's encode */
 	argotPreamblePresent: boolean | null;
-	/**
-	 * The handle count the launch project's argot dictionary actually loaded for
-	 * this trial, read from the SDK's `argot_armed` telemetry record. This is what
-	 * makes a `0 encoded` result interpretable — the number the report cannot infer
-	 * from the prompt, because the handle table is injected asynchronously AFTER the
-	 * `session_init` snapshot and so never appears in any RECORDED prompt (whether it
-	 * reached the model is a separate fact, carried by {@link argotHandlesTaught}).
-	 * `0` is a
-	 * real, informative value: the repo had no repeated-token mass, so encode was
-	 * impossible for a CORPUS reason, not a model choice. `null` = no `argot_armed`
-	 * record was seen (argot off, or an older run predating the telemetry), so the
-	 * loaded vocabulary size is unknown and the report says so rather than guessing.
-	 */
+	/** The handle count the launch project's argot dictionary actually loaded for */
 	argotHandlesLoaded: number | null;
-	/**
-	 * Whether the handle table actually reached the model, read from the SDK's
-	 * `argot_taught` record (written after the arm refreshes the system prompt).
-	 *
-	 * This closes the gap that made the first interpretable encode run
-	 * uninterpretable. `argotHandlesLoaded` says a dictionary LOADED;
-	 * {@link argotPreamblePresent} says the NOTATION was taught at startup. Neither
-	 * says the table itself was ever put in front of the model, because the refresh
-	 * that adds it happens after the only prompt the transcript records. Without
-	 * this field, `551 handles loaded, 0 encoded` was charged to the model, when the
-	 * same evidence equally supports the table never arriving.
-	 *
-	 * `true` = the refreshed prompt carried the table, so `0 encoded` is a genuine
-	 * model choice. `false` = the session armed but taught nothing, which is a
-	 * HARNESS bug and invalidates the trial as an encode measurement. `null` = no
-	 * record (argot off, or a run predating this telemetry).
-	 */
+	/** Whether the handle table actually reached the model, read from the SDK's */
 	argotHandlesTaught: boolean | null;
-	/**
-	 * The effect-size ceiling for this trial: how much shorthand could have saved at
-	 * perfect adoption (see {@link encodeHeadroom}). `null` when the trial carried no
-	 * `argot_armed` vocabulary to measure against, so no ceiling is computable.
-	 * Without this a reader cannot tell a feature that did not help from a workload
-	 * on which it could not possibly have helped.
-	 */
+	/** The effect-size ceiling for this trial: how much shorthand could have saved at */
 	encodeHeadroom: EncodeHeadroom | null;
 	toolCalls: Record<string, number> | null;
 	error: string | null;
 }
 
-/**
- * A trial result with every measurement still unknown, which is the honest
- * starting point for both a trial about to be parsed and a trial that failed
- * before it could be.
- *
- * THE ONE OWNER of that shape. It used to be written out by hand in two places
- * in `run.ts`, and the copies had already drifted apart in opposite directions:
- * the parse path omitted `error`, and the reaggregate error path omitted
- * `argotHandlesLoaded` and `encodeHeadroom`. That second omission is not
- * cosmetic. Those two fields are what make a `0 encoded` run interpretable at
- * all (how many handles the model actually had, and the headroom it could have
- * used), so re-aggregating a finished run silently degraded its results.json to
- * the older, uninterpretable format. Neither drift was caught because the package
- * had no `check:types` script and was skipped by the workspace typecheck.
- *
- * `null` throughout means "not measured", never zero. Zero is a real, different
- * answer: a dictionary that loaded no handles is a corpus fact, not missing data.
- */
+/** A trial result with every measurement still unknown, which is the honest */
 export function emptyArmResult(arm: string, task: string, repeat: number): ArmResult {
 	return {
 		arm,
@@ -775,71 +380,29 @@ export function emptyArmResult(arm: string, task: string, repeat: number): ArmRe
 	};
 }
 
-/**
- * The summary of one group of samples (a whole arm, or a single (arm, task) cell).
- * Every mean is over the OK samples only (errors are excluded from reward/token
- * math but counted in {@link errors}), because a container that never produced a
- * trial has no reward to average and would drag a mean toward zero as if the agent
- * had failed the task, which it did not.
- */
+/** The summary of one group of samples (a whole arm, or a single (arm, task) cell). */
 export interface CellSummary {
 	/** All attempts in the group, including errored ones. */
 	total: number;
-	/**
-	 * Attempts EXCLUDED because the agent never got a fair run: an unservable
-	 * model, a container or build failure, a verifier outage. Not timeouts, which
-	 * are counted below and charged as fails.
-	 */
+	/** Attempts EXCLUDED because the agent never got a fair run: an unservable */
 	errors: number;
-	/**
-	 * Attempts where the agent ran its whole time budget and produced no passing
-	 * patch. Counted in {@link n} as fails, and kept out of every token and cost
-	 * mean because they carry no measurements. Reported separately so a
-	 * too-tight `--trial-timeout` is visible as a harness problem rather than
-	 * disappearing into the capability number, and so an asymmetry between arms
-	 * (one arm timing out more than another) shows up as the confound it is.
-	 */
+	/** Attempts where the agent ran its whole time budget and produced no passing */
 	timedOut: number;
-	/**
-	 * The pass-rate denominator: scored attempts plus timed-out ones. NOT the
-	 * denominator for the token and cost means, which use scored attempts alone
-	 * since a timeout records none.
-	 */
+	/** The pass-rate denominator: scored attempts plus timed-out ones. NOT the */
 	n: number;
 	/** OK attempts with reward exactly 1. */
 	passes: number;
 	/** passes / n, or null when n is 0. */
 	passRate: number | null;
-	/**
-	 * Binomial normal-approximation standard error of {@link passRate}:
-	 * sqrt(p*(1-p)/n). A convenient point measure of spread, kept for downstream
-	 * analysis, but NOT the displayed interval: at the boundaries it is degenerate
-	 * (all-pass or all-fail gives exactly 0, falsely implying certainty), and on a
-	 * SWE bench with small K those boundary cells are common. The report shows the
-	 * Wilson interval instead (see {@link wilsonLow}). Null when n is 0.
-	 */
+	/** Binomial normal-approximation standard error of {@link passRate}: */
 	stdErr: number | null;
-	/**
-	 * Lower / upper bound of the Wilson score 95% confidence interval for
-	 * {@link passRate}. This is the honest uncertainty the report prints: unlike the
-	 * normal-approximation {@link stdErr}, it never collapses to a zero-width claim
-	 * at the boundary — 3 of 3 passes yields roughly [0.44, 1.0], not [1.0, 1.0], so
-	 * a reader cannot mistake a lucky small sample for a certain result. Two arms
-	 * whose Wilson intervals overlap are not distinguishable at this sample count.
-	 * Null when n is 0.
-	 */
+	/** Lower / upper bound of the Wilson score 95% confidence interval for */
 	wilsonLow: number | null;
 	wilsonHigh: number | null;
 	meanReward: number | null;
 	meanPartial: number | null;
 	meanOutputTokens: number | null;
-	/**
-	 * Mean uncached input tokens. Present so the efficiency comparison can TEST a
-	 * feature that trades input for output rather than only displaying it: a larger
-	 * argot dictionary is injected into the prompt every turn, so it buys shorter
-	 * output with longer input. A comparison that scores only output would call
-	 * that a clean win no matter how much input it cost.
-	 */
+	/** Mean uncached input tokens. Present so the efficiency comparison can TEST a */
 	meanInputTokens: number | null;
 	meanCostUsd: number | null;
 	sumOutputTokens: number;
@@ -847,42 +410,11 @@ export interface CellSummary {
 	sumInputTokens: number;
 	sumCacheTokens: number;
 	sumAgentSeconds: number;
-	/**
-	 * Whether the provider reported a real per-request price for this group: true
-	 * when at least one OK run carried a positive `usage.cost.total`. It exists to
-	 * separate two states that a bare `sumCostUsd` of 0 conflates — a genuinely
-	 * free/zero-cost run, and a model the provider NEVER PRICED. The bench's
-	 * subscription-tier models (google-antigravity flash) report `cost.total: 0` on
-	 * every message even while burning thousands of tokens, so a summed 0 there means
-	 * "not told", not "free". Printing that as `$0.000` is a silent fallback: it reads
-	 * as a real, cheap price and lets a cost-based verdict rest on a number the
-	 * provider never produced. See {@link costIsUnpriced} and {@link fmtCost}.
-	 */
+	/** Whether the provider reported a real per-request price for this group: true */
 	costPriced: boolean;
-	/**
-	 * The cell's token mix priced at {@link REFERENCE_RATE_CARD}, broken out by
-	 * line, summed over the OK runs.
-	 *
-	 * This is the answer to "is this arm cheaper" when the provider is unpriced,
-	 * which is every run the bench has made. It is a counterfactual and is
-	 * labelled as one everywhere it is printed: it says what this token mix would
-	 * cost at published rates, not what it did cost. `sumCostUsd` above remains
-	 * the provider's own figure and is never mixed with this.
-	 *
-	 * It is a breakdown rather than a scalar because the scalar cannot be acted
-	 * on. An arm that shortens output and adds a cache miss moves two lines in
-	 * opposite directions, and only the breakdown shows which one won.
-	 */
+	/** The cell's token mix priced at {@link REFERENCE_RATE_CARD}, broken out by */
 	refCost: CostBreakdown;
-	/**
-	 * Whether every OK run in the cell reported the cache read/write split.
-	 *
-	 * False for runs recorded before the split existed. Their cache tokens are
-	 * unattributable between a 0.075/M line and a 0.3833/M line, so {@link refCost}
-	 * would understate or overstate them with no way to tell which, and the report
-	 * withholds the priced columns instead of printing a number it cannot stand
-	 * behind.
-	 */
+	/** Whether every OK run in the cell reported the cache read/write split. */
 	refCostMeasurable: boolean;
 }
 
@@ -892,37 +424,10 @@ function mean(values: Array<number | null>): number | null {
 	return nums.reduce((a, v) => a + v, 0) / nums.length;
 }
 
-/**
- * The sampling temperature the bench pins for every arm that does not set its own.
- *
- * 0 means greedy/deterministic decoding. The bench pins it, rather than inheriting
- * veyyon's own default of -1 ("use the provider default"), for two reasons that
- * matter for an eval set meant to be iterated on for a long time:
- *
- *  1. Interpretability of `--repeats`. At temperature 0 the only run-to-run
- *     variation is genuine provider nondeterminism, not sampling spread, so a small
- *     K estimates each arm's pass rate with the tightest interval and a real arm
- *     effect is detectable with fewer samples.
- *  2. Longitudinal comparability. A provider default can change silently between two
- *     runs (a model or provider update), which would make two runs non-comparable
- *     with nothing recording the drift. A pinned, stamped value cannot drift
- *     unnoticed.
- *
- * At temperature 0 the decode is greedy, so top-p / top-k are irrelevant; pinning
- * temperature alone fully determines the sampling regime. An individual arm MAY
- * still set its own temperature for a deliberate temperature-as-independent-variable
- * experiment (see {@link effectiveTemperature}), and that override is recorded.
- */
+/** The sampling temperature the bench pins for every arm that does not set its own. */
 export const PINNED_TEMPERATURE = 0;
 
-/**
- * The temperature one arm actually runs at: the arm's own `temperature` when it
- * sets a real (non-negative) one — a deliberate temperature-as-IV experiment —
- * otherwise {@link PINNED_TEMPERATURE}. A value below 0 in the config means "use the
- * provider default", which is exactly the silent-drift regime the bench refuses to
- * leave in place, so it is treated as unset and the pinned value wins. Pure so the
- * runner and the results.json stamp agree by construction.
- */
+/** The temperature one arm actually runs at: the arm's own `temperature` when it */
 export function effectiveTemperature(config: unknown, pinned: number = PINNED_TEMPERATURE): number {
 	if (config !== null && typeof config === "object" && "temperature" in config) {
 		const t = (config as { temperature: unknown }).temperature;
@@ -934,14 +439,7 @@ export function effectiveTemperature(config: unknown, pinned: number = PINNED_TE
 /** z for a two-sided 95% interval (standard normal 0.975 quantile). */
 const Z_95 = 1.959963984540054;
 
-/**
- * Wilson score confidence interval for a binomial proportion (passes out of n).
- * Returns the interval that is honest at the boundaries where the normal
- * approximation is not: with k = n (or k = 0) it still reports real width instead
- * of collapsing to a point, which is exactly the small-sample, near-0/near-1 regime
- * a task-level bench spends most of its time in. Bounds are clamped to [0, 1].
- * Returns null bounds when n is 0 (no attempts to estimate from).
- */
+/** Wilson score confidence interval for a binomial proportion (passes out of n). */
 export function wilsonInterval(
 	passes: number,
 	n: number,
@@ -959,24 +457,7 @@ export function wilsonInterval(
 	};
 }
 
-/**
- * Two-sided exact sign-test p-value for a paired comparison: given `wins` tasks
- * where arm B beat arm A and `losses` where A beat B (ties excluded), the
- * probability, under the null that B and A are equally good, of a win/loss split
- * at least this lopsided in either direction.
- *
- * This is the honest arm-vs-arm test. Comparing two arms' independent Wilson
- * intervals for overlap throws away the fact that BOTH arms ran the SAME tasks:
- * task difficulty is the dominant source of variance, and pairing by task removes
- * it, so the paired test has far more power. The sign test is chosen over a
- * normal-approximation paired t because it is exact and makes no distributional
- * assumption — it cannot understate uncertainty at the small task counts a bench
- * usually runs, which is the same failure mode the Wilson interval fixes for a
- * single cell. Computed from the Binomial(n, 0.5) CDF with an iterative PMF, so
- * there is no overflow even at 100+ tasks and no floating factorial.
- *
- * Returns 1 when there are no decisive tasks (all ties): no evidence either way.
- */
+/** Two-sided exact sign-test p-value for a paired comparison: given `wins` tasks */
 export function signTestPValue(wins: number, losses: number): number {
 	const n = wins + losses;
 	if (n <= 0) return 1;
@@ -992,22 +473,7 @@ export function signTestPValue(wins: number, losses: number): number {
 	return Math.min(1, 2 * cdf);
 }
 
-/**
- * Whether a paired comparison could reach significance AT ALL at its current task
- * count — the honest reading of a "not distinguishable" verdict. `nDecisive` is the
- * number of informative (non-tie) tasks; `familySize` is how many pairs are being
- * Holm-corrected together.
- *
- * The exact sign test cannot beat α=0.05 below a minimum decisive-task count: a
- * perfect 3-0 sweep is p=0.25, 4-0 is p=0.125, 5-0 is p=0.0625 — all above 0.05 —
- * and only 6-0 (p=0.03125) clears it. So a run with 4 paired tasks CANNOT produce a
- * significant pass-rate result no matter how lopsided, and Holm makes the bar
- * stricter still. A verdict of "not distinguishable" from such a run means "too few
- * tasks to decide", NOT "measured and found equal". This flags exactly that case by
- * asking whether the best possible outcome — a clean sweep, taking the maximum Holm
- * penalty ×familySize — would clear α. If not, the comparison is structurally
- * underpowered and the reader must add tasks, not conclude a null.
- */
+/** Whether a paired comparison could reach significance AT ALL at its current task */
 export function sweepCanReachSignificance(nDecisive: number, familySize: number, alpha = 0.05): boolean {
 	if (nDecisive <= 0) return false;
 	const bestCaseRaw = signTestPValue(nDecisive, 0);
@@ -1015,24 +481,7 @@ export function sweepCanReachSignificance(nDecisive: number, familySize: number,
 	return bestCaseAdjusted < alpha;
 }
 
-/**
- * Holm–Bonferroni step-down adjustment of a family of p-values, returned aligned to
- * the input order. Each adjusted value is the number to compare against a single α:
- * a test is significant at family-wise error rate α iff its adjusted p is below α.
- *
- * Why the report needs this: the arm comparison runs one sign test PER arm pair, and
- * a run with k arms tests k(k-1)/2 pairs. Judging each at α=0.05 independently means
- * the probability of AT LEAST ONE spurious "winner" grows with the pair count — about
- * 40% at 10 pairs (5 arms). That is the exact way a multi-arm bench manufactures a
- * false result, so the "winner" verdict must be judged against the corrected value,
- * not the raw one. Holm controls the family-wise error rate while being uniformly
- * more powerful than plain Bonferroni: it multiplies the smallest p by m, the next by
- * m-1, and so on, inflating each only as much as its rank requires.
- *
- * The running max enforces the step-down monotonicity the procedure requires (a
- * larger raw p can never adjust below a smaller one) and each value is clamped to 1.
- * An empty family returns an empty array; a single test is returned unchanged (×1).
- */
+/** Holm–Bonferroni step-down adjustment of a family of p-values, returned aligned to */
 export function holmBonferroni(pValues: readonly number[]): number[] {
 	const m = pValues.length;
 	if (m === 0) return [];
@@ -1058,12 +507,7 @@ export interface ArmDelta {
 	nTasks: number;
 	/** Mean over paired tasks of (passRate_B - passRate_A). Positive = B better. Null when nTasks is 0. */
 	meanDelta: number | null;
-	/**
-	 * 95% CI for {@link meanDelta} from the per-task deltas (normal approximation,
-	 * z * sd/sqrt(nTasks)). An effect-size aid, secondary to {@link signTestP}; at a
-	 * small nTasks read the sign test, not this. Null when nTasks < 2 (no spread to
-	 * estimate).
-	 */
+	/** 95% CI for {@link meanDelta} from the per-task deltas (normal approximation, */
 	ciLow: number | null;
 	ciHigh: number | null;
 	/** Tasks where B's pass rate exceeded A's. */
@@ -1099,14 +543,7 @@ export interface PairedComparison {
 	signTestP: number;
 }
 
-/**
- * The paired-by-task core every arm comparison shares. For each unordered arm pair
- * (first-seen order), a task counts only when `metricOf` is non-null for BOTH arms'
- * cells; the per-task delta is `valueB - valueA`. Returns the mean delta with a
- * normal-approximation CI (effect size) and an exact sign test over the up/down
- * counts (the verdict). Pure and deterministic. One implementation so pass-rate and
- * efficiency comparisons cannot drift apart.
- */
+/** The paired-by-task core every arm comparison shares. For each unordered arm pair */
 function pairedByTask(
 	results: readonly ArmResult[],
 	metricOf: (cell: CellSummary) => number | null,
@@ -1167,13 +604,7 @@ function pairedByTask(
 	return out;
 }
 
-/**
- * Every unordered arm pair, compared PAIRED by task on PASS RATE. A task counts only
- * when both arms produced at least one OK sample. This is what lets the report state
- * whether B actually beat A on correctness instead of asking the reader to eyeball
- * two overlapping independent intervals. Thin wrapper over {@link pairedByTask};
- * `wins`/`losses` are the pass-rate up/down counts.
- */
+/** Every unordered arm pair, compared PAIRED by task on PASS RATE. A task counts only */
 export function pairwiseArmDeltas(results: readonly ArmResult[]): ArmDelta[] {
 	return pairedByTask(results, c => c.passRate).map(p => ({
 		armA: p.armA,
@@ -1189,15 +620,7 @@ export function pairwiseArmDeltas(results: readonly ArmResult[]): ArmDelta[] {
 	}));
 }
 
-/**
- * Every unordered arm pair, compared PAIRED by task on an efficiency metric (mean
- * output tokens, mean cost, ...). This is what makes an efficiency feature like argot
- * measurable: its promise is FEWER tokens at equal reward, so the win is a negative
- * paired delta here (B cheaper than A) that the sign test confirms, READ TOGETHER
- * WITH the pass-rate comparison as a guardrail — cheaper only counts if correctness
- * did not drop. `metric` picks the per-cell number to compare; a cell whose metric is
- * null (all-errored, or the metric was never recorded) drops the task from the pair.
- */
+/** Every unordered arm pair, compared PAIRED by task on an efficiency metric (mean */
 export function pairwiseMetricDeltas(
 	results: readonly ArmResult[],
 	metric: (cell: CellSummary) => number | null,
@@ -1205,11 +628,7 @@ export function pairwiseMetricDeltas(
 	return pairedByTask(results, metric);
 }
 
-/**
- * Reduce a group of samples to a {@link CellSummary}. Pure: same input, same
- * output, no IO. Used for both the per-arm rollup (all of an arm's samples) and
- * each per-task cell (one arm, one task, all repeats).
- */
+/** Reduce a group of samples to a {@link CellSummary}. Pure: same input, same */
 export function summarizeCell(rows: readonly ArmResult[]): CellSummary {
 	// Three classes, not two. A scored trial has a reward and token counts. A
 	// TIMED-OUT trial has neither, but the agent ran the full budget and produced
@@ -1267,21 +686,7 @@ export function summarizeCell(rows: readonly ArmResult[]): CellSummary {
 	};
 }
 
-/**
- * Render which subsystems invalidated the provider's prefix cache, and how often.
- *
- * WHY IT IS REPORTED AT ALL. Changing the system prompt mid-session invalidates
- * the provider's prefix cache, so the next request re-reads the whole
- * conversation as fresh input at 4x the cached rate. On a measured 66-turn trace
- * five turns came back with `cacheRead: 0` while resending 46-72k tokens each,
- * about 8% of that session's bill, and nothing recorded why. Two explanations
- * were proposed and both were wrong (cache TTL expiry, duplicated tool docs)
- * because there was no evidence to check them against.
- *
- * An empty count is the good outcome and is reported as such: it means the
- * prompt never changed after startup and the provider served the prefix from
- * cache all session.
- */
+/** Render which subsystems invalidated the provider's prefix cache, and how often. */
 export function renderPromptCacheInvalidationSection(results: readonly ArmResult[], arms: readonly string[]): string {
 	const lines: string[] = ["## Prompt cache invalidations", ""];
 	const measured = results.filter(
@@ -1313,24 +718,7 @@ export function renderPromptCacheInvalidationSection(results: readonly ArmResult
 	return lines.join("\n");
 }
 
-/**
- * Render the reference-cost section: what each arm's tokens would cost at
- * published rates, split by line, with each line's share of the bill.
- *
- * WHY IT IS A SECTION OF ITS OWN, and why the shares are printed. The bench's
- * token columns are physically complete and still led an optimization effort to
- * the wrong target for weeks. Output tokens are the column an eye lands on, and
- * on real traces they are a small minority of the bill: a trial that spent 725k
- * fresh input tokens and 6.5M cache-read tokens spent 67k on output. Halving
- * that output line is worth single-digit percent of cost, and no amount of work
- * on it can be worth more. The share column states that ceiling directly, so the
- * next effort picks its target from the bill rather than from the column that
- * happens to be easiest to move.
- *
- * The first arm is the baseline; later arms print their delta against it. A
- * negative delta is cheaper. Deltas are per line, because an arm that trades one
- * line for another is the case this table exists to catch.
- */
+/** Render the reference-cost section: what each arm's tokens would cost at */
 export function renderReferenceCostSection(results: readonly ArmResult[], arms: readonly string[]): string {
 	const lines: string[] = [];
 	lines.push("## Cost at reference rates");
@@ -1388,25 +776,12 @@ export function renderReferenceCostSection(results: readonly ArmResult[], arms: 
 	return lines.join("\n");
 }
 
-/**
- * True when a cell's cost is UNPRICED: the provider reported no per-request cost
- * (`costPriced` false) yet the model actually did work (`sumOutputTokens > 0`).
- * This is the exact state where a `$0.000` render would lie — the tokens flowed,
- * the provider just never attached a price. A cell with no output at all (an
- * all-errored arm) is NOT "unpriced"; it is empty, and its cost is a plain 0.
- * Keeping the predicate here (ONE PLACE) means the summary column, the per-task
- * column, and the efficiency comparison all agree on when cost is adjudicable.
- */
+/** True when a cell's cost is UNPRICED: the provider reported no per-request cost */
 export function costIsUnpriced(s: CellSummary): boolean {
 	return !s.costPriced && s.sumOutputTokens > 0;
 }
 
-/**
- * Share of a cell's attempts the HARNESS killed rather than the agent losing.
- *
- * Null when the cell has no attempts, for the same reason every other rate here
- * is: a rate over zero samples is not zero, it is absent.
- */
+/** Share of a cell's attempts the HARNESS killed rather than the agent losing. */
 export function timeoutRate(s: CellSummary): number | null {
 	return s.n === 0 ? null : s.timedOut / s.n;
 }
@@ -1425,19 +800,7 @@ export interface TimeoutAttribution {
 	readonly unattributable: boolean;
 }
 
-/**
- * Whether a REWARD-shaped delta between two arms survives their timeout gap.
- *
- * A timed-out attempt is folded into the pass rate and the mean reward as a
- * zero, which is right (the arm produced no passing patch) only as long as both
- * arms are truncated equally. They are not: an arm that is slower per turn hits
- * the harness ceiling more often, so a timeout gap injects exactly the zeros
- * that make the slower arm look worse. The criterion is therefore whether the
- * gap is big enough to have PRODUCED the delta: when the timeout-rate gap is at
- * least as large as the measured effect, the effect could be entirely harness
- * truncation and no verdict may be printed. A smaller gap can shade the number
- * but cannot manufacture it.
- */
+/** Whether a REWARD-shaped delta between two arms survives their timeout gap. */
 export function rewardDeltaAttribution(
 	a: CellSummary,
 	b: CellSummary,
@@ -1454,18 +817,7 @@ export function rewardDeltaAttribution(
 	return { ...base, unattributable: rateGap >= Math.abs(observedDelta) };
 }
 
-/**
- * Whether a TOKEN- or COST-shaped delta between two arms survives their timeout
- * gap.
- *
- * Stricter than {@link rewardDeltaAttribution}, and deliberately so. A timed-out
- * attempt records no token counts at all, so it is dropped from every token and
- * cost mean. The dropped attempts are not a random sample: they are the slowest
- * runs by construction, which is the same direction the metric measures. Any
- * difference in how many each arm dropped means the two means were taken over
- * differently-censored subsets, and no threshold makes that comparable. So the
- * bar here is any gap at all, not a proportional one.
- */
+/** Whether a TOKEN- or COST-shaped delta between two arms survives their timeout */
 export function efficiencyDeltaAttribution(a: CellSummary, b: CellSummary): TimeoutAttribution {
 	const rateA = timeoutRate(a);
 	const rateB = timeoutRate(b);
@@ -1482,14 +834,7 @@ export function efficiencyDeltaAttribution(a: CellSummary, b: CellSummary): Time
 /** The verdict text that replaces a winner when a delta is not attributable. */
 export const TIMEOUT_UNATTRIBUTABLE_VERDICT = "not attributable (timeout gap)";
 
-/**
- * The report-wide banner for a run that lost trials to the harness.
- *
- * Returns `undefined` when no arm timed out, so the caller prints it only when
- * there is something to say. It is a banner rather than a footnote because the
- * arm tables below it are the ones a reader acts on, and a reader who has
- * already decided which arm won will not go looking for the caveat.
- */
+/** The report-wide banner for a run that lost trials to the harness. */
 export function timeoutAttributionBanner(results: readonly ArmResult[], arms: readonly string[]): string | undefined {
 	const cells = arms.map(arm => ({ arm, s: summarizeCell(results.filter(r => r.arm === arm)) }));
 	const timedOut = cells.filter(c => c.s.timedOut > 0);
@@ -1512,15 +857,7 @@ export function timeoutAttributionBanner(results: readonly ArmResult[], arms: re
 	);
 }
 
-/**
- * Render a cell's cost honestly. When the cell is {@link costIsUnpriced}, return
- * `unpriced` (for a summed total) or `—` (for a per-task mean) instead of a
- * dollar figure, so a subscription-tier model whose provider never reported a
- * price can never be shown as `$0.000` as if it were a real, cheap amount. When
- * the provider DID price the run, return the dollar figure at three decimals.
- * `kind` selects the label used for the missing case so a wide summary cell and a
- * narrow per-task cell read appropriately.
- */
+/** Render a cell's cost honestly. When the cell is {@link costIsUnpriced}, return */
 export function fmtCost(s: CellSummary, kind: "sum" | "mean"): string {
 	if (costIsUnpriced(s)) return kind === "sum" ? "unpriced" : "—";
 	const value = kind === "sum" ? s.sumCostUsd : s.meanCostUsd;
@@ -1533,14 +870,7 @@ function fmt(n: number | null, digits = 0): string {
 	return digits > 0 ? n.toFixed(digits) : String(Math.round(n));
 }
 
-/**
- * A pass rate rendered with its 95% Wilson confidence interval, e.g.
- * `0.67 [0.30–0.90] (4/6)`. The interval is the Wilson score interval, not
- * `passRate ± stdErr`: the normal-approximation error collapses to a zero-width
- * `±0.00` at an all-pass or all-fail cell (`3/3` → `1.00 ±0.00`), which reads as
- * false certainty. Boundary cells are common on a SWE bench, so the report shows
- * the Wilson bounds — `3/3` becomes `1.00 [0.44–1.00]`, honestly wide.
- */
+/** A pass rate rendered with its 95% Wilson confidence interval, e.g. */
 function fmtRate(s: CellSummary): string {
 	if (s.passRate === null) return "—";
 	const ci =
@@ -1548,20 +878,7 @@ function fmtRate(s: CellSummary): string {
 	return `${s.passRate.toFixed(2)}${ci} (${s.passes}/${s.n})`;
 }
 
-/**
- * Concatenate everything the model actually emitted across a session's messages.
- *
- * "Emitted" means exactly what {@link blockContainsSigil} scans for handles: the
- * assistant's text blocks AND its tool-call arguments. The two must agree, because
- * one measures where handles DID land and the other measures where they COULD
- * have; scanning different seams would let the headroom claim a saving in a place
- * the encode probe never looks (or the reverse), and the two numbers would quietly
- * describe different runs.
- *
- * Only assistant messages count. Tool RESULTS are the harness feeding text back to
- * the model, not output the model pays for, so including them would inflate the
- * denominator and understate the achievable saving.
- */
+/** Concatenate everything the model actually emitted across a session's messages. */
 export function collectEmittedText(messages: Array<Record<string, unknown>>): string {
 	const parts: string[] = [];
 	for (const message of messages) {
@@ -1596,30 +913,7 @@ export interface EncodeHeadroom {
 	maxSavedPct: number;
 }
 
-/**
- * Compute the maximum saving shorthand could possibly have delivered on a run.
- *
- * This is the effect-size ceiling, and it is the instrument that decides whether a
- * run can measure argot AT ALL. It answers a question no amount of repeats can:
- * if the model had encoded perfectly — every occurrence of every expansion written
- * as its handle — how much shorter would its output be? When that ceiling sits
- * below the run's token noise, the comparison is measuring variance, and adding
- * samples cannot help, because the effect being sought is smaller than the effect
- * that exists. Note how this differs from {@link sweepCanReachSignificance}: that
- * detects too few DECISIVE TASKS (a sample-size limit), this detects too small an
- * ACHIEVABLE EFFECT (a workload limit). A run can be fine on one and hopeless on
- * the other.
- *
- * Measured against the real ytt task this caught the case it was built for: 33
- * handles loaded, only 7 ever emitted, ceiling 0.27% of output — while run-to-run
- * token variance was around 9%. Every argot delta on that workload was noise, and
- * the report had no way to say so.
- *
- * Occurrences are counted non-overlapping, the same way a real encoder would
- * substitute them, and each one saves the expansion's length minus the handle's
- * (plus its sigil). Expansions shorter than their handle contribute nothing rather
- * than a negative saving: an encoder would simply not use them.
- */
+/** Compute the maximum saving shorthand could possibly have delivered on a run. */
 export function encodeHeadroom(
 	emitted: string,
 	handles: Readonly<Record<string, string>>,
@@ -1657,83 +951,18 @@ export interface TypeableMass {
 	handles: number;
 	/** Handles whose expansion contains no whitespace, so an agent could plausibly type it. */
 	typeable: number;
-	/**
-	 * Characters saved per emission if every typeable handle were written once:
-	 * the sum over typeable handles of expansion length minus handle length.
-	 *
-	 * AN UPPER BOUND, AND A LOOSE ONE. It assumes every handle an agent COULD
-	 * type is one it DOES type, which is off by about seventy times on the only
-	 * run that has measured it. Use it to rank repositories against each other,
-	 * never to size a run: {@link expectedSavingPerEmission} is the number that
-	 * is comparable to a measured ceiling.
-	 */
+	/** Characters saved per emission if every typeable handle were written once: */
 	savingPerEmission: number;
-	/**
-	 * {@link savingPerEmission} scaled by {@link OBSERVED_TYPEABLE_EMISSION_RATE}:
-	 * what a run should actually expect, rather than what it could not exceed.
-	 */
+	/** {@link savingPerEmission} scaled by {@link OBSERVED_TYPEABLE_EMISSION_RATE}: */
 	expectedSavingPerEmission: number;
 	/** Longest typeable expansion, the best single substitution available. */
 	longestTypeable: number;
 }
 
-/**
- * Fraction of typeable handles a run actually emits.
- *
- * WHY THIS CONSTANT EXISTS. The 16000-token arm was built on a projection that
- * treated agent-typeable mass as if all of it were spent: 529 handles, 12,322
- * reachable characters, a 19.07% ceiling, comfortably clear of the ~8.15%
- * run-to-run noise floor. The first run that could test it, on the same ytt
- * repository the projection was measured from, loaded 551 handles and MEASURED a
- * ceiling of 0.24%. Fifty times smaller, and the report's verdict for both arms
- * was "CANNOT MEASURE - ceiling below noise".
- *
- * The whole gap is this rate. That run emitted 8 of its 551 handles, so the
- * projection was counting 551 emissions where 8 happened. 8/551 is 1.45%.
- *
- * The correction reproduces the measurement almost exactly, which is the reason
- * to trust it rather than merely prefer it: 19.07% x 0.0145 = 0.28%, against a
- * measured 0.24%. A projection that lands within 15% of the number it failed to
- * predict by 50x is describing the right mechanism.
- *
- * ONE OBSERVATION, and it is the only one available: no other run has both
- * loaded a dictionary and emitted from it. The favourable end of the range is
- * used deliberately (8/551 rather than the full arm's 6/551) so the corrected
- * projection stays an optimistic bound. Revise it when a second run exists; the
- * report's "handles ever emitted" column is the input.
- */
+/** Fraction of typeable handles a run actually emits. */
 export const OBSERVED_TYPEABLE_EMISSION_RATE = 8 / 551;
 
-/**
- * Score a vocabulary by how much of it a coding agent could ever actually write.
- *
- * This is the pre-run screen for choosing tasks that can measure shorthand at all.
- * It exists because the exact ceiling ({@link encodeHeadroom}) is only computable
- * AFTER a run, which is far too late to discover that a multi-hour benchmark was
- * unmeasurable by construction.
- *
- * The whitespace test is the whole idea, and it is calibrated against real data
- * rather than assumed. On the first run where encoding actually fired, every one
- * of the seven handles the model emitted was whitespace-free, and not a single
- * whitespace-bearing handle was ever emitted: 100% recall, 33% precision. Prose
- * repeats heavily in a repository (license blocks, fixture YAML, documentation
- * URLs) and therefore earns handles, but an agent never retypes it. Paths, import
- * specifiers, and symbols are what an agent writes over and over.
- *
- * Because the test never misses a string the model would have written, a low score
- * is a SOUND one-sided conclusion: such a repository cannot show a shorthand
- * effect, whatever the run does. A high score is only a candidate, not a promise,
- * since the agent still has to touch those particular strings. Screen with this,
- * then confirm with {@link encodeHeadroom} on the run itself.
- *
- * HOW LOOSE THE BOUND IS, stated because it was not, and a whole arm was built on
- * forgetting it. "Could type" is not "does type": the one run that measured both
- * emitted 8 of 551 handles. So `savingPerEmission` overstates a real run by about
- * seventy times, and {@link expectedSavingPerEmission} scales it by
- * {@link OBSERVED_TYPEABLE_EMISSION_RATE} to give a number on the same scale as a
- * measured ceiling. Rank on either (a constant factor cannot reorder them); size
- * a run on the expected one only.
- */
+/** Score a vocabulary by how much of it a coding agent could ever actually write. */
 export function typeableHandleMass(
 	handles: Readonly<Record<string, string>>,
 	sigil: string = DEFAULT_SIGIL,
@@ -1761,22 +990,7 @@ export function typeableHandleMass(
 	};
 }
 
-/**
- * The run's own noise floor: how much output size varies between REPEATED SAMPLES
- * OF THE SAME TASK, as a percentage.
- *
- * Grouping by task is the whole point and not a detail. Pooling every sample of
- * an arm across tasks measures task difficulty, which dwarfs run-to-run noise: a
- * one-line fix and a subsystem refactor differ in output by multiples, while two
- * runs of the same task differ by a few percent. Pooled that way the "noise" floor
- * is enormous, and an effect ceiling that genuinely clears real noise gets
- * declared unmeasurable. Only samples of the SAME task under the SAME arm differ
- * by nothing except chance, which is exactly the floor a real effect must clear.
- *
- * Per-task spreads are combined by taking the median, so one pathological task (a
- * timeout, a refusal retry) cannot set the floor for the whole run. Returns `null`
- * when no task has at least two samples, since spread is then unobservable.
- */
+/** The run's own noise floor: how much output size varies between REPEATED SAMPLES */
 export function withinTaskSpreadPct(rows: readonly ArmResult[]): number | null {
 	const byTask = new Map<string, number[]>();
 	for (const row of rows) {
@@ -1796,15 +1010,7 @@ export function withinTaskSpreadPct(rows: readonly ArmResult[]): number | null {
 	return spreads.length % 2 === 1 ? spreads[mid]! : (spreads[mid - 1]! + spreads[mid]!) / 2;
 }
 
-/**
- * Relative spread of a set of values, as a percentage of their mean.
- *
- * Used as the run's own noise floor: the token totals of repeated samples of the
- * SAME arm on the SAME task differ only by run-to-run variance, so their spread is
- * a direct, assumption-free estimate of how large a difference this workload can
- * produce by chance. Returns `null` when fewer than two values are available (no
- * spread is observable) or the mean is zero.
- */
+/** Relative spread of a set of values, as a percentage of their mean. */
 export function relativeSpreadPct(values: readonly number[]): number | null {
 	if (values.length < 2) return null;
 	const avg = values.reduce((a, b) => a + b, 0) / values.length;
@@ -1813,55 +1019,12 @@ export function relativeSpreadPct(values: readonly number[]): number | null {
 	return (100 * Math.sqrt(variance)) / Math.abs(avg);
 }
 
-/**
- * Decide whether a run's achievable saving is large enough to be detectable at all.
- *
- * The rule is deliberately blunt because the failure it prevents is severe: if the
- * BEST possible outcome (perfect encoding of every handle) is smaller than the
- * noise the workload already produces between identical samples, then no delta the
- * report prints can be attributed to the feature, and no number of repeats changes
- * that. Reporting such a run as "not distinguishable" is technically true and
- * badly misleading, because it invites "we measured it and it does not help" when
- * the truth is "this workload cannot show it either way".
- *
- * `noisePct` is `null` when the run had no repeats to estimate spread from; then
- * the ceiling alone is judged against a conservative floor of one percent, below
- * which a token effect is not credibly separable from ordinary drift.
- */
+/** Decide whether a run's achievable saving is large enough to be detectable at all. */
 export function ceilingBelowNoise(maxSavedPct: number, noisePct: number | null): boolean {
 	return maxSavedPct < (noisePct ?? 1);
 }
 
-/**
- * Explain what an encode arm's `0 encoded` (or nonzero) result actually means, by
- * reading the loaded vocabulary size alongside the taught/encoded counts.
- *
- * This is the instrument that makes an argot token delta interpretable. Three
- * distinct realities produce a "full ≈ decode" report, and the raw counts alone
- * cannot tell them apart:
- *
- * - The preamble was taught but the launch dictionary loaded ZERO handles: the
- *   corpus has no repeated-token mass, so encoding was structurally impossible.
- *   The token delta measures nothing about argot — do NOT read it as "argot does
- *   not help". This is the trap the whole helper exists to catch.
- * - Handles were loaded but the TABLE never reached the model: a harness failure.
- *   The model was taught the notation, shown no handles, and told never to invent
- *   one, so writing none was the only compliant move. This must never be charged
- *   to the model, and it is the case that produced the first misread of this
- *   report (`551 handles loaded, 0 encoded` read as "the model ignored it").
- * - Handles WERE available AND taught, yet the model wrote none: a genuine
- *   model-adoption result, chargeable to the model, not the corpus.
- * - The model did encode (`encoded > 0`): the delta is a real argot measurement.
- *
- * `handlesTaught` is `null` for a run predating the `argot_taught` telemetry, in
- * which case a 0-encoded verdict stays agnostic about whose result it is rather
- * than blaming the model on evidence that cannot support it.
- *
- * `handlesLoaded` is `null` for a run that predates the `argot_armed` telemetry;
- * then the loaded size is unknown and the verdict says so rather than guessing.
- * Returns `null` when there is nothing to say (no OK runs, or the arm never taught
- * the preamble in any run — a non-encode arm needs no interpretation here).
- */
+/** Explain what an encode arm's `0 encoded` (or nonzero) result actually means, by */
 export function interpretEncodeArm(opts: {
 	arm: string;
 	okRuns: number;
@@ -1922,13 +1085,7 @@ export function interpretEncodeArm(opts: {
 	);
 }
 
-/**
- * Render the full markdown report. `repeats` is passed so the header can state the
- * sample count; it is not re-derived from the rows, so an all-errored run still
- * reports the intended repeat count rather than collapsing to 1. `taskSet`, when
- * given, prints a provenance banner so a selection-biased set is never read as a
- * headline; omit it (older runs, unit fixtures) to skip the banner.
- */
+/** Render the full markdown report. `repeats` is passed so the header can state the */
 export function renderReport(
 	results: readonly ArmResult[],
 	model: string,
@@ -2531,8 +1688,7 @@ export function renderReport(
 	if (allTools.length > 0) {
 		lines.push("");
 		// MEAN calls per completed run, not raw per-arm totals: arms rarely have the same
-		// number of OK samples (one arm errors more), and a raw sum divided by nothing makes
-		// the arm with fewer completed runs look like it "streamlined" its tool use when it
+
 		// merely ran less. Dividing by each arm's completed-run count `n` (shown per row)
 		// makes the columns comparable across arms, which is the whole point of the table.
 		lines.push("## Tool call distribution (mean calls per completed run)");
@@ -2552,9 +1708,7 @@ export function renderReport(
 	return `${lines.join("\n")}\n`;
 }
 
-// =============================================================================
 // Pooling several runs into one comparison
-// =============================================================================
 
 /** One run's contribution to a pooled comparison, read from its `results.json`. */
 export interface RunToMerge {
@@ -2567,34 +1721,10 @@ export interface RunToMerge {
 	readonly results: readonly ArmResult[];
 }
 
-/**
- * Why a set of runs cannot be pooled. Refusing is the point: every rule below
- * describes a way that pooling would produce a confident number about nothing.
- */
+/** Why a set of runs cannot be pooled. Refusing is the point: every rule below */
 export class MergeRefused extends Error {}
 
-/**
- * Pool several runs into one set of paired results.
- *
- * WHY THIS EXISTS. The reward gate needs enough decisive tasks to detect a
- * regression: a paired sign test cannot reach significance below six of them, so a
- * comparison run on ten tasks can only ever report "not distinguishable
- * (underpowered)". Provider quota here is a hard daily pool that funds roughly
- * fifteen tasks across two arms, so a properly powered reward comparison does not
- * fit in one day and has to accumulate across several.
- *
- * WHY POOLING ACROSS DAYS IS SOUND HERE, and it is only sound because of how these
- * runs are built. Every run contains BOTH arms, so each task's pair is measured
- * under the same provider conditions, the same binary and the same hour. Day to day
- * the provider may be faster, slower or differently loaded, and that shifts both
- * arms of a pair together, which a paired test differences away. What would NOT be
- * sound is pooling a baseline-only run with a treatment-only run: there the day
- * effect lands entirely on one arm and is indistinguishable from the treatment.
- * That case is refused rather than warned about.
- *
- * Repeats are renumbered per (arm, task) across the whole pool, so the same task
- * measured on two days becomes two samples of one cell rather than a collision.
- */
+/** Pool several runs into one set of paired results. */
 export function mergeRuns(runs: readonly RunToMerge[]): { results: ArmResult[]; model: string } {
 	if (runs.length === 0) throw new MergeRefused("no runs to merge");
 
@@ -2644,7 +1774,6 @@ export function mergeRuns(runs: readonly RunToMerge[]): { results: ArmResult[]; 
 		}
 	}
 
-	// Renumber repeats per cell so the same task on two days is two samples, not a collision.
 	const seen = new Map<string, number>();
 	const results: ArmResult[] = [];
 	for (const run of runs) {
@@ -2668,32 +1797,7 @@ export interface QueuedTrial {
 	readonly repeat: number;
 }
 
-/**
- * The order trials are run in, which decides what survives when a run is cut short.
- *
- * TASK-MAJOR, DELIBERATELY, and this ordering is the whole point of the function.
- * The obvious arm-major order (every task of arm A, then every task of arm B) is
- * catastrophic under truncation, and a run here is truncated often: provider quota
- * is a hard daily pool and a run that exceeds it stops partway. Arm-major means the
- * pool drains during the FIRST arm, so the second arm gets zero samples and the run
- * yields nothing comparable despite having spent the entire day's quota.
- *
- * That is not hypothetical. Run 2026-07-25T20-46-08 spent its whole Gemini pool and
- * came back with 10 scored baseline trials against 0 for `sig-last1`, so the paired
- * comparison had zero paired tasks and reported "not distinguishable (underpowered)"
- * on a full day of quota.
- *
- * Task-major turns that failure into a smaller but VALID run. Truncation then cuts
- * the task list rather than an arm, so every task that ran carries all arms and the
- * surviving samples are paired. Ten tasks x two arms beats twenty tasks of one arm
- * and none of the other, every time.
- *
- * Repeats sit between task and arm so a cut leaves whole (task, repeat) rows across
- * all arms rather than a partial one. Running the arms of one cell adjacently has a
- * second benefit worth stating: they meet the provider within seconds of each other,
- * under the same load and the same cache state, which is exactly the condition a
- * paired test assumes.
- */
+/** The order trials are run in, which decides what survives when a run is cut short. */
 export function trialQueue(arms: readonly string[], tasks: readonly string[], repeats: number): QueuedTrial[] {
 	const queue: QueuedTrial[] = [];
 	for (const task of tasks) {
@@ -2704,28 +1808,7 @@ export function trialQueue(arms: readonly string[], tasks: readonly string[], re
 	return queue;
 }
 
-/**
- * A lever's predicted saving set against what the run actually billed.
- *
- * WHY THE COMPARISON IS THE POINT, not the prediction on its own. Every figure this
- * module produces is a simulation over transcripts, and a simulation can be wrong in
- * ways no test catches: it can model a lever the shipped code does not implement
- * (the tool-result cap counted `read`, which is exempt from spill, and overstated a
- * 5 KB threshold as 24.9% when it reaches 13.6%), or it can be right about bytes and
- * wrong about money because the elided bytes were not being billed the way the model
- * assumed. Only a run that spends real quota can settle it, and only if somebody
- * actually sets the two numbers next to each other afterwards.
- *
- * `gap` is actual minus predicted, in points of the bill. Near zero means the
- * instrument can be trusted for the NEXT lever, which is worth more than any single
- * arm: it is the difference between predicting savings and having to buy every
- * answer. A large negative gap means the simulation is optimistic and every other
- * prediction in this module should be re-read with that in mind.
- *
- * A caveat this cannot see, and which the caller must not forget: cost is not the
- * gate. An arm can deliver its predicted saving exactly and still be rejected for
- * losing reward.
- */
+/** A lever's predicted saving set against what the run actually billed. */
 export interface PredictedVsActual {
 	readonly predicted: number;
 	readonly actual: number;
@@ -2734,32 +1817,8 @@ export interface PredictedVsActual {
 	readonly treatmentCost: number;
 }
 
-/**
- * Price both arms of a run at reference rates and compare the measured saving
- * against what was predicted.
- *
- * Trials with no usage are skipped rather than counted as zero: an errored trial
- * billed nothing because it never ran, and folding it in as a free sample would
- * make whichever arm errored more look cheaper. That is the same selection effect
- * the report warns about for reward, and it bites harder here because cost is a
- * sum rather than a mean.
- */
-/**
- * Whether a trial actually put tokens on the wire.
- *
- * WHY THIS IS NOT `inputTokens !== null`, which is what it used to be and what
- * produced a wrong answer the first time the check ran on real data. A trial killed
- * by a provider quota records ZERO prompt tokens rather than null, so it passed the
- * old test, contributed nothing to the sum, and read as a free sample. On a run
- * where every treatment trial died that way the arm's total cost was zero and the
- * comparison reported a 100% saving against a 31% prediction. A 68-point gap in the
- * arm's favour is not a subtle error, but it is exactly the shape of a spectacular
- * result, and the arm's own cost table showed nothing wrong.
- *
- * Prompt tokens are the test rather than output tokens: a trial can produce no
- * output and still have been billed for the prefix it sent, and it is the prefix
- * every lever here acts on.
- */
+/** Price both arms of a run at reference rates and compare the measured saving */
+/** Whether a trial actually put tokens on the wire. */
 function wasBilled(result: ArmResult): boolean {
 	const prompt = (result.inputTokens ?? 0) + (result.cacheReadTokens ?? 0) + (result.cacheWriteTokens ?? 0);
 	return result.inputTokens !== null && prompt > 0;
@@ -2790,14 +1849,7 @@ export function predictedVsActual(
 	return { predicted, actual, gap: actual - predicted, baselineCost, treatmentCost };
 }
 
-/**
- * Only compare arms over the tasks BOTH of them completed.
- *
- * Cost is a sum, so an arm that ran more tasks looks more expensive for a reason
- * that has nothing to do with the lever. With quota truncation this is the normal
- * case rather than an edge one, and the resulting error points whichever way the
- * truncation happened to fall.
- */
+/** Only compare arms over the tasks BOTH of them completed. */
 export function onPairedTasks(results: readonly ArmResult[], armA: string, armB: string): ArmResult[] {
 	const tasksOf = (arm: string) => new Set(results.filter(r => r.arm === arm && wasBilled(r)).map(r => r.task));
 	const a = tasksOf(armA);

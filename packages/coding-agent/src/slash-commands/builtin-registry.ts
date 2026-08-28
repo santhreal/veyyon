@@ -33,7 +33,6 @@ import {
 	resolveModelFromString,
 } from "../config/model-resolver";
 import { PRIORITY_TIER_COMMAND_LABEL, PRIORITY_TIER_LABEL } from "../config/service-tier";
-// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import type { Settings } from "../config/settings";
 import { settings } from "../config/settings-instance";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../discovery/helpers.js";
@@ -98,7 +97,6 @@ import type {
 
 export type { BuiltinSlashCommand, SubcommandDef } from "./types";
 
-/** TUI-specific runtime accepted by `executeBuiltinSlashCommand`. */
 export type BuiltinSlashCommandRuntime = TuiSlashCommandRuntime;
 
 export interface TuiBuiltinSlashCommand extends BuiltinSlashCommand {
@@ -112,17 +110,14 @@ function refreshStatusLine(ctx: Pick<InteractiveModeContext, "statusLine" | "ui"
 	ctx.ui.requestRender();
 }
 
-/** `/fast status` label for the active model: "on" when its family is the priority tier, else "off". */
 function formatFastModeStatus(session: AgentSession): string {
 	return session.isFastModeEnabled() ? "on" : "off";
 }
 
-/** `/yolo status` label: "on" when the full permission bypass is active, else "off". */
 function formatYoloStatus(session: AgentSession): string {
 	return session.isApprovalBypassed() ? "on" : "off";
 }
 
-/** Current active permission rung and its provenance source. */
 function describeApprovalMode(from: Settings, session?: AgentSession): string {
 	const configured = normalizeApprovalMode(from.get("tools.approvalMode"));
 	const source = from.getSource("tools.approvalMode");
@@ -134,7 +129,6 @@ function describeApprovalMode(from: Settings, session?: AgentSession): string {
 	return `${AUTONOMY_LABEL[enforced]} (${because}, overriding ${AUTONOMY_LABEL[configured]} ${origin})`;
 }
 
-/** Apply `/permissions` runtime override for this session. */
 function applyPermissionsCommand(
 	rawArgs: string,
 	from: Settings,
@@ -164,12 +158,10 @@ function applyPermissionsCommand(
 	};
 }
 
-/** Comma-joined thinking-effort choices for the active model, derived from the catalog row: the row's declared levels plus `off`/`auto` only when the row */
 function formatThinkingLevelChoices(session: AgentSession): string {
 	return configuredThinkingLevelsForModel(session.model).join(", ");
 }
 
-/** Why `/effort` has nothing to set on this model, naming the cause. A row whose effort is baked into its id (`gpt-5.4-high`) names the baked tier and */
 function noThinkingControlMessage(session: AgentSession): string {
 	const model = session.model;
 	if (!model) return "No model selected.";
@@ -194,13 +186,11 @@ function formatTokenCount(value: number): string {
 	return value.toLocaleString();
 }
 
-/** Scheme-less display form of a browser deep link: accent + underline, OSC-8 linked to the full URL. */
 function collabWebLinkClickable(webLink: string): string {
 	const display = theme.fg("accent", `\x1b[4m${webLink.replace(/^https?:\/\//, "")}\x1b[24m`);
 	return urlHyperlinkAlways(webLink, display);
 }
 
-/** Join hint printed by /collab: compact terminal link + clickable browser deep link. */
 function collabLinkHint(host: CollabHost, heading: string, view = false): string {
 	const bullet = theme.fg("accent", theme.format.bullet);
 	const link = view ? host.viewLink : host.link;
@@ -296,7 +286,6 @@ async function handleUsageResetCommand(
 	await output(describeRedeemOutcome(outcome, target.label));
 }
 
-/** Parse the `/shake` subcommand into a {@link ShakeMode}; empty defaults to elide. */
 function parseShakeMode(args: string): ShakeMode | { error: string } {
 	const verb = args.trim().toLowerCase();
 	if (verb === "" || verb === "elide") return "elide";
@@ -304,13 +293,11 @@ function parseShakeMode(args: string): ShakeMode | { error: string } {
 	return { error: `Unknown /shake mode "${verb}". Use elide or images.` };
 }
 
-/** The `/account` verbs from declarations. */
 const ACCOUNT_VERBS: readonly string[] = BUILTIN_SLASH_COMMAND_DECLARATIONS.flatMap(
 	(command: BuiltinSlashCommandDeclaration) =>
 		command.name === "account" ? (command.subcommands ?? []).map(sub => sub.name) : [],
 );
 
-/** Provider routing annotations for `/account status`. */
 function accountRoleSources(session: AgentSession): AccountRoleSources {
 	const model = session.model;
 	const subagentProviders: string[] = [];
@@ -333,7 +320,6 @@ function accountRoleSources(session: AgentSession): AccountRoleSources {
 	};
 }
 
-/** `/account status` block with routing and usage info. */
 async function buildAccountStatusText(session: AgentSession): Promise<string> {
 	let inventory = await loadAccountInventory(session.modelRegistry.authStorage, { sessionId: session.sessionId });
 	try {
@@ -345,7 +331,6 @@ async function buildAccountStatusText(session: AgentSession): Promise<string> {
 	return renderAccountStatus(inventory, Date.now(), accountRoleAnnotations(accountRoleSources(session))).join("\n");
 }
 
-/** How a probed credential reads in the `/account refresh` delta. */
 function accountHealthLabel(row: AccountRow | undefined): string {
 	if (!row?.health) return "not probed";
 	if (row.health === "ok") return "ok";
@@ -353,7 +338,6 @@ function accountHealthLabel(row: AccountRow | undefined): string {
 	return `failed (${row.healthReason ?? "no reason reported"})`;
 }
 
-/** `/account refresh`: re-probe active credentials and report changes. */
 async function refreshActiveAccounts(session: AgentSession): Promise<string> {
 	const authStorage = session.modelRegistry.authStorage;
 	const before = await loadAccountInventory(authStorage, { sessionId: session.sessionId });
@@ -374,7 +358,6 @@ async function refreshActiveAccounts(session: AgentSession): Promise<string> {
 	return lines.join("\n");
 }
 
-/** `/account name <text>`: label or clear the active session account name. */
 async function renameActiveAccount(session: AgentSession, text: string): Promise<{ ok: boolean; message: string }> {
 	const provider = session.model?.provider;
 	if (!provider) {
@@ -404,7 +387,6 @@ async function renameActiveAccount(session: AgentSession, text: string): Promise
 	return { ok: true, message: `${row.providerLabel} account ${what}: ${before} → ${after}` };
 }
 
-/** Provider ids that hold accounts, for the `/account switch` diagnostic. */
 async function credentialedProviderIds(session: AgentSession): Promise<string[]> {
 	const inventory = await loadAccountInventory(session.modelRegistry.authStorage, {
 		sessionId: session.sessionId,
@@ -412,7 +394,6 @@ async function credentialedProviderIds(session: AgentSession): Promise<string[]>
 	return inventory.providers.map(entry => entry.provider);
 }
 
-/** `/account use <provider> <account>`: select default account for a provider. */
 async function useProviderAccount(session: AgentSession, args: string): Promise<{ ok: boolean; message: string }> {
 	const parts = args
 		.trim()
@@ -466,12 +447,10 @@ async function useProviderAccount(session: AgentSession, args: string): Promise<
 	};
 }
 
-/** Case- and separator-insensitive provider key: `OpenAI Codex`, `openai-codex` and `openai_codex` agree. */
 function foldProviderKey(value: string): string {
 	return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/** Resolve typed text after `/login` or `/logout` to an OAuth provider. */
 function findOAuthProvider(requested: string): OAuthProviderInfo | undefined {
 	const wanted = foldProviderKey(requested);
 	if (!wanted) return undefined;
@@ -482,12 +461,10 @@ function findOAuthProvider(requested: string): OAuthProviderInfo | undefined {
 	);
 }
 
-/** Check if text looks like a pasted OAuth redirect callback. */
 function looksLikeOAuthCallback(text: string): boolean {
 	return text.includes("://") || text.includes("code=") || text.startsWith("?");
 }
 
-/** Resolve provider in registry by id or display name. */
 function findRegistryProvider(requested: string): { id: string; login?: unknown } | undefined {
 	const wanted = foldProviderKey(requested);
 	if (!wanted) return undefined;
@@ -496,13 +473,11 @@ function findRegistryProvider(requested: string): { id: string; login?: unknown 
 	);
 }
 
-/** A provider that exists and signs in with an API key rather than a browser. */
 function findApiKeyProvider(requested: string): { id: string } | undefined {
 	const provider = findRegistryProvider(requested);
 	return provider && !provider.login ? provider : undefined;
 }
 
-/** Format refusal for unknown provider name with suggestions. */
 function providerSuggestionSentence(requested: string, command: "login" | "logout"): string {
 	const providers = getOAuthProviders();
 	const candidates = providers.flatMap(provider => [provider.id, provider.name]);
@@ -511,7 +486,6 @@ function providerSuggestionSentence(requested: string, command: "login" | "logou
 	return `${suggestion}Run /${command} with no argument to pick from ${providers.length} providers you can sign in to.`;
 }
 
-/** Explain why `/login <text>` failed when text named no OAuth provider. */
 function loginTargetRefusal(requested: string): string {
 	const apiKeyProvider = findApiKeyProvider(requested);
 	if (apiKeyProvider) {
@@ -523,7 +497,6 @@ function loginTargetRefusal(requested: string): string {
 	return `Unknown provider "${truncate(requested, 40)}". ${providerSuggestionSentence(requested, "login")}`;
 }
 
-/** Explain why `/logout <text>` failed when no stored credentials match. */
 function logoutTargetRefusal(requested: string): string {
 	const provider = findRegistryProvider(requested);
 	if (provider) {
@@ -532,7 +505,6 @@ function logoutTargetRefusal(requested: string): string {
 	return `Unknown provider "${truncate(requested, 40)}". ${providerSuggestionSentence(requested, "logout")}`;
 }
 
-/** Resolve provider for `/logout <text>` target. */
 function findLogoutProvider(requested: string, authStorage: AuthStorage): string | undefined {
 	const oauth = findOAuthProvider(requested);
 	if (oauth) return oauth.id;
@@ -541,7 +513,6 @@ function findLogoutProvider(requested: string, authStorage: AuthStorage): string
 	return undefined;
 }
 
-/** Log in and add an account via `/account login` or `/login`. */
 function startProviderLogin(rawArgs: string, runtime: TuiSlashCommandRuntime): void {
 	const manualInput = runtime.ctx.oauthManualInput;
 	const args = rawArgs.trim();
@@ -564,7 +535,6 @@ function startProviderLogin(rawArgs: string, runtime: TuiSlashCommandRuntime): v
 			return;
 		}
 		if (manualInput.hasPending()) {
-			// `submit` refuses only when nothing is pending, which this branch has ruled out.
 			manualInput.submit(args);
 			runtime.ctx.showStatus("OAuth callback received; completing login…");
 			runtime.ctx.editor.setText("");
@@ -585,14 +555,11 @@ function startProviderLogin(rawArgs: string, runtime: TuiSlashCommandRuntime): v
 	runtime.ctx.editor.setText("");
 }
 
-/** Builtin command handlers keyed by declaration name. */
-/** The declaration a name was declared under, recovered from the array by that name. */
 type DeclarationNamed<Name extends BuiltinSlashCommandName> = Extract<
 	(typeof BUILTIN_SLASH_COMMAND_DECLARATIONS)[number],
 	{ readonly name: Name }
 >;
 
-/** Command handler constraints enforced by declared `textMode`. */
 type HandlerSetFor<Name extends BuiltinSlashCommandName> =
 	DeclarationNamed<Name> extends { readonly textMode: true }
 		? Required<Pick<SlashCommandSpec, "handle">> &
@@ -623,7 +590,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			const servers = runtime.ctx.lspServers ?? [];
 			if (servers.length === 0) {
 				// Explain WHY the list is empty: distinguish "no matching project"
-				// from "project detected but the server binary is not installed".
 				const { loadConfig } = await import("../lsp/config");
 				const missing = loadConfig(process.cwd()).missingServers;
 				if (missing.length > 0) {
@@ -843,8 +809,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 		handleTui: async (command, runtime) => {
 			const prompt = await runtime.ctx.handleLoopCommand(command.args);
 			runtime.ctx.editor.setText("");
-			// Surface any inline prompt so the dispatcher returns it and the normal
-			// submit flow runs the first loop iteration (recording it as the loop prompt).
 			if (prompt) return { prompt };
 		},
 	},
@@ -1116,8 +1080,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				runtime.ctx.showStatus("Full permission bypass off. Approval prompts are back on.");
 				return;
 			}
-			// Any enabling path (bare, `on`, or `toggle` landing on) requires an
-			// explicit danger confirmation: this turns off EVERY prompt.
 			const enabling = arg === "toggle" ? !runtime.ctx.session.isApprovalBypassed() : true;
 			if (!enabling) {
 				runtime.ctx.session.setApprovalBypass(false);
@@ -1146,7 +1108,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 	},
 	prewalk: {
 		handle: async (command, runtime) => {
-			// Target required via argument or prewalk.cheapModel setting.
 			const arg = command.args.trim();
 
 			const cheapPattern =
@@ -1253,9 +1214,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			runtime.ctx.editor.setText("");
 		},
 	},
-	/** `/secret`: store a credential the agent can use without seeing. */
 	secret: {
-		/** Autocomplete hint for `/secret` with active secret count. */
 		getTuiAutocompleteDescription: runtime => {
 			const base = "Store a credential the agent can use without ever seeing it";
 			const session = runtime.ctx.session;
@@ -1264,10 +1223,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			if (stored === 0) return `${base} · protection on, none stored yet`;
 			return `${base} · protection on, ${stored} stored`;
 		},
-		/** Text and ACP `/secret` handler. */
 		handle: async (command, runtime) => {
-			// Let failures cross the ACP boundary. Print mode can then exit unsuccessfully and RPC
-			// can return a failed response instead of emitting error prose followed by success.
 			const outcome = await runSecretCommandForSurface(command.args ?? "", {
 				session: runtime.session,
 				sessionManager: runtime.sessionManager,
@@ -1279,7 +1235,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			await runtime.output(outcome.message);
 			return commandConsumed();
 		},
-		/** TUI `/secret` handler with masked input for sensitive values. */
 		handleTui: async (command, runtime) => {
 			const ctx = runtime.ctx;
 			ctx.editor.setText("");
@@ -1439,8 +1394,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				try {
 					await (tool as { restartForModeChange: () => Promise<void> }).restartForModeChange();
 				} catch (err) {
-					// Setting was already mutated; surface the restart failure so the
-					// user knows the browser is in an inconsistent state.
 					await runtime.output(
 						`Browser mode set to ${next ? "headless" : "visible"}, but restart failed: ${errorMessage(err)}`,
 					);
@@ -1552,7 +1505,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				if (runtime.session.isStreaming) return usage("Cannot delete the session while streaming.", runtime);
 				const sessionFile = runtime.sessionManager.getSessionFile();
 				if (!sessionFile) return usage("No session file to delete (in-memory session).", runtime);
-				// Close persist writer through SessionManager before deleting.
 				try {
 					await runtime.sessionManager.dropSession(sessionFile);
 				} catch (err) {
@@ -1572,7 +1524,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				await runtime.ctx.handleSessionDeleteCommand();
 				return;
 			}
-			// Default: show session info
 			await runtime.ctx.handleSessionCommand();
 			runtime.ctx.editor.setText("");
 		},
@@ -1750,9 +1701,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 		getTuiAutocompleteDescription: runtime => {
 			const usage = runtime.ctx.session.getContextUsage();
 			if (!usage) return "Show context usage breakdown";
-			// Same vocabulary as the status-line gauge: tok/tok in one unit, and the
-			// percentage names what it is instead of leaving "17%" to be read as
-			// either consumption or room.
 			const left = Math.max(0, 100 - Math.round(usage.percent));
 			return `Show context usage breakdown · ${formatTokenCount(usage.tokens)}/${formatTokenCount(usage.contextWindow)} · ${left}% left`;
 		},
@@ -1900,9 +1848,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			try {
 				await runtime.session.compact(parsed.instructions, parsed.mode ? { mode: parsed.mode } : undefined);
 			} catch (err) {
-				// Compaction precondition failures (no model, already compacted, too
-				// small) and provider errors propagate as plain Errors; surface them
-				// via runtime.output so they don't fail the ACP prompt turn.
 				return usage(`Compaction failed: ${errorMessage(err)}`, runtime);
 			}
 			const after = runtime.session.getContextUsage?.();
@@ -1946,7 +1891,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 		},
 	},
 	handoff: {
-		/** Text-mode `/handoff` handler. */
 		handle: async (command, runtime) => {
 			if (runtime.session.isStreaming) {
 				return usage("Wait for the current response to finish or abort it before handing off.", runtime);
@@ -1959,8 +1903,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				return usage(message === "Handoff cancelled" ? message : `Handoff failed: ${message}`, runtime);
 			}
 			if (!result) return usage("Handoff cancelled", runtime);
-			// The transcript underneath the caller's session id was replaced, so anything deriving a
-			// title from it is now stale.
 			await runtime.notifyTitleChanged?.();
 			await runtime.output(
 				result.savedPath
@@ -2118,14 +2060,10 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				return usage(`Directory does not exist: ${resolvedPath}`, runtime);
 			}
 			try {
-				// One owner moves storage and every cwd-derived runtime input as a
-				// transaction. A failed re-scope rolls the storage move back.
 				await runtime.session.moveToCwd(resolvedPath);
 			} catch (err) {
 				return usage(`Move failed: ${errorMessage(err)}`, runtime);
 			}
-			// Protocol modes still need to re-advertise their cwd-local command
-			// surface after the shared session re-scope has completed.
 			await runtime.reloadPlugins();
 			await runtime.notifyConfigChanged?.();
 			await runtime.notifyTitleChanged?.();
@@ -2149,8 +2087,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			}
 			if (runtime.session.isStreaming) return usage("Cannot change cwd while streaming.", runtime);
 			const resolvedPath = resolveToCwd(command.args, current);
-			// A relative arg resolves against the SESSION cwd, not the OS cwd or the
-			// project root, so name that base in the failure — otherwise `/cwd tmp`
 			// from a session rooted elsewhere reads as "tmp doesn't exist" with no clue why.
 			const relativeHint = path.isAbsolute(command.args.trim())
 				? ""
@@ -2257,8 +2193,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			return commandConsumed();
 		},
 		handleTui: async (_command, runtime) => {
-			// Invalidate registry fs caches and the plugin roots cache so
-			// listClaudePluginRoots re-reads from disk on next access.
 			const projectPath = await resolveActiveProjectRegistryPath(runtime.ctx.sessionManager.getCwd());
 			clearPluginRootsAndCaches(projectPath ? [projectPath] : undefined);
 			await runtime.ctx.refreshSlashCommandState();
@@ -2324,7 +2258,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 
 			runtime.ctx.editor.setText("");
 
-			// If a prompt was provided, pass it through as input
 			if (prompt) return { prompt };
 		},
 	},
@@ -2339,7 +2272,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 	},
 };
 
-/** One command's declared surface joined to its handler. Written out property by property rather than spread, because the declarations are `as const` and */
 function toSlashCommandSpec(declaration: BuiltinSlashCommandDeclaration): SlashCommandSpec {
 	const spec: SlashCommandSpec = {
 		name: declaration.name,
@@ -2369,7 +2301,6 @@ for (const command of BUILTIN_SLASH_COMMAND_REGISTRY) {
 
 export { BUILTIN_SLASH_COMMAND_RESERVED_NAMES } from "./builtin-declarations";
 
-/** Build getArgumentCompletions from declarative subcommand definitions. Returns subcommand names filtered by prefix in the dropdown. */
 function buildArgumentCompletions(subcommands: SubcommandDef[]): (prefix: string) => AutocompleteItem[] | null {
 	return (argumentPrefix: string) => {
 		if (argumentPrefix.includes(" ")) return null; // past the subcommand
@@ -2386,14 +2317,12 @@ function buildArgumentCompletions(subcommands: SubcommandDef[]): (prefix: string
 	};
 }
 
-/** Build getInlineHint from declarative subcommand definitions. Shows remaining completion + usage as dim ghost text after cursor. */
 function buildSubcommandInlineHint(subcommands: SubcommandDef[]): (argumentText: string) => string | null {
 	return (argumentText: string) => {
 		const trimmed = argumentText.trimStart();
 		const spaceIndex = trimmed.indexOf(" ");
 
 		if (spaceIndex === -1) {
-			// Still typing subcommand name — show remaining chars + usage
 			const prefix = trimmed.toLowerCase();
 			if (prefix.length === 0) return null;
 			const match = subcommands.find(s => s.name.startsWith(prefix));
@@ -2402,7 +2331,6 @@ function buildSubcommandInlineHint(subcommands: SubcommandDef[]): (argumentText:
 			return remaining + (match.usage ? ` ${match.usage}` : "");
 		}
 
-		// Subcommand typed — show remaining usage params
 		const subName = trimmed.slice(0, spaceIndex).toLowerCase();
 		const afterSub = trimmed.slice(spaceIndex + 1);
 		const sub = subcommands.find(s => s.name === subName);
@@ -2419,12 +2347,10 @@ function buildSubcommandInlineHint(subcommands: SubcommandDef[]): (argumentText:
 	};
 }
 
-/** Build getInlineHint for commands with a simple static hint string. Shows the hint only when no arguments have been typed yet. */
 function buildStaticInlineHint(hint: string): (argumentText: string) => string | null {
 	return (argumentText: string) => (argumentText.trim().length === 0 ? hint : null);
 }
 
-/** Build getArgumentCompletions for /profile: existing profile names (marked active/switch) plus the verb subcommands. */
 function buildProfileArgumentCompletions(): (prefix: string) => Promise<AutocompleteItem[] | null> {
 	return async (argumentPrefix: string) => {
 		const prefix = argumentPrefix.trimStart();
@@ -2452,7 +2378,6 @@ function buildProfileArgumentCompletions(): (prefix: string) => Promise<Autocomp
 	};
 }
 
-/** Argument completion for `/secret` subcommands. */
 const secretArgumentCompletions = (argumentPrefix: string): AutocompleteItem[] | null => {
 	if (argumentPrefix.includes(" ")) return null; // past the subcommand
 	const prefix = argumentPrefix.toLowerCase();
@@ -2465,7 +2390,6 @@ const secretArgumentCompletions = (argumentPrefix: string): AutocompleteItem[] |
 	return matches.length > 0 ? matches : null;
 };
 
-/** Inline ghost hint for `/secret`. */
 function buildSecretInlineHint(inlineHint: string | undefined): (argumentText: string) => string | null {
 	return (argumentText: string) => {
 		const trimmed = argumentText.trimStart();
@@ -2483,7 +2407,6 @@ function buildSecretInlineHint(inlineHint: string | undefined): (argumentText: s
 	};
 }
 
-/** Build getArgumentCompletions that suggests directories relative to the current project directory. Used by /move so users can Tab-complete the */
 function buildDirectoryArgumentCompletions(): (prefix: string) => Promise<AutocompleteItem[] | null> {
 	return async (argumentPrefix: string) => {
 		const prefix = argumentPrefix.trim();
@@ -2544,8 +2467,6 @@ function buildDirectoryArgumentCompletions(): (prefix: string) => Promise<Autoco
 	};
 }
 function buildDirectoryCompletionDisplayValue(prefix: string, absoluteValue: string, cwd: string): string {
-	// Preserve the user's prefix style where possible, but always return a
-	// value that /move can resolve (absolute or relative) without escaping.
 	const normalized = path.normalize(absoluteValue);
 
 	if (prefix.startsWith("~/")) {
@@ -2574,12 +2495,10 @@ function buildDirectoryCompletionDisplayValue(prefix: string, absoluteValue: str
 		return `${relative.replaceAll("\\", "/")}/`;
 	}
 
-	// Default: relative to cwd.
 	const relative = path.relative(cwd, normalized);
 	return `${relative.replaceAll("\\", "/")}/`;
 }
 
-/** Category groupings for slash commands in the menu. */
 export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> = {
 	settings: "setup",
 	secret: "setup",
@@ -2616,7 +2535,6 @@ export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> 
 	effort: "model",
 	force: "model",
 	retry: "model",
-	// Beside the model roles: the advisor IS a model role, and its knobs sit under the Model tab.
 	advisor: "model",
 	share: "share",
 	collab: "share",
@@ -2629,11 +2547,9 @@ export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> 
 	cwd: "workspace",
 	tools: "workspace",
 	agents: "workspace",
-	// Beside `/agents`: the same roster, opened across every conversation this process is running.
 	"process-manager": "workspace",
 	jobs: "workspace",
 	usage: "workspace",
-	// Beside `/usage`: both answer "what has this cost", one inline and one in a browser.
 	stats: "workspace",
 	todo: "context",
 	context: "context",
@@ -2661,10 +2577,8 @@ export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> 
 	omfg: "info",
 };
 
-/** Category browse order re-exported from `./category-order.ts`. */
 export { BUILTIN_SLASH_COMMAND_CATEGORY_ORDER } from "./category-order";
 
-/** Builtin command metadata used for slash-command autocomplete and help text. */
 export const BUILTIN_SLASH_COMMAND_DEFS: ReadonlyArray<BuiltinSlashCommand> = BUILTIN_SLASH_COMMAND_REGISTRY.map(
 	command => ({
 		name: command.name,
@@ -2708,7 +2622,6 @@ function materializeTuiBuiltinSlashCommand(
 	return materialized;
 }
 
-/** Materialized builtin slash commands with completion functions derived from declarative subcommand/hint definitions. */
 export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<TuiBuiltinSlashCommand> = BUILTIN_SLASH_COMMAND_DEFS.map(cmd =>
 	materializeTuiBuiltinSlashCommand(cmd),
 );
@@ -2717,10 +2630,8 @@ export function buildTuiBuiltinSlashCommands(runtime: TuiSlashCommandRuntime): R
 	return BUILTIN_SLASH_COMMAND_DEFS.map(cmd => materializeTuiBuiltinSlashCommand(cmd, runtime));
 }
 
-/** Unified registry exposed for cross-mode tooling. Each spec carries at least one of `handle` / `handleTui`. The TUI dispatcher prefers `handleTui`; the */
 export const BUILTIN_SLASH_COMMANDS_INTERNAL: ReadonlyArray<SlashCommandSpec> = BUILTIN_SLASH_COMMAND_REGISTRY;
 
-/** Execute a builtin slash command in the interactive TUI. Returns `false` when no builtin matched. Returns `true` when a command */
 export async function executeBuiltinSlashCommand(
 	text: string,
 	runtime: BuiltinSlashCommandRuntime,
@@ -2733,19 +2644,15 @@ export async function executeBuiltinSlashCommand(
 	if (parsed.args.length > 0 && !command.allowArgs) {
 		return text.includes("://") || text.includes("code=") || text.startsWith("?");
 	}
-	// Collab guests run a read-mostly replica: session-mutating builtins are
-	// host-only; the allowlist covers purely local/read-only commands.
 	if (runtime.ctx.collabGuest && !COLLAB_GUEST_ALLOWED_COMMANDS[command.name]) {
 		runtime.ctx.showStatus(`/${command.name} is host-only during a collab session`);
 		runtime.ctx.editor.setText("");
 		return true;
 	}
-	// Open picker if bare `/cmd` with subcommands has no default action.
 	if (command.subcommands && bareInvocationShowsSubcommands(command, parsed.args)) {
 		const subcommands = command.subcommands;
 		runtime.ctx.editor.setText("");
 		runtime.ctx.showSubcommandPicker(command.name, subcommands, subcommand => {
-			// Prefill editor if picked subcommand requires arguments.
 			if (subcommand.usage && subcommand.usage.trim().length > 0) {
 				runtime.ctx.editor.setText(`/${command.name} ${subcommand.name} `);
 				runtime.ctx.ui.requestRender();
@@ -2762,7 +2669,6 @@ export async function executeBuiltinSlashCommand(
 		return true;
 	}
 	if (command.handle) {
-		// Adapt text-mode `handle` to TUI context.
 		const ctx = runtime.ctx;
 		const adapted: SlashCommandRuntime = {
 			session: ctx.session,
@@ -2788,7 +2694,6 @@ export async function executeBuiltinSlashCommand(
 	return false;
 }
 
-/** Look up a unified spec by name or alias. Used by the ACP dispatcher. */
 export function lookupBuiltinSlashCommand(name: string): SlashCommandSpec | undefined {
 	return BUILTIN_SLASH_COMMAND_LOOKUP.get(name);
 }
