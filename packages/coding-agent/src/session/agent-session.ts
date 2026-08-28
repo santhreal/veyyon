@@ -10881,9 +10881,7 @@ export class AgentSession {
 		// re-enables advisor auto-resume that a prior user interrupt suppressed.
 		// Agent-initiated synthetic prompts (auto-continue, plan, reminders) do not.
 		if (options?.userInitiated ?? !options?.synthetic) {
-			this.#verificationEvidence.startUserTurn({
-				preservePendingCodeReview: this.settings.get("edit.critiqueCodeMutations"),
-			});
+			this.#verificationEvidence.startUserTurn();
 			this.#advisorAutoResumeSuppressed = false;
 			this.#planModeReminderCount = 0;
 			this.#planModeReminderAwaitingProgress = false;
@@ -14951,6 +14949,7 @@ export class AgentSession {
 
 	#enforceVerificationBeforeFinalize(): boolean {
 		if (this.#isSubagent) return false;
+		if (this.settings.get("edit.afterEdit") !== "verify") return false;
 		const reminder = this.#verificationEvidence.takeFinalizationReminder();
 		if (!reminder) return false;
 		const reminderMessage: CustomMessage = {
@@ -14973,10 +14972,23 @@ export class AgentSession {
 		return true;
 	}
 
+	/** The calls the model can still read, so a review knows what it has to re-read. */
+	#toolCallIdsInContext(): ReadonlySet<string> {
+		const ids = new Set<string>();
+		for (const message of this.agent.state.messages) {
+			if (message.role !== "assistant") continue;
+			for (const part of message.content) {
+				if (part.type === "toolCall") ids.add(part.id);
+			}
+		}
+		return ids;
+	}
+
 	#enforceCodeReviewBeforeFinalize(): boolean {
 		if (this.#isSubagent) return false;
-		if (!this.settings.get("edit.critiqueCodeMutations")) return false;
-		const reminder = this.#verificationEvidence.takeCodeReviewReminder();
+		if (this.settings.get("edit.afterEdit") !== "review") return false;
+		const inContext = this.#toolCallIdsInContext();
+		const reminder = this.#verificationEvidence.takeCodeReviewReminder(id => inContext.has(id));
 		if (!reminder) return false;
 		const reminderMessage: CustomMessage = {
 			role: "custom",

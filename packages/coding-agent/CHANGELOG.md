@@ -12,7 +12,7 @@
 - The terminal renderer composer zone gains a formal defect oracle and automated invariant sweep suite covering prompt counts, output bleed, row mixing, footer alignment, mouse click routing, caret positioning, overflow, pad transparency, hairline integrity, and virtual scroll stability.
 - `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
 - `/prewalk` accepts an optional model argument to arm a per-session target model override.
-- `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
+- `edit.afterEdit` selects what one turn that changed files owes before it finishes: `verify` (the default) runs one check when none followed the last edit, `review` reads back every code file changed since the last user message and judges correctness, maintainability and cross-file contracts, `off` neither; the legacy `edit.critiqueCodeMutations` boolean migrates to `review` or `verify` on load.
 - Configurable `launch.cleanupWaitMs` setting (default 15 minutes) purges exited launch daemon records from memory and disk after a retention TTL.
 - Exporting a session to HTML streams the snapshot into the output file instead of assembling the whole document in memory, taking an 80MiB transcript from 1007MiB of peak resident memory to 532MiB with byte-identical output.
 - A session snapshot that contains a reference cycle fails the HTML export with an error instead of writing until the disk fills.
@@ -34,6 +34,7 @@
 
 ### Changed
 
+- A turn that changed files takes at most one continuation before it finishes; the verification pass that always ran unconditionally is now the `verify` value of `edit.afterEdit` and no longer stacks a second forced continuation under the review pass.
 - The Julia, Python and Ruby eval kernels share one execution loop instead of three copies of it; no change to how a kernel behaves.
 - Reading a file or fetching a URL no longer loads the document converters, and a web search no longer loads the browser fingerprint generator, because the constants those paths wanted are separated from the libraries that sat behind them, taking about 40ms off session startup.
 - The launch card is painted and flushed before the agent runtime graph is loaded, taking an interactive launch from a blank terminal for 760ms to a typable composer at 111ms.

@@ -1953,6 +1953,22 @@ export class Settings {
 				}
 			}
 		}
+
+		// edit.critiqueCodeMutations: boolean -> the edit.afterEdit enum, which
+		// selects one after-edit pass instead of stacking the review on top of a
+		// verification pass that had no setting at all. `true` asked for the
+		// review; `false` is what everyone was getting, which is the verify pass.
+		// Both spellings are read: the legacy key has left the schema, so the
+		// dotted-key expansion no longer folds the flat one into the tree.
+		// Idempotent: each spelling is deleted once it has been read.
+		const legacyCritique = editObj?.critiqueCodeMutations ?? raw["edit.critiqueCodeMutations"];
+		if (typeof legacyCritique === "boolean") {
+			const editRoot = editObj ?? {};
+			if (!("afterEdit" in editRoot)) editRoot.afterEdit = legacyCritique ? "review" : "verify";
+			raw.edit = editRoot;
+		}
+		if (editObj) delete editObj.critiqueCodeMutations;
+		delete raw["edit.critiqueCodeMutations"];
 		// compaction.strategy: collapse every legacy strategy to summary; off also disables compaction.
 		const compactionObj = raw.compaction as Record<string, unknown> | undefined;
 		const migrateStrategy = (current: unknown): CompactionStrategySetting | undefined => {
