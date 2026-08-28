@@ -85,6 +85,7 @@ function stubSession(cwd = "/home/you/code/veyyon"): AgentSession {
 		isApprovalBypassed: () => false,
 		getGoalModeState: () => null,
 		getAsyncJobSnapshot: () => ({ running: [] }),
+		getRunningNonTaskJobCount: () => 0,
 		getCurrentModel: () => undefined,
 		getContextUsage: () => ({ tokens: 84_000, contextWindow: 200_000, percent: 42 }),
 		modelRegistry: { isUsingOAuth: () => false },

@@ -50,6 +50,7 @@ function makeComponent(
 			},
 		},
 		getAsyncJobSnapshot: () => ({ running: [] }),
+		getRunningNonTaskJobCount: () => 0,
 		getContextUsage: () => undefined,
 	} as unknown as ConstructorParameters<typeof StatusLineComponent>[0]);
 	component.updateSettings({
@@ -224,6 +225,7 @@ describe("usage status-line segment", () => {
 				},
 			},
 			getAsyncJobSnapshot: () => ({ running: [] }),
+		getRunningNonTaskJobCount: () => 0,
 			getContextUsage: () => undefined,
 		} as unknown as ConstructorParameters<typeof StatusLineComponent>[0];
 		const component = new StatusLineComponent(session);

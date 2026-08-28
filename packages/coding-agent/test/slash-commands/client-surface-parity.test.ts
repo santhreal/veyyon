@@ -265,6 +265,7 @@ describe("no ACP-visible message names a command ACP cannot dispatch", () => {
 					freshSession: () => undefined,
 					getContextUsage: () => undefined,
 					getAsyncJobSnapshot: () => undefined,
+					getRunningNonTaskJobCount: () => 0,
 					getActiveToolNames: () => [],
 					getAllToolNames: () => [],
 					getAvailableModels: () => [],

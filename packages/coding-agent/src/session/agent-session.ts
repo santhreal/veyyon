@@ -4727,6 +4727,14 @@ export class AgentSession {
 		return { running, recent, delivery };
 	}
 
+	/** Count running background jobs (excluding task spawns) without allocating
+	 *  a snapshot. Used by the status line's background-job badge. */
+	getRunningNonTaskJobCount(): number {
+		const manager = this.#asyncJobManager;
+		if (!manager) return 0;
+		return manager.countRunningJobsExcludingType("task", this.#agentId);
+	}
+
 	/**
 	 * Cancel async jobs registered by this agent and by every agent it spawned.
 	 * Used by lifecycle transitions (newSession, switchSession, handoff, dispose)

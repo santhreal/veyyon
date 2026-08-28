@@ -164,6 +164,7 @@ function makeSession(cwd: () => string = () => wideCwd): AgentSession {
 		},
 		getPrewalkState: () => undefined,
 		getAsyncJobSnapshot: () => undefined,
+		getRunningNonTaskJobCount: () => 0,
 		settings: { getGroup: () => ({ enabled: false }) },
 		isAdvisorActive: () => false,
 		isApprovalBypassed: () => false,

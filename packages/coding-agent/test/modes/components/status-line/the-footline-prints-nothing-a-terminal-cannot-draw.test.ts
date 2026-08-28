@@ -140,6 +140,7 @@ function stubSession(cwd: string, modelName = "claude\x1b[31m-3-7-sonnet"): Agen
 		},
 		getPrewalkState: () => undefined,
 		getAsyncJobSnapshot: () => undefined,
+		getRunningNonTaskJobCount: () => 0,
 		settings: { getGroup: () => ({ enabled: false }) },
 		isAdvisorActive: () => false,
 		isApprovalBypassed: () => false,

@@ -143,6 +143,7 @@ function makeSession(providers: { live?: string; configured?: string } = {}): Ag
 		isApprovalBypassed: () => false,
 		getGoalModeState: () => null,
 		getAsyncJobSnapshot: () => ({ running: [] }),
+		getRunningNonTaskJobCount: () => 0,
 		getCurrentModel: () => undefined,
 		getContextUsage: () => ({ tokens: 1_000, contextWindow: 200_000, percent: 1 }),
 		fetchUsageReports: async () => [],

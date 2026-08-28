@@ -86,6 +86,7 @@ function makeSession(options: SessionOptions): AgentSession {
 			getSessionName: () => "test",
 		},
 		getAsyncJobSnapshot: () => ({ running: [] }),
+		getRunningNonTaskJobCount: () => 0,
 		settings: { getGroup: () => compaction },
 		getContextUsage: (): ContextUsage => ({
 			tokens: options.usedTokens,

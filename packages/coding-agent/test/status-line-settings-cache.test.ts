@@ -50,6 +50,7 @@ function makeSession(sessionName = "Cache Session") {
 		isApprovalBypassed: () => false,
 		getGoalModeState: () => null,
 		getAsyncJobSnapshot: () => ({ running: [] }),
+		getRunningNonTaskJobCount: () => 0,
 		settings: { get: () => false, getGroup: () => ({ enabled: false }) },
 		modelRegistry: { isUsingOAuth: () => false },
 		sessionManager: {

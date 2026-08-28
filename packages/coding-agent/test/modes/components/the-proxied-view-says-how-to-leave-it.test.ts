@@ -69,6 +69,7 @@ function makeSession() {
 		isFastModeEnabled: () => false,
 		getGoalModeState: () => null,
 		getAsyncJobSnapshot: () => ({ running: [] }),
+		getRunningNonTaskJobCount: () => 0,
 		getPrewalkState: () => undefined,
 		isAdvisorActive: () => false,
 		configuredThinkingLevel: () => "medium",

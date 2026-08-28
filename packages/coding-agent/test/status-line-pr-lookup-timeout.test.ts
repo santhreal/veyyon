@@ -62,6 +62,7 @@ function makeSession() {
 		isFastModeEnabled: () => false,
 		getGoalModeState: () => null,
 		getAsyncJobSnapshot: () => ({ running: [] }),
+		getRunningNonTaskJobCount: () => 0,
 		modelRegistry: { isUsingOAuth: () => false },
 		sessionManager: {
 			getSessionName: () => "pr-lookup-timeout test",

@@ -299,6 +299,19 @@ export class AsyncJobManager {
 		return this.#filterJobs(this.#jobs.values(), filter).filter(job => job.status === "running");
 	}
 
+	/** Count running jobs excluding a type, without allocating arrays or job objects.
+	 *  Used by the status line's background-job badge, which only needs the count. */
+	countRunningJobsExcludingType(excludeType: AsyncJobType, ownerId?: string): number {
+		let count = 0;
+		for (const job of this.#jobs.values()) {
+			if (job.status !== "running") continue;
+			if (job.type === excludeType) continue;
+			if (ownerId !== undefined && job.ownerId !== ownerId) continue;
+			count++;
+		}
+		return count;
+	}
+
 	getRecentJobs(limit = 10, filter?: AsyncJobFilter): AsyncJob[] {
 		return this.#filterJobs(this.#jobs.values(), filter)
 			.filter(job => job.status !== "running")

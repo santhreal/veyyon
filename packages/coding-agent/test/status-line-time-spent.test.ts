@@ -95,6 +95,7 @@ function makeSession(
 		isFastModeEnabled: () => false,
 		getGoalModeState: () => null,
 		getAsyncJobSnapshot: () => ({ running: [] }),
+		getRunningNonTaskJobCount: () => 0,
 		modelRegistry: { isUsingOAuth: () => false },
 		sessionFile: overrides.sessionFile,
 		sessionManager: {

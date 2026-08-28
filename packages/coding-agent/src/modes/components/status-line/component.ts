@@ -1956,13 +1956,7 @@ export class StatusLineComponent implements Component {
 	 * behind them, and those are what this badge is for.
 	 */
 	#backgroundJobBadgeCount(): number {
-		const running = this.session.getAsyncJobSnapshot()?.running;
-		if (!running) return 0;
-		let count = 0;
-		for (let i = 0; i < running.length; i++) {
-			if (running[i]!.type !== "task") count++;
-		}
-		return count;
+		return this.session.getRunningNonTaskJobCount();
 	}
 
 	/**

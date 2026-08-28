@@ -54,6 +54,7 @@ function makeSession(runningJobs: FakeJob[]) {
 			recent: [],
 			delivery: { pending: [] },
 		}),
+		getRunningNonTaskJobCount: () => runningJobs.filter(j => j.type !== "task").length,
 		settings: { getGroup: () => ({ enabled: false }) },
 		isAdvisorActive: () => false,
 		isApprovalBypassed: () => false,

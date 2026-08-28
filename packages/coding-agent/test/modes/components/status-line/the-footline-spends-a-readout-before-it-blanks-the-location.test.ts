@@ -110,6 +110,7 @@ function makeSession(cwd: () => string): AgentSession {
 		},
 		getPrewalkState: () => undefined,
 		getAsyncJobSnapshot: () => undefined,
+		getRunningNonTaskJobCount: () => 0,
 		settings: { getGroup: () => ({ enabled: false }) },
 		isAdvisorActive: () => false,
 		// The rung in the frame: `! YOLO`, which widens the mode part to `! YOLO · Plan`.
