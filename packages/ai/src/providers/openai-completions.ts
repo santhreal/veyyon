@@ -420,10 +420,7 @@ function processOpenAICompletionsToolCallDelta(
 			}
 		}
 	} else if (isRecord(rawArgs)) {
-		const prev =
-			isRecord(block.partialArgs)
-				? (block.partialArgs as Record<string, unknown>)
-				: undefined;
+		const prev = isRecord(block.partialArgs) ? (block.partialArgs as Record<string, unknown>) : undefined;
 		const merged = mergeStreamingArgumentObjects(prev, rawArgs);
 		block.partialArgs = merged;
 		block.arguments = merged;
