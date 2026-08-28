@@ -1,34 +1,7 @@
-// Two-dimensional layout engine for *display* LaTeX math.
-//
-//              ┌─────────       n         ⎛  a+b  ⎞²
-//        −b ± ╲│ b² − 4ac       ∑   xᵢ    ⎜ ───── ⎟     ⎡ 1  2 ⎤
-//   x = ──────────────────    i=0         ⎝   c   ⎠     ⎣ 3  4 ⎦
-//               2a
-//
-// Only display blocks (`$$…$$`, `\[…\]`) use this; inline `$…$` stays single-line
-// via `latexToUnicode` (`½`, `(a+b)/c`). The engine lays out a `Box` tree —
-// rectangles of padded lines with a `baseline` row — and knows how to stack
-// fractions and `\binom`, stretch delimiters (`\left…\right`, tall bare parens,
-// matrix brackets), render matrix/cases/array environments as baseline-aligned
-// grids, place big-operator limits (`\sum`, `\lim`, `\int\limits`) above and
-// below the symbol, draw radicals, raise/lower block scripts, and
-// align `&` columns in `align`-family environments. Flat runs — symbols, fonts,
-// colors, inline scripts — are delegated to `latexToUnicode`.
-//
-// The 2-D layout approach (stretchy delimiter piecing, stacked operator limits,
-// baseline-aligned matrix grids, drawn radicals, block scripts) is modeled on
-// txm — Terminal TeX Math — by @thatmagicalcat
-// (https://github.com/thatmagicalcat/txm, MIT/Apache-2.0), reimplemented from
-// scratch here on this module's ANSI-aware Box model.
-
 import { latexColorScope, latexToUnicode, MATH_FONT_COMMANDS } from "./latex-to-unicode";
 import { clamp, padding, visibleWidth } from "./utils";
 
-/**
- * A rectangular block of rendered text. Every entry in `lines` is padded to
- * exactly `width` visible columns; `baseline` is the row that aligns with the
- * surrounding text when boxes are placed side by side (e.g. the fraction bar).
- */
+/** Rectangular block of rendered text with baseline. */
 interface Box {
 	lines: string[];
 	baseline: number;
@@ -184,11 +157,7 @@ const DELIM_KEYS: Record<string, string> = {
 	".": "",
 };
 
-/**
- * Inline-run conversion context. `wrap` re-applies the scoped commands (math
- * fonts, colors) active at this point in the parse, so each flat run handed to
- * `latexToUnicode` renders with the same styling it would have had in one piece.
- */
+/** Inline-run conversion context. */
 interface Ctx {
 	wrap: (run: string) => string;
 }
@@ -289,11 +258,7 @@ function fracBox(num: Box, den: Box): Box {
 	return { lines, baseline: num.lines.length, width };
 }
 
-/**
- * One vertical delimiter column of `height` rows for piece-table key `key`
- * (`"("`, `"{"`, …); null when `key` is empty (`\left.`). Unknown keys render a
- * single glyph at the baseline row.
- */
+/** Generate vertical delimiter column for given height. */
 function delimColumn(key: string, height: number, baseline: number): Box | null {
 	if (!key) return null;
 	const pieces = DELIM_PIECES[key];
@@ -344,10 +309,7 @@ function binomBox(top: Box, bottom: Box): Box {
 	return delimBox({ lines, baseline: top.lines.length, width }, "(", ")");
 }
 
-/**
- * A drawn radical for a multi-line radicand: overline row on top, bar column
- * on the left, hook at the bottom. Single-line radicands stay flat (`√x̄`).
- */
+/** Draw radical for multi-line radicand. */
 function radicalBox(inner: Box, degree: string | null): Box {
 	const lines: string[] = [` ┌${BAR.repeat(inner.width + 1)}`];
 	for (let y = 0; y < inner.lines.length; y++) {
@@ -371,12 +333,7 @@ function limitsBox(glyph: Box, sub: Box | null, sup: Box | null): Box {
 	return { lines, baseline, width };
 }
 
-/**
- * Attach block scripts to `base` as one shared right-hand column: the
- * superscript ends level with the base's top row (raised one row above a
- * single-line base), the subscript starts level with its bottom row (lowered
- * one row below a single-line base).
- */
+/** Attach block scripts to base as right-hand column. */
 function attachScripts(base: Box, sub: Box | null, sup: Box | null): Box {
 	if (sub === null && sup === null) return base;
 	const single = base.lines.length === 1;
@@ -402,13 +359,7 @@ function attachScripts(base: Box, sub: Box | null, sup: Box | null): Box {
 	return hconcat([base, { lines, baseline, width }]);
 }
 
-/**
- * Lay out parsed cells as a grid: per-column width/alignment, per-gap width.
- * With `rowGap > 0` (matrix-family environments), blank rows separate the grid
- * rows and the total height is forced odd, so the baseline sits at the true
- * vertical center — `A = [matrix]` centers on the brackets, and stretched
- * braces get a real middle piece even for two content rows.
- */
+/** Lay out parsed cells as a grid. */
 function gridBox(rows: Box[][], align: (col: number) => CellAlign, gap: (col: number) => number, rowGap = 0): Box {
 	let ncols = 0;
 	for (let ri = 0; ri < rows.length; ri++) ncols = Math.max(ncols, rows[ri]!.length);
@@ -479,11 +430,7 @@ function readBraceGroup(src: string, i: number): Span {
 	return { text: out, end: j };
 }
 
-/**
- * Read one command argument: a `{…}` group, a single char, or a `\command`
- * together with its attached `[…]`/`{…}` arguments (or whole `\begin…\end`
- * block), so e.g. `\frac\sqrt{a}{b}` reads `\sqrt{a}` as the numerator.
- */
+/** Read one command argument ({...} group, char, or \command). */
 function readArg(src: string, i: number): Span {
 	while (src[i] === " ") i++;
 	if (i >= src.length) return { text: "", end: i };
@@ -580,10 +527,7 @@ function readLeftRight(src: string, start: number): LeftRightParts | null {
 	return null; // unbalanced
 }
 
-/**
- * Index of the `close` matching the `open` at `i`, skipping escapes and brace
- * groups; −1 when unbalanced (e.g. interval notation `[0, 1)`).
- */
+/** Find index of matching close delimiter. */
 function matchDelim(src: string, i: number, open: string, close: string): number {
 	let depth = 0;
 	for (let k = i; k < src.length; k++) {
@@ -754,12 +698,7 @@ function scriptArgOf(text: string): string {
 	return arg;
 }
 
-/**
- * Render a `\begin{env}…\end{env}` block. Grid environments (matrix family,
- * cases, array) become baseline-aligned 2-D grids in stretched delimiters;
- * wrapper environments (`align`, `gather`, …) parse each `\\` row, aligning `&`
- * columns; anything else (tabular, …) renders flat via `latexToUnicode`.
- */
+/** Render a \begin{env}...\end{env} block. */
 function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end: number } | null {
 	const env = readEnvironment(src, start);
 	if (env === null) return null;
@@ -849,34 +788,15 @@ function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end
 	return { box: grid, end: env.end };
 }
 
-/**
- * Paint every line of `box` through a `latexColorScope` painter so structural
- * glyphs (fraction bars, stretched delimiters, matrix brackets) inherit the
- * enclosing color scope while nested color runs still restore to it.
- */
+/** Paint box lines through latexColorScope painter. */
 function colorizeBox(box: Box, scope: (text: string) => string): Box {
 	const lines = new Array<string>(box.lines.length);
 	for (let li = 0; li < box.lines.length; li++) lines[li] = scope(box.lines[li]!);
 	return { lines, baseline: box.baseline, width: box.width };
 }
 
-/**
- * Parse a math fragment into a layout box. 2-D constructs — fractions, binomials,
- * radicals over tall content, `\left…\right` and tall bare parens, environments,
- * big-operator limits, block scripts — become stacked boxes; everything between
- * them is gathered into inline runs rendered through `latexToUnicode` under the
- * active scope wrapper (`ctx`), with `\color` state re-applied per run.
- */
-/**
- * Recursion guard for the 2-D block layout. `parseExpr` recurses through
- * fractions/binoms/radicals/scripts/groups/environment cells, and the box layout
- * cost is super-linear in nesting depth — a depth-1000 `\frac` chain took ~6.6s
- * and deeper hangs for minutes, so model-authored display math is a trivial DoS.
- * Past this depth, degrade the remaining source to a single flat inline box via
- * the (linear, depth-guarded) `latexToUnicode` instead of recursing further. Real
- * display math nests only a handful deep; continued fractions rarely past ~10.
- * `parseExpr` is fully synchronous, so a module-level counter unwinds correctly.
- */
+/** Parse math fragment into layout box. */
+/** Recursion guard for 2-D block layout. */
 const MAX_BLOCK_DEPTH = 64;
 // Longest tail flattened inline at the depth cap. Past MAX_BLOCK_DEPTH the source
 // is unreadable as 2-D layout; a giant tail (a 50k-deep `\frac` chain is ~300KB)
@@ -1276,13 +1196,7 @@ function splitLines(src: string): string[] {
 	return lines;
 }
 
-/**
- * Render a display LaTeX math fragment to lines with full 2-D layout: stacked
- * fractions, stretchy delimiters, matrix grids, operator limits, drawn
- * radicals. Top-level source newlines and `\\` become vertical rows (so a
- * `lhs =` line stays above its block). Inline math should use `latexToUnicode`
- * instead — fractions there stay single-line.
- */
+/** Render display LaTeX math to lines with 2-D layout. */
 export function latexToBlock(src: string): string[] {
 	if (typeof src !== "string" || src.trim() === "") return [];
 	const rawLines = splitLines(src.trim());

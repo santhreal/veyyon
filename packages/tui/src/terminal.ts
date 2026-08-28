@@ -58,58 +58,11 @@ function shouldPollWindowsTerminalAppearance(env: NodeJS.ProcessEnv = Bun.env): 
 	if (!env.WT_SESSION) return false;
 	return !env.TERM_PROGRAM || env.TERM_PROGRAM.toLowerCase() === "windows_terminal";
 }
-/**
- * Maximum encoded UTF-8 bytes per `process.stdout.write` call on Windows.
- *
- * Windows ConPTY ties viewport tracking to per-`WriteFile` boundaries: when a
- * single write exceeds ~32-64 KB, the pseudo-console stops following the
- * cursor and the host UI's viewport stays parked at whatever scroll position
- * the write started from. The visible symptom is that a full-paint of a long
- * session (resume, history rebuild, large permission dialog) shows only the
- * first ~30 lines until any focus event forces the host to re-query the
- * cursor. The data is delivered correctly — it's purely a viewport-sync bug.
- *
- * The cap is on **encoded UTF-8 bytes**, not JS code units, because
- * `process.stdout.write(string)` UTF-8-encodes before handing off to
- * `WriteFile`. A pure-CJK transcript row encodes to ~3 bytes per BMP code
- * unit, so a code-unit-based cap of 16 KiB could land at ~48 KiB of actual
- * `WriteFile` traffic and reintroduce the #2034 parked-viewport bug for
- * non-ASCII content.
- *
- * 16 KiB is half the smallest observed Windows Terminal threshold (32 KiB),
- * which keeps the per-write parked-viewport bug fixed by #2034 while halving
- * the WriteFile count on multi-megabyte paints (a 3 MB session resume splits
- * into ~192 chunks instead of ~384). Fewer WriteFiles means fewer chances for
- * WT's viewport-following logic to lose track of the cursor during the burst,
- * which mitigates the residual mid-paint drift the original 8 KiB cap left
- * behind (#2095). Still well clear of the threshold so the other ConPTY hosts
- * (Tabby, Hyper, VS Code) — where the exact limit is undocumented — keep
- * their safety margin.
- */
+/** Maximum encoded UTF-8 bytes per stdout write on Windows ConPTY. */
 const MAX_CONPTY_WRITE_CHUNK_BYTES = 16 * 1024;
 
-/**
- * Split `data` into chunks whose encoded UTF-8 byte length is no greater than
- * `maxChunkBytes`, preferring a line boundary (`\n`) as the cut point so
- * escape sequences (which never contain `\n`) stay intact. The TUI's
- * full-paint buffers are line-structured (`buffer += "\r\n"` between rows),
- * so a newline almost always exists within the window. The fallback for a
- * buffer with no newline in range is a hard cut at the last UTF-8 code-point
- * boundary that still fits — the ConPTY viewport bug from a single oversized
- * write is strictly worse than a one-frame escape-sequence glitch on a
- * buffer the renderer effectively never produces.
- *
- * UTF-16 code units are walked manually rather than measuring with
- * `Buffer.byteLength` per slice candidate: each code unit's UTF-8 width is
- * known from its value (BMP `<0x80` → 1, `<0x800` → 2, surrogate pair → 4
- * bytes across two units, other BMP → 3), and surrogate pairs are kept
- * together so the chunker never splits a non-BMP character.
- *
- * Exported for unit testing of the chunking contract; `#safeWrite` is the
- * sole production caller.
- */
+/** Split `data` into chunks capped at `maxChunkBytes` UTF-8 length. */
 export function chunkForConPTY(data: string, maxChunkBytes: number = MAX_CONPTY_WRITE_CHUNK_BYTES): string[] {
-	// Fast path: whole buffer fits in one write.
 	if (Buffer.byteLength(data, "utf8") <= maxChunkBytes) return [data];
 	const chunks: string[] = [];
 	const len = data.length;
@@ -140,7 +93,6 @@ export function chunkForConPTY(data: string, maxChunkBytes: number = MAX_CONPTY_
 					cuBytes = 3;
 				}
 			} else {
-				// BMP non-surrogate or unpaired low surrogate → 3 bytes.
 				cuBytes = 3;
 			}
 			if (bytes + cuBytes > maxChunkBytes && i > pos) {
@@ -163,23 +115,10 @@ export function chunkForConPTY(data: string, maxChunkBytes: number = MAX_CONPTY_
 	return chunks;
 }
 
-/**
- * Codes that mean the terminal is genuinely gone: every future write will fail
- * the same way, so rendering must latch off once (loudly) rather than repaint
- * into the void and spam the log. `EPIPE`/`ERR_STREAM_*` = the reader (terminal
- * or piped consumer) closed; `EBADF`/`ENXIO` = the fd is no longer a valid
- * device. Anything else (notably `EAGAIN`/`EWOULDBLOCK`/`EINTR` backpressure and
- * transient PTY `EIO` hiccups) is recoverable and must NOT brick the UI.
- */
+/** Codes indicating terminal connection is permanently closed. */
 const FATAL_WRITE_CODES = new Set(["EPIPE", "EBADF", "ENXIO", "ERR_STREAM_DESTROYED", "ERR_STREAM_WRITE_AFTER_END"]);
 
-/**
- * Latch rendering off after this many CONSECUTIVE non-fatal write failures. A
- * single transient error must never disable the terminal (the next frame
- * retries and the display recovers), but a sustained run of failures with no
- * success in between means the device is effectively dead even without a fatal
- * code, so this backstop stops an unbounded per-frame retry-and-fail loop.
- */
+/** Latch rendering off after consecutive write failures. */
 const MAX_CONSECUTIVE_WRITE_FAILURES = 8;
 
 /** Extract a Node/libuv error `code` string from an unknown thrown value. */
@@ -193,17 +132,7 @@ export function terminalWriteErrorCode(err: unknown): string | undefined {
 
 export type WriteFailureDecision = "disable-fatal" | "disable-exhausted" | "retry";
 
-/**
- * Decide what a write failure means, given the error and the number of
- * consecutive failures INCLUDING this one (the caller increments first, resets
- * to 0 on any success). `disable-fatal` → the terminal closed, latch off now;
- * `disable-exhausted` → too many failures in a row with no success, latch off as
- * a backstop; `retry` → transient, keep rendering and let the next paint retry.
- *
- * Pure and exported so the policy is unit-tested without a live terminal — the
- * old code latched off on the FIRST error of any kind, so one momentary
- * `EAGAIN`/`EIO` blanked the whole session permanently.
- */
+/** Classify a write failure. */
 export function decideTerminalWriteFailure(err: unknown, consecutiveFailures: number): WriteFailureDecision {
 	const code = terminalWriteErrorCode(err);
 	if (code !== undefined && FATAL_WRITE_CODES.has(code)) return "disable-fatal";
@@ -211,13 +140,9 @@ export function decideTerminalWriteFailure(err: unknown, consecutiveFailures: nu
 	return "retry";
 }
 
-/**
- * Minimal terminal interface for TUI
- */
+/** Minimal terminal interface for TUI. */
 
-// Track active terminal for emergency cleanup on crash
 let activeTerminal: ProcessTerminal | null = null;
-// Track if a terminal was ever started (for emergency restore logic)
 let terminalEverStarted = false;
 // Whether the alternate screen buffer is currently active (mirrors the TUI's
 // overlay enter/leave writes). Consulted by emergencyTerminalRestore: DECRST
@@ -228,32 +153,13 @@ let terminalEverStarted = false;
 // dead frame after exit.
 let altScreenActive = false;
 
-/**
- * True while any terminal instance holds an OSC 11 background override. Module
- * level so the blind emergency-restore path (no live instance) can still reset
- * the user's terminal background after a crash.
- */
+/** Active OSC 11 background override reference count. */
 let osc11BackgroundOverridden = false;
 
-/**
- * DEC private mode for kitty-style enhanced paste notifications. Named because
- * three sites have to agree on it: the DECRQM probe, the set, and the reset.
- * No shipping emulator implements it -- kitty answers a blind set with
- * `[PARSE ERROR] Unsupported screen mode: 5522 (private)` in its own log --
- * so the set is written only after a positive report, which today means never.
- * The OSC 5522 clipboard protocol kitty DOES implement is a different thing
- * and is unaffected: it needs no mode set at all.
- */
+/** DEC private mode 5522 for enhanced paste notifications. */
 export const ENHANCED_PASTE_MODE = 5522;
 
-/**
- * True once any terminal instance has armed enhanced paste (DEC private mode
- * 5522). Module level for the same reason as the background override: the blind
- * emergency-restore path has no live instance, and the reset for this mode must
- * be written only by a process that actually set it -- kitty logs a parse error
- * for the mode either way, so an unconditional reset is a line of noise in the
- * log of every session that never pasted.
- */
+/** True once enhanced paste mode has been armed. */
 let enhancedPasteArmed = false;
 let terminalRestoreRegistered = false;
 
@@ -293,34 +199,10 @@ const ENABLE_VIRTUAL_TERMINAL_INPUT = 0x0200;
 /** UTF-8 codepage id for SetConsoleCP/SetConsoleOutputCP. */
 const CP_UTF8 = 65001;
 
-/**
- * Lazily-initialized closure re-asserting the UTF-8 console codepage, or
- * `null` when unavailable (non-win32, FFI failure, console detached).
- */
+/** Lazily-initialized closure re-asserting UTF-8 console codepage. */
 let consoleCodepageGuard: (() => void) | null | undefined;
 
-/**
- * Re-assert the UTF-8 console codepage before writing (win32 only).
- *
- * Bun sets both console codepages to UTF-8 (65001) at startup, and
- * `process.stdout.write(string)` hands UTF-8 bytes to `WriteFile`, which
- * conhost translates using the *current* console output codepage. Child
- * processes spawned by tools (bash commands, MCP/LSP servers, eval kernels)
- * share this console, and some flip the codepage behind our back: PHP >=7.1
- * CLI issues the equivalent of `chcp` whenever `internal_encoding` mismatches
- * the console codepage (php.net request #73716) and skips the restore when
- * killed — and two PHP processes in a pipeline race their restores. Once the
- * codepage falls back to an OEM page (437/850), every non-ASCII glyph the TUI
- * paints is mis-translated: box-drawing borders degrade into `Γöé`/`ΓöÇ`
- * mojibake on the next full repaint (most visibly ctrl+o expand, which
- * rewrites every row).
- *
- * `GetConsoleOutputCP` is one cheap console call per `#safeWrite`; the setter
- * only runs after a foreign flip. A reading of 0 means "no console" — leave
- * that alone. Guarding the write chokepoint (rather than per-spawn cleanup)
- * covers every console-sharing child and long-running processes that flip
- * the codepage mid-session.
- */
+/** Re-assert UTF-8 console codepage before writing (win32). */
 function ensureWindowsConsoleUtf8(): void {
 	if (consoleCodepageGuard === undefined) consoleCodepageGuard = createConsoleCodepageGuard();
 	consoleCodepageGuard?.();
@@ -363,10 +245,7 @@ function createConsoleCodepageGuard(): (() => void) | null {
 		return null;
 	}
 }
-/**
- * Emergency terminal restore - call this from signal/crash handlers
- * Resets terminal state without requiring access to the ProcessTerminal instance
- */
+/** Emergency terminal restore for signal/crash handlers. */
 export function emergencyTerminalRestore(): void {
 	try {
 		// Crash paths must surface subsequent stderr (fatal reports) on the
@@ -434,28 +313,18 @@ export function emergencyTerminalRestore(): void {
 /** Terminal-reported appearance (dark/light mode). */
 export type TerminalAppearance = "dark" | "light";
 export interface Terminal {
-	// Start the terminal with input and resize handlers
 	start(onInput: (data: string) => void, onResize: () => void): void;
 
-	// Stop the terminal and restore state
 	stop(): void;
 
-	/**
-	 * Drain stdin before exiting to prevent Kitty key release events from
-	 * leaking to the parent shell over slow SSH connections.
-	 * @param maxMs - Maximum time to drain (default: 1000ms)
-	 * @param idleMs - Exit early if no input arrives within this time (default: 50ms)
-	 */
+	/** Drain stdin before exiting. */
 	drainInput(maxMs?: number, idleMs?: number): Promise<void>;
 
-	// Write output to terminal
 	write(data: string): void;
 
-	// Get terminal dimensions
 	get columns(): number;
 	get rows(): number;
 
-	// Whether Kitty keyboard protocol is active
 	get kittyProtocolActive(): boolean;
 
 	// The exact kitty keyboard push sequence in effect ("\x1b[>1u" or "\x1b[>7u"),
@@ -473,80 +342,40 @@ export interface Terminal {
 	// so custom Terminals built against older pi-tui versions keep working.
 	readonly keyboardEnhancementExitSequence?: string | null;
 
-	// Cursor positioning (relative to current position)
 	moveBy(lines: number): void; // Move cursor up (negative) or down (positive) by N lines
 
-	// Cursor visibility
 	hideCursor(): void; // Hide the cursor
 	showCursor(): void; // Show the cursor
 
-	// Clear operations
 	clearLine(): void; // Clear current line
 	clearFromCursor(): void; // Clear from cursor to end of screen
 	clearScreen(): void; // Clear entire screen and move cursor to (0,0)
 
-	// Title operations
 	setTitle(title: string): void; // Set terminal window title
 
-	// Progress indicator (OSC 9;4)
 	setProgress(active: boolean): void;
 
-	/**
-	 * Register a callback for terminal appearance (dark/light) changes.
-	 * Detection uses OSC 11 background color query with Mode 2031 as a change trigger.
-	 * Fires when the detected appearance changes, including the initial detection.
-	 * Subscribers registered after detection are invoked immediately with the
-	 * already-detected appearance so late subscribers never miss it.
-	 */
+	/** Register callback for terminal appearance changes. */
 	onAppearanceChange(callback: (appearance: TerminalAppearance) => void): void;
 	/** The last detected terminal appearance, or undefined if not yet known. */
 	get appearance(): TerminalAppearance | undefined;
-	/**
-	 * Exact background color the terminal reported via OSC 11 (`#rrggbb`), or
-	 * undefined if no reply yet. Optional so custom Terminals built against
-	 * older pi-tui versions keep working.
-	 */
+	/** Exact background color reported via OSC 11, or undefined. */
 	readonly backgroundColor?: string | undefined;
-	/**
-	 * Register a callback for OSC 11 background-color reports (exact hex, not
-	 * just dark/light). Fires on change and replays an already-known color to
-	 * late subscribers. Optional: older custom Terminals may not implement it.
-	 */
+	/** Register callback for OSC 11 background-color reports. */
 	onBackgroundColorChange?(callback: (hex: string) => void): void;
-	/**
-	 * Override the terminal's own background color via OSC 11 so the emulator's
-	 * padding margin matches a painted theme ground. Callers must pair with
-	 * {@link resetBackgroundColor}; stop() and the emergency crash restore also
-	 * reset it so the user's terminal is never left recolored. Optional.
-	 */
+	/** Override terminal background color via OSC 11. */
 	setBackgroundColor?(hex: string): void;
 	/** Reset an overridden terminal background to its default (OSC 111). No-op if never overridden. Optional. */
 	resetBackgroundColor?(): void;
-	/**
-	 * Register a callback fired once per DEC private mode when its DECRQM support
-	 * status resolves. Optional: only real terminals implement capability probing.
-	 */
+	/** Register callback fired when DECRQM status resolves for a mode. */
 	onPrivateModeReport?(callback: (mode: number, supported: boolean) => void): void;
-	/**
-	 * Ask for kitty-style enhanced paste notifications (DEC private mode 5522).
-	 * The set is written only once DECRQM has confirmed the mode, so a terminal
-	 * that does not implement it is never sent the escape. Optional: a Terminal
-	 * with no capability probe can never confirm and therefore never arms.
-	 */
+	/** Request kitty-style enhanced paste notifications (DEC 5522). */
 	requestEnhancedPaste?(): void;
 }
 
-/**
- * True when stdout flows through a ConPTY pseudo-console (native win32, or
- * Linux running under WSL where stdout still crosses into ConPTY at the
- * `wslhost` boundary). ConPTY hosts share the per-WriteFile viewport-tracking
- * quirks documented above and on {@link MAX_CONPTY_WRITE_CHUNK_BYTES}, so both
- * `#safeWrite` and the renderer's post-big-paint settle gate hang off this
- * single predicate.
- */
+/** True when stdout flows through Windows ConPTY. */
 export function isConPTYHosted(): boolean {
 	if (process.platform === "win32") return true;
-	// WSL: stdout still crosses into ConPTY at the `wslhost` boundary.
 	return process.platform === "linux" && (!!$env.WSL_DISTRO_NAME || !!$env.WSL_INTEROP);
 }
 
@@ -570,16 +399,7 @@ function parseOsc99KeyValues(section: string): Map<string, string> {
 }
 const XTERM_SCROLL_TO_BOTTOM_MODES = [1010, 1011] as const;
 
-/**
- * Every DEC private mode probed by DECRQM at startup, in send order. One list
- * because two things have to agree on it: `start()`, which writes a probe plus a
- * DA1 sentinel per mode, and anything counting how many sentinels are in flight.
- * 2026 gates synchronized output, 2048 in-band resize, 2031 appearance
- * notifications, {@link ENHANCED_PASTE_MODE} the enhanced-paste set, and
- * 1010/1011 are the xterm scroll-to-bottom modes Veyyon turns off while it owns
- * the TTY. Exported so a test can derive the sentinel count instead of pinning a
- * number that goes stale the next time a capability is added.
- */
+/** DEC private modes probed by DECRQM at startup. */
 export const STARTUP_PRIVATE_MODE_PROBES: readonly number[] = [
 	2026,
 	2048,
@@ -600,9 +420,7 @@ function isPrivateModeSupported(status: string): boolean {
 	return status !== "0" && status !== "4";
 }
 
-/**
- * Real terminal using process.stdin/stdout
- */
+/** Real terminal implementation using process.stdin/stdout. */
 export class ProcessTerminal implements Terminal {
 	#wasRaw = false;
 	#inputHandler?: (data: string) => void;
@@ -761,7 +579,6 @@ export class ProcessTerminal implements Terminal {
 		if (this.#headless) return;
 		registerPostmortemTerminalRestore();
 
-		// Register for emergency cleanup
 		activeTerminal = this;
 		terminalEverStarted = true;
 
@@ -770,7 +587,6 @@ export class ProcessTerminal implements Terminal {
 		// stderr-guard in pi-utils (mirrors openai/codex#24459).
 		suppressTerminalStderr();
 
-		// Save previous state and enable raw mode
 		this.#wasRaw = process.stdin.isRaw || false;
 		if (process.stdin.setRawMode) {
 			process.stdin.setRawMode(true);
@@ -778,7 +594,6 @@ export class ProcessTerminal implements Terminal {
 		process.stdin.setEncoding("utf8");
 		process.stdin.resume();
 
-		// Enable bracketed paste mode - terminal will wrap pastes in \x1b[200~ ... \x1b[201~
 		this.#safeWrite("\x1b[?2004h");
 
 		// Ask the terminal to report window focus (DECSET 1004). The only consumer
@@ -860,10 +675,7 @@ export class ProcessTerminal implements Terminal {
 		}
 	}
 
-	/**
-	 * On Windows, add ENABLE_VIRTUAL_TERMINAL_INPUT to the stdin console mode
-	 * so modified keys (for example Shift+Tab) arrive as VT escape sequences.
-	 */
+	/** Enable ENABLE_VIRTUAL_TERMINAL_INPUT on Windows stdin. */
 	#enableWindowsVTInput(): void {
 		if (process.platform !== "win32") return;
 		this.#restoreWindowsVTInput();
@@ -910,14 +722,7 @@ export class ProcessTerminal implements Terminal {
 		}
 	}
 
-	/**
-	 * Set up StdinBuffer to split batched input into individual sequences.
-	 * This ensures components receive single events, making matchesKey/isKeyRelease work correctly.
-	 *
-	 * Also watches for Kitty protocol response and enables it when detected.
-	 * This is done here (after stdinBuffer parsing) rather than on raw stdin
-	 * to handle the case where the response arrives split across multiple events.
-	 */
+	/** Set up StdinBuffer to split batched input into sequences. */
 	#setupStdinBuffer(): void {
 		// 50ms balances two failure modes: a bare ESC keypress on legacy
 		// terminals waits this long before it is delivered, while a CSI key
@@ -926,17 +731,13 @@ export class ProcessTerminal implements Terminal {
 		// proved too tight for split escapes (#1238 covered only probe replies).
 		this.#stdinBuffer = new StdinBuffer({ timeout: 50 });
 
-		// Kitty protocol response pattern: \x1b[?<flags>u
 		const kittyResponsePattern = /^\x1b\[\?(\d+)u$/;
 
-		// Mode 2031 DSR response: \x1b[?997;{1=dark,2=light}n
 		const appearanceDsrPattern = /^\x1b\[\?997;([12])n$/;
 
-		// OSC 11 response: \x1b]11;rgb:RR/GG/BB or rgba:RR/GG/BB, terminated by BEL or ST.
 		const osc11ResponsePattern =
 			/^\x1b\]11;rgba?:([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})(?:\x07|\x1b\\)$/;
 
-		// DA1 (Primary Device Attributes) response: \x1b[?...c
 		const da1ResponsePattern = /^\x1b\[\?[\d;]*c$/;
 
 		// Private CSI partial: \x1b[?<digits/semicolons>... — incomplete probe response
@@ -944,7 +745,6 @@ export class ProcessTerminal implements Terminal {
 		// stdin reads). Used to reassemble DA1, kitty, and Mode 2031 replies.
 		const privateCsiPartialPattern = /^\x1b\[\?[\d;]*[\x20-\x2f]*$/;
 
-		// DECRPM private-mode report (DECRQM reply): \x1b[?<mode>;<status>$y
 		const decrpmResponsePattern = /^\x1b\[\?(\d+);(\d+)\$y$/;
 
 		// In-band resize report (DEC mode 2048): \x1b[48;rows;cols;yPixels;xPixels t
@@ -1007,7 +807,6 @@ export class ProcessTerminal implements Terminal {
 						this.#privateCsiResponseBuffer = "";
 						return;
 					} else {
-						// Still accumulating.
 						return;
 					}
 				}
@@ -1048,7 +847,6 @@ export class ProcessTerminal implements Terminal {
 					this.#inBandResizeBuffer = "";
 					return;
 				} else {
-					// Still accumulating the report.
 					return;
 				}
 			}
@@ -1148,7 +946,6 @@ export class ProcessTerminal implements Terminal {
 					this.#kittyEnableSeq = "\x1b[>7u";
 					this.#safeWrite(this.#kittyEnableSeq);
 				} else {
-					// Level 1 (disambiguate escape codes) for Shift+Enter support.
 					this.#kittyEnableSeq = "\x1b[>1u";
 					this.#safeWrite(this.#kittyEnableSeq);
 				}
@@ -1161,9 +958,7 @@ export class ProcessTerminal implements Terminal {
 			// and forward it as normal input so user keystrokes are never swallowed.
 			if (this.#osc11Pending && (this.#osc11ResponseBuffer || sequence.startsWith("\x1b]11;"))) {
 				if (this.#osc11ResponseBuffer && sequence.startsWith("\x1b") && sequence !== "\x1b\\") {
-					// New escape sequence arrived mid-buffer — not an OSC 11 continuation.
 					this.#osc11ResponseBuffer = "";
-					// Fall through to normal input handling below.
 				} else {
 					this.#osc11ResponseBuffer += sequence;
 					const osc11Match = this.#osc11ResponseBuffer.match(osc11ResponsePattern);
@@ -1211,24 +1006,18 @@ export class ProcessTerminal implements Terminal {
 			}
 		});
 
-		// Re-wrap paste content with bracketed paste markers for existing editor handling
 		this.#stdinBuffer.on("paste", (content: string) => {
 			if (this.#inputHandler) {
 				this.#inputHandler(`\x1b[200~${content}\x1b[201~`);
 			}
 		});
 
-		// Handler that pipes stdin data through the buffer
 		this.#stdinDataHandler = (data: string) => {
 			this.#stdinBuffer!.process(data);
 		};
 	}
 
-	/**
-	 * Send OSC 11 background color query followed by DA1 sentinel.
-	 * DA1 avoids indefinite hangs: if DA1 response arrives before OSC 11,
-	 * the terminal does not support OSC 11.
-	 */
+	/** Send OSC 11 background color query followed by DA1 sentinel. */
 	#queryBackgroundColor(): void {
 		if (this.#dead) return;
 		// Queue if an OSC 11 query is in flight or its DA1 sentinel hasn't been
@@ -1296,10 +1085,7 @@ export class ProcessTerminal implements Terminal {
 		setOsc99Supported(supported);
 	}
 
-	/**
-	 * Parse an OSC 11 background color response and compute BT.601 luminance.
-	 * Handles 1-, 2-, 3-, and 4-digit XParseColor hex components.
-	 */
+	/** Parse OSC 11 background color response and compute luminance. */
 	#handleOsc11Response(rHex: string, gHex: string, bHex: string): void {
 		const r = oscChannelTo8Bit(rHex);
 		const g = oscChannelTo8Bit(gHex);
@@ -1346,15 +1132,7 @@ export class ProcessTerminal implements Terminal {
 		this.#modifyOtherKeysActive = true;
 	}
 
-	/**
-	 * Query terminal for Kitty keyboard protocol support and enable if available.
-	 *
-	 * Sends CSI ? u to query current flags. If terminal responds with CSI ? <flags> u,
-	 * it supports the protocol and we enable it with CSI > 1 u.
-	 *
-	 * The response is detected in setupStdinBuffer's data handler, which properly
-	 * handles the case where the response arrives split across multiple stdin events.
-	 */
+	/** Query and enable Kitty keyboard protocol support if available. */
 	#queryAndEnableKittyProtocol(): void {
 		this.#setupStdinBuffer();
 		process.stdin.on("data", this.#stdinDataHandler!);
@@ -1369,12 +1147,7 @@ export class ProcessTerminal implements Terminal {
 		}, 150);
 	}
 
-	/**
-	 * Probe a DEC private mode via DECRQM (`CSI ? mode $ p`) plus a DA1 sentinel.
-	 * The sentinel guarantees resolution even from terminals that ignore DECRQM.
-	 * Query and sentinel are fused into one write so the bare-`CSI c` sentinel
-	 * accounting used elsewhere stays accurate.
-	 */
+	/** Probe DEC private mode via DECRQM with DA1 sentinel. */
 	#queryPrivateMode(mode: number): void {
 		if (this.#dead) return;
 		if (this.#privateModeSupport.has(mode)) return;
@@ -1389,11 +1162,7 @@ export class ProcessTerminal implements Terminal {
 		}
 	}
 
-	/**
-	 * Record DECRQM support for a private mode (idempotent — first result wins)
-	 * and notify subscribers. Enables DEC 2048 in-band resize when 2048 resolves
-	 * supported.
-	 */
+	/** Record DECRQM support for a private mode. */
 	#resolvePrivateMode(mode: number, supported: boolean): void {
 		if (this.#privateModeSupport.has(mode)) return;
 		this.#privateModeSupport.set(mode, supported);
@@ -1416,23 +1185,13 @@ export class ProcessTerminal implements Terminal {
 		if (mode === ENHANCED_PASTE_MODE) this.#armEnhancedPaste();
 	}
 
-	/**
-	 * Ask for enhanced paste. The set is deferred until DECRQM answers, and is
-	 * skipped entirely when the answer is negative or never comes -- the DA1
-	 * sentinel resolves every probe, so "never comes" still reaches
-	 * {@link #resolvePrivateMode} as unsupported.
-	 */
+	/** Request enhanced paste mode (deferred until DECRQM resolves). */
 	requestEnhancedPaste(): void {
 		this.#enhancedPasteRequested = true;
 		this.#armEnhancedPaste();
 	}
 
-	/**
-	 * Write the set exactly when all three facts hold: the app asked, the terminal
-	 * confirmed the mode, and it is not already armed. Both callers -- the request
-	 * and the DECRQM answer -- come through here rather than testing any of it
-	 * themselves, so the decision has one owner and cannot be made two ways.
-	 */
+	/** Write enhanced-paste mode set sequence if supported. */
 	#armEnhancedPaste(): void {
 		if (this.#enhancedPasteArmed || !this.#enhancedPasteRequested || this.#dead) return;
 		if (this.#privateModeSupport.get(ENHANCED_PASTE_MODE) !== true) return;
@@ -1463,21 +1222,14 @@ export class ProcessTerminal implements Terminal {
 		this.#safeWrite(`\x1b[?${mode}l`);
 	}
 
-	/**
-	 * Enable DEC 2048 in-band resize notifications. The terminal emits an initial
-	 * report immediately, seeding reported geometry and cell dimensions.
-	 */
+	/** Enable DEC 2048 in-band resize notifications. */
 	#enableInBandResize(): void {
 		if (this.#inBandResizeActive || this.#dead) return;
 		this.#inBandResizeActive = true;
 		this.#safeWrite("\x1b[?2048h");
 	}
 
-	/**
-	 * Apply an in-band resize report. Stores reported geometry so `rows`/`columns`
-	 * reflect in-band values, derives cell pixel size, and drives the resize
-	 * handler only when the report changes the effective row/column geometry.
-	 */
+	/** Apply in-band resize report. */
 	#handleInBandResizeReport(rowsRaw: string, colsRaw: string, yPixelsRaw: string, xPixelsRaw: string): void {
 		const previousRows = this.rows;
 		const previousColumns = this.columns;
@@ -1498,19 +1250,7 @@ export class ProcessTerminal implements Terminal {
 		}
 	}
 
-	/**
-	 * Reconcile cached in-band geometry with the OS on an OS-level resize.
-	 *
-	 * SIGWINCH (POSIX) and ConPTY (Windows) refresh `process.stdout.columns`/
-	 * `rows` before the `resize` event fires, so they are authoritative for the
-	 * new cell geometry. A cached DEC 2048 report can be stale: the matching
-	 * post-resize report may be dropped (split across stdin reads past the flush
-	 * window, or interrupted by another escape mid-reassembly), leaving the
-	 * getters pinned to the old size — which freezes the rendered width because
-	 * the renderer reflows against {@link columns}/{@link rows}, not the live OS
-	 * value. Drop a cached dimension that disagrees with the live OS value; the
-	 * terminal's next valid in-band report re-seeds pixel sizing.
-	 */
+	/** Reconcile cached in-band geometry with OS-level resize. */
 	#reconcileInBandGeometryOnResize(): void {
 		if (!this.#inBandResizeActive) return;
 		const osColumns = process.stdout.columns;
@@ -1568,7 +1308,6 @@ export class ProcessTerminal implements Terminal {
 
 	stop(): void {
 		if (this.#headless) return;
-		// Unregister from emergency cleanup
 		if (activeTerminal === this) {
 			activeTerminal = null;
 		}
@@ -1586,7 +1325,6 @@ export class ProcessTerminal implements Terminal {
 		// begin/end halves of a frame. Safe no-ops on terminals that ignored them.
 		this.#safeWrite("\x1b[?2026l\x1b[?7h");
 
-		// Disable bracketed paste mode
 		this.#safeWrite("\x1b[?2004l");
 		// Enhanced paste (DEC 5522) is reset only when this terminal actually armed it.
 		// The mode is not implemented by any shipping emulator, and kitty -- the terminal
@@ -1607,13 +1345,10 @@ export class ProcessTerminal implements Terminal {
 		// TUI's own overlay teardown running.
 		this.#safeWrite("\x1b[?1006l\x1b[?1003l\x1b[?1000l");
 
-		// Disable Mode 2031 appearance change notifications
 		this.#safeWrite("\x1b[?2031l");
 
-		// Hand the user's terminal back with its own background color.
 		this.resetBackgroundColor();
 
-		// Restore xterm scroll-to-bottom modes that were set before startup.
 		for (const mode of this.#xtermScrollToBottomRestoreModes) {
 			this.#safeWrite(`\x1b[?${mode}h`);
 		}
@@ -1645,7 +1380,6 @@ export class ProcessTerminal implements Terminal {
 		this.#reportedColumns = undefined;
 		this.#reportedRows = undefined;
 
-		// Disable Kitty keyboard protocol if not already done by drainInput()
 		if (this.#kittyProtocolActive) {
 			this.#safeWrite("\x1b[<u");
 			this.#kittyProtocolActive = false;
@@ -1661,13 +1395,11 @@ export class ProcessTerminal implements Terminal {
 		}
 
 		this.#restoreWindowsVTInput();
-		// Clean up StdinBuffer
 		if (this.#stdinBuffer) {
 			this.#stdinBuffer.destroy();
 			this.#stdinBuffer = undefined;
 		}
 
-		// Remove event handlers
 		if (this.#stdinDataHandler) {
 			process.stdin.removeListener("data", this.#stdinDataHandler);
 			this.#stdinDataHandler = undefined;
@@ -1685,7 +1417,6 @@ export class ProcessTerminal implements Terminal {
 		// where Ctrl+D could close the parent shell over SSH.
 		process.stdin.pause();
 
-		// Restore raw mode state
 		if (process.stdin.setRawMode) {
 			process.stdin.setRawMode(this.#wasRaw);
 		}
@@ -1725,9 +1456,7 @@ export class ProcessTerminal implements Terminal {
 		if (this.#writeLogPath) {
 			try {
 				fs.appendFileSync(this.#writeLogPath, data, { encoding: "utf8" });
-			} catch {
-				// Ignore logging errors
-			}
+			} catch {}
 		}
 	}
 
@@ -1784,13 +1513,10 @@ export class ProcessTerminal implements Terminal {
 
 	moveBy(lines: number): void {
 		if (lines > 0) {
-			// Move down
 			this.#safeWrite(`\x1b[${lines}B`);
 		} else if (lines < 0) {
-			// Move up
 			this.#safeWrite(`\x1b[${-lines}A`);
 		}
-		// lines === 0: no movement
 	}
 
 	hideCursor(): void {
@@ -1814,7 +1540,6 @@ export class ProcessTerminal implements Terminal {
 	}
 
 	setTitle(title: string): void {
-		// OSC 0;title BEL - set terminal window title
 		this.#safeWrite(`\x1b]0;${title}\x07`);
 	}
 
