@@ -1,24 +1,3 @@
-/**
- * AWS credential resolution for the Bedrock provider.
- *
- * Chain (first hit wins):
- *  1. Static credentials from the environment
- *     (`AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` [+ `AWS_SESSION_TOKEN`]).
- *  2. Profile in `~/.aws/credentials` (and `~/.aws/config` for SSO):
- *      - static `aws_access_key_id` / `aws_secret_access_key` / `aws_session_token`
- *      - SSO profile referencing a cached token in `~/.aws/sso/cache/*.json`,
- *        which we exchange for short-lived role credentials via
- *        `https://portal.sso.{region}.amazonaws.com/federation/credentials`.
- *      - `credential_process` — an external command emitting the AWS SDK
- *        `Version: 1` JSON envelope on stdout. Used by `aws-vault`, `granted`,
- *        in-house brokers, etc.
- *  3. EC2 IMDSv2 (only when `AWS_EC2_METADATA_DISABLED` is unset / falsey and
- *     `169.254.169.254` is reachable within a 1 s timeout).
- *
- * Resolved credentials are cached process-wide per profile and refreshed
- * 60 s before `Expiration` to absorb clock skew.
- */
-
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -33,30 +12,18 @@ import { raceWithSignal } from "../utils/abort";
 import type { AwsCredentials } from "./aws-sigv4";
 
 export interface ResolvedCredentials extends AwsCredentials {
-	/** Absolute expiration timestamp in ms. `undefined` for non-expiring static creds. */
 	expiresAt?: number;
 }
 
 export interface CredentialResolveOptions {
-	/** Named profile from `~/.aws/credentials` / `~/.aws/config`. */
 	profile?: string;
-	/** Falls back to env (`AWS_REGION` / `AWS_DEFAULT_REGION`) and finally `us-east-1`. */
 	region?: string;
 	signal?: AbortSignal;
 	fetch?: FetchImpl;
 }
 
 const REFRESH_SKEW_MS = 60_000;
-/**
- * TTL for file-sourced credentials that carry a session token but no expiry.
- * Tools like aws-vault/saml2aws rewrite ~/.aws/credentials with short-lived STS
- * session keys; caching them forever serves stale creds after rotation.
- */
 const FILE_SESSION_CREDS_TTL_MS = 5 * 60_000;
-/**
- * Bound for the detached (signal-free) shared resolution: a hung
- * credential_process/SSO/IMDS fetch must not pin the inflight slot forever.
- */
 const SHARED_RESOLVE_TIMEOUT_MS = 30_000;
 
 interface CacheEntry {
@@ -139,8 +106,6 @@ function readEnvCredentials(): ResolvedCredentials | undefined {
 
 // ---------- INI parsing ----------
 
-/** Map of section name -> map of key -> value. Section names are stripped of
- * any leading `profile ` (so `~/.aws/config` aligns with `~/.aws/credentials`). */
 type IniFile = Record<string, Record<string, string>>;
 
 function parseIni(text: string): IniFile {
@@ -278,8 +243,6 @@ async function readSsoCredentials(
 		signal,
 	});
 	if (!response.ok) {
-		// The STATUS is the failure; the body is the detail attached to it. An unreadable body must not replace
-		// a credential-service error with a read error, and this endpoint answers a bearer token, so its body
 		// goes through the shared redactor rather than a local slice.
 		const detail = await AIError.readProviderErrorDetail(response);
 		throw new AIError.AwsCredentialsError(
@@ -367,9 +330,6 @@ async function sha1Hex(input: string): Promise<string> {
 
 // ---------- credential_process ----------
 
-/** JSON envelope emitted by an external credential process. Matches the
- * AWS CLI / SDK contract documented at
- * https://docs.aws.amazon.com/sdkref/latest/guide/feature-process-credentials.html */
 interface CredentialProcessEnvelope {
 	Version?: number;
 	AccessKeyId?: string;
@@ -439,9 +399,6 @@ async function readCredentialProcess(
 	return out;
 }
 
-/** Resolve the argv for `Bun.spawn`. On Windows we route `.cmd`/`.bat` helpers
- * through `cmd.exe /c` because direct execution refuses batch files (mirrors
- * Node's `execFile` policy and avoids surprise no-ops). */
 function buildCredentialProcessArgv(profile: string, command: string): string[] {
 	const tokens = tokenizeCredentialProcessCommand(command);
 	if (tokens.length === 0) {
@@ -461,13 +418,6 @@ function isBatchScript(executable: string): boolean {
 	return lower.endsWith(".cmd") || lower.endsWith(".bat");
 }
 
-/** POSIX-shell-style tokenizer used by the AWS CLI for `credential_process`.
- *
- * Outside quotes a backslash escapes the next character. Inside single quotes
- * everything is literal (no escapes, cannot contain `'`). Inside double quotes
- * a backslash only escapes `$`, `` ` ``, `"`, and `\` — every other backslash
- * is preserved verbatim, which is what makes Windows paths like
- * `"C:\Program Files\tool\auth.exe"` survive tokenization. */
 export function tokenizeCredentialProcessCommand(cmd: string): string[] {
 	const tokens: string[] = [];
 	let current = "";
@@ -601,20 +551,11 @@ async function readImdsCredentials(
 	}
 }
 
-/**
- * Test/diagnostic helper — drops cached credentials AND any resolution still in
- * flight. Leaving the in-flight map behind hands the next caller the promise
- * this reset was meant to discard.
- */
 export function clearAwsCredentialCache(): void {
 	cache.clear();
 	inflight.clear();
 }
 
-/**
- * Drop the cache entry for one profile/region. Called by the Bedrock provider on
- * 401/403 responses so stale credentials are re-resolved instead of served until restart.
- */
 export function invalidateAwsCredentialCache(opts: { profile?: string; region?: string } = {}): void {
 	const profile = opts.profile || $env.AWS_PROFILE || "default";
 	const region = opts.region || $env.AWS_REGION || $env.AWS_DEFAULT_REGION || "us-east-1";

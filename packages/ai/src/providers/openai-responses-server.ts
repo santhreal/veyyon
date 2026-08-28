@@ -1,14 +1,3 @@
-/**
- * OpenAI Responses HTTP wire-format ↔ veyyon Context bridge for the auth-gateway.
- *
- * Inbound: parses `POST /v1/responses` request bodies into a {@link ParsedRequest}.
- * Outbound: encodes veyyon's {@link AssistantMessage} (and event stream) back into
- * the documented `response.*` SSE taxonomy or the non-streaming JSON shape.
- *
- * Spec: https://platform.openai.com/docs/api-reference/responses
- * Inverse direction (source-of-truth for item shapes): ../../providers/openai-responses.ts
- */
-
 import { isEffort } from "@veyyon/catalog/effort";
 import { emptyUsage } from "@veyyon/catalog/models";
 import * as logger from "@veyyon/utils/logger";
@@ -110,12 +99,6 @@ type InputBlockUnion =
 	| { type: "input_image"; detail?: "auto" | "low" | "high"; image_url?: string; file_id?: string }
 	| { type: "input_file"; file_id?: string; filename?: string; file_data?: string };
 
-/**
- * Walk an input message's content array and produce pi-ai's `TextContent[]`.
- * `input_image`/`input_file` blocks become bracketed text placeholders since
- * pi-ai's `ImageContent` only carries inline base64 data and we have no
- * resolver for OpenAI `image_url` / `file_id` references. Logs once per kind.
- */
 function inputContentParts(blocks: OpenAIResponsesInputContent[] | string | undefined): string | TextContent[] {
 	if (typeof blocks === "string") return blocks;
 	if (!blocks) return [];
@@ -246,7 +229,6 @@ function ensureAssistantPlaceholder(messages: Message[], modelId: string, now: n
 	return placeholder;
 }
 
-/** Flatten a function_call_output array form (text + refusal) into a single string. */
 function flattenFunctionOutputArray(blocks: readonly unknown[]): string {
 	const parts: string[] = [];
 	for (const raw of blocks) {
@@ -581,21 +563,11 @@ function reasoningItemId(part: ThinkingContent): string {
 	return makeReasoningId();
 }
 
-/**
- * pi-ai responses providers mint composite `"{call_id}|{item_id}"` tool-call
- * ids ({@link encodeResponsesToolCallId}). Only the call_id half belongs on
- * the wire: third-party clients validate the `call_id` charset
- * (`^[a-zA-Z0-9_-]+$`) or echo it to other backends, and `|` fails both.
- */
 function wireCallId(id: string): string {
 	const sep = id.indexOf("|");
 	return sep >= 0 ? id.slice(0, sep) : id;
 }
 
-/**
- * Walk the assistant content array and group consecutive TextContent into a
- * single message item; each ThinkingContent / ToolCall is its own item.
- */
 function buildOutputItems(message: AssistantMessage): OutputItem[] {
 	const out: OutputItem[] = [];
 	let pendingMessage: MessageOutputItem | null = null;
@@ -732,7 +704,6 @@ interface OpenFunctionCall {
 	callId: string;
 	name: string;
 	argsText: string;
-	/** Set when the underlying ToolCall is a custom-tool emission. */
 	customWireName?: string;
 }
 type OpenItem = OpenMessage | OpenReasoning | OpenFunctionCall;
@@ -1219,7 +1190,6 @@ export function encodeStream(
 					return;
 				}
 
-				// Build the canonical output from the final message so non-streaming
 				// readers see the exact same shape they'd get from encodeResponse().
 				// The message is non-null here: the no-message case failed above, so these no longer need a
 				// fallback that reported a failure as a completed response.

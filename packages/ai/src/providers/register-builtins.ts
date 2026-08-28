@@ -1,16 +1,3 @@
-/**
- * Lazy provider module loading.
- *
- * Each provider module is loaded only when its stream function is first called.
- * This avoids eagerly importing heavy SDK dependencies (e.g., openai) at
- * startup. The loaded module promise is cached so subsequent calls
- * reuse the same import.
- *
- * The main streaming path imports the lightweight wrappers below. Each wrapper
- * defers its provider SDK import until the corresponding API is selected, then
- * applies the shared first-event and idle watchdogs while forwarding events.
- */
-
 import { emptyUsage } from "@veyyon/catalog/models";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import * as AIError from "../error";
@@ -145,23 +132,12 @@ interface BedrockProviderModule {
 
 // Module-level lazy promise caches
 
-/** Test overrides map for provider modules. */
 const providerModuleOverrides = new Map<Api, LazyProviderModule<Api>>();
 
-/**
- * The installed overrides, exactly as they stand, for a harness that has to put one back.
- *
- * A tripwire cannot ask "is anything installed" and be right about both callers.
- * `packages/simulations/src/turn-sim/harness.ts` replaces all twelve apis at module scope on purpose
- * and keeps them for the life of the process, so an empty-set rule reds every simulation. What is
- * always wrong is a test ending with an override it did not inherit, which a snapshot taken before
- * the test and compared after it detects.
- */
 export function providerModuleOverrideSnapshot(): ReadonlyMap<Api, LazyProviderModule<Api>> {
 	return new Map(providerModuleOverrides);
 }
 
-/** Put one api back to what a test inherited. The twelve named setters are the way to install one. */
 export function setProviderModuleOverrideForTest(api: Api, module: LazyProviderModule<Api> | undefined): void {
 	setProviderModuleOverride(api, module);
 }
@@ -253,36 +229,12 @@ function hasFinalResult(
 	return typeof (source as { result?: unknown }).result === "function";
 }
 
-/**
- * floor used when neither caller option nor env var pins a value. Generic env
- * vars (`VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS`, `VEYYON_STREAM_IDLE_TIMEOUT_MS`) still
- * take precedence unless a provider opts into OpenAI-family idle flooring for
- * local backends that users historically tuned with `VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS`.
- */
 export interface LazyStreamLimits {
 	defaultFirstEventTimeoutMs?: number;
 	defaultIdleTimeoutMs?: number;
-	/**
-	 * The provider implementation already wraps its upstream transport with
-	 * stream timeouts. Keep the lazy loader from racing it with generic errors.
-	 */
 	providerHandlesStreamTimeouts?: boolean;
-	/**
-	 * Apply OpenAI-family idle timeout precedence in the lazy wrapper. Used by
-	 * local backends whose users historically tune slow prompt-processing gaps
-	 * with `VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS`.
-	 */
 	openAIIdleEnvFloorsFirstEvent?: boolean;
 }
-/**
- * Cloud Code Assist (google-gemini-cli / google-antigravity) routinely takes
- * longer than the global 100s default to emit its first SSE event when serving
- * the heavier Gemini 3.x Pro tiers at high thinking levels. Bump the first-event
- * floor to five minutes so callers stop seeing spurious "stream timed out while
- * waiting for the first event" aborts on legitimate cold reasoning starts.
- * The steady-state idle watchdog stays on the global default since the upstream
- * emits thinking tokens frequently once it gets going.
- */
 const GOOGLE_GEMINI_CLI_LAZY_STREAM_LIMITS: LazyStreamLimits = {
 	defaultFirstEventTimeoutMs: 300_000,
 };
@@ -295,47 +247,11 @@ const OPENAI_IDLE_FLOORED_LAZY_STREAM_LIMITS: LazyStreamLimits = {
 	openAIIdleEnvFloorsFirstEvent: true,
 };
 
-/**
- * Backends that run their OWN agent loop server-side (`cursor-agent`,
- * `devin-agent`).
- *
- * These were the only lazy providers left on the generic defaults, 100s to the
- * first event and 120s of silence thereafter, and both numbers are wrong for
- * what these backends do. A Cursor or Devin turn is not a token stream with an
- * occasional gap: the remote agent plans, edits files and runs commands on its
- * own side, emitting nothing to us while it does, and a single step of that
- * routinely outlasts two minutes. The watchdog then aborted a perfectly healthy
- * session with "Provider stream stalled while waiting for the next event",
- * which is exactly the report — the same models behave in their own harnesses,
- * because their own harnesses do not impose this budget.
- *
- * Every OpenAI-family and Anthropic provider is already exempt through
- * `providerHandlesStreamTimeouts`, because each owns a watchdog tuned to its
- * transport. Neither of these two owns one: `devin.ts` is a bare Connect frame
- * reader with no timeout of any kind, so exempting them outright would mean a
- * genuinely dead socket hangs forever. They get a budget instead, sized for an
- * agent rather than for a token stream.
- *
- * `VEYYON_STREAM_IDLE_TIMEOUT_MS` and `VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS`
- * still win, so anyone who wants the old aggression can ask for it.
- */
 export const AGENTIC_BACKEND_LAZY_STREAM_LIMITS: LazyStreamLimits = {
 	defaultFirstEventTimeoutMs: 300_000,
 	defaultIdleTimeoutMs: 600_000,
 };
 
-/**
- * Resolve the watchdog budget a lazy provider stream runs under.
- *
- * Split out of {@link forwardStream} because it is the whole reason a provider
- * either survives a long quiet stretch or gets killed during one, and inside an
- * async IIFE it can only be observed by waiting out the real deadline. As a
- * function it can be asserted directly for every provider class.
- *
- * `undefined` idle means no idle watchdog; a `0` first-event budget means no
- * first-event watchdog. Both are what `providerHandlesStreamTimeouts` yields,
- * for providers that own a watchdog tuned to their own transport.
- */
 export function resolveLazyStreamBudget(
 	options: { streamIdleTimeoutMs?: number; streamFirstEventTimeoutMs?: number },
 	limits?: LazyStreamLimits,

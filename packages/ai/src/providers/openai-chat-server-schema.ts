@@ -1,12 +1,3 @@
-/**
- * ArkType schemas for the OpenAI chat-completions request shape we accept on the
- * gateway. Mirrors https://platform.openai.com/docs/api-reference/chat — only
- * the shapes the gateway translation layer understands. Unknown fields on
- * permissive objects are accepted-and-stripped (via `"+": "delete"`) so the
- * official OpenAI SDK — which sends a growing pile of non-strict defaults (e.g.
- * `stream_options.include_obfuscation`) — does not trip 400s on shapes we simply ignore.
- */
-
 import { type } from "arktype";
 import type {
 	ChatCompletionContentPart,
@@ -24,12 +15,6 @@ export const textPartSchema = type({
 	text: "string",
 });
 
-/**
- * OpenAI documents `image_url` as either `{ url: string, detail?: ... }` or —
- * older clients — a bare string. Accept both shapes; downstream we extract a
- * URL. `detail` is accepted for forward-compat but currently dropped (pi-ai's
- * `ImageContent` has no detail field — TODO: plumb through if/when added).
- */
 export const imagePartSchema = type({
 	type: "'image_url'",
 	image_url: type("string").or({
@@ -38,7 +23,6 @@ export const imagePartSchema = type({
 	}),
 });
 
-/** OpenAI audio input block (gpt-4o-audio). Accepted; currently dropped downstream. */
 export const inputAudioPartSchema = type({
 	type: "'input_audio'",
 	input_audio: {
@@ -47,7 +31,6 @@ export const inputAudioPartSchema = type({
 	},
 });
 
-/** OpenAI file input block (file_search / vision-document). Accepted; currently dropped downstream. */
 export const filePartSchema = type({
 	type: "'file'",
 	file: {
@@ -57,17 +40,11 @@ export const filePartSchema = type({
 	},
 });
 
-/** Replayed assistant refusal block. Accepted; currently dropped downstream. */
 export const refusalPartSchema = type({
 	type: "'refusal'",
 	refusal: "string",
 });
 
-/**
- * Forward-compat catch-all for unknown content-part types. Matches every other
- * `{ type: string, ... }` object so a new OpenAI block kind does not 400 the
- * whole request; the walker ignores parts whose `type` it does not know.
- */
 export const unknownPartSchema = type({ type: "string" });
 
 export const userContentPartSchema = textPartSchema
@@ -94,7 +71,6 @@ export const toolSchema = type({
 		name: "string >= 1",
 		"description?": "string",
 		"parameters?": type({ "[string]": "unknown" }),
-		/** OpenAI structured-output strict mode. Accepted, not enforced upstream. */
 		"strict?": "boolean",
 	},
 });
@@ -154,10 +130,6 @@ export const toolMessageSchema = type({
 	"name?": type("string").pipe(v => (v && v.length > 0 ? v : undefined)),
 });
 
-/**
- * Legacy `function` role (pre-tools API). Translated to a `tool` role
- * canonical message in the walker so downstream providers see one shape.
- */
 export const functionMessageSchema = type({
 	role: "'function'",
 	name: "string",
@@ -173,11 +145,6 @@ export const messageSchema = systemMessageSchema
 
 // ─── Stream options ─────────────────────────────────────────────────────────
 
-/**
- * Permissive: the official OpenAI SDK sets `include_obfuscation: false` by
- * default. We only consume `include_usage`, so unknown keys are silently
- * stripped rather than 400'd.
- */
 export const streamOptionsSchema = type({
 	"+": "delete",
 	"include_usage?": "boolean",
@@ -230,11 +197,6 @@ export const openaiChatRequestSchema = type({
 	"web_search_options?": "unknown",
 });
 
-/**
- * Public types are sourced from the OpenAI SDK so the gateway stays in
- * lock-step with the canonical API surface; the schemas above are runtime
- * validators for the subset we actually accept.
- */
 export type OpenAIChatRequest = ChatCompletionCreateParams;
 export type OpenAIChatMessage = ChatCompletionMessageParam;
 export type OpenAIChatToolCall = ChatCompletionMessageToolCall;

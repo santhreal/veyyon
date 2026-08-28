@@ -1,20 +1,3 @@
-/**
- * Client half of the pi-native auth-gateway protocol.
- *
- * Dispatches a {@link streamSimple}-shaped request to an `veyyon auth-gateway`
- * via `POST /v1/pi/stream`, reads the SSE event stream back, and pushes the
- * parsed events into a local {@link AssistantMessageEventStream} — the same
- * stream type every other provider client produces. Callers downstream of
- * `streamSimple` cannot tell whether the events came from a real provider
- * SDK or from a gateway hop; they consume `AssistantMessageEvent`s either
- * way.
- *
- * Activated when a {@link Model} has `transport: "pi-native"` set; the
- * dispatch hook lives in `streamSimple()` (see `../stream.ts`). Used by
- * containerized veyyon deployments (robomp slots, the swarm extension) that
- * route every LLM call through a credential-holding sidecar so the slot
- * itself stays credential-free.
- */
 import { emptyUsage } from "@veyyon/catalog/models";
 import { readSseJson } from "@veyyon/utils/stream";
 import { errorMessage } from "@veyyon/utils/type-guards";
@@ -34,13 +17,6 @@ import { createAbortSourceTracker } from "../utils/abort";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { getStreamFirstEventTimeoutMs, getStreamIdleTimeoutMs, iterateWithIdleTimeout } from "../utils/idle-iterator";
 
-/**
- * Fields that must not cross the wire — either non-serializable (functions,
- * `AbortSignal`, the provider-session `Map`) or server-controlled
- * (`apiKey`, which the gateway injects from its own credential store; the
- * client's `apiKey` is the gateway *bearer*, sent in the `Authorization`
- * header rather than the request body).
- */
 const NON_WIRE_KEYS = new Set<keyof SimpleStreamOptions>([
 	"signal",
 	"apiKey",
@@ -56,18 +32,6 @@ const NON_WIRE_KEYS = new Set<keyof SimpleStreamOptions>([
 const VEYYON_NATIVE_STREAM_IDLE_TIMEOUT_ERROR = "pi-native stream stalled while waiting for the next event";
 const VEYYON_NATIVE_STREAM_FIRST_EVENT_TIMEOUT_ERROR = "pi-native stream timed out while waiting for the first event";
 
-/**
- * A rejection from the caller's `onPayload` hook, reported with the reason it gave.
- *
- * Payload sanitization is a local policy decision, not an upstream authentication failure, and it
- * used to buy that distinction by discarding the rejection: the operator saw "pi-native onPayload
- * hook rejected" and nothing else, which names the seam and not the failure. The reason was dropped
- * because `isAuthRetryableError` reads a 401 out of the message, so a hook that rejected with one
- * would have rotated a credential over a decision made here.
- *
- * The marker settles that instead of silence: the classifier is told the text is local, so the text
- * can be the rejection's own.
- */
 class PiNativePayloadHookError extends Error {
 	readonly rejection: unknown;
 	readonly [AUTH_EVIDENCE_LOCAL] = true;
@@ -130,12 +94,6 @@ async function decodeGatewayError(response: Response): Promise<AIError.AuthGatew
 	);
 }
 
-/**
- * Resolve the `/v1/pi/stream` endpoint URL from the model's `baseUrl`.
- * Trims a trailing slash so concatenation can't double-slash; throws when
- * the baseUrl is missing (transport=pi-native without a gateway target is
- * a configuration error, not a runtime recoverable one).
- */
 function resolveStreamUrl(model: Model<Api>): string {
 	if (!model.baseUrl) {
 		throw new AIError.ConfigurationError(
@@ -157,17 +115,6 @@ function buildHeaders(model: Model<Api>, apiKey: string | undefined): Record<str
 	return headers;
 }
 
-/**
- * Stream a turn through an `veyyon auth-gateway` over the pi-native protocol.
- *
- * The returned {@link AssistantMessageEventStream} receives each parsed
- * `AssistantMessageEvent` verbatim from the gateway; the terminal `done` /
- * `error` event resolves `.result()` automatically via the base class's
- * completion check. Non-streaming consumers just call `.result()` and pay
- * for SSE framing they don't use — that overhead is dominated by provider
- * latency, so we always stream rather than maintaining a parallel
- * non-streaming path.
- */
 export function streamPiNative<TApi extends Api>(
 	model: Model<TApi>,
 	context: Context,

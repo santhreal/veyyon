@@ -1,22 +1,3 @@
-/**
- * `application/vnd.amazon.eventstream` decoder.
- *
- * Wire format (all integers big-endian):
- *
- *   [total length     u32]
- *   [headers length   u32]
- *   [prelude CRC32    u32]   <- CRC over the first 8 bytes
- *   [headers          headers_length]
- *   [payload          total_length - headers_length - 16]
- *   [message CRC32    u32]   <- CRC over the entire message minus the trailing 4 bytes
- *
- * Headers: a sequence of `[name_len u8][name utf8][value_type u8][value …]`.
- * We only need the typed values Bedrock emits (boolean true/false, byte, short,
- * integer, long, byte-array, string, timestamp, uuid). All are surfaced as
- * strings for ease of consumption — Bedrock only sets string-valued headers in
- * practice (`:event-type`, `:message-type`, `:content-type`, `:exception-type`).
- */
-
 import * as AIError from "../error";
 
 const PRELUDE_LEN = 8;
@@ -26,22 +7,14 @@ const HEADER_BLOCK_OFFSET = PRELUDE_LEN + PRELUDE_CRC_LEN;
 const MIN_MESSAGE_LEN = HEADER_BLOCK_OFFSET + MESSAGE_CRC_LEN;
 
 export interface EventStreamMessage {
-	/** Lower-cased copy is *not* applied — Bedrock uses casing like `:event-type` verbatim. */
 	headers: Record<string, string>;
 	payload: Uint8Array;
 }
 
-/** CRC32 (IEEE / zlib polynomial 0xEDB88320), matches `@aws-crypto/crc32`. */
 export function crc32(bytes: Uint8Array): number {
 	return Bun.hash.crc32(bytes) >>> 0;
 }
 
-/**
- * Decode a single, fully buffered eventstream message. Throws if the framing is
- * malformed or either CRC mismatches. Used by both `decodeEventStream` (the
- * streaming entry point) and the unit tests, which exercise it with hand-built
- * frames.
- */
 export function decodeMessage(frame: Uint8Array): EventStreamMessage {
 	if (frame.length < MIN_MESSAGE_LEN) throw new AIError.EventStreamFrameError("frame too short");
 	const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
@@ -141,12 +114,6 @@ function bigIntFromBytes(b: Uint8Array): bigint {
 	return v;
 }
 
-/**
- * Async generator that consumes a `ReadableStream<Uint8Array>` (e.g. a fetch
- * response body) and yields fully-framed messages. Handles arbitrary chunk
- * boundaries: messages may span multiple chunks, and a single chunk may carry
- * many messages.
- */
 export async function* decodeEventStream(source: ReadableStream<Uint8Array>): AsyncGenerator<EventStreamMessage> {
 	const reader = source.getReader();
 	// Single growable buffer; we slide a read cursor along it and compact when a

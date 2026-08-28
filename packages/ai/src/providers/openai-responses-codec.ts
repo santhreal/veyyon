@@ -112,9 +112,7 @@ export function parseTextSignature(
 				}
 				return { id: parsed.id };
 			}
-		} catch {
-			// Fall through to legacy plain-string handling.
-		}
+		} catch {}
 	}
 	return { id: signature };
 }
@@ -163,7 +161,6 @@ export function collectKnownCallIds(messages: ResponseInput): Set<string> {
 	return knownCallIds;
 }
 
-/** Scan replay items for call_ids that were originally custom tool calls. */
 export function collectCustomCallIds(messages: ResponseInput): Set<string> {
 	const customCallIds = new Set<string>();
 	for (const item of messages) {
@@ -175,7 +172,6 @@ export function collectCustomCallIds(messages: ResponseInput): Set<string> {
 	return customCallIds;
 }
 
-/** Convert orphan tool output items with no preceding call into assistant text notes. */
 export function repairOrphanResponsesToolOutputs(input: ResponseInput): ResponseInput {
 	const knownCallIds = new Set<string>();
 	for (const item of input) {
@@ -225,16 +221,9 @@ export function repairOrphanResponsesToolOutputs(input: ResponseInput): Response
 	});
 }
 
-/**
- * Placeholder output for a tool call whose result is absent from the input.
- * The model reads this text, so it has one owner: the Codex transformer runs
- * the same repair against the same Responses grammar and must not drift into
- * describing the same situation differently.
- */
 export const ORPHAN_TOOL_CALL_PLACEHOLDER =
 	"[No tool output recorded: the tool call was interrupted before it produced a result.]";
 
-/** Synthesize placeholder outputs for orphan tool calls with no matching output. */
 export function repairOrphanResponsesToolCalls(input: ResponseInput): ResponseInput {
 	const outputCallIds = new Set<string>();
 	for (const item of input) {
@@ -273,7 +262,6 @@ export function repairOrphanResponsesToolCalls(input: ResponseInput): ResponseIn
 	return repaired;
 }
 
-/** Clamp image detail from "original" to "auto" if not supported by model. */
 function clampResponsesImageDetail(
 	detail: ImageContent["detail"],
 	supportsImageDetailOriginal: boolean,
@@ -318,7 +306,6 @@ export function convertResponsesInputContent(
 	return normalizedContent.length > 0 ? normalizedContent : undefined;
 }
 
-/** Map freeform custom-tool wire names back to internal tool names. */
 function buildCustomToolWireNameMap(tools: readonly Tool[] | undefined): ReadonlyMap<string, string> | undefined {
 	if (!tools?.length) return undefined;
 	const map = new Map<string, string>();
@@ -332,7 +319,6 @@ function resolveReplayCustomToolName(wireName: string, wireNameMap: ReadonlyMap<
 	return wireNameMap?.get(wireName) ?? (wireName === "apply_patch" ? "edit" : wireName);
 }
 
-/** Downgrade custom tool items when model does not support freeform custom tools. */
 function adaptResponsesReplayItemsForModel(
 	input: ResponseInput,
 	supportsCustomToolCalls: boolean,
@@ -383,7 +369,6 @@ export interface BuildResponsesInputOptions<TApi extends Api> {
 	developerStringContent?: boolean;
 	supportsDeveloperRole?: boolean;
 	repairOrphanOutputs?: boolean;
-	/** Preserve assistant message item IDs from text signatures during fallback replay. */
 	preserveAssistantMessageIds?: boolean;
 }
 
@@ -394,11 +379,8 @@ export function buildResponsesInput<TApi extends Api>(options: BuildResponsesInp
 		messages.push({ role: options.systemRole as "system" | "developer", content: systemPrompt });
 	}
 
-	// Compat is resolved by the catalog (e.g. Copilot / xai-oauth reject
-	// `detail: "original"`). Do not re-branch on provider id here.
 	const supportsImageDetailOriginal = options.supportsImageDetailOriginal;
 	// Freeform custom tools (`custom_tool_call`) only when the catalog says so;
-	// same gate as tool conversion (`applyPatchToolType === "freeform"`).
 	const supportsCustomToolCalls = options.model.applyPatchToolType === "freeform";
 	const customToolWireNameMap = supportsCustomToolCalls
 		? undefined
@@ -477,10 +459,6 @@ export function buildResponsesInput<TApi extends Api>(options: BuildResponsesInp
 			});
 		} else if (msg.role === "assistant") {
 			const assistantMsg = msg as AssistantMessage;
-			// Providers replay stale native items even when the current request has
-			// disabled native replay (cold session state, filter policy). Consult
-			// the payload sanitizer directly so hidden-empty turns are recognized
-			// on both the warm and cold paths.
 			const providerPayload =
 				assistantMsg.api === options.model.api && assistantMsg.model === options.model.id
 					? getOpenAIResponsesHistoryPayload(
@@ -564,8 +542,6 @@ function parseResponseReasoningReplayItem(signature: string | undefined): Respon
 		if (!("id" in parsed) || typeof parsed.id !== "string") return undefined;
 		return parsed as ResponseReasoningItem;
 	} catch {
-		// A signature that is not a reasoning-item envelope cannot be replayed, which is the same undefined
-		// the three shape checks above return, and the caller then replays the turn without it.
 		return undefined;
 	}
 }
@@ -607,16 +583,10 @@ export function convertResponsesAssistantMessage<TApi extends Api>(
 			let msgId = parsedSignature?.id;
 			if (!msgId) {
 				if (hasReplayableReasoningItem) {
-					// Distinct ids per unsigned block: several text blocks in one message
-					// (cross-provider replay downgrades thinking → text) must not share an id.
 					msgId = unsignedTextBlocks === 0 ? `msg_${msgIndex}` : `msg_${msgIndex}_${unsignedTextBlocks}`;
 					unsignedTextBlocks += 1;
 				}
 			} else if (!preserveMessageIds && !hasReplayableReasoningItem) {
-				// Without the matching reasoning item the server rejects replayed
-				// item ids (#4173) — drop them regardless of shape, including
-				// legacy plain-string signatures that would otherwise fall into
-				// the >64-char hash branch and fabricate a bogus msg_ id.
 				msgId = undefined;
 			} else if (msgId.length > 64) {
 				msgId = `msg_${Bun.hash(msgId).toString(36)}`;
@@ -697,11 +667,6 @@ export function appendResponsesToolResultMessages<TApi extends Api>(
 	const hasImages = toolResult.content.some((block): block is ImageContent => block.type === "image");
 	const omittedImages = hasImages && !supportsImages;
 	const normalized = normalizeResponsesToolCallId(toolResult.toolCallId);
-	// "(see attached image)" is only truthful when the result actually carries
-	// images (they ride as a separate user message on the Responses API). A
-	// genuinely empty text result (empty file read, silent tool) must stay
-	// empty — the placeholder sent models chasing an attachment that never
-	// existed.
 	const output = (
 		omittedImages
 			? joinTextWithImagePlaceholder(textResult, true)
@@ -712,9 +677,6 @@ export function appendResponsesToolResultMessages<TApi extends Api>(
 					: ""
 	).toWellFormed();
 	if (strictResponsesPairing && !knownCallIds.has(normalized.callId)) {
-		// Strict backends (Azure, Copilot) reject unpaired outputs outright, but
-		// silently dropping the result loses information the model needs. Fold it
-		// into an assistant note instead (same shape as repairOrphanResponsesToolOutputs).
 		const limit = 16_000;
 		const noteText = output.length > limit ? `${output.slice(0, limit)}\n...[truncated]` : output;
 		messages.push({
@@ -757,7 +719,6 @@ export function appendResponsesToolResultMessages<TApi extends Api>(
 	messages.push({ role: "user", content: contentParts });
 }
 
-/** Per-block accumulation helpers shared by Responses decode loops. */
 type ResponsesToolCallBlock = ToolCall & { [kStreamingPartialJson]: string; [kStreamingLastParseLen]?: number };
 
 export function appendReasoningSummaryPart(
@@ -768,11 +729,8 @@ export function appendReasoningSummaryPart(
 	item.summary.push(part);
 }
 
-/** Response-global accumulator for sequential-cutoff summary contract. */
 export interface SequentialCutoffSummaryState {
-	/** Latest full text per response-global summary index. */
 	summary: ResponseReasoningItem["summary"];
-	/** Canonical summary text already emitted as thinking deltas across all blocks. */
 	emitted: string;
 }
 
@@ -780,7 +738,6 @@ export function createSequentialCutoffSummaryState(): SequentialCutoffSummarySta
 	return { summary: [], emitted: "" };
 }
 
-// Sequential-cutoff streams may repeat the full canonical summary as later parts.
 function foldReasoningSummary(parts: ResponseReasoningItem["summary"] | undefined): string {
 	if (!parts) return "";
 	let canonical = "";
@@ -793,7 +750,6 @@ function foldReasoningSummary(parts: ResponseReasoningItem["summary"] | undefine
 	return canonical;
 }
 
-/** Chooses final reasoning text without making sequential-cutoff results disagree with emitted deltas. */
 export function finalizeReasoningThinking(
 	item: ResponseReasoningItem,
 	streamedThinking: string,
@@ -811,22 +767,16 @@ function finalizeCutoffReasoningThinking(
 	streamedThinking: string,
 	cutoff: SequentialCutoffSummaryState,
 ): string {
-	// The block's streamed deltas are authoritative: final text must never
-	// disagree with what delta consumers already rendered.
 	if (streamedThinking) return streamedThinking;
 	const summaryThinking = foldReasoningSummary(item.summary);
 	if (summaryThinking) {
-		// The done payload carries the response-cumulative summary. Emit only
-		// what no earlier block already emitted; replay-only items finalize empty.
 		if (cutoff.emitted.startsWith(summaryThinking)) return "";
 		if (!cutoff.emitted || summaryThinking.startsWith(cutoff.emitted)) {
 			const suffix = summaryThinking.slice(cutoff.emitted.length).replace(/^\n+/, "");
-			// Adopt the payload as canonical so later items cannot replay this text.
 			cutoff.summary = item.summary?.map(part => ({ ...part })) ?? [];
 			cutoff.emitted = summaryThinking;
 			return suffix;
 		}
-		// Diverged from streamed text — the deltas already shown win.
 		return "";
 	}
 	return item.content?.[0]?.type === "reasoning_text" ? (item.content[0].text ?? "") : "";
@@ -863,7 +813,6 @@ export function appendReasoningSummaryPartDone(
 	stream.push({ type: "thinking_delta", contentIndex, delta: "\n\n", partial: output });
 }
 
-/** Applies an atomic response.reasoning_summary_text.done snapshot. */
 export function applyReasoningSummaryDone(
 	state: SequentialCutoffSummaryState,
 	block: ThinkingContent,
@@ -882,8 +831,6 @@ export function applyReasoningSummaryDone(
 	let delta = after.slice(state.emitted.length);
 	if (!delta) return;
 	state.emitted = after;
-	// A fresh block starts a new section: drop the inter-section separator so
-	// each thinking block stands alone.
 	if (!block.thinking) delta = delta.replace(/^\n+/, "");
 	if (!delta) return;
 	block.thinking += delta;
@@ -912,8 +859,6 @@ export function appendMessageTextDelta(
 	item.content = item.content || [];
 	let lastPart = item.content[item.content.length - 1];
 	if (lastPart?.type !== partType) {
-		// `content_part.added` never arrived (lossy proxy) — synthesize the part
-		// so live text still streams instead of freezing until output_item.done.
 		lastPart =
 			partType === "output_text"
 				? { type: "output_text", text: "", annotations: [] }
@@ -929,7 +874,6 @@ export function appendMessageTextDelta(
 	stream.push({ type: "text_delta", contentIndex, delta, partial: output });
 }
 
-/** Chooses final message text while treating non-empty terminal content as authoritative. */
 export function finalizeMessageText(item: ResponseOutputMessage, streamedText: string): string {
 	if (!item.content?.length) return streamedText || "";
 	return item.content.map(part => (part.type === "output_text" ? (part.text ?? "") : (part.refusal ?? ""))).join("");
@@ -937,7 +881,6 @@ export function finalizeMessageText(item: ResponseOutputMessage, streamedText: s
 
 export type ToolCallArgumentsDeltaShape = "incremental" | "cumulative";
 
-/** Declared wire shape for tool-call argument deltas across Responses-family providers. */
 export const RESPONSES_PROVIDER_TOOL_CALL_DELTA_SHAPES: Readonly<Record<string, ToolCallArgumentsDeltaShape>> = {
 	azure: "incremental",
 	"github-copilot": "incremental",
@@ -953,9 +896,6 @@ export const RESPONSES_PROVIDER_TOOL_CALL_DELTA_SHAPES: Readonly<Record<string, 
 	"xai-oauth": "incremental",
 };
 
-/**
- * Declared wire shape fallback by built-in Responses API identifier when provider is not matched.
- */
 export const RESPONSES_API_TOOL_CALL_DELTA_SHAPES: Readonly<Record<string, ToolCallArgumentsDeltaShape>> = {
 	"openai-responses": "incremental",
 	"azure-openai-responses": "incremental",
@@ -981,7 +921,6 @@ export function resolveResponsesToolCallDeltaShape(
 	);
 }
 
-/** Accumulate one streamed function-argument delta into the live buffer. */
 export function accumulateToolCallArgumentsDelta(
 	block: ResponsesToolCallBlock,
 	delta: string,
@@ -1016,12 +955,6 @@ export function accumulateToolCallArgumentsDelta(
 	}
 }
 
-/**
- * Finalize streamed function-call arguments from the authoritative `.done`
- * payload. The caller owns the `argumentsDone` flag (generic Responses sets it;
- * Codex's block shape has no such field), so this only rewrites `arguments` and
- * drops the transient accumulation fields.
- */
 export function finalizeToolCallArgumentsDone(block: ResponsesToolCallBlock, args: string): void {
 	block[kStreamingPartialJson] = args;
 	block.arguments = parseStreamingJson(block[kStreamingPartialJson]);
@@ -1049,11 +982,6 @@ type OpenAIResponsesTerminalStreamEvent =
 	| Extract<ResponseStreamEvent, { type: "response.completed" | "response.incomplete" }>
 	| { type: "response.done"; response?: Partial<OpenAIResponse> };
 
-/**
- * Some Responses-compatible backends (Azure deployments among them) report
- * failure detail under an undocumented `status_details` envelope instead of
- * the SDK-typed top-level `error` field.
- */
 interface ResponsesStatusDetailsView {
 	status_details?: { error?: { code?: string; message?: string }; reason?: unknown };
 }
@@ -1069,19 +997,7 @@ function getOpenAIResponsesTerminalEvent(event: ResponseStreamEvent): OpenAIResp
 export interface ProcessResponsesStreamOptions {
 	onFirstToken?: () => void;
 	onOutputItemDone?: (item: ResponseOutputItem) => void;
-	/**
-	 * Called when a terminal `response.completed`, `response.incomplete`, or
-	 * `response.done` event is successfully processed. Only invoked on the
-	 * successful-completion path; thrown failure (`response.failed`) and
-	 * cancellation paths never call this.
-	 * Used by callers to detect premature stream closure (i.e. the stream ended
-	 * without a recognized terminal event).
-	 */
 	onCompleted?: () => void;
-	/**
-	 * Caller-requested service tier, used to bill the served tier when the
-	 * response omits the `service_tier` echo. Only applied for `provider: "openai"`.
-	 */
 	requestServiceTier?: ServiceTier;
 }
 
@@ -1103,17 +1019,9 @@ export async function processResponsesStream<TApi extends Api>(
 		block: ThinkingContent | TextContent | StreamingToolCallBlock;
 	}
 
-	// Multiple items (parallel function_calls in particular) can be open at the same
 	// time. OpenAI's spec routes every per-item event by `output_index`/`item_id`.
 	// llama.cpp emits parallel function_call deltas interleaved, and a singleton
-	// `current` reference would
-	// fold them into the wrong block and drop arguments on every call but the last.
-	//
-	// OpenAI-compatible hosts can compound this by omitting `item.id` and
 	// `output_index` on `output_item.added` while routing later argument deltas to
-	// either the bare `call_id` or a synthesized `fc_<call_id>` item id. Register
-	// both keys so each delta reaches its own block instead of falling back to the
-	// most recently added parallel call.
 	const openItemsByOutputIndex = new Map<number, StreamingItem>();
 	const openItemsByItemId = new Map<string, StreamingItem>();
 	const openItemsByPrefixedCallId = new Map<string, StreamingItem>();
@@ -1153,9 +1061,6 @@ export async function processResponsesStream<TApi extends Api>(
 			const found = openItemsByItemId.get(event.item_id);
 			if (found) return found;
 		}
-		// Keyed events whose item already closed are stale; drop them instead of
-		// routing to a sibling. Only fully identifierless mock/proxy events use the
-		// legacy singleton fallback.
 		return hasKey ? undefined : (lastOpenItem ?? undefined);
 	};
 	const hasOpenItemKey = (event: { output_index?: number; item_id?: string }): boolean =>
@@ -1185,13 +1090,6 @@ export async function processResponsesStream<TApi extends Api>(
 		}
 		const partial = candidate.block[kStreamingPartialJson];
 		if (partial.trim().length === 0) return false;
-		// A `{`-starting identifierless delta is ambiguous: the opening of a new
-		// sibling call, or continuation bytes inside the candidate's own argument
-		// JSON (`{"command":"echo ` + `{1..3}"}`). Advance only when the candidate
-		// cannot absorb the delta: its buffer is already one complete JSON value,
-		// already unsalvageable (lossy hosts abandon buffers mid-string, leaving
-		// raw control characters strict JSON forbids), or the concatenation would
-		// break it. Otherwise the delta is a legal continuation and must stay.
 		const state = classifyJsonPrefix(partial);
 		if (state !== "prefix") return true;
 		return classifyJsonPrefix(partial + delta) === "invalid";
@@ -1220,16 +1118,8 @@ export async function processResponsesStream<TApi extends Api>(
 			const byOutputIndex = openItemsByOutputIndex.get(event.output_index);
 			if (byOutputIndex) return byOutputIndex;
 			// A lossy host (llama.cpp/Ollama, issue #2015) can omit `output_index` on
-			// `output_item.added` while still stamping the spec-required field on the
-			// delta. The index was never registered, so fall through to the prefixed
-			// alias / exact item-id maps instead of dropping to `lastOpenItem`.
 		}
 		if (event.item_id) {
-			// Prefixed call-id aliases share the same wire namespace as real call ids.
-			// Argument/input events can use the prefixed form, while final
-			// output_item.done events below use exact call ids; keep aliases in a
-			// separate map so a real `call_id: "fc_x"` cannot overwrite the alias
-			// for `call_id: "x"`.
 			const alias = openItemsByPrefixedCallId.get(event.item_id);
 			if (alias?.item.type === type) return alias;
 			const exact = openItemsByItemId.get(event.item_id);
@@ -1353,15 +1243,9 @@ export async function processResponsesStream<TApi extends Api>(
 				const block: StreamingToolCallBlock = {
 					type: "toolCall",
 					id: encodeResponsesToolCallId(item.call_id, item.id),
-					// Preserve the raw wire name (e.g. `apply_patch`). The agent-loop
-					// dispatcher matches it against both `Tool.name` and
-					// `Tool.customWireName`, so this stays wire-accurate through
-					// history replay while still routing to the right handler.
 					name: item.name,
 					arguments: { input: item.input ?? "" },
 					customWireName: item.name,
-					// Custom tools stream a raw string, but we reuse `partialJson` as the
-					// accumulation buffer so later code that inspects the field still works.
 					[kStreamingPartialJson]: item.input ?? "",
 				};
 				output.content.push(block);
@@ -1395,8 +1279,6 @@ export async function processResponsesStream<TApi extends Api>(
 				appendReasoningSummaryPartDone(entry.item, entry.block, stream, output, contentIndexOf(entry.block));
 			}
 		} else if (event.type === "response.reasoning_text.delta") {
-			// Raw reasoning text delta from local providers that stream thinking
-			// directly rather than via the OpenAI summary tracking protocol.
 			const entry = lookupOpenItem(event);
 			if (entry?.item.type === "reasoning" && entry.block.type === "thinking") {
 				entry.block.thinking += event.delta;
@@ -1472,9 +1354,6 @@ export async function processResponsesStream<TApi extends Api>(
 					? lookupOpenItem({ output_index: event.output_index, item_id: item.id ?? item.call_id })
 					: lookupOpenItem({ output_index: event.output_index, item_id: item.id });
 			if (item.type === "reasoning") {
-				// Prefer the routed entry; the bare itemId find misroutes when ids are
-				// absent (`undefined === undefined` matches the FIRST thinking block) and
-				// misses entirely when the done-event id drifts from the added-event id.
 				let reasoningBlock: ThinkingContent | undefined;
 				if (entry?.block.type === "thinking") {
 					reasoningBlock = entry.block;
@@ -1507,8 +1386,6 @@ export async function processResponsesStream<TApi extends Api>(
 					block.textSignature = textSignature;
 					contentIndex = contentIndexOf(block);
 				} else {
-					// `output_item.added` never arrived (lossy proxy) — synthesize the
-					// block so the final message still carries the authoritative text.
 					const synthesized: TextContent = { type: "text", text, textSignature };
 					output.content.push(synthesized);
 					contentIndex = output.content.length - 1;
@@ -1532,17 +1409,10 @@ export async function processResponsesStream<TApi extends Api>(
 				};
 				let contentIndex: number;
 				if (block) {
-					// Persist the authoritative final args on the stored block. The
-					// throttled delta parser may have skipped the last partial parse,
-					// leaving block.arguments stale (often `{}`); the emitted toolCall
-					// and the persisted block must agree.
 					block.arguments = args;
 					clearStreamingPartialJson(block);
 					contentIndex = contentIndexOf(block);
 				} else {
-					// `output_item.added` never arrived (lossy proxy) — synthesize the
-					// block so the final message carries the call the consumer was told
-					// completed (the agent loop executes tools from message.content).
 					output.content.push(toolCall);
 					contentIndex = output.content.length - 1;
 				}
@@ -1560,8 +1430,6 @@ export async function processResponsesStream<TApi extends Api>(
 				};
 				let contentIndex: number;
 				if (block) {
-					// Persist the final input on the stored block and drop the transient
-					// accumulation buffer, mirroring the function_call branch above.
 					block.arguments = { input: rawInput };
 					clearStreamingPartialJson(block);
 					contentIndex = contentIndexOf(block);
@@ -1603,9 +1471,6 @@ export async function processResponsesStream<TApi extends Api>(
 				throw new AIError.ProviderResponseError(message, { provider: model.provider, kind: "output" });
 			}
 			if (response?.status === "incomplete" && response.incomplete_details?.reason === "content_filter") {
-				// A content-filtered turn is a failure, not a token-cap truncation —
-				// mapping it to "length" would route the agent loop into "shorten your
-				// output" recovery against a filtered prompt.
 				throw new AIError.ProviderResponseError("incomplete: content_filter", {
 					provider: model.provider,
 					kind: "content-blocked",
@@ -1614,10 +1479,8 @@ export async function processResponsesStream<TApi extends Api>(
 			const responseWithEndTurn = response as { end_turn?: boolean } | undefined;
 			promoteResponsesToolUseStopReason(output, responseWithEndTurn?.end_turn);
 			options?.onCompleted?.();
-			// Terminal event received; stop pulling rather than waiting on socket close.
 			break;
 		} else if (event.type === "error") {
-			// Error events carry nested error object or inline code/message.
 			const errorEvent = event as {
 				error?: { code?: unknown; message?: unknown };
 				code?: unknown;
@@ -1659,9 +1522,6 @@ export function mapOpenAIResponsesStopReason(status: ResponseStatus | undefined)
 		case "queued":
 			return "stop";
 		default: {
-			// Compile-time exhaustiveness; at runtime a brand-new status from the
-			// server must degrade gracefully instead of failing a fully-streamed
-			// response.
 			const exhaustive: never = status;
 			logger.warn("Unhandled OpenAI Responses stop reason", { status: exhaustive });
 			return "stop";
@@ -1669,7 +1529,6 @@ export function mapOpenAIResponsesStopReason(status: ResponseStatus | undefined)
 	}
 }
 
-/** Finalize streamed toolCall blocks whose output_item.done never arrived. */
 export function finalizePendingResponsesToolCalls(output: AssistantMessage): void {
 	for (const block of output.content) {
 		if (block.type !== "toolCall") continue;
@@ -1688,7 +1547,6 @@ export function finalizePendingResponsesToolCalls(output: AssistantMessage): voi
 	}
 }
 
-/** Apply Responses terminal stop-reason invariants. */
 export function promoteResponsesToolUseStopReason(output: AssistantMessage, endTurn: boolean | undefined): void {
 	if (output.content.some(block => block.type === "toolCall") && output.stopReason === "stop") {
 		output.stopReason = "toolUse";
@@ -1698,7 +1556,6 @@ export function promoteResponsesToolUseStopReason(output: AssistantMessage, endT
 	}
 }
 
-/** Initial empty `AssistantMessage` that streaming providers accumulate into. */
 export function createInitialResponsesAssistantMessage(api: Api, provider: string, modelId: string): AssistantMessage {
 	return {
 		role: "assistant",
@@ -1712,7 +1569,6 @@ export function createInitialResponsesAssistantMessage(api: Api, provider: strin
 	};
 }
 
-/** Extension fields we add on top of `ResponseCreateParamsStreaming` across the Responses-family providers. */
 export type ResponsesSamplingParamsExtras = {
 	top_p?: number;
 	top_k?: number;
@@ -1728,7 +1584,6 @@ type CommonSamplingOptions = Pick<
 	"temperature" | "topP" | "topK" | "minP" | "presencePenalty" | "repetitionPenalty" | "maxTokens"
 > & { serviceTier?: ServiceTier };
 
-/** Apply common StreamOptions sampling parameters to Responses params. */
 export function applyCommonResponsesSamplingParams<P extends CommonResponsesParams>(
 	params: P,
 	options: CommonSamplingOptions | undefined,
@@ -1816,10 +1671,6 @@ export function applyResponsesCompatPolicy<P extends ResponseCreateParamsStreami
 	}
 }
 
-/**
- * Apply reasoning-related Responses parameters. Default behavior comes from
- * catalog compat; include/omit arguments are explicit adapter-wrapper overrides.
- */
 export function applyResponsesReasoningParams<P extends ResponseCreateParamsStreaming>(
 	params: P,
 	model: Model<"openai-responses" | "azure-openai-responses" | "openai-codex-responses">,
@@ -1842,7 +1693,6 @@ export function applyResponsesReasoningParams<P extends ResponseCreateParamsStre
 	);
 }
 
-/** Populate `output.usage` from a Responses-API `response.usage` payload. Does not invoke `calculateCost`. */
 export function populateResponsesUsageFromResponse(
 	output: AssistantMessage,
 	usage:
@@ -1906,17 +1756,12 @@ export function populateResponsesUsageFromResponse(
 		accounting.totalTokens = reportedTotalTokens ?? accounting.totalTokens + orchestrationTotal;
 	}
 
-	// Wholesale replacement must not drop what the object already carried (Copilot
-	// premium-request accounting, the spend of discarded attempts): the
-	// failed/cancelled paths throw right after this call with no later chance to
-	// re-apply it.
 	output.usage = inheritUsageCarryovers(output.usage, {
 		...accounting,
 		cost: emptyCost(),
 	});
 }
 
-/** Structural equality for Responses chaining check ignoring symbols and omitted keys. */
 function deepEqualsWithout(a: unknown, b: unknown, omitKeys?: Record<string, boolean>): boolean {
 	if (!a || !b || typeof a !== "object" || typeof b !== "object") return Bun.deepEquals(a, b);
 	const ao = a as Record<string, unknown>;
@@ -1929,7 +1774,6 @@ function deepEqualsWithout(a: unknown, b: unknown, omitKeys?: Record<string, boo
 	}
 	for (const key in bo) {
 		if (omitKeys && Object.hasOwn(omitKeys, key) && omitKeys[key]) continue;
-		// Own-property test for own enumerable keys.
 		if (bo[key] !== undefined && !Object.hasOwn(ao, key)) return false;
 	}
 	return true;
@@ -1940,7 +1784,6 @@ const TOP_LEVEL_EXCLUDE_MAP = {
 	client_metadata: true,
 };
 
-/** Strict-prefix delta calculation for stateful previous_response_id chaining. */
 export function buildResponsesDeltaInput<TItem extends ResponseInputItem | InputItem>(
 	previous: { input?: TItem[] } | undefined,
 	previousResponseItems: readonly TItem[] | undefined,

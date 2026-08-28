@@ -62,30 +62,23 @@ import { deterministicUuid } from "../utils/deterministic-id";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { toolWireSchema } from "../utils/schema/wire";
 
-/** Base host for Codeium/Windsurf's Cascade chat API (Connect protocol over HTTP/1.1). */
 export { DEVIN_CASCADE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 
 export interface DevinOptions extends StreamOptions {
-	/** Wire model uid selected after thinking-effort routing. */
 	chatModelUid?: string;
-	/** Internal provider-level retry attempt counter. */
 	devinRetryAttempt?: number;
 }
 
-/** Maximum provider-level retry attempts before erroring. */
 const DEVIN_MAX_PROVIDER_RETRIES = 3;
 const DEVIN_RETRY_BASE_DELAY_MS = 1_000;
-/** Maximum wait duration for server-requested rate limit resets (90s). */
 const DEVIN_RETRY_MAX_DELAY_MS = 90_000;
 
 const CHAT_MESSAGE_PATH = "/exa.api_server_pb.ApiServerService/GetChatMessage";
 const DEVIN_AUTH_PATH = "/exa.auth_pb.AuthService/GetUserJwt";
 const DEVIN_DEFAULT_STOP_PATTERNS = ["<|user|>", "<|bot|>", "<|context_request|>", "<|endoftext|>", "<|end_of_turn|>"];
 
-/** Connect streaming framing: flag byte bit 0x01 = gzip payload, 0x02 = end-of-stream JSON trailers. */
 const CONNECT_COMPRESSED_FLAG = 0x01;
 const CONNECT_END_STREAM_FLAG = 0x02;
-/** Maximum Connect frame payload size (16 MiB). */
 const MAX_CONNECT_FRAME_PAYLOAD = 16 * 1024 * 1024;
 
 export const streamDevin: StreamFunction<"devin-agent"> = (
@@ -473,7 +466,6 @@ async function fetchDevinAuthMetadata(
 	};
 }
 
-/** Decode GetUserJwt protobuf response (bare or gzipped). */
 function decodeDevinUserJwtResponse(payload: Uint8Array) {
 	try {
 		return fromBinary(GetUserJwtResponseSchema, payload);
@@ -489,7 +481,6 @@ function decodeDevinUserJwtResponse(payload: Uint8Array) {
 	}
 }
 
-/** Build GetChatMessageRequest for one Cascade turn. */
 function buildDevinChatRequest(
 	model: Model<"devin-agent">,
 	context: Context,
@@ -544,7 +535,6 @@ function buildDevinChatRequest(
 	});
 }
 
-/** Map veyyon `Message` history onto Cascade `ChatMessagePrompt`s (USER / SYSTEM / TOOL channels). */
 function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMessagePrompt[] {
 	const prompts: ChatMessagePrompt[] = [];
 	for (const [index, msg] of messages.entries()) {
@@ -627,13 +617,9 @@ function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMe
 	return prompts;
 }
 
-/** Stream-level failure reported in Cascade Connect trailer. */
 interface DevinTrailerError {
-	/** Connect error code, e.g. `resource_exhausted`, `unavailable`, `invalid_argument`. */
 	readonly code: string;
-	/** The server's human-readable message, which is what carries the rate-limit reset window. */
 	readonly message: string;
-	/** The operator-facing rendering, unchanged from what this function used to return. */
 	readonly text: string;
 }
 
@@ -649,7 +635,6 @@ function readConnectTrailerError(text: string): DevinTrailerError | null {
 	return { code, message, text: `Devin stream error${code ? ` ${code}` : ""}: ${message}` };
 }
 
-/** Parse rate-limit reset delay in milliseconds from trailer error text. */
 export function parseDevinRateLimitResetMs(message: string): number | undefined {
 	const match =
 		/\breset(?:s)?\s+(?:in|after)\s+(?:about\s+|approximately\s+|~)?(\d+)\s*(second|minute|hour)s?\b/i.exec(message);
@@ -661,7 +646,6 @@ export function parseDevinRateLimitResetMs(message: string): number | undefined 
 	return amount * scale;
 }
 
-/** Determine retry delay in milliseconds, or undefined if not retryable. */
 function devinRetryDelayMs(
 	error: unknown,
 	state: { attempt: number; emittedToken: boolean; aborted: boolean },
@@ -682,7 +666,6 @@ function devinRetryDelayMs(
 	return Math.min(DEVIN_RETRY_BASE_DELAY_MS * 2 ** state.attempt, DEVIN_RETRY_MAX_DELAY_MS);
 }
 
-/** Map trailer error to structured API error instance. */
 export function devinTrailerFailure(trailer: DevinTrailerError): Error {
 	const status = AIError.connectFailureStatus(trailer);
 	if (status === undefined) return new AIError.ValidationError(trailer.text);

@@ -1,5 +1,3 @@
-/** Amazon Bedrock Converse Stream provider using SigV4 signed HTTP requests. */
-
 import type { Effort } from "@veyyon/catalog/effort";
 import { mapEffortToAnthropicAdaptiveEffort, requireSupportedEffort } from "@veyyon/catalog/model-thinking";
 import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
@@ -52,7 +50,6 @@ export type BedrockThinkingDisplay = "summarized" | "omitted";
 export interface BedrockOptions extends StreamOptions {
 	region?: string;
 	profile?: string;
-	/** Amazon Bedrock API key sent as `Authorization: Bearer`, ahead of SigV4 credential resolution. */
 	bearerToken?: string;
 	toolChoice?: "auto" | "any" | "none" | { type: "tool"; name: string };
 	/* See https://docs.aws.amazon.com/bedrock/latest/userguide/inference-reasoning.html for supported models. */
@@ -61,7 +58,6 @@ export interface BedrockOptions extends StreamOptions {
 	thinkingBudgets?: ThinkingBudgets;
 	/* Only supported by Claude 4.x models, see https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-extended-thinking.html#claude-messages-extended-thinking-tool-use-interleaved */
 	interleavedThinking?: boolean;
-	/** Controls thinking content format in Bedrock responses ("summarized" | "omitted"). */
 	thinkingDisplay?: BedrockThinkingDisplay;
 }
 
@@ -77,7 +73,6 @@ function inferRegionFromBedrockArn(modelId: string): string | undefined {
 	return region || undefined;
 }
 
-/** Default AWS region for each Bedrock cross-region inference-profile geo prefix. */
 const INFERENCE_PROFILE_GEO_DEFAULT_REGION: Record<string, string> = {
 	us: "us-east-1",
 	"us-gov": "us-gov-west-1",
@@ -87,7 +82,6 @@ const INFERENCE_PROFILE_GEO_DEFAULT_REGION: Record<string, string> = {
 	jp: "ap-northeast-1",
 };
 
-/** Geo prefix of a cross-region inference-profile id, e.g. `eu.anthropic.…` → `eu`. */
 function inferenceProfileGeo(modelId: string): string | undefined {
 	const dot = modelId.indexOf(".");
 	if (dot <= 0) return undefined;
@@ -95,7 +89,6 @@ function inferenceProfileGeo(modelId: string): string | undefined {
 	return prefix in INFERENCE_PROFILE_GEO_DEFAULT_REGION ? prefix : undefined;
 }
 
-/** Whether a concrete AWS region can serve a given inference-profile geo. */
 function regionServesGeo(region: string, geo: string): boolean {
 	switch (geo) {
 		case "us-gov":
@@ -115,7 +108,6 @@ function regionServesGeo(region: string, geo: string): boolean {
 	}
 }
 
-/** Resolve Bedrock runtime region for a request. */
 function resolveBedrockRegion(modelId: string, options: BedrockOptions): string {
 	const explicit = options.region || inferRegionFromBedrockArn(modelId);
 	if (explicit) return explicit;
@@ -179,7 +171,6 @@ interface WireToolConfig {
 	toolChoice?: WireToolChoice;
 }
 
-/** Placeholder tool injected when request carries tool history but no active tools. */
 const NO_TOOLS_SENTINEL_NAME = "__no_tools__";
 
 const NO_TOOLS_SENTINEL: WireToolSpec = {
@@ -259,7 +250,6 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 
 		const blocks = output.content as Block[];
 		let rawRequestDump: RawHttpRequestDump | undefined;
-		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
 		let wireBodyJson: string | undefined;
 		const region = resolveBedrockRegion(model.id, options);
 
@@ -291,7 +281,6 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 						attemptResponse.headers.get("x-amzn-requestid") ?? attemptResponse.headers.get("x-request-id"),
 					);
 				} catch (error) {
-					// Return non-retryable response when hook fails.
 					responseHookFailed = true;
 					responseHookError = error;
 					return new Response(null, { status: 400 });
@@ -403,7 +392,6 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 			}
 			if (!response.body) throw new AIError.BedrockApiError("Bedrock response has no body", response.status);
 
-			// Track first event for the abort/diagnostic path (currently informational).
 			for await (const message of decodeEventStream(response.body)) {
 				const messageType = message.headers[":message-type"];
 				const eventType = message.headers[":event-type"];
@@ -475,7 +463,6 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 
 			if (options.signal?.aborted) throw new AIError.RequestAbortError();
 
-			// Handle unexpected stream termination without messageStop.
 			if (!sawMessageStop) {
 				const toolBatchIsComplete = blocks.every(
 					block => block.type !== "toolCall" || getStreamingPartialJson(block) === undefined,
@@ -681,13 +668,11 @@ function handleContentBlockStop(
 	}
 }
 
-/** Check if model supports thinking signatures in reasoningContent. */
 function supportsThinkingSignature(model: Model<"bedrock-converse-stream">): boolean {
 	const id = model.id.toLowerCase();
 	return id.includes("anthropic.claude") || id.includes("anthropic/claude");
 }
 
-/** Serialize system blocks with cache checkpoints. */
 function buildSystemPrompt(
 	systemPrompt: readonly string[] | undefined,
 	model: Model<"bedrock-converse-stream">,
@@ -967,7 +952,6 @@ function buildAdditionalModelRequestFields(
 	return result;
 }
 
-/** Convert image content to Bedrock ImageBlockWire format. */
 function createImageBlock(mimeType: string, data: string): ImageBlockWire["image"] {
 	let format: "jpeg" | "png" | "gif" | "webp";
 	switch (mimeType) {

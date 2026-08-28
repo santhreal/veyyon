@@ -1,9 +1,3 @@
-/**
- * ArkType schemas for the Anthropic Messages API request shape we accept on the
- * gateway. Maps canonical wire variants to our internal normalized veyyon Context
- * and options.
- */
-
 import { type } from "arktype";
 import type {
 	ContentBlockParam,
@@ -237,11 +231,6 @@ export const anthropicMessagesRequestSchema = type({
 	"service_tier?": "unknown",
 });
 
-/**
- * Public types are sourced from the upstream Anthropic SDK so the gateway
- * stays in lock-step with the canonical API surface; the schemas above are
- * runtime validators for the subset we actually accept.
- */
 export type AnthropicMessagesRequest = MessageCreateParams;
 export type AnthropicSystem = MessageCreateParams["system"];
 export type AnthropicMessage = MessageParam;

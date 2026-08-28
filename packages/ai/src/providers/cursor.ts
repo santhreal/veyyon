@@ -155,13 +155,11 @@ import { connectProxiedSocket, getProxyForProvider, shouldBypassProxy } from "..
 import { createRequestDebugSession, isRequestDebugEnabled, type RequestDebugResponseLog } from "../utils/request-debug";
 import { toolWireSchema } from "../utils/schema/wire";
 
-/** Cursor API host. */
 export const CURSOR_API_URL = CURSOR_API_ENDPOINT;
 export const CURSOR_CLIENT_VERSION = "cli-2026.01.09-231024f";
 
 const CURSOR_PROXY_TUNNEL_TIMEOUT_MS = 30_000;
 
-/** Bounded LRU cache for per-conversation state. */
 export class BoundedLruMap<K, V> {
 	readonly #max: number;
 	readonly #map = new Map<K, V>();
@@ -184,15 +182,11 @@ export class BoundedLruMap<K, V> {
 	}
 }
 
-/** Cap on distinct conversations kept warm; well past any single run's working
- *  set, small enough that the caches can never grow without bound. */
 const CURSOR_CONVERSATION_CACHE_MAX = 128;
 const conversationStateCache = new BoundedLruMap<string, ConversationStateStructure>(CURSOR_CONVERSATION_CACHE_MAX);
 const conversationBlobStores = new BoundedLruMap<string, Map<string, Uint8Array>>(CURSOR_CONVERSATION_CACHE_MAX);
-/** Rules content fingerprint delivered per conversation. */
 const conversationRulesDelivered = new BoundedLruMap<string, string>(CURSOR_CONVERSATION_CACHE_MAX);
 
-/** Fingerprint of a composed rule set in order. */
 function cursorRulesFingerprint(rules: readonly CursorRule[]): string {
 	const hash = createHash("sha256");
 	for (const rule of rules) {
@@ -208,15 +202,12 @@ export interface CursorOptions extends StreamOptions {
 	customSystemPrompt?: string;
 	execHandlers?: CursorExecHandlers;
 	onToolResult?: CursorToolResultHandler;
-	/** Operator-owned instruction files for the `requestContext.rules` channel (see {@link CursorRuleInput}). */
 	cursorRules?: CursorRuleInput[];
-	/** Wire model uid selected after thinking-effort routing (see mapOptionsForApi). */
 	wireModelId?: string;
 }
 
 const CONNECT_END_STREAM_FLAG = 0b00000010;
 
-/** Max length (bytes) for a single Connect frame payload. */
 const MAX_CONNECT_FRAME_PAYLOAD = 16 * 1024 * 1024;
 
 interface CursorLogEntry {
@@ -231,9 +222,7 @@ async function appendCursorDebugLog(entry: CursorLogEntry): Promise<void> {
 	if (!logPath) return;
 	try {
 		await fs.appendFile(logPath, `${JSON.stringify(entry, debugReplacer)}\n`);
-	} catch {
-		// Ignore debug log failures
-	}
+	} catch {}
 }
 
 function log(type: string, subtype?: string, data?: unknown): void {
@@ -254,11 +243,7 @@ function frameConnectMessage(data: Uint8Array, flags = 0): Buffer {
 	return frame;
 }
 
-/**
- * Maps Cursor Connect/gRPC stream failures to standard HTTP error statuses.
- */
 export function cursorStreamFailure(code: string, message: string, label: string): Error {
-	// Format trailer error detail with fallback.
 	const text = `${label} ${code}: ${AIError.boundProviderErrorDetail(message)}`;
 	const failureStatus = AIError.connectFailureStatus({ code, message });
 	if (failureStatus !== undefined) return new AIError.CursorApiError(text, failureStatus);
@@ -440,7 +425,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			);
 			conversationStateCache.set(conversationId, conversationState);
 			const requestContextTools = buildMcpToolDefinitions(context.tools);
-			// Composed once per request: system prompt plus operator instruction files.
 			const requestContextRules = buildCursorRules(context.systemPrompt, options?.cursorRules);
 
 			const baseUrl = model.baseUrl || CURSOR_API_URL;
@@ -487,7 +471,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 
 			let pendingBuffer = Buffer.alloc(0);
 			let endStreamError: Error | null = null;
-			// Fail turn via endStreamError channel.
 			const failTurn = (error: Error): void => {
 				if (endStreamError) return;
 				endStreamError = error;
@@ -533,7 +516,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			let streamTerminated = false;
 			let turnCompleted = false;
 			let requestContextDelivered = false;
-			// Handle non-Connect HTTP gateway error responses.
 			let refusedStatus: number | undefined;
 			let refusalBody = "";
 
@@ -544,9 +526,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 				try {
 					const log = await debugResponseLogPromise;
 					await log?.close();
-				} catch {
-					// Ignore debug log close failure so logging never masks the turn result
-				}
+				} catch {}
 			};
 
 			const terminateStream = (reason?: () => void) => {
@@ -665,7 +645,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 
 						messagePromise
 							.catch(error => {
-								// Report server-message handler failures immediately.
 								logger.warn("Cursor server message handler failed", {
 									model: model.id,
 									messageCase: serverMessage.message.case,
@@ -677,7 +656,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 								pendingMessagePromises.delete(messagePromise);
 							});
 
-						// Terminal turn completion.
 						if (isTurnEnded) {
 							turnCompleted = true;
 							void Promise.allSettled(Array.from(pendingMessagePromises)).then(async () => {
@@ -705,9 +683,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 					});
 					const heartbeatBytes = toBinary(AgentClientMessageSchema, heartbeatMessage);
 					h2Request.write(frameConnectMessage(heartbeatBytes));
-				} catch {
-					// Ignore heartbeat write failures on closing streams
-				}
+				} catch {}
 			};
 
 			heartbeatTimer = setInterval(sendHeartbeat, 5000);
@@ -718,9 +694,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 				let msg = rawMsg;
 				try {
 					msg = decodeURIComponent(rawMsg);
-				} catch {
-					// Malformed percent-encoding in grpc-message should not crash event handler
-				}
+				} catch {}
 				if (status && status !== "0") {
 					failTurn(cursorStreamFailure(String(status), msg, "gRPC error"));
 				}
@@ -750,16 +724,12 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 				abortHandler = () => {
 					try {
 						h2Request?.close();
-					} catch {
-						// Ignore close errors
-					}
+					} catch {}
 					try {
 						if (h2Client && !h2Client.closed && !h2Client.destroyed) {
 							h2Client.close();
 						}
-					} catch {
-						// Ignore close errors
-					}
+					} catch {}
 					terminateStream(() => rejectH2(new AIError.RequestAbortError()));
 				};
 
@@ -769,7 +739,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 
 			await h2Promise;
 
-			// Reject truncated turn if stream ended without turnEnded signal.
 			if (!turnCompleted) {
 				throw new AIError.ProviderResponseError(
 					"Cursor stream ended without a turn_ended update (connection dropped or response truncated)",
@@ -777,7 +746,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 				);
 			}
 
-			// Validate rules were delivered if required.
 			const rulesFingerprint = cursorRulesFingerprint(requestContextRules);
 			if (requestContextDelivered) {
 				conversationRulesDelivered.set(conversationId, rulesFingerprint);
@@ -827,23 +795,17 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			try {
 				const log = await debugResponseLogPromise;
 				await log?.close();
-			} catch {
-				// Ignore debug log close failure
-			}
+			} catch {}
 			if (heartbeatTimer) {
 				clearInterval(heartbeatTimer);
 				heartbeatTimer = null;
 			}
 			try {
 				h2Request?.close();
-			} catch {
-				// Ignore close errors
-			}
+			} catch {}
 			try {
 				h2Client?.close();
-			} catch {
-				// Ignore close errors
-			}
+			} catch {}
 
 			if (abortSignal && abortHandler) abortSignal.removeEventListener("abort", abortHandler);
 		}
@@ -860,21 +822,14 @@ export type ToolCallState = ToolCall & {
 	[kCursorExecResolved]?: true;
 };
 
-/** Tracks token deltas and conversation token details to compute turn usage. */
 export interface CursorUsageAccount {
-	/** Running sum of `TokenDeltaUpdate.tokens`: this turn's completion. */
 	completionTokens: number;
-	/** Latest populated `ConversationTokenDetails.used_tokens`. */
 	conversationTokens: number;
-	/** Latest populated `ConversationTokenDetails.max_tokens`. */
 	contextWindow: number;
-	/** Latest detailed token entries mapped to provider-neutral format. */
 	contextComposition: ProviderContextBucket[] | undefined;
-	/** Recompute the message's usage, cost and reported window from the above. */
 	fold: () => void;
 }
 
-/** The turn's token account, bound to the message it reports into. */
 export function createCursorUsageAccount(model: Model<"cursor-agent">, output: AssistantMessage): CursorUsageAccount {
 	const account: CursorUsageAccount = {
 		completionTokens: 0,
@@ -883,7 +838,6 @@ export function createCursorUsageAccount(model: Model<"cursor-agent">, output: A
 		contextComposition: undefined,
 		fold: () => {
 			output.usage.output = account.completionTokens;
-			// Prompt tokens = total used tokens minus completion tokens.
 			output.usage.input = Math.max(0, account.conversationTokens - account.completionTokens);
 			output.usage.totalTokens = output.usage.input + output.usage.output;
 			if (account.contextWindow > 0) {
@@ -901,10 +855,8 @@ export interface BlockState {
 	currentTextBlock: (TextContent & { [kStreamingBlockIndex]: number }) | null;
 	currentThinkingBlock: (ThinkingContent & { [kStreamingBlockIndex]: number }) | null;
 	currentToolCall: ToolCallState | null;
-	/** Tool-call IDs dispatched on the exec channel this turn. */
 	execDispatchedToolCalls: Set<string>;
 	firstTokenTime: number | undefined;
-	/** This turn's token account. See {@link CursorUsageAccount}. */
 	usage: CursorUsageAccount;
 	setTextBlock: (b: (TextContent & { [kStreamingBlockIndex]: number }) | null) => void;
 	setThinkingBlock: (b: (ThinkingContent & { [kStreamingBlockIndex]: number }) | null) => void;
@@ -912,7 +864,6 @@ export interface BlockState {
 	setFirstTokenTime: () => void;
 }
 
-/** Exported for tests: drives one Cursor server message through the stream (exec waits mark the stream busy). */
 export async function handleServerMessage(
 	msg: AgentServerMessage,
 	output: AssistantMessage,
@@ -936,7 +887,6 @@ export async function handleServerMessage(
 	} else if (msgCase === "kvServerMessage") {
 		handleKvServerMessage(msg.message.value as KvServerMessage, blobStore, h2Request, delivery);
 	} else if (msgCase === "execServerMessage") {
-		// Mark stream busy while awaiting local tool execution.
 		await stream.trackLocalWork(
 			handleExecServerMessage(
 				msg.message.value as ExecServerMessage,
@@ -956,12 +906,9 @@ export async function handleServerMessage(
 	}
 }
 
-/** Turn-scoped hooks for message handlers. */
 interface CursorTurnDelivery {
 	systemPromptBlobIds: ReadonlySet<string>;
-	/** Fails the turn. Wired to the same `endStreamError` channel a Connect end-stream error uses. */
 	onFatal: (error: Error) => void;
-	/** Called once the `requestContextResult` frame carrying the rules has been written. */
 	onRequestContextDelivered?: () => void;
 }
 
@@ -979,7 +926,6 @@ function handleKvServerMessage(
 
 		const blobData = blobStore.get(blobIdKey);
 
-		// Fail explicitly when a requested Cursor blob is missing.
 		if (!blobData) {
 			const isSystemPrompt = lookup?.systemPromptBlobIds.has(blobIdKey) === true;
 			logger.warn(
@@ -988,7 +934,6 @@ function handleKvServerMessage(
 					: "Cursor asked for a blob this process does not hold; that part of the conversation is missing from the prompt",
 				{ blobId: blobIdKey, systemPrompt: isSystemPrompt, knownBlobs: blobStore.size },
 			);
-			// Fail closed if system prompt blob is missing.
 			if (isSystemPrompt) {
 				lookup?.onFatal(
 					new AIError.ProviderResponseError(
@@ -1093,7 +1038,6 @@ async function handleShellStreamArgs(
 
 	sendShellStreamEvent(h2Request, execMsg, { case: "start", value: create(ShellStreamStartSchema, {}) });
 
-	// Buffer for incomplete ANSI sequences across chunks
 	let stdoutBuffer = "";
 	let stderrBuffer = "";
 
@@ -1201,7 +1145,6 @@ async function handleShellStreamArgs(
 	const sendBufferedOutput = !streamHandler;
 	const sanitizedExecResult = sanitizeShellExecResult(execResult);
 
-	// Flush any remaining buffered output before sending results
 	if (stdoutFlushTimer) clearTimeout(stdoutFlushTimer);
 	if (stderrFlushTimer) clearTimeout(stderrFlushTimer);
 	flushStdout();
@@ -1339,7 +1282,6 @@ async function handleExecServerMessage(
 	log("exec", "dispatch", { execCase, execId: execMsg.execId, hasHandlers: !!execHandlers });
 	if (execCase === "requestContextArgs") {
 		const requestContext = create(RequestContextSchema, {
-			// Populate requestContext.rules with system prompt and instruction files.
 			rules: requestContextRules,
 			repositoryInfo: [],
 			tools: requestContextTools,
@@ -1395,7 +1337,6 @@ async function handleExecServerMessage(
 		case "lsArgs": {
 			const args = execMsg.message.value;
 			if (!args.toolCallId) args.toolCallId = crypto.randomUUID();
-			// Map `ls` to `read` tool name.
 			synthesizeCursorExecToolCall(output, stream, state, args.toolCallId, "read", { path: args.path });
 			const { execResult } = await resolveExecHandler(
 				args,
@@ -1411,7 +1352,6 @@ async function handleExecServerMessage(
 		case "grepArgs": {
 			const args = execMsg.message.value;
 			if (!args.toolCallId) args.toolCallId = crypto.randomUUID();
-			// Early reject for empty grep pattern with recovery hint.
 			const emptyPatternError = emptyGrepPatternRejection(args.pattern, args.glob);
 			if (emptyPatternError !== null) {
 				sendExecClientMessage(h2Request, execMsg, "grepResult", buildGrepErrorResult(emptyPatternError));
@@ -1437,7 +1377,6 @@ async function handleExecServerMessage(
 		case "writeArgs": {
 			const args = execMsg.message.value;
 			if (!args.toolCallId) args.toolCallId = crypto.randomUUID();
-			// Match the bridge: prefer `fileText`, fall back to decoded `fileBytes`.
 			const content = args.fileText ?? new TextDecoder().decode(args.fileBytes ?? new Uint8Array());
 			synthesizeCursorExecToolCall(output, stream, state, args.toolCallId, "write", {
 				path: args.path,
@@ -1577,7 +1516,6 @@ async function handleExecServerMessage(
 		case "mcpArgs": {
 			const args = execMsg.message.value;
 			const mcpCall = decodeMcpCall(args);
-			// Synthesize toolCall block before invoking handler and stamp as exec-resolved.
 			markCursorExecDispatched(mcpCall.toolCallId, output, state);
 			const { execResult } = await resolveExecHandler(
 				mcpCall,
@@ -1612,7 +1550,6 @@ async function handleExecServerMessage(
 		}
 		default: {
 			log("warn", "unhandledExecMessage", { execCase });
-			// Send bare ExecClientMessage ack.
 			const ack = create(ExecClientMessageSchema, {
 				id: execMsg.id,
 				execId: execMsg.execId,
@@ -1665,7 +1602,6 @@ function sendExecClientStreamClose(h2Request: http2.ClientHttp2Stream, execMsg: 
 	log("execClientControl", "streamClose", { id: execMsg.id, execId: execMsg.execId });
 }
 
-/** Exported for tests: verifies handler is invoked with correct `this` when passed as bound. */
 export async function resolveExecHandler<TArgs, TResult>(
 	args: TArgs,
 	handler: ((args: TArgs) => Promise<CursorExecHandlerResult<TResult>>) | undefined,
@@ -2080,7 +2016,6 @@ export function buildGrepResultFromToolResult(
 			if (!Number.isSafeInteger(parsedLine) || parsedLine < 1 || parsedLine > 0x7fffffff) {
 				continue;
 			}
-			// Prefer match interpretation over context line.
 			const isContextLine = matchLine === null;
 			const list = matchMap.get(file) ?? [];
 			list.push({ line: parsedLine, content, isContextLine });
@@ -2140,7 +2075,6 @@ function buildGrepErrorResult(error: string) {
 	});
 }
 
-/** Rejects empty grep pattern and returns recovery hint. */
 export function emptyGrepPatternRejection(pattern: string | undefined, glob: string | undefined): string | null {
 	if (pattern && pattern.trim().length > 0) return null;
 	if (glob && glob.length > 0) {
@@ -2212,7 +2146,6 @@ function decodeMcpArgValue(value: Uint8Array): unknown {
 	return parseToolArgsJson(text);
 }
 
-/** Records exec-channel tool dispatch and stamps assistant-stream block. */
 function markCursorExecDispatched(toolCallId: string, output: AssistantMessage, state: BlockState): void {
 	if (!toolCallId) return;
 	state.execDispatchedToolCalls.add(toolCallId);
@@ -2279,9 +2212,6 @@ interface CursorMcpArgsView {
 	args?: Record<string, Uint8Array>;
 }
 
-/** Oneof-shaped view of `agent.v1.ToolCall` limited to the cases this state
- *  machine consumes. `fromBinary` decodes oneofs as `{ case, value }` — flat
- *  `toolCall.mcpToolCall` property access never matches a decoded message. */
 interface CursorToolCallView {
 	tool?: { case?: string; value?: unknown };
 }
@@ -2361,7 +2291,6 @@ function buildMcpErrorResult(error: string) {
 	});
 }
 
-/** Merges completion-frame McpArgs into streamed args preserving structured values. */
 export function mergeCursorMcpToolCallArgs(
 	streamed: Record<string, unknown> | undefined,
 	completion: Record<string, unknown> | undefined,
@@ -2408,7 +2337,6 @@ function endCurrentThinkingBlock(
 	state.setThinkingBlock(null);
 }
 
-/** Synthesizes completed toolCall block for Cursor exec-channel tool. */
 export function synthesizeCursorExecToolCall(
 	output: AssistantMessage,
 	stream: AssistantMessageEventStream,
@@ -2434,25 +2362,19 @@ export function synthesizeCursorExecToolCall(
 	stream.push({ type: "toolcall_end", contentIndex: idx, toolCall: block, partial: output });
 }
 
-/** Structural view of InteractionUpdate oneof. */
 export interface InteractionUpdateView {
 	message?: {
 		case?: string;
 		value?: {
-			/** textDelta / thinkingDelta */
 			text?: string;
-			/** toolCallStarted / toolCallCompleted */
 			toolCall?: CursorToolCallView;
 			callId?: string;
-			/** toolCallDelta / partialToolCall: cumulative args-JSON snapshot */
 			argsTextDelta?: string;
-			/** tokenDelta */
 			tokens?: number;
 		};
 	};
 }
 
-/** Exported for tests: drives one Cursor interaction update through the streaming state machine. */
 export function processInteractionUpdate(
 	update: InteractionUpdateView,
 	output: AssistantMessage,
@@ -2515,7 +2437,6 @@ export function processInteractionUpdate(
 					[kStreamingBlockIndex]: output.content.length,
 					[kStreamingPartialJson]: "",
 					[kStreamingBlockKind]: "mcp",
-					// Stamp block if already dispatched on exec channel.
 					...(state.execDispatchedToolCalls.has(toolCallId) ? { [kCursorExecResolved]: true } : {}),
 				};
 				output.content.push(block);
@@ -2563,7 +2484,6 @@ export function processInteractionUpdate(
 		if (state.currentToolCall) {
 			const toolCall = value.toolCall;
 			if (state.currentToolCall[kStreamingBlockKind] === "mcp") {
-				// Full parse of accumulated argument buffer on tool completion.
 				const partial = state.currentToolCall[kStreamingPartialJson];
 				if (partial !== undefined) {
 					state.currentToolCall.arguments = parseStreamingJson(partial);
@@ -2590,7 +2510,6 @@ export function processInteractionUpdate(
 	}
 }
 
-/** Maps ConversationTokenDetails.detailed to provider-neutral token breakdown. */
 function cursorContextComposition(details?: ConversationTokenDetails): ProviderContextBucket[] | undefined {
 	const entries = details?.detailed?.entry;
 	if (!entries?.length) return undefined;
@@ -2602,14 +2521,12 @@ function cursorContextComposition(details?: ConversationTokenDetails): ProviderC
 	}));
 }
 
-/** Exported for tests: folds one conversation checkpoint into the turn's token account. */
 export function handleConversationCheckpointUpdate(
 	checkpoint: ConversationStateStructure,
 	usage: CursorUsageAccount,
 	onConversationCheckpoint?: (checkpoint: ConversationStateStructure) => void,
 ): void {
 	onConversationCheckpoint?.(checkpoint);
-	// Only update when token_details are populated.
 	const maxTokens = checkpoint.tokenDetails?.maxTokens ?? 0;
 	if (maxTokens > 0) {
 		usage.contextWindow = maxTokens;
@@ -2672,9 +2589,6 @@ function buildMcpToolDefinitions(tools: Tool[] | undefined): McpToolDefinition[]
 	});
 }
 
-/**
- * Extract text content from a user or developer message.
- */
 function extractUserMessageText(msg: Message): string {
 	if (msg.role !== "user" && msg.role !== "developer") return "";
 	const content = msg.content;
@@ -2732,9 +2646,6 @@ function cursorUserContentKey(content: string | (TextContent | ImageContent)[]):
 	return hash.digest("hex");
 }
 
-/**
- * Extract text content from an assistant message.
- */
 function extractAssistantMessageText(msg: Message): string {
 	if (msg.role !== "assistant") return "";
 	if (!Array.isArray(msg.content)) return "";
@@ -2744,7 +2655,6 @@ function extractAssistantMessageText(msg: Message): string {
 		.join("\n");
 }
 
-/** Index of last user/developer message in context messages, or -1. */
 function findLastUserMessageIndex(messages: Message[]): number {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const role = messages[i].role;
@@ -2755,8 +2665,6 @@ function findLastUserMessageIndex(messages: Message[]): number {
 	return -1;
 }
 
-/** Builds rootPromptMessagesJson blob IDs for system prompt and prior conversation. */
-/** Builds separate system-message JSON blobs per system prompt entry. */
 export function buildCursorSystemPromptJsons(systemPrompt: readonly string[] | undefined): string[] {
 	const systemPrompts = normalizeSystemPrompts(systemPrompt);
 	if (systemPrompts.length === 0) {
@@ -2765,20 +2673,17 @@ export function buildCursorSystemPromptJsons(systemPrompt: readonly string[] | u
 	return systemPrompts.map(content => JSON.stringify({ role: "system", content }));
 }
 
-/** Virtual path identifier for system prompt rule. */
 const CURSOR_SYSTEM_PROMPT_RULE_PATH = "veyyon://system-prompt.mdc";
 
 function createCursorRule(fullPath: string, content: string): CursorRule {
 	return create(CursorRuleSchema, {
 		fullPath,
 		content,
-		// Global always-apply rule.
 		type: create(CursorRuleTypeSchema, { type: { case: "global", value: create(CursorRuleTypeGlobalSchema, {}) } }),
 		source: 0,
 	});
 }
 
-/** Composes requestContext.rules payload from system prompt and rule files. */
 export function buildCursorRules(
 	systemPrompt: readonly string[] | undefined,
 	inputRules: readonly CursorRuleInput[] | undefined,
@@ -2789,7 +2694,6 @@ export function buildCursorRules(
 		rules.push(createCursorRule(CURSOR_SYSTEM_PROMPT_RULE_PATH, systemPrompts.join("\n\n")));
 	}
 	for (const input of inputRules ?? []) {
-		// An empty file is no instruction. cursor-agent skips empty AGENTS.md the same way.
 		if (input.content.trim().length === 0) continue;
 		rules.push(createCursorRule(input.fullPath, input.content));
 	}
@@ -2833,7 +2737,6 @@ function buildRootPromptMessagesJson(
 	return entries;
 }
 
-/** Converts context.messages to ConversationTurnStructure blob IDs. */
 function buildConversationTurns(
 	messages: Message[],
 	blobStore: Map<string, Uint8Array>,
@@ -2841,23 +2744,19 @@ function buildConversationTurns(
 ): Uint8Array[] {
 	const turns: Uint8Array[] = [];
 
-	// Find turn boundaries - each turn starts with a user message
 	let i = 0;
 	while (i < messages.length) {
 		const msg = messages[i];
 
-		// Skip non-user messages at the start
 		if (msg.role !== "user" && msg.role !== "developer") {
 			i++;
 			continue;
 		}
 
-		// Group messages into turns (user + assistant response).
 		if (i === activeUserMessageIndex) {
 			break;
 		}
 
-		// Create and serialize user message
 		const userText = extractUserMessageText(msg);
 		if (userText.length === 0 && !hasUserMessageImages(msg)) {
 			i++;
@@ -2872,7 +2771,6 @@ function buildConversationTurns(
 		const userMessageBytes = toBinary(UserMessageSchema, userMessage);
 		const userMessageBlobId = storeCursorBlob(blobStore, userMessageBytes);
 
-		// Collect and serialize steps until next user message
 		const stepBlobIds: Uint8Array[] = [];
 		i++;
 
@@ -2891,7 +2789,6 @@ function buildConversationTurns(
 					stepBlobIds.push(storeCursorBlob(blobStore, toBinary(ConversationStepSchema, step)));
 				}
 			} else if (stepMsg.role === "toolResult") {
-				// Include tool results as assistant text for context
 				const text = toolResultToText(stepMsg);
 				if (text) {
 					const prefix = stepMsg.isError ? "[Tool Error]" : "[Tool Result]";
@@ -2924,7 +2821,6 @@ function buildConversationTurns(
 	return turns;
 }
 
-/** Exported for tests: decodes Cursor history blobs built from conversation messages. */
 export function buildCursorHistoryForTest(
 	messages: Message[],
 	activeUserMessageIndex = findLastUserMessageIndex(messages),
@@ -3002,7 +2898,6 @@ async function buildGrpcRequest(
 	requestBytes: Uint8Array;
 	blobStore: Map<string, Uint8Array>;
 	conversationState: ConversationStateStructure;
-	/** Hex IDs of system-prompt blobs for miss detection. */
 	systemPromptBlobIds: ReadonlySet<string>;
 }> {
 	const blobStore = state.blobStore;
@@ -3044,7 +2939,6 @@ async function buildGrpcRequest(
 
 	const turns = buildConversationTurns(context.messages, blobStore, activeUserMessage ? activeUserMessageIndex : -1);
 
-	// Build rootPromptMessagesJson from prior messages.
 	const rootPromptMessagesJson = buildRootPromptMessagesJson(
 		context.messages,
 		systemPromptIds,
@@ -3100,8 +2994,6 @@ async function buildGrpcRequest(
 		requestedModel,
 		conversationId: state.conversationId,
 	});
-
-	// Tools are sent later via requestContext (exec handshake)
 
 	if (options?.customSystemPrompt) {
 		runRequest.customSystemPrompt = options.customSystemPrompt;

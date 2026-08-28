@@ -114,26 +114,18 @@ export interface OpenAIResponsesOptions extends StreamOptions {
 	openrouterVariant?: string;
 	maxTokensExplicit?: boolean;
 	disableReasoning?: boolean;
-	/** Stateful turn chaining via previous_response_id. */
 	statefulResponses?: boolean;
-	/** Override strict tool call/result pairing compatibility. */
 	strictResponsesPairing?: boolean;
-	/** Override include: ["reasoning.encrypted_content"] compatibility. */
 	includeEncryptedReasoning?: boolean;
-	/** Override stripping type: "reasoning" from replayed history. */
 	filterReasoningHistory?: boolean;
-	/** Override suppressing reasoning.effort wire parameter. */
 	omitReasoningEffort?: boolean;
-	/** Extra request headers merged onto model/copilot defaults. */
 	headers?: Record<string, string>;
-	/** Extra body fields merged into Responses request payload. */
 	extraBody?: Record<string, unknown>;
 }
 
 const OPENAI_RESPONSES_PROVIDER_SESSION_STATE_PREFIX = "openai-responses:";
 const OPENAI_RESPONSES_FIRST_EVENT_TIMEOUT_MESSAGE =
 	"OpenAI responses stream timed out while waiting for the first event";
-/** Consecutive stale-previous-response failures before chaining is disabled for the session. */
 const OPENAI_RESPONSES_CHAIN_STALE_FAILURE_LIMIT = 3;
 
 interface OpenAIResponsesProviderSessionState
@@ -141,20 +133,15 @@ interface OpenAIResponsesProviderSessionState
 		OpenAIStrictToolsState,
 		OpenAIReasoningEffortFallbackState {
 	nativeHistoryReplayWarmed: boolean;
-	/** Stateful `previous_response_id` chain baselines, keyed by baseUrl/model/session. */
 	chains: Map<string, OpenAIResponsesChainState>;
 }
 
 interface OpenAIResponsesChainState {
-	/** Wire params of last successful turn. */
 	lastParams?: OpenAIResponsesSamplingParams;
 	lastResponseId?: string;
-	/** Output items of the last response, in replay-sanitized form (matches next-turn input). */
 	lastResponseItems?: ResponseInput;
 	canAppend: boolean;
-	/** Consecutive stale-previous-response failures; reset on a successful chained completion. */
 	staleFailures: number;
-	/** Set once chaining is judged unsupported for this session (circuit breaker). */
 	disabled: boolean;
 }
 
@@ -221,11 +208,9 @@ function resetOpenAIResponsesChainState(state: OpenAIResponsesChainState): void 
 
 interface OpenAIResponsesChainedParams {
 	params: OpenAIResponsesSamplingParams;
-	/** Set iff the params carry previous_response_id (delta request). */
 	previousResponseId?: string;
 }
 
-/** Build chained params using previous_response_id when history is intact. */
 function buildOpenAIResponsesChainedParams(
 	params: OpenAIResponsesSamplingParams,
 	chain: OpenAIResponsesChainState,
@@ -268,7 +253,6 @@ function registerOpenAIResponsesChainStaleFailure(chain: OpenAIResponsesChainSta
 	});
 }
 
-/** Disable chaining on Zero Data Retention rejection. */
 function markOpenAIResponsesChainZeroDataRetention(chain: OpenAIResponsesChainState, error: unknown): void {
 	resetOpenAIResponsesChainState(chain);
 	chain.disabled = true;
@@ -327,7 +311,6 @@ const streamOpenAIResponsesOnce = (
 
 		const output: AssistantMessage = createInitialResponsesAssistantMessage(model.api, model.provider, model.id);
 		let rawRequestDump: RawHttpRequestDump | undefined;
-		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
 		let wireBodyJson: string | undefined;
 
 		let chainState: OpenAIResponsesChainState | undefined;
@@ -696,7 +679,6 @@ const streamOpenAIResponsesOnce = (
 	return stream;
 };
 
-/** Stream Responses API with empty-completion retry. */
 export const streamOpenAIResponses: StreamFunction<"openai-responses"> = (model, context, options) =>
 	withEmptyCompletionRetry(model, context, options, streamOpenAIResponsesOnce);
 
@@ -840,14 +822,12 @@ export function buildParams(
 	return { params, strictToolsApplied };
 }
 
-/** Whether model supports freeform apply_patch tool grammar variant. */
 export function supportsFreeformApplyPatch(
 	model: Model<"openai-responses" | "azure-openai-responses" | "openai-codex-responses">,
 ): boolean {
 	return model.applyPatchToolType === "freeform";
 }
 
-/** @internal Exported for tests. */
 export function mapOpenAIResponsesToolChoiceForTools(
 	choice: ToolChoice | undefined,
 	tools: Tool[],
@@ -873,7 +853,6 @@ export function mapOpenAIResponsesToolChoiceForTools(
 	return customTool ? { type: "custom", name: customTool.customWireName ?? customTool.name } : mapped;
 }
 
-/** @internal Exported for tests. */
 export function convertTools(
 	tools: Tool[],
 	strictMode: boolean,

@@ -1,13 +1,3 @@
-/**
- * ArkType schemas for the OpenAI Responses API request shape we accept on the
- * gateway. Mirrors https://platform.openai.com/docs/api-reference/responses.
- *
- * Unsupported / opaque controls (background/include/metadata/prompt/…) are
- * accepted as `"unknown"` optional so we silently ignore rather than 400.
- * Real clients (codex, openai-python, llm-git) routinely send these and a 400
- * is a worse outcome than dropping them on the floor.
- */
-
 import { type } from "arktype";
 import type {
 	EasyInputMessage,
@@ -137,9 +127,6 @@ const customToolCallOutputItemSchema = type({
 	output: "string",
 });
 
-/**
- * Direct mapping to standard types.
- */
 export const inputItemSchema = userMessageItemSchema
 	.or(systemMessageItemSchema)
 	.or(assistantMessageItemSchema)
@@ -161,7 +148,6 @@ export type OpenAIResponsesReasoningItem = ResponseReasoningItem;
 export type OpenAIResponsesFunctionCallItem = ResponseFunctionToolCall;
 export type OpenAIResponsesFunctionCallOutputItem = ResponseInputItem.FunctionCallOutput;
 
-/** Inferred shape of the custom tool call input item (no canonical SDK alias). */
 export type OpenAIResponsesCustomToolCallItem = typeof customToolCallItemSchema.infer;
 export type OpenAIResponsesCustomToolCallOutputItem = typeof customToolCallOutputItemSchema.infer;
 export type OpenAIResponsesInputImageBlock = typeof inputImageBlockSchema.infer;
@@ -269,11 +255,6 @@ export const openaiResponsesRequestSchema = type({
 	"truncation?": "unknown",
 });
 
-/**
- * Public types are sourced from the OpenAI SDK so the gateway stays in
- * lock-step with the canonical API surface; the schemas above are runtime
- * validators for the subset we actually accept.
- */
 export type OpenAIResponsesRequest = ResponseCreateParams;
 export type OpenAIResponsesInputItem = ResponseInputItem;
 export type OpenAIResponsesTool = ResponsesTool;

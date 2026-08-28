@@ -38,17 +38,6 @@ export function isOfficialOpenAIResponsesEndpoint(model: Model): boolean {
 	}
 }
 
-/**
- * Resolve cache fields and markers for an official OpenAI Responses request.
- *
- * `prompt_cache_breakpoint` is a platform API field: only `api.openai.com`
- * accepts it. The ChatGPT Codex backend rejects it with
- * `prompt_cache_breakpoint is not supported on this model (invalid_parameter)`,
- * which fails the whole turn, and upstream codex-rs never sends it. The
- * `Model<"openai-responses">` parameter type keeps the Codex request path from
- * asking for a policy at all; do not widen it to `openai-codex-responses`
- * without a captured request from that backend proving the field is accepted.
- */
 export function resolveOpenAIPromptCachePolicy({
 	model,
 	promptCacheKey,
@@ -77,17 +66,6 @@ export function resolveOpenAIPromptCachePolicy({
 	return { stablePrefixBreakpoint, promptCacheRetention };
 }
 
-/**
- * Serialize one Responses input-text block under the resolved cache policy.
- *
- * The marker is dropped for text with no cacheable content. A breakpoint marks
- * the prefix ending at its own block, and the platform floor for a cacheable
- * prefix is 1024 tokens strictly, so a blank block can never make its own
- * marker eligible; it only spends a marker slot and risks the documented 400
- * for a breakpoint on a non-cacheable block. `normalizeSystemPrompts` already
- * filters blank prompts on the Responses path, but this is the module boundary
- * every serializer goes through, so the invariant is enforced here.
- */
 export function formatOpenAIInputText(
 	text: string,
 	policy: OpenAIPromptCachePolicy = OPENAI_PROMPT_CACHE_DISABLED,

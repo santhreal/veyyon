@@ -290,17 +290,6 @@ function convertTools(tools: Tool[] | undefined): OllamaFunctionTool[] | undefin
 	}));
 }
 
-/**
- * Ollama Cloud rejects `num_predict` above this value with HTTP 400
- * (`max_tokens (...) exceeds model's maximum output tokens (65536)`).
- * The cap currently applies uniformly to cloud-served models; the cloud-side
- * limit was confirmed empirically against `deepseek-v4-pro`/`-flash` and is
- * the same cap surfaced for every other Ollama Cloud model we've probed.
- *
- * Acts as a wire-level safety net so stale `models.db` rows (or custom
- * `modelOverrides` re-enabling `num_predict`) cannot 400 the request — even
- * when `model.omitMaxOutputTokens` was never applied. See #3392.
- */
 const OLLAMA_CLOUD_NUM_PREDICT_CAP = 65_536;
 
 function resolveNumPredict(model: Model<"ollama-chat">, requested: number): number {
@@ -328,11 +317,6 @@ function createChatBody(model: Model<"ollama-chat">, context: Context, options: 
 	};
 }
 
-/**
- * What a local server states for itself: the llama.cpp tool-call parse failure, which answers 500 and
- * reproduces on every replay because the same prompt produces the same malformed output. The rest of
- * the verdict is `retryResponse`'s.
- */
 const OLLAMA_RESPONSE_RETRY_POLICY: AIError.ResponseRetryPolicy = {
 	api: "ollama-chat",
 	refusesReplay: body => AIError.LLAMA_CPP_TOOL_CALL_PARSE_PATTERN.test(body),
@@ -435,7 +419,6 @@ const streamOllamaOnce = (
 		let sawDone = false;
 		const output = createEmptyOutput(model);
 		let rawRequestDump: RawHttpRequestDump | undefined;
-		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
 		let wireBodyJson: string | undefined;
 		let capturedErrorResponse: CapturedHttpErrorResponse | undefined;
 		let activeThinkingIndex: number | undefined;
@@ -759,6 +742,5 @@ const streamOllamaOnce = (
 	return stream;
 };
 
-/** Retry EOS-only Ollama completions before the agent loop sees an empty stop. */
 export const streamOllama: StreamFunction<"ollama-chat"> = (model, context, options) =>
 	withEmptyCompletionRetry(model, context, options, streamOllamaOnce);

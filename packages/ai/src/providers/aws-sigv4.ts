@@ -1,17 +1,3 @@
-/**
- * AWS Signature V4 signing for HTTP requests. WebCrypto-only — no node:crypto.
- *
- * Matches `@smithy/signature-v4` for our usage: header-based signing with a
- * full SHA-256 payload hash (Bedrock requires `applyChecksum: true`).
- *
- * Returns the set of headers to attach to the request:
- *  - `host`
- *  - `x-amz-date`
- *  - `x-amz-content-sha256`
- *  - `x-amz-security-token` (only when credentials carry a sessionToken)
- *  - `authorization`
- */
-
 import { asStrictBytes } from "@veyyon/utils/bytes";
 
 export interface AwsCredentials {
@@ -22,19 +8,14 @@ export interface AwsCredentials {
 
 export interface SignParams {
 	method: string;
-	/** Hostname only — used to build the `host` header and the canonical request. */
 	host: string;
-	/** URI path component, e.g. `/model/anthropic.claude/converse-stream`. */
 	path: string;
-	/** Optional pre-built query string (without leading `?`). */
 	query?: string;
-	/** Extra headers to sign in addition to `host`/`x-amz-*`. Names are case-insensitive. */
 	headers?: Record<string, string>;
 	body: Uint8Array;
 	region: string;
 	service: string;
 	credentials: AwsCredentials;
-	/** Override clock for deterministic tests. */
 	date?: Date;
 }
 
@@ -90,9 +71,6 @@ async function hmac(key: Uint8Array, data: string | Uint8Array): Promise<Uint8Ar
 	return new Uint8Array(sig);
 }
 
-/**
- * Derive a signing key: HMAC chain `kSecret → kDate → kRegion → kService → kSigning`.
- */
 export async function getSigningKey(
 	secretAccessKey: string,
 	shortDate: string,
@@ -105,7 +83,6 @@ export async function getSigningKey(
 	return hmac(kService, KEY_TYPE);
 }
 
-/** `YYYYMMDDTHHMMSSZ` + 8-char `YYYYMMDD`. */
 export function formatAmzDate(d: Date): { longDate: string; shortDate: string } {
 	const iso = d.toISOString();
 	// `2025-05-17T12:34:56.789Z` -> `20250517T123456Z`
@@ -113,12 +90,6 @@ export function formatAmzDate(d: Date): { longDate: string; shortDate: string } 
 	return { longDate, shortDate: longDate.slice(0, 8) };
 }
 
-/**
- * Canonicalize a request path per RFC 3986: each segment is %-encoded but `/`
- * stays literal. Matches the smithy default (`uriEscapePath: true`, then revert
- * the double-encoding of `/`). Bedrock paths use no reserved characters in
- * practice, but model IDs can include `:` and `.`.
- */
 function canonicalPath(path: string): string {
 	const segments = path.split("/");
 	const escaped = segments.map(seg => (seg.length === 0 ? "" : encodeRfc3986(seg)));

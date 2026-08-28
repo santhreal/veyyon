@@ -1,9 +1,5 @@
 import { getGitHubCopilotBaseUrl, parseGitHubCopilotApiKey } from "@veyyon/catalog/wire/github-copilot";
 import type { Message } from "../types";
-/**
- * Infer whether the current request to Copilot is user-initiated or agent-initiated.
- * Accepts `unknown[]` because providers may pass pre-converted message shapes.
- */
 export type CopilotInitiator = "user" | "agent";
 export type CopilotPremiumRequests = number;
 export type CopilotDynamicHeaders = {
@@ -39,7 +35,6 @@ export function inferCopilotInitiator(messages: unknown[]): CopilotInitiator {
 
 	if (role !== "user") return "agent";
 
-	// Check if last content block is a tool_result (Anthropic-converted shape)
 	const content = last.content;
 	if (Array.isArray(content) && content.length > 0) {
 		const lastBlock = content[content.length - 1] as Record<string, unknown>;
@@ -51,7 +46,6 @@ export function inferCopilotInitiator(messages: unknown[]): CopilotInitiator {
 	return "user";
 }
 
-/** Check whether any message in the conversation contains image content. */
 export function hasCopilotVisionInput(messages: Message[]): boolean {
 	return messages.some(msg => {
 		if (msg.role === "user" && Array.isArray(msg.content)) {
@@ -64,10 +58,6 @@ export function hasCopilotVisionInput(messages: Message[]): boolean {
 	});
 }
 
-/**
- * Resolve an explicitly configured Copilot initiator header, if present.
- * Handles case-insensitive X-Initiator keys and returns the last valid value.
- */
 export function getCopilotInitiatorOverride(headers: Record<string, string> | undefined): CopilotInitiator | undefined {
 	if (!headers) return undefined;
 
@@ -106,10 +96,6 @@ export function getCopilotPremiumRequests(params: {
 	return getCopilotPremiumMultiplier(params.premiumMultiplier, params.planTier);
 }
 
-/**
- * Build dynamic Copilot headers that vary per-request.
- * Static headers (User-Agent, Editor-Version, etc.) come from model.headers.
- */
 export function buildCopilotDynamicHeaders(params: {
 	messages: unknown[];
 	hasImages: boolean;

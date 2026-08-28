@@ -1,47 +1,3 @@
-/**
- * Mock provider for tests.
- *
- * Implements `Model<"mock">` + `streamMock` so test code can drive
- * pi-agent-core / streamSimple-shaped consumers without an HTTP client.
- *
- * Usage:
- *
- *   import { createMockModel, registerMockApi } from "@veyyon/ai/providers/mock";
- *
- *   // 1. Array of responses, one per call.
- *   const mock = createMockModel({
- *     responses: [
- *       { content: [{ type: "toolCall", name: "read", arguments: { path: "/x" } }] },
- *       { content: ["done"] },
- *     ],
- *   });
- *
- *   // 2. Async generator — full state-machine power, can await between turns.
- *   const mock = createMockModel({
- *     responses: (async function* () {
- *       yield { content: [{ type: "toolCall", name: "fetch", arguments: { url } }] };
- *       // wait for external coordination
- *       await externalReady;
- *       yield { content: ["got it"] };
- *     })(),
- *   });
- *
- *   // 3. Per-call handler (closure with access to the call).
- *   const mock = createMockModel({
- *     handler: (context) => ({ content: [`turn ${context.messages.length}`] }),
- *   });
- *
- *   // 4. Use as a streamFn for agentLoop:
- *   await agentLoop(prompts, context, config, undefined, mock.stream).result();
- *
- *   // 5. Or register globally and use stream():
- *   registerMockApi();
- *   stream(mock.model, context, options);
- *
- *   // Inspect calls afterwards.
- *   expect(mock.calls).toHaveLength(2);
- */
-
 import { emptyUsage } from "@veyyon/catalog/models";
 import { untilAborted } from "@veyyon/utils/abortable";
 import { registerCustomApi } from "../api-registry";
@@ -61,95 +17,53 @@ import type {
 } from "../types";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 
-/** The API string this provider serves. */
 export const MOCK_API = "mock" as const;
 export type MockApi = typeof MOCK_API;
 
-/** Shorthand for a single content block. Strings become text blocks. */
 export type MockContent =
 	| string
 	| { type: "text"; text: string }
 	| { type: "thinking"; thinking: string }
 	| {
 			type: "toolCall";
-			/** Optional explicit id; auto-generated when omitted. */
 			id?: string;
 			name: string;
-			/** Object form is preferred; strings are passed through verbatim. */
 			arguments: Record<string, unknown> | string;
 	  };
 
-/** One scripted response. */
 export interface MockResponse {
-	/** Content blocks to emit, in order. Strings become text blocks. */
 	content?: ReadonlyArray<MockContent>;
-	/** Stop reason. Defaults to `"toolUse"` when content has tool calls, else `"stop"`. */
 	stopReason?: StopReason;
-	/** Structured terminal stop classification, e.g. Anthropic refusal metadata. */
 	stopDetails?: StopDetails | null;
-	/** Error text paired with an explicit `"error"` stop reason. */
 	errorMessage?: string;
-	/** Usage stats. Missing fields default to 0; missing `cost.total` is recomputed from components. */
 	usage?: Partial<Omit<Usage, "cost">> & { cost?: Partial<Usage["cost"]> };
-	/** Pre-set responseId. */
 	responseId?: string;
-	/** If set, the stream emits a terminal error event instead of completing. */
 	throw?: string | Error;
-	/** Delay before any event is emitted. Honors the call's AbortSignal. */
 	delayMs?: number;
-	/**
-	 * If set, the mock synthesizes a {@link ProviderResponseMetadata} and fires
-	 * `options.onResponse` once before streaming events. Headers are forwarded
-	 * verbatim (keys lowercased to match real provider plumbing).
-	 */
 	responseHeaders?: Readonly<Record<string, string>>;
-	/** HTTP status code paired with {@link responseHeaders}. Defaults to 200. */
 	responseStatus?: number;
-	/** Pre-set requestId surfaced via {@link ProviderResponseMetadata.requestId}. */
 	responseRequestId?: string;
 }
 
-/** Handler resolved per call: static script or function. */
 export type MockHandler =
 	| MockResponse
 	| ((context: Context, options?: SimpleStreamOptions) => MockResponse | Promise<MockResponse>);
 
-/**
- * A source of handlers, one per call.
- *
- * - Arrays / iterables consume one entry per call (most ergonomic for scripts).
- * - Async iterables (e.g. `async function*()`) let the test pause between calls,
- *   coordinate with external events, or build state machines.
- *
- * The first call pulls the first entry, the second call pulls the second, and
- * so on. When the source is exhausted, `MockModelOptions.handler` is used; if
- * neither is set, the call rejects.
- */
 export type MockResponseSource = Iterable<MockHandler> | AsyncIterable<MockHandler>;
 
-/** Recorded call for inspection. */
 export interface MockCall {
 	readonly context: Context;
 	readonly options?: SimpleStreamOptions;
 }
 
-/** Construction options. */
 export interface MockModelOptions {
-	/** Model id. Defaults to `"mock-model"`. */
 	id?: string;
-	/** Provider string used in the returned AssistantMessage. Defaults to `"mock"`. */
 	provider?: string;
-	/** A sequence of responses, one per call. Accepts arrays, generators, or any iterable. */
 	responses?: MockResponseSource;
-	/** Fallback handler used when `responses` is exhausted. */
 	handler?: MockHandler;
-	/** Cost per million tokens. Defaults to zeros. */
 	cost?: Model["cost"];
-	/** Context window. Defaults to 200_000. */
 	contextWindow?: number;
-	/** Max output tokens. Defaults to 32_768. */
 	maxTokens?: number;
-	/** Whether the model claims to support reasoning. Defaults to false. */
 	reasoning?: boolean;
 }
 
@@ -160,11 +74,6 @@ const ZERO_COST: Model["cost"] = {
 	cacheWrite: 0,
 };
 
-/**
- * A `Model<"mock">` that carries its own scripted state. Pass instances to
- * `stream()` or agent configs, and use the same instance to inspect calls
- * and feed additional handlers.
- */
 export class MockModel implements Model<MockApi> {
 	readonly id: string;
 	readonly name: string;
@@ -178,7 +87,6 @@ export class MockModel implements Model<MockApi> {
 	readonly maxTokens: number;
 	readonly compat = undefined;
 
-	/** Recorded calls in invocation order. */
 	readonly calls: MockCall[] = [];
 
 	iterator?: Iterator<MockHandler> | AsyncIterator<MockHandler>;
@@ -200,42 +108,31 @@ export class MockModel implements Model<MockApi> {
 		this.fallback = options.handler;
 	}
 
-	/** Back-compat alias: the model is its own handle. */
 	get model(): this {
 		return this;
 	}
 
-	/** A streamFn-compatible callable. Forward to `agentLoop` or pi `stream()`. */
 	stream = (_model: Model<Api>, context: Context, options?: SimpleStreamOptions): AssistantMessageEventStream =>
 		streamMock(this, context, options);
 
-	/**
-	 * Append a handler to the internal queue consumed AFTER the constructor
-	 * `responses` source is exhausted (but before the fallback). Use this for
-	 * interactive tests that decide responses after the model is created.
-	 */
 	push(response: MockHandler): void {
 		this.extras.push(response);
 	}
 
-	/** Reset recorded calls AND the extras queue. The constructor `responses` are NOT reset. */
 	reset(): void {
 		this.extras.length = 0;
 		this.calls.length = 0;
 		this.toolCallCounter = 0;
 	}
 }
-/** Check whether `model` was produced by `createMockModel`. */
 export function isMockModel(model: Model<Api>): model is MockModel {
 	return model instanceof MockModel;
 }
 
-/** Construct a mock model. */
 export function createMockModel(options: MockModelOptions = {}): MockModel {
 	return new MockModel(options);
 }
 
-/** Stream function for `Model<"mock">`. Matches the pi-ai per-provider stream signature. */
 export function streamMock(
 	model: Model<Api>,
 	context: Context,
@@ -258,7 +155,6 @@ export function streamMock(
 	return stream;
 }
 
-/** Convenience: register the mock provider with the global custom API registry. */
 export function registerMockApi(sourceId = "pi-ai/mock"): void {
 	registerCustomApi(MOCK_API, streamMock, sourceId);
 }

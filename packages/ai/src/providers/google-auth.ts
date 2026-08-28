@@ -1,17 +1,3 @@
-/**
- * Application Default Credentials (ADC) resolution for Vertex AI.
- *
- * Replaces `google-auth-library` with a direct WebCrypto + REST implementation.
- * Sources, in priority order:
- *   1. `GOOGLE_APPLICATION_CREDENTIALS` env → file with `type: "service_account"` (RS256 JWT exchange)
- *     or `type: "authorized_user"` (refresh-token exchange).
- *   2. `~/.config/gcloud/application_default_credentials.json` (user ADC, same authorized_user flow).
- *   3. GCE / Cloud Run metadata server (`metadata.google.internal`).
- *
- * Tokens are cached per source key and refreshed `GOOGLE_VERTEX_REFRESH_SKEW_MS` before expiry
- * (default 60s). Concurrent callers waiting on a refresh share the same in-flight promise.
- */
-
 import { Buffer } from "node:buffer";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -178,7 +164,6 @@ async function fetchMetadataToken(
 		});
 		if (!response.ok) {
 			// The metadata server ANSWERED and refused, which means this IS a GCE or Cloud Run instance and the
-			// problem is the service account bound to it. The caller's error lists "run on a GCE instance with a
 			// service account" as one of three fixes, advice that is wrong for exactly this case, so the status
 			// is reported here where it is still known.
 			logger.warn("GCE metadata server refused a token; Vertex credentials will fall through to an error", {
@@ -189,9 +174,7 @@ async function fetchMetadataToken(
 		}
 		return (await response.json()) as TokenResponse;
 	} catch {
-		// Not on GCE or Cloud Run: nothing answers `metadata.google.internal`, so the fetch throws or the 2s
 		// probe times out. That is the ordinary case on a laptop and is not worth a warning, and it is not
-		// swallowed either -- the caller turns "no source at all" into a MissingApiKeyError naming every fix.
 		return undefined;
 	} finally {
 		metadataTimeout.cancel();
@@ -211,8 +194,6 @@ async function postForToken(
 		signal,
 	});
 	if (!response.ok) {
-		// The STATUS is the failure and it is in the thrown message; the body is Google's explanation of it. An
-		// unreadable body must not replace "token exchange failed (400)" with a read error. A token endpoint's
 		// error body is also the likeliest place to find a credential echoed back, so it goes through the
 		// shared bounded reader and its redactor.
 		const detail = await AIError.readProviderErrorDetail(response);
@@ -293,17 +274,8 @@ async function resolveAccessTokenUncached(
 	);
 }
 
-/**
- * Bound for the detached (signal-free) shared token resolution: a hung OAuth
- * exchange or metadata fetch must not pin the inflight slot forever — every
- * later call would await the stuck promise until process restart.
- */
 const SHARED_TOKEN_RESOLVE_TIMEOUT_MS = 30_000;
 
-/**
- * Returns a Bearer access token suitable for the `Authorization` header on Vertex AI calls.
- * The token is cached in module scope and refreshed `GOOGLE_VERTEX_REFRESH_SKEW_MS` ms before it expires.
- */
 export async function getVertexAccessToken(options?: { signal?: AbortSignal; fetch?: FetchImpl }): Promise<string> {
 	// An explicit access token (e.g. `gcloud auth print-access-token`) bypasses the cache so a
 	// refreshed env token takes effect immediately. `CLOUDSDK_AUTH_ACCESS_TOKEN` is gcloud's own
@@ -348,7 +320,6 @@ export async function getVertexAccessToken(options?: { signal?: AbortSignal; fet
 	return raceWithSignal(promise, options?.signal);
 }
 
-/** Test seam: clears every cached token. */
 export function __resetVertexTokenCache(): void {
 	tokenCache.clear();
 	inflight.clear();

@@ -4,6 +4,7 @@ import * as logger from "@veyyon/utils/logger";
 import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import { type } from "arktype";
 import { captureRequestHeaders, resolvePromptCacheKey } from "../auth-gateway/http";
+import type { AuthGatewayStreamControl, AuthGatewayParsedRequest as ParsedRequest } from "../auth-gateway/types";
 import * as AIError from "../error";
 import type {
 	AssistantMessage,
@@ -28,14 +29,6 @@ import {
 	type AnthropicUserContentBlock,
 	anthropicMessagesRequestSchema,
 } from "./anthropic-messages-server-schema";
-
-/**
- * Anthropic Messages API (https://docs.anthropic.com/en/api/messages) ↔ pi-ai
- * gateway translation. Inbound: foreign HTTP body → veyyon Context. Outbound:
- * veyyon AssistantMessage[Stream] → Anthropic-shaped JSON / SSE.
- */
-
-import type { AuthGatewayStreamControl, AuthGatewayParsedRequest as ParsedRequest } from "../auth-gateway/types";
 
 export type { ParsedRequest };
 
@@ -255,14 +248,6 @@ function readCacheControl(value: unknown): AnthropicCacheControl | undefined {
 	return cc;
 }
 
-/**
- * Anthropic clients annotate caching breakpoints per block via
- * `cache_control: { type: "ephemeral", ttl?: "1h"|"5m" }`. pi-ai's
- * `cacheRetention` is per-request, not per-block, and its anthropic provider
- * re-applies breakpoints itself on the rebuilt outbound wire. Scan every
- * block once and return the strongest retention requested: any `ttl: "1h"`
- * promotes the request to "long", anything else ephemeral maps to "short".
- */
 function deriveCacheRetention(data: {
 	system?: unknown;
 	messages: readonly unknown[];
@@ -289,11 +274,6 @@ function deriveCacheRetention(data: {
 	return strongest;
 }
 
-/**
- * Inbound `output_config.effort` wire literal → catalog `Effort` (1:1).
- * Values outside this table (none exist in the schema today) are ignored
- * rather than guessed at.
- */
 const REASONING_EFFORT_BY_WIRE: Partial<Record<string, Effort>> = {
 	low: Effort.Low,
 	medium: Effort.Medium,
@@ -741,11 +721,6 @@ export function encodeStream(
 
 // Error envelope
 
-/**
- * Anthropic error envelope: `{ type: "error", error: { type, message } }`.
- * See https://docs.anthropic.com/en/api/errors. Returned as a `Response` so
- * the gateway can hand it straight back to the client without extra wrapping.
- */
 export function formatError(status: number, type: string, message: string): Response {
 	return new Response(JSON.stringify({ type: "error", error: { type, message } }), {
 		status,

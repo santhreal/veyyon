@@ -4,50 +4,31 @@ import { escapeRegExp } from "@veyyon/utils/regex";
 import { isRecord } from "@veyyon/utils/type-guards";
 import type { CapturedHttpErrorResponse } from "../utils/http-inspector";
 
-/** @internal */
 export type OpenAIReasoningEffortFallback = string | null;
 
-/** @internal */
 export interface OpenAIReasoningEffortFallbackState {
 	reasoningEffortFallbacks: Map<string, OpenAIReasoningEffortFallback>;
 }
 
-/**
- * The reasoning values this fallback can step down to, least to most intensive.
- */
 const ENABLED_REASONING_VALUES: readonly string[] = THINKING_EFFORTS;
 
-/**
- * Every value an OpenAI-compatible server may name in a reasoning error, which
- * is the ladder plus `none`.
- *
- * `none` is deliberately NOT on the ladder and must not be added to it: it means
- * "do not reason", the state this fallback lands in when nothing else is
- * allowed, and treating it as an effort level would make it a step the clamp
- * helpers could stop at. It is spelled here because the set of values a SERVER
- * recognises is a different question from the set of levels veyyon offers.
- */
 const NO_REASONING_VALUE = "none";
 const KNOWN_REASONING_VALUE: Readonly<Record<string, true>> = Object.freeze(
 	Object.fromEntries<true>([NO_REASONING_VALUE, ...ENABLED_REASONING_VALUES].map(value => [value, true])),
 );
 
-/** Position on the ladder, used to pick the nearest allowed step below the rejected one. */
 const REASONING_VALUE_RANK: Readonly<Record<string, number>> = Object.freeze(
 	Object.fromEntries(ENABLED_REASONING_VALUES.map((value, rank) => [value, rank])),
 );
 
-/** @internal */
 export function createOpenAIReasoningEffortFallbackState(): OpenAIReasoningEffortFallbackState {
 	return { reasoningEffortFallbacks: new Map() };
 }
 
-/** @internal */
 export function clearOpenAIReasoningEffortFallbackState(state: OpenAIReasoningEffortFallbackState): void {
 	state.reasoningEffortFallbacks.clear();
 }
 
-/** @internal */
 export function getOpenAIReasoningEffortFallback(
 	state: OpenAIReasoningEffortFallbackState | undefined,
 	key: string,
@@ -55,7 +36,6 @@ export function getOpenAIReasoningEffortFallback(
 	return state?.reasoningEffortFallbacks.get(key);
 }
 
-/** @internal */
 export function rememberOpenAIReasoningEffortFallback(
 	state: OpenAIReasoningEffortFallbackState | undefined,
 	key: string,
@@ -64,7 +44,6 @@ export function rememberOpenAIReasoningEffortFallback(
 	state?.reasoningEffortFallbacks.set(key, fallback);
 }
 
-/** @internal */
 export function createOpenAIReasoningEffortFallbackKey(
 	endpoint: "chat-completions" | "responses" | "azure-responses",
 	baseUrl: string | undefined,
@@ -73,7 +52,6 @@ export function createOpenAIReasoningEffortFallbackKey(
 	return `${endpoint}:${baseUrl ?? ""}:${wireModelId ?? ""}`;
 }
 
-/** @internal */
 export function readOpenAIReasoningEffort(params: unknown): string | undefined {
 	if (!isRecord(params)) return undefined;
 	if (typeof params.reasoning_effort === "string") return params.reasoning_effort;
@@ -91,7 +69,6 @@ function deleteReasoningEffort(reasoning: Record<string, unknown>, parent: Recor
 	return true;
 }
 
-/** @internal */
 export function applyOpenAIReasoningEffortFallback(params: unknown, fallback: OpenAIReasoningEffortFallback): boolean {
 	if (!isRecord(params)) return false;
 	let changed = false;
@@ -246,7 +223,6 @@ function nearestEnabledReasoningFallback(currentEffort: string, allowed: Set<str
 	return best;
 }
 
-/** @internal */
 export function resolveOpenAIReasoningEffortFallback(
 	error: unknown,
 	captured: CapturedHttpErrorResponse | undefined,

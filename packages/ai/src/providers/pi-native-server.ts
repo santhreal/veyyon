@@ -1,31 +1,3 @@
-/**
- * Pi-native wire format for the auth-gateway.
- *
- * Where the OpenAI / Anthropic / Responses route modules translate foreign
- * wire shapes through pi-ai's canonical {@link Context}, this module accepts
- * the canonical shape *directly* — for clients that already speak pi-ai
- * (containerized veyyon, the swarm extension, robomp's sidecar auth-gateway).
- * Skipping the wire-format → Context → wire-format round-trip cuts
- * per-request CPU but, more importantly, avoids the quantization that those
- * translations impose on first-class pi-ai fields (service tier, cache
- * markers, thinking budgets, tool-choice variants, …).
- *
- * The streaming wire is {@link AssistantMessageEvent} serialized verbatim and
- * SSE-framed. Same type pi-ai already produces internally; the client feeds
- * each parsed event straight into `AssistantMessageEventStream.push()` with
- * no translation. Including `partial: AssistantMessage` on every delta is
- * O(N²) in turn length on the wire — acceptable for the loopback / sidecar
- * topology this transport is designed for; provider latency dominates the
- * actual cost.
- *
- * Endpoint contract:
- *   POST /v1/pi/stream
- *   body:    { modelId, context, options?, stream? }   // `stream` defaults to true
- *   200 SSE: stream of `AssistantMessageEvent` (terminated by `data: [DONE]`)
- *   200 JSON (stream=false): { message: AssistantMessage }
- *   4xx/5xx: { error: { type, message } }
- */
-
 import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import type { AuthGatewayStreamControl } from "../auth-gateway/types";
 import * as AIError from "../error";
@@ -37,15 +9,6 @@ export interface PiNativeParsedRequest {
 	options: SimpleStreamOptions;
 	stream: boolean;
 }
-/**
- * Subset of {@link SimpleStreamOptions} accepted from the wire. Function-valued
- * fields (`fetch`, `onPayload`, `onResponse`, `onSseEvent`, exec handlers, the
- * provider-session map) and gateway-owned controls (`apiKey`, `signal`) are
- * intentionally absent — those are server-side concerns. Anything outside this
- * allow-list is dropped silently rather than 400ing, so clients can forward
- * `SimpleStreamOptions` from older / newer veyyon builds without per-version
- * conditionals.
- */
 const ALLOWED_OPTION_KEYS: ReadonlySet<keyof SimpleStreamOptions> = new Set([
 	"temperature",
 	"topP",
@@ -80,17 +43,6 @@ const ALLOWED_OPTION_KEYS: ReadonlySet<keyof SimpleStreamOptions> = new Set([
 
 // parseRequest
 
-/**
- * Parse a pi-native request body. Validation is intentionally minimal — only
- * the shape the gateway itself reads is checked (`modelId`, `context.messages`
- * array, options is an object). Everything downstream is the canonical pi-ai
- * type surface; mis-shaped values surface as a `502 upstream_error` from
- * `streamSimple` rather than being re-validated here.
- *
- * Accepts both `{ modelId: string }` and `{ model: { id: string } }` so the
- * existing `streamProxy` client (which sends the full Model object) can target
- * the gateway with only a URL swap.
- */
 export function parseRequest(body: unknown, _headers?: Headers): PiNativeParsedRequest {
 	if (!isRecord(body)) {
 		throw new AIError.ValidationError("Request body must be a JSON object");
@@ -150,18 +102,6 @@ export function parseRequest(body: unknown, _headers?: Headers): PiNativeParsedR
 const SSE_ENCODER = new TextEncoder();
 const SSE_DONE = SSE_ENCODER.encode("data: [DONE]\n\n");
 
-/**
- * Ship every {@link AssistantMessageEvent} verbatim, SSE-framed.
- *
- * No per-event re-shaping: the pi-native client is pi-ai itself, so the
- * canonical event type IS the wire type. Including the rolling
- * `partial: AssistantMessage` on every delta is quadratic in turn length
- * on the wire, but for the loopback / sidecar topology this transport
- * targets (containerized veyyon → host gateway, robomp slot → veyyon-auth-gateway
- * sidecar) the bandwidth cost is negligible compared to provider latency —
- * and the client gets to feed the events straight into its existing
- * `AssistantMessageEventStream.push()` plumbing with zero translation.
- */
 export function encodeStream(
 	events: AssistantMessageEventStream,
 	_requestedModelId?: string,
@@ -218,14 +158,6 @@ export function encodeStream(
 
 // formatError
 
-/**
- * Pi-native error envelope:
- *   `{ error: { type, message } }`
- *
- * Mirrors OpenAI's outer shape (which clients/SDKs already parse) without the
- * provider-specific status taxonomy — pi-native callers consume `type`
- * directly.
- */
 export function formatError(status: number, type: string, message: string): Response {
 	return new Response(JSON.stringify({ error: { type, message } }), {
 		status,

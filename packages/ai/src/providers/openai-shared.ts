@@ -72,7 +72,6 @@ export interface OpenAIRequestSetupModel extends OpenAIModelIdentity {
 	compat?: Pick<ResolvedOpenAISharedCompat, "promptCacheSessionHeader">;
 }
 
-/** Cache identity controls shared by OpenAI-family transports. */
 export interface OpenAICacheOptions {
 	cacheRetention?: CacheRetention;
 	sessionId?: string;
@@ -241,7 +240,6 @@ export function applyOpenAIServiceTier(
 	}
 }
 
-/** Service-tier cost multipliers for OpenAI Responses. */
 function getOpenAIResponsesServiceTierCostMultiplier(tier: string | null | undefined): number {
 	switch (tier) {
 		case "flex":
@@ -253,7 +251,6 @@ function getOpenAIResponsesServiceTierCostMultiplier(tier: string | null | undef
 	}
 }
 
-/** Adjust resolved cost by billed service tier. */
 export function applyOpenAIResponsesServiceTierCost(
 	model: Pick<Model, "provider">,
 	usage: AssistantMessage["usage"],
@@ -307,7 +304,6 @@ export function calculateOpenAIUsageAccounting(accounting: OpenAIUsageAccounting
 	};
 }
 
-/** Normalize a cache identity to the wire limit accepted by OpenAI-family providers. */
 export function normalizeOpenAIPromptCacheKey(sessionId: string | undefined): string | undefined {
 	return normalizeOpenAIStableId(sessionId, 64, "pc_");
 }
@@ -316,7 +312,6 @@ export function normalizeOpenRouterResponsesSessionId(sessionId: string | undefi
 	return normalizeOpenAIStableId(sessionId, 256, "session_");
 }
 
-/** Resolve a prompt-cache identity, falling back to the provider session unless caching is disabled. */
 export function getOpenAIPromptCacheKey(options: OpenAICacheOptions | undefined): string | undefined {
 	if (resolveCacheRetention(options?.cacheRetention) === "none") return undefined;
 	return normalizeOpenAIPromptCacheKey(options?.promptCacheKey ?? options?.sessionId);
@@ -394,7 +389,6 @@ export function isOpenRouterAnthropicModel(model: OpenAIModelIdentity): boolean 
 	return model.provider === "openrouter" && model.id.toLowerCase().startsWith("anthropic/");
 }
 
-/** Append OpenRouter routing-variant suffix (e.g. `:nitro`) to model ID if not already present. */
 export function applyOpenRouterRoutingVariant(modelId: string, variant: string | undefined): string {
 	if (!variant) return modelId;
 	const lastSlash = modelId.lastIndexOf("/");
@@ -426,25 +420,16 @@ export interface OpenAIOutputTokenParam {
 }
 
 export interface ResolveOpenAIOutputTokenInput {
-	/** Wire field the endpoint expects for the output cap. */
 	field: OpenAIOutputTokenParam["field"];
-	/** Caller-supplied output cap (model-defaulted by `stream.ts`, or null/undefined on direct provider calls). */
 	maxTokens: number | null | undefined;
-	/** Whether the caller explicitly set `maxTokens` (routing omission only applies when false). */
 	maxTokensExplicit: boolean;
-	/** Model output cap (`model.maxTokens`). */
 	modelMaxTokens: number | null | undefined;
-	/** Drop the field entirely — proxies with unknown upstream caps (Ollama via `model.omitMaxOutputTokens`). */
 	omitMaxOutputTokens: boolean;
-	/** The model sits behind a multi-upstream router (OpenRouter, HF Inference router); catalog default caps are omitted so each upstream self-caps. */
 	routedUpstreamSelfCaps: boolean;
-	/** Endpoint always needs a cap (Kimi-family TPM math); supplies the model default when the caller did not. */
 	alwaysSendMaxTokens: boolean;
-	/** Hard provider clamp; defaults to {@link OPENAI_MAX_OUTPUT_TOKENS}. */
 	providerOutputClamp?: number;
 }
 
-/** Resolve output-token wire parameter shared by Chat Completions and Responses. */
 export function resolveOpenAIOutputTokenParam(
 	input: ResolveOpenAIOutputTokenInput,
 ): OpenAIOutputTokenParam | undefined {
@@ -474,7 +459,6 @@ export interface OpenAIGatewayRoutingCompat {
 	vercelGatewayRouting?: VercelGatewayRouting;
 }
 
-/** Apply gateway routing preferences to the request body. */
 export function applyOpenAIGatewayRouting(
 	params: OpenAIGatewayRoutingParams,
 	compat: OpenAIGatewayRoutingCompat,
@@ -494,14 +478,9 @@ export function applyOpenAIGatewayRouting(
 }
 
 export interface OpenAIExtraBodyOptions {
-	/**
-	 * Fireworks rejects DeepSeek-style `thinking` toggles alongside OpenAI-style
-	 * `reasoning_effort`; drop `thinking` when the effort field carries the level.
-	 */
 	dropThinkingWhenReasoningEffort?: boolean;
 }
 
-/** Merge extraBody blob into request params, dropping conflicting thinking toggle if effort is present. */
 export function applyOpenAIExtraBody<P extends object>(
 	params: P,
 	extraBody: Record<string, unknown> | undefined,
@@ -517,7 +496,6 @@ export function applyOpenAIExtraBody<P extends object>(
 	}
 }
 
-/** Chat Completions streaming request body shaped by OpenAI-family providers. */
 export type OpenAICompletionsParams = Omit<ChatCompletionCreateParamsStreaming, "reasoning_effort" | "service_tier"> & {
 	top_k?: number;
 	min_p?: number;
@@ -534,7 +512,6 @@ export type OpenAICompletionsParams = Omit<ChatCompletionCreateParamsStreaming, 
 	providerOptions?: { gateway?: { only?: string[]; order?: string[] } };
 };
 
-/** Reasoning-relevant slice of caller options the Chat Completions dialect dispatch reads. */
 export interface ChatCompletionsReasoningOptions {
 	reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 	disableReasoning?: boolean;
@@ -599,7 +576,6 @@ export interface OpenAICompatPolicy {
 	};
 }
 
-/** Map user-facing effort to provider wire value. */
 export function mapOpenAIReasoningEffort(
 	model: Pick<Model, "thinking">,
 	compat: { reasoningEffortMap?: Partial<Record<Effort, string>> } | undefined,
@@ -838,12 +814,10 @@ export function disableChatCompletionsReasoningForDialect(
 	encodeChatCompletionsDisabledReasoning(params, compat.reasoningDisableMode);
 }
 
-/** GLM-5.2 reasoning-effort dialect predicate. */
 function isZaiReasoningEffortDialect(model: Model<"openai-completions">, compat: ResolvedOpenAICompat): boolean {
 	return compat.thinkingFormat === "zai" && isGlm52ReasoningEffortModelId(model.id);
 }
 
-/** Output-token clamp for Z.AI/GLM-5.2 reasoning dialect. */
 export function resolveZaiReasoningOutputClamp(
 	model: Model<"openai-completions">,
 	compat: ResolvedOpenAICompat,
@@ -851,7 +825,6 @@ export function resolveZaiReasoningOutputClamp(
 	return isZaiReasoningEffortDialect(model, compat) ? (model.maxTokens ?? OPENAI_MAX_OUTPUT_TOKENS) : undefined;
 }
 
-/** Enable tool_stream for Z.AI/GLM-5.2 reasoning models when tools are present. */
 export function applyChatCompletionsToolStream(
 	params: OpenAICompletionsParams,
 	model: Model<"openai-completions">,
@@ -867,14 +840,12 @@ export function applyChatCompletionsToolStream(
 	}
 }
 
-/** Extract combined error message from Error and HTTP response. */
 function rejectionText(error: unknown, capturedErrorResponse: CapturedHttpErrorResponse | undefined): string {
 	return [error instanceof Error ? error.message : undefined, capturedErrorResponse?.bodyText]
 		.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
 		.join("\n");
 }
 
-/** Whether error indicates compiled grammar too large. */
 export function isCompiledGrammarTooLargeStrictError(
 	error: unknown,
 	capturedErrorResponse: CapturedHttpErrorResponse | undefined,
@@ -884,7 +855,6 @@ export function isCompiledGrammarTooLargeStrictError(
 	return AIError.matchesCompiledGrammarTooLargeText(rejectionText(error, capturedErrorResponse));
 }
 
-/** Whether endpoint rejected the request for carrying strict tools. */
 export function shouldRetryWithoutStrictTools(
 	error: unknown,
 	capturedErrorResponse: CapturedHttpErrorResponse | undefined,
@@ -904,7 +874,6 @@ function normalizeOpenAIStableId(value: string | undefined, maxLength: number, h
 	return `${hashPrefix}${Bun.hash(wellFormed).toString(36)}`;
 }
 
-/** Format standard OpenAI error response. */
 export function formatOpenAiError(status: number, type: string, message: string): Response {
 	return new Response(JSON.stringify({ error: { message, type } }), {
 		status,

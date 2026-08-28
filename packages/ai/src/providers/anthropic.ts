@@ -133,7 +133,6 @@ export function normalizeAnthropicBaseUrl(baseUrl?: string): string | undefined 
 	return withoutTrailingSlashes.endsWith("/v1") ? withoutTrailingSlashes.slice(0, -3) : withoutTrailingSlashes;
 }
 
-// Build deduplicated beta header string
 export function buildBetaHeader(baseBetas: readonly string[], extraBetas: readonly string[]): string {
 	const seen = new Set<string>();
 	const result: string[] = [];
@@ -168,13 +167,7 @@ const claudeCodeAgentBetaDefaults = [
 ] as const;
 const claudeCodeAgentPostEffortBetas = ["extended-cache-ttl-2025-04-11"] as const;
 const fineGrainedToolStreamingBeta = "fine-grained-tool-streaming-2025-05-14";
-// Anthropic's beta vocabulary lives here. Antigravity serves Claude models over
-// Google's transport and has to send this same header, so it imports the id
-// rather than restating it: a beta bump has to reach every transport at once.
 export const interleavedThinkingBeta = "interleaved-thinking-2025-05-14";
-// Asks the API to redact thinking blocks from responses. Only sent when the
-// caller explicitly hides thinking (`thinkingDisplay: "omitted"`); sending it
-// by default suppresses the thinking traces callers expect to stream.
 const redactThinkingBeta = "redact-thinking-2026-02-12";
 const fastModeBeta = "fast-mode-2026-02-01";
 const taskBudgetBeta = "task-budgets-2026-03-13";
@@ -224,10 +217,8 @@ const sharedHeaders = {
 	"x-app": "cli",
 };
 
-/** Header-key sets already reported, so a per-request drop is announced once. */
 const reportedDroppedEnforcedHeaders = new Set<string>();
 
-/** Warn once per key set when caller-supplied headers are replaced by enforced values. */
 function reportDroppedEnforcedHeaders(keys: string[]): void {
 	const signature = Array.from(keys).sort().join(",");
 	const detail = { headers: keys };
@@ -242,7 +233,6 @@ function reportDroppedEnforcedHeaders(keys: string[]): void {
 	);
 }
 
-/** Test-only reset for {@link reportDroppedEnforcedHeaders}'s once-per-set bound. */
 export function __resetDroppedEnforcedHeaderReportsForTests(): void {
 	reportedDroppedEnforcedHeaders.clear();
 }
@@ -251,21 +241,11 @@ export function buildAnthropicHeaders(options: AnthropicHeaderOptions): Record<s
 	const oauthToken = options.isOAuth ?? isAnthropicOAuthToken(options.apiKey);
 	const extraBetas = options.extraBetas ?? [];
 	const stream = options.stream ?? false;
-	// `enforcedHeaderKeys` strips User-Agent / X-Api-Key / Authorization out of
-	// modelHeaders so a case-insensitive spread can't produce duplicate keys; each
-	// branch re-adds the caller's value explicitly. User-Agent and X-Api-Key are
-	// always honored (with branch-specific defaults filling in when absent), while
-	// Authorization is honored for every non-OAuth, non-Cloudflare-gateway branch —
-	// OAuth requests MUST carry `Authorization: Bearer <oauth-token>` (the OAuth
-	// credential itself) and Cloudflare AI Gateway authenticates via
-	// `cf-aig-authorization`, so user-supplied auth there would just leak. Both of
-	// those cases drop + log the caller value (#3391).
+
 	const incomingUserAgent = getHeaderCaseInsensitive(options.modelHeaders, "User-Agent");
 	const incomingAuthorization = getHeaderCaseInsensitive(options.modelHeaders, "Authorization");
 	const incomingApiKey = getHeaderCaseInsensitive(options.modelHeaders, "X-Api-Key");
-	// Claude Code betas (oauth-2025-04-20, claude-code-20250219, …) are part of
-	// the OAuth fingerprint; API-key requests default to extras only, matching
-	// the streaming path (buildAnthropicClientOptions passes [] for non-OAuth).
+
 	const betaHeader = buildBetaHeader(
 		options.claudeCodeBetas ?? (oauthToken ? buildClaudeCodeBetas(true, true, false) : []),
 		extraBetas,
@@ -279,13 +259,6 @@ export function buildAnthropicHeaders(options: AnthropicHeaderOptions): Record<s
 	for (const [key, value] of Object.entries(options.modelHeaders ?? {})) {
 		const lowerKey = key.toLowerCase();
 		if (enforcedHeaderKeys.has(lowerKey)) {
-			// user-agent is always re-applied explicitly. authorization / x-api-key
-			// are silently re-applied in honoring branches and dropped + logged
-			// where the branch enforces its own credential.
-			// User-Agent is re-applied verbatim everywhere except an OAuth request,
-			// where a UA that is not a Claude Code one is replaced because the UA is
-			// part of the OAuth fingerprint. That replacement is a drop like any
-			// other and gets reported; the honoring branches stay quiet.
 			if (lowerKey === "user-agent") {
 				if (oauthToken && !isClaudeCodeClientUserAgent(value)) filteredEnforcedKeys.push(key);
 				continue;
@@ -420,14 +393,11 @@ function getAnthropicProviderSessionState(
 	return created;
 }
 
-/** Clears the in-session "server rejected fast mode" sticky flag when re-arming priority tier. */
 export function clearAnthropicFastModeFallback(
 	providerSessionState: Map<string, ProviderSessionState> | undefined,
 ): void {
 	if (!providerSessionState) return;
-	// Fast mode is re-armed session-wide (user toggled `/fast on`), so clear the
-	// sticky flag on every per-endpoint/model Anthropic entry — plus the legacy
-	// unscoped key — rather than a single shared object.
+
 	const prefix = `${ANTHROPIC_PROVIDER_SESSION_STATE_KEY}:`;
 	for (const [key, value] of providerSessionState) {
 		if (key !== ANTHROPIC_PROVIDER_SESSION_STATE_KEY && !key.startsWith(prefix)) continue;
@@ -466,29 +436,14 @@ function getCacheControl(
 	};
 }
 
-// Stealth mode: mimic Claude Code's request fingerprint.
-/**
- * Re-exported from `@veyyon/catalog/wire/anthropic`, which owns it.
- *
- * Two other modules build their own user-agent from this version and want
- * nothing else from this file, which reaches 310 modules. They name the leaf.
- * This re-export keeps the name callers already import.
- */
 export { CLAUDE_CODE_VERSION as claudeCodeVersion } from "@veyyon/catalog/wire/anthropic";
 export const claudeAgentSdkVersion = "0.3.165";
 export const claudeClientVersion = "1.11187.4";
 export const claudeToolPrefix: string = "_";
 export const claudeCodeSystemInstruction = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
-// Claude Code caps requested output at 64k tokens even when the model ceiling is
-// higher (e.g. Opus 4.8 supports 128k); OAuth requests clamp to match the wire
-// fingerprint. API-key requests keep the full model ceiling.
+// Clamp OAuth output to 64k tokens to match wire fingerprint.
 export const CLAUDE_CODE_MAX_OUTPUT_TOKENS = 64000;
 
-/**
- * What the model's provider declares about this wire: which credential it takes,
- * whether it is Anthropic's own endpoint, and which request features it rejects.
- * Every branch below reads this instead of comparing a provider id.
- */
 function anthropicWire(model: Pick<Model<"anthropic-messages">, "provider">): ProviderAnthropicMessagesCapability {
 	return providerWireCapabilities(model.provider)?.anthropicMessages ?? {};
 }
@@ -563,16 +518,13 @@ const CLAUDE_BILLING_HEADER_PREFIX = "x-anthropic-billing-header:";
 
 function createClaudeBillingHeader(firstUserMessageText: string): string {
 	// Fingerprint: SHA256(salt + msg[4] + msg[7] + msg[20] + version)[:3]
-	// Matches CC's computeFingerprint in utils/fingerprint.ts.
-	// Uses chars from the first user message (not the system prompt).
 	const k = [4, 7, 20].map(i => firstUserMessageText[i] ?? "0").join("");
 	const versionSuffix = nodeCrypto
 		.createHash("sha256")
 		.update(`59cf53e54c78${k}${claudeCodeVersion}`)
 		.digest("hex")
 		.slice(0, 3);
-	// cch=00000: placeholder replaced with the real attestation hash by wrapFetchForCch
-	// before the request hits the wire (see below).
+	// cch=00000 placeholder replaced with attestation hash before wire.
 	return `${CLAUDE_BILLING_HEADER_PREFIX} cc_version=${claudeCodeVersion}.${versionSuffix}; cc_entrypoint=local-agent; ${CCH_PLACEHOLDER_STR};`;
 }
 
@@ -581,33 +533,20 @@ const CCH_SEED = 0x4d659218e32a3268n;
 const CCH_PLACEHOLDER_STR = "cch=00000";
 const cchEncoder = new TextEncoder();
 const CCH_PLACEHOLDER = cchEncoder.encode(CCH_PLACEHOLDER_STR);
-// Combined anchor for the billing-header placeholder inside system[0].
-// "system":[{"type":"text","text":"x-anthropic-billing-header:
-// Matches the exact JSON prefix of the first system block when
-// createClaudeBillingHeader injects system[0].  "messages" serializes before
-// "system" in Anthropic SDK payloads (~byte 29 vs ~byte 4705), so user content
-// in the messages array can never match this sequence.  User system prompt text
-// lives in system[2] and therefore also cannot match.
+// Anchor for billing-header placeholder inside system[0].
 const BILLING_SYSTEM_MARKER = cchEncoder.encode(`"system":[{"type":"text","text":"${CLAUDE_BILLING_HEADER_PREFIX}`);
 const CCH_BILLING_SEARCH_WINDOW = 150;
 
 function patchCch(body: Uint8Array): "patched" | "no-billing-header" | "unanchored" {
-	// Zero-copy Buffer view over the same memory; its `indexOf` is a native memmem,
-	// ~7.5x faster than a hand-rolled byte loop here — the marker sits ~99% through
-	// the body because `messages` serializes before `system`, so a JS scan would
-	// walk almost the entire payload (benchmarked: 563µs -> 75µs on a 1MB body).
 	const view = Buffer.from(body.buffer, body.byteOffset, body.byteLength);
 
-	// Find the combined system[0] + billing-header prefix marker.
 	const markerIdx = view.indexOf(BILLING_SYSTEM_MARKER);
 	if (markerIdx === -1) return "no-billing-header"; // no CC billing header injected
 
-	// Placeholder must sit within CCH_BILLING_SEARCH_WINDOW bytes after the marker.
 	const searchFrom = markerIdx + BILLING_SYSTEM_MARKER.length;
 	const idx = view.indexOf(CCH_PLACEHOLDER, searchFrom);
 	if (idx === -1 || idx - searchFrom > CCH_BILLING_SEARCH_WINDOW) return "unanchored";
 
-	// Hash the body with the placeholder in place (matches CC's in-place behaviour).
 	const h = Bun.hash.xxHash64(body, CCH_SEED);
 	const cch = (h & 0xfffffn).toString(16).padStart(5, "0");
 
@@ -615,22 +554,11 @@ function patchCch(body: Uint8Array): "patched" | "no-billing-header" | "unanchor
 	return "patched";
 }
 
-/**
- * Wraps a fetch implementation to patch the Claude Code billing-header `cch`
- * attestation into outgoing request bodies. Bodies without the placeholder
- * pass through untouched, so installing it on every OAuth flow is safe.
- */
 export function wrapFetchForCch(base: FetchImpl): FetchImpl {
 	return (input, init) => {
 		if (init?.body && typeof init.body === "string" && init.body.includes(CCH_PLACEHOLDER_STR)) {
 			const encoded = cchEncoder.encode(init.body);
 			if (patchCch(encoded) === "unanchored") {
-				// The OAuth billing placeholder is anchored to system[0] but we couldn't
-				// patch it — e.g. an `onPayload` hook reordered the first system block's keys
-				// so BILLING_SYSTEM_MARKER no longer matches. Send the body as-is (cch stays
-				// `00000`, the prior behaviour) rather than failing the request, but surface the
-				// fingerprint regression instead of letting it ship silently. A `cch=00000`
-				// literal in user content alone ("no-billing-header") is not a regression.
 				logger.warn("anthropic: cch billing placeholder present but not patched; sending unattested request");
 			}
 			return base(input, { ...init, body: encoded });
@@ -646,22 +574,12 @@ export function isClaudeCloakingUserId(userId: string): boolean {
 	return CLAUDE_CLOAKING_USER_ID_REGEX.test(userId);
 }
 
-/**
- * Real Claude Code sends `metadata.user_id` as a JSON-stringified object of the
- * shape `{ device_id, account_uuid, session_id, ...extra }` (see
- * services/api/claude.ts → getAPIMetadata). Accept that shape so callers that
- * supply a stable `session_id` aren't silently overwritten with fresh entropy
- * on every request, which would inflate the backend session count.
- */
 function isClaudeJsonUserId(userId: string): boolean {
 	if (userId.length === 0 || userId[0] !== "{") return false;
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(userId);
 	} catch {
-		// This asks whether the caller's `user_id` is Claude Code's JSON envelope. Text starting with `{`
-		// that is not JSON is not that envelope, so false is the answer, and the caller then treats the
-		// value as an opaque id.
 		return false;
 	}
 	if (!isRecord(parsed)) return false;
@@ -679,8 +597,6 @@ function extractClaudeMetadataSessionId(userId: unknown): string | undefined {
 	try {
 		parsed = JSON.parse(userId);
 	} catch {
-		// No envelope means no session id to lift out of it: undefined is "the caller did not supply one",
-		// and a fresh one is minted, which is the documented behaviour for a plain id.
 		return undefined;
 	}
 	if (!isRecord(parsed)) return undefined;
@@ -695,9 +611,6 @@ export function generateClaudeCloakingUserId(): string {
 	return `user_${userHash}_account_${accountId}_session_${sessionId}`;
 }
 
-// Hash-domain constants are frozen at their pre-rebrand values: they are
-// key-derivation inputs, and changing them would rotate every derived Claude
-// device id in the wild.
 const CLAUDE_DEVICE_ID_INSTALL_HASH_DOMAIN = "veyyon-claude-device-id-v1:";
 const CLAUDE_DEVICE_ID_ACCOUNT_HASH_DOMAIN = "veyyon-claude-device-id-v2";
 
@@ -741,17 +654,6 @@ function generateClaudeJsonUserId(sessionId?: string, accountId?: string): strin
 	return JSON.stringify(userId);
 }
 
-/**
- * Resolve the `metadata.user_id` field for an Anthropic Messages request.
- *
- * For API-key tokens, an explicit caller-supplied `userId` is forwarded
- * verbatim and `undefined` yields no metadata. For OAuth tokens the value
- * must match the Claude Code attribution shape (`isClaudeCloakingUserId` or
- * the `{session_id, account_uuid?, device_id?}` JSON envelope) — anything
- * else is dropped and a fresh Claude-Code-style JSON id is generated from
- * `sessionId`/`accountId` so attribution stays consistent across the main
- * streaming path and provider-specific request builders (e.g. web search).
- */
 export function resolveAnthropicMetadataUserId(
 	userId: unknown,
 	isOAuthToken: boolean,
@@ -767,19 +669,13 @@ export function resolveAnthropicMetadataUserId(
 	if (!isOAuthToken) return undefined;
 	return generateClaudeJsonUserId(sessionId, accountId);
 }
-// `web_search` comes from the owner because two packages have to agree on it: the search provider in
-// `@veyyon/coding-agent` asks Anthropic for that tool by name and this module matches the blocks it returns.
-// The other three are matched here and nowhere else, so they stay inline.
+
 const ANTHROPIC_BUILTIN_TOOL_NAMES = new Set([ANTHROPIC_WEB_SEARCH_TOOL, "code_execution", "text_editor", "computer"]);
 const UMANS_WEBSEARCH_PROVIDER_HEADER = "X-Umans-Websearch-Provider";
 export const applyClaudeToolPrefix = (name: string): string => {
 	if (!claudeToolPrefix) return name;
 	if (ANTHROPIC_BUILTIN_TOOL_NAMES.has(name.toLowerCase())) return name;
-	// Always prepend (no "already prefixed" short-circuit): the prefix is a wire
-	// transport detail applied once to internal tool names, and `stripClaudeToolPrefix`
-	// removes exactly one prefix on receive. Skipping names that already start with the
-	// prefix would make a tool literally named `_foo` lose its leading underscore on the
-	// return trip (`_foo` → wire `_foo` → strip → `foo`), so the agent loop can't find it.
+
 	return `${claudeToolPrefix}${name}`;
 };
 
@@ -850,18 +746,10 @@ function countAnthropicImageBlocks(messages: Message[]): number {
 
 const ANTHROPIC_IMAGE_RESIZE_CONCURRENCY = 4;
 
-/**
- * Memoized resize results keyed on ImageContent identity. Callers keep message
- * objects stable across turns, so without this every request (and every
- * in-provider retry of a fresh turn) re-decodes and re-encodes the same
- * oversized screenshots. A cached value identical to the key means "already
- * within bounds / unresizable — skip the decode".
- */
 const anthropicManyImageResizeCache = new WeakMap<ImageContent, ImageContent>();
 
 type ResizeLimiter = <R>(fn: () => Promise<R>) => Promise<R>;
 
-/** Bounded-concurrency limiter for image decode/encode operations. */
 function createResizeLimiter(limit: number): ResizeLimiter {
 	let active = 0;
 	const queue: (() => void)[] = [];
@@ -994,9 +882,6 @@ type AnthropicToolResultContent =
 			  }
 	  >;
 
-/**
- * Convert content blocks to Anthropic API format
- */
 function convertContentBlocks(
 	content: (TextContent | ImageContent)[],
 	supportsImages = true,
@@ -1069,75 +954,27 @@ export type AnthropicEffort = AnthropicOutputEffort | "adaptive";
 export type AnthropicThinkingDisplay = "summarized" | "omitted";
 
 export interface AnthropicOptions extends StreamOptions {
-	/**
-	 * Enable extended thinking.
-	 * For adaptive-capable models (Opus 4.6+, Sonnet 4.6+, Fable/Mythos 5):
-	 * uses adaptive thinking (Claude decides when/how much to think). For older
-	 * models: uses budget-based thinking with thinkingBudgetTokens.
-	 */
 	thinkingEnabled?: boolean;
-	/**
-	 * Token budget for extended thinking (older models only).
-	 * Ignored for adaptive-capable models.
-	 */
+
 	thinkingBudgetTokens?: number;
-	/**
-	 * Upstream wire model id override for collapsed effort-tier variants.
-	 * Serialized as `requestModelId ?? model.requestModelId ?? model.id`.
-	 */
+
 	requestModelId?: string;
-	/**
-	 * Effort level for adaptive thinking.
-	 * Controls how much Claude allocates, or uses "adaptive" for MiniMax's
-	 * binary adaptive-thinking tag:
-	 * - "max": Always thinks with no constraints
-	 * - "high": Always thinks, deep reasoning (default)
-	 * - "medium": Moderate thinking, may skip for simple queries
-	 * - "low": Minimal thinking, skips for simple tasks
-	 * - "adaptive": Sends `thinking.type: "adaptive"` without `output_config.effort`
-	 * Ignored for older models.
-	 */
+
 	effort?: AnthropicEffort;
-	/**
-	 * Optional reasoning level fallback for direct Anthropic provider usage.
-	 * Converted to adaptive effort when effort is not explicitly provided.
-	 */
+
 	reasoning?: SimpleStreamOptions["reasoning"];
-	/**
-	 * Controls how Anthropic returns thinking content when the selected thinking
-	 * transport supports a display option. Defaults to "summarized" where the
-	 * API accepts it.
-	 */
+
 	thinkingDisplay?: AnthropicThinkingDisplay;
 	interleavedThinking?: boolean;
 	toolChoice?: "auto" | "any" | "none" | { type: "tool"; name: string };
 	betas?: string[] | string;
-	/**
-	 * Realization of `serviceTier: "priority"` on Anthropic models. When
-	 * `"priority"`, sets `speed: "fast"` on the request and appends the
-	 * `fast-mode-2026-02-01` beta header. Anthropic rejects unsupported models
-	 * with `invalid_request_error`, which triggers an in-provider one-shot
-	 * fallback (see `fastModeDisabled` provider state).
-	 *
-	 * Other `ServiceTier` values are currently ignored on this provider.
-	 */
+
 	serviceTier?: ServiceTier;
-	/** Force OAuth bearer auth mode for proxy tokens that don't match Anthropic token prefixes. */
+
 	isOAuth?: boolean;
-	/**
-	 * Pre-built Anthropic Messages client. When provided, skips internal client
-	 * construction entirely. Accepts any structurally compatible client,
-	 * including SDK clients such as `AnthropicVertex`.
-	 */
+
 	client?: AnthropicMessagesClientLike;
-	/**
-	 * Server-side fallback beta chain (`server-side-fallback-2026-06-01`).
-	 * When set, `fallbacks` is forwarded on the request body and the beta
-	 * header is auto-attached; the response parser then honors mid-stream
-	 * `fallback` content blocks and `usage.iterations` for served-model
-	 * promotion and per-attempt pricing. Opt-in ONLY — leaving this
-	 * undefined preserves the pre-fallback behavior on every code path.
-	 */
+
 	fallbacks?: FallbackParam[];
 }
 
@@ -1177,13 +1014,6 @@ type FoundryTlsOptions = {
 	key?: string;
 };
 
-/**
- * What a certificate option looks like when it names a file rather than carrying one.
- *
- * The domain half of {@link looksLikeFilePath}: the predicate itself is shared, the
- * list of endings that read as a filename here is not, because `.md` means a prompt
- * file somewhere else and nothing at all in this option.
- */
 const CERTIFICATE_EXTENSIONS = ["pem", "crt", "cer", "key"] as const;
 
 const foundryTlsOptionsCache = new Map<string, FoundryTlsOptions | undefined>();
@@ -1191,9 +1021,7 @@ const foundryTlsOptionsCache = new Map<string, FoundryTlsOptions | undefined>();
 function foundryTlsCacheKeyComponent(value: string | undefined): string | null {
 	if (!value) return null;
 	const trimmed = value.trim();
-	// For path-valued vars, fold the file mtime into the key so on-disk cert
-	// rotation (common for short-lived corporate mTLS certs) invalidates the
-	// cached TLS options instead of pinning the first read forever.
+
 	if (trimmed && !trimmed.includes("-----BEGIN") && looksLikeFilePath(trimmed, CERTIFICATE_EXTENSIONS)) {
 		try {
 			return `${trimmed}@${fs.statSync(trimmed).mtimeMs}`;
@@ -1248,16 +1076,6 @@ function parseAnthropicCustomHeaders(rawHeaders: string | undefined): Record<str
 	return Object.keys(parsed).length > 0 ? parsed : undefined;
 }
 
-/**
- * Returns env-supplied custom headers (`ANTHROPIC_CUSTOM_HEADERS`) when they
- * should be forwarded to the upstream endpoint.
- *
- * Foundry mode forwards them unconditionally. Outside Foundry, they're applied
- * only when the configured base URL is a non-Anthropic host — i.e. an
- * enterprise/corporate gateway that may require its own proprietary auth
- * header. Stock `api.anthropic.com` would reject unknown headers, so they're
- * omitted there.
- */
 export function resolveAnthropicCustomHeadersForBaseUrl(
 	baseUrl: string | undefined,
 ): Record<string, string> | undefined {
@@ -1330,9 +1148,6 @@ function buildClaudeCodeTlsFetchOptions(
 	try {
 		serverName = new URL(baseUrl).hostname;
 	} catch {
-		// Without a hostname there is no SNI name to pin, so no Claude-Code TLS options are built and the
-		// request goes out with the default fetch options. The unparseable base URL is reported by the
-		// request that then fails on it, which names the URL the user configured.
 		return undefined;
 	}
 
@@ -1350,9 +1165,6 @@ function buildClaudeCodeTlsFetchOptions(
 	};
 }
 function mergeHeaders(...headerSources: (Record<string, string> | undefined)[]): Record<string, string> {
-	// Case-insensitive merge: later sources win and keep their casing. A plain
-	// Object.assign would let `authorization` and `Authorization` coexist, and
-	// the Headers constructor then joins both values comma-separated on the wire.
 	const merged: Record<string, string> = {};
 	const keyByLower = new Map<string, string>();
 	for (const headers of headerSources) {
@@ -1377,23 +1189,10 @@ const ANTHROPIC_MESSAGE_EVENTS: ReadonlySet<string> = new Set([
 	"content_block_stop",
 ]);
 
-/**
- * Iterate over Anthropic SSE events from a raw Response, preserving ping events
- * for liveness. Malformed event envelopes are logged and skipped (non-fatal)
- * rather than aborting the stream.
- */
 type RawMessagePingEvent = { type: "ping" };
 type AnthropicStreamEvent = RawMessageStreamEvent | RawMessagePingEvent;
 const ANTHROPIC_PING_EVENT: RawMessagePingEvent = { type: "ping" };
 
-/**
- * In-stream `error` SSE frames carry an Anthropic error envelope:
- * `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`.
- * Surface the structured type + message instead of the raw JSON blob; the
- * error type token (e.g. `overloaded_error`, `rate_limit_error`) is kept in
- * the message so `isProviderRetryableError`'s classification keys off the
- * structured type rather than incidental JSON substrings.
- */
 function createAnthropicSseStreamError(data: string): Error {
 	try {
 		const parsed = JSON.parse(data) as { error?: { type?: unknown; message?: unknown } };
@@ -1405,20 +1204,10 @@ function createAnthropicSseStreamError(data: string): Error {
 				{ provider: "anthropic", kind: "output" },
 			);
 		}
-	} catch {
-		// Not a JSON envelope; fall through to the raw payload.
-	}
+	} catch {}
 	return new AIError.ProviderResponseError(data, { provider: "anthropic", kind: "output" });
 }
 
-/**
- * Decode an Anthropic SSE response body into stream events.
- *
- * Exported because it owns the malformed-frame policy: which frames are skipped,
- * and when a stream that parsed nothing fails closed instead of returning an
- * empty turn. That policy needs asserting directly rather than through the SDK
- * client the provider normally streams from.
- */
 export async function* iterateAnthropicEvents(
 	response: Response,
 	signal?: AbortSignal,
@@ -1430,9 +1219,7 @@ export async function* iterateAnthropicEvents(
 
 	let sawMessageStart = false;
 	let sawMessageEnd = false;
-	// Counted so a stream that produced NOTHING but malformed frames can fail
-	// closed. Skipping a bad frame is a deliberate best-effort degrade, but it is
-	// only "best effort" while some effort survives; see the check after the loop.
+
 	let droppedFrames = 0;
 	let yieldedEvents = 0;
 
@@ -1443,7 +1230,6 @@ export async function* iterateAnthropicEvents(
 		}
 
 		if (sse.event === "ping") {
-			// Surface keepalives so the idle watchdog treats them as liveness.
 			yield ANTHROPIC_PING_EVENT;
 			continue;
 		}
@@ -1473,14 +1259,6 @@ export async function* iterateAnthropicEvents(
 		}
 	}
 
-	// Every frame was malformed and nothing at all got through. Returning here
-	// would hand the caller an empty assistant message with `stopReason: "stop"`,
-	// which is indistinguishable from a model that legitimately chose to say
-	// nothing: the turn "succeeds", the user sees a blank reply, and the only
-	// trace is a warning they had no reason to go looking for. Skipping a bad
-	// frame is a deliberate degrade so a non-conforming endpoint still delivers
-	// what it can, but a degrade that delivers nothing is not best-effort, it is
-	// silence, and it fails closed instead (Law 10).
 	if (droppedFrames > 0 && yieldedEvents === 0 && !signal?.aborted) {
 		throw new AIError.AnthropicStreamEnvelopeError(
 			`Anthropic stream carried ${droppedFrames} event(s) and none of them could be parsed, so the turn produced no content`,
@@ -1544,7 +1322,7 @@ async function* observeDecodedAnthropicSdkEvents(
 ): AsyncGenerator<AnthropicStreamEvent> {
 	for await (const event of events) {
 		const data = JSON.stringify(event);
-		// Reconstructed from decoded SDK event; not literal wire bytes.
+
 		notifyRawSseEvent(observer, { event: event.type, data, raw: [`event: ${event.type}`, `data: ${data}`] });
 		yield event;
 	}
@@ -1552,16 +1330,8 @@ async function* observeDecodedAnthropicSdkEvents(
 
 const PROVIDER_MAX_RETRIES = 10;
 
-/** Max idle multiplier for keepalive pings before declaring stall. */
 const PING_PROGRESS_MAX_IDLE_MULTIPLIER = 3;
 
-/**
- * Log a malformed-stream-envelope anomaly without aborting the turn. The strict
- * parser would `throw new AnthropicStreamEnvelopeError(...)` here; we instead
- * surface a warning and let the caller skip the offending event (or finalize what
- * already streamed) so a non-conforming endpoint degrades to best-effort content
- * rather than failing the request.
- */
 function reportAnthropicEnvelopeAnomaly(detail: string): void {
 	logger.warn(`anthropic: ignoring malformed stream envelope: ${detail}`);
 }
@@ -1572,7 +1342,6 @@ function shouldIgnoreAnthropicPreambleEvent(eventType: unknown): boolean {
 	return !ANTHROPIC_MESSAGE_EVENTS.has(eventType);
 }
 
-/** Classifies retryable Anthropic stream and transport errors. */
 export function isAnthropicStreamRetryable(error: unknown, provider?: string): boolean {
 	return AIError.isProviderRetryableError(error, {
 		provider,
@@ -1581,8 +1350,6 @@ export function isAnthropicStreamRetryable(error: unknown, provider?: string): b
 			: undefined,
 	});
 }
-
-/** Strips XML thinking tags written by dialect renderer. */
 
 function unwrapAnthropicThinkingEnvelope(text: string): string | undefined {
 	let current = text.trim();
@@ -1600,7 +1367,6 @@ function createEmptyUsage(premiumRequests?: number): Usage {
 	return usage;
 }
 
-/** Reset output state for retry while preserving spent token usage. */
 function discardAnthropicAttempt(
 	model: Model<"anthropic-messages">,
 	output: AssistantMessage,
@@ -1621,11 +1387,6 @@ export type AnthropicUsageLike = {
 	server_tool_use?: { web_search_requests?: number | null; web_fetch_requests?: number | null } | null;
 };
 
-/**
- * Capture Anthropic's optional cache-creation TTL breakdown and server-tool-use
- * counters into the harness Usage shape. Omitted/null fields are no-ops; explicit
- * zero-valued objects clear prior extras from earlier stream usage snapshots.
- */
 export function applyAnthropicUsageExtras(usage: Usage, source: AnthropicUsageLike): void {
 	const cacheCreation = source.cache_creation;
 	if (cacheCreation != null) {
@@ -1663,12 +1424,6 @@ function parseAnthropicFallbackWireBlock(value: unknown): AnthropicFallbackConte
 	return { type: "fallback", from: { model: from }, to: { model: to } };
 }
 
-/**
- * The definitive "served by fallback" signal per Anthropic's fallback
- * billing cookbook (§4): a `fallback_message` iteration in `usage.iterations`.
- * Any other iteration type is per-attempt bookkeeping for the requested model
- * (including its dated snapshot alias) and MUST NOT retag the assistant turn.
- */
 function fallbackServedModelFromUsage(source: AnthropicWireUsage): string | undefined {
 	const iterations = source.iterations ?? [];
 	for (let index = iterations.length - 1; index >= 0; index -= 1) {
@@ -1678,36 +1433,13 @@ function fallbackServedModelFromUsage(source: AnthropicWireUsage): string | unde
 	return undefined;
 }
 
-/**
- * Price a fallback turn per the fallback billing cookbook §4:
- *   • A pre-served attempt with zero output/cache-creation is not billed
- *     (waived classifier block); its iteration is skipped.
- *   • Mid-stream refusals bill their attempting model's input+output at
- *     that model's normal rates.
- *   • The `fallback_message` attempt's input tokens are rebilled at the
- *     served model's cache-read rate (fallback credit — 10% of base input).
- *
- * Top-level `usage.input/output/cacheRead/cacheWrite` stay Anthropic's raw
- * served-attempt counts; `usage.cost` reflects the per-iteration attributed
- * total. Non-fallback turns skip this path entirely and use the requested
- * model at the normal `calculateCost` call.
- */
-/**
- * Resolve a served/iteration model id to its bundled catalog entry when
- * possible so the per-iteration cost uses the served model's pricing
- * (e.g. Opus 4.8 rates for a Fable→Opus fallback). Falls back to
- * `requestModel` when the id is empty, matches the request, or the
- * catalog has no entry under it — the caller keeps the requested-model
- * pricing as the safe default and logs at the source.
- */
 function resolveIterationModel(
 	requestModel: Model<"anthropic-messages">,
 	iterationModelId: string | null | undefined,
 ): Model<Api> {
 	const id = iterationModelId?.trim();
 	if (!id || id === requestModel.id) return requestModel;
-	// Bundled catalog lookup: only Anthropic provider entries are safe to
-	// reference (dated snapshots resolve to their alias entry when present).
+
 	if (requestModel.provider === "anthropic") {
 		const bundled = getBundledModel("anthropic", id);
 		if (bundled?.api === "anthropic-messages") return bundled;
@@ -1757,24 +1489,11 @@ function calculateFallbackTurnCost(
 	return true;
 }
 
-/**
- * Detects the Anthropic `400 Invalid `signature` in `thinking` block` failure
- * a signing proxy returns when a stripped/unsigned prior thinking block is
- * replayed as `signature: ""`. Exported for the compat tests.
- */
 const INVALID_THINKING_SIGNATURE_PATTERN = /invalid\s+`?signature`?\s+in\s+`?thinking`?(?:\s+block)?/i;
 export function isInvalidThinkingSignatureError(message: string): boolean {
 	return INVALID_THINKING_SIGNATURE_PATTERN.test(message);
 }
 
-/**
- * Prepend a pointed remediation to Anthropic's `Invalid signature in thinking
- * block` 400 when the model looks like an unmarked custom signing proxy
- * (opaque baseUrl, `spec.reasoning: true`, no explicit
- * `compat.replayUnsignedThinking` override). The default is native replay for
- * the 3p reasoning majority (#2005); this hint turns the misconfigured-proxy
- * case into a one-line fix instead of a silent retry loop (#4297).
- */
 export function maybeAddReplayUnsignedThinkingHint(model: Model<"anthropic-messages">, message: string): string {
 	if (!isInvalidThinkingSignatureError(message)) return message;
 	if (model.compat.officialEndpoint) return message;
@@ -2760,13 +2479,6 @@ const streamAnthropicOnce = (
 	return stream;
 };
 
-/**
- * Public entry: wrap the single-attempt streamer with bounded empty-completion
- * retries (a benign terminal stop carrying no content/usage would otherwise
- * stall the agent loop). The inner attempt keeps its own provider-failure retry
- * loop; this layer only re-issues a fresh request on an empty success. Shared
- * with the OpenAI-completions provider via `withEmptyCompletionRetry`.
- */
 export const streamAnthropic: StreamFunction<"anthropic-messages"> = (model, context, options) =>
 	withEmptyCompletionRetry(model, context, options, streamAnthropicOnce, { providerRetriesStalls: true });
 
@@ -2778,7 +2490,7 @@ export type AnthropicSystemBlock = {
 type SystemBlockOptions = {
 	includeClaudeCodeInstruction?: boolean;
 	extraInstructions?: string[];
-	/** Text of the first user message — used as fingerprint seed for the billing header. */
+
 	firstUserMessageText?: string;
 	cacheControl?: AnthropicCacheControl;
 };
@@ -2864,22 +2576,15 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 	const baseUrl = resolveAnthropicBaseUrl(model, apiKey);
 	const foundryCustomHeaders = resolveAnthropicCustomHeaders(model);
 	const tlsFetchOptions = buildClaudeCodeTlsFetchOptions(model, baseUrl);
-	// Disable Bun's native ~300s pre-response fetch timeout (issue #2422).
-	// `AnthropicMessagesClient` already arms its own DEFAULT_TIMEOUT_MS timer
-	// per request, so the native ceiling can only short-circuit slow-prefill
-	// streams before the configured watchdog gets to govern them.
+	// Disable Bun's native ~300s pre-response fetch timeout so client watchdog governs.
 	const fetchOptions: AnthropicFetchOptions = { ...(tlsFetchOptions ?? {}), timeout: false };
 	const baseFetch = args.fetch ?? fetch;
-	// Only OAuth requests inject the CC billing header; no API-key request can ever
-	// contain it, so there is no need to install the rewriter for those.
+
 	const cchFetch = oauthToken ? wrapFetchForCch(baseFetch) : baseFetch;
 	const wire = anthropicWire(model);
 	if (wire.credential === "copilot-bearer") {
 		const copilotApiKey = parseGitHubCopilotApiKey(apiKey).accessToken;
-		// The GitHub Copilot Anthropic proxy doesn't accept Anthropic beta
-		// features (and the catalog already forces `supportsEagerToolInputStreaming
-		// = false` for this host, so `needsFineGrainedToolStreamingBeta` is true
-		// whenever tools are present). Forward only caller-supplied betas.
+		// Copilot proxy does not accept Anthropic beta features.
 		const betaFeatures = extraBetas.slice();
 		const defaultHeaders = mergeHeaders(
 			{
@@ -2953,8 +2658,6 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 		};
 	}
 
-	// A provider declaring `api-key-header` validates Anthropic-compatible API-key
-	// auth through `X-Api-Key`; a bearer-only request reaches it but fails auth.
 	if (wire.credential === "api-key-header") {
 		delete defaultHeaders.Authorization;
 		return {
@@ -2968,8 +2671,7 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 			fetchOptions,
 		};
 	}
-	// A `bearer-only` gateway rejects the client-added `X-Api-Key`, so the key is
-	// dropped and only the `Authorization` header the request already carries goes out.
+
 	if (wire.credential === "bearer-only") {
 		return {
 			isOAuthToken: false,
@@ -2983,12 +2685,6 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 		};
 	}
 
-	// Suppress the client-level `X-Api-Key` whenever an `Authorization` header
-	// already sits in `defaultHeaders` for a non-official, non-OAuth endpoint —
-	// either our auto-built `Bearer <apiKey>` or a caller-supplied custom auth
-	// scheme via `model.headers` (#3391). Adding a bonus `X-Api-Key` would force
-	// the proxy to deal with two competing credentials when the user explicitly
-	// asked for one.
 	const authorizationHeader = getHeaderCaseInsensitive(defaultHeaders, "Authorization");
 	const shouldSuppressClientApiKey =
 		!oauthToken && !model.compat.officialEndpoint && typeof authorizationHeader === "string";
@@ -3092,8 +2788,7 @@ function applyCacheControlToLastTextBlock(
 			return true;
 		}
 	}
-	// No text block — fall back to the last block that accepts cache_control;
-	// thinking/redacted_thinking blocks reject the field with a 400.
+	// Fall back to last block that accepts cache_control.
 	for (let i = blocks.length - 1; i >= 0; i--) {
 		const type = blocks[i].type;
 		if (type === "thinking" || type === "redacted_thinking") continue;
@@ -3126,20 +2821,7 @@ function applyPromptCaching(params: MessageCreateParamsStreaming, cacheControl?:
 			cacheBreakpointsUsed++;
 		}
 
-		// Veyyon's first own system block is the stable harness shared across
-		// parent and subagent prompts. Anchor it before project, assignment, and
-		// Argot blocks so those changing suffixes cannot invalidate the shared
-		// prefix. OAuth prepends billing and Claude Code instruction blocks, so
-		// the harness sits at index 2 there and index 0 otherwise.
-		//
-		// Budget after this, out of the four Anthropic allows: the API-key layout
-		// spends two on system (trailing block plus this anchor) and two on the
-		// trailing messages below, exactly four. The Claude Code layout spends the
-		// same two on system but marks only the final message, so it spends three
-		// and leaves one unspent. That is deliberate: the CC layout exists to
-		// mirror the request shape of the client it cloaks, and the number of
-		// cache_control markers is wire-visible, so spending the slot would be a
-		// difference for the sake of a fallback anchor.
+		// Anchor stable harness system block for prompt caching.
 		const stablePrefixIndex = isCCLayout ? 2 : 0;
 		if (
 			cacheBreakpointsUsed < MAX_CACHE_BREAKPOINTS &&
@@ -3253,15 +2935,6 @@ function stripMessageCacheControl(
 	}
 }
 
-/**
- * The retention the serialized request actually asked for.
- *
- * Read back off the markers rather than from the request options, because the
- * options say what was INTENDED and the wire says what was sent — and the gap
- * between those two is where every cache defect so far has lived. Any `ttl: "1h"`
- * marker means the long window; any other marker means the short one; no marker
- * at all means caching was not requested.
- */
 function anthropicRetentionFromParams(params: MessageCreateParamsStreaming): CacheRetention {
 	let sawMarker = false;
 	const inspect = (cacheControl: AnthropicCacheControl | null | undefined): boolean => {
@@ -3383,17 +3056,12 @@ function buildParams(
 	useUmansGatewayWebSearch = false,
 	forceDemoteUnsignedThinking = false,
 ): MessageCreateParamsStreaming {
-	// A session-scoped auto-demote (learned from a live signing 400) clones the
-	// resolved compat with `replayUnsignedThinking: false` so every subsequent
-	// downstream read (convertAnthropicMessages, transformMessages) sees the
-	// demoted default without mutating the shared `model` reference.
 	const effectiveModel =
 		forceDemoteUnsignedThinking && model.compat.replayUnsignedThinking
 			? { ...model, compat: { ...model.compat, replayUnsignedThinking: false } }
 			: model;
 	const { cacheControl } = getCacheControl(model, options?.cacheRetention, isOAuthToken);
 
-	// Pre-compute system blocks so they occupy the right slot in the serialized body.
 	const shouldInjectClaudeCodeInstruction = isOAuthToken && !model.id.startsWith("claude-3-5-haiku");
 	const firstUserMessageText = shouldInjectClaudeCodeInstruction
 		? extractClaudeCodeFirstUserMessageText(context.messages)
@@ -3403,7 +3071,6 @@ function buildParams(
 		firstUserMessageText,
 	});
 
-	// Pre-compute tools.
 	let tools: AnthropicWireTool[] | undefined;
 	if (context.tools) {
 		tools = convertTools(
@@ -3418,7 +3085,6 @@ function buildParams(
 		tools = [];
 	}
 
-	// Pre-compute metadata.
 	const metadataAccountId = readAnthropicMetadataAccountId(options?.metadata);
 	const metadataUserId = resolveAnthropicMetadataUserId(
 		options?.metadata?.user_id,
@@ -3428,7 +3094,6 @@ function buildParams(
 	);
 	const metadata = metadataUserId ? { user_id: metadataUserId } : undefined;
 
-	// Pre-compute thinking + output_config effort.
 	let thinking: MessageCreateParamsStreaming["thinking"] | undefined;
 	let outputConfigEffort: AnthropicOutputEffort | undefined;
 	if (model.reasoning) {
@@ -3439,12 +3104,7 @@ function buildParams(
 			const compat = model.compat;
 			if (mode === "anthropic-adaptive" && !compat.disableAdaptiveThinking) {
 				const adaptive: { type: "adaptive"; display?: AnthropicThinkingDisplay } = { type: "adaptive" };
-				// Starting with Claude Opus 4.7 and Claude Fable/Mythos 5, adaptive thinking
-				// content is omitted from the response by default. Opt into summarized
-				// reasoning so thinking deltas keep streaming with human-readable content for
-				// callers that rely on it. The `display` field is gated strictly on model
-				// support: Opus 4.6 / Sonnet 4.6+ reject it with a 400, so an explicit
-				// `thinkingDisplay` MUST NOT force it onto a model that can't accept it.
+				// Opt into summarized reasoning for adaptive thinking models.
 				if (model.thinking?.supportsDisplay) {
 					adaptive.display = thinkingOptions.thinkingDisplay ?? "summarized";
 				}
@@ -3465,11 +3125,7 @@ function buildParams(
 				!compat.disableAdaptiveThinking &&
 				!usesAdaptiveThinkingTagOnly(model)
 			) {
-				// Adaptive-only Claude models (Opus 4.6+, Sonnet 4.6+, Fable/Mythos 5) reject
-				// `thinking.type: "disabled"` — adaptive thinking cannot be switched off.
-				// Omit the thinking field (the API defaults to adaptive) and pin the
-				// lowest effort so "thinking off" calls stay cheap instead of failing
-				// the request with a 400 (a hidden-thinking toggle must never break it).
+				// Adaptive-only models reject thinking.type: "disabled"; omit thinking field.
 				outputConfigEffort = "low";
 			} else {
 				thinking = { type: "disabled" };
@@ -3477,20 +3133,7 @@ function buildParams(
 		}
 	}
 
-	// Pre-compute context_management. Send keep: "all" for every enabled or
-	// adaptive thinking request (OAuth + API-key) — not just OAuth. Without
-	// this directive Anthropic-compatible backends (Z.AI, Kimi, DeepSeek, …)
-	// strip the replayed thinking blocks `replayUnsignedThinking` puts back
-	// on the wire, so the model loses the prior reasoning chain across turns
-	// and the KV cache misses every turn (#3288). Narrowing this guard back
-	// to `isOAuthToken` regresses every API-key thinking provider. Skip
-	// injected clients because this code cannot add the required
-	// `context-management-2025-06-27` beta to caller-owned SDK clients. Skip
-	// Copilot because its proxy strips Anthropic betas and demotes thinking
-	// blocks to text upstream, so `keep: "all"` is a no-op that risks proxy
-	// rejection of an unrecognized field. Skip Vertex rawPredict because that
-	// adapter requires betas in the JSON body (`anthropic_beta`) instead of the
-	// Anthropic HTTP beta header this code can add.
+	// Send keep: "all" for enabled or adaptive thinking requests to retain thinking blocks.
 	const shouldKeepThinkingContext =
 		!options?.client &&
 		!anthropicWire(model).rejectsContextManagement &&
@@ -3499,20 +3142,15 @@ function buildParams(
 		? { edits: [{ type: "clear_thinking_20251015" as const, keep: "all" as const }] }
 		: undefined;
 
-	// Pre-compute output_config.
 	const outputConfigEntries: AnthropicOutputConfig = {};
 	if (outputConfigEffort) outputConfigEntries.effort = outputConfigEffort;
 	if (options?.taskBudget) outputConfigEntries.task_budget = options.taskBudget;
 	const outputConfig = Object.keys(outputConfigEntries).length ? outputConfigEntries : undefined;
 
-	// Claude Code requests at most 64k output tokens; clamp only OAuth requests,
-	// where the wire fingerprint must match. API-key callers keep the full model
-	// ceiling (e.g. 128k on Opus 4.8).
+	// Clamp OAuth output to 64k tokens.
 	const modelMaxTokens = model.maxTokens ?? CLAUDE_CODE_MAX_OUTPUT_TOKENS;
 	const maxOutputTokens = isOAuthToken ? Math.min(CLAUDE_CODE_MAX_OUTPUT_TOKENS, modelMaxTokens) : modelMaxTokens;
 
-	// Build params in the canonical field order: model → messages → system → tools →
-	// metadata → max_tokens → thinking → context_management → output_config → stream.
 	const params: MessageCreateParamsStreaming = {
 		model: options?.requestModelId ?? model.requestModelId ?? model.id,
 		messages: convertAnthropicMessages(context.messages, effectiveModel, isOAuthToken, {
@@ -3529,7 +3167,7 @@ function buildParams(
 		stream: true,
 	};
 
-	// Opus 4.7+ and Fable/Mythos 5 reject non-default sampling parameters with 400 error.
+	// Opus 4.7+ and Fable/Mythos 5 reject non-default sampling parameters.
 	const thinkingType = params.thinking?.type;
 	const allowSamplingParams =
 		model.compat.supportsSamplingParams && (thinkingType === undefined || thinkingType === "disabled");
@@ -3573,10 +3211,7 @@ function buildParams(
 				),
 			};
 		}
-		// Claude Fable/Mythos 5 reject forced tool use outright ("tool_choice forces
-		// tool use is not compatible with this model"). Downgrade any/tool → auto so the
-		// request succeeds; the tool stays available and the caller's prompt steers
-		// the model toward it.
+		// Fable/Mythos 5 reject forced tool use; downgrade to auto.
 		const choiceType = params.tool_choice?.type;
 		if ((choiceType === "any" || choiceType === "tool") && !model.compat.supportsForcedToolChoice) {
 			params.tool_choice = { type: "auto" };
@@ -3617,9 +3252,7 @@ function buildToolResultBlock(
 	hoistedImages: ContentBlockParam[],
 ): ContentBlockParam {
 	let content = convertContentBlocks(msg.content, model.input.includes("image"));
-	// Anthropic rejects images inside error tool results ("all content must be
-	// type `text` if `is_error` is true") — keep the text in the block and
-	// hoist the images after the message's tool_result run.
+	// Anthropic rejects images inside error tool results; hoist after tool_result.
 	if (msg.isError && typeof content !== "string" && content.some(block => block.type === "image")) {
 		for (const block of content) {
 			if (block.type === "image") hoistedImages.push(block);
@@ -3640,16 +3273,8 @@ function buildToolResultBlock(
 	return block;
 }
 
-/**
- * A single Anthropic conversation turn, including the mid-conversation
- * `system` role (Opus 4.8+ and Fable/Mythos 5).
- */
 export type AnthropicMessageParam = MessageParam;
 
-/**
- * Recursively replace lone surrogates in string leaves. Identity-preserving:
- * returns the input object/array when nothing changed.
- */
 function toWellFormedDeep(value: unknown): unknown {
 	if (typeof value === "string") {
 		const wellFormed = value.toWellFormed();
@@ -3677,24 +3302,12 @@ function toWellFormedDeep(value: unknown): unknown {
 	return value;
 }
 
-/**
- * Serialize veyyon {@link Message}s to Anthropic wire messages.
- *
- * `opts.serverSideFallbackEnabled` — when the CURRENT request itself
- * opts into the server-side-fallback beta chain. Only then may a persisted
- * `fallback` content block from a prior turn be replayed on the wire;
- * otherwise the block is dropped to avoid a 400 on non-fallback requests
- * that don't send the beta.
- */
 export function convertAnthropicMessages(
 	messages: Message[],
 	model: Model<"anthropic-messages">,
 	isOAuthToken: boolean,
 	opts?: { serverSideFallbackEnabled?: boolean },
 ): AnthropicMessageParam[] {
-	// Indices of params emitted from `developer` messages. After the main pass,
-	// the ones whose placement satisfies Anthropic's mid-conversation rules are
-	// upgraded from the `user` role to the authoritative `system` role.
 	const developerParamIndices: number[] = [];
 	const params: AnthropicMessageParam[] = [];
 
@@ -3781,12 +3394,7 @@ export function convertAnthropicMessages(
 						data: block.data,
 					});
 				} else if (block.type === "fallback") {
-					// Replay ONLY when both sides are aligned: the current
-					// request opted into the beta chain, and the target is
-					// official Anthropic (the only endpoint that accepts the
-					// block on the wire). `transformMessages` already drops
-					// the block for cross-provider / non-official replays, so
-					// this is defense-in-depth for direct convert calls.
+					// Replay fallback block only when beta chain is active and endpoint is official.
 					if (!opts?.serverSideFallbackEnabled || !model.compat.officialEndpoint) continue;
 					blocks.push({
 						type: "fallback",
@@ -3798,29 +3406,12 @@ export function convertAnthropicMessages(
 						type: "tool_use",
 						id: block.id,
 						name: encodeAnthropicToolName(block.name, isOAuthToken, model.compat.escapeBuiltinToolNames),
-						// Always sanitize: the model itself can emit lone-surrogate escapes
-						// in tool-argument JSON (streamed out fine, rejected with a 400 on
-						// replay by Anthropic's strict UTF-8 validation). toWellFormedDeep
-						// is identity-preserving, so well-formed arguments stay
-						// byte-identical and prompt-cache prefixes are unaffected.
+						// Sanitize lone-surrogates in tool-argument JSON.
 						input: toWellFormedDeep(block.arguments ?? {}),
 					});
 				}
 			}
-			// Anthropic's replay validator rejects any non-`tool_use` block that
-			// appears after a `tool_use` inside an assistant turn (400:
-			// "tool_use ids were found without tool_result blocks immediately
-			// after: <id>"). A persisted turn can violate this when a mid-turn
-			// server-side fallback handoff lands after the primary model already
-			// emitted a tool_use — the replayed content is then e.g.
-			// [thinking, text, tool_use, fallback, text, tool_use] — and also for
-			// the older cross-provider [text, tool_use, text] shape (issue #544).
-			// Stable-partition into [...non-tool_use, ...tool_use], preserving each
-			// side's relative order: the non-tool_use chain (thinking → text →
-			// fallback → text) carries thinking signatures and the fallback
-			// boundary marker whose order Anthropic verifies, while tool_use blocks
-			// are unsigned and safe to defer to the tail. Fast-path untouched when
-			// already in order so prompt-cache prefixes stay byte-identical.
+			// Partition [...non-tool_use, ...tool_use] for Anthropic replay validator.
 			let sawToolUse = false;
 			let needsPartition = false;
 			for (const block of blocks) {
@@ -3848,15 +3439,12 @@ export function convertAnthropicMessages(
 				content: blocks,
 			});
 		} else if (msg.role === "toolResult") {
-			// Collect all consecutive toolResult messages, needed for z.ai Anthropic endpoint
 			const toolResults: ContentBlockParam[] = [];
-			// Images stripped out of error tool results, re-attached after the run.
+
 			const hoistedImages: ContentBlockParam[] = [];
 
-			// Add the current tool result
 			toolResults.push(buildToolResultBlock(model, msg, hoistedImages));
 
-			// Look ahead for consecutive toolResult messages
 			let j = i + 1;
 			while (j < transformedMessages.length && transformedMessages[j].role === "toolResult") {
 				const nextMsg = transformedMessages[j] as ToolResultMessage; // We know it's a toolResult
@@ -3864,7 +3452,6 @@ export function convertAnthropicMessages(
 				j++;
 			}
 
-			// Skip the messages we've already processed
 			i = j - 1;
 
 			if (hoistedImages.length > 0) {
@@ -3874,7 +3461,6 @@ export function convertAnthropicMessages(
 				);
 			}
 
-			// Add a single user message with all tool results
 			params.push({
 				role: "user",
 				content: toolResults,
@@ -3882,20 +3468,13 @@ export function convertAnthropicMessages(
 		}
 	}
 
-	// Upgrade developer-origin params to mid-conversation `system` messages where
-	// Anthropic's placement rules allow it (Opus 4.8+ / Fable/Mythos 5 on first-party API).
-	// Rules: a system message must immediately follow a `user` turn and must be
-	// the last entry or be followed by an `assistant` turn — never first, and
-	// never consecutive. Requiring the next param to be `assistant` (or absent)
-	// covers both the "followed by assistant / last" and "no consecutive system"
-	// constraints. Anything that does not qualify stays a `user` message.
+	// Upgrade developer params to mid-conversation system messages where allowed.
 	if (developerParamIndices.length > 0 && model.compat.supportsMidConversationSystem) {
 		for (const idx of developerParamIndices) {
 			const followsUser = idx > 0 && params[idx - 1]?.role === "user";
 			const next = params[idx + 1];
 			const lastOrBeforeAssistant = idx === params.length - 1 || next?.role === "assistant";
-			// System content is text-only on the wire; a developer turn carrying
-			// image blocks must stay a `user` message or the API rejects it.
+
 			const content = params[idx].content;
 			const textOnly = typeof content === "string" || content.every(block => block.type === "text");
 			if (followsUser && lastOrBeforeAssistant && textOnly) {
@@ -3903,9 +3482,7 @@ export function convertAnthropicMessages(
 			}
 		}
 	}
-	// Dropped empty user/developer turns can leave two assistant params adjacent;
-	// the API rejects consecutive assistant messages. Repair with the same neutral
-	// nudge used for trailing-assistant prefill below.
+	// Repair adjacent assistant messages if intermediate turn was dropped.
 	for (let i = params.length - 1; i > 0; i--) {
 		if (params[i].role === "assistant" && params[i - 1]?.role === "assistant") {
 			params.splice(i, 0, { role: "user", content: "Continue." });
@@ -3918,19 +3495,6 @@ export function convertAnthropicMessages(
 	return params;
 }
 
-/**
- * JSON Schema whitelist for Anthropic tool `input_schema` nodes.
- *
- * Tracks the Anthropic Python SDK's `lib/_parse/_transform.py::transform_schema`,
- * with live Messages API guardrails for keywords the SDK preserves but the API rejects.
- * We keep only structural/metadata keywords Anthropic's validator honors, and demote
- * anything else into the node's `description` as `\n\n{key: value, ...}` so the model
- * still sees the constraint as a natural-language hint.
- *
- * `Set` (not `Record<string, true>`) because membership is probed against arbitrary
- * user/Zod-derived schema keys: a literal Record would falsely match prototype names
- * like `"toString"` and silently strip valid properties.
- */
 const ANTHROPIC_TOOL_SCHEMA_UNIVERSAL_KEEP = new Set([
 	"$ref",
 	"$defs",
@@ -3946,17 +3510,13 @@ const ANTHROPIC_TOOL_SCHEMA_UNIVERSAL_KEEP = new Set([
 	"default",
 	"nullable",
 ]);
-/** Keys preserved on `type: "object"` nodes (in addition to the universal set). */
+
 const ANTHROPIC_TOOL_SCHEMA_OBJECT_KEEP = new Set(["properties", "required", "additionalProperties"]);
-/** Keys preserved on `type: "array"` nodes; `minItems` only when its value is 0 or 1. */
+
 const ANTHROPIC_TOOL_SCHEMA_ARRAY_KEEP = new Set(["items", "prefixItems", "minItems"]);
-/** Keys preserved on `type: "string"` nodes; `format` only when its value is in the supported list. */
+
 const ANTHROPIC_TOOL_SCHEMA_STRING_KEEP = new Set(["format"]);
-/**
- * String `format` values Anthropic accepts; everything else (including `pattern`-style
- * format hints) gets demoted into `description`. Matches `SupportedStringFormats` in the
- * Anthropic SDK's `_transform.py`.
- */
+
 const ANTHROPIC_TOOL_SCHEMA_STRING_FORMATS = new Set([
 	"date-time",
 	"time",
@@ -3974,7 +3534,6 @@ const MAX_ANTHROPIC_STRICT_TOOLS = 20;
 const MAX_ANTHROPIC_STRICT_OPTIONAL_PARAMETERS = 24;
 const MAX_ANTHROPIC_STRICT_UNION_PARAMETERS = 16;
 
-/** `minItems` / `maxItems` apply to arrays; Anthropic rejects them on `type: "object"` (including `minItems: 0`/`1`). */
 function isJsonSchemaArrayNode(schema: Record<string, unknown>): boolean {
 	const t = schema.type;
 	if (t === "array") return true;
@@ -3991,12 +3550,6 @@ function isJsonSchemaObjectNode(schema: Record<string, unknown>): boolean {
 	return false;
 }
 
-/**
- * Pick the principal non-null scalar type from a `type` keyword. Anthropic accepts
- * `type` as either a single string or an array (e.g. `["number", "null"]` for a
- * nullable value); the SDK whitelist is keyed off the scalar type, with `"null"`
- * ignored so nullable variants are normalized as their underlying type.
- */
 function pickAnthropicScalarType(type: unknown): string | undefined {
 	if (typeof type === "string") return type;
 	if (Array.isArray(type)) {
@@ -4027,29 +3580,6 @@ function anthropicPerTypeKeep(scalarType: string | undefined): Set<string> | und
 	}
 }
 
-/**
- * Normalize a JSON Schema node for Anthropic tool `input_schema`.
- *
- * Applies the full whitelist semantics from the Anthropic Python SDK's
- * `lib/_parse/_transform.py::transform_schema`:
- *
- * 1. Universal keys (`$ref`, `$defs`, `type`, `anyOf`, `allOf`, `enum`, `const`,
- *    `description`, `title`, `default`, `nullable`) are preserved on every node, with
- *    one position-dependent exception: the combinator keys. Root `anyOf`/`allOf` are
- *    spilled (recent Anthropic Messages validators reject combinators at the tool
- *    `input_schema` root) but kept when nested; `oneOf` is spilled at every position
- *    (it is not in the documented supported subset).
- * 2. Per-type keys are kept additively (object → `properties`/`required`/`additionalProperties`,
- *    array → `items`/`prefixItems` plus `minItems` only when 0 or 1, string → `format`
- *    only when in the supported value set).
- * 3. Everything else is demoted into the node's `description` as `\n\n{key: value, ...}`
- *
- * Object nodes default to `additionalProperties: false`, but explicit open-map
- * declarations (`additionalProperties: true` or a schema literal — Zod's
- * `z.record(z.string(), z.unknown())` produces `{}`) are preserved. The strict-mode
- * pass downstream demotes those shapes to non-strict instead of fabricating a closed
- * object, so callers like the resolve tool keep working open-map semantics.
- */
 function normalizeAnthropicToolSchemaNode(
 	schema: unknown,
 	cache: WeakMap<Record<string, unknown>, Record<string, unknown>>,
@@ -4079,7 +3609,6 @@ function normalizeAnthropicToolSchemaNode(
 		}
 	}
 
-	// Per-type conditional keys: prune within the kept set.
 	if (scalarType === "string") {
 		const format = result.format;
 		if (typeof format === "string" && !ANTHROPIC_TOOL_SCHEMA_STRING_FORMATS.has(format)) {
@@ -4098,7 +3627,6 @@ function normalizeAnthropicToolSchemaNode(
 		result.additionalProperties = false;
 	}
 
-	// Recurse on structural keys.
 	if (isRecord(result.properties)) {
 		const normalizedProperties: Record<string, unknown> = {};
 		const sourceProperties = result.properties as Record<string, unknown>;
@@ -4228,8 +3756,7 @@ function normalizeAnthropicStrictSchemaNode(
 
 	if (!hasAnthropicSchemaDefiningKeyword(schema)) return undefined;
 
-	// Strict tool use only supports closed objects. Open maps stay available on
-	// the non-strict schema plan instead of producing an Anthropic 400.
+	// Strict tool use only supports closed objects; demote open maps to non-strict.
 	if (isJsonSchemaObjectNode(schema) && schema.additionalProperties !== false) {
 		return undefined;
 	}
@@ -4325,15 +3852,6 @@ const ANTHROPIC_STRICT_INCOMPATIBLE_KEYWORDS = [
 	"propertyNames",
 ] as const;
 
-/**
- * Anthropic's strict grammar subset supports anyOf/type-array unions only.
- * oneOf/allOf/$ref compile unpredictably (rejections arrive as 400s the
- * grammar-too-large fallback does not recognize, so they would hard-fail the
- * turn), and patternProperties/propertyNames describe open key sets that the
- * strict pipeline's injected `additionalProperties: false` would contradict.
- * Runs against the raw wire schema — the base normalizer spills several of
- * these keywords into the description, erasing the evidence.
- */
 function hasAnthropicStrictIncompatibleKeyword(schema: unknown, seen = new Set<object>()): boolean {
 	if (Array.isArray(schema)) {
 		if (seen.has(schema)) return false;
@@ -4450,8 +3968,7 @@ function mapStopReason(reason: string): StopReason {
 			return "stop";
 		case "max_tokens":
 			return "length";
-		// Generation ran into the model's context window (default behavior on
-		// Sonnet 4.5+); the streamed content is valid, just truncated.
+		// Streamed content truncated by context window.
 		case "model_context_window_exceeded":
 			return "length";
 		case "tool_use":
@@ -4465,10 +3982,7 @@ function mapStopReason(reason: string): StopReason {
 		case "sensitive": // Content flagged by safety filters (not yet in SDK types)
 			return "error";
 		default:
-			// New stop reasons ship server-side first ("sensitive",
-			// "model_context_window_exceeded") and arrive on the trailing
-			// message_delta after all content has streamed. Degrade to a normal
-			// stop instead of failing the fully streamed turn.
+			// Unrecognized server-side stop reasons degrade to stop.
 			reportAnthropicEnvelopeAnomaly(`unhandled stop reason: ${reason}`);
 			return "stop";
 	}

@@ -4,10 +4,6 @@ import { emptyUsage } from "@veyyon/catalog/models";
 import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import { type } from "arktype";
 import { resolvePromptCacheKey } from "../auth-gateway/http";
-/**
- * Parsed inbound OpenAI chat-completions request, ready to feed into pi-ai
- * `stream(model, context, options)`.
- */
 import type { AuthGatewayStreamControl, AuthGatewayParsedRequest as ParsedRequest } from "../auth-gateway/types";
 import * as AIError from "../error";
 import type {
@@ -52,7 +48,6 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	const now = Date.now();
 	const systemParts: string[] = [];
 	const messages: Message[] = [];
-	// Map of `tool_call_id` → function name, populated as we walk assistant
 	// turns. The OpenAI wire spec drops `name` from `role:"tool"` messages,
 	// but downstream providers (notably Google: `functionResponse.name` is
 	// required) need it. We back-resolve from the matching call. If the
@@ -266,14 +261,6 @@ function buildAssistantMessage(
 	};
 }
 
-/**
- * Walk a wire `tool` (or legacy `function`) message into canonical messages.
- * Tool-result content may carry images alongside text; pi-ai's
- * `ToolResultMessage` accepts both, but most downstream providers ignore
- * images on tool results. To mirror Rust's `encode_messages` behavior we
- * keep text inside the tool-result message and hoist any image parts into a
- * follow-up `user` message so they still reach the model.
- */
 function pushToolResultMessages(
 	messages: Message[],
 	content: string | OpenAIChatContentPart[] | undefined | null,
@@ -455,7 +442,6 @@ function isOnlyRaw(args: Record<string, unknown>): boolean {
 }
 
 function stringifyArgs(args: Record<string, unknown>): string {
-	// `__raw` is our fallback marker for un-parseable inbound args; preserve it verbatim on the way out.
 	if (typeof args.__raw === "string" && isOnlyRaw(args)) return args.__raw;
 	try {
 		return JSON.stringify(args);
@@ -679,9 +665,4 @@ export function encodeStream(
 
 // formatError
 
-/**
- * OpenAI chat-completions error envelope:
- *   `{ error: { message, type } }`
- * Matches the shape the official SDK auto-parses into `APIError`.
- */
 export { formatOpenAiError as formatError } from "./openai-shared";

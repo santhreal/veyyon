@@ -79,9 +79,6 @@ type AzureOpenAIResponsesSamplingParams = ResponseCreateParamsStreaming & {
 	repetition_penalty?: number;
 };
 
-/**
- * Generate function for Azure OpenAI Responses API
- */
 const streamAzureOpenAIResponsesOnce = (
 	model: Model<"azure-openai-responses">,
 	context: Context,
@@ -101,7 +98,6 @@ const streamAzureOpenAIResponsesOnce = (
 			model.id,
 		);
 		let rawRequestDump: RawHttpRequestDump | undefined;
-		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
 		let wireBodyJson: string | undefined;
 		const abortTracker = createAbortSourceTracker(options?.signal);
 		const firstEventTimeoutAbortError = new AIError.StreamTimeoutError(
@@ -283,9 +279,6 @@ const streamAzureOpenAIResponsesOnce = (
 	return stream;
 };
 
-/**
- * Retries Azure terminal completions that contain no visible assistant output.
- */
 export const streamAzureOpenAIResponses: StreamFunction<"azure-openai-responses"> = (model, context, options) =>
 	withEmptyCompletionRetry(model, context, options, streamAzureOpenAIResponsesOnce);
 
@@ -320,15 +313,6 @@ function resolveAzureConfig(
 	};
 }
 
-/**
- * Replicates the `AzureOpenAI` SDK client's request shape for `/responses`:
- * a string api key becomes a single `api-key` header (azure.mjs `authHeaders`;
- * never `Authorization: Bearer`), `api-version` rides as a query parameter
- * (azure.mjs constructor `defaultQuery`), and `/responses` is not a
- * deployment-scoped path, so no `/deployments/{model}` URL rewriting applies.
- * Custom model/options headers may override the auth header, matching the SDK's
- * `buildHeaders` precedence.
- */
 function buildAzureResponsesRequest(
 	model: Model<"azure-openai-responses">,
 	apiKey: string,

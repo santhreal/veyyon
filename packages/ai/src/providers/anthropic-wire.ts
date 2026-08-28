@@ -1,25 +1,10 @@
-/**
- * Anthropic Messages API wire types.
- *
- * Hand-maintained against https://docs.anthropic.com/en/api/messages so pi-ai
- * does not depend on `@anthropic-ai/sdk` for type information. Only the shapes
- * this package actually reads or writes are modeled; fields we never touch are
- * intentionally omitted. Names mirror the SDK so call sites read the same.
- *
- * Unlike the SDK, beta fields pi-ai uses (`speed`, `context_management`,
- * `output_config.effort`/`task_budget`, `thinking.display`, cache-control
- * `scope`, tool `strict`/`eager_input_streaming`, mid-conversation `system`
- * role) are first-class here instead of being patched in via casts.
- */
 import type { TokenTaskBudget } from "../types";
 
 // ─── Cache control ──────────────────────────────────────────────────────────
 
-/** Ephemeral prefix-cache breakpoint marker. */
 export type CacheControlEphemeral = {
 	type: "ephemeral";
 	ttl?: "1h" | "5m";
-	/** Claude Code prompt-caching-scope beta: shares the breakpoint across sessions. */
 	scope?: "global";
 };
 
@@ -76,12 +61,6 @@ export type RedactedThinkingBlockParam = {
 	data: string;
 };
 
-/**
- * Server-side fallback beta boundary marker (server-side-fallback-2026-06-01).
- * Emitted by the API mid-stream when a classifier block on the requested
- * model is retried on a fallback model. Only the official Anthropic
- * endpoint accepts this block on replay — cross-provider hops MUST strip it.
- */
 export type FallbackBlockParam = {
 	type: "fallback";
 	from: { model: string };
@@ -97,13 +76,6 @@ export type ContentBlockParam =
 	| RedactedThinkingBlockParam
 	| FallbackBlockParam;
 
-/**
- * A single conversation turn.
- *
- * `system` is the Opus 4.8+ mid-conversation system role
- * (`mid-conversation-system-2026-04-07` beta); the public API otherwise only
- * accepts `user` / `assistant`.
- */
 export type MessageParam = {
 	role: "user" | "assistant" | "system";
 	content: string | ContentBlockParam[];
@@ -123,9 +95,7 @@ export type Tool = {
 	description?: string;
 	input_schema: ToolInputSchema;
 	cache_control?: CacheControlEphemeral | null;
-	/** Structured-outputs beta: enforce the schema as a strict grammar. */
 	strict?: boolean;
-	/** Fine-grained tool streaming beta: stream tool input as it is generated. */
 	eager_input_streaming?: boolean;
 };
 
@@ -143,7 +113,6 @@ export type Metadata = { user_id?: string | null };
 export type ThinkingConfigEnabled = {
 	type: "enabled";
 	budget_tokens: number;
-	/** Opus 4.7+ reasoning display mode. */
 	display?: "summarized" | "omitted";
 };
 
@@ -151,24 +120,16 @@ export type ThinkingConfigDisabled = { type: "disabled" };
 
 export type ThinkingConfigAdaptive = {
 	type: "adaptive";
-	/** Opus 4.7+ reasoning display mode. */
 	display?: "summarized" | "omitted";
 };
 
 export type ThinkingConfigParam = ThinkingConfigEnabled | ThinkingConfigDisabled | ThinkingConfigAdaptive;
 
 export type OutputConfig = {
-	/** Adaptive-thinking effort level (effort beta). */
 	effort?: "low" | "medium" | "high" | "xhigh" | "max" | null;
-	/** Task-budgets beta. */
 	task_budget?: TokenTaskBudget | null;
 };
 
-/**
- * Per-attempt override entry in `MessageCreateParams.fallbacks`
- * (server-side-fallback-2026-06-01 beta). Every field except `model`
- * mirrors a top-level control the beta allows re-specifying per attempt.
- */
 export type FallbackParam = {
 	model: string;
 	max_tokens?: number;
@@ -177,7 +138,6 @@ export type FallbackParam = {
 	speed?: "fast";
 };
 
-/** Claude Code context-management beta payload. */
 export type ContextManagement = {
 	edits: Array<{ type: "clear_thinking_20251015"; keep: "all" }>;
 };
@@ -197,15 +157,8 @@ export type MessageCreateParams = {
 	metadata?: Metadata;
 	thinking?: ThinkingConfigParam;
 	output_config?: OutputConfig;
-	/** Fast-mode beta: realization of priority service tier. */
 	speed?: "fast";
-	/** Claude Code context-management beta. */
 	context_management?: ContextManagement;
-	/**
-	 * Server-side fallback beta chain — up to three fallback models the API
-	 * retries when a classifier blocks the primary. Required companion beta
-	 * header: `server-side-fallback-2026-06-01`.
-	 */
 	fallbacks?: FallbackParam[];
 };
 
@@ -213,14 +166,6 @@ export type MessageCreateParamsStreaming = MessageCreateParams & { stream: true 
 
 // ─── Response / usage ───────────────────────────────────────────────────────
 
-/**
- * Anthropic's OWN `stop_reason` vocabulary, as it arrives on the wire.
- *
- * Not the harness's `StopReason` in `../types`, which has five values (`stop`, `length`,
- * `toolUse`, `error`, `aborted`) and is what every provider maps onto. Both were spelled
- * `StopReason`, so a file that imported the wrong one still typechecked against the wrong eight
- * literals. `mapStopReason` in `anthropic.ts` is the one place that crosses between them.
- */
 export type AnthropicWireStopReason =
 	| "end_turn"
 	| "max_tokens"
@@ -241,12 +186,6 @@ export type ServerToolUsage = {
 	web_fetch_requests?: number | null;
 };
 
-/**
- * Per-attempt token accounting inside a multi-run turn
- * (server-side-fallback-2026-06-01). Populated whenever a fallback chain
- * ran, including sticky-served turns with no `fallback` content block.
- * A `fallback_message` entry is the definitive "served by fallback" signal.
- */
 export type UsageIteration = {
 	type?: "message" | "fallback_message" | string;
 	model?: string | null;
@@ -256,13 +195,6 @@ export type UsageIteration = {
 	cache_creation_input_tokens?: number | null;
 };
 
-/**
- * Anthropic's OWN usage block, as it arrives on the wire: snake_case, nullable, token counts only.
- *
- * Not the harness's `Usage` in `../types`, which is camelCase and carries cost. `anthropic.ts`
- * already imported this one as `AnthropicWireUsage` to say which it meant, which is the signal
- * that the bare name was doing no work here.
- */
 export type AnthropicWireUsage = {
 	input_tokens?: number | null;
 	output_tokens?: number | null;
@@ -273,7 +205,6 @@ export type AnthropicWireUsage = {
 	iterations?: UsageIteration[] | null;
 };
 
-/** The `message` envelope carried by `message_start`. */
 export type ResponseMessage = {
 	id: string;
 	type?: "message";
@@ -287,7 +218,6 @@ export type ResponseMessage = {
 
 // ─── Stream events ──────────────────────────────────────────────────────────
 
-/** `content_block` payload carried by `content_block_start`. */
 export type ResponseContentBlock =
 	| { type: "text"; text: string }
 	| { type: "thinking"; thinking: string; signature?: string }

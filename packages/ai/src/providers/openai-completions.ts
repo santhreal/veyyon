@@ -187,7 +187,6 @@ function hasPositiveCacheReadTokenField(rawUsage: object): boolean {
 	return typeof promptTokenDetails.cached_tokens === "number" && promptTokenDetails.cached_tokens > 0;
 }
 
-/** Normalize tool call ID for Mistral (requires exactly 9 alphanumeric chars). */
 function normalizeMistralToolId(id: string, isMistral: boolean): string {
 	if (!isMistral) return id;
 	let normalized = id.replace(/[^a-zA-Z0-9]/g, "");
@@ -204,9 +203,6 @@ function resolveOpenAICompletionsModelId(
 	model: Model<"openai-completions">,
 	options: OpenAICompletionsOptions | undefined,
 ): string {
-	// Effort-tier variants route per request effort (off → bare id, efforts →
-	// the thinking backing id); catalog variants (Copilot long-context `-1m`
-	// entries) pin via `requestModelId`; everything else serializes `model.id`.
 	const selection = resolveReasoningSelection(model, {
 		effort: options?.reasoning as Effort | undefined,
 		disabled: options?.disableReasoning,
@@ -215,17 +211,6 @@ function resolveOpenAICompletionsModelId(
 	return applyWireModelIdTransform(wireId, model.compat.wireModelIdMode, options?.openrouterVariant);
 }
 
-/**
- * Normalize OpenAI-compatible streaming `delta.content` into plain text.
- * Most providers stream `delta.content` as a string, but some (notably Mistral
- * Medium 3.5 / `mistral-medium-2604`) return an array of typed content parts
- * — e.g. `[{ type: "text", text: "Hello" }]`. Without normalization those
- * parts get string-coerced via `text += array`, producing the literal
- * `[object Object]` sequences observed in issue #911.
- *
- * Returns the joined text. Non-text parts and unknown shapes are skipped so
- * we never emit JS object sigils as visible output.
- */
 function normalizeStreamingContentText(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
@@ -251,19 +236,6 @@ function normalizeStreamingContentText(content: unknown): string {
 	return "";
 }
 
-/**
- * Serialize a recorded tool call's arguments back into the JSON string the
- * provider expects when the conversation is replayed.
- *
- * The `arguments` field only has to be a string containing JSON, so any valid
- * JSON is preserved, not just an object: a stored array or scalar is still what
- * the model produced, and re-serializing it keeps the replayed history honest.
- * Dropping such a value to `{}` used to corrupt the model's view of its own
- * history (it would see it called the tool with no arguments) for no gain. The
- * `{}` safety net remains for a string that is not valid JSON at all, since a
- * strict provider rejects a non-JSON arguments string, but that drop is now
- * surfaced rather than swallowed (Law 10).
- */
 export function serializeToolArguments(value: unknown, toolName?: string): string {
 	if (isRecord(value)) {
 		try {
@@ -277,8 +249,6 @@ export function serializeToolArguments(value: unknown, toolName?: string): strin
 		const trimmed = value.trim();
 		if (trimmed.length === 0) return "{}";
 		try {
-			// Re-stringify so the output is canonical JSON, whether the parsed value
-			// is an object, an array, or a scalar. All three are valid here.
 			return JSON.stringify(JSON.parse(trimmed));
 		} catch {
 			logger.warn("A recorded tool call had unparseable arguments, replaced with {} when replayed to the provider", {
@@ -404,11 +374,6 @@ function mergeStreamingArgumentObjects(
 	return merged;
 }
 
-/**
- * Check if conversation messages contain tool calls or tool results.
- * This is needed because Anthropic (via proxy) requires the tools param
- * to be present when messages include tool_calls or tool role messages.
- */
 function hasToolHistory(messages: Message[]): boolean {
 	for (const msg of messages) {
 		if (msg.role === "toolResult") {
@@ -422,19 +387,6 @@ function hasToolHistory(messages: Message[]): boolean {
 	}
 	return false;
 }
-/**
- * Identify "real progress" stream chunks vs. keepalives, role-only preambles,
- * and empty `{choices:[]}` no-ops emitted by some OpenAI-compatible endpoints.
- * Without this filter, every keepalive resets `iterateWithIdleTimeout`'s
- * deadline, so a provider that streams nothing but pings keeps the watchdog
- * asleep indefinitely — observed against z.ai/GLM via OpenRouter where a
- * subagent stalled for hours with no error surfaced.
- *
- * A chunk counts as progress when it carries terminal usage, a finish reason,
- * or a model-produced delta (content / tool calls / reasoning / refusal).
- * Role-only `delta: { role: "assistant" }` preambles do NOT count; we want the
- * (longer) first-event timeout to keep governing until real output appears.
- */
 export function isOpenAICompletionsProgressChunk(chunk: unknown): boolean {
 	if (!chunk || typeof chunk !== "object") return false;
 	const record = chunk as {
@@ -472,19 +424,9 @@ export function isOpenAICompletionsProgressChunk(chunk: unknown): boolean {
 export interface OpenAICompletionsOptions extends StreamOptions {
 	toolChoice?: ToolChoice;
 	reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-	/** Force-disable reasoning where supported, or request the lowest effort on generic effort endpoints. */
 	disableReasoning?: boolean;
 	serviceTier?: ServiceTier;
-	/** @internal True when maxTokens came from the caller, not the model default. */
 	maxTokensExplicit?: boolean;
-	/**
-	 * Routing-variant suffix appended to OpenRouter model IDs when none is
-	 * already present (`anthropic/claude-haiku-latest` → `…:nitro`). Common
-	 * values: `"nitro"`, `"floor"`, `"online"`, `"exacto"`. Ignored when the
-	 * resolved `model.id` already contains a colon-suffix after the last
-	 * provider segment (explicit `:nitro` in the selector or a catalog entry
-	 * with the variant baked in).
-	 */
 	openrouterVariant?: string;
 }
 
@@ -494,7 +436,6 @@ type ToolStrictModeOverride = Exclude<ResolvedOpenAICompat["toolStrictMode"], "m
 type BuiltOpenAICompletionTools = {
 	tools: ChatCompletionTool[];
 	toolStrictMode: AppliedToolStrictMode;
-	/** True when at least one wire tool was sent with `strict: true`. */
 	strictToolsApplied: boolean;
 };
 
@@ -1380,9 +1321,7 @@ const streamOpenAICompletionsOnce = (
 		} catch (error) {
 			try {
 				finishOpenBlocksOnError();
-			} catch {
-				// Deliberate: the terminal error event below is what the caller needs.
-			}
+			} catch {}
 			const capturedErrorResponse = error instanceof OpenAIHttpError ? error.captured : undefined;
 			const result = await AIError.finalize(error, {
 				api: model.api,
@@ -1407,12 +1346,6 @@ const streamOpenAICompletionsOnce = (
 	return stream;
 };
 
-/**
- * Public entry: wrap the single-attempt streamer with bounded empty-completion
- * retries — flaky gateways occasionally 200 with `delta: {}` + `finish_reason:
- * "stop"` and no usage, which would otherwise stall the agent loop. Shared with
- * the Anthropic provider via `withEmptyCompletionRetry`.
- */
 export const streamOpenAICompletions: StreamFunction<"openai-completions"> = (model, context, options) =>
 	withEmptyCompletionRetry(model, context, options, streamOpenAICompletionsOnce);
 
@@ -1434,8 +1367,6 @@ function createRequestSetup(
 		messages: context.messages,
 		defaultBaseUrl: "https://api.openai.com/v1",
 		// Provider auth/header overlay: Kimi-code hosts require shared client
-		// attribution headers prepended before caller headers. Kept here (not in
-		// the shared helper) because it is provider-specific request setup.
 		prependHeaders: model.provider === "kimi-code" ? getKimiCommonHeaders : undefined,
 		alibabaCodingPlanAuth: true,
 		azureChatCompletions: { apiVersion, deploymentName },
@@ -1537,11 +1468,6 @@ function buildParams(
 		strictToolsApplied = builtTools.strictToolsApplied;
 	} else if (context.tools === undefined && hasToolHistory(context.messages)) {
 		// Anthropic (via LiteLLM/proxy) requires the `tools` param when the conversation
-		// contains tool_calls/tool_results, even when no tools are offered this turn.
-		// Only inject the sentinel when the caller passed `context.tools = undefined`
-		// (i.e. tools were not specified at all). An explicit `context.tools = []` means
-		// the caller opted out of tools for this turn (as /btw and IRC background replies
-		// do via AgentSession.runEphemeralTurn) — honour that intent and emit nothing,
 		// so LiteLLM → Bedrock never sees an empty `toolConfig` block.
 		params.tools = [];
 	}
@@ -1557,9 +1483,7 @@ function buildParams(
 		params.tool_choice = "required";
 	}
 	if (isForcedToolChoice(params.tool_choice) && !initialCompat.supportsForcedToolChoice) {
-		// Some thinking-required OpenAI-compatible models reject forced
 		// `tool_choice` while still accepting tools with the default auto
-		// selector. Keep the tool available and let the model choose it.
 		params.tool_choice = "auto";
 	}
 
@@ -1567,11 +1491,6 @@ function buildParams(
 		// `tool_choice: "none"` with no tools to gate is redundant and also
 		// trips LiteLLM → Bedrock: the proxy serializes the directive into a
 		// `toolConfig` block, and Bedrock requires `toolConfig.tools` to be
-		// non-empty whenever the conversation already holds `toolUse`/`toolResult`
-		// content. Drop it whenever the resolved tools list is missing or empty.
-		// Side-channel turns hit this: `/btw` and IRC background replies route
-		// through `AgentSession.runEphemeralTurn`, which sets `context.tools = []`
-		// and `toolChoice: "none"` (see packages/coding-agent/src/session/agent-session.ts).
 		delete params.tool_choice;
 	}
 
@@ -1585,9 +1504,6 @@ function buildParams(
 			!params.tools.some(tool => tool.type === "function" && tool.function.name === forcedToolName))
 	) {
 		// A forced named tool_choice is only valid when the same request offers
-		// that function in `tools`. Active-tool filtering normally enforces this
-		// before provider dispatch; this guard keeps raw provider callers from
-		// emitting a self-inconsistent OpenAI-compatible payload.
 		delete params.tool_choice;
 	}
 
@@ -1675,18 +1591,6 @@ export function parseChunkUsage(
 	return usage;
 }
 
-/**
- * Place the single Anthropic-style breakpoint for an OpenAI-compatible payload.
- *
- * `cacheRetention` is a cross-provider request option, and every other
- * implementation of this idea consumes it: the Anthropic provider
- * (`getCacheControl`), Bedrock (`buildSystemPrompt` / `convertMessages`), and
- * the Responses path for the very same OpenRouter Claude rows
- * (`maybeAddOpenRouterAnthropicCacheControl`). This path ignored it entirely,
- * so `none` still wrote a breakpoint and paid the cache-write premium a caller
- * had opted out of, and `long` silently degraded to the default five-minute
- * window while the Responses path for the same model asked for an hour.
- */
 function maybeAddAnthropicCacheControl(
 	compat: ResolvedOpenAICompat,
 	messages: ChatCompletionMessageParam[],
@@ -1696,8 +1600,6 @@ function maybeAddAnthropicCacheControl(
 	if (cacheRetention === "none") return;
 	const cacheControl: CacheControlEphemeral =
 		cacheRetention === "long" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
-	// Anthropic-style caching requires cache_control on a text part. Add a breakpoint
-	// on the last user/assistant message (walking backwards until we find text content).
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const msg = messages[i];
 		if (msg.role !== "user" && msg.role !== "assistant" && msg.role !== "developer") continue;
@@ -1713,9 +1615,7 @@ function maybeAddAnthropicCacheControl(
 
 		if (!Array.isArray(content)) continue;
 
-		// Find last non-empty text part and add cache_control. Empty assistant
 		// content is valid for tool-call replay, but Anthropic/OpenRouter reject
-		// empty text blocks once cache_control turns it into structured content.
 		for (let j = content.length - 1; j >= 0; j--) {
 			const part = content[j];
 			if (part?.type === "text" && part.text.trim().length > 0) {
@@ -2217,12 +2117,6 @@ function convertTools(
 	return {
 		tools: adaptedTools.map(({ tool, baseParameters, parameters, strict }) => {
 			const includeStrict = toolStrictMode === "all_strict" || (toolStrictMode === "mixed" && strict);
-			// `strict: false` is semantically distinct from omitted `strict` on some
-			// backends: with it absent, optional properties may be over-filled with
-			// placeholder values (#4336). Preserve the author's explicit `false`,
-			// but only in "mixed" mode against a provider that understands the
-			// field — the `all_strict → none` collapse and `supportsStrictMode:
-			// false` paths deliberately keep the wire flag uniformly absent.
 			const includeExplicitFalse =
 				!includeStrict &&
 				tool.strict === false &&
@@ -2235,12 +2129,10 @@ function convertTools(
 					name: tool.name,
 					description: tool.description || "",
 					// Moonshot/Kimi native hosts validate against the stricter MFJS subset
-					// (const→enum, typed enums, no validators) and 400 otherwise.
 					parameters:
 						compat.toolSchemaFlavor === "moonshot-mfjs"
 							? (normalizeSchemaForMoonshot(wireParameters) as Record<string, unknown>)
 							: wireParameters,
-					// Only include strict if provider supports it. Some reject unknown fields.
 					...(includeStrict ? { strict: true } : includeExplicitFalse ? { strict: false } : {}),
 				},
 			};
@@ -2272,8 +2164,6 @@ function mapStopReason(reason: ChatCompletionChunk.Choice["finish_reason"] | str
 			return { stopReason: "error", errorMessage: AIError.providerFinishErrorMessage("network_error") };
 		default:
 			// Gateways (OpenRouter, Vercel AI Gateway, …) report upstream model
-			// failures as a bare `finish_reason: "error"` with no detail, which the
-			// turn domain retries. Every other unrecognised reason states itself.
 			return {
 				stopReason: "error",
 				errorMessage: AIError.providerFinishErrorMessage(typeof reason === "string" ? reason : undefined),
