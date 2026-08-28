@@ -1,4 +1,3 @@
-import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { $flag, errorMessage, isBunTestRuntime, logger, Snowflake } from "@veyyon/utils";
@@ -7,6 +6,7 @@ import { Settings } from "../../config/settings";
 import {
 	BaseKernel,
 	DEFAULT_KERNEL_STARTUP_TIMEOUT_MS,
+	ensureRunnerScript,
 	getRemainingTimeMs,
 	KERNEL_INTERRUPT_ESCALATION_MS,
 	KERNEL_SHUTDOWN_GRACE_MS,
@@ -40,20 +40,6 @@ export { renderKernelDisplay } from "./display";
 const TRACE_IPC = $flag(kernelIpcTraceEnvVar("PYTHON"));
 
 const RUNNER_CACHE_DIR = kernelRunnerCacheDir(os.tmpdir(), "python");
-let RUNNER_SCRIPT_PATH: string | null = null;
-
-async function ensureRunnerScript(): Promise<string> {
-	if (RUNNER_SCRIPT_PATH) return RUNNER_SCRIPT_PATH;
-	await fs.promises.mkdir(RUNNER_CACHE_DIR, { recursive: true });
-	const hash = Bun.hash(RUNNER_SCRIPT).toString(36);
-	const target = path.join(RUNNER_CACHE_DIR, `runner-${hash}.py`);
-	if (!fs.existsSync(target)) {
-		await Bun.write(target, RUNNER_SCRIPT);
-	}
-	RUNNER_SCRIPT_PATH = target;
-	return target;
-}
-
 const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS;
 
 export interface PythonKernelAvailability {
@@ -169,7 +155,7 @@ export class PythonKernel extends BaseKernel {
 		spawnEnv.PYTHONUNBUFFERED = "1";
 		spawnEnv.PYTHONIOENCODING = "utf-8";
 
-		const scriptPath = await ensureRunnerScript();
+		const scriptPath = await ensureRunnerScript(RUNNER_CACHE_DIR, RUNNER_SCRIPT, "py");
 		const kernel = new PythonKernel(Snowflake.next());
 
 		const proc = Bun.spawn([runtime.pythonPath, "-u", scriptPath], {

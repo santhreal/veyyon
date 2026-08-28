@@ -1,4 +1,3 @@
-import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { $flag, errorMessage, isBunTestRuntime, logger, Snowflake } from "@veyyon/utils";
@@ -7,6 +6,7 @@ import { Settings } from "../../config/settings";
 import {
 	BaseKernel,
 	DEFAULT_KERNEL_STARTUP_TIMEOUT_MS,
+	ensureRunnerScript,
 	getRemainingTimeMs,
 	KERNEL_INTERRUPT_ESCALATION_MS,
 	KERNEL_SHUTDOWN_GRACE_MS,
@@ -29,26 +29,13 @@ import {
 } from "./runtime";
 
 export type { KernelExecuteOptions, KernelExecuteResult, KernelRuntimeEnv, KernelShutdownResult } from "../kernel-base";
+
 export type { KernelDisplayOutput, PythonStatusEvent } from "../py/display";
 export { renderKernelDisplay } from "../py/display";
 
 const TRACE_IPC = $flag(kernelIpcTraceEnvVar("RUBY"));
 
 const RUNNER_CACHE_DIR = kernelRunnerCacheDir(os.tmpdir(), "ruby");
-let RUNNER_SCRIPT_PATH: string | null = null;
-
-async function ensureRunnerScript(): Promise<string> {
-	if (RUNNER_SCRIPT_PATH) return RUNNER_SCRIPT_PATH;
-	await fs.promises.mkdir(RUNNER_CACHE_DIR, { recursive: true });
-	const hash = Bun.hash(RUNNER_SCRIPT).toString(36);
-	const target = path.join(RUNNER_CACHE_DIR, `runner-${hash}.rb`);
-	if (!fs.existsSync(target)) {
-		await Bun.write(target, RUNNER_SCRIPT);
-	}
-	RUNNER_SCRIPT_PATH = target;
-	return target;
-}
-
 const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS;
 
 export interface RubyKernelAvailability {
@@ -156,7 +143,7 @@ export class RubyKernel extends BaseKernel<KernelExecuteOptions> {
 			if (typeof value === "string") spawnEnv[key] = value;
 		}
 
-		const scriptPath = await ensureRunnerScript();
+		const scriptPath = await ensureRunnerScript(RUNNER_CACHE_DIR, RUNNER_SCRIPT, "rb");
 		const kernel = new RubyKernel(Snowflake.next());
 
 		const proc = Bun.spawn([runtime.rubyPath, scriptPath], {

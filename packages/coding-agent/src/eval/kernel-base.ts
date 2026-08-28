@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage, isTimeoutError, logger, Snowflake } from "@veyyon/utils";
 import type { Subprocess } from "bun";
@@ -102,6 +103,16 @@ export function kernelIpcTraceEnvVar(language: string): string {
 
 export function kernelRunnerCacheDir(tmpDir: string, language: string): string {
 	return path.join(tmpDir, `veyyon-${language}-runner`);
+}
+
+export async function ensureRunnerScript(cacheDir: string, script: string, extension: string): Promise<string> {
+	await fs.promises.mkdir(cacheDir, { recursive: true });
+	const hash = Bun.hash(script).toString(36);
+	const target = path.join(cacheDir, `runner-${hash}.${extension}`);
+	if (!fs.existsSync(target)) {
+		await Bun.write(target, script);
+	}
+	return target;
 }
 
 export function getRemainingTimeMs(deadlineMs?: number): number | undefined {
