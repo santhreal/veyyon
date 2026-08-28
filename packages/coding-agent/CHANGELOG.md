@@ -7,6 +7,8 @@
 - A session that never enabled goal mode no longer reports "Goal mode stopped driving" after three consecutive provider-killed turns; the failed-turn counter and its stand-down warning now require a running goal.
 - A goal now starts with its full failed-turn tolerance instead of inheriting the failures an earlier goal in the same session left behind, which stood it down on its first error rather than its third.
 - A turn-ending provider error too long to render inline now reports how many lines were dropped instead of ending without a trace.
+- The installer asks what is already installed before downloading, so a machine already on the released version finishes in seconds instead of fetching the whole binary to discard it.
+- The installer repairs an install whose binary was replaced since it was written — a local build copied over it, or a write interrupted mid-swap — by moving that file aside and installing, instead of refusing and leaving the machine on the old version; a file at a path the installer has never installed to is still refused untouched.
 
 ## [1.3.0] - 2026-08-28
 

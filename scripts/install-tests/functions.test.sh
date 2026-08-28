@@ -1299,6 +1299,96 @@ write_stub_binary() {
     chmod +x "$_sb_path"
 }
 
+# --- installed_version_is: the pre-download "already current" gate ---
+# The installer used to download the whole release before it ever asked what was
+# already at the target path, so a machine already on the latest version paid for
+# the transfer and then, when the file there was not the one this installer
+# wrote, refused at the last step having changed nothing. Every way of FAILING to
+# establish a version must answer "no", because a wrong "yes" skips an install
+# the machine needs.
+( _d="$SANDBOX/installed-version"
+  mkdir -p "$_d"
+  VEYYON_INSTALL_DIR="$_d"
+
+  ( installed_version_is v1.3.0 ); check "installed_version_is says no when nothing is installed" "$?" "1"
+
+  write_stub_binary "$_d/$BIN_NAME" 1.3.0
+  ( installed_version_is v1.3.0 ); check "installed_version_is matches the released tag" "$?" "0"
+  ( installed_version_is 1.3.0 );  check "installed_version_is accepts a tag with no leading v" "$?" "0"
+  ( installed_version_is v1.3.1 ); check "installed_version_is says no on a newer release" "$?" "1"
+  ( installed_version_is v1.2.9 ); check "installed_version_is says no on an older release" "$?" "1"
+
+  # A prefix must not pass for the whole version, or 1.3.0 would satisfy 1.3.0.1.
+  ( installed_version_is v1.3.0.1 ); check "installed_version_is rejects a version sharing its prefix" "$?" "1"
+
+  chmod -x "$_d/$BIN_NAME"
+  ( installed_version_is v1.3.0 ); check "installed_version_is says no when the file is not executable" "$?" "1"
+  chmod +x "$_d/$BIN_NAME"
+
+  printf '%s\n' '#!/bin/sh' 'exit 3' > "$_d/$BIN_NAME"; chmod +x "$_d/$BIN_NAME"
+  ( installed_version_is v1.3.0 ); check "installed_version_is says no when --version fails" "$?" "1"
+
+  printf '%s\n' '#!/bin/sh' 'echo "veyyon (no version here)"' > "$_d/$BIN_NAME"; chmod +x "$_d/$BIN_NAME"
+  ( installed_version_is v1.3.0 ); check "installed_version_is says no when output carries no version" "$?" "1" )
+
+# --- a drifted install is repaired; a stranger's file is still refused ---
+# `binary_artifact_is_ours` asks whether this FILE is the one we wrote.
+# `artifact_has_owner_history` asks whether this PATH is one we have ever
+# installed to. They part company exactly when an install drifts — a local build
+# copied over it, a replacement by hand, a write interrupted between the binary
+# and its receipt — and treating that as a stranger's file left the machine stuck
+# on an old version with the remedy spelled as a flag the user had to discover
+# from an error message.
+( _d="$SANDBOX/owner-history"
+  mkdir -p "$_d"
+  _b="$_d/veyyon"
+
+  write_stub_binary "$_b" 1.2.0
+  ( artifact_has_owner_history "$_b" ); check "owner history says no for a path never installed to" "$?" "1"
+  ( binary_artifact_is_ours "$_b" );    check "a file with no receipt is not ours" "$?" "1"
+
+  mark_artifact_owned "$_b"
+  ( artifact_has_owner_history "$_b" ); check "owner history says yes once an install is recorded" "$?" "0"
+  ( binary_artifact_is_ours "$_b" );    check "the recorded file is ours" "$?" "0"
+
+  # The drift: same path, same receipt, different bytes.
+  write_stub_binary "$_b" 1.2.1
+  ( binary_artifact_is_ours "$_b" );    check "a drifted file is no longer the one we wrote" "$?" "1"
+  ( artifact_has_owner_history "$_b" ); check "a drifted file still sits at a path we own" "$?" "0"
+
+  # Losing the binary must not leave the path claimed: that is the clobber the
+  # receipt format exists to prevent, so history has to go with the receipt.
+  remove_owner_receipt "$_b"
+  ( artifact_has_owner_history "$_b" ); check "owner history goes away with the receipt" "$?" "1" )
+
+# --- replacing a binary that is currently running ---
+# Updating while sessions are open must not disturb them. The swap is a rename,
+# so a process already executing the old file keeps its own inode and runs to
+# completion on it; the new file takes the NAME, and only the next launch sees
+# it. This is also why rename is the only permitted way to land the binary:
+# writing over the file in place would hand a running session a half-written
+# executable, and on Linux would fail with ETXTBSY besides.
+( _d="$SANDBOX/running-swap"
+  mkdir -p "$_d"
+  _b="$_d/veyyon"
+  printf '%s\n' '#!/bin/sh' 'sleep 3' > "$_b"
+  chmod +x "$_b"
+  mark_artifact_owned "$_b"
+
+  "$_b" & _running=$!
+  # Give the interpreter time to open and start the script before it is replaced.
+  sleep 1
+
+  write_stub_binary "$_d/staged" 1.3.0
+  ( finalize_binary "$_d/staged" "$_b" "rebuild it" >/dev/null 2>&1 )
+  check "a binary can be replaced while a session is running it" "$?" "0"
+  check "the running session survived the replacement" \
+    "$( kill -0 "$_running" 2>/dev/null && echo alive || echo dead )" "alive"
+  check "the next launch gets the new binary" "$("$_b" --version)" "veyyon/1.3.0"
+
+  wait "$_running" 2>/dev/null
+  check "the running session exited normally on the old inode" "$?" "0" )
+
 # --- verified release transaction: version is a pre-replacement gate ---
 # A checksum-valid asset can still be the wrong executable when a release
 # attaches a stale build. The version and native-search preflights must both run

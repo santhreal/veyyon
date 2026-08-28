@@ -303,22 +303,31 @@ describe("the closing advice names a command that is actually ours", () => {
 		);
 	});
 
-	it("every install mode prints the same block, from one place", () => {
+	it("every install mode reaches the same closing block, from one place", () => {
 		// Pasted copies meant a change to the advice had to be made once per mode
 		// or the modes disagreed about what to tell the user. There were three
 		// copies because a source install was one of the modes; it is gone, and the
 		// surviving set is exactly binary and local.
 		//
+		// The whole post-install tail — alias, completions, PATH, self-check and
+		// this advice — now lives in `finish_install`, because a third caller
+		// arrived: the already-current path skips the download and must still do
+		// every one of those steps, since a re-run is how a broken alias or a
+		// missing PATH line gets repaired.
+		//
 		// The set is named rather than counted: a bare count still reads right when
 		// one mode calls the block twice and another never calls it at all, which
 		// is precisely how a mode loses its closing advice unnoticed.
 		expect(installSh).toContain("print_next_steps() {");
+		expect(installSh).toContain("finish_install() {");
 		for (const fn of ["install_binary", "install_local"] as const) {
 			const body = fnBody(installSh, `${fn}() {`, "\n}\n");
-			expect(body, `${fn} must print the closing advice`).toMatch(/^ {4}print_next_steps$/m);
+			expect(body, `${fn} must reach the closing advice`).toMatch(/^ {4}finish_install\b/m);
 		}
-		// Exhaustive: nowhere else, so a third pasted call cannot creep back in.
-		expect((installSh.match(/^ {4}print_next_steps$/gm) ?? []).length).toBe(2);
+		// Exhaustive: the advice is printed from `finish_install` and nowhere else,
+		// so a mode can neither paste its own copy nor drift from the shared one.
+		expect((installSh.match(/^ {4}print_next_steps$/gm) ?? []).length).toBe(1);
+		expect(fnBody(installSh, "finish_install() {", "\n}\n")).toMatch(/^ {4}print_next_steps$/m);
 		expect(installSh).not.toContain('say "  1. Launch in any repository: $ALIAS_NAME"');
 	});
 });
