@@ -238,7 +238,7 @@ export class ToolCallLoopGuard {
 
 	constructor(options: ToolCallLoopGuardOptions) {
 		this.#threshold = Math.max(1, Math.trunc(options.threshold));
-		this.#readSubsumptionThreshold = Math.max(1, Math.trunc(options.readSubsumptionThreshold ?? 2));
+		this.#readSubsumptionThreshold = Math.max(1, Math.trunc(options.readSubsumptionThreshold ?? 3));
 		this.#exemptTools = new Set(options.exemptTools);
 	}
 

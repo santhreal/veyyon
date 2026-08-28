@@ -15,6 +15,7 @@
 
 ### Changed
 
+- `ToolCallLoopGuard` waits for a third consecutive subsumed read before steering, up from the second, so two narrowing reads of one file are no longer treated as a loop; `model.toolCallLoopGuard.readSubsumptionThreshold` still sets it.
 - Formatted tool-call loop guard whitespace; behavior is unchanged.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
 - `ToolCall.arguments` is a `Readonly<Record<string, unknown>>`, so a producer replaces the object instead of writing into one a streaming snapshot already shares.
