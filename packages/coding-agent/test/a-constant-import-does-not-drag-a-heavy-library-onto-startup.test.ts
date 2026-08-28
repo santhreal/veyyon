@@ -226,20 +226,24 @@ describe("a startup root cannot reach an expensive third-party package through s
 	});
 
 	it("still sees the expensive packages where they legitimately live, so the walker is not blind", () => {
-		// A walker that resolved nothing would report zero offenders everywhere. `markit/registry.ts`
-		// genuinely imports the converters, and `browser-headers.ts` genuinely imports header-generator.
-		expect([...expensiveReachableFrom(join(SRC, "markit", "registry.ts")).keys()].sort()).toContain("mammoth");
+		// A walker that resolved nothing would report zero offenders everywhere.
+		// `export/markit/registry.ts` genuinely imports the converters, and
+		// `browser-headers.ts` genuinely imports header-generator.
+		expect([...expensiveReachableFrom(join(SRC, "export", "markit", "registry.ts")).keys()].sort()).toContain(
+			"mammoth",
+		);
 		expect([...expensiveReachableFrom(join(SRC, "web", "search", "providers", "browser-headers.ts")).keys()]).toEqual(
 			["header-generator"],
 		);
 	});
 
 	it("follows a re-export edge, which is the shape that carried the converters", () => {
-		// `markit/index.ts` names the converters only through `export * from "./registry"`. A walker that
-		// followed `import` but not `export * from` would call the barrel clean and miss the whole defect.
-		const barrel = readFileSync(join(SRC, "markit", "index.ts"), "utf8");
+		// `export/markit/index.ts` names the converters only through
+		// `export * from "./registry"`. A walker that followed `import` but not
+		// `export * from` would call the barrel clean and miss the whole defect.
+		const barrel = readFileSync(join(SRC, "export", "markit", "index.ts"), "utf8");
 		expect(barrel).toContain('export * from "./registry"');
 		expect(barrel).not.toContain("import ");
-		expect([...expensiveReachableFrom(join(SRC, "markit", "index.ts")).keys()].sort()).toContain("mammoth");
+		expect([...expensiveReachableFrom(join(SRC, "export", "markit", "index.ts")).keys()].sort()).toContain("mammoth");
 	});
 });

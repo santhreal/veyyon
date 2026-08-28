@@ -29,6 +29,12 @@ const canonicalCodingAgentExtensions = Bun.resolveSync(
 );
 const canonicalUtils = Bun.resolveSync("@veyyon/utils", import.meta.dir);
 const canonicalTui = Bun.resolveSync("@veyyon/tui", import.meta.dir);
+// The primitives the tui barrel used to re-export now live in `@veyyon/utils`,
+// on subpaths rather than on its barrel. A legacy extension still imports them
+// from the pi-tui root, so `legacy-pi-tui-shim.ts` serves that root and these
+// two probes prove it hands back the utils function object, not a second copy.
+const canonicalUtilsWidth = Bun.resolveSync("@veyyon/utils/width", import.meta.dir);
+const canonicalUtilsKeys = Bun.resolveSync("@veyyon/utils/keys", import.meta.dir);
 // Subpath: upstream `pi-ai/oauth` re-exported `utils/oauth/index`; our pi-ai now
 // exposes the same surface at the real `@veyyon/ai/oauth` export, so the
 // legacy `@mariozechner/pi-ai/oauth` specifier canonicalizes straight to it.
@@ -42,12 +48,22 @@ interface AliasCase {
 }
 
 const CASES: readonly AliasCase[] = [
-	// @earendil-works fork — used by @juicesharp/rpiv-* plugins.
+	// @earendil-works fork — used by @juicesharp/rpiv-* plugins. `visibleWidth`
+	// moved to `@veyyon/utils/width`, and the pi-tui root must still serve it.
 	{
-		id: "earendil-tui",
+		id: "earendil-tui-visible-width",
+		aliasSpecifier: "@earendil-works/pi-tui",
+		canonicalPath: canonicalUtilsWidth,
+		symbol: "visibleWidth",
+	},
+	// The same root must still serve the renderer it never stopped owning, so a
+	// shim that forgot `export * from "@veyyon/tui"` fails here rather than in a
+	// plugin.
+	{
+		id: "earendil-tui-renderer",
 		aliasSpecifier: "@earendil-works/pi-tui",
 		canonicalPath: canonicalTui,
-		symbol: "visibleWidth",
+		symbol: "TUI",
 	},
 	// @oh-my-pi self-import — canonical scope must still flow through the shim
 	// so a duplicate copy is never dragged in from a plugin's own node_modules.
@@ -75,10 +91,11 @@ const CASES: readonly AliasCase[] = [
 		symbol: "refreshOAuthToken",
 	},
 	// `Key` runtime helper restored on pi-tui (plannotator + rpiv-* import it).
+	// It moved to `@veyyon/utils/keys` with the rest of the input primitives.
 	{
 		id: "earendil-tui-key",
 		aliasSpecifier: "@earendil-works/pi-tui",
-		canonicalPath: canonicalTui,
+		canonicalPath: canonicalUtilsKeys,
 		symbol: "Key",
 	},
 ];

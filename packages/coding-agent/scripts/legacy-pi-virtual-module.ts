@@ -1,3 +1,4 @@
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isEnoent } from "@veyyon/utils/fs-error";
 import { isRecord } from "@veyyon/utils/type-guards";
@@ -20,7 +21,7 @@ const BUNDLED_PACKAGES: readonly BundledPackage[] = [
 	{ dir: "ai", identifier: "PiAi", rootShim: "legacy-pi-ai-shim.ts" },
 	{ dir: "coding-agent", identifier: "PiCodingAgent", rootShim: "legacy-pi-coding-agent-shim.ts" },
 	{ dir: "natives", identifier: "PiNatives", rootShim: null },
-	{ dir: "tui", identifier: "PiTui", rootShim: null },
+	{ dir: "tui", identifier: "PiTui", rootShim: "legacy-pi-tui-shim.ts" },
 	{ dir: "utils", identifier: "PiUtils", rootShim: null },
 ];
 
@@ -92,6 +93,35 @@ function shimSpecifier(file: string): string {
 	return path.join(packageDir, "src", "extensibility", file);
 }
 
+interface BundledManifest {
+	readonly name: string;
+	readonly exports: Record<string, unknown>;
+}
+
+async function readBundledManifest(dir: string): Promise<BundledManifest> {
+	const manifestPath = path.join(repoRoot, "packages", dir, "package.json");
+	const manifest: unknown = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+	if (!isRecord(manifest) || typeof manifest.name !== "string") {
+		throw new Error(`Bundled Pi package manifest has no name: ${manifestPath}`);
+	}
+	return { name: manifest.name, exports: isRecord(manifest.exports) ? manifest.exports : {} };
+}
+
+/**
+ * Package root keys served by a legacy compat shim instead of the canonical
+ * package entrypoint, because the shim re-attaches a surface the canonical
+ * barrel dropped. Derived from `BUNDLED_PACKAGES`, so a package that gains or
+ * loses a root shim never leaves a second list behind to go stale.
+ */
+export async function collectShimmedRootKeys(): Promise<string[]> {
+	const keys: string[] = [];
+	for (const pkg of BUNDLED_PACKAGES) {
+		if (!pkg.rootShim) continue;
+		keys.push((await readBundledManifest(pkg.dir)).name);
+	}
+	return keys;
+}
+
 /**
  * Derive the bundled legacy Pi module surface from current package exports.
  * Named wildcard exports are expanded from source; root catch-alls stay out to
@@ -113,19 +143,14 @@ export async function collectBundledPiEntries(): Promise<BundledPiEntry[]> {
 
 	for (const pkg of BUNDLED_PACKAGES) {
 		const packageRoot = path.join(repoRoot, "packages", pkg.dir);
-		const manifestPath = path.join(packageRoot, "package.json");
-		const manifest: unknown = await Bun.file(manifestPath).json();
-		if (!isRecord(manifest) || typeof manifest.name !== "string") {
-			throw new Error(`Bundled Pi package manifest has no name: ${manifestPath}`);
-		}
-		const exportsField = isRecord(manifest.exports) ? manifest.exports : {};
-		const rootSpecifier = pkg.rootShim ? shimSpecifier(pkg.rootShim) : manifest.name;
-		addEntry(manifest.name, `bundled${pkg.identifier}`, rootSpecifier);
+		const { name, exports: exportsField } = await readBundledManifest(pkg.dir);
+		const rootSpecifier = pkg.rootShim ? shimSpecifier(pkg.rootShim) : name;
+		addEntry(name, `bundled${pkg.identifier}`, rootSpecifier);
 
 		for (const exportKey in exportsField) {
 			if (!exportKey.startsWith("./") || exportKey === "." || exportKey.includes("*")) continue;
 			const subpath = exportKey.slice(2);
-			const key = `${manifest.name}/${subpath}`;
+			const key = `${name}/${subpath}`;
 			addEntry(key, bindingForSubpath(pkg.identifier, subpath), key);
 		}
 
@@ -150,7 +175,7 @@ export async function collectBundledPiEntries(): Promise<BundledPiEntry[]> {
 					const basename = match.slice(0, match.length - pattern.sourceSuffix.length);
 					if (!isSafeWildcardBasename(basename) || basename.includes("/")) continue;
 					const subpath = `${pattern.exportPrefix}${basename}${pattern.exportSuffix}`;
-					const key = `${manifest.name}/${subpath}`;
+					const key = `${name}/${subpath}`;
 					addEntry(key, bindingForSubpath(pkg.identifier, subpath), key);
 				}
 			} catch (error) {

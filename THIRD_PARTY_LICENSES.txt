@@ -738,12 +738,12 @@ carries forward here because no Codex source is present in this tree.
   `brush-builtins` from `reubeno/brush`, and `jaq`). Each subdirectory
   carries its own `LICENSE` file from the upstream project; those are the
   authoritative permission notices for that code and are not restated here.
-- `packages/coding-agent/src/markit/NOTICE` documents the document-conversion
+- `packages/coding-agent/src/export/markit/NOTICE` documents the document-conversion
   code adapted from `markit-ai` under the MIT License.
 - `packages/utils/src/vendor/mermaid-ascii/NOTICE` documents the ASCII diagram
   renderer adapted from `beautiful-mermaid` under the MIT License.
 - `packages/ai/src/registry/oauth/xai-oauth.ts`,
-  `packages/coding-agent/src/lib/xai-http.ts`, and
+  `packages/coding-agent/src/tools/xai-http.ts`, and
   `packages/coding-agent/src/tools/tts.ts` contain code adapted from
   `NousResearch/hermes-agent` (Copyright (c) 2025 Nous Research, MIT).
 - `packages/ai/src/error/rate-limit.ts` contains code adapted from
@@ -751,8 +751,8 @@ carries forward here because no Codex source is present in this tree.
 
 ## Source credits without a declared upstream license
 
-- `packages/coding-agent/src/markit/converters/pdf/grid.ts` and
-  `packages/coding-agent/src/markit/converters/pdf/render.ts` identify
+- `packages/coding-agent/src/export/markit/converters/pdf/grid.ts` and
+  `packages/coding-agent/src/export/markit/converters/pdf/render.ts` identify
   `@oharato/pdf2md-ts` as a source. Its published v0.1.4 package does not
   declare or include a license. This notice records the known source; it does
   not assert a license grant for that package.
@@ -772,7 +772,7 @@ carries forward here because no Codex source is present in this tree.
 
 ================================================================================
 Files covered:
-- packages/coding-agent/src/markit/NOTICE
+- packages/coding-agent/src/export/markit/NOTICE
 
 This directory contains an in-house document-to-markdown engine adapted from
 markit-ai (https://github.com/Michaelliv/markit), used under the MIT License.

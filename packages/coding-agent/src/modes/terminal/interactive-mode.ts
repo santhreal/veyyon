@@ -1529,7 +1529,9 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	async getUserInput(): Promise<SubmittedUserInput> {
-		await this.#goalMode.exitIfSessionIsExiting();
+		if (this.#goalMode.sessionGoalIsExiting) {
+			await this.#goalMode.exitCompletedGoal();
+		}
 		const { promise, resolve } = Promise.withResolvers<SubmittedUserInput>();
 		this.onInputCallback = input => {
 			this.onInputCallback = undefined;

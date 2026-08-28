@@ -328,6 +328,17 @@ const LEGACY_PI_CODING_AGENT_SHIM_PATH = IS_COMPILED_BINARY
 	? bundledModuleVirtualSpecifier(`${CANONICAL_PI_SCOPE}/pi-coding-agent`)
 	: sourceShimPath("legacy-pi-coding-agent-shim.ts");
 
+// `@veyyon/tui` stopped re-exporting the string, escape and input primitives when
+// they moved to `@veyyon/utils`, which breaks every extension published against
+// the old barrel (`visibleWidth` from `@earendil-works/pi-tui`, `Key` from
+// plannotator) at import time rather than at call time. The bare tui root
+// therefore resolves to a sibling shim that re-exports the renderer plus every
+// module the barrel dropped. Subpath imports such as `@veyyon/tui/terminal`
+// continue to resolve directly against the bundled tui package.
+const LEGACY_PI_TUI_SHIM_PATH = IS_COMPILED_BINARY
+	? bundledModuleVirtualSpecifier(`${CANONICAL_PI_SCOPE}/pi-tui`)
+	: sourceShimPath("legacy-pi-tui-shim.ts");
+
 // Package-root overrides. Shim entries (`pi-ai`, `pi-coding-agent`) always
 // replace the canonical surface so the legacy `Type` runtime and the legacy
 // helpers stay reachable. The bundled host packages (`agent-core`,
@@ -390,6 +401,8 @@ export function __buildLegacyPiPackageRootOverrides(
 		[`${CANONICAL_PI_SCOPE}/ai`]: LEGACY_PI_AI_SHIM_PATH,
 		[`${CANONICAL_PI_SCOPE}/pi-coding-agent`]: LEGACY_PI_CODING_AGENT_SHIM_PATH,
 		[`${CANONICAL_PI_SCOPE}/coding-agent`]: LEGACY_PI_CODING_AGENT_SHIM_PATH,
+		[`${CANONICAL_PI_SCOPE}/pi-tui`]: LEGACY_PI_TUI_SHIM_PATH,
+		[`${CANONICAL_PI_SCOPE}/tui`]: LEGACY_PI_TUI_SHIM_PATH,
 	};
 	if (isCompiled) {
 		for (const key of bundledModuleKeys) {
