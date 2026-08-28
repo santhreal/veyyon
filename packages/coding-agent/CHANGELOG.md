@@ -13,6 +13,7 @@
 - Removed unused imports left by helper extractions in 16 files.
 
 ### Changed
+- Removed dead duplicate `messageFingerprint` and `ContextUsageMemo` definitions from `status-line/context-usage.ts` (143 lines).
 - LspTool class extracted from lsp/index.ts barrel into lsp-tool.ts (1,355→22 lines).
 - TaskTool class extracted from task/index.ts barrel into task-tool.ts (1,235→28 lines).
 - DebugSelectorComponent extracted from debug/index.ts barrel into debug-selector.ts (581→2 lines).
