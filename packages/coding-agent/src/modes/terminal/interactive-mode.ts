@@ -16,13 +16,7 @@ import {
 import type { CompactionOutcome } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, ImageContent, Message, Model, Usage, UsageReport } from "@veyyon/ai";
 import { modelsAreEqual } from "@veyyon/catalog/models";
-import type {
-	Component,
-	EditorTheme,
-	LoaderMessageColorFn,
-	NativeScrollbackLiveRegion,
-	OverlayHandle,
-} from "@veyyon/tui";
+import type { Component, EditorTheme, NativeScrollbackLiveRegion, OverlayHandle } from "@veyyon/tui";
 import {
 	Container,
 	clearRenderCache,
@@ -37,15 +31,12 @@ import {
 import { isInsideTerminalMultiplexer } from "@veyyon/tui/terminal-capabilities";
 import {
 	APP_NAME,
-	adjustHsv,
 	clampLow,
 	errorMessage,
 	estimateTokensFromText,
-	formatClock,
 	formatCount,
 	formatNumber,
 	getProjectDir,
-	hsvToRgb,
 	isEnoent,
 	logger,
 	postmortem,
@@ -55,7 +46,6 @@ import type { AutocompleteProvider, SlashCommand } from "@veyyon/utils/autocompl
 import { matchesKey } from "@veyyon/utils/keys";
 import { planPaintGround } from "@veyyon/utils/paint-ground";
 import { getPaddingX, setTuiTight } from "@veyyon/utils/tight-mode";
-import { visibleWidth } from "@veyyon/utils/width";
 import { isTerminalTodoStatus, isTodoListDone } from "@veyyon/wire";
 import chalk from "chalk";
 import type { CollabGuestLink } from "../../collab/guest";
@@ -83,8 +73,6 @@ import type {
 import type { CompactOptions } from "../../extensibility/extensions/types";
 import type { Skill } from "../../extensibility/skills";
 import { loadSlashCommands } from "../../extensibility/slash-commands";
-import { type GuidedGoalMessage, newGuidedGoalSessionId, runGuidedGoalTurn } from "../../goals/guided-setup";
-import type { Goal, GoalModeState } from "../../goals/state";
 // The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
 // handler and reaches hundreds of modules.
 import { listLocalPlanFileUrls, resolveLocalUrlToPath } from "../../internal-urls/local-protocol";
@@ -105,12 +93,7 @@ import { DEFAULT_PLAN_FILE_URL } from "../../plan-mode/plan-file-url";
 import { resolvePlanFilePath } from "../../plan-mode/plan-path";
 import { planModePrompts } from "../../prompts/plan-mode/rows";
 import { type AgentRegistry, MAIN_AGENT_ID } from "../../registry/agent-registry";
-import {
-	type AgentSession,
-	type AgentSessionEvent,
-	type ResolvedRoleModel,
-	SHUTDOWN_CONSOLIDATE_BUDGET_MS,
-} from "../../session/agent-session";
+import { type AgentSession, type ResolvedRoleModel, SHUTDOWN_CONSOLIDATE_BUDGET_MS } from "../../session/agent-session";
 import {
 	BackgroundSessions,
 	type InteractiveSessionFactory,
@@ -127,23 +110,13 @@ import {
 	BUILTIN_SLASH_COMMAND_RESERVED_NAMES,
 	buildTuiBuiltinSlashCommands,
 } from "../../slash-commands/builtin-registry";
-import { formatDurationCoarse, formatProviderName } from "../../slash-commands/helpers/format";
+import { formatProviderName } from "../../slash-commands/helpers/format";
 import type { SubcommandDef } from "../../slash-commands/types";
-import { STTController, type SttState } from "../../speech/stt";
-import { vocalizer } from "../../speech/tts/vocalizer";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "../../system-prompt";
 import { applyGroundPaint, setDetectedTerminalGround } from "../../theme/ground-tints";
 import { setMarkdownMermaidRendering } from "../../theme/markdown-theme";
 import { clearMermaidCache } from "../../theme/mermaid-cache";
-import {
-	lavaText,
-	livingSpinnerColor,
-	type ShimmerPalette,
-	shimmerEnabled,
-	shimmerSegments,
-	shimmerText,
-	transitionsEnabled,
-} from "../../theme/shimmer";
+import { transitionsEnabled } from "../../theme/shimmer";
 import type { Theme } from "../../theme/theme";
 import {
 	getCurrentThemeName,
@@ -219,6 +192,7 @@ import { BtwController } from "./controllers/btw-controller";
 import { CommandController } from "./controllers/command-controller";
 import { EventController } from "./controllers/event-controller";
 import { ExtensionUiController } from "./controllers/extension-ui-controller";
+import { GoalModeController } from "./controllers/goal-mode-controller";
 import { HomeAnchorLayout } from "./controllers/home-anchor-layout";
 import { InputController } from "./controllers/input-controller";
 import { MCPCommandController } from "./controllers/mcp-command-controller";
@@ -229,14 +203,15 @@ import { SSHCommandController } from "./controllers/ssh-command-controller";
 import { TanCommandController } from "./controllers/tan-command-controller";
 import { TodoCommandController } from "./controllers/todo-command-controller";
 import { TranscriptComposer } from "./controllers/transcript-composer";
+import { VoiceController } from "./controllers/voice-controller";
 import { WelcomeController } from "./controllers/welcome-controller";
+import { WorkingLoaderController } from "./controllers/working-loader";
 import { type FirstFrame, takeFirstFrame } from "./first-frame";
 import { OAuthManualInputManager } from "./oauth-manual-input";
 import { countRunningSubagentBadgeAgents, getRunningSubagentBadgeRegistry } from "./running-subagent-badge";
 import { type SessionObserverChangeKind, SessionObserverRegistry } from "./session-observer-registry";
 import { createSessionTeardown, type SessionTeardown } from "./session-teardown";
 import { runProviderSetupWizard } from "./setup-wizard/lazy";
-import { interruptHint } from "./shared";
 import { consumeRelaunchMarker, flushPendingTtyInput, RELAUNCH_MARKER } from "./tty-input-flush";
 import type {
 	CompactionQueuedMessage,
@@ -249,133 +224,12 @@ import type {
 import { createSelectionAttemptNotice } from "./utils/selection-notice";
 import { UiHelpers } from "./utils/ui-helpers";
 
-const HINT_SHIMMER_PALETTE: ShimmerPalette = {
-	low: "dim",
-	mid: "muted",
-	high: "borderAccent",
-};
-
-interface WorkingMessageAccent {
-	main: string;
-	dim: string;
-}
-
-interface WorkingMessageAccentCacheKey {
-	sessionName: string | undefined;
-	accentSurfaceLuminance: number | undefined;
-	sessionAccentEnabled: boolean;
-}
-
-/**
- * Intern the shimmer palettes for each `WorkingMessageAccent` so `compile()`
- * inside `shimmerSegments` sees a stable palette object between animation
- * ticks. Allocating fresh palette literals every frame guaranteed a cache miss
- * on the Symbol-keyed compiled-ANSI slot and forced `resolveTierAnsi` to walk
- * every tier open/close for the ~30fps loader redraw (issue #4377).
- */
-const workingMessagePaletteCache = new WeakMap<WorkingMessageAccent, { main: ShimmerPalette; hint: ShimmerPalette }>();
-
-function workingMessagePalettes(accent: WorkingMessageAccent): { main: ShimmerPalette; hint: ShimmerPalette } {
-	let entry = workingMessagePaletteCache.get(accent);
-	if (!entry) {
-		entry = {
-			main: { low: "dim", mid: { ansi: accent.main }, high: { ansi: accent.main }, bold: true },
-			hint: { low: "dim", mid: { ansi: accent.dim }, high: { ansi: accent.dim } },
-		};
-		workingMessagePaletteCache.set(accent, entry);
-	}
-	return entry;
-}
-
-function renderWorkingMessage(message: string, accent?: WorkingMessageAccent, clockText?: string): string {
-	const palettes = accent ? workingMessagePalettes(accent) : undefined;
-	const palette = palettes?.main;
-	const hintPalette = palettes?.hint ?? HINT_SHIMMER_PALETTE;
-	const hint = interruptHint();
-	let body = message;
-	let hasHint = false;
-	if (body.endsWith(hint)) {
-		body = body.slice(0, -hint.length);
-		hasHint = true;
-	}
-	// The per-task elapsed clock (` · 0:42`) sits between the label and the esc
-	// hint. It is whisper chrome, not part of the task label, so it takes the
-	// hint's dim palette instead of shimmering with the message body.
-	let clock = "";
-	if (clockText && body.endsWith(clockText)) {
-		body = body.slice(0, -clockText.length);
-		clock = clockText;
-	}
-	if (!hasHint && !clock) return shimmerText(message, theme, palette);
-	const segments = [{ text: body, palette }];
-	if (clock) segments.push({ text: clock, palette: hintPalette });
-	if (hasHint) segments.push({ text: hint, palette: hintPalette });
-	return shimmerSegments(segments, theme);
-}
-
 const EDITOR_MAX_HEIGHT_MIN = 6;
 const EDITOR_MAX_HEIGHT_MAX = 18;
 const EDITOR_RESERVED_ROWS = 12;
 const EDITOR_FALLBACK_ROWS = 24;
 const EDITOR_MIN_CHROME_ROWS = 4; // rows reserved for transcript + status on small terms
 const EDITOR_MIN_RENDERED_ROWS = 3; // bordered editor floor: top+bottom border + 1 content row
-
-/**
- * Consecutive provider-killed goal turns tolerated before goal mode stops
- * driving on its own. A transport fault is routinely retried and recovered, so
- * one is not a reason to stand down; a provider that is genuinely gone must not
- * let the goal spin forever.
- */
-const GOAL_FAILED_TURN_LIMIT = 3;
-
-/** How long the composer stays idle before goal mode opens a continuation turn. */
-const GOAL_CONTINUATION_DELAY_MS = 800;
-
-/**
- * How long goal mode keeps waiting for a busy session to go idle before it gives up on the
- * continuation it owes. Post-turn maintenance — a compaction of a large context, a queued
- * hook — routinely outlasts one delay window, and the goal must still be driving afterwards.
- */
-const GOAL_CONTINUATION_BUSY_WAIT_MS = 300_000;
-
-/** Why goal mode is not opening a continuation turn right now. */
-type GoalContinuationBlock =
-	| "loop-mode"
-	| "no-input-callback"
-	| "continuation-mode-off"
-	| "plan-mode"
-	| "goal-mode-off"
-	| "suppressed"
-	| "busy"
-	| "submission-pending"
-	| "draft-in-composer"
-	| "images-attached"
-	| "goal-not-active"
-	| "no-prompt";
-
-/**
- * Blocks that are an ordinary handoff rather than a goal declining to drive. `no-input-callback`
- * is the common one: every `agent_end` arms the continuation before the loop has returned to
- * `getUserInput`, and that call is expected to do nothing.
- */
-const GOAL_CONTINUATION_QUIET_BLOCKS: ReadonlySet<GoalContinuationBlock> = new Set([
-	"loop-mode",
-	"no-input-callback",
-	"continuation-mode-off",
-	"goal-mode-off",
-]);
-
-/**
- * Whether the turn that just ended died rather than finished. An aborted turn is
- * the user's own interrupt and is handled by the goal runtime's pause path, so
- * only a provider/transport error counts here.
- */
-function goalTurnEndedInError(event: Extract<AgentSessionEvent, { type: "agent_end" }>): boolean {
-	const lastAssistant = [...event.messages]
-		.reverse()
-		.find((message): message is AssistantMessage => message.role === "assistant");
-	return lastAssistant?.stopReason === "error";
-}
 
 /**
  * Editor max-height cap for a terminal of `terminalRows` rows.
@@ -394,29 +248,8 @@ export function computeEditorMaxHeight(terminalRows: number): number {
 	return clampLow(comfortable, EDITOR_MIN_RENDERED_ROWS, rows - EDITOR_MIN_CHROME_ROWS);
 }
 
-type GoalSubcommand = "set" | "show" | "pause" | "resume" | "drop";
-
-const GOAL_SUBCOMMANDS: Record<GoalSubcommand, true> = {
-	set: true,
-	show: true,
-	pause: true,
-	resume: true,
-	drop: true,
-};
 const PLAN_KEEP_CONTEXT_OPTION_INDEX = 2;
 const PLAN_KEEP_CONTEXT_DISABLE_THRESHOLD_PERCENT = 95;
-
-function parseGoalSubcommand(args: string): { sub: GoalSubcommand | undefined; rest: string } {
-	const trimmed = args.trim();
-	if (!trimmed) return { sub: undefined, rest: "" };
-	const match = /^(\S+)(?:\s+([\s\S]*))?$/.exec(trimmed);
-	if (!match) return { sub: undefined, rest: trimmed };
-	const first = match[1].toLowerCase();
-	if (first in GOAL_SUBCOMMANDS) {
-		return { sub: first as GoalSubcommand, rest: match[2]?.trim() ?? "" };
-	}
-	return { sub: undefined, rest: trimmed };
-}
 
 function formatContextTokenCount(value: number): string {
 	return formatNumber(Math.max(0, Math.round(value))).toLowerCase();
@@ -513,8 +346,18 @@ export class InteractiveMode implements InteractiveModeContext {
 	todoExpanded = false;
 	planModeEnabled = false;
 	planModePaused = false;
-	goalModeEnabled = false;
-	goalModePaused = false;
+	get goalModeEnabled(): boolean {
+		return this.#goalMode.enabled;
+	}
+	set goalModeEnabled(value: boolean) {
+		this.#goalMode.enabled = value;
+	}
+	get goalModePaused(): boolean {
+		return this.#goalMode.paused;
+	}
+	set goalModePaused(value: boolean) {
+		this.#goalMode.paused = value;
+	}
 	vibeModeEnabled = false;
 	planModePlanFilePath: string | undefined = undefined;
 	loopModeEnabled = false;
@@ -574,24 +417,13 @@ export class InteractiveMode implements InteractiveModeContext {
 	streamingComponent: AssistantMessageComponent | undefined = undefined;
 	streamingMessage: AssistantMessage | undefined = undefined;
 	lastAssistantUsage: Usage | undefined = undefined;
-	loadingAnimation: Loader | undefined = undefined;
+	get loadingAnimation(): Loader | undefined {
+		return this.#workingLoader.loader;
+	}
 	autoCompactionLoader: Loader | undefined = undefined;
 	retryLoader: Loader | undefined = undefined;
-	#pendingWorkingMessage: string | undefined;
-	// Per-task elapsed clock on the working line: the label is the task, the
-	// clock is how long that exact label has been showing. Reset whenever the
-	// label changes (each tool call / working phase sets a new one).
-	#taskLabel: string | undefined;
-	#taskHasHint = false;
-	#taskStartedAt = 0;
-	#workingClockText: string | undefined;
 	#clockTimer: NodeJS.Timeout | undefined;
-	#workingMessageAccentCacheKey?: WorkingMessageAccentCacheKey;
-	#workingMessageAccentCacheValue?: WorkingMessageAccent;
-	#workingMessageAccentCacheHasValue = false;
-	get #defaultWorkingMessage(): string {
-		return `Working…${interruptHint()}`;
-	}
+	readonly #workingLoader: WorkingLoaderController;
 	unsubscribe?: () => void;
 	onInputCallback?: (input: SubmittedUserInput) => void;
 	// Optimistic-message + local-echo + rebuild state lives in the composer
@@ -640,23 +472,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	#signalTeardown?: SessionTeardown;
 	readonly #version: string;
 	#planModePreviousTools: string[] | undefined;
-	#goalModePreviousTools: string[] | undefined;
 	#vibeModePreviousTools: string[] | undefined;
-	#goalContinuationTimer: NodeJS.Timeout | undefined;
-	#goalTurnHadToolCalls = false;
-	/** Consecutive goal turns that ended in a provider error, reset by any turn that did not. */
-	#goalFailedTurns = 0;
-	/** Set between a retry's `auto_retry_start` and the `agent_start` that resumes the same turn. */
-	#goalTurnRetrying = false;
-	#goalContinuationTurnInFlight = false;
-	#goalSuppressNextContinuation = false;
-	#goalUserContinuationSuppressed = false;
-	#goalUserTurnInFlight = false;
-	/**
-	 * Deadline for the continuation goal mode owes a busy session, set when the first tick finds
-	 * the session busy and cleared by the tick that gets through. Undefined while nothing is owed.
-	 */
-	#goalContinuationBusyUntil: number | undefined;
 	#planModePreviousModelState: { model: Model; thinkingLevel?: ConfiguredThinkingLevel } | undefined;
 	#pendingModelSwitch: { model: Model; thinkingLevel?: ConfiguredThinkingLevel } | undefined;
 	#planModeHasEntered = false;
@@ -702,11 +518,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		return this.#focusController.unfocus();
 	}
 	clearTransientSessionUi(): void {
-		if (this.loadingAnimation) {
-			this.loadingAnimation.stop();
-			this.loadingAnimation = undefined;
-			this.#resetTaskClock();
-		}
+		this.#workingLoader.abandon();
 		if (this.autoCompactionLoader) {
 			this.autoCompactionLoader.stop();
 			this.autoCompactionLoader = undefined;
@@ -757,11 +569,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (this.composerShortcuts) this.#refreshComposerShortcuts();
 	}
 	readonly #uiHelpers: UiHelpers;
-	#sttController: STTController | undefined;
-	#voiceAnimationInterval: NodeJS.Timeout | undefined;
-	#voiceHue = 0;
-	#voicePreviousShowHardwareCursor: boolean | null = null;
-	#voicePreviousUseTerminalCursor: boolean | null = null;
+	readonly #voiceController: VoiceController;
+	readonly #goalMode: GoalModeController;
 	#resizeHandler?: () => void;
 	/** Owns the home-screen anchor fills and their sizing (ARCH-2 extraction);
 	 *  every fill row on screen is sized in the layout controller, never here.
@@ -1068,6 +877,16 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#todoCommandController = new TodoCommandController(this);
 		this.#selectorController = new SelectorController(this);
 		this.#inputController = new InputController(this);
+		this.#voiceController = new VoiceController(this);
+		this.#goalMode = new GoalModeController(this, {
+			isAutoSubmitBlocked: () => this.#isAutoSubmitBlocked(),
+			isPlanModeActive: () => this.planModeEnabled || this.planModePaused,
+			hasPendingSubmission: () => this.#pendingSubmittedInput !== undefined,
+			hasPendingVisibleUserSubmission: () =>
+				this.#pendingSubmittedInput !== undefined && !this.#pendingSubmittedInput.customType,
+			withProgress: (label, work) => this.#withGuidedGoalProgress(label, work),
+		});
+		this.#workingLoader = new WorkingLoaderController(this);
 		this.#observerRegistry = new SessionObserverRegistry();
 	}
 
@@ -1181,7 +1000,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// tick would repaint a byte-identical frame — it does nothing.
 		this.#clockTimer = setInterval(() => {
 			if (!this.loadingAnimation && !this.session.isStreaming) return;
-			this.#refreshTaskClock();
+			this.#workingLoader.refreshTaskClock();
 			this.ui.requestRender();
 		}, 1000);
 
@@ -1445,15 +1264,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Subscribe to agent events
 		this.#subscribeToAgent();
 
-		this.#subscribeToGoalSessionEvents();
+		this.#goalMode.subscribeToSession();
 
 		this.#eventBusUnsubscribers.push(
 			// The goal subscription is re-pointed on a session handoff, so dispose
 			// whichever one is current rather than capturing today's unsubscriber.
-			() => {
-				this.#goalUnsubscribe?.();
-				this.#goalUnsubscribe = undefined;
-			},
+			() => this.#goalMode.unsubscribeFromSession(),
 			onStatusLineSessionAccentChanged(() => {
 				this.#syncStatusLineSettings();
 				this.#handleSessionAccentInputsChanged();
@@ -1484,7 +1300,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Set up theme file watcher
 		this.#eventBusUnsubscribers.push(
 			onThemeChange(event => {
-				this.#clearWorkingMessageAccentCache();
+				this.#workingLoader.clearAccentCache();
 				clearRenderCache();
 				clearMermaidCache();
 				this.ui.invalidate();
@@ -1712,16 +1528,14 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	async getUserInput(): Promise<SubmittedUserInput> {
-		if (this.session.getGoalModeState()?.mode === "exiting") {
-			await this.#exitGoalMode({ reason: "completed", silent: true });
-		}
+		await this.#goalMode.exitIfSessionIsExiting();
 		const { promise, resolve } = Promise.withResolvers<SubmittedUserInput>();
 		this.onInputCallback = input => {
 			this.onInputCallback = undefined;
 			resolve(input);
 		};
 		this.#scheduleLoopAutoSubmit();
-		this.#scheduleGoalContinuation();
+		this.#goalMode.scheduleContinuation();
 
 		using _ = new EventLoopKeepalive();
 		return await promise;
@@ -1750,103 +1564,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (this.#loopAutoSubmitTimer) {
 			clearTimeout(this.#loopAutoSubmitTimer);
 			this.#loopAutoSubmitTimer = undefined;
-		}
-	}
-
-	/**
-	 * Why goal mode must not open a continuation turn at this instant, or `undefined` when it may.
-	 *
-	 * ONE owner for the question, asked when the timer is armed and again when it fires. The two
-	 * lists used to be separate copies that disagreed on one entry, and that entry was the defect:
-	 * `busy` existed only at fire time, where it discarded the tick and left a comment saying the
-	 * next `agent_end` would reschedule. For a goal whose post-turn maintenance outlives the delay
-	 * window there is no next `agent_end` — the turn that armed this tick was the last one — so the
-	 * goal sat `active` with every re-arm edge already behind it.
-	 */
-	#goalContinuationBlock(phase: "arm" | "fire"): GoalContinuationBlock | undefined {
-		if (this.loopModeEnabled) return "loop-mode";
-		if (!this.onInputCallback) return "no-input-callback";
-		if (!this.session.settings.get("goal.continuationModes").includes("interactive")) {
-			return "continuation-mode-off";
-		}
-		if (this.planModeEnabled || this.planModePaused) return "plan-mode";
-		if (!this.goalModeEnabled || this.goalModePaused) return "goal-mode-off";
-		if (this.#goalSuppressNextContinuation || this.#goalUserContinuationSuppressed) return "suppressed";
-		// The one transient block: mid-turn, compacting, or draining post-turn maintenance, each of
-		// which ends on its own. Asked at fire time only — at arm time the turn that scheduled this
-		// tick is still settling, which is what the delay is for.
-		if (phase === "fire" && this.#isAutoSubmitBlocked()) return "busy";
-		if (this.#pendingSubmittedInput) return "submission-pending";
-		if (this.editor.getText().trim().length > 0) return "draft-in-composer";
-		if ((this.editor.pendingImages?.length ?? 0) > 0) return "images-attached";
-		const state = this.session.getGoalModeState();
-		if (!state?.enabled || state.goal.status !== "active") return "goal-not-active";
-		return undefined;
-	}
-
-	#reportGoalContinuationBlock(reason: GoalContinuationBlock, phase: "arm" | "fire"): void {
-		if (GOAL_CONTINUATION_QUIET_BLOCKS.has(reason)) return;
-		logger.debug("Goal mode is not opening a continuation turn", {
-			reason,
-			phase,
-			goalId: this.session.getGoalModeState()?.goal.id,
-		});
-	}
-
-	#scheduleGoalContinuation(): void {
-		this.#cancelGoalContinuation();
-		this.#goalContinuationBusyUntil = undefined;
-		this.#armGoalContinuation();
-	}
-
-	#armGoalContinuation(): void {
-		this.#cancelGoalContinuation();
-		const blocked = this.#goalContinuationBlock("arm");
-		if (blocked) {
-			this.#reportGoalContinuationBlock(blocked, "arm");
-			return;
-		}
-		const prompt = this.session.goalRuntime.buildContinuationPrompt();
-		if (!prompt) {
-			this.#reportGoalContinuationBlock("no-prompt", "arm");
-			return;
-		}
-		this.#goalContinuationTimer = setTimeout(() => {
-			this.#goalContinuationTimer = undefined;
-			const blockedNow = this.#goalContinuationBlock("fire");
-			if (blockedNow === "busy") {
-				this.#goalContinuationBusyUntil ??= Date.now() + GOAL_CONTINUATION_BUSY_WAIT_MS;
-				if (Date.now() < this.#goalContinuationBusyUntil) {
-					this.#armGoalContinuation();
-					return;
-				}
-				this.#goalContinuationBusyUntil = undefined;
-				this.#reportGoalContinuationBlock("busy", "fire");
-				this.showWarning("Goal mode stopped waiting for the session to go idle. Send a message to resume it.");
-				return;
-			}
-			this.#goalContinuationBusyUntil = undefined;
-			if (blockedNow) {
-				this.#reportGoalContinuationBlock(blockedNow, "fire");
-				return;
-			}
-			const submit = this.onInputCallback;
-			if (!submit) return;
-			this.#goalContinuationTurnInFlight = true;
-			submit(
-				this.startPendingSubmission({
-					text: prompt,
-					customType: "goal-continuation",
-					display: false,
-				}),
-			);
-		}, GOAL_CONTINUATION_DELAY_MS);
-	}
-
-	#cancelGoalContinuation(): void {
-		if (this.#goalContinuationTimer) {
-			clearTimeout(this.#goalContinuationTimer);
-			this.#goalContinuationTimer = undefined;
 		}
 	}
 
@@ -1999,9 +1716,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		};
 		this.#pendingSubmittedInput = submission;
 		if (!submission.customType) {
-			this.#goalUserTurnInFlight = true;
-			this.#goalUserContinuationSuppressed = true;
-			this.#cancelGoalContinuation();
+			this.#goalMode.noteVisibleUserTurnStarted();
 			this.#transcriptComposer.showOptimistic(submission);
 		} else {
 			this.#transcriptComposer.clearOptimistic();
@@ -2031,21 +1746,17 @@ export class InteractiveMode implements InteractiveModeContext {
 		submission.cancelled = true;
 		this.#pendingSubmittedInput = undefined;
 		this.clearOptimisticUserMessage();
-		this.#pendingWorkingMessage = undefined;
+		this.#workingLoader.clearPendingMessage();
 		if (submission.customType === "goal-continuation") {
-			this.#goalContinuationTurnInFlight = false;
+			this.#goalMode.noteContinuationTurnSettled();
 		}
-		if (this.loadingAnimation) {
-			this.#stopLoadingAnimation(true);
-		}
+		this.#workingLoader.stop(true);
 		if (!submission.customType) {
 			this.editor.pendingImages = submission.images ? [...submission.images] : [];
 			this.editor.pendingImageLinks = submission.imageLinks ? [...submission.imageLinks] : [];
 			this.editor.imageLinks = this.editor.pendingImageLinks;
 			this.rebuildChatFromMessages();
-			this.#resetGoalContinuationSuppression();
-			this.#goalUserTurnInFlight = false;
-			this.#scheduleGoalContinuation();
+			this.#goalMode.noteVisibleUserTurnCancelled();
 			this.editor.setText(submission.text);
 		}
 		this.updateEditorBorderColor();
@@ -2067,16 +1778,14 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#pendingSubmittedInput = undefined;
 		}
 		if (input.customType === "goal-continuation") {
-			this.#goalContinuationTurnInFlight = false;
+			this.#goalMode.noteContinuationTurnSettled();
 		}
 
 		const quiesced = !this.session.isStreaming && !this.streamingComponent;
 		this.#transcriptComposer.onSubmissionFinished({ owned: wasPendingSubmission, quiesced });
 		if (wasPendingSubmission && quiesced) {
-			this.#pendingWorkingMessage = undefined;
-			if (this.loadingAnimation) {
-				this.#stopLoadingAnimation(true);
-			}
+			this.#workingLoader.clearPendingMessage();
+			this.#workingLoader.stop(true);
 		}
 	}
 
@@ -2103,7 +1812,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	#handleSessionAccentInputsChanged(): void {
-		this.#clearWorkingMessageAccentCache();
+		this.#workingLoader.clearAccentCache();
 		this.statusLine.invalidate();
 		this.updateEditorBorderColor();
 	}
@@ -2681,157 +2390,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.ui.requestRender();
 	}
 
-	#updateGoalModeStatus(): void {
-		const status =
-			this.goalModeEnabled || this.goalModePaused
-				? { enabled: this.goalModeEnabled, paused: this.goalModePaused }
-				: undefined;
-		this.statusLine.setGoalModeStatus(status);
-		this.ui.requestRender();
-	}
-
-	#resetGoalContinuationSuppression(): void {
-		this.#goalSuppressNextContinuation = false;
-		this.#goalUserContinuationSuppressed = false;
-	}
-
-	#getPausedGoalState(): GoalModeState | undefined {
-		const state = this.session.getGoalModeState();
-		if (!state?.goal || state.enabled || state.goal.status !== "paused") {
-			return undefined;
-		}
-		return state;
-	}
-
-	#goalFromModeData(modeData: SessionContext["modeData"]): Goal | undefined {
-		const goal = modeData?.goal;
-		if (!goal || typeof goal !== "object") return undefined;
-		const value = goal as Record<string, unknown>;
-		if (
-			typeof value.id !== "string" ||
-			typeof value.objective !== "string" ||
-			typeof value.status !== "string" ||
-			typeof value.tokensUsed !== "number" ||
-			typeof value.timeUsedSeconds !== "number" ||
-			typeof value.createdAt !== "number" ||
-			typeof value.updatedAt !== "number"
-		) {
-			return undefined;
-		}
-		return {
-			id: value.id,
-			objective: value.objective,
-			status: value.status as Goal["status"],
-			tokenBudget: typeof value.tokenBudget === "number" ? value.tokenBudget : undefined,
-			tokensUsed: value.tokensUsed,
-			timeUsedSeconds: value.timeUsedSeconds,
-			// Back-compat: goals persisted before turn accounting existed lack this.
-			turnsCompleted: typeof value.turnsCompleted === "number" ? value.turnsCompleted : 0,
-			createdAt: value.createdAt,
-			updatedAt: value.updatedAt,
-		};
-	}
-
-	/** The objective as it appears in a one-line notice. One owner for the cap. */
-	#goalSummary(objective: string): string {
-		return objective.length > 48 ? `${objective.slice(0, 47)}…` : objective;
-	}
-
-	async #handleGoalSessionEvent(event: AgentSessionEvent): Promise<void> {
-		if (event.type === "auto_retry_start") {
-			// The next `agent_start` is this same turn resuming, not a new one. The
-			// session's retry supersedes the killed attempt's `agent_end`, so this is
-			// the only notice the mode gets that the work continues.
-			this.#goalTurnRetrying = true;
-			return;
-		}
-		if (event.type === "agent_start") {
-			// A retried turn keeps the tool calls its killed attempt already made:
-			// the work happened, and a retry that only talks afterwards is not the
-			// model saying it has nothing left to do.
-			if (this.#goalTurnRetrying) {
-				this.#goalTurnRetrying = false;
-			} else {
-				this.#goalTurnHadToolCalls = false;
-			}
-			this.#cancelGoalContinuation();
-			return;
-		}
-		if (event.type === "tool_execution_start") {
-			this.#goalTurnHadToolCalls = true;
-			// A visible user turn pauses autonomous goal continuation unless the
-			// turn actually resumes execution. Merely producing prose is not
-			// evidence that the user intended goal mode to take control again.
-			const pendingVisibleUserTurn =
-				this.#pendingSubmittedInput !== undefined && !this.#pendingSubmittedInput.customType;
-			if (this.#goalUserTurnInFlight || pendingVisibleUserTurn) {
-				this.#resetGoalContinuationSuppression();
-			}
-			return;
-		}
-		if (event.type === "message_start" && event.message.role === "user" && !event.message.synthetic) {
-			this.#goalUserTurnInFlight = true;
-			this.#goalUserContinuationSuppressed = true;
-			this.#cancelGoalContinuation();
-			return;
-		}
-		if (event.type === "goal_updated") {
-			// Handle drop before clearing goalModeEnabled so #exitGoalMode can
-			// restore the pre-goal tool set while the flag is still true.
-			if (event.state?.goal?.status === "dropped") {
-				await this.#exitGoalMode({ reason: "dropped", silent: true });
-				return;
-			}
-			const activating = !this.goalModeEnabled && event.state?.enabled === true;
-			if (activating) {
-				this.#resetGoalContinuationSuppression();
-			}
-			this.goalModeEnabled = event.state?.enabled === true;
-			this.goalModePaused = event.state?.enabled !== true && event.state?.goal?.status === "paused";
-			if (!event.state?.enabled) {
-				this.#cancelGoalContinuation();
-			}
-			this.#updateGoalModeStatus();
-			return;
-		}
-		if (event.type !== "agent_end") {
-			return;
-		}
-		this.#goalUserTurnInFlight = false;
-		// A retry that never resumed (aborted, cancelled) must not make the NEXT turn
-		// inherit this one's tool-call evidence.
-		this.#goalTurnRetrying = false;
-		if (goalTurnEndedInError(event)) {
-			// A turn the provider killed neither finished the goal's work nor showed
-			// that the model had nothing left to call, so its tool-call count says
-			// nothing about whether the goal should keep driving. Latching
-			// suppression from it is what left a recovered session idle: the retry
-			// landed, the suppression stayed, and a human had to type "keep going".
-			// The continuation stays owed, and the tolerance is bounded.
-			this.#goalFailedTurns += 1;
-			if (this.#goalFailedTurns >= GOAL_FAILED_TURN_LIMIT) {
-				this.#goalContinuationTurnInFlight = false;
-				this.#goalSuppressNextContinuation = true;
-				this.showWarning(
-					`Goal mode stopped driving after ${formatCount("failed turn", this.#goalFailedTurns)}. Send a message to resume it.`,
-				);
-				return;
-			}
-			this.#scheduleGoalContinuation();
-			return;
-		}
-		this.#goalFailedTurns = 0;
-		if (this.#goalContinuationTurnInFlight) {
-			this.#goalSuppressNextContinuation = !this.#goalTurnHadToolCalls;
-			this.#goalContinuationTurnInFlight = false;
-		}
-		if (this.session.getGoalModeState()?.mode === "exiting") {
-			await this.#exitGoalMode({ reason: "completed", silent: true });
-			return;
-		}
-		this.#scheduleGoalContinuation();
-	}
-
 	async #applyPlanModeModel(): Promise<void> {
 		const resolved = this.session.resolveRoleModelWithThinking("plan");
 		if (!resolved.model) return;
@@ -2888,21 +2446,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#updatePlanModeStatus();
 		}
 
-		if (this.goalModeEnabled || this.goalModePaused) {
-			if (this.#goalModePreviousTools !== undefined) {
-				await this.session.setActiveToolsByName(this.#goalModePreviousTools);
-			}
-			this.session.setGoalModeState(undefined);
-			this.goalModeEnabled = false;
-			this.goalModePaused = false;
-			this.#goalModePreviousTools = undefined;
-			this.#goalTurnHadToolCalls = false;
-			this.#goalContinuationTurnInFlight = false;
-			this.#resetGoalContinuationSuppression();
-			this.#goalUserTurnInFlight = false;
-			this.#cancelGoalContinuation();
-			this.#updateGoalModeStatus();
-		}
+		await this.#goalMode.clearTransientState();
 
 		if (this.vibeModeEnabled) {
 			await this.session.deactivateVibeTools(this.#vibeModePreviousTools ?? []);
@@ -2921,57 +2465,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	async #reconcileModeFromSession(options?: { preserveActiveGoal?: boolean }): Promise<void> {
 		await this.#clearTransientModeState();
 		const sessionContext = this.sessionManager.buildSessionContext();
-		const goalEnabled = this.session.settings.get("goal.enabled");
-		if (!goalEnabled && (sessionContext.mode === "goal" || sessionContext.mode === "goal_paused")) {
-			// Goal mode is off, so nothing activates here — but the stored objective
-			// is not this setting's to destroy. Recording `none` dropped it for
-			// good, and in silence: a session came back with no goal and nothing
-			// saying that a settings toggle had taken it. The record stays on the
-			// branch, inert, so turning Goal Mode back on restores it. Plan mode
-			// still clears below, because its entry can come from a startup default
-			// nobody chose.
-			this.session.goalRuntime.clearAccounting();
-			const stored = this.#goalFromModeData(sessionContext.modeData);
-			logger.warn("goal mode is disabled; the session's stored goal stays inactive", {
-				mode: sessionContext.mode,
-				readable: stored !== undefined,
-				goalId: stored?.id,
-			});
-			this.showWarning(
-				stored
-					? `Goal Mode is off in settings, so "${this.#goalSummary(stored.objective)}" stays stored and inactive.`
-					: "Goal Mode is off in settings, so this session's stored goal stays inactive.",
-			);
-			return;
-		}
-		if (sessionContext.mode === "goal" || sessionContext.mode === "goal_paused") {
-			const goal = this.#goalFromModeData(sessionContext.modeData);
-			if (!goal) {
-				// A record that cannot be parsed cannot be restored, so it goes —
-				// out loud. Silence here read as the goal unsetting itself.
-				logger.warn("stored goal record is unreadable; clearing goal mode", { mode: sessionContext.mode });
-				this.showWarning("This session's stored goal could not be read and was cleared.");
-				this.sessionManager.appendModeChange("none");
-				return;
-			}
-			this.session.setGoalModeState({
-				enabled: sessionContext.mode === "goal",
-				mode: "active",
-				goal,
-			});
-			const restored = await this.session.goalRuntime.onThreadResumed({
-				preserveActiveGoal: options?.preserveActiveGoal,
-			});
-			this.goalModeEnabled = restored?.enabled === true;
-			this.goalModePaused = restored?.enabled !== true && restored?.goal.status === "paused";
-			// The goal tool is part of the normal enabled tool set. Retain the
-			// pre-goal set so leaving or dropping the restored goal preserves it.
-			if (restored?.goal) {
-				const previousTools = this.session.getActiveToolNames();
-				this.#goalModePreviousTools = previousTools;
-				await this.session.setActiveToolsByName([...new Set([...previousTools, "goal"])]);
-			}
-			this.#updateGoalModeStatus();
+		if ((await this.#goalMode.restoreFromSession(sessionContext, options)) === "handled") {
 			return;
 		}
 		this.session.goalRuntime.clearAccounting();
@@ -3165,79 +2659,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.sessionManager.appendModeChange(paused ? "plan_paused" : "none");
 		if (!options?.silent) {
 			this.showStatus(paused ? "Plan mode paused." : "Plan mode disabled.");
-		}
-	}
-
-	async #enterGoalMode(options: { objective?: string; resume?: boolean; silent?: boolean }): Promise<void> {
-		if (this.goalModeEnabled) {
-			return;
-		}
-		if (this.planModeEnabled || this.planModePaused) {
-			this.showWarning("Exit plan mode first.");
-			return;
-		}
-		if (this.vibeModeEnabled) {
-			this.showWarning("Exit vibe mode first.");
-			return;
-		}
-		const previousTools = this.session.getActiveToolNames();
-		const goalTools = [...new Set([...previousTools, "goal"])];
-		this.#goalModePreviousTools = previousTools;
-		this.goalModePaused = false;
-		const state = options.resume
-			? await this.session.goalRuntime.resumeGoal()
-			: await this.session.goalRuntime.createGoal({ objective: options.objective ?? "" });
-		await this.session.setActiveToolsByName(goalTools);
-		this.session.setGoalModeState(state);
-		this.goalModeEnabled = true;
-		this.#resetGoalContinuationSuppression();
-		this.#updateGoalModeStatus();
-		if (this.session.isStreaming) {
-			await this.session.sendGoalModeContext({ deliverAs: "steer" });
-		}
-		if (!options.silent) {
-			this.showStatus(options.resume ? "Goal mode resumed." : "Goal mode enabled.");
-		}
-	}
-
-	async #exitGoalMode(options?: {
-		silent?: boolean;
-		paused?: boolean;
-		reason?: "completed" | "paused" | "dropped";
-	}): Promise<void> {
-		const previousTools = this.#goalModePreviousTools;
-		if (this.goalModeEnabled && previousTools) {
-			await this.session.setActiveToolsByName(previousTools);
-		}
-		const currentState = this.session.getGoalModeState();
-		if (options?.reason === "completed") {
-			this.session.setGoalModeState(undefined);
-			this.sessionManager.appendModeChange("none");
-			this.sessionManager.appendCustomEntry("goal-completed", {
-				objective: currentState?.goal?.objective,
-				tokensUsed: currentState?.goal?.tokensUsed,
-				tokenBudget: currentState?.goal?.tokenBudget,
-				timeUsedSeconds: currentState?.goal?.timeUsedSeconds,
-			});
-		}
-		this.goalModeEnabled = false;
-		this.goalModePaused = options?.paused ?? false;
-		this.#goalModePreviousTools = undefined;
-		this.#goalContinuationTurnInFlight = false;
-		this.#resetGoalContinuationSuppression();
-		this.#goalUserTurnInFlight = false;
-		this.#cancelGoalContinuation();
-		this.#updateGoalModeStatus();
-		if (!options?.silent) {
-			if (options?.reason === "completed") {
-				this.showStatus("Goal mode completed.");
-			} else if (options?.reason === "dropped") {
-				this.showStatus("Goal dropped.");
-			} else if (options?.paused) {
-				this.showStatus("Goal mode paused.");
-			} else {
-				this.showStatus("Goal mode disabled.");
-			}
 		}
 	}
 
@@ -3811,281 +3232,21 @@ export class InteractiveMode implements InteractiveModeContext {
 		);
 	}
 
-	async handleGoalModeCommand(rest?: string): Promise<void> {
-		try {
-			if (this.planModeEnabled || this.planModePaused) {
-				this.showWarning("Exit plan mode first.");
-				return;
-			}
-			if (this.vibeModeEnabled) {
-				this.showWarning("Exit vibe mode first.");
-				return;
-			}
-			if (!this.session.settings.get("goal.enabled")) {
-				this.showWarning("Goal mode is disabled. Enable it in settings (goal.enabled).");
-				return;
-			}
-			const { sub, rest: subRest } = parseGoalSubcommand(rest ?? "");
-			if (sub) {
-				await this.#dispatchGoalSubcommand(sub, subRest);
-				return;
-			}
-			if (this.goalModeEnabled) {
-				if (subRest) {
-					this.showStatus("Goal mode is already active. Use /goal to manage it, or /goal drop to start over.");
-					return;
-				}
-				await this.#openGoalMenu("active");
-				return;
-			}
-			const pausedState = this.#getPausedGoalState();
-			if (pausedState) {
-				if (subRest) {
-					this.showWarning("Resume the current goal first, or drop it before setting a new objective.");
-					return;
-				}
-				await this.#openGoalMenu("paused");
-				return;
-			}
-			if (subRest) {
-				await this.#startGoalFromObjective(subRest);
-				return;
-			}
-			const objective = (
-				await this.showHookEditor("Goal objective", undefined, undefined, { promptStyle: true })
-			)?.trim();
-			if (!objective) return;
-			await this.#startGoalFromObjective(objective);
-		} catch (error) {
-			this.showError(errorMessage(error));
-		}
-	}
-	async handleGuidedGoalCommand(rest?: string): Promise<void> {
-		try {
-			if (this.planModeEnabled || this.planModePaused) {
-				this.showWarning("Exit plan mode first.");
-				return;
-			}
-			if (!this.session.settings.get("goal.enabled")) {
-				this.showWarning("Goal mode is disabled. Enable it in settings (goal.enabled).");
-				return;
-			}
-			if (this.goalModeEnabled) {
-				this.showStatus("Goal mode is already active. Use /goal to manage it, or /goal drop to start over.");
-				return;
-			}
-			if (this.#getPausedGoalState()) {
-				this.showWarning("Resume the current goal first, or drop it before setting a new objective.");
-				return;
-			}
-
-			const initial = rest?.trim()
-				? rest.trim()
-				: (await this.showHookEditor("Guided goal", undefined, undefined, { promptStyle: true }))?.trim();
-			if (!initial) return;
-
-			const messages: GuidedGoalMessage[] = [{ role: "user", content: initial }];
-			let latestDraftObjective: string | undefined;
-			// One Codex side session for the whole interview: every follow-up turn
-			// reuses it so a multi-question interview shares a single websocket-only
-			// Codex socket instead of leaking one per turn (#5471 review).
-			const guidedGoalSessionId = newGuidedGoalSessionId(this.session);
-			for (let turn = 0; turn < 6; turn++) {
-				const result = await this.#withGuidedGoalProgress(
-					turn === 0 ? "Refining the objective" : "Reading your answer",
-					() => runGuidedGoalTurn(this.session, { messages, sideSessionId: guidedGoalSessionId }),
-				);
-				if (result.objective?.trim()) latestDraftObjective = result.objective.trim();
-				if (result.kind === "question") {
-					messages.push({ role: "assistant", content: result.question });
-					const answer = (
-						await this.showHookEditor(result.question, undefined, undefined, { promptStyle: true })
-					)?.trim();
-					if (!answer) return;
-					messages.push({ role: "user", content: answer });
-					continue;
-				}
-
-				const finalObjective = (
-					await this.showHookEditor("Review guided goal", result.objective, undefined, { promptStyle: true })
-				)?.trim();
-				if (!finalObjective) return;
-				await this.#startGoalFromObjective(finalObjective);
-				return;
-			}
-
-			// Hit the turn cap without an explicit `ready`. Rather than discard the whole interview,
-			// salvage the latest non-empty model objective draft seen on any earlier turn. A final
-			// question turn may omit `objective`; that must not erase a usable draft.
-			if (latestDraftObjective) {
-				const finalObjective = (
-					await this.showHookEditor("Review guided goal", latestDraftObjective, undefined, { promptStyle: true })
-				)?.trim();
-				if (finalObjective) {
-					await this.#startGoalFromObjective(finalObjective);
-					return;
-				}
-			}
-			this.showWarning("Guided goal setup needs more detail. Run /guided-goal again with a narrower objective.");
-		} catch (error) {
-			this.showError(errorMessage(error));
-		}
+	handleGoalModeCommand(rest?: string): Promise<void> {
+		return this.#goalMode.handleCommand(rest);
 	}
 
-	async #dispatchGoalSubcommand(sub: GoalSubcommand, rest: string): Promise<void> {
-		switch (sub) {
-			case "set":
-				await this.#handleGoalSetSubcommand(rest);
-				return;
-			case "show":
-				this.#showGoalDetails();
-				return;
-			case "pause":
-				await this.#pauseGoalAction();
-				return;
-			case "resume":
-				await this.#resumeGoalAction();
-				return;
-			case "drop":
-				await this.#confirmAndDropGoal();
-				return;
-		}
-	}
-
-	async #openGoalMenu(state: "active" | "paused"): Promise<void> {
-		const goal = this.session.getGoalModeState()?.goal;
-		if (!goal) return;
-		const summary = this.#goalSummary(goal.objective);
-		const title = state === "active" ? `Goal: ${summary} (${goal.status})` : `Goal paused: ${summary}`;
-		const items = state === "active" ? ["Show details", "Pause", "Drop"] : ["Resume", "Show details", "Drop"];
-		const choice = await this.showHookSelector(title, items);
-		if (!choice) return;
-		switch (choice) {
-			case "Show details":
-				this.#showGoalDetails();
-				return;
-			case "Pause":
-				await this.#pauseGoalAction();
-				return;
-			case "Resume":
-				await this.#resumeGoalAction();
-				return;
-			case "Drop":
-				await this.#confirmAndDropGoal();
-				return;
-		}
-	}
-
-	#showGoalDetails(): void {
-		const state = this.session.getGoalModeState();
-		const goal = state?.goal;
-		if (!goal) {
-			this.showStatus("No goal set.");
-			return;
-		}
-		const used = goal.tokensUsed.toLocaleString();
-		let tokensLine = used;
-		if (this.session.settings.get("goal.modelBudgetsEnabled") && goal.tokenBudget !== undefined) {
-			const left = Math.max(0, goal.tokenBudget - goal.tokensUsed);
-			const pct = goal.tokenBudget > 0 ? Math.min(999, Math.round((goal.tokensUsed / goal.tokenBudget) * 100)) : 0;
-			tokensLine = `${used} / ${goal.tokenBudget.toLocaleString()} (${pct}%, ${left.toLocaleString()} left)`;
-		}
-		const lines = [
-			`Objective: ${goal.objective}`,
-			`Status: ${goal.status}${state?.enabled ? "" : " (paused)"}`,
-			`Tokens: ${tokensLine}`,
-			`Turns: ${goal.turnsCompleted}`,
-			`Time spent: ${formatDurationCoarse(goal.timeUsedSeconds * 1000)}`,
-		];
-		this.showStatus(lines.join("\n"));
+	handleGuidedGoalCommand(rest?: string): Promise<void> {
+		return this.#goalMode.handleGuidedCommand(rest);
 	}
 
 	/**
 	 * Open the goal detail/action menu for the current goal (active or paused)
-	 * without typing `/goal`. Reuses the existing `#openGoalMenu` opener and its
-	 * runtime-wired actions; a no-op when no goal is set. This is the target of
+	 * without typing `/goal`. A no-op when no goal is set. This is the target of
 	 * the down-arrow status affordance wired in {@link InputController}.
 	 */
-	async openGoalDetail(): Promise<void> {
-		if (this.goalModeEnabled) {
-			await this.#openGoalMenu("active");
-			return;
-		}
-		if (this.#getPausedGoalState()) {
-			await this.#openGoalMenu("paused");
-		}
-	}
-
-	async #pauseGoalAction(): Promise<void> {
-		if (!this.goalModeEnabled) {
-			this.showWarning("No active goal to pause.");
-			return;
-		}
-		await this.session.goalRuntime.pauseGoal();
-		await this.#exitGoalMode({ paused: true, reason: "paused" });
-	}
-
-	async #resumeGoalAction(): Promise<void> {
-		if (!this.#getPausedGoalState()) {
-			this.showWarning("No paused goal to resume.");
-			return;
-		}
-		await this.#enterGoalMode({ resume: true, silent: true });
-		this.showStatus("Goal mode resumed.");
-		this.#scheduleGoalContinuation();
-	}
-
-	async #confirmAndDropGoal(): Promise<void> {
-		if (!this.goalModeEnabled && !this.#getPausedGoalState()) {
-			this.showWarning("No goal to drop.");
-			return;
-		}
-		const confirmed = await this.showHookConfirm(
-			"Drop goal?",
-			"This removes the goal record. Accumulated usage stays in the session log.",
-		);
-		if (!confirmed) return;
-		await this.session.goalRuntime.dropGoal();
-		await this.#exitGoalMode({ reason: "dropped" });
-	}
-
-	async #startGoalFromObjective(objective: string): Promise<void> {
-		await this.#enterGoalMode({ objective, silent: true });
-		this.#resetGoalContinuationSuppression();
-		if (!this.session.isStreaming && this.onInputCallback) {
-			this.onInputCallback(this.startPendingSubmission({ text: objective }));
-		}
-	}
-
-	async #replaceGoalFromObjective(objective: string): Promise<void> {
-		const state = await this.session.goalRuntime.replaceGoal({ objective });
-		this.session.setGoalModeState(state);
-		this.goalModeEnabled = true;
-		this.goalModePaused = false;
-		this.#resetGoalContinuationSuppression();
-		this.#updateGoalModeStatus();
-		if (this.session.isStreaming) {
-			await this.session.sendGoalModeContext({ deliverAs: "steer" });
-		}
-		if (!this.session.isStreaming && this.onInputCallback) {
-			this.onInputCallback(this.startPendingSubmission({ text: objective }));
-		}
-	}
-
-	async #handleGoalSetSubcommand(rest: string): Promise<void> {
-		if (!this.goalModeEnabled && this.#getPausedGoalState()) {
-			this.showWarning("Resume the current goal first, or drop it before setting a new objective.");
-			return;
-		}
-		const objective = rest.trim()
-			? rest.trim()
-			: (await this.showHookEditor("Goal objective", undefined, undefined, { promptStyle: true }))?.trim();
-		if (!objective) return;
-		if (this.goalModeEnabled) {
-			await this.#replaceGoalFromObjective(objective);
-			return;
-		}
-		await this.#startGoalFromObjective(objective);
+	openGoalDetail(): Promise<void> {
+		return this.#goalMode.openDetail();
 	}
 
 	/** Manually (re-)open the plan-review overlay — bound to `/plan-review`. Lets
@@ -4305,7 +3466,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (this.loadingAnimation) {
 			this.#stopLoadingAnimation(false);
 		}
-		this.#cleanupMicAnimation();
+		this.#voiceController.cleanup();
 		if (this.#clockTimer) {
 			clearInterval(this.#clockTimer);
 			this.#clockTimer = undefined;
@@ -4313,11 +3474,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#cancelTodoAutoClearTimer();
 		this.#cancelAnchoredMotionTimer();
 		this.#cancelObserverUiSyncTimer();
-		this.#cancelGoalContinuation();
-		if (this.#sttController) {
-			this.#sttController.dispose();
-			this.#sttController = undefined;
-		}
+		this.#goalMode.cancelContinuation();
+		this.#voiceController.dispose();
 		this.#extensionUiController.clearExtensionTerminalInputListeners();
 		this.#extensionUiController.clearHookWidgets();
 		for (const unsubscribe of this.#eventBusUnsubscribers) {
@@ -4584,10 +3742,8 @@ export class InteractiveMode implements InteractiveModeContext {
 	showError(message: string): void {
 		this.#pendingSubmittedInput = undefined;
 		this.clearOptimisticUserMessage();
-		this.#pendingWorkingMessage = undefined;
-		if (this.loadingAnimation) {
-			this.#stopLoadingAnimation(true);
-		}
+		this.#workingLoader.clearPendingMessage();
+		this.#workingLoader.stop(true);
 		this.#uiHelpers.showError(message);
 	}
 
@@ -4634,101 +3790,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 	}
 
-	#clearWorkingMessageAccentCache(): void {
-		this.#workingMessageAccentCacheKey = undefined;
-		this.#workingMessageAccentCacheValue = undefined;
-		this.#workingMessageAccentCacheHasValue = false;
-	}
-
-	#buildWorkingMessageAccentCacheKey(): WorkingMessageAccentCacheKey {
-		const sessionAccentEnabled = !isSettingsInitialized() || settings.get("statusLine.sessionAccent") !== false;
-		return {
-			sessionAccentEnabled,
-			sessionName: sessionAccentEnabled ? this.sessionManager.getSessionName() : undefined,
-			accentSurfaceLuminance: theme.accentSurfaceLuminance,
-		};
-	}
-
-	#workingMessageAccentCacheKeyEquals(a: WorkingMessageAccentCacheKey, b: WorkingMessageAccentCacheKey): boolean {
-		return (
-			a.sessionName === b.sessionName &&
-			a.accentSurfaceLuminance === b.accentSurfaceLuminance &&
-			a.sessionAccentEnabled === b.sessionAccentEnabled
-		);
-	}
-
-	#cacheWorkingMessageAccent(
-		key: WorkingMessageAccentCacheKey,
-		value: WorkingMessageAccent | undefined,
-	): WorkingMessageAccent | undefined {
-		this.#workingMessageAccentCacheKey = key;
-		this.#workingMessageAccentCacheValue = value;
-		this.#workingMessageAccentCacheHasValue = true;
-		return value;
-	}
-
-	#getWorkingMessageAccent(): WorkingMessageAccent | undefined {
-		const key = this.#buildWorkingMessageAccentCacheKey();
-		if (
-			this.#workingMessageAccentCacheHasValue &&
-			this.#workingMessageAccentCacheKey &&
-			this.#workingMessageAccentCacheKeyEquals(key, this.#workingMessageAccentCacheKey)
-		) {
-			return this.#workingMessageAccentCacheValue;
-		}
-		if (!key.sessionAccentEnabled || !key.sessionName) {
-			return this.#cacheWorkingMessageAccent(key, undefined);
-		}
-		const hex = getSessionAccentHex(key.sessionName, theme.getMajorThemeColorHexes(), key.accentSurfaceLuminance);
-		const main = getSessionAccentAnsi(hex);
-		const dim = getSessionAccentAnsi(adjustHsv(hex, { s: 0.55, v: 0.65 }));
-		return this.#cacheWorkingMessageAccent(key, main && dim ? { main, dim } : undefined);
-	}
-
 	ensureLoadingAnimation(): void {
-		if (!this.loadingAnimation) {
-			this.#clearWorkingMessageAccentCache();
-			this.statusContainer.disposeChildren();
-			const messageColorFn = ((message: string) =>
-				renderWorkingMessage(
-					message,
-					this.#getWorkingMessageAccent(),
-					this.#workingClockText,
-				)) as LoaderMessageColorFn & {
-				animated?: true;
-			};
-			// Shimmer drives the 30fps redraw; when it is disabled the working
-			// message is static, so leave `animated` unset and let the loader use
-			// the spinner-only ~12.5fps cadence instead of repainting a frozen line.
-			if (shimmerEnabled()) messageColorFn.animated = true;
-			this.loadingAnimation = new Loader(
-				this.ui,
-				spinner => {
-					// The breathing-pixel spinner keeps its frames and runs MOLTEN —
-					// the warm arc's lava heat cycle — while the agent works (the one
-					// live thing). Semantic activity states still win: in living mode
-					// ask/error recolor the whole line green/red via the living hue.
-					const living = livingSpinnerColor(theme);
-					if (living) return `${living}${spinner}\x1b[39m`;
-					const accent = this.#getWorkingMessageAccent();
-					if (accent) return `${accent.main}${spinner}\x1b[39m`;
-					return lavaText(spinner, theme, TERMINAL.trueColor);
-				},
-				messageColorFn,
-				this.#defaultWorkingMessage,
-				getSymbolTheme().spinnerFrames,
-			);
-			this.statusContainer.addChild(this.loadingAnimation);
-			// Seed the per-task clock for the default "Working…" phase so the
-			// elapsed readout is present from the first painted frame.
-			this.#resetTaskClock();
-			this.#setTaskMessage(this.#defaultWorkingMessage);
-		} else if (!this.statusContainer.children.includes(this.loadingAnimation)) {
-			this.statusContainer.disposeChildren();
-			this.statusContainer.addChild(this.loadingAnimation);
-			this.ui.requestRender();
-		}
-		this.applyPendingWorkingMessage();
+		this.#workingLoader.ensure();
 		// The board's motion is owed by the agent moving, and this is the edge
 		// where it starts. Nothing else on this path touches the anchored
 		// regions, so without it a board that was still when the turn began
@@ -4764,12 +3827,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	#stopLoadingAnimation(clearStatusContainer: boolean): void {
-		const cleared = this.clearWorkingLoader();
-		if (!cleared) return;
-		this.#clearWorkingMessageAccentCache();
-		if (clearStatusContainer) {
-			this.statusContainer.disposeChildren();
-		}
+		this.#workingLoader.stop(clearStatusContainer);
 	}
 
 	/**
@@ -4777,27 +3835,9 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * reference. Controllers that abort a turn outside the normal agent_end path
 	 * (fork, compact, handoff, error) call this — never `loadingAnimation.stop()`
 	 * directly — so the loader can never be left running while the agent rests.
-	 *
-	 * Unmounting is not tidiness. `stop()` only kills the timer, so a stopped
-	 * loader left mounted keeps drawing its last frame — `Working… · 0:00 [esc]`,
-	 * byte-identical forever — and a chrome row that never changes is
-	 * indistinguishable from settled transcript content to anything downstream
-	 * that decides what may enter the terminal's scrollback. `#stopWorkingLoader`
-	 * in the event controller cleared the reference without touching the
-	 * container, and the frozen row it left behind is what turned up wedged
-	 * between two tool blocks in the operator's history, still offering an `esc`
-	 * that interrupts nothing.
-	 *
-	 * It removes only its OWN child, never the container's other children: a
-	 * transient overlay (auto-compaction, retry) mounts its own loader here and
-	 * owns its own teardown.
 	 */
 	clearWorkingLoader(): boolean {
-		if (!this.loadingAnimation) return false;
-		this.loadingAnimation.stop();
-		this.statusContainer.removeChild(this.loadingAnimation);
-		this.loadingAnimation = undefined;
-		this.#resetTaskClock();
+		if (!this.#workingLoader.clear()) return false;
 		// The other edge: the agent has stopped, so the board owes no more
 		// frames. Skipped while frame production is frozen, because a frozen mode
 		// must not touch its containers on the way out.
@@ -4806,65 +3846,11 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	setWorkingMessage(message?: string): void {
-		if (message === undefined) {
-			this.#pendingWorkingMessage = undefined;
-			if (this.loadingAnimation) {
-				this.#setTaskMessage(this.#defaultWorkingMessage);
-			}
-			return;
-		}
-
-		if (this.loadingAnimation) {
-			this.#setTaskMessage(message);
-			return;
-		}
-
-		this.#pendingWorkingMessage = message;
-	}
-
-	/**
-	 * ONE composer for the working line: splits the caller's message into task
-	 * label + esc hint, restarts the per-task clock when the label changes, and
-	 * hands the loader `label · 0:42 ⟦esc⟧`. Re-invoking with the same label
-	 * refreshes only the clock (the 1s heartbeat rides this).
-	 */
-	#setTaskMessage(message: string): void {
-		const hint = interruptHint();
-		const hasHint = message.endsWith(hint);
-		const label = hasHint ? message.slice(0, -hint.length) : message;
-		if (label !== this.#taskLabel) {
-			this.#taskLabel = label;
-			this.#taskStartedAt = Date.now();
-		}
-		this.#taskHasHint = hasHint;
-		this.#refreshTaskClock();
-	}
-
-	#refreshTaskClock(): void {
-		if (!this.loadingAnimation || this.#taskLabel === undefined) return;
-		this.#workingClockText = ` · ${formatClock(Date.now() - this.#taskStartedAt)}`;
-		this.loadingAnimation.setMessage(
-			`${this.#taskLabel}${this.#workingClockText}${this.#taskHasHint ? interruptHint() : ""}`,
-		);
-	}
-
-	/** Forget the task clock when the working loader goes away, so the next
-	 * run's first task starts its clock at 0:00 instead of inheriting one. */
-	#resetTaskClock(): void {
-		this.#taskLabel = undefined;
-		this.#taskHasHint = false;
-		this.#taskStartedAt = 0;
-		this.#workingClockText = undefined;
+		this.#workingLoader.setMessage(message);
 	}
 
 	applyPendingWorkingMessage(): void {
-		if (this.#pendingWorkingMessage === undefined) {
-			return;
-		}
-
-		const message = this.#pendingWorkingMessage;
-		this.#pendingWorkingMessage = undefined;
-		this.setWorkingMessage(message);
+		this.#workingLoader.applyPendingMessage();
 	}
 
 	showUpdateReadyNotification(newVersion: string, warnings?: readonly string[]): void {
@@ -5060,85 +4046,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		return this.#commandController.handleMemoryCommand(text);
 	}
 
-	async handleSTTToggle(): Promise<void> {
-		if (!settings.get("stt.enabled")) {
-			this.showWarning("Speech-to-text is disabled. Enable it in settings: stt.enabled");
-			return;
-		}
-		if (!this.#sttController) {
-			this.#sttController = new STTController();
-		}
-		await this.#sttController.toggle(this.editor, {
-			showWarning: (msg: string) => this.showWarning(msg),
-			showStatus: (msg: string) => this.showStatus(msg),
-			requestRender: () => this.ui.requestRender(),
-			onStateChange: (state: SttState) => {
-				// Duck assistant speech while the user is talking (push-to-talk); restore after.
-				if (state === "recording") vocalizer.duck();
-				else vocalizer.unduck();
-				if (state === "recording") {
-					this.#voicePreviousShowHardwareCursor = this.ui.getShowHardwareCursor();
-					this.#voicePreviousUseTerminalCursor = this.editor.getUseTerminalCursor();
-					this.ui.setShowHardwareCursor(false);
-					this.editor.setUseTerminalCursor(false);
-					this.#startMicAnimation();
-				} else if (state === "transcribing") {
-					this.#stopMicAnimation();
-					this.#setMicCursor({ r: 200, g: 200, b: 200 });
-				} else {
-					this.#cleanupMicAnimation();
-				}
-				this.ui.requestRender();
-			},
-		});
-	}
-
-	#setMicCursor(color: { r: number; g: number; b: number }): void {
-		this.editor.cursorOverride = `\x1b[38;2;${color.r};${color.g};${color.b}m${theme.icon.mic}\x1b[0m`;
-		// Theme symbols can be wide (for example, ), so measure the rendered override.
-		this.editor.cursorOverrideWidth = visibleWidth(this.editor.cursorOverride);
-	}
-
-	#updateMicIcon(): void {
-		const { r, g, b } = hsvToRgb({ h: this.#voiceHue, s: 0.9, v: 1.0 });
-		this.#setMicCursor({ r, g, b });
-	}
-
-	#startMicAnimation(): void {
-		if (this.#voiceAnimationInterval) return;
-		this.#voiceHue = 0;
-		this.#updateMicIcon();
-		this.#voiceAnimationInterval = setInterval(() => {
-			this.#voiceHue = (this.#voiceHue + 8) % 360;
-			this.#updateMicIcon();
-			// Component-scoped: the hue sweep only recolors the editor's cursor
-			// glyph, so the transcript subtree is reused per animation frame.
-			this.ui.requestComponentRender(this.editor);
-		}, 60);
-	}
-
-	#stopMicAnimation(): void {
-		if (this.#voiceAnimationInterval) {
-			clearInterval(this.#voiceAnimationInterval);
-			this.#voiceAnimationInterval = undefined;
-		}
-	}
-
-	#cleanupMicAnimation(): void {
-		if (this.#voiceAnimationInterval) {
-			clearInterval(this.#voiceAnimationInterval);
-			this.#voiceAnimationInterval = undefined;
-		}
-		this.editor.cursorOverride = undefined;
-		this.editor.cursorOverrideWidth = undefined;
-		if (this.#voicePreviousShowHardwareCursor !== null) {
-			this.ui.setShowHardwareCursor(this.#voicePreviousShowHardwareCursor);
-			this.#voicePreviousShowHardwareCursor = null;
-		}
-		if (this.#voicePreviousUseTerminalCursor !== null) {
-			this.editor.setUseTerminalCursor(this.#voicePreviousUseTerminalCursor);
-			this.#voicePreviousUseTerminalCursor = null;
-		}
+	handleSTTToggle(): Promise<void> {
+		return this.#voiceController.toggle();
 	}
 
 	async showDebugSelector(): Promise<void> {
@@ -5550,23 +4459,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#eventController.subscribeToAgent();
 	}
 
-	#goalUnsubscribe?: () => void;
-
-	/** Subscribe goal bookkeeping to the session currently displayed. */
-	#subscribeToGoalSessionEvents(): void {
-		// Return the async handler so AgentSession can attach its rejection
-		// guard; a detached goal bookkeeping failure must not crash the TUI.
-		this.#goalUnsubscribe = this.session.subscribe(event => {
-			return this.#handleGoalSessionEvent(event).catch(error => {
-				logger.warn("Goal mode session event handler failed", {
-					event: event.type,
-					error: errorMessage(error),
-				});
-				this.showWarning(`Goal mode update failed: ${errorMessage(error)}`);
-			});
-		});
-	}
-
 	/**
 	 * Point the UI at `next` and hand the session it was displaying to the
 	 * background keeper, so a turn in flight runs to completion instead of
@@ -5589,15 +4481,14 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (next === previous) return BackgroundSessions.global().describeAttached(previous);
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
-		this.#goalUnsubscribe?.();
-		this.#goalUnsubscribe = undefined;
+		this.#goalMode.unsubscribeFromSession();
 		this.session = next;
 		this.sessionManager = next.sessionManager;
 		this.settings = next.settings;
 		this.agent = next.agent;
 		this.#eventController.resetTranscriptAnchors();
 		this.#subscribeToAgent();
-		this.#subscribeToGoalSessionEvents();
+		this.#goalMode.subscribeToSession();
 		this.statusLine.setSession(next);
 		if (next.isStreaming) void this.#eventController.handleEvent({ type: "agent_start" });
 		return BackgroundSessions.global().keep(previous);
