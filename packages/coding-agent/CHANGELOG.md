@@ -10,6 +10,7 @@
 - 135 free helper functions, types, and constants extracted from `gh.ts` (2,642→964 lines) into `gh-helpers.ts`.
 - 80 free helper functions, types, and constants extracted from `lsp/index.ts` (2,560→1,410 lines) into `lsp-helpers.ts`.
 - 51 free helper functions, types, and constants extracted from `sdk.ts` (4,059→3,196 lines) into `sdk-helpers.ts`.
+- 40 free helper functions, types, and constants extracted from `tools/grep.ts` (1,914→1,204 lines) into `grep-helpers.ts`.
 - 33 free helper functions, types, and constants extracted from `acp-agent.ts` (2,289→2,026 lines) into `acp-helpers.ts`.
 - 51 free helper functions, types, and constants extracted from `edit/modes/patch.ts` (1,791→352 lines) into `patch-helpers.ts`.
 - `createAgentSession` in `sdk.ts` is now a 77-line dispatcher calling extracted setup functions (`setupSessionInfrastructure`, `discoverSessionEnvironment`, `setupSecretRuntime`, `resolveSessionModelAndThinking`, `setupSessionToolsAndExtensions`, `setupSystemPromptAndToolSelection`, `initializeAgentAndSession`).
