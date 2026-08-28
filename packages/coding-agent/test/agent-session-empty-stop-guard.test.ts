@@ -7,7 +7,8 @@ import { createMockModel, type MockModel, type MockResponse } from "@veyyon/ai/p
 import { AutoLearnController } from "@veyyon/coding-agent/autolearn/controller";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";

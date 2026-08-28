@@ -17,7 +17,8 @@ import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers
 import { InputController } from "@veyyon/coding-agent/modes/terminal/controllers/input-controller";
 import type { CompactionQueuedMessage, InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { UiHelpers } from "@veyyon/coding-agent/modes/terminal/utils/ui-helpers";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SKILL_PROMPT_MESSAGE_TYPE, type SkillPromptDetails } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";

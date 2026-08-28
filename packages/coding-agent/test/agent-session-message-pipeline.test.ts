@@ -21,7 +21,8 @@ import { type MnemopiSessionState, setMnemopiSessionState } from "@veyyon/coding
 import type { MemoryBackend } from "@veyyon/coding-agent/memory/types";
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
 import { obfuscateProviderContext, SecretObfuscator } from "@veyyon/coding-agent/secrets";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";

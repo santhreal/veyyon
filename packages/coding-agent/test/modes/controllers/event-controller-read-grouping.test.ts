@@ -18,7 +18,7 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { ReadToolGroupComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/read-tool-group";
 import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
-import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { Container } from "@veyyon/tui";
 

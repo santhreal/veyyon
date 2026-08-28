@@ -53,7 +53,8 @@ import { SECRET_SPEND_NOTICE_SOURCE } from "@veyyon/coding-agent/secrets/notices
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { secretSpendMarker } from "@veyyon/coding-agent/secrets/spend-marker";
 import { resolveVaultLocations, SecretVault } from "@veyyon/coding-agent/secrets/vault";
-import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";

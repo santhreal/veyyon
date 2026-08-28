@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
-import type { AgentSessionEvent } from "../session/agent-session";
+import type { AgentSessionEvent } from "../session/agent-session-types";
 import { printableEvent } from "./print-mode";
 
 const assistant: AssistantMessage = {

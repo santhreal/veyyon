@@ -37,8 +37,7 @@ import {
 	ROOM_KEY_BYTES,
 	WRITE_TOKEN_BYTES,
 } from "@veyyon/wire";
-
-import type { AgentSessionEvent } from "../session/agent-session";
+import type { AgentSessionEvent } from "../session/agent-session-types";
 import type { SessionEntry, SessionHeader, SessionMessageEntry } from "../session/session-entries";
 
 export type {

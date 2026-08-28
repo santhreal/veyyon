@@ -55,7 +55,8 @@ import {
 	applyUsageReports,
 	loadAccountInventory,
 } from "../session/account-inventory";
-import type { AgentSession, FreshSessionResult, HandoffResult } from "../session/agent-session";
+import type { AgentSession } from "../session/agent-session";
+import type { FreshSessionResult, HandoffResult } from "../session/agent-session-types";
 import type { AuthStorage } from "../session/auth-storage";
 import { parseCompactArgs } from "../session/compact-modes";
 import { resolveResumableSession } from "../session/session-listing";

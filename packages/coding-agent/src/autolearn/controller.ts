@@ -13,7 +13,8 @@
 import { logger } from "@veyyon/utils";
 import type { Settings } from "../config/settings";
 import { autolearnPrompts } from "../prompts/autolearn/rows";
-import type { AgentSession, AgentSessionEvent } from "../session/agent-session";
+import type { AgentSession } from "../session/agent-session";
+import type { AgentSessionEvent } from "../session/agent-session-types";
 
 const AUTOLEARN_NUDGE_AUTOCONTINUE = autolearnPrompts["autolearn/nudge-autocontinue"].text.trim();
 const DEFAULT_MIN_TOOL_CALLS = 5;

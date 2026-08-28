@@ -133,9 +133,9 @@
  */
 import { expect, it } from "bun:test";
 import * as AIError from "@veyyon/ai/error";
-import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
 import { createSimulation, type ScriptedTurn, simTool } from "./harness";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 
 /** The watchdog's own stall text, transient from its prose alone. */
 const STALL_TEXT = "Provider stream stalled while waiting for the next event";

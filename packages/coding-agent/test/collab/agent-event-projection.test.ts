@@ -23,7 +23,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { fromWireAgentEvent, toWireAgentEvent, WIRE_API_UNREPORTED } from "@veyyon/coding-agent/collab/protocol";
-import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 
 /** Keys a projected event may have, so a leak is named rather than counted. */
 function keysOf(value: unknown): string[] {

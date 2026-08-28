@@ -5,7 +5,7 @@ import * as toolsModule from "@veyyon/coding-agent/commit/agentic/tools";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
-import type { PromptOptions } from "@veyyon/coding-agent/session/agent-session";
+import type { PromptOptions } from "@veyyon/coding-agent/session/agent-session-types";
 
 describe("commit agent prompt attribution", () => {
 	afterEach(() => {

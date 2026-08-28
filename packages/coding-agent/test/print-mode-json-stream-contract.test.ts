@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
 import { printableEvent, runPrintMode } from "@veyyon/coding-agent/modes/print-mode";
-import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 
 /**
  * `--mode json` is a wire format. Every line must parse, on its own, always.

@@ -7,8 +7,8 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
-import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";

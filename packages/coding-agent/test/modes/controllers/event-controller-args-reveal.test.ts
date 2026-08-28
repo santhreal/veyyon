@@ -13,7 +13,7 @@ import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/comp
 import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
 import { STREAMING_REVEAL_FRAME_MS } from "@veyyon/coding-agent/modes/terminal/controllers/streaming-reveal";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
-import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(async () => {

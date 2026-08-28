@@ -3,7 +3,8 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
 import { AutoLearnController, buildAutoLearnInstructions } from "@veyyon/coding-agent/autolearn/controller";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 
 interface CapturedNudge {
 	message: { customType: string; content: string; display?: boolean; attribution?: string };

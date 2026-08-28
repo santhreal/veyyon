@@ -13,7 +13,7 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { hindsightBackend, reloadMentalModelsForSession } from "@veyyon/coding-agent/memory/hindsight/backend";
 import { HindsightApi } from "@veyyon/coding-agent/memory/hindsight/client";
 import type { HindsightSessionState } from "@veyyon/coding-agent/memory/hindsight/state";
-import type { AgentSessionEventListener } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEventListener } from "@veyyon/coding-agent/session/agent-session-types";
 
 interface FakeSessionDeps {
 	sessionId: string | null;

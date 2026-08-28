@@ -25,7 +25,7 @@ import type { ImageContent } from "@veyyon/ai";
 import { InputController } from "@veyyon/coding-agent/modes/terminal/controllers/input-controller";
 import type { CompactionQueuedMessage, InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { UiHelpers } from "@veyyon/coding-agent/modes/terminal/utils/ui-helpers";
-import type { RestoredQueuedMessage } from "@veyyon/coding-agent/session/agent-session";
+import type { RestoredQueuedMessage } from "@veyyon/coding-agent/session/agent-session-queue";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(() => {

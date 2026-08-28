@@ -5,7 +5,8 @@ import { Effort } from "@veyyon/catalog/effort";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ExtensionActions } from "@veyyon/coding-agent/extensibility/extensions/types";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
-import type { AgentSession, PromptOptions } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { PromptOptions } from "@veyyon/coding-agent/session/agent-session-types";
 import type { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import {
 	finalizeSubprocessOutput,

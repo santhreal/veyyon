@@ -9,7 +9,7 @@ import type { Settings } from "../../config/settings";
 import { commitPrompts } from "../../prompts/commit/rows";
 import { commitAgenticPrompts } from "../../prompts/commit-agentic/rows";
 import { createAgentSession } from "../../sdk";
-import type { AgentSessionEvent } from "../../session/agent-session";
+import type { AgentSessionEvent } from "../../session/agent-session-types";
 import type { AuthStorage } from "../../session/auth-storage";
 import { getMarkdownTheme } from "../../theme/markdown-theme";
 import type { CommitAgentState } from "./state";
