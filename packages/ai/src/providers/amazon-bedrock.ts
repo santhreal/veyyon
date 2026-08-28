@@ -1,11 +1,4 @@
-/**
- * Amazon Bedrock Converse Stream provider.
- *
- * Talks directly to `bedrock-runtime.{region}.amazonaws.com` over HTTPS with
- * SigV4 signing and decodes the `application/vnd.amazon.eventstream` response.
- * No `@aws-sdk/*`, no `@smithy/*`, no `proxy-agent`. Proxies are honored via
- * Bun's native `HTTPS_PROXY` support.
- */
+/** Amazon Bedrock Converse Stream provider using SigV4 signed HTTP requests. */
 
 import type { Effort } from "@veyyon/catalog/effort";
 import { mapEffortToAnthropicAdaptiveEffort, requireSupportedEffort } from "@veyyon/catalog/model-thinking";
@@ -68,19 +61,7 @@ export interface BedrockOptions extends StreamOptions {
 	thinkingBudgets?: ThinkingBudgets;
 	/* Only supported by Claude 4.x models, see https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-extended-thinking.html#claude-messages-extended-thinking-tool-use-interleaved */
 	interleavedThinking?: boolean;
-	/**
-	 * Controls how Claude returns thinking content in Bedrock responses.
-	 * - `"summarized"`: thinking blocks include human-readable summaries (default here).
-	 * - `"omitted"`: thinking content is suppressed; the encrypted signature still
-	 *   travels back for multi-turn continuity.
-	 *
-	 * Starting with Claude Opus 4.7 and Claude Fable/Mythos 5 the Anthropic API
-	 * default is `"omitted"`, which leaves callers waiting on a silent stream during
-	 * long reasoning runs (issue #1373). We default to `"summarized"` so adaptive-
-	 * thinking models that accept the field keep producing visible thinking deltas.
-	 * Older adaptive-thinking models (Opus 4.6, Sonnet 4.6+) reject the field, so
-	 * we omit it for them.
-	 */
+	/** Controls thinking content format in Bedrock responses ("summarized" | "omitted"). */
 	thinkingDisplay?: BedrockThinkingDisplay;
 }
 
@@ -96,13 +77,7 @@ function inferRegionFromBedrockArn(modelId: string): string | undefined {
 	return region || undefined;
 }
 
-/**
- * Default AWS region for each Bedrock cross-region inference-profile geo prefix.
- * A geo-prefixed profile (e.g. `eu.anthropic.claude-…`) is only servable from
- * regions in its own geo, so routing one to `us-east-1` yields HTTP 400 "The
- * provided model identifier is invalid." `global.` profiles are anchored in the
- * us regions and intentionally absent here (they resolve fine via `us-east-1`).
- */
+/** Default AWS region for each Bedrock cross-region inference-profile geo prefix. */
 const INFERENCE_PROFILE_GEO_DEFAULT_REGION: Record<string, string> = {
 	us: "us-east-1",
 	"us-gov": "us-gov-west-1",
@@ -120,11 +95,7 @@ function inferenceProfileGeo(modelId: string): string | undefined {
 	return prefix in INFERENCE_PROFILE_GEO_DEFAULT_REGION ? prefix : undefined;
 }
 
-/**
- * Whether a concrete AWS region can serve a given inference-profile geo. The
- * `ap-` regions overlap across `apac`/`au`/`jp` profiles, so the Australia and
- * Japan geos pin their specific source regions rather than matching all `ap-*`.
- */
+/** Whether a concrete AWS region can serve a given inference-profile geo. */
 function regionServesGeo(region: string, geo: string): boolean {
 	switch (geo) {
 		case "us-gov":
@@ -144,16 +115,7 @@ function regionServesGeo(region: string, geo: string): boolean {
 	}
 }
 
-/**
- * Resolve the Bedrock runtime region for a request. An explicit per-request
- * region and an ARN-embedded region win outright. Otherwise, for a geo-prefixed
- * cross-region inference profile (`us.`/`eu.`/`apac.`/`au.`/`jp.`/`us-gov.`), an
- * ambient region (`AWS_REGION` / `AWS_DEFAULT_REGION`) is honored only when it
- * can serve the profile's geo; a mismatched or absent ambient region is
- * corrected to the geo default so an `eu.`/`apac.` profile never POSTs to a `us`
- * endpoint (and vice versa). `global.` profiles have no geo entry, so the
- * ambient region (or `us-east-1`) is used unchanged.
- */
+/** Resolve Bedrock runtime region for a request. */
 function resolveBedrockRegion(modelId: string, options: BedrockOptions): string {
 	const explicit = options.region || inferRegionFromBedrockArn(modelId);
 	if (explicit) return explicit;
@@ -171,10 +133,6 @@ type Block = (TextContent | ThinkingContent | ToolCall) & {
 	[kStreamingPartialJson]?: string;
 	[kStreamingLastParseLen]?: number;
 };
-
-// ---------- Bedrock wire-format types ----------
-// Mirrors only what we actually consume from `ConverseStreamRequest` /
-// `ConverseStreamOutput`. Keeps us decoupled from `@aws-sdk/client-bedrock-runtime`.
 
 interface CachePoint {
 	cachePoint: { type: "default"; ttl?: "5m" | "1h" };
@@ -221,13 +179,7 @@ interface WireToolConfig {
 	toolChoice?: WireToolChoice;
 }
 
-/**
- * Bedrock validates that requests carrying any `toolUse`/`toolResult` history
- * include a `toolConfig`. For no-tool ephemeral turns (`/btw`, IRC auto-replies)
- * we have nothing real to send, so we inject this placeholder. Its presence is
- * tracked by a per-request flag — never the wire name — so callers who happen
- * to register a real tool literally called `__no_tools__` are not affected.
- */
+/** Placeholder tool injected when request carries tool history but no active tools. */
 const NO_TOOLS_SENTINEL_NAME = "__no_tools__";
 
 const NO_TOOLS_SENTINEL: WireToolSpec = {
@@ -323,16 +275,8 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 				accept: "application/vnd.amazon.eventstream",
 			};
 
-			// Bun's native fetch ceiling is disabled below (`timeout: false`) so
-			// configurable watchdogs govern slow-prefill streams (issue #2422).
-			// Direct callers that bypass `register-builtins` (which installs the
-			// iterator-level first-event watchdog) still need a pre-response
-			// timer, otherwise a Bedrock/proxy that accepts the POST and never
-			// sends headers would hang forever.
+			// Clear the pre-response timer the instant headers arrive.
 			const firstEventTimeoutMs = options.streamFirstEventTimeoutMs ?? getStreamFirstEventTimeoutMs();
-			// Clear the pre-response timer the instant headers arrive (below): an
-			// absolute `AbortSignal.timeout` would keep aborting the actively
-			// streaming body, not just a stalled time-to-first-byte (issue #2422).
 			const watchdog = armPreResponseTimeout(options.signal, firstEventTimeoutMs);
 			const transportFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
 			let responseHookFailed = false;
@@ -347,9 +291,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 						attemptResponse.headers.get("x-amzn-requestid") ?? attemptResponse.headers.get("x-request-id"),
 					);
 				} catch (error) {
-					// A response hook is part of the request contract, not a transport
-					// failure. Return a non-retryable sentinel so fetchWithRetry cannot
-					// multiply the callback failure into more physical attempts.
+					// Return non-retryable response when hook fails.
 					responseHookFailed = true;
 					responseHookError = error;
 					return new Response(null, { status: 400 });
@@ -377,8 +319,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 				sentinelInjected = toolPlan.sentinelInjected;
 				let additionalModelRequestFields = buildAdditionalModelRequestFields(model, options);
 
-				// Bedrock rejects thinking + forced tool_choice ("any" or specific tool).
-				// When tool_choice forces tool use, disable thinking to avoid API errors.
+				// Disable thinking if tool_choice forces tool use.
 				if (toolConfig?.toolChoice && additionalModelRequestFields) {
 					const tc = toolConfig.toolChoice;
 					if (tc.any || tc.tool) additionalModelRequestFields = undefined;
@@ -407,8 +348,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 					method: "POST",
 					url,
 				};
-				// Retain the exact sent BYTES, not the parsed object: a dump body is
-				// read only on the 400/413 path.
+				// Retain exact sent bytes for diagnostic dumps on 400/413.
 				wireBodyJson = JSON.stringify(commandInput);
 				const body = new TextEncoder().encode(wireBodyJson);
 
@@ -435,8 +375,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 			};
 			let response: Response;
 			try {
-				// Preserve the provider's payload-capture contract for an
-				// already-aborted call without creating a physical attempt.
+				// Capture payload for aborted requests.
 				if (watchdog.signal?.aborted) await prepareRequest();
 				response = await fetchProviderWithRetry(url, {
 					method: "POST",
@@ -453,13 +392,10 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 
 			if (!response.ok) {
 				if (!bearerToken && (response.status === 401 || response.status === 403)) {
-					// Stale cached credentials (e.g. rotated session keys in ~/.aws/credentials) —
-					// drop the cache entry so the next attempt re-resolves from scratch.
+					// Invalidate credential cache on auth failure.
 					invalidateAwsCredentialCache({ profile: options.profile, region });
 				}
-				// The STATUS is the failure; the body is Bedrock's explanation of it. Losing an unreadable body still
-				// leaves the status, which is what the error below is built from. The shared reader replaces a local
-				// 1000-character slice, so the read is bounded too and truncation says so.
+				// Read bounded error detail from response.
 				const detail = await AIError.readProviderErrorDetail(response);
 				throw new AIError.BedrockApiError(`Bedrock HTTP ${response.status}: ${detail}`, response.status, {
 					headers: response.headers,
@@ -519,8 +455,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 					case "messageStop": {
 						sawMessageStop = true;
 						const ev = payload as MessageStopEvent;
-						// A sentinel-only request must never surface a tool-use stop:
-						// no real tool exists for the agent to dispatch.
+						// Sentinel-only requests do not surface tool_use stop.
 						output.stopReason =
 							sentinelInjected && ev.stopReason === "tool_use" ? "stop" : mapStopReason(ev.stopReason);
 						if (output.stopReason === "error") {
@@ -540,13 +475,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 
 			if (options.signal?.aborted) throw new AIError.RequestAbortError();
 
-			// The event stream ended without a `messageStop`, so nothing in the
-			// response ever said the turn was over: `output.stopReason` is still
-			// the optimistic seed it was given before the first byte arrived, and
-			// pushing `done` with it reported an empty body as a finished answer.
-			// The shared rule decides what the accumulated content can stand as;
-			// a tool batch counts only when every call parsed, which on this
-			// dialect means every one of them reached `contentBlockStop`.
+			// Handle unexpected stream termination without messageStop.
 			if (!sawMessageStop) {
 				const toolBatchIsComplete = blocks.every(
 					block => block.type !== "toolCall" || getStreamingPartialJson(block) === undefined,
@@ -618,9 +547,6 @@ function safeParsePayload(payload: Uint8Array): unknown {
 	try {
 		return JSON.parse(new TextDecoder().decode(payload));
 	} catch {
-		// Undefined is DISTINCT from the `{}` an empty payload returns, and the caller relies on that: an
-		// unparseable event frame is skipped rather than treated as an empty event, so a malformed frame
-		// cannot look like a legitimate no-op in the stream.
 		return undefined;
 	}
 }
@@ -635,9 +561,7 @@ function handleContentBlockStart(
 	const index = event.contentBlockIndex;
 	const start = event.start;
 
-	// Drop the sentinel call only when we injected it ourselves. A caller that
-	// registers a real tool named `__no_tools__` would otherwise lose its
-	// legitimate tool-use events on normal turns.
+	// Drop sentinel call if injected.
 	if (sentinelInjected && start?.toolUse?.name === NO_TOOLS_SENTINEL_NAME) return;
 
 	if (start?.toolUse) {
@@ -757,51 +681,13 @@ function handleContentBlockStop(
 	}
 }
 
-/**
- * Check if the model supports thinking signatures in reasoningContent.
- * Only Anthropic Claude models support the signature field.
- * Other models (Nova, Titan, Mistral, Llama, etc.) reject it with:
- * "This model doesn't support the reasoningContent.reasoningText.signature field"
- */
+/** Check if model supports thinking signatures in reasoningContent. */
 function supportsThinkingSignature(model: Model<"bedrock-converse-stream">): boolean {
 	const id = model.id.toLowerCase();
 	return id.includes("anthropic.claude") || id.includes("anthropic/claude");
 }
 
-/**
- * Serialize the system blocks, anchoring the stable prefix separately from the
- * volatile tail.
- *
- * A single trailing `cachePoint` caches a prefix that ENDS at the last system
- * block, so any edit to a later block invalidates the whole system prompt and
- * the next turn re-reads and re-writes all of it. That is the normal shape
- * here: the first block is the harness shared across parent and subagent
- * prompts, and project context, the assignment and the handle table are
- * appended after it and change constantly. The Anthropic provider anchors its
- * own first block for exactly this reason (`applyPromptCaching`); Bedrock did
- * not, so the two transports disagreed about the same conversation.
- *
- * This is AWS's own guidance, not an invention: the Bedrock prompt-caching
- * page says to use multiple cache checkpoints "if you are caching sections
- * that change at different frequencies", which is exactly a fixed harness
- * followed by a handle table that changes every turn.
- *
- * Budget: Claude allows four cache checkpoints per request. This spends two on
- * system (the anchor plus the trailing block) and `convertMessages` spends one
- * on the last message, so three of four, leaving one unspent. Adding the
- * anchor cannot break a request: per the same page, "if you try to add a cache
- * checkpoint before meeting the minimum number of tokens, your inference will
- * still succeed, but your prefix will not be cached", so a stable prefix under
- * the model's floor (1024 tokens on Sonnet 4.6, 4096 on the 4.5 generation)
- * costs an unused slot and nothing else. Both checkpoints carry the same ttl,
- * which keeps the documented ordering rule (longer TTLs must precede shorter
- * ones) satisfied by construction.
- *
- * There is no Claude Code billing layout on this path: Bedrock authenticates
- * with AWS credentials and this function injects no blocks of its own, so
- * index 0 is always the caller's first prompt, and the anchor index needs none
- * of the offsetting the Anthropic path does.
- */
+/** Serialize system blocks with cache checkpoints. */
 function buildSystemPrompt(
 	systemPrompt: readonly string[] | undefined,
 	model: Model<"bedrock-converse-stream">,
@@ -819,9 +705,6 @@ function buildSystemPrompt(
 	const blocks: SystemContent[] = [];
 	for (let index = 0; index < prompts.length; index++) {
 		blocks.push({ text: prompts[index] });
-		// A single-block system prompt needs no anchor: the trailing checkpoint
-		// below already ends at that same block, and a duplicate would spend a
-		// slot to cache a prefix that is cached anyway.
 		if (index === 0 && prompts.length > 1) blocks.push(cachePoint());
 	}
 	blocks.push(cachePoint());
@@ -892,9 +775,6 @@ function convertMessages(
 						case "thinking":
 							// Skip empty thinking blocks
 							if (c.thinking.trim().length === 0) continue;
-							// Thinking blocks require a valid signature when sent as reasoningContent.
-							// If the signature is missing (e.g., from an aborted stream), or the model
-							// doesn't support signatures, convert to plain text instead.
 							if (supportsThinkingSignature(model) && c.thinkingSignature) {
 								contentBlocks.push({
 									reasoningContent: {
@@ -1059,11 +939,6 @@ function buildAdditionalModelRequestFields(
 	const mode = model.thinking?.mode;
 	if (mode === "anthropic-adaptive") {
 		const effort = mapEffortToAnthropicAdaptiveEffort(model, reasoning);
-		// Starting with Claude Opus 4.7 and Claude Fable/Mythos 5, Anthropic switched
-		// the adaptive-thinking default to "omitted", which silently suppresses
-		// streamed reasoning and can read as a stalled stream during long reasoning
-		// runs (issue #1373). Opt back into "summarized" by default on models that
-		// accept the field.
 		const adaptive: { type: "adaptive"; display?: BedrockThinkingDisplay } = { type: "adaptive" };
 		if (model.thinking?.supportsDisplay) {
 			adaptive.display = options.thinkingDisplay ?? "summarized";
@@ -1092,10 +967,7 @@ function buildAdditionalModelRequestFields(
 	return result;
 }
 
-/**
- * Bedrock's wire format expects the image as `{ source: { bytes: <base64-string> }, format }`.
- * The caller already passes base64-encoded data, so no decode/re-encode round-trip is needed.
- */
+/** Convert image content to Bedrock ImageBlockWire format. */
 function createImageBlock(mimeType: string, data: string): ImageBlockWire["image"] {
 	let format: "jpeg" | "png" | "gif" | "webp";
 	switch (mimeType) {
