@@ -20,7 +20,6 @@ export type KnownApi =
 	| "devin-agent";
 export type Api = KnownApi | (string & {});
 
-/** Canonical thinking transports enumerable at runtime. */
 export const THINKING_CONTROL_MODES = [
 	"effort",
 	"budget",
@@ -29,10 +28,8 @@ export const THINKING_CONTROL_MODES = [
 	"anthropic-budget-effort",
 ] as const;
 
-/** Canonical thinking transport used by a model. */
 export type ThinkingControlMode = (typeof THINKING_CONTROL_MODES)[number];
 
-/** Per-model thinking capabilities used to clamp and map user-facing effort levels. */
 export interface ThinkingConfig {
 	/** Provider-specific transport used to encode the selected effort. */
 	mode: ThinkingControlMode;
@@ -54,7 +51,6 @@ export interface ThinkingConfig {
 	requiresEffort?: boolean;
 }
 
-/** Discovery-declared reasoning surface mapped from models.dev reasoning_options. */
 export interface ModelReasoningOptions {
 	/** Effort levels accepted by the endpoint. */
 	efforts?: readonly Effort[];
@@ -64,7 +60,6 @@ export interface ModelReasoningOptions {
 
 export type Provider = string;
 
-/** Token budgets for each thinking level (token-based providers only) */
 export type ThinkingBudgets = { [key in Effort]?: number };
 
 export interface Usage {
@@ -124,7 +119,6 @@ export interface Usage {
 
 export type OpenAIReasoningFormat = "openai" | "openrouter" | "zai" | "qwen" | "qwen-chat-template";
 
-/** How each OpenAI-compatible dialect encodes disabled reasoning. */
 export const OPENAI_REASONING_DISABLE_MODES = [
 	"omit",
 	"lowest-effort",
@@ -138,10 +132,6 @@ export type OpenAIReasoningDisableMode = (typeof OPENAI_REASONING_DISABLE_MODES)
 
 export type OpenAIStreamMarkupHealingPattern = "kimi" | "dsml" | "thinking";
 
-/**
- * Compatibility settings for openai-completions API.
- * Use this to override URL-based auto-detection for custom providers.
- */
 export interface OpenAICompat {
 	/** Whether the provider supports the `store` field. Default: auto-detected from URL. */
 	supportsStore?: boolean;
@@ -247,11 +237,6 @@ export interface OpenAICompat {
 	whenThinking?: Partial<Omit<OpenAICompat, "whenThinking">>;
 }
 
-/**
- * Compatibility settings for anthropic-messages API.
- * Use this to disable features that strict-by-default Anthropic accepts but
- * that proxy gateways (Vertex AI, AWS Bedrock-style fronts, etc.) reject.
- */
 export interface AnthropicCompat {
 	/** Drop top-level strict: true on tool definitions. */
 	disableStrictTools?: boolean;
@@ -263,50 +248,15 @@ export interface AnthropicCompat {
 	supportsLongCacheRetention?: boolean;
 	/** Whether mid-conversation system messages are accepted in messages array. */
 	supportsMidConversationSystem?: boolean;
-	/**
-	 * Whether the model accepts a forced `tool_choice` (`{ type: "any" }` or
-	 * `{ type: "tool", name }`). Claude Fable/Mythos 5 reject forced tool use
-	 * outright ("tool_choice forces tool use is not compatible with this model");
-	 * the request builder downgrades forced choices to `auto` when this is false.
-	 * When unset, auto-detected from the model id. Default: true.
-	 */
 	supportsForcedToolChoice?: boolean;
-	/**
-	 * Whether the model accepts sampling parameters (`temperature`, `top_p`,
-	 * `top_k`). Opus 4.7+ and Fable/Mythos reject them with a 400. When unset,
-	 * auto-detected from the model id. Default: true.
-	 */
 	supportsSamplingParams?: boolean;
-	/**
-	 * Include a non-standard `id` field (aliasing `tool_use_id`) on
-	 * `tool_result` blocks. Z.AI's Anthropic-compatible proxy deserializes
-	 * tool results into a class that reads `.id` (issue #814). Default:
-	 * auto-detected (Z.AI hosts).
-	 */
 	requiresToolResultId?: boolean;
-	/**
-	 * Replay unsigned `thinking` blocks from prior assistant turns as native
-	 * thinking instead of demoting them to text. Official Anthropic enforces
-	 * signature-based thinking-chain integrity, so unsigned blocks must stay
-	 * text there; compatible reasoning endpoints (Z.AI, DeepSeek, …) emit
-	 * unsigned blocks and expect them back as `type: "thinking"` (#2005).
-	 * Default: auto-detected from provider/baseUrl and `model.reasoning`.
-	 */
 	replayUnsignedThinking?: boolean;
-	/**
-	 * Whether the endpoint requires `thinking.type: "enabled"` whenever the
-	 * model reasons. Use for models that reject omitted or disabled thinking.
-	 */
 	requiresThinkingEnabled?: boolean;
 	/** Prefix Anthropic built-in tool names when used as client tools. */
 	escapeBuiltinToolNames?: boolean;
 }
 
-/**
- * OpenRouter provider routing preferences.
- * Controls which upstream providers OpenRouter routes requests to.
- * @see https://openrouter.ai/docs/provider-routing
- */
 export interface OpenRouterRouting {
 	/** List of provider slugs to exclusively use for this request (e.g., ["amazon-bedrock", "anthropic"]). */
 	only?: string[];
@@ -314,11 +264,6 @@ export interface OpenRouterRouting {
 	order?: string[];
 }
 
-/**
- * Vercel AI Gateway routing preferences.
- * Controls which upstream providers the gateway routes requests to.
- * @see https://vercel.com/docs/ai-gateway/models-and-providers/provider-options
- */
 export interface VercelGatewayRouting {
 	/** List of provider slugs to exclusively use for this request (e.g., ["bedrock", "anthropic"]). */
 	only?: string[];
@@ -328,10 +273,6 @@ export interface VercelGatewayRouting {
 
 type ResolvedToolStrictMode = NonNullable<OpenAICompat["toolStrictMode"]> | "mixed";
 
-/**
- * Fields whose meaning is identical across chat-completions and Responses surfaces.
- * Each builder still computes its own per-surface value when defaults diverge.
- */
 export interface ResolvedOpenAISharedCompat {
 	supportsDeveloperRole: boolean;
 	supportsStrictMode: boolean;
@@ -378,7 +319,6 @@ export interface ResolvedOpenAISharedCompat {
 	wireModelIdMode: "raw" | "firepass" | "fireworks" | "openrouter";
 }
 
-/** Fully-resolved chat-completions compat view. */
 export type ResolvedOpenAICompat = ResolvedOpenAISharedCompat &
 	Required<
 		Omit<
@@ -448,7 +388,6 @@ export type ResolvedOpenAICompat = ResolvedOpenAISharedCompat &
 		whenThinking?: ResolvedOpenAICompat;
 	};
 
-/** Fully-resolved Responses-API compat view (same contract as `ResolvedOpenAICompat`). */
 export interface ResolvedOpenAIResponsesCompat extends ResolvedOpenAISharedCompat {
 	supportsLongPromptCacheRetention: boolean;
 	strictResponsesPairing: boolean;
@@ -459,10 +398,8 @@ export interface ResolvedOpenAIResponsesCompat extends ResolvedOpenAISharedCompa
 	streamIdleTimeoutMs?: number;
 }
 
-/** OpenRouter compat satisfying both Responses and chat-completions handlers. */
 export type ResolvedOpenRouterCompat = ResolvedOpenAICompat & ResolvedOpenAIResponsesCompat;
 
-/** Fully-resolved anthropic-messages compat view (same contract as `ResolvedOpenAICompat`). */
 export type ResolvedAnthropicCompat = Required<AnthropicCompat> & {
 	/** Whether endpoint is official first-party Anthropic API. */
 	officialEndpoint: boolean;
@@ -470,25 +407,20 @@ export type ResolvedAnthropicCompat = Required<AnthropicCompat> & {
 	signingEndpoint: boolean;
 };
 
-/** Compatibility settings for the devin-agent API. */
 export interface DevinCompat {
 	/** Trust only explicit thinking metadata; never derive from model identity. */
 	trustExplicitThinkingOnly?: boolean;
 }
 
-/** Fully-resolved devin-agent compat view. */
 export type ResolvedDevinCompat = Required<DevinCompat>;
 
-/** Compatibility settings for the cursor-agent API. */
 export interface CursorCompat {
 	/** Trust only explicit thinking metadata; never derive from model identity. */
 	trustExplicitThinkingOnly?: boolean;
 }
 
-/** Fully-resolved cursor-agent compat view. */
 export type ResolvedCursorCompat = Required<CursorCompat>;
 
-/** Sparse, user-authored compat overrides for a given API (models.json / config vocabulary). */
 export type CompatConfigOf<TApi extends Api> = TApi extends
 	| "openai-completions"
 	| "openrouter"
@@ -504,7 +436,6 @@ export type CompatConfigOf<TApi extends Api> = TApi extends
 				? CursorCompat
 				: undefined;
 
-/** Resolved compat for a given API: complete record, materialized once by `buildModel`. */
 export type CompatOf<TApi extends Api> = TApi extends "openrouter"
 	? ResolvedOpenRouterCompat
 	: TApi extends "openai-completions"
@@ -580,8 +511,6 @@ export interface Model<TApi extends Api = Api> {
 	isOAuth?: boolean;
 }
 
-/** A model spec before compatibility is resolved by buildModel. */
 export interface ModelSpec<TApi extends Api = Api> extends Omit<Model<TApi>, "compat" | "compatConfig"> {
-	/** Sparse compatibility overrides; resolved into `Model.compat` by `buildModel`. */
 	compat?: CompatConfigOf<TApi>;
 }

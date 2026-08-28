@@ -1,21 +1,3 @@
-/**
- * Runtime models.dev overlay, shared by every provider.
- *
- * One process-wide (and disk-persisted) fetch of the models.dev catalog,
- * mapped through the same provider descriptors the generator uses, so a
- * provider's capability data — declared effort ladders, endpoint limits,
- * pricing — tracks upstream between Veyyon releases instead of waiting for a
- * bundled `models.json` regen. This mirrors OpenCode's `ModelsDev` service
- * (fetch `api.json`, cache it, never derive capabilities locally); the mapping
- * itself stays in `mapModelsDevToModels`, the one owner of the models.dev →
- * spec transform.
- *
- * Layering: this module sits between `model-manager` (which consumes the
- * fallback hook) and `provider-models/openai-compat` (which owns the
- * descriptors). `openai-compat` imports only TYPES from `model-manager`, so
- * the value-edge `model-manager → modelsdev-overlay → openai-compat` creates
- * no runtime cycle.
- */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage, getModelDbPath, HOUR_MS } from "@veyyon/utils";
@@ -27,7 +9,6 @@ import type { Api, ModelSpec } from "./types";
 import { isRecord } from "./utils";
 
 const MODELS_DEV_API_URL = "https://models.dev/api.json";
-/** Matches the per-provider model cache TTL so both refresh on the same clock. */
 const PAYLOAD_TTL_MS = 2 * HOUR_MS;
 
 interface PayloadCache {
@@ -73,21 +54,6 @@ function report(hooks: DiscoveryHooks | undefined, stage: DiscoveryFailure["stag
 let failureBackoffUntil = 0;
 const FAILURE_BACKOFF_MS = 5 * 60 * 1000;
 
-/**
- * Drop every piece of process-global overlay state.
- *
- * `memoryCache`, `inflight` and `failureBackoffUntil` outlive any single
- * caller by design: they are what stops 100+ descriptor-covered providers
- * each re-reading the disk file and re-attempting a 15s fetch on one offline
- * session start. Nothing could clear them, so the state also outlived a test
- * file, and whichever file ran first decided what the next one observed. That
- * is how `serves the stale disk payload through the backoff window` passed on
- * its own and failed in the suite: an earlier file had already populated the
- * memo, so the first fetch returned it and made no network attempt at all.
- *
- * A suite-order-dependent test guards nothing, so the state that causes it
- * gets an owner rather than the assertion getting loosened.
- */
 export function resetModelsDevOverlayState(): void {
 	memoryCache = null;
 	inflight = null;
@@ -114,12 +80,6 @@ async function fetchPayloadUncached(hooks?: DiscoveryHooks, dbPath?: string): Pr
 		return disk.payload;
 	}
 
-	// Stale or absent: conditional refetch. A 304 (or any failure) keeps the
-	// stale payload — stale models.dev data beats none, and the row-level
-	// overlay only ever wins fields it declares.
-	// The timer is cancelled the instant this settles. A bare abort-signal timeout
-	// stays armed for the full window after the request is done, and thousands of
-	// live ones is the documented Bun concurrent-GC crash trigger.
 	const timeout = scopedTimeoutSignal(15_000);
 	try {
 		let response: Response;
@@ -168,11 +128,6 @@ async function fetchPayloadUncached(hooks?: DiscoveryHooks, dbPath?: string): Pr
 	}
 }
 
-/**
- * The default models.dev fallback for providers a descriptor covers. Returns
- * `undefined` for providers models.dev does not catalog (local servers,
- * OAuth-only surfaces) so their resolution path is unchanged.
- */
 export function defaultModelsDevFallback<TApi extends Api = Api>(
 	providerId: string,
 	dbPath?: string,
@@ -180,12 +135,7 @@ export function defaultModelsDevFallback<TApi extends Api = Api>(
 	const descriptors = MODELS_DEV_PROVIDER_DESCRIPTORS.filter(descriptor => descriptor.providerId === providerId);
 	if (descriptors.length === 0) return undefined;
 	return {
-		// A twin descriptor's rows may fill surfaces on ids the endpoint serves
-		// but must never add an id of their own (see the descriptor field).
 		enrichOnly: descriptors.some(descriptor => descriptor.enrichOnly === true),
-		// Best-effort enrichment over the bundled catalog: failures stay silent
-		// here (same contract as opencode's ignored refresh). Providers with an
-		// explicit models.dev hook (anthropic) keep their own reporting.
 		fetch: () => fetchPayload(undefined, dbPath),
 		map: payload => {
 			if (!isRecord(payload)) return [];

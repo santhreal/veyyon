@@ -71,16 +71,6 @@ function getThinkingConfig(modelId: string, capabilities: string[] | undefined):
 	}
 	return { mode: "effort", efforts: OLLAMA_WIRE_EFFORTS.slice() };
 }
-/**
- * Read one model's capabilities and size caps from `/api/show`.
- *
- * `/api/tags` names the models; this call is what says whether one of them thinks, sees images, and how
- * much context it actually has. A failure here therefore does not remove a model, it silently strips it:
- * the caller falls back to `reasoning: false`, no thinking config, text-only input and an invented 128k
- * window, all of which look exactly like a model that genuinely has none of those. That is why every
- * branch reports instead of collapsing into one `undefined`, and why the model id is in the detail --
- * this runs once per model, and there is no other way to tell which of them came back hollow.
- */
 async function fetchShowMetadata(
 	baseUrl: string,
 	apiKey: string,
@@ -102,7 +92,6 @@ async function fetchShowMetadata(
 			body: JSON.stringify({ model }),
 		});
 	} catch (error) {
-		// Unlike `/api/tags` this call gets no retry, so a single blip is the whole answer for this model.
 		report("request", errorMessage(error));
 		return undefined;
 	}
@@ -153,10 +142,6 @@ export function ollamaCloudModelManagerOptions(
 					const metadata = await fetchShowMetadata(baseUrl, apiKey, id, config?.fetch, hooks?.onFailure);
 					const capabilities = metadata?.capabilities;
 					const discoveredContextWindow = getContextWindow(metadata?.model_info);
-					// `/api/show` is the only trustworthy Ollama-owned source for size caps.
-					// When it is unavailable (or returns only coarse capabilities), do NOT
-					// inherit giant budgets from bundled fallback metadata sourced from a
-					// different catalog; keep the historical safe fallback instead.
 					const contextWindow = discoveredContextWindow ?? 128000;
 					const reasoning = capabilities ? capabilities.includes("thinking") : (reference?.reasoning ?? false);
 					const thinking = capabilities ? getThinkingConfig(id, capabilities) : reference?.thinking;

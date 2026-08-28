@@ -1,10 +1,3 @@
-/**
- * The provider catalog table: one entry per chat-model provider, carrying the
- * catalog half of what used to live in `@veyyon/ai`'s registry definitions
- * (default model, runtime model-manager factory, discovery wiring). The auth
- * half (env keys, OAuth login/refresh) stays in the pi-ai registry, which
- * type-checks itself against `KnownProvider` from this table.
- */
 import type { ModelManagerConfig, ProviderCatalogEntry, ProviderDescriptor } from "./descriptor-types";
 import { googleModelManagerOptions, googleVertexModelManagerOptions } from "./google";
 import { ollamaCloudModelManagerOptions } from "./ollama";
@@ -262,8 +255,6 @@ export const CATALOG_PROVIDERS = [
 	{
 		id: "moonshot",
 		defaultModel: "kimi-k2.7-code",
-		// KIMI_API_KEY is the most intuitive name for a Kimi/Moonshot key; accept it
-		// as a fallback so China users need not learn MOONSHOT_API_KEY. (#2883)
 		envVars: ["MOONSHOT_API_KEY", "KIMI_API_KEY"],
 		createModelManagerOptions: (config: ModelManagerConfig) => moonshotModelManagerOptions(config),
 		catalogDiscovery: { label: "Moonshot" },
@@ -505,15 +496,8 @@ export const CATALOG_PROVIDERS = [
 	},
 ] as const satisfies readonly ProviderCatalogEntry[];
 
-/** Chat-model providers — every entry in the catalog table. */
 export type KnownProvider = (typeof CATALOG_PROVIDERS)[number]["id"];
 
-/**
- * Runtime model-discovery descriptors: every catalog provider that exposes a
- * standard model-manager factory. Special-managed providers
- * (`google-antigravity`/`google-gemini-cli`/`openai-codex`) are built bespoke in
- * the coding-agent runtime and are excluded here.
- */
 const CATALOG_ENTRY_LIST: readonly ProviderCatalogEntry[] = CATALOG_PROVIDERS;
 
 export const PROVIDER_DESCRIPTORS: readonly ProviderDescriptor[] = CATALOG_ENTRY_LIST.flatMap(provider => {
@@ -534,17 +518,10 @@ export const PROVIDER_DESCRIPTORS: readonly ProviderDescriptor[] = CATALOG_ENTRY
 	];
 });
 
-/**
- * Providers whose own endpoint is the sole authority for context windows and
- * output caps, derived from the catalog table so a generation pass cannot skip
- * a member. Every pass that would backfill a limit from another host reads this
- * set instead of naming providers.
- */
 export const PROVIDERS_PUBLISHING_OWN_MODEL_LIMITS: ReadonlySet<string> = new Set(
 	CATALOG_ENTRY_LIST.filter(provider => provider.publishesOwnModelLimits).map(provider => provider.id),
 );
 
-/** Default model IDs for all known providers, derived from the catalog table. */
 export const DEFAULT_MODEL_PER_PROVIDER: Record<KnownProvider, string> = Object.fromEntries(
 	CATALOG_PROVIDERS.map(provider => [provider.id, provider.defaultModel] as [string, string]),
 ) as Record<KnownProvider, string>;

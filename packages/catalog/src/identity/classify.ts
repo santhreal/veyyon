@@ -1,10 +1,3 @@
-/**
- * Model-id classification: parse a model id into its family (gemini / anthropic /
- * openai), kind/variant, and version. This is the shared layer both catalog
- * policy rules (`model-thinking.ts`) and downstream consumers build on —
- * classification lives here, the rules that consume it stay with their domain.
- */
-
 export type SemVer = {
 	major: number;
 	minor: number;
@@ -36,9 +29,7 @@ export interface OpenAIModel {
 
 export interface GlmModel {
 	family: "glm";
-	/** Suffix variant (`-air`, `-turbo`, `-flash`, `-flashx`, `-preview`); `base` when none. */
 	variant: GlmVariant;
-	/** Vision SKU — the `v` that attaches directly to the version (`glm-4v`, `glm-4.5v`). */
 	vision: boolean;
 	version: SemVer;
 }
@@ -50,8 +41,6 @@ export interface UnknownModel {
 
 export type ParsedModel = GeminiModel | AnthropicModel | OpenAIModel | UnknownModel;
 
-/** Strip a provider namespace prefix (`openai/gpt-5.4` → `gpt-5.4`). */
-// Cache keyed by model id (a bounded set of bundled/aggregator ids), so no eviction is needed.
 const bareModelIdCache = new Map<string, string>();
 export function bareModelId(modelId: string): string {
 	const cached = bareModelIdCache.get(modelId);
@@ -71,19 +60,6 @@ export function parseKnownModel(modelId: string): ParsedModel {
 	);
 }
 
-/**
- * Wrap a parse function in a per-id memo cache. Caches the `null` result too, so
- * repeated misses (the common case — ids of other families) stay O(1) and never
- * re-run the regex/semver work.
- *
- * The id is lowercased before parsing, because a model id's case is the host's
- * spelling of it and never a fact about the model. Baseten and every other host
- * that serves models under their HuggingFace repo names ships uppercase ids
- * (`zai-org/GLM-5.2`, `moonshotai/Kimi-K2.6`), and those parsed as `null` here,
- * so every identity-derived policy silently did not apply to them: Baseten's
- * GLM-5.2 rows kept an inferred `minimal…xhigh` ladder while the endpoint
- * accepts only `high`/`max` and 400s on the rest.
- */
 function parser<T>(parse: (modelId: string) => T | null): (modelId: string) => T | null {
 	const cache = new Map<string, T | null>();
 	return modelId => {
@@ -143,14 +119,6 @@ export const parseOpenAIModel = parser((modelId): OpenAIModel | null => {
 	return { family: "openai", variant: (match[2] as OpenAIVariant | undefined) ?? "base", version };
 });
 
-/**
- * Parse a GLM (Zhipu / Z.AI) model id into family + variant + vision + version.
- * Shape: `glm-<version>[v][-<variant>]` — e.g. `glm-4.5`, `glm-4.5-air`,
- * `glm-5-turbo`, `glm-4.5v`, `glm-5-preview`. The `v` (vision) attaches to the
- * version; other variants are `-` suffixes. Standalone like `parseAnthropicModel`
- * is used in family.ts — GLM needs no global thinking policy, so it stays out of
- * `parseKnownModel`.
- */
 export const parseGlmModel = parser((modelId): GlmModel | null => {
 	const match = /glm-(\d{1,2}(?:\.\d+)?)(v)?(?:-(air|turbo|flashx|flash|preview))?\b/.exec(modelId);
 	if (!match) {
@@ -172,17 +140,10 @@ export function isFableOrMythos(kind: AnthropicKind): boolean {
 	return kind === "fable" || kind === "mythos";
 }
 
-/**
- * Returns true if the parsed Anthropic model is part of the adaptive-thinking
- * Claude generation at or above a specific capability threshold.
- * - Opus has a configurable minimum version floor (e.g. "4.6", "4.7", "4.8").
- * - Sonnet, Fable, and Mythos all require version 5 or higher.
- */
 export function isAnthropicAdaptiveGenAtLeast(parsed: AnthropicModel, opusMin: "4.6" | "4.7" | "4.8"): boolean {
 	if (parsed.kind === "opus") {
 		return semverGte(parsed.version, opusMin);
 	}
-	// Sonnet 5+, Fable 5+, Mythos 5+, and any future gen-5+ models
 	return semverGte(parsed.version, "5");
 }
 
@@ -190,7 +151,6 @@ function createSemVer(major: number, minor: number, patch = 0): SemVer {
 	return { major, minor, patch };
 }
 
-// extend this table if we need anything more than 9.10
 const precomputeTable: Record<string, SemVer> = {};
 for (let major = 0; major <= 9; major++) {
 	for (let minor = 0; minor <= 10; minor++) {

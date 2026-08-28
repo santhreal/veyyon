@@ -1,13 +1,3 @@
-/**
- * Proxy/reseller reference lookup: given a custom model id served through a
- * proxy (`[Kiro] claude-opus-4-8`, `gpt-5.4:cloud`, `vendor/claude-sonnet-4-6-thinking`),
- * find the bundled upstream model so missing pricing/capability metadata can be
- * inherited while keeping the custom transport.
- *
- * Kept separate from canonical-id resolution (`./equivalence`): this lookup
- * may strip `search`-style markers and prefers cache-pricing-complete
- * references, both of which would be wrong for canonical coalescing.
- */
 import type { Api, Model } from "../types";
 import { getBracketStrippedModelIdCandidates, getLongestModelLikeIdSegment, getModelLikeIdSegments } from "./id";
 import { REFERENCE_TRAILING_MARKER_PATTERN } from "./markers";
@@ -17,8 +7,6 @@ export interface ModelReferenceIndex {
 	suffixAlias: Map<string, Model<Api>>;
 }
 
-// xai-oauth subscription entries carry zero public pricing and inflated maxTokens;
-// keep them provider-local so they cannot outrank paid/public Grok references.
 export function isZeroCostXaiOAuthReference(candidate: Model<Api>): boolean {
 	return (
 		candidate.provider === "xai-oauth" &&
@@ -29,8 +17,6 @@ export function isZeroCostXaiOAuthReference(candidate: Model<Api>): boolean {
 	);
 }
 
-// Prefer the reference with the largest limits and complete cache pricing, then
-// first-party OpenAI entries.
 function shouldReplaceReference(existing: Model<Api> | undefined, candidate: Model<Api>): boolean {
 	if (!existing) return true;
 	if (candidate.contextWindow !== existing.contextWindow) {
@@ -51,10 +37,6 @@ function normalizeReferenceKey(value: string): string {
 	return value.trim().toLowerCase();
 }
 
-/**
- * Build a reference index from a model catalog (typically the bundled models).
- * Pure: callers are responsible for memoizing the result.
- */
 export function buildModelReferenceIndex(models: Iterable<Model<Api>>): ModelReferenceIndex {
 	const exact = new Map<string, Model<Api>>();
 	for (const candidate of models) {
@@ -137,7 +119,6 @@ function getReferenceCandidateIds(modelId: string): string[] {
 	return Array.from(candidates);
 }
 
-/** Resolve a (possibly proxied/affixed) model id to its bundled upstream reference. */
 export function resolveModelReference(modelId: string, index: ModelReferenceIndex): Model<Api> | undefined {
 	for (const candidate of getReferenceCandidateIds(modelId)) {
 		const key = normalizeReferenceKey(candidate);

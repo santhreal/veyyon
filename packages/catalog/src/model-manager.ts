@@ -11,104 +11,37 @@ import { collapseBuiltModelVariants } from "./variant-collapse";
 const DEFAULT_CACHE_TTL_MS = 2 * HOUR_MS;
 const NON_AUTHORITATIVE_RETRY_MS = 5 * MINUTE_MS;
 
-/**
- * Controls when dynamic endpoint models should be fetched.
- */
 export type ModelRefreshStrategy = "online" | "offline" | "online-if-uncached";
 
-/**
- * Hook for loading and mapping models.dev fallback data into canonical model objects.
- */
 export interface ModelsDevFallback<TApi extends Api = Api, TPayload = unknown> {
-	/**
-	 * Fetches raw fallback payload (for example from models.dev).
-	 *
-	 * Takes the same hooks as a dynamic discovery fetcher, for the same reason:
-	 * only the implementation can tell a network failure from a non-ok status
-	 * from an unreadable body, and those three send an operator to three
-	 * different places.
-	 */
 	fetch(hooks?: DiscoveryHooks): Promise<TPayload>;
-	/** Maps payload into provider models. */
 	map(payload: TPayload, providerId: Provider): readonly ModelSpec<TApi>[];
-	/**
-	 * When true, mapped rows may enrich models another source serves (static,
-	 * cache, or live discovery) but never introduce an id of their own. Twin
-	 * overlays for OAuth surfaces set this: the endpoint's listing is
-	 * subscription-gated, so an additive overlay would offer models that fail
-	 * at request time.
-	 */
 	enrichOnly?: boolean;
 }
 
-/**
- * Configuration for provider model resolution.
- */
 export interface ModelManagerOptions<TApi extends Api = Api, TModelsDevPayload = unknown> {
-	/** Provider id used for static lookup and cache namespacing. */
 	providerId: Provider;
-	/** Optional static list override. When omitted, bundled models.json is used. */
 	staticModels?: readonly ModelSpec<TApi>[];
-	/** Optional override for the cache database path. Default: <agent-dir>/models.db. */
 	cacheDbPath?: string;
-	/** Optional provider id override for cache namespacing. Defaults to providerId. */
 	cacheProviderId?: string;
-	/** Maximum cache age in milliseconds before considered stale. Default: 2h (`DEFAULT_CACHE_TTL_MS`). */
 	cacheTtlMs?: number;
-	/** When true, a successful dynamic fetch is the complete provider catalog and prunes static-only models. */
 	dynamicModelsAuthoritative?: boolean;
-	/** Cached model ids to ignore when the cache was written against a different static catalog fingerprint. */
 	dropCachedModelIdsOnStaticMismatch?: readonly string[];
-	/**
-	 * Optional dynamic endpoint fetcher.
-	 *
-	 * Receives {@link DiscoveryHooks} so the reason for a `null` reaches whoever configured this manager. A
-	 * fetcher that ignores the hooks still works and still answers `null`; what changes is that the caller
-	 * can distinguish "the endpoint refused the connection" from "the endpoint listed no models", which was
-	 * the same answer before and is why a provider could disappear from a picker with nothing explaining it.
-	 *
-	 * The parameter is OPTIONAL so that a caller holding one of these fetchers can invoke it with no
-	 * argument -- which is how the provider suites in this package drive discovery directly. The manager
-	 * always passes hooks, so a reader reads `hooks?.onFailure` rather than assuming either way.
-	 */
 	fetchDynamicModels?: (hooks?: DiscoveryHooks) => Promise<readonly ModelSpec<TApi>[] | null>;
-	/**
-	 * Called with the reason whenever a dynamic fetch produces no list.
-	 *
-	 * The catalog logs from no source file, so this is how the loss leaves the package. It fires for a
-	 * failure the reader reported through its hooks AND for a fetcher that threw, which reaches the same
-	 * `null` and used to be even quieter.
-	 */
 	onDiscoveryFailure?: (failure: DiscoveryFailure) => void;
-	/** Optional models.dev fallback hook. */
 	modelsDev?: ModelsDevFallback<TApi, TModelsDevPayload>;
-	/** Clock override for deterministic tests. */
 	now?: () => number;
 }
 
-/**
- * Resolution result.
- *
- * `stale` is false when the resolved catalog is authoritative for the selected provider:
- * - dynamic endpoint data was fetched in this call,
- * - a still-fresh authoritative cache was reused in `online-if-uncached` mode, or
- * - the provider has no dynamic fetcher configured.
- */
 export interface ModelResolutionResult<TApi extends Api = Api> {
 	models: Model<TApi>[];
 	stale: boolean;
 }
 
-/**
- * Stateful facade over provider model resolution.
- */
 export interface ModelManager<TApi extends Api = Api> {
 	refresh(strategy?: ModelRefreshStrategy): Promise<ModelResolutionResult<TApi>>;
 }
 
-/**
- * Creates a reusable provider model manager.
- */
 export function createModelManager<TApi extends Api = Api, TModelsDevPayload = unknown>(
 	options: ModelManagerOptions<TApi, TModelsDevPayload>,
 ): ModelManager<TApi> {
@@ -119,11 +52,6 @@ export function createModelManager<TApi extends Api = Api, TModelsDevPayload = u
 	};
 }
 
-/**
- * Cheap fast path for trusted spec sources (caller-provided literals, our own
- * cache rows). Skips per-field validation; only guards against
- * catastrophically corrupt rows. Builds each spec into a runtime model.
- */
 function passModelList<TApi extends Api>(value: unknown): Model<TApi>[] {
 	if (!Array.isArray(value)) {
 		return [];
@@ -138,12 +66,6 @@ function passModelList<TApi extends Api>(value: unknown): Model<TApi>[] {
 	return out;
 }
 
-/**
- * Resolves provider models with source precedence:
- * static -> models.dev -> cache -> dynamic.
- *
- * Later sources override earlier ones by model id.
- */
 export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPayload = unknown>(
 	options: ModelManagerOptions<TApi, TModelsDevPayload>,
 	strategy: ModelRefreshStrategy = "online-if-uncached",
@@ -171,11 +93,6 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 		cacheAgeMs,
 	);
 
-	// Cold-start fast path: when a fresh, authoritative cache exists, the network
-	// fetch is skipped, AND the static catalog slice is byte-identical to what
-	// was merged in last time, the cache row IS the authoritative merge result.
-	// Re-running `mergeDynamicModels(static, cache)` would just rebuild the same
-	// objects (~800ms in the steady-state cold-start profile for `veyyon -p hi`).
 	if (!shouldFetchFromNetwork && cache?.fresh && hasAuthoritativeCache && cacheFingerprintMatches) {
 		return { models: collapseBuiltModelVariants(passModelList<TApi>(cache.models)), stale: false };
 	}
@@ -200,9 +117,6 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 			);
 	const dynamicModels = fetchedDynamicModels ?? [];
 	const modelsDevModelsAll = normalizeModelList<TApi>(fetchedModelsDevModels ?? []);
-	// An enrich-only overlay (OAuth twin surfaces) fills declared surfaces on ids
-	// some real source serves and never adds an id of its own: the endpoint's
-	// listing is subscription-gated, so overlay-only ids would fail at request time.
 	const modelsDevModels = modelsDev?.enrichOnly
 		? modelsDevModelsAll.filter(model => {
 				return (
@@ -233,8 +147,6 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 				dbPath,
 			);
 		} else {
-			// Dynamic fetch failed — update cache with a non-authoritative snapshot so
-			// stale state remains visible while retry backoff still applies.
 			const latestCache = readModelCache<TApi>(cacheProviderId, ttlMs, now, dbPath);
 			writeModelCache(
 				cacheProviderId,
@@ -266,13 +178,6 @@ async function fetchModelsDev<TApi extends Api, TModelsDevPayload>(
 	options: ModelManagerOptions<TApi, TModelsDevPayload>,
 	modelsDev: ModelsDevFallback<TApi, TModelsDevPayload> | undefined,
 ): Promise<Model<TApi>[] | null> {
-	// A provider without its own hook gets the shared models.dev overlay: one
-	// cached catalog fetch, mapped through the provider's descriptor, so its
-	// declared surfaces track upstream between releases (OpenCode's ModelsDev
-	// discipline — the catalog comes from models.dev, never from local
-	// derivation). Providers models.dev does not catalog get no overlay.
-	// The caller resolves the fallback once so its enrichOnly flag steers the
-	// merge, not just the fetch.
 	if (!modelsDev) {
 		return null;
 	}
@@ -285,8 +190,6 @@ async function fetchModelsDev<TApi extends Api, TModelsDevPayload>(
 			rejected.push(`${rejection.id} (${rejection.field})`);
 		});
 		if (rejected.length > 0) {
-			// Same reason as the dynamic path: one drifted field usually disqualifies the whole payload, so this
-			// is reported once per fetch instead of once per model.
 			onFailure?.({
 				stage: "payload",
 				url: "",
@@ -295,10 +198,6 @@ async function fetchModelsDev<TApi extends Api, TModelsDevPayload>(
 		}
 		return models;
 	} catch (error) {
-		// Null means this source produced no list, and the manager then falls through to the next source (cache,
-		// then static models) rather than reporting an empty catalog. A fetch that THREW never reached its own
-		// hooks, so the reason is reported here, as `unhandled` -- that stage says the fault is a bug on this
-		// side rather than something the provider did.
 		onFailure?.({ stage: "unhandled", url: "", detail: errorMessage(error) });
 		return null;
 	}
@@ -318,8 +217,6 @@ async function fetchDynamicModels<TApi extends Api>(
 			rejected.push(`${rejection.id} (${rejection.field})`);
 		});
 		if (rejected.length > 0) {
-			// Reported per fetch rather than per spec: one drifted field usually disqualifies every model in the
-			// payload, and a hundred identical lines would bury the one fact that matters.
 			onFailure?.({
 				stage: "payload",
 				url: "",
@@ -327,18 +224,10 @@ async function fetchDynamicModels<TApi extends Api>(
 			});
 		}
 		if (models.length > 0 && normalized.length === 0) {
-			// The fetch itself worked, so returning `[]` would count as SUCCESS: the manager would write an
-			// authoritative cache row from a wholly rejected list and hand the user an empty catalog. Null is the
-			// truthful answer -- this source produced no usable models -- and it keeps the cache non-authoritative
-			// so the next run retries instead of trusting the empty snapshot.
 			return null;
 		}
 		return normalized;
 	} catch (error) {
-		// Null means this source produced no list, and the manager then falls through to the next source
-		// (cache, then static models) rather than reporting an empty catalog. A fetcher that THREW never got
-		// to report through its hooks, so the reason is reported here instead -- and it is a bug rather than a
-		// provider problem, which is what the `unhandled` stage says.
 		onFailure?.({ stage: "unhandled", url: "", detail: errorMessage(error) });
 		return null;
 	}
@@ -356,9 +245,6 @@ function shouldFetchRemoteSources(
 	if (strategy === "online") {
 		return true;
 	}
-	// online-if-uncached: skip fetch if cache is fresh.
-	// For non-authoritative caches (dynamic fetch previously failed),
-	// use a shorter retry interval instead of retrying every startup.
 	if (!hasFreshCache) {
 		return true;
 	}
@@ -426,12 +312,6 @@ function retainModelIds<TApi extends Api>(
 	return models.filter(model => retainedIds.has(model.id));
 }
 
-/**
- * Stable, low-collision fingerprint of a static catalog slice. Cached by
- * reference so repeat calls in the same process (e.g. multiple cold-start
- * arms calling `resolveProviderModels` with the same `staticModels` array)
- * skip the JSON+hash work after the first call.
- */
 const MODEL_CACHE_FINGERPRINT_VERSION = "merge-v3";
 const kStaticFingerprint = Symbol("model-manager.staticFingerprint");
 type ModelArrayWithFingerprint = readonly Model<Api>[] & { [kStaticFingerprint]?: string };
@@ -526,15 +406,6 @@ function preferDiscoveryLimit(discoveryLimit: number | null, fallbackLimit: numb
 	return discoveryLimit;
 }
 
-/**
- * Build the models a spec list actually yields, naming every spec it had to drop.
- *
- * `onRejected` receives one call per dropped spec with the id it claimed (or `"<no id>"` when even that was
- * unusable) and the field that disqualified it. Dropping specs silently is how a provider payload drift
- * turns into an empty model picker with nothing anywhere saying why, so callers that have somewhere to
- * report pass the sink; the static and models.dev paths, whose input is generated in-repo rather than
- * fetched, do not.
- */
 function normalizeModelList<TApi extends Api>(
 	value: unknown,
 	onRejected?: (rejection: { id: string; field: string }) => void,
@@ -555,14 +426,6 @@ function normalizeModelList<TApi extends Api>(
 	return models;
 }
 
-/**
- * The first field that disqualifies `value` as a {@link ModelSpec}, as a dotted path, or `null` if it is one.
- *
- * The field name is the point. A provider that answers 200 with a real-looking model list whose `cost` has
- * no `cacheRead`, or whose `contextWindow` arrives as a string, produces an empty catalog; without the name
- * of the field that failed, an operator sees a model picker with nothing in it and has no way to tell a
- * payload drift from a provider outage.
- */
 function modelSpecRejection(value: unknown): string | null {
 	if (!isRecord(value)) {
 		return "not an object";
@@ -629,7 +492,6 @@ function isModelInputArray(value: unknown): value is ("text" | "image")[] {
 	return true;
 }
 
-/** The first `cost` field that disqualifies a spec, as `cost.<field>`, or `null` when the cost is usable. */
 function modelCostRejection(value: unknown): string | null {
 	if (!isRecord(value)) {
 		return "cost";

@@ -2,12 +2,6 @@ import { isZeroCostXaiOAuthReference } from "../identity/reference";
 import { getBundledModels, getBundledProviders } from "../models";
 import type { Api, Model, ModelSpec } from "../types";
 
-/**
- * Project a built `Model` back to spec stage: `compat` becomes the verbatim
- * sparse override record (`compatConfig`), never the resolved view. Discovery
- * mappers spread these references into the specs they hand to the model
- * manager, which rebuilds via `buildModel`.
- */
 export function toModelSpec<TApi extends Api>(model: Model<TApi>): ModelSpec<TApi> {
 	const { compat: _compat, compatConfig, ...rest } = model;
 	return { ...rest, compat: compatConfig } as ModelSpec<TApi>;

@@ -1,32 +1,20 @@
-/** Effort-tier variant collapsing into logical specs with per-effort wire routing. */
 import { buildCompat, buildModel } from "./build";
 import { Effort } from "./effort";
 import { stripThinkingVariantToken } from "./identity/family";
 import { resolveModelThinking } from "./model-thinking";
 import type { Api, Model, ModelSpec, Provider, ThinkingConfig } from "./types";
 
-/** Structural bound for collapse inputs: raw ModelSpecs or built Models. */
 export type VariantSpecLike = Omit<ModelSpec<Api>, "compat"> & { compat?: unknown };
 
-/** One collapsed family: logical id + member wire ids + per-effort routing. */
 export interface EffortVariantFamily {
-	/** Collapsed logical id (may equal a member id — e.g. bare/thinking pairs). */
 	id: string;
-	/** Final display name, no tier marker. */
 	name: string;
-	/** Member wire ids in priority order. */
 	members: readonly string[];
-	/** Retired wire ids to consume and re-point through routing. */
 	retiredMembers?: readonly string[];
-	/** Per-effort upstream wire id; 'off' applies when thinking is disabled. */
 	routing: Readonly<Partial<Record<Effort | "off", string>>>;
-	/** Explicit capability surface for the collapsed spec — no inference. */
 	thinking: Readonly<Omit<ThinkingConfig, "effortRouting" | "suppressWhenOff">>;
-	/** Thinking-off requests must explicitly suppress thinking on the wire. */
 	suppressWhenOff?: boolean;
-	/** Preserve non-off effort routes even when discovery omits the backing member. */
 	preserveAbsentEffortRoutes?: boolean;
-	/** Retired/recycled selector ids that alias to this family without being members. */
 	extraAliases?: readonly string[];
 }
 
@@ -34,16 +22,13 @@ export interface VariantCollapseTable {
 	families: readonly EffortVariantFamily[];
 }
 
-/** Trailing effort-tier suffix regex on a sibling wire id. */
 const EFFORT_TIER_SUFFIX_RE = /-(?:minimal|low|medium|high|xhigh|max|none|thinking)$/;
 
-/** Return base id with trailing effort-tier suffix removed, or undefined. */
 export function stripEffortTierSuffix(id: string): string | undefined {
 	const stripped = id.replace(EFFORT_TIER_SUFFIX_RE, "");
 	return stripped !== id && stripped.length > 0 ? stripped : undefined;
 }
 
-/** `X` + `X-thinking` hand family: off routes to the bare id, efforts to `-thinking`. */
 function thinkingPair(baseId: string, name: string): EffortVariantFamily {
 	return {
 		id: baseId,
@@ -64,9 +49,7 @@ function thinkingPair(baseId: string, name: string): EffortVariantFamily {
 
 type DevinTierRoutes = Partial<Record<"off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max", string>>;
 
-/** Devin families with a `-max` sibling: five wire tiers, `low` floor. */
 const DEVIN_FIVE_TIER_EFFORTS: readonly Effort[] = [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max];
-/** Devin families topping out at `-xhigh` (pre-5.6 GPT, 5.6 fast lanes). */
 const DEVIN_FOUR_TIER_EFFORTS: readonly Effort[] = [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh];
 
 function devinTierFamily(
@@ -121,7 +104,6 @@ function devinTierFamily(
 	};
 }
 
-/** Devin GPT-5.6 tier families. */
 function devinGpt56Families(variant: "luna" | "sol" | "terra", name: string): readonly EffortVariantFamily[] {
 	const base = `gpt-5-6-${variant}`;
 	return [
@@ -156,7 +138,6 @@ function devinGpt56Families(variant: "luna" | "sol" | "terra", name: string): re
 const GEMINI_3_FLASH_FAMILY_EFFORTS: readonly Effort[] = [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High];
 const GEMINI_3_PRO_FAMILY_EFFORTS: readonly Effort[] = [Effort.Low, Effort.High];
 
-/** Per-tier thinking budgets for Antigravity Cloud Code Assist Gemini 3 Flash. */
 const GEMINI_3_FLASH_FAMILY_BUDGETS: Readonly<Partial<Record<Effort, number>>> = {
 	[Effort.Minimal]: 1000,
 	[Effort.Low]: 1000,
@@ -168,7 +149,6 @@ const GEMINI_3_PRO_FAMILY_BUDGETS: Readonly<Partial<Record<Effort, number>>> = {
 	[Effort.High]: 10001,
 };
 
-/** Gemini 3.5 Flash family for Cloud Code Assist providers. */
 function geminiFlashFamily(mode: "budget" | "google-level"): EffortVariantFamily {
 	const budget = mode === "budget";
 	return {
@@ -194,7 +174,6 @@ function geminiFlashFamily(mode: "budget" | "google-level"): EffortVariantFamily
 			? { mode: "budget", efforts: GEMINI_3_FLASH_FAMILY_EFFORTS, effortBudgets: GEMINI_3_FLASH_FAMILY_BUDGETS }
 			: { mode: "google-level", efforts: GEMINI_3_FLASH_FAMILY_EFFORTS },
 		suppressWhenOff: true,
-		// Retired bare id; exact match wins in every resolver.
 		extraAliases: ["gemini-3-flash"],
 	};
 }
@@ -204,7 +183,6 @@ function geminiProFamily(mode: "budget" | "google-level"): EffortVariantFamily {
 	return {
 		id: "gemini-3.1-pro",
 		name: "Gemini 3.1 Pro",
-		// High routes to gemini-pro-agent; gemini-3.1-pro-high stays a member so the dead raw id is consumed.
 		members: ["gemini-3.1-pro-low", "gemini-pro-agent", "gemini-3.1-pro-high"],
 		retiredMembers: ["gemini-3.1-pro-high"],
 		routing: {
@@ -219,7 +197,6 @@ function geminiProFamily(mode: "budget" | "google-level"): EffortVariantFamily {
 	};
 }
 
-/** Gemini 3.6 Flash family with per-tier wire-id routing. */
 function gemini36FlashFamily(): EffortVariantFamily {
 	return {
 		id: "gemini-3.6-flash",
@@ -235,7 +212,6 @@ function gemini36FlashFamily(): EffortVariantFamily {
 	};
 }
 
-/** Gemini 3.x Flash tiered deployment family. */
 function geminiTieredFlashFamily(id: string, name: string, wireId: string): EffortVariantFamily {
 	return {
 		id,
@@ -250,7 +226,6 @@ function geminiTieredFlashFamily(id: string, name: string, wireId: string): Effo
 	};
 }
 
-/** CCA families shared verbatim by both providers (transport-agnostic, or one transport both endpoints speak). */
 const SHARED_CCA_FAMILIES: readonly EffortVariantFamily[] = [
 	gemini36FlashFamily(),
 	geminiTieredFlashFamily("gemini-3.7-flash", "Gemini 3.7 Flash", "gemini-3.7-flash-tiered"),
@@ -297,12 +272,10 @@ const SHARED_CCA_FAMILIES: readonly EffortVariantFamily[] = [
 	thinkingPair("gemini-2.5-flash", "Gemini 2.5 Flash"),
 ];
 
-/** `google-antigravity` (daily-cloudcode-pa): Gemini 3.x on the budget transport. */
 export const ANTIGRAVITY_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
 	families: [geminiFlashFamily("budget"), geminiProFamily("budget"), ...SHARED_CCA_FAMILIES],
 };
 
-/** `google-gemini-cli` (cloudcode-pa): Gemini 3.x on the level transport (official CLI parity). */
 export const GEMINI_CLI_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
 	families: [geminiFlashFamily("google-level"), geminiProFamily("google-level"), ...SHARED_CCA_FAMILIES],
 };
@@ -551,7 +524,6 @@ export const DEVIN_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
 	],
 };
 
-/** Cursor hand collapse table mapping tier suffixes to effort levels. */
 export const CURSOR_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
 	families: [
 		devinTierFamily(
@@ -597,7 +569,6 @@ export const CURSOR_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
 	],
 };
 
-/** Provider id → hand collapse table. The CCA providers diverge on thinking transport. */
 export const VARIANT_COLLAPSE_TABLES: Readonly<Record<string, VariantCollapseTable>> = {
 	"google-antigravity": ANTIGRAVITY_VARIANT_COLLAPSE_TABLE,
 	"google-gemini-cli": GEMINI_CLI_VARIANT_COLLAPSE_TABLE,
@@ -605,7 +576,6 @@ export const VARIANT_COLLAPSE_TABLES: Readonly<Record<string, VariantCollapseTab
 	cursor: CURSOR_VARIANT_COLLAPSE_TABLE,
 };
 
-/** Derive automatic X + X-thinking pair families for matching live models. */
 export function deriveThinkingPairFamilies<TSpec extends VariantSpecLike>(
 	specs: readonly TSpec[],
 	table?: VariantCollapseTable,
@@ -665,7 +635,6 @@ export function deriveThinkingPairFamilies<TSpec extends VariantSpecLike>(
 
 const DEFAULT_PAIR_EFFORTS: readonly Effort[] = [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High];
 
-/** Fallback chain for derived pair thinking surface. */
 function derivePairThinkingSurface(
 	thinkingSpec: VariantSpecLike,
 	baseSpec: VariantSpecLike,
@@ -686,7 +655,6 @@ function derivePairThinkingSurface(
 	return { mode: "budget", efforts: DEFAULT_PAIR_EFFORTS };
 }
 
-/** Returns true when spec is the output of variant collapsing. */
 export function isVariantCollapsedSpec(spec: VariantSpecLike): boolean {
 	if (spec.thinking?.effortRouting !== undefined) {
 		return true;
@@ -698,7 +666,6 @@ export function isVariantCollapsedSpec(spec: VariantSpecLike): boolean {
 	return table !== undefined && getAliasIndex(table).familyIds.has(spec.id);
 }
 
-/** Re-point a stale collapsed spec whose routing targets retired wire ids. */
 function reconcileRetiredRouting<TSpec extends VariantSpecLike>(
 	spec: TSpec,
 	family: EffortVariantFamily,
@@ -751,7 +718,6 @@ function reconcileRetiredRouting<TSpec extends VariantSpecLike>(
 	return next;
 }
 
-/** Refresh a collapsed snapshot's thinking surface in place. */
 function refreshCollapsedThinking<TSpec extends VariantSpecLike>(
 	spec: TSpec,
 	family: EffortVariantFamily,
@@ -779,7 +745,6 @@ function refreshCollapsedThinking<TSpec extends VariantSpecLike>(
 	return { ...spec, thinking, ...(requestModelId !== undefined ? { requestModelId } : {}) };
 }
 
-/** Collapse every family in table found in specs. */
 export function collapseEffortVariants<TSpec extends VariantSpecLike>(
 	specs: readonly TSpec[],
 	table: VariantCollapseTable,
@@ -919,7 +884,6 @@ export function collapseEffortVariants<TSpec extends VariantSpecLike>(
 	return out;
 }
 
-/** Collapse variants across all providers in a mixed spec list. */
 export function collapseEffortVariantsAcrossProviders<TSpec extends VariantSpecLike>(specs: readonly TSpec[]): TSpec[] {
 	const byProvider = new Map<string, TSpec[]>();
 	for (const spec of specs) {
@@ -943,7 +907,6 @@ export function collapseEffortVariantsAcrossProviders<TSpec extends VariantSpecL
 	return out;
 }
 
-/** Runtime entry point to collapse already-built Model lists. */
 export function collapseBuiltModelVariants<TApi extends Api>(models: readonly Model<TApi>[]): Model<TApi>[] {
 	const collapsed = collapseEffortVariantsAcrossProviders(models);
 	const inputRefs = new Set<Model<TApi>>(models);
@@ -993,21 +956,17 @@ function getAliasIndex(table: VariantCollapseTable): VariantAliasIndex {
 	return index;
 }
 
-/** Resolve a retired variant id to its replacement model id for provider. */
 export function resolveVariantAlias(provider: Provider, modelId: string): string | undefined {
 	const table = VARIANT_COLLAPSE_TABLES[provider] ?? VARIANT_COLLAPSE_TABLES[provider.toLowerCase()];
 	if (!table) return undefined;
 	return getAliasIndex(table).forward.get(modelId.trim().toLowerCase());
 }
 
-/** Bare-id alias hit: replacement id plus the providers declaring it. */
 export interface BareVariantAliasHit {
 	id: string;
-	/** Providers whose table declares the alias — candidates from these win ties. */
 	providers: readonly Provider[];
 }
 
-/** Provider-agnostic hand-table alias lookup for bare-id selectors. */
 export function resolveBareVariantAlias(modelId: string): BareVariantAliasHit | undefined {
 	const normalized = modelId.trim().toLowerCase();
 	for (const provider in VARIANT_COLLAPSE_TABLES) {
@@ -1027,7 +986,6 @@ export function resolveBareVariantAlias(modelId: string): BareVariantAliasHit | 
 	return undefined;
 }
 
-/** Reverse alias lookup: retired ids resolving to modelId for provider. */
 export function getVariantAliasSources(provider: Provider, modelId: string): readonly string[] {
 	const table = VARIANT_COLLAPSE_TABLES[provider] ?? VARIANT_COLLAPSE_TABLES[provider.toLowerCase()];
 	if (!table) return [];
