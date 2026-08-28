@@ -97,6 +97,7 @@
 - `core/embeddings.ts` imports `ProviderHttpError` from `@veyyon/ai/error/classes` instead of the error barrel, cutting twelve modules off the import graph of every module that can remember something; behavior is unchanged.
 - The package exposes a single entry point. Deep subpath imports are no longer resolvable, so consumers import `@veyyon/render-oracle` and nothing beneath it.
 - Every renderer regression test moved into this package, replacing copies previously spread across `tui` and `coding-agent`.
+- The prompt-visibility and virtual-scroll footer checks read the footer placement the renderer produced instead of re-deriving it, so a footer taller than the viewport is judged against the rows the renderer painted.
 - Migrated dashboard theme toggle to shared `ThemeToggle` from `@veyyon/tool-render`.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
@@ -110,6 +111,7 @@
 
 ### Fixed
 
+- The Python, Ruby and Julia eval backends call their kernel and executor modules on every cell instead of holding a copy of each taken when the backend module loaded, so an availability check or executor replaced after startup is the one that runs.
 - A `cursor-agent` model receives the operator's global, profile and project instruction files again: the assembled prompt was blanked for that api in favour of a channel the server ignores, so every layer reached the model on no channel at all; one prompt is now built for every api and carried to Cursor on the active user turn.
 - A personality named after a property JavaScript objects inherit, such as `toString` or `constructor`, is reported as unknown and falls back to the default like any other unrecognized name; the built-in catalog was indexed without an own-property check, so those names resolved to a function, the system prompt build failed silently, and the default was substituted with no warning and any `personality/default.md` override ignored.
 - A personality spec can no longer spell a prompt tag such as `<critical>` and have it render as prompt structure; only `<personality>` was neutralized before, and a project's `.veyyon/personalities` file, which arrives with a cloned repository and outranks the user's own, is injected into every request.
@@ -257,8 +259,12 @@
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
 - A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
 - A tool result that ran and failed no longer supersedes an earlier successful read of the same path, which replaced that file's content with a supersede notice and left the conversation only the error text.
+- A tool call whose id already carries a real result in the transcript is never executed a second time, whichever channel answered it; a never-ran placeholder still counts as unanswered and is retried.
+- An interrupted `cursor-agent` turn keeps a tool call whose arguments the start frame already delivered, instead of deleting it and telling the model its arguments never finished.
 - A `cursor-agent` model receives the operator's instructions again: the server rebuilds the prompt head with its own system prompt and applies none of the request-context rules, so the assembled prompt now rides on the active user turn inside an `<operator-instructions>` block.
 - A `cursor-agent` request uploads the operator's instructions once instead of three times: the request-context rule payload and the prompt-head blobs, both discarded by that server, no longer carry a copy, and a request that would send any count other than one fails before it is written.
+- Each tool call in a `cursor-agent` batch keeps its own arguments: updates route by the frame's `call_id` instead of a single "current call" pointer, which let a completing call overwrite the arguments of the one opened after it and left the first call with `{}`.
+- A `cursor-agent` turn that ends with tool calls still streaming closes every open call rather than only the one the pointer last named, so a second call of a batch is no longer dropped as unfinished, and each closed call keeps its own parsed arguments and carries no streaming marker.
 - A `503 auth_unavailable` refusal is classified as an authentication failure rather than a bare server status, so compaction falls back to an authenticated model instead of failing the whole compaction ([#986](https://github.com/santhreal/veyyon/issues/986)).
 - A llama.cpp tool-call JSON parse failure explains itself and names the fix on every route to a local server, not only when the provider id is `ollama`, so an LM Studio or llama-cpp user sees why the turn stopped instead of a bare HTTP 500 whose retry was already being suppressed.
 - A llama.cpp tool-call JSON parse failure stops the retry ladder whether it arrives thrown from a request or recorded on an assistant message; the two classifier entry points share one post-walk latch instead of each deciding, so the same 500 no longer burned every attempt on one route while surfacing immediately on the other.
