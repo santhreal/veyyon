@@ -261,6 +261,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/cli/session-stats-cli.ts",
 	"packages/coding-agent/src/cli/setup-model-picker.ts",
 	"packages/coding-agent/src/cli/stats-cli.ts",
+	"packages/coding-agent/src/cli/update-cli-helpers.ts",
 	"packages/coding-agent/src/cli/worktree-cli.ts",
 	"packages/coding-agent/src/commands/complete.ts",
 	"packages/coding-agent/src/commands/dry-balance.ts",
