@@ -2,22 +2,6 @@ import { areJsonValuesEqual, isMultipleOf, validateJsonSchemaValue } from "@veyy
 import { codePointLength, isDateOnly, isRecord, isUuid } from "@veyyon/utils";
 
 export type TSchema = ArkSchema;
-export type Static<T extends ArkSchema> = T["__infer"];
-export type TAny = ArkSchema;
-export type TUnknown = ArkSchema;
-export type TNever = ArkSchema;
-export type TNull = ArkSchema;
-export type TString = ArkSchema;
-export type TNumber = ArkSchema;
-export type TInteger = ArkSchema;
-export type TBoolean = ArkSchema;
-export type TLiteral<_V extends string | number | boolean> = ArkSchema;
-export type TArray<_E extends ArkSchema> = ArkSchema;
-export type TObject<_P extends Record<string, ArkSchema> = Record<string, ArkSchema>> = ArkSchema;
-export type TOptional<_E extends ArkSchema> = ArkSchema;
-export type TUnion<_T extends readonly ArkSchema[] = readonly ArkSchema[]> = ArkSchema;
-export type TEnum<_T extends readonly (string | number)[] = readonly (string | number)[]> = ArkSchema;
-export type TRecord<_K extends ArkSchema, _V extends ArkSchema> = ArkSchema;
 export type TUnsafe<_T = unknown> = ArkSchema;
 
 const VALIDATION_FAILURE = Symbol("pi.typebox.validationFailure");
