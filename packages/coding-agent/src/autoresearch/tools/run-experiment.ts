@@ -79,10 +79,6 @@ export function createRunExperimentTool(
 			})();
 
 			const resolvedCommand = DEFAULT_HARNESS_COMMAND;
-			// The pre-run dirty set is what tells the difference between the user's own uncommitted work and
-			// what this experiment changes, and it is recorded on the run for the log and the revert to use
-			// later. An unreadable status used to become an EMPTY set, which claims the tree was clean: every
-			// pre-existing dirty file would then be attributed to the experiment and reverted with it.
 			let preRunDirtyPaths: string[];
 			try {
 				const preRunStatus = await gitStatusPorcelain(ctx.cwd);

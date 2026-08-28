@@ -24,10 +24,6 @@ const PROVIDER_ID = "windsurf";
 const DISPLAY_NAME = "Windsurf";
 const PRIORITY = 50;
 
-// =============================================================================
-// MCP Servers
-// =============================================================================
-
 function parseServerConfig(
 	name: string,
 	serverConfig: unknown,
@@ -75,10 +71,6 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	return { items, warnings };
 }
 
-// =============================================================================
-// Rules
-// =============================================================================
-
 async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	const items: Rule[] = [];
 	const warnings: string[] = [];
@@ -95,10 +87,6 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 
 	return { items, warnings };
 }
-
-// =============================================================================
-// Provider Registration
-// =============================================================================
 
 registerProvider<MCPServer>(mcpCapability.id, {
 	id: PROVIDER_ID,

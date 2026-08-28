@@ -30,14 +30,6 @@ import {
 } from "@veyyon/utils/dirs";
 import { withFileLock } from "@veyyon/utils/file-lock";
 import { isEnoent } from "@veyyon/utils/fs-error";
-// Owners, not the `@veyyon/utils` barrel, because that is this repository's rule and this is the module
-// 528 test files reach. It bought NO modules, and that is worth stating so nobody re-measures it hoping:
-// repointing a file removes the barrel edge only when that file was the LAST path to it, and this closure
-// still reaches the barrel elsewhere, so `config/settings.ts` reads 136 before and after. The rule is
-// still right -- the edge is gone from HERE, and the next file in the closure that stops naming the barrel
-// gets the whole 82 rather than none of it. Naming `dirs` directly is safe: it applies the
-// directory-location keys from `$HOME/.env` itself, which is what `packages/utils/src/dotenv-home.ts`
-// exists for.
 import * as logger from "@veyyon/utils/logger";
 import { expandTilde } from "@veyyon/utils/path";
 import * as procmgr from "@veyyon/utils/procmgr";
@@ -84,10 +76,6 @@ import {
 // Re-export types that callers need
 export type * from "./settings-schema";
 export * from "./settings-schema";
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Types
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** Raw settings object as stored in YAML */
 export interface RawSettings {
@@ -144,10 +132,6 @@ export interface SettingsOptions {
 	/** Extra config.yml-style overlays loaded after the profile settings */
 	configFiles?: string[];
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Path Utilities
-// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Get a nested value from an object by path segments.
@@ -420,10 +404,6 @@ function resolvePathScopedStringArray(settingPath: SettingPath, value: unknown, 
 	return resolved;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Settings Class
-// ═══════════════════════════════════════════════════════════════════════════
-
 export class Settings {
 	#configPath: string | null;
 	#cwd: string;
@@ -498,10 +478,7 @@ export class Settings {
 		}
 	}
 
-	// ─────────────────────────────────────────────────────────────────────────
 	// Factory Methods
-	// ─────────────────────────────────────────────────────────────────────────
-
 	/**
 	 * Initialize the global singleton.
 	 * Call once at startup before accessing `settings`.
@@ -566,10 +543,7 @@ export class Settings {
 		return settingsOrThrow();
 	}
 
-	// ─────────────────────────────────────────────────────────────────────────
 	// Core API
-	// ─────────────────────────────────────────────────────────────────────────
-
 	/**
 	 * Get a setting value (sync).
 	 * Returns the merged value from global + project + overrides, or the default.
@@ -982,10 +956,7 @@ export class Settings {
 		this.#fireAllHooks();
 	}
 
-	// ─────────────────────────────────────────────────────────────────────────
 	// Accessors
-	// ─────────────────────────────────────────────────────────────────────────
-
 	getStorage(): AgentStorage | null {
 		return this.#storage;
 	}
@@ -1218,10 +1189,7 @@ export class Settings {
 		this.set("disabledProviders", ids);
 	}
 
-	// ─────────────────────────────────────────────────────────────────────────
 	// Loading
-	// ─────────────────────────────────────────────────────────────────────────
-
 	async #load(): Promise<Settings> {
 		if (this.#persist) {
 			this.#storage = await AgentStorage.open(getAgentDbPath(this.#agentDir));
@@ -2389,10 +2357,7 @@ export class Settings {
 		}
 	}
 
-	// ─────────────────────────────────────────────────────────────────────────
 	// Saving
-	// ─────────────────────────────────────────────────────────────────────────
-
 	/**
 	 * The ONE place settings are written to disk.
 	 *
@@ -2558,10 +2523,7 @@ export class Settings {
 		this.#rebuildMerged();
 	}
 
-	// ─────────────────────────────────────────────────────────────────────────
 	// Utilities
-	// ─────────────────────────────────────────────────────────────────────────
-
 	#rebuildMerged(): void {
 		this.#merged = this.#deepMerge({}, this.#global);
 		this.#merged = this.#deepMerge(this.#merged, this.#configOverlay);
@@ -2605,10 +2567,6 @@ export class Settings {
 		return result;
 	}
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Setting Hooks
-// ═══════════════════════════════════════════════════════════════════════════
 
 type SettingHook<P extends SettingPath> = (value: SettingValue<P>, prev: SettingValue<P>) => void;
 
@@ -2836,10 +2794,6 @@ const hindsightScopeSignal = new SettingSignal("hindsight scope");
  */
 export const onHindsightScopeChanged = (cb: () => void) => hindsightScopeSignal.on(cb);
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Global Singleton
-// ═══════════════════════════════════════════════════════════════════════════
-
 /**
  * Teardown a downstream module asks `resetSettingsForTest` to run.
  *
@@ -2899,7 +2853,3 @@ export function settingSignalListenerCounts(): Record<string, number> {
  * value should import the leaf directly: reaching it through this module costs 94 modules of store.
  */
 export { isSettingsInitialized, settings } from "./settings-instance";
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Helpers
-// ═══════════════════════════════════════════════════════════════════════════

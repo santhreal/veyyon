@@ -1,8 +1,5 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-// Owners, not the `@veyyon/utils` barrel: 17 modules against 74. `@veyyon/utils/dirs` is safe to name
-// directly now that it imports `@veyyon/utils/dotenv-home` itself, so the resolver sees a user's
-// `$HOME/.env` before it caches a path, whichever module reached it first.
 import { getAgentDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
 import { errorMessage } from "@veyyon/utils/type-guards";

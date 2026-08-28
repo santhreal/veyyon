@@ -1,5 +1,3 @@
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
-
 import { BEL, ST } from "@veyyon/tui/ansi";
 import { $env, $flag } from "@veyyon/utils/env";
 

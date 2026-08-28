@@ -3,10 +3,7 @@ import { DEFAULT_APPROVAL_MODE } from "../../tools/approval-modes";
 import { DEFAULT_INLINE_FLOOR_FRACTION } from "./shared";
 
 export const TOOLS_SETTINGS = {
-	// ────────────────────────────────────────────────────────────────────────
 	// Tools
-	// ────────────────────────────────────────────────────────────────────────
-
 	// Tool approval policies
 	"tools.approval": {
 		type: "record",

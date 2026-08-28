@@ -72,10 +72,6 @@ export interface KernelExecutionResult {
 	stdinRequested: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Cancellation helpers
-// ---------------------------------------------------------------------------
-
 /**
  * The cwd a retained kernel session is keyed by.
  *
@@ -296,10 +292,6 @@ export function createCancelledKernelResult(output: string): KernelExecutionResu
 	};
 }
 
-// ---------------------------------------------------------------------------
-// Timeout annotations (shared by every kernel executor: python, ruby, ...)
-// ---------------------------------------------------------------------------
-
 /** Whole seconds for a timeout label, floored at 1 so a sub-second budget never reads "0 seconds". */
 export function timeoutSeconds(timeoutMs: number): number {
 	return Math.max(1, Math.round(timeoutMs / 1000));
@@ -326,10 +318,6 @@ export function formatKernelTimeoutAnnotation(timeoutMs: number | undefined, ker
 	const duration = timeoutMs === undefined ? "the configured timeout" : `${timeoutSeconds(timeoutMs)}s`;
 	return `eval cell timed out after ${duration}; kernel interrupted but remains running. Reset the kernel via { reset: true } if state appears corrupted.`;
 }
-
-// ---------------------------------------------------------------------------
-// Managed environment helpers
-// ---------------------------------------------------------------------------
 
 export const MANAGED_KERNEL_ENV_KEYS = [
 	"VEYYON_SESSION_FILE",
@@ -396,10 +384,6 @@ export function attachSessionOwner(
 		session.hasFallbackOwner = true;
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Base executor implementation
-// ---------------------------------------------------------------------------
 
 export interface ExecuteWithKernelBaseParams<
 	TOptions extends KernelExecutorBaseOptions,

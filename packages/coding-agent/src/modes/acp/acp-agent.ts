@@ -54,8 +54,6 @@ import { runExtensionCompact } from "../../extensibility/extensions/compact-hand
 import { getSessionSlashCommands } from "../../extensibility/extensions/get-commands-handler";
 import { buildSkillPromptMessage, parseSkillInvocation } from "../../extensibility/skills";
 import { loadSlashCommands } from "../../extensibility/slash-commands";
-// The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
-// handler and reaches hundreds of modules.
 import { listLocalPlanFileUrls } from "../../internal-urls/local-protocol";
 import { MCPManager } from "../../mcp/manager";
 import type { MCPServerConfig } from "../../mcp/types";

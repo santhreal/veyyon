@@ -1,6 +1,5 @@
 import * as path from "node:path";
 import { FileType, type GlobMatch, listWorkspace } from "@veyyon/natives";
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { formatAge, formatBytes } from "@veyyon/utils/format";
 
 /** Defaults for the workspace tree shown in the system prompt. */

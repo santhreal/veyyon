@@ -153,10 +153,6 @@ export function formatOccurrenceError(path: string, matchOutcome: MatchOutcome):
 	return `Found ${matchOutcome.occurrences} occurrences in ${path}${moreMsg}:\n\n${previews}\n\nAdd more context lines to disambiguate.`;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Constants
-// ═══════════════════════════════════════════════════════════════════════════
-
 /** Default similarity threshold for fuzzy matching */
 export const DEFAULT_FUZZY_THRESHOLD = 0.95;
 
@@ -310,10 +306,6 @@ function findExactMatchOutcome(content: string, target: string): MatchOutcome | 
 	};
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Core Algorithms
-// ═══════════════════════════════════════════════════════════════════════════
-
 /** Compute similarity score between two strings (0 to 1) */
 export function similarity(a: string, b: string): number {
 	if (a.length === 0 && b.length === 0) return 1;
@@ -322,10 +314,6 @@ export function similarity(a: string, b: string): number {
 	const distance = levenshteinDistance(a, b);
 	return 1 - distance / maxLen;
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Line-Based Utilities
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** Compute relative indent depths for lines */
 function computeRelativeIndentDepths(lines: string[]): number[] {
@@ -370,10 +358,6 @@ function computeLineOffsets(lines: string[]): number[] {
 	}
 	return offsets;
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Character-Level Fuzzy Match (for replace mode)
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface BestFuzzyMatchResult {
 	best?: FuzzyMatch;
@@ -491,10 +475,6 @@ export function findMatch(
 
 	return { closest: best, fuzzyMatches: aboveThresholdCount };
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Line-Based Sequence Match (for patch mode)
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** Check if pattern matches lines starting at index using comparison function */
 function matchesAt(lines: string[], pattern: string[], i: number, compare: (a: string, b: string) => boolean): boolean {

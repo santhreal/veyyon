@@ -11,7 +11,6 @@ import type { ToolCallContext } from "@veyyon/agent-core";
 import type { Ellipsis } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { getKeybindings, replaceTabs, truncateToWidth } from "@veyyon/tui";
-// Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { formatCount, pluralize } from "@veyyon/utils/format";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
@@ -25,10 +24,6 @@ import { isPathWithinCwd } from "./path-utils";
 
 export { Ellipsis } from "@veyyon/natives";
 export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
-
-// =============================================================================
-// Standardized Display Constants
-// =============================================================================
 
 /** Resolve inline image dimension caps from settings and viewport. */
 export function resolveImageOptions(): { maxWidthCells: number; maxHeightCells?: number } {
@@ -101,10 +96,6 @@ export function expandKeyHint(): string {
 	return formatKeyHints(keys.length > 0 ? keys : [DEFAULT_EXPAND_KEY]);
 }
 
-// =============================================================================
-// Text Truncation Utilities
-// =============================================================================
-
 /**
  * Get first N lines of text as preview, with each line truncated.
  */
@@ -134,10 +125,6 @@ export function getPreviewLines(text: string, maxLines: number, maxLineLen: numb
 export function previewLine(text: string, maxWidth: number, ellipsis?: Ellipsis): string {
 	return truncateToWidth(collapseWhitespace(text), maxWidth, ellipsis);
 }
-
-// =============================================================================
-// Progress-run Collapsing
-// =============================================================================
 
 /**
  * Minimum consecutive same-shape lines before a run is counted away. A run
@@ -275,10 +262,6 @@ export function renderCollapsedOutputLines(
 	return result;
 }
 
-// =============================================================================
-// URL Utilities
-// =============================================================================
-
 /**
  * Extract domain from URL, stripping www. prefix.
  */
@@ -291,19 +274,11 @@ export function getDomain(url: string): string {
 	}
 }
 
-// =============================================================================
-// Formatting Utilities
-// =============================================================================
-
 export { formatAge, formatBytes, formatCount, formatDuration, pluralize } from "@veyyon/utils/format";
 export type { ToolUIStatus } from "./tool-ui-status";
 // The status glyph and its status union live in a leaf, so a status line does not have to import
 // this module's 167. Re-exported because every existing caller asks this file for them.
 export { formatStatusIcon } from "./tool-ui-status";
-
-// =============================================================================
-// Theme Helper Utilities
-// =============================================================================
 
 /**
  * Format the expand hint with proper theming.
@@ -413,10 +388,6 @@ export function formatEmptyMessage(message: string, theme: Theme): string {
 	return `${theme.styledSymbol("status.warning", "warning")} ${theme.fg("muted", message)}`;
 }
 
-// =============================================================================
-// Code Frame Formatting
-// =============================================================================
-
 export type CodeFrameMarker = "" | " " | "*" | "+" | "-" | ">";
 
 export function formatCodeFrameLine(
@@ -431,10 +402,6 @@ export function formatCodeFrameLine(
 	return `${gutterText.padStart(lineNumberWidth + 1, " ")}│${content}`;
 }
 
-// =============================================================================
-// Tool UI Helpers
-// =============================================================================
-
 export type ToolUIColor = "success" | "error" | "warning" | "accent" | "muted";
 
 export interface ToolUITitleOptions {
@@ -445,10 +412,6 @@ export function formatTitle(label: string, theme: Theme, options?: ToolUITitleOp
 	const content = options?.bold === false ? label : theme.bold(label);
 	return theme.fg("toolTitle", content);
 }
-
-// =============================================================================
-// Diagnostic Formatting
-// =============================================================================
 
 interface ParsedDiagnostic {
 	filePath: string;
@@ -592,10 +555,6 @@ export function formatDiagnostics(
 
 	return output;
 }
-
-// =============================================================================
-// Diff Utilities
-// =============================================================================
 
 export interface DiffStats {
 	added: number;
@@ -800,10 +759,6 @@ export function truncateDiffByHunk(
 	};
 }
 
-// =============================================================================
-// Path Utilities
-// =============================================================================
-
 // Node-side path shortener: collapses the *real* home dir (`os.homedir()`, or
 // an explicit `homeDir`) to `~`, normalizes Win32 separators, and tolerates
 // non-string input. The browser packages cannot call `os.homedir()`, so they
@@ -953,10 +908,6 @@ export function capParseErrors(
 	return { errors: deduped.slice(0, limit), total: deduped.length };
 }
 
-// =============================================================================
-// Renderer helpers shared by search / find / ast tools
-// =============================================================================
-
 /**
  * Standard width+expand keyed render cache used by every search-style tool
  * renderer. `compute` re-runs only when the cache key changes; the returned
@@ -1082,10 +1033,6 @@ export function formatParseErrorsCountLabel(parseErrors: readonly string[], tota
 		? `${PARSE_ERRORS_LIMIT} / ${fullCount} parse issues`
 		: formatCount("parse issue", fullCount);
 }
-
-// =============================================================================
-// LSP Batching
-// =============================================================================
 
 const LSP_BATCH_TOOLS = new Set(["edit", "write"]);
 

@@ -1,5 +1,3 @@
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
-
 import { SGR_FG_RESET, SGR_INTENSITY_RESET } from "@veyyon/tui/ansi";
 import { CHANNEL_STR } from "@veyyon/tui/motion-paint";
 import { clamp01 } from "@veyyon/utils/math";

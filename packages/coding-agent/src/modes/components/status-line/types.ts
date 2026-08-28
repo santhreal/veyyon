@@ -66,10 +66,6 @@ export type EffectiveStatusLineSettings = Required<
 > &
 	StatusLineSettings;
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Segment Rendering
-// ═══════════════════════════════════════════════════════════════════════════
-
 export type RGB = readonly [number, number, number];
 
 export interface SegmentContext {
@@ -207,10 +203,6 @@ export interface StatusLineSegment {
 	id: StatusLineSegmentId;
 	render(ctx: SegmentContext): RenderedSegment;
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Preset Definition
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface PresetDef {
 	leftSegments: StatusLineSegmentId[];

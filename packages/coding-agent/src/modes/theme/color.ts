@@ -7,10 +7,6 @@ import { SGR_BG_RESET, SGR_FG_RESET } from "@veyyon/tui/ansi";
 import { isRecord } from "@veyyon/utils/type-guards";
 import type { SpinnerFramesOverride } from "./symbols";
 
-// ============================================================================
-// Types & Schema
-// ============================================================================
-
 export type ColorValue = string | number;
 
 /**
@@ -373,10 +369,6 @@ export const REQUIRED_THEME_COLOR_TOKENS: readonly RequiredThemeColorToken[] = [
 );
 
 export type ColorMode = "truecolor" | "256color";
-
-// ============================================================================
-// Color Utilities
-// ============================================================================
 
 export function detectColorMode(): ColorMode {
 	const colorterm = Bun.env.COLORTERM;

@@ -7,8 +7,6 @@ import { errorMessage, isEnoent, logger, sanitizeText } from "@veyyon/utils";
 import { EXIT_INTERRUPTED } from "../../cli/exit-codes";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../../config/settings-instance";
-// The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
-// handler and reaches hundreds of modules.
 import { resolveLocalRoot } from "../../internal-urls/local-protocol";
 import { AGENT_VIEW_LEFT_TAP_WINDOW_MS } from "../../modes/components/agent-view-timings";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";

@@ -6,7 +6,6 @@
  * `ssh://` reads/writes round-trip exactly — leading/trailing whitespace, tabs,
  * and final newlines are preserved.
  */
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import * as ptree from "@veyyon/utils/ptree";
 import { primarySessionCpuAdoption } from "../session/cpu-limit";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";

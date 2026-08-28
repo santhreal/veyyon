@@ -6,7 +6,6 @@
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { isMissingPath } from "@veyyon/utils/fs-error";
 import { isSessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
 import { AgentRegistry } from "../registry/agent-registry";

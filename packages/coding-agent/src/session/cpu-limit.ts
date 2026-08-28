@@ -85,7 +85,6 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { CpuBudgetGroup as NativeCpuBudgetGroup } from "@veyyon/natives";
-// Owners, not the `@veyyon/utils` barrel: 2 modules against 81.
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../config/settings";
@@ -1267,10 +1266,6 @@ function unsupportedText(cores: number, probe: CpuLimitProbe): string {
 	);
 }
 
-// ---------------------------------------------------------------------------
-// Session registry
-// ---------------------------------------------------------------------------
-
 const limiters = new Map<string, SessionCpuLimit>();
 /** Registration order, so the root session's limiter is findable for shared workers. */
 const registrationOrder: string[] = [];
@@ -1638,10 +1633,6 @@ registerOwnedResourceDisposer({
 	},
 });
 
-// ---------------------------------------------------------------------------
-// Production environment
-// ---------------------------------------------------------------------------
-
 let cachedOwnCgroupPath: string | undefined;
 
 async function ownCgroupPath(): Promise<string> {
@@ -1690,10 +1681,6 @@ export function defaultCpuLimitEnvironment(): CpuLimitEnvironment {
 		removeDir: dir => fs.rmdir(dir),
 	};
 }
-
-// ---------------------------------------------------------------------------
-// Harness write accounting
-// ---------------------------------------------------------------------------
 
 /**
  * What the write and edit tools need to charge their bytes to the right

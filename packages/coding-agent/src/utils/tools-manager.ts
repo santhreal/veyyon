@@ -4,7 +4,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { isCancellation } from "@veyyon/utils/abortable";
 import { APP_NAME, getToolsDir } from "@veyyon/utils/dirs";
-// Owners, not the `@veyyon/utils` barrel: 8 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import * as ptree from "@veyyon/utils/ptree";
 import { bareVersion } from "@veyyon/utils/semver";

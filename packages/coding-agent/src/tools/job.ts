@@ -565,10 +565,6 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 	}
 }
 
-// =============================================================================
-// TUI Renderer
-// =============================================================================
-
 interface JobRenderArgs {
 	poll?: string[];
 	cancel?: string[];

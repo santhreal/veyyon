@@ -176,10 +176,6 @@ export async function cleanGrievances(options: CleanGrievancesOptions): Promise<
 	}
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// Manual push (`veyyon grievances push`)
-// ───────────────────────────────────────────────────────────────────────────
-
 /**
  * Single-line ANSI progress reporter. `update(done)` rewrites the line via
  * `\r`; `finish()` newlines out so subsequent log lines land cleanly. On a

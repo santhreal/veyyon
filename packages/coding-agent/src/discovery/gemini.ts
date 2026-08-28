@@ -36,10 +36,6 @@ const PROVIDER_ID = "gemini";
 const DISPLAY_NAME = "Gemini CLI";
 const PRIORITY = 60;
 
-// =============================================================================
-// MCP Servers
-// =============================================================================
-
 async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> {
 	const items: MCPServer[] = [];
 	const warnings: string[] = [];
@@ -104,10 +100,6 @@ async function loadMCPFromSettings(_ctx: LoadContext, path: string): Promise<Loa
 	return { items, warnings };
 }
 
-// =============================================================================
-// Context Files
-// =============================================================================
-
 /**
  * Load GEMINI.md context files.
  *
@@ -140,10 +132,6 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 
 	return { items, warnings };
 }
-
-// =============================================================================
-// Extensions
-// =============================================================================
 
 async function loadExtensions(ctx: LoadContext): Promise<LoadResult<ManifestExtension>> {
 	const items: ManifestExtension[] = [];
@@ -202,19 +190,11 @@ async function loadExtensionsFromDir(
 	return { items, warnings };
 }
 
-// =============================================================================
-// Extension Modules
-// =============================================================================
-
 async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<ExtensionModule>> {
 	const userExtensionsDir = getUserPath(ctx, "gemini", "extensions");
 	const userPaths = userExtensionsDir ? await discoverExtensionModulePaths(userExtensionsDir) : [];
 	return { items: buildExtensionModuleItems(PROVIDER_ID, userPaths, []), warnings: [] };
 }
-
-// =============================================================================
-// Provider Registration
-// =============================================================================
 
 registerProvider(mcpCapability.id, {
 	id: PROVIDER_ID,

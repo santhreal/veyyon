@@ -54,10 +54,6 @@ function getProjectClaude(ctx: LoadContext): string {
 	return path.join(ctx.cwd, CONFIG_DIR);
 }
 
-// =============================================================================
-// MCP Servers
-// =============================================================================
-
 async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> {
 	const items: MCPServer[] = [];
 	const warnings: string[] = [];
@@ -104,10 +100,6 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 
 	return { items, warnings };
 }
-
-// =============================================================================
-// Context Files (CLAUDE.md)
-// =============================================================================
 
 /**
  * Load CLAUDE.md context files.
@@ -162,10 +154,6 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 	return { items, warnings };
 }
 
-// =============================================================================
-// Skills
-// =============================================================================
-
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const userSkillsDir = path.join(getUserClaude(ctx), "skills");
 
@@ -186,10 +174,6 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 
 	return { items, warnings };
 }
-
-// =============================================================================
-// Extension Modules
-// =============================================================================
 
 async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<ExtensionModule>> {
 	const items: ExtensionModule[] = [];
@@ -220,10 +204,6 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 
 	return { items, warnings };
 }
-
-// =============================================================================
-// Slash Commands
-// =============================================================================
 
 /**
  * Whether Claude user commands (`~/.claude/commands/`) load.
@@ -298,10 +278,6 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 	return { items, warnings };
 }
 
-// =============================================================================
-// Hooks
-// =============================================================================
-
 async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	const items: Hook[] = [];
 	const warnings: string[] = [];
@@ -344,10 +320,6 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	return { items, warnings };
 }
 
-// =============================================================================
-// Custom Tools
-// =============================================================================
-
 async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
 	const items: DiscoveredCustomTool[] = [];
 	const warnings: string[] = [];
@@ -375,10 +347,6 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 
 	return { items, warnings };
 }
-
-// =============================================================================
-// Provider Registration
-// =============================================================================
 
 registerProvider<MCPServer>(mcpCapability.id, {
 	id: PROVIDER_ID,

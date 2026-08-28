@@ -87,8 +87,6 @@ import type { Skill } from "../extensibility/skills";
 import { loadSlashCommands } from "../extensibility/slash-commands";
 import { type GuidedGoalMessage, newGuidedGoalSessionId, runGuidedGoalTurn } from "../goals/guided-setup";
 import type { Goal, GoalModeState } from "../goals/state";
-// The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
-// handler and reaches hundreds of modules.
 import { listLocalPlanFileUrls, resolveLocalUrlToPath } from "../internal-urls/local-protocol";
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "../lsp/startup-events";
 import type { MCPManager } from "../mcp";
@@ -1037,14 +1035,12 @@ export class InteractiveMode implements InteractiveModeContext {
 			category: "extensions",
 		}));
 
-		// Convert custom commands (TypeScript) to SlashCommand format
 		const customCommands: SlashCommand[] = this.session.customCommands.map(loaded => ({
 			name: loaded.command.name,
 			description: `${loaded.command.description} (${loaded.source})`,
 			category: "custom",
 		}));
 
-		// Build skill commands from session.skills (if enabled)
 		const skillCommandList: SlashCommand[] = [];
 		if (settings.get("skills.enableSkillCommands")) {
 			for (const skill of this.session.skills) {
@@ -1055,7 +1051,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 
 		const builtinCommands = buildTuiBuiltinSlashCommands({ ctx: this });
-		// Store pending commands for init() where file commands are loaded async
 		this.#pendingSlashCommands = [...builtinCommands, ...hookCommands, ...customCommands, ...skillCommandList];
 
 		this.#uiHelpers = new UiHelpers(this);
@@ -1228,7 +1223,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		const modelName = this.session.model?.name ?? "";
 		const providerName = this.session.model?.provider ?? "";
 
-		// Get recent sessions
 		const recentSessions = await logger.time("InteractiveMode.init:recentSessions", () =>
 			getRecentSessions(this.sessionManager.getSessionDir()).then(sessions =>
 				sessions.map(s => ({
@@ -1300,7 +1294,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#inputController.setupKeyHandlers();
 		this.#inputController.setupEditorSubmitHandler();
 
-		// Wire observer registry to EventBus
 		if (this.#eventBus) {
 			this.#observerRegistry.subscribeToEventBus(this.#eventBus);
 		}
@@ -1310,7 +1303,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#scheduleObserverUiSync(kind);
 		});
 
-		// Load initial todos
 		this.#syncTodoSurfaceToView();
 
 		// The tty handover. Owned by whoever started the screen: when the launch
@@ -1399,10 +1391,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.isInitialized = true;
 		this.ui.requestRender(true);
 
-		// Initialize hooks with TUI-based UI context
 		await this.initHooksAndCustomTools();
 
-		// Restore mode from session (e.g. plan mode on resume)
 		this.session.setSessionSwitchReconciler?.(() => this.#reconcileModeFromSession({ preserveActiveGoal: true }));
 		await this.#reconcileModeFromSession();
 
@@ -1444,7 +1434,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			logger.warn("Failed to restore session draft", { error: String(err) });
 		}
 
-		// Subscribe to agent events
 		this.#subscribeToAgent();
 
 		this.#subscribeToGoalSessionEvents();
@@ -1483,7 +1472,6 @@ export class InteractiveMode implements InteractiveModeContext {
 				);
 			}),
 		);
-		// Set up theme file watcher
 		this.#eventBusUnsubscribers.push(
 			onThemeChange(event => {
 				this.#clearWorkingMessageAccentCache();
@@ -4457,7 +4445,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			process.stderr.write(`\n${sunset.join("\n")}\n${chalk.dim("the sun sets on this session")}\n`);
 		}
 
-		// Print resumption hint if this is a persisted session
 		const sessionId = this.sessionManager.getSessionId();
 		const sessionFile = this.sessionManager.getSessionFile();
 		if (sessionId && sessionFile) {
@@ -4491,7 +4478,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		await this.shutdown();
 	}
 
-	// Extension UI integration
 	setToolUIContext(uiContext: ExtensionUIContext, hasUI: boolean): void {
 		this.#toolUiContextSetter(uiContext, hasUI);
 	}
@@ -4558,7 +4544,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		});
 	}
 
-	// UI helpers
 	present(content: Component | readonly Component[]): void {
 		if (Array.isArray(content)) {
 			for (const item of content) this.#mountChatChild(item);
@@ -4620,7 +4605,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Live surfaces showing warmup state (the /lsp panel, status chrome)
 		// must repaint when server states change; without this the pending
 		// mark lingers until an unrelated event happens to paint a frame.
-		// (Historically this render rode on dead welcome-card LSP plumbing.)
 		this.ui.requestRender();
 		if (event.type === "failed") {
 			this.showWarning(`LSP startup failed: ${event.error}. It will retry lazily on write.`);
@@ -4971,7 +4955,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		return this.#uiHelpers.extractAssistantText(message);
 	}
 
-	// Command handling
 	handleExportCommand(text: string): Promise<void> {
 		return this.#commandController.handleExportCommand(text);
 	}
@@ -5208,7 +5191,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#selectorController.focusActiveEditorArea();
 	}
 
-	// Selector handling
 	async showFullWelcome(): Promise<void> {
 		const recentSessions = await getRecentSessions(this.sessionManager.getSessionDir()).then(sessions =>
 			sessions.map(s => ({ name: s.name, timeAgo: s.timeAgo })),
@@ -5316,7 +5298,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		return this.#extensionUiController.showHookConfirm(title, message);
 	}
 
-	// Input handling
 	handleCtrlC(): void {
 		this.#inputController.handleCtrlC();
 	}
@@ -5465,7 +5446,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#inputController.registerExtensionShortcuts();
 	}
 
-	// Hook UI methods
 	initHooksAndCustomTools(): Promise<void> {
 		return this.#extensionUiController.initHooksAndCustomTools();
 	}

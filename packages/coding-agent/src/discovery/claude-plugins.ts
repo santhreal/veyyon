@@ -184,10 +184,6 @@ async function resolvePluginDir(
 	return { dirs, warnings };
 }
 
-// =============================================================================
-// Skills
-// =============================================================================
-
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const items: DiscoveredSkill[] = [];
 	const warnings: string[] = [];
@@ -238,10 +234,6 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 	}
 	return { items, warnings };
 }
-
-// =============================================================================
-// Slash Commands
-// =============================================================================
 
 async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
 	const items: SlashCommand[] = [];
@@ -331,10 +323,6 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 	return { items, warnings };
 }
 
-// =============================================================================
-// Hooks
-// =============================================================================
-
 async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	const items: Hook[] = [];
 	const warnings: string[] = [];
@@ -385,10 +373,6 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	return { items, warnings };
 }
 
-// =============================================================================
-// Custom Tools
-// =============================================================================
-
 async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
 	const items: DiscoveredCustomTool[] = [];
 	const warnings: string[] = [];
@@ -428,10 +412,6 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 
 	return { items, warnings };
 }
-
-// =============================================================================
-// MCP Servers
-// =============================================================================
 
 async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> {
 	const items: MCPServer[] = [];
@@ -538,10 +518,6 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 
 	return { items, warnings };
 }
-
-// =============================================================================
-// Provider Registration
-// =============================================================================
 
 registerProvider<DiscoveredSkill>(skillCapability.id, {
 	id: PROVIDER_ID,

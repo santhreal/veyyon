@@ -38,10 +38,6 @@ const PROVIDER_ID = "github";
 const DISPLAY_NAME = "GitHub Copilot";
 const PRIORITY = 30;
 
-// =============================================================================
-// Context Files
-// =============================================================================
-
 /**
  * Load GitHub Copilot context files.
  *
@@ -91,10 +87,6 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 	return { items, warnings };
 }
 
-// =============================================================================
-// Instructions
-// =============================================================================
-
 async function loadInstructions(_ctx: LoadContext): Promise<LoadResult<Instruction>> {
 	const items: Instruction[] = [];
 	const warnings: string[] = [];
@@ -138,10 +130,6 @@ function transformInstruction(name: string, content: string, filePath: string, s
 		_source: source,
 	};
 }
-
-// =============================================================================
-// Rules
-// =============================================================================
 
 async function loadRules(_ctx: LoadContext): Promise<LoadResult<Rule>> {
 	const items: Rule[] = [];
@@ -220,10 +208,6 @@ function copilotCustomInstructionDirs(): string[] {
 	const raw = process.env.COPILOT_CUSTOM_INSTRUCTIONS_DIRS;
 	return raw ? parseCSV(raw) : [];
 }
-
-// =============================================================================
-// Provider Registration
-// =============================================================================
 
 registerProvider(contextFileCapability.id, {
 	id: PROVIDER_ID,

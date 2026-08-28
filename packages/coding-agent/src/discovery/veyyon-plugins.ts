@@ -40,10 +40,6 @@ const DESCRIPTION =
 	"Sub-discovery (skills, hooks, tools, commands, rules, prompts, .mcp.json) inside extension packages";
 const PRIORITY = 90;
 
-// =============================================================================
-// Skills
-// =============================================================================
-
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
 	const results = await Promise.all(
@@ -61,10 +57,6 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 		warnings: results.flatMap(r => r.warnings ?? []),
 	};
 }
-
-// =============================================================================
-// Slash Commands
-// =============================================================================
 
 async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
 	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
@@ -88,10 +80,6 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 	};
 }
 
-// =============================================================================
-// Rules
-// =============================================================================
-
 async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
 	const results = await Promise.all(
@@ -108,10 +96,6 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 		warnings: results.flatMap(r => r.warnings ?? []),
 	};
 }
-
-// =============================================================================
-// Prompts
-// =============================================================================
 
 async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
@@ -133,10 +117,6 @@ async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 		warnings: results.flatMap(r => r.warnings ?? []),
 	};
 }
-
-// =============================================================================
-// Hooks
-// =============================================================================
 
 const HOOK_TYPES: ReadonlyArray<"pre" | "post"> = ["pre", "post"];
 
@@ -171,10 +151,6 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 		warnings: results.flatMap(r => r.warnings ?? []),
 	};
 }
-
-// =============================================================================
-// Custom Tools
-// =============================================================================
 
 const TOOL_EXTENSIONS = ["json", "md", "ts", "js", "sh", "bash", "py"];
 
@@ -253,10 +229,6 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 	return { items, warnings };
 }
 
-// =============================================================================
-// MCP Servers
-// =============================================================================
-
 const MCP_FILENAMES = [".mcp.json", "mcp.json"] as const;
 
 interface RawMcpServer {
@@ -330,10 +302,6 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 
 	return { items, warnings };
 }
-
-// =============================================================================
-// Provider Registration
-// =============================================================================
 
 registerProvider<DiscoveredSkill>(skillCapability.id, {
 	id: PROVIDER_ID,

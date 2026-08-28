@@ -236,10 +236,6 @@ function parseVaultFile(plaintext: string, scope: VaultScope, vaultPath: string)
 	};
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Expiry
-// ═══════════════════════════════════════════════════════════════════════════
-
 /** Default lifetime when none is given: one day. */
 export const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -408,10 +404,6 @@ export function describeTimeLeft(entry: VaultEntry, now: number): string {
 	return describeMsLeft(entry.expiresAt - now);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Names
-// ═══════════════════════════════════════════════════════════════════════════
-
 /** Prefix for names veyyon invents when the user does not supply one. */
 const GENERATED_NAME_PREFIX = "SECRET_";
 
@@ -452,10 +444,6 @@ export function generateSecretName(taken: ReadonlySet<string>): string {
 	}
 	throw new Error("Could not invent an unused secret name. Remove some entries with /secret rm NAME.");
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Store
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** Directories each scope keeps its vault in. */
 export interface VaultLocations {

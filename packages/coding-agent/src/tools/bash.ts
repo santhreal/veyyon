@@ -1604,9 +1604,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	}
 }
 
-// =============================================================================
-// TUI Renderer
-// =============================================================================
 export interface BashRenderArgs {
 	command?: string;
 	env?: Record<string, string>;

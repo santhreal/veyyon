@@ -20,10 +20,6 @@ const priorityList = [
 	{ dir: ".gemini" },
 ];
 
-// =============================================================================
-// Package Directory (for optional external docs/examples)
-// =============================================================================
-
 /**
  * Walk up from `startDir` looking for a `package.json`. Returns the directory
  * containing the marker, or `undefined` when the walk hits the filesystem root
@@ -77,10 +73,6 @@ export function getChangelogPath(): string | undefined {
 	const packageDir = getPackageDir();
 	return packageDir ? path.resolve(packageDir, "CHANGELOG.md") : undefined;
 }
-
-// =============================================================================
-// Multi-Config Directory Helpers
-// =============================================================================
 
 /**
  * Config directory bases in priority order (highest first).
@@ -209,10 +201,6 @@ export function findConfigFileWithMeta(
 
 	return undefined;
 }
-
-// =============================================================================
-// Walk-Up Config Discovery (for monorepo scenarios)
-// =============================================================================
 
 /**
  * Find all nearest config directories by walking up from cwd.

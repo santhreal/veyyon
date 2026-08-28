@@ -33,7 +33,6 @@ import { unsetNumberOption } from "../optional-number";
 /** Providers domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const PROVIDERS_SETTINGS = {
 	// Providers
-	// ────────────────────────────────────────────────────────────────────────
 	/**
 	 * Whether hitting a quota or rate limit may move a provider to one of your other accounts.
 	 *

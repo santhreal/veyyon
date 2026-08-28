@@ -27,10 +27,6 @@ import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block
 import { getLanguageFromPath } from "../utils/lang-from-path";
 import type { LspParams, LspToolDetails } from "./types";
 
-// =============================================================================
-// Call Rendering
-// =============================================================================
-
 /**
  * Render the LSP tool call in the TUI.
  * Shows: "lsp <operation> <file/filecount>"
@@ -90,10 +86,6 @@ export function renderCall(args: LspParams, _options: RenderResultOptions, theme
 
 	return new Text(text, 0, 0);
 }
-
-// =============================================================================
-// Result Rendering
-// =============================================================================
 
 /**
  * Render LSP tool result with intelligent formatting based on result type.
@@ -202,10 +194,6 @@ export function renderResult(
 	});
 }
 
-// =============================================================================
-// Hover Rendering
-// =============================================================================
-
 /**
  * Render hover information with syntax-highlighted code blocks.
  */
@@ -268,10 +256,6 @@ function renderHover(
 
 	return output.split("\n");
 }
-
-// =============================================================================
-// Diagnostics Rendering
-// =============================================================================
 
 function formatDiagnosticLocation(file: string, line: string | number, col: string | number, theme: Theme): string {
 	const lang = getLanguageFromPath(file);
@@ -368,10 +352,6 @@ function renderDiagnostics(
 	return output.split("\n");
 }
 
-// =============================================================================
-// References Rendering
-// =============================================================================
-
 /**
  * Render references grouped by file.
  */
@@ -454,10 +434,6 @@ function renderReferences(refMatch: RegExpMatchArray, lines: string[], expanded:
 
 	return renderGrouped(3, 1, true).split("\n");
 }
-
-// =============================================================================
-// Symbols Rendering
-// =============================================================================
 
 /**
  * Render document symbols in a hierarchical tree.
@@ -554,10 +530,6 @@ function renderSymbols(symbolsMatch: RegExpMatchArray, lines: string[], expanded
 	return output.split("\n");
 }
 
-// =============================================================================
-// Generic Rendering
-// =============================================================================
-
 /**
  * Generic fallback rendering for unknown result types.
  */
@@ -606,10 +578,6 @@ function renderGeneric(text: string, lines: string[], expanded: boolean, theme: 
 
 	return output.split("\n");
 }
-
-// =============================================================================
-// Parsing Helpers
-// =============================================================================
 
 interface ParsedDiagnostic {
 	file: string;

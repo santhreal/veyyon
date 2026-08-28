@@ -7,10 +7,6 @@ import { errorMessage, logger, readPipeText } from "@veyyon/utils";
 import type { Diagnostic, DiagnosticSeverity, LinterClient, ServerConfig } from "../../lsp/types";
 import { adoptIntoPrimarySessionCpuBudget } from "../../session/cpu-limit";
 
-// =============================================================================
-// Biome JSON Output Types
-// =============================================================================
-
 interface BiomeJsonOutput {
 	diagnostics: BiomeDiagnostic[];
 }
@@ -25,10 +21,6 @@ interface BiomeDiagnostic {
 		sourceCode?: string;
 	};
 }
-
-// =============================================================================
-// Helpers
-// =============================================================================
 
 /**
  * Convert byte offsets to line:column positions in a single pass over the source.
@@ -122,10 +114,6 @@ function warnBiomeOnce(key: string, message: string, meta: Record<string, unknow
 	reportedBiomeFailures.add(key);
 	logger.warn(message, meta);
 }
-
-// =============================================================================
-// Biome Client
-// =============================================================================
 
 /**
  * Biome CLI-based linter client.

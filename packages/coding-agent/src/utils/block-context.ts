@@ -1,5 +1,4 @@
 import { enclosingBlockBoundaries } from "@veyyon/natives";
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import * as logger from "@veyyon/utils/logger";
 
 const OPEN_TO_CLOSE: Record<string, string> = {

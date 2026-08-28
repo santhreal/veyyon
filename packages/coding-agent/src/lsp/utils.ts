@@ -2,7 +2,6 @@ export { truncate } from "@veyyon/utils/format";
 
 import * as fs from "node:fs/promises";
 import path from "node:path";
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { isEnoent } from "@veyyon/utils/fs-error";
 import { theme } from "../modes/theme/theme-binding";
 import type { Theme } from "../modes/theme/theme-class";
@@ -24,10 +23,6 @@ import type {
 } from "./types";
 
 export { detectLanguageId } from "../utils/lang-from-path";
-
-// =============================================================================
-// URI Handling (Cross-Platform)
-// =============================================================================
 
 /**
  * Convert a file path to a file:// URI.
@@ -81,10 +76,6 @@ function laxUriToFile(uri: string): string {
 
 	return filePath;
 }
-
-// =============================================================================
-// Diagnostic Formatting
-// =============================================================================
 
 const SEVERITY_NAMES: Record<DiagnosticSeverity, string> = {
 	1: "error",
@@ -265,10 +256,6 @@ export function summarizeDiagnosticMessages(messages: string[]): { summary: stri
 	};
 }
 
-// =============================================================================
-// Location Formatting
-// =============================================================================
-
 /**
  * Format a location as file:line:col relative to cwd.
  */
@@ -285,10 +272,6 @@ export function formatLocation(location: Location, cwd: string): string {
 export function formatPosition(line: number, col: number): string {
 	return `${line}:${col}`;
 }
-
-// =============================================================================
-// Position and Range Ordering
-// =============================================================================
 
 /**
  * Compare two positions in document order. Returns a negative number when `a`
@@ -315,10 +298,6 @@ export function rangesEqual(a: Range, b: Range): boolean {
 export function rangeContainsPosition(range: Range, position: Position): boolean {
 	return comparePosition(range.start, position) <= 0 && comparePosition(position, range.end) <= 0;
 }
-
-// =============================================================================
-// WorkspaceEdit Formatting
-// =============================================================================
 
 /**
  * Format a workspace edit as a summary of changes.
@@ -372,10 +351,6 @@ export function formatTextEdit(edit: TextEdit, maxLength = 50): string {
 			: edit.newText.replace(/\n/g, "\\n");
 	return `line ${range} ${theme.nav.cursor} "${preview}"`;
 }
-
-// =============================================================================
-// Symbol Formatting
-// =============================================================================
 
 function getSymbolKindIcons(): Record<SymbolKind, string> {
 	const currentTheme = theme as Theme | undefined;
@@ -621,10 +596,6 @@ export async function resolveDiagnosticTargets(
 
 	return collectGlobMatches(file, cwd, maxMatches);
 }
-// =============================================================================
-// Hover Content Extraction
-// =============================================================================
-
 /**
  * Extract plain text from hover contents.
  */
@@ -648,7 +619,6 @@ export function extractHoverText(
 	return String(contents);
 }
 
-// =============================================================================
 // General Utilities
 
 function firstNonWhitespaceColumn(lineText: string): number {

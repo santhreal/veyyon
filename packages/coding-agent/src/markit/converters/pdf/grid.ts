@@ -74,9 +74,6 @@ function castRaysForTextBox(textBox: TextBox, segments: Segment[]): Ray[] {
 	return [up, down, left, right];
 }
 
-// ---------------------------------------------------------------------------
-// Utility
-// ---------------------------------------------------------------------------
 const AXIS_EPSILON = 0.8;
 const PAGE_MARGIN = 20;
 
@@ -89,9 +86,6 @@ function uniqueSorted(values: number[]): number[] {
 	return result;
 }
 
-// ---------------------------------------------------------------------------
-// Y-line group splitting
-// ---------------------------------------------------------------------------
 function chainCoversRange(intervals: Interval[], lowerY: number, upperY: number, eps: number): boolean {
 	const sorted = intervals.slice().sort((a, b) => a.min - b.min);
 	let covered = lowerY;
@@ -161,9 +155,6 @@ function splitYLinesIntoGroups(yLines: number[], verticals: Segment[]): number[]
 	return groups;
 }
 
-// ---------------------------------------------------------------------------
-// Sub-row Y-cluster expansion
-// ---------------------------------------------------------------------------
 const Y_CLUSTER_GAP = 10;
 const MIN_COLS_IN_TOP_CLUSTER = 2;
 
@@ -256,9 +247,6 @@ function expandSubRowsByYClusters(
 	return originalRows + addedRows;
 }
 
-// ---------------------------------------------------------------------------
-// Cross-column text box splitting
-// ---------------------------------------------------------------------------
 /**
  * Find which column a horizontal position falls into.
  * Returns -1 if outside the grid.
@@ -369,9 +357,6 @@ function splitCrossColumnBoxes(textBoxes: TextBox[], xLines: number[]): TextBox[
 	return result;
 }
 
-// ---------------------------------------------------------------------------
-// Full grid table (H + V lines)
-// ---------------------------------------------------------------------------
 function buildCells(rows: number, cols: number): TableCell[] {
 	const cells: TableCell[] = [];
 	for (let row = 0; row < rows; row++) {
@@ -499,9 +484,6 @@ function buildTableGrid(
 	return { grid, consumedIds };
 }
 
-// ---------------------------------------------------------------------------
-// H-line-only table (inferred columns)
-// ---------------------------------------------------------------------------
 const COL_GAP_THRESHOLD = 20;
 const HONLY_ROW_GAP = 30;
 const HONLY_ROW_TOLERANCE = 8;
@@ -624,9 +606,6 @@ function buildHLineOnlyTable(
 	return { grid, consumedIds };
 }
 
-// ---------------------------------------------------------------------------
-// Pruning
-// ---------------------------------------------------------------------------
 function pruneEmptyRowsAndCols(table: TableGrid): TableGrid {
 	const occupiedRows = new Set(table.cells.filter(c => c.text.trim().length > 0).map(c => c.row));
 	const occupiedCols = new Set(table.cells.filter(c => c.text.trim().length > 0).map(c => c.col));
@@ -651,9 +630,6 @@ function pruneEmptyRowsAndCols(table: TableGrid): TableGrid {
 	return { ...table, rows: newRow, cols: newCol, cells: prunedCells };
 }
 
-// ---------------------------------------------------------------------------
-// Diagram vs table discrimination
-// ---------------------------------------------------------------------------
 /** Maximum column count for a plausible data table. */
 const MAX_TABLE_COLS = 25;
 

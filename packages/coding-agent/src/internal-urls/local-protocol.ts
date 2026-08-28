@@ -2,8 +2,6 @@ import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-// Owners, not the `@veyyon/utils` barrel: 18 modules against 74. `logger` is a namespace re-export
-// (`export * as logger from "./logger"`), so it is imported as one here.
 import { formatBytes, formatCount } from "@veyyon/utils/format";
 import { isEnoent } from "@veyyon/utils/fs-error";
 import * as logger from "@veyyon/utils/logger";

@@ -9,7 +9,6 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import { getAgentDir, getProjectDir } from "@veyyon/utils/dirs";
-// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 
 import type { Settings } from "../config/settings";
@@ -28,10 +27,6 @@ import type {
 	ProviderInfo,
 	SourceMeta,
 } from "./types";
-
-// =============================================================================
-// Registry State
-// =============================================================================
 
 /** Registry of all capabilities */
 const capabilities = new Map<string, Capability<unknown>>();
@@ -75,10 +70,6 @@ let importForeignConfig = false;
 
 /** Settings manager for persistence (if set) */
 let settings: Settings | null = null;
-
-// =============================================================================
-// Registration API
-// =============================================================================
 
 /**
  * Define a new capability.
@@ -124,10 +115,6 @@ export function registerProvider<T>(capabilityId: string, provider: Provider<T>)
 		providers.splice(idx, 0, provider);
 	}
 }
-
-// =============================================================================
-// Loading API
-// =============================================================================
 
 /**
  * Async loading logic shared by loadCapability().
@@ -299,10 +286,6 @@ export async function loadCapability<T>(capabilityId: string, options: LoadOptio
 	return await loadImpl(capability, providers, ctx, options);
 }
 
-// =============================================================================
-// Provider Enable/Disable API
-// =============================================================================
-
 /**
  * Initialize capability system with settings manager for persistence.
  * Call this once on startup to enable persistent provider state.
@@ -380,10 +363,6 @@ export function setDisabledProviders(providerIds: string[]): void {
 	}
 	persistDisabledProviders();
 }
-
-// =============================================================================
-// Introspection API
-// =============================================================================
 
 /**
  * Get a capability definition (for introspection).
@@ -475,10 +454,6 @@ export function getAllProvidersInfo(): ProviderInfo[] {
 	return providers;
 }
 
-// =============================================================================
-// Cache Management
-// =============================================================================
-
 /**
  * Reset all caches. Call after chdir or filesystem changes.
  */
@@ -501,10 +476,6 @@ export function invalidate(filePath: string, cwd?: string): void {
 export function cacheStats(): { content: number; dir: number } {
 	return fsCacheStats();
 }
-
-// =============================================================================
-// Test Seam
-// =============================================================================
 
 /**
  * Opaque snapshot of the module-level registry state. Produced by
@@ -575,9 +546,5 @@ export function restoreRegistryForTests(snapshot: RegistrySnapshot): void {
 	importForeignConfig = snapshot.importForeignConfig;
 	settings = snapshot.settings;
 }
-
-// =============================================================================
-// Re-exports
-// =============================================================================
 
 export type * from "./types";

@@ -28,10 +28,6 @@ const PROVIDER_ID = "cursor";
 const DISPLAY_NAME = "Cursor";
 const PRIORITY = 50;
 
-// =============================================================================
-// MCP Servers
-// =============================================================================
-
 function parseMCPServers(content: string, path: string): LoadResult<MCPServer> {
 	const items: MCPServer[] = [];
 	const warnings: string[] = [];
@@ -71,10 +67,6 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	return parseMCPServers(userContent, userPath);
 }
 
-// =============================================================================
-// Rules
-// =============================================================================
-
 async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	const userRulesPath = getUserPath(ctx, "cursor", "rules");
 	if (!userRulesPath) return { items: [], warnings: [] };
@@ -88,10 +80,6 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 function transformMDCRule(name: string, content: string, path: string, source: SourceMeta): Rule {
 	return buildRuleFromMarkdown(name, content, path, source, { stripNamePattern: /\.(mdc|md)$/ });
 }
-
-// =============================================================================
-// Provider Registration
-// =============================================================================
 
 registerProvider(mcpCapability.id, {
 	id: PROVIDER_ID,

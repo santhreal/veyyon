@@ -19,10 +19,6 @@ import * as gh from "../../../../tools/gh";
 import * as git from "../../../../utils/git";
 import * as jj from "../../../../utils/jj";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
-
 interface FileDiff {
 	path: string;
 	linesAdded: number;
@@ -63,10 +59,6 @@ type ReviewMenuChoice =
 	| { kind: "commit" }
 	| { kind: "custom" };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Exclusion patterns for noise files
-// ─────────────────────────────────────────────────────────────────────────────
-
 const EXCLUDED_PATTERNS: { pattern: RegExp; reason: string }[] = [
 	// Lock files
 	{ pattern: /\.lock$/, reason: "lock file" },
@@ -96,10 +88,6 @@ const EXCLUDED_PATTERNS: { pattern: RegExp; reason: string }[] = [
 	{ pattern: /\.(woff|woff2|ttf|eot|otf)$/i, reason: "font" },
 	{ pattern: /\.(pdf|zip|tar|gz|rar|7z)$/i, reason: "binary" },
 ];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Diff parsing
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Check if a file path should be excluded from review.

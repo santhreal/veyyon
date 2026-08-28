@@ -2,7 +2,6 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { isEnoent } from "@veyyon/utils/fs-error";
-// Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 

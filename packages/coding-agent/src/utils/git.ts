@@ -4,7 +4,6 @@ import * as path from "node:path";
 import { isAbortError } from "@veyyon/utils/abortable";
 import { hasFsCode, isEisdir, isEnoent, isEnotdir } from "@veyyon/utils/fs-error";
 import { Snowflake } from "@veyyon/utils/snowflake";
-// Owners, not the `@veyyon/utils` barrel: 5 modules against 74.
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { $which } from "@veyyon/utils/which";
 import type { Subprocess } from "bun";
@@ -12,10 +11,6 @@ import { parseDiffFileHunks, parseFileDiffs, parseFileHunks, parseNumstat } from
 import type { FileDiff, FileHunks, NumstatEntry } from "../commit/types";
 import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import { ToolAbortError, ToolError, throwIfAborted } from "../tools/tool-errors";
-
-// ════════════════════════════════════════════════════════════════════════════
-// Types
-// ════════════════════════════════════════════════════════════════════════════
 
 export interface GitCommandResult {
 	exitCode: number;
@@ -190,10 +185,6 @@ export interface GitWorktreeEntry {
 	path: string;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// Error
-// ════════════════════════════════════════════════════════════════════════════
-
 export class GitCommandError extends Error {
 	readonly args: readonly string[];
 	readonly result: GitCommandResult;
@@ -205,10 +196,6 @@ export class GitCommandError extends Error {
 		this.result = result;
 	}
 }
-
-// ════════════════════════════════════════════════════════════════════════════
-// Internal: Core execution
-// ════════════════════════════════════════════════════════════════════════════
 
 const NO_OPTIONAL_LOCKS = "--no-optional-locks";
 const HEAD_REF_PREFIX = "ref:";
@@ -518,10 +505,6 @@ async function tryText(
 	return result.stdout;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// Internal: per-repo write serialization
-// ════════════════════════════════════════════════════════════════════════════
-
 // Git uses lock files (`.git/config.lock`, commit-graph chain locks,
 // `packed-refs.lock`, …) for many of its mutating operations. Each is created
 // O_EXCL with no waiter, so concurrent in-process git invocations against the
@@ -576,10 +559,6 @@ function trimScalar(text: string | undefined): string | undefined {
 	return trimmed || undefined;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// Internal: Argument builders
-// ════════════════════════════════════════════════════════════════════════════
-
 function buildDiffArgs(options: DiffOptions): string[] {
 	const args = ["diff"];
 	if (options.binary) args.push("--binary");
@@ -614,10 +593,6 @@ async function writeTempPatch(content: string): Promise<string> {
 	await Bun.write(tempPath, content);
 	return tempPath;
 }
-
-// ════════════════════════════════════════════════════════════════════════════
-// Internal: Repository resolution
-// ════════════════════════════════════════════════════════════════════════════
 
 type EntryType = "directory" | "file";
 
@@ -807,10 +782,6 @@ async function resolveRepository(startDir: string): Promise<GitRepository | null
 		current = parent;
 	}
 }
-
-// ════════════════════════════════════════════════════════════════════════════
-// Internal: Ref resolution
-// ════════════════════════════════════════════════════════════════════════════
 
 function getRefLookupDirs(repository: GitRepository): string[] {
 	if (repository.gitDir === repository.commonDir) return [repository.gitDir];
@@ -1057,10 +1028,6 @@ async function readRef(repository: GitRepository, targetRef: string, signal?: Ab
 	return null;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// Internal: Head state parsing
-// ════════════════════════════════════════════════════════════════════════════
-
 /**
  * Read the branch a rebase or am recorded, as a bare branch name.
  *
@@ -1180,10 +1147,6 @@ function parseWorktreeList(text: string): GitWorktreeEntry[] {
 		});
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// Internal: Hunk selection
-// ════════════════════════════════════════════════════════════════════════════
-
 function extractFileHeader(diffText: string): string {
 	const lines = diffText.split("\n");
 	const headerLines: string[] = [];
@@ -1298,10 +1261,6 @@ function parseStatusPorcelain(text: string): GitStatusSummary {
 	return { staged, truncated, unstaged, untracked };
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// API: diff
-// ════════════════════════════════════════════════════════════════════════════
-
 /** Run `git diff` with the given options. Returns raw diff text. */
 export const diff = Object.assign(
 	async function diff(cwd: string, options: DiffOptions = {}): Promise<string> {
@@ -1368,10 +1327,6 @@ export const diff = Object.assign(
 	},
 );
 
-// ════════════════════════════════════════════════════════════════════════════
-// API: status
-// ════════════════════════════════════════════════════════════════════════════
-
 /** Run `git status --porcelain`. Returns raw status text. */
 export const status = Object.assign(
 	async function status(cwd: string, options: StatusOptions = {}): Promise<string> {
@@ -1393,10 +1348,6 @@ export const status = Object.assign(
 		parse: parseStatusPorcelain,
 	},
 );
-
-// ════════════════════════════════════════════════════════════════════════════
-// API: stage
-// ════════════════════════════════════════════════════════════════════════════
 
 export const stage = {
 	/** Stage files. Empty array stages all (`git add -A`). */
@@ -1444,10 +1395,6 @@ export const stage = {
 		await runEffect(cwd, args, { signal });
 	},
 };
-
-// ════════════════════════════════════════════════════════════════════════════
-// API: commit, push, checkout
-// ════════════════════════════════════════════════════════════════════════════
 
 /** Create a commit with the given message (passed via stdin). */
 export async function commit(cwd: string, message: string, options: CommitOptions = {}): Promise<GitCommandResult> {
@@ -1508,10 +1455,6 @@ export async function writeTree(cwd: string, options: Pick<CommandOptions, "env"
 	return (await runText(cwd, ["write-tree"], options)).trim();
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// API: show
-// ════════════════════════════════════════════════════════════════════════════
-
 /** Run `git show` on a revision. */
 export const show = Object.assign(
 	async function show(
@@ -1545,10 +1488,6 @@ export async function commitDetails(cwd: string, revision: string, signal?: Abor
 	};
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// API: log
-// ════════════════════════════════════════════════════════════════════════════
-
 export const log = {
 	/** Recent commit subjects (one-line each). */
 	async subjects(cwd: string, count: number, signal?: AbortSignal): Promise<string[]> {
@@ -1568,10 +1507,6 @@ export const revList = {
 		return splitLines(await runText(cwd, ["rev-list", "--reverse", `${base}..${head}`], { readOnly: true, signal }));
 	},
 };
-
-// ════════════════════════════════════════════════════════════════════════════
-// API: branch
-// ════════════════════════════════════════════════════════════════════════════
 
 export const branch = {
 	/** Current branch name, or null if detached/unavailable. */
@@ -1662,10 +1597,6 @@ export const branch = {
 	},
 };
 
-// ════════════════════════════════════════════════════════════════════════════
-// API: remote
-// ════════════════════════════════════════════════════════════════════════════
-
 export const remote = {
 	/** List remote names. */
 	async list(cwd: string, signal?: AbortSignal): Promise<string[]> {
@@ -1695,10 +1626,6 @@ export const remote = {
 		throw new GitCommandError(["remote", "add", name, url], result);
 	},
 };
-
-// ════════════════════════════════════════════════════════════════════════════
-// API: ref
-// ════════════════════════════════════════════════════════════════════════════
 
 export const ref = {
 	/** Check if a ref exists. */
@@ -1739,10 +1666,6 @@ export const ref = {
 	},
 };
 
-// ════════════════════════════════════════════════════════════════════════════
-// API: config
-// ════════════════════════════════════════════════════════════════════════════
-
 export const config = {
 	async get(cwd: string, key: string, signal?: AbortSignal): Promise<string | undefined> {
 		return trimScalar(await tryText(cwd, ["config", "--get", key], { readOnly: true, signal }));
@@ -1760,10 +1683,6 @@ export const config = {
 		return config.set(cwd, `branch.${branchName}.${key}`, value, signal);
 	},
 };
-
-// ════════════════════════════════════════════════════════════════════════════
-// API: worktree
-// ════════════════════════════════════════════════════════════════════════════
 
 export const worktree = {
 	async add(
@@ -1809,10 +1728,6 @@ export const worktree = {
 		await runEffect(cwd, ["worktree", "prune"], { signal });
 	},
 };
-
-// ════════════════════════════════════════════════════════════════════════════
-// API: patch
-// ════════════════════════════════════════════════════════════════════════════
 
 export const patch = {
 	/** Apply a patch file. */
@@ -1861,10 +1776,6 @@ export const patch = {
 	},
 };
 
-// ════════════════════════════════════════════════════════════════════════════
-// API: cherryPick
-// ════════════════════════════════════════════════════════════════════════════
-
 export const cherryPick = Object.assign(
 	async function cherryPick(cwd: string, revision: string, signal?: AbortSignal): Promise<void> {
 		await runEffect(cwd, ["cherry-pick", revision], { signal });
@@ -1895,10 +1806,6 @@ export const cherryPick = Object.assign(
 		},
 	},
 );
-
-// ════════════════════════════════════════════════════════════════════════════
-// API: stash
-// ════════════════════════════════════════════════════════════════════════════
 
 export const stash = {
 	/** Stash working tree + index changes. Returns true when git created a new stash entry. */
@@ -1982,10 +1889,6 @@ export const stash = {
 	},
 };
 
-// ════════════════════════════════════════════════════════════════════════════
-// API: clone, restore, clean
-// ════════════════════════════════════════════════════════════════════════════
-
 export async function clone(url: string, targetDir: string, options: CloneOptions = {}): Promise<void> {
 	ensureAvailable();
 	const absoluteTarget = path.resolve(targetDir);
@@ -2065,10 +1968,6 @@ export async function clean(
 	await runEffect(cwd, args, { signal: options.signal });
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// API: ls
-// ════════════════════════════════════════════════════════════════════════════
-
 export const ls = {
 	/** List files tracked or untracked by git. */
 	async files(
@@ -2103,10 +2002,6 @@ export const ls = {
 		return splitLines(output.stdout);
 	},
 };
-
-// ════════════════════════════════════════════════════════════════════════════
-// API: head
-// ════════════════════════════════════════════════════════════════════════════
 
 export const head = {
 	/**
@@ -2203,10 +2098,6 @@ export const head = {
 		return result.stdout.trim() || null;
 	},
 };
-
-// ════════════════════════════════════════════════════════════════════════════
-// API: repo
-// ════════════════════════════════════════════════════════════════════════════
 
 export const repo = {
 	/** Resolve the repository root (may be a worktree root). */
@@ -2310,10 +2201,6 @@ export const repo = {
 async function resolveHead(cwd: string, signal?: AbortSignal): Promise<GitHeadState | null> {
 	return head.resolve(cwd, signal);
 }
-
-// ════════════════════════════════════════════════════════════════════════════
-// API: github (GitHub CLI)
-// ════════════════════════════════════════════════════════════════════════════
 
 export interface GhCommandResult {
 	exitCode: number;

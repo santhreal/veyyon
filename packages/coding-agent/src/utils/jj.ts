@@ -5,10 +5,6 @@ import { LRUCache } from "lru-cache/raw";
 import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import * as git from "./git";
 
-// ════════════════════════════════════════════════════════════════════════════
-// Types
-// ════════════════════════════════════════════════════════════════════════════
-
 /** Result from a completed `jj` subprocess invocation. */
 export interface JjCommandResult {
 	/** Process exit code reported by `jj`. */
@@ -41,10 +37,6 @@ interface CommandOptions {
 	readonly signal?: AbortSignal;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// Error
-// ════════════════════════════════════════════════════════════════════════════
-
 /** Error thrown when a checked `jj` command exits non-zero. */
 export class JjCommandError extends Error {
 	/** Arguments passed after the common `jj --no-pager --color=never` prefix. */
@@ -60,10 +52,6 @@ export class JjCommandError extends Error {
 		this.result = result;
 	}
 }
-
-// ════════════════════════════════════════════════════════════════════════════
-// Internal: Core execution
-// ════════════════════════════════════════════════════════════════════════════
 
 function ensureAvailable(): void {
 	if (!$which("jj")) {
@@ -129,10 +117,6 @@ function buildDiffArgs(options: DiffOptions): string[] {
 	if (options.files?.length) args.push("--", ...options.files);
 	return args;
 }
-
-// ════════════════════════════════════════════════════════════════════════════
-// Internal: Repository resolution
-// ════════════════════════════════════════════════════════════════════════════
 
 interface WorkspaceRootCacheEntry {
 	readonly root?: string;
@@ -201,10 +185,6 @@ async function repositoryFromRoot(root: string): Promise<JjRepository> {
 	};
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// API: diff
-// ════════════════════════════════════════════════════════════════════════════
-
 /** Run `jj diff --git` for the current workspace commit and return the raw Git-format diff text. */
 export const diff = Object.assign(
 	async function diff(cwd: string, options: DiffOptions = {}): Promise<string> {
@@ -217,10 +197,6 @@ export const diff = Object.assign(
 		},
 	},
 );
-
-// ════════════════════════════════════════════════════════════════════════════
-// API: repo
-// ════════════════════════════════════════════════════════════════════════════
 
 export const repo = {
 	/** Clear cached workspace roots. Intended for tests that mutate JJ metadata under an existing path. */

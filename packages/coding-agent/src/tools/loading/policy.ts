@@ -42,10 +42,6 @@ import { type BuiltinToolName, normalizeToolName, normalizeToolNames, TOOL } fro
  * 16 were caught. A rule added below without a matrix cell is an unprotected rule.
  */
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Discovery mode (E, P)
-// ─────────────────────────────────────────────────────────────────────────────
-
 /** Registry size above which `tools.discoveryMode: "auto"` starts hiding MCP tools. */
 export const TOOL_DISCOVERY_AUTO_THRESHOLD = 40;
 
@@ -93,10 +89,6 @@ export function resolveToolDiscoveryMode(inputs: ToolDiscoveryModeInputs): Effec
 	if (inputs.configuredMode === "auto" && inputs.toolCount > TOOL_DISCOVERY_AUTO_THRESHOLD) return "mcp-only";
 	return "off";
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Essential tools (A, under discovery-all only)
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * FUTURE LOAD POLICY (1/4). How a tool declares when it wants to be loaded.
@@ -210,10 +202,6 @@ export function resolveDiscoveryAllForceActive(inputs: DiscoveryAllForceActiveIn
 	}
 	return forceActive;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Built-in permission (P) and the request list `createTools` builds from it
-// ─────────────────────────────────────────────────────────────────────────────
 
 export interface EvalToolAvailabilityInputs {
 	/** Per-backend allowance from `eval.py` / `eval.js` / `eval.rb` / `eval.jl` plus env overrides. */
@@ -486,10 +474,6 @@ export function selectBaseToolNames(inputs: BaseToolSelectionInputs): string[] {
 	if (inputs.goalEnabled) names.push(TOOL.goal);
 	return names;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Initial active set (A) — the SDK's session-bootstrap pipeline
-// ─────────────────────────────────────────────────────────────────────────────
 
 export interface InitialActiveToolNamesInputs {
 	/** `options.toolNames` normalized (with `yield`/auto-learn already forced in), or undefined. */

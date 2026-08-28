@@ -200,13 +200,6 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 				}
 			}
 		} else if (STRING_VALUE_FLAGS.has(arg)) {
-			// A VALUE-TAKING FLAG WITH NO VALUE IS REFUSED, never dropped. This branch used to be
-			// guarded by `i + 1 < args.length`, so a flag in the last position fell through every
-			// branch and vanished: `veyyon -p "..." --approval-mode` exited 0, answered normally, and
-			// ran on the DEFAULT approval mode. Nothing was printed, and there is no typo to notice,
-			// so the operator's evidence that a safety-relevant flag took effect was that they typed
-			// it. The `=` form splices its value in above, so an empty `--model=` still arrives with a
-			// value here and is a different question; this is only the case where none was given.
 			const next = args[i + 1];
 			if (next === undefined) {
 				throw new CliUsageError(`${arg} needs a value. Write \`${arg} <value>\` or \`${arg}=<value>\`.`);
@@ -243,7 +236,6 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 			// kept here as a fallback for direct parseArgs callers.
 			// The `--profile=work` spelling never reaches here as one token: the `=` splice above
 			// rewrites it to `--profile` plus a spliced value, which is why there is no second
-			// `startsWith("--profile=")` branch. There used to be one, and it was unreachable.
 			if (i + 1 >= args.length) throw new CliUsageError("--profile needs a value. Write `--profile <name>`.");
 			result.profile = args[++i];
 		} else if (arg === "--alias") {

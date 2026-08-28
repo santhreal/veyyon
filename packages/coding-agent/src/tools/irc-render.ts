@@ -26,10 +26,6 @@ import {
 	type ToolUIColor,
 } from "./render-utils";
 
-// =============================================================================
-// TUI Renderer
-// =============================================================================
-
 type IrcRenderArgs = Partial<IrcParams>;
 
 const BODY_LINES_COLLAPSED = 2;

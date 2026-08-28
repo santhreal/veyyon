@@ -1,6 +1,5 @@
 import { dirname } from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
-// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import { assistantTextFromUnknown } from "@veyyon/ai/utils/message-text";
 import type * as MnemopiNs from "@veyyon/mnemopi";
 import type { Mnemopi, RecallResult } from "@veyyon/mnemopi";

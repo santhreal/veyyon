@@ -108,10 +108,6 @@ export interface ApplyPatchOptions {
 	allowCreateOverwrite?: boolean;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Default File System
-// ═══════════════════════════════════════════════════════════════════════════
-
 /** Default filesystem implementation using Bun APIs */
 export const defaultFileSystem: FileSystem = {
 	async exists(path: string): Promise<boolean> {
@@ -141,10 +137,6 @@ export const defaultFileSystem: FileSystem = {
 		await fs.promises.mkdir(path, { recursive: true });
 	},
 };
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Internal Types
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface Replacement {
 	startIndex: number;
@@ -224,10 +216,6 @@ function canConvertTabsToSpaces(oldLines: string[], actualLines: string[], space
 	}
 	return true;
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Replacement Computation
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** Adjust indentation of newLines to match the delta between patternLines and actualLines */
 function adjustLinesIndentation(patternLines: string[], actualLines: string[], newLines: string[]): string[] {
@@ -1476,10 +1464,6 @@ function applyHunksToContent(
 	const content = newLines.join("\n");
 	return { content: applyTrailingNewlinePolicy(content, hadFinalNewline), warnings };
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Public API
-// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Apply a patch operation to the filesystem.

@@ -26,10 +26,6 @@ import {
 import { SUBAGENT_MODEL_BY_DEPTH_PATH } from "../../task/subagent-settings";
 import { AUTO_THINKING } from "../../thinking";
 
-// ═══════════════════════════════════════════════════════════════════════════
-// UI Definition Types
-// ═══════════════════════════════════════════════════════════════════════════
-
 export type SettingValue = boolean | string;
 
 interface BaseSettingDef {
@@ -206,10 +202,6 @@ export type SettingDef =
  */
 export const DEFAULT_MODEL_SETTING_ID = "defaultModel" as SettingPath;
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Condition Functions
-// ═══════════════════════════════════════════════════════════════════════════
-
 /**
  * Read a settings-backed visibility condition, treating an unreachable Settings singleton as "off".
  *
@@ -311,10 +303,6 @@ const CONDITIONS: Record<string, () => boolean> = {
 	secretsEnabled: () => whenSettingsSay(() => Settings.instance.get("secrets.enabled") === true),
 	prewalkEnabled: () => whenSettingsSay(() => Settings.instance.get("prewalk.enabled") === true),
 };
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Schema to UI Conversion
-// ═══════════════════════════════════════════════════════════════════════════
 
 function resolveOptions(ui: AnyUiMetadata): OptionList | "runtime" | undefined {
 	if (!ui.options) return undefined;
@@ -470,10 +458,6 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 
 	return null;
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Public API
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** Cache of generated definitions */
 let cachedDefs: SettingDef[] | null = null;

@@ -252,10 +252,6 @@ export async function loadSshTool(session: ToolSession): Promise<SshTool | null>
 	return new SshTool(session, hostNames, hostsByName, description);
 }
 
-// =============================================================================
-// TUI Renderer
-// =============================================================================
-
 interface SshRenderArgs {
 	host?: string;
 	command?: string;

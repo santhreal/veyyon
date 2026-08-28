@@ -2,10 +2,6 @@ import { tryParseJson } from "@veyyon/utils";
 import type { SpecialHandler } from "./types";
 import { buildResult, formatIsoDate, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
-// =============================================================================
-// Lobste.rs Types
-// =============================================================================
-
 interface LobstersStory {
 	short_id: string;
 	title: string;
@@ -40,10 +36,6 @@ interface LobstersStoryResponse {
 	tags: string[];
 	comments: LobstersComment[];
 }
-
-// =============================================================================
-// Handler
-// =============================================================================
 
 /**
  * Render comments recursively

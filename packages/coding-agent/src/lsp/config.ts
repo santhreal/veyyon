@@ -38,10 +38,6 @@ export interface MissingLspServer {
 	fileTypes: string[];
 }
 
-// =============================================================================
-// Default Server Configuration Loading
-// =============================================================================
-
 const PID_TOKEN = "$PID";
 
 interface RawServerConfig extends Partial<ServerConfig> {
@@ -214,10 +210,6 @@ function applyRuntimeDefaults(servers: Record<string, ServerConfig>): Record<str
 	return updated;
 }
 
-// =============================================================================
-// Configuration Loading
-// =============================================================================
-
 /**
  * Check if any root marker file exists in the directory
  */
@@ -266,10 +258,6 @@ export function hasRootMarkerAncestor(filePath: string, markers: string[]): bool
 		dir = parent;
 	}
 }
-
-// =============================================================================
-// Local Binary Resolution
-// =============================================================================
 
 /**
  * Local bin directories to check before $PATH, ordered by priority.
@@ -581,10 +569,6 @@ export function loadConfig(cwd: string): LspConfig {
 
 	return { servers: available, idleTimeoutMs, missingServers };
 }
-
-// =============================================================================
-// Server Selection
-// =============================================================================
 
 /**
  * Find all servers that can handle a file based on extension.

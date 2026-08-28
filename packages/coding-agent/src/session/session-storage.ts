@@ -4,7 +4,6 @@ import * as path from "node:path";
 import { reportFault } from "@veyyon/utils/fault-sink";
 import { hasFsCode, isEnoent } from "@veyyon/utils/fs-error";
 import { type PathState, pathStateSync } from "@veyyon/utils/fs-optional";
-// Owners, not the `@veyyon/utils` barrel: 5 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { peekFileEnds } from "@veyyon/utils/peek-file";
 import { sessionBackupName, sessionFileStem } from "@veyyon/utils/session-file";

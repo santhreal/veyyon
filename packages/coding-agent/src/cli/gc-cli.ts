@@ -254,12 +254,6 @@ function codeOf(error: unknown): string | undefined {
 		: undefined;
 }
 
-// `pathExists` and `statIfPresent` used to be defined right here, with those exact names and the
-// OPPOSITE contract to `@veyyon/utils`'s exported pair: these threw on a non-ENOENT failure, while the
-// shared ones report the fault and answer "absent". Throwing is the contract gc needs, because every
-// caller below uses the answer to authorise a DELETE or an archive move, where acting on a wrong
-// "absent" destroys something. Both contracts now have one owner each in `fs-optional.ts`, named for
-// what they do, so importing the wrong one is a visible choice rather than an invisible downgrade.
 async function readTextIfPresent(file: string): Promise<string> {
 	try {
 		if (file.endsWith(COMPRESSED_SESSION_SUFFIX)) {

@@ -1,4 +1,3 @@
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { clampLow } from "@veyyon/utils/math";
 
 export interface ToolTimeoutConfig {

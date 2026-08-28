@@ -97,15 +97,12 @@ export interface RubyResult {
 	stdinRequested: boolean;
 }
 
-// ---------------------------------------------------------------------------
 // Session bookkeeping
 //
 // One RubyKernel subprocess per (session id, cwd, interpreter) tuple. The
 // runner mutates process-global cwd/$LOAD_PATH/ENV during execution, so
 // cross-directory work must never share a live kernel. Multiple agent owners can
 // register against the same tuple; the kernel stays alive until the last owner detaches.
-// ---------------------------------------------------------------------------
-
 interface RubySessionOwners {
 	ownerIds: Set<string>;
 	hasFallbackOwner: boolean;
@@ -126,10 +123,6 @@ const sessions = new Map<string, RubySession>();
 const startingSessions = new Map<string, StartingRubySession>();
 const resettingSessions = new Map<string, Promise<void>>();
 
-// ---------------------------------------------------------------------------
-// Cancellation plumbing
-// ---------------------------------------------------------------------------
-
 class RubyExecutionCancelledError extends Error {
 	readonly timedOut: boolean;
 
@@ -149,18 +142,10 @@ function requireRemainingTimeoutMs(deadlineMs?: number): number | undefined {
 	return remainingMs;
 }
 
-// ---------------------------------------------------------------------------
-// Result formatting
-// ---------------------------------------------------------------------------
-
 function createCancelledRubyResult(timedOut: boolean, timeoutMs?: number): RubyResult {
 	const output = timedOut ? formatTimeoutAnnotation(timeoutMs) : "";
 	return createCancelledKernelResult(output);
 }
-
-// ---------------------------------------------------------------------------
-// Kernel start helpers
-// ---------------------------------------------------------------------------
 
 async function startKernel(cwd: string, options: RubyExecutorOptions): Promise<RubyKernel> {
 	requireRemainingTimeoutMs(options.deadlineMs);
@@ -250,10 +235,6 @@ async function resetSession(sessionKey: string): Promise<void> {
 	await releaseKernel(existing.kernel, "ruby-session-reset");
 }
 
-// ---------------------------------------------------------------------------
-// Public dispose entry points
-// ---------------------------------------------------------------------------
-
 export async function disposeAllRubyKernelSessions(): Promise<void> {
 	const pending = Array.from(startingSessions.values()).map(starting => starting.promise);
 	startingSessions.clear();
@@ -332,10 +313,6 @@ export async function disposeRubyKernelSessionsByOwner(ownerId: string): Promise
 		if (!sessions.has(session.sessionKey)) sessions.set(session.sessionKey, session);
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Execution
-// ---------------------------------------------------------------------------
 
 async function executeWithKernel(
 	kernel: KernelExecutor,

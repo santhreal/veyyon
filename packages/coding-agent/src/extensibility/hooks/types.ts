@@ -260,10 +260,6 @@ export interface HookCommandContext extends HookContext {
 	navigateTree(targetId: string, options?: { summarize?: boolean }): Promise<{ cancelled: boolean }>;
 }
 
-// ============================================================================
-// Session Events (shared with extensions subsystem)
-// ============================================================================
-
 export type {
 	ContextEvent,
 	SessionBeforeBranchEvent,
@@ -412,10 +408,6 @@ export type HookEvent =
 	| ToolCallEvent
 	| ToolResultEvent;
 
-// ============================================================================
-// Event Results
-// ============================================================================
-
 /**
  * Return type for context event handlers.
  * Allows hooks to modify messages before they're sent to the LLM.
@@ -443,10 +435,6 @@ export type {
 	SessionBeforeTreeResult,
 	SessionCompactingResult,
 } from "../shared-events";
-
-// ============================================================================
-// Hook API
-// ============================================================================
 
 /**
  * Handler function type for each event.
@@ -606,10 +594,6 @@ export interface HookAPI {
  * Hooks export a default function that receives the HookAPI.
  */
 export type HookFactory = (pi: HookAPI) => void;
-
-// ============================================================================
-// Errors
-// ============================================================================
 
 /**
  * Error emitted when a hook fails.

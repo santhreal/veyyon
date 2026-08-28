@@ -828,10 +828,6 @@ export function buildExtensionModuleItems(
 	];
 }
 
-// =============================================================================
-// Claude Code Plugin Cache Helpers
-// =============================================================================
-
 /**
  * Entry for an installed Claude Code plugin.
  */

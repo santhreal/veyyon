@@ -34,10 +34,6 @@ import type { RenderedSegment, SegmentContext, StatusLineSegment, StatusLineSegm
 
 export type { SegmentContext } from "./types";
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Helpers
-// ═══════════════════════════════════════════════════════════════════════════
-
 /**
  * How close a secret's deadline has to be before the secrets chip prints it.
  *
@@ -195,10 +191,6 @@ function classifyProjectDir(pwd: string): { scratch: boolean; relative: string |
 	}
 	return { scratch: false, relative: null };
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Segment Implementations
-// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * `👻 <agent> · esc back`, the one place the proxied view says whose session you are in.
@@ -1179,10 +1171,6 @@ const usageSegment: StatusLineSegment = {
 		return { content, visible: true };
 	},
 };
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Segment Registry
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
 	pi: piSegment,

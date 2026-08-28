@@ -5,10 +5,6 @@
  * https://modelcontextprotocol.io/specification/2025-03-26/
  */
 
-// =============================================================================
-// JSON-RPC 2.0 Types
-// =============================================================================
-
 import type { SourceMeta } from "../capability/types";
 
 export interface JsonRpcRequest {
@@ -55,10 +51,6 @@ export interface JsonRpcError {
 }
 
 export type JsonRpcMessage = JsonRpcRequest | JsonRpcNotification | JsonRpcResponse;
-
-// =============================================================================
-// MCP Server Configuration (.mcp.json format)
-// =============================================================================
 
 /** Authentication configuration for MCP servers */
 export interface MCPAuthConfig {
@@ -148,10 +140,6 @@ export interface MCPConfigFile {
 	/** Names to force-enable when a non-writable source reports `enabled: false`. */
 	enabledServers?: string[];
 }
-
-// =============================================================================
-// MCP Protocol Types
-// =============================================================================
 
 /** MCP implementation info */
 export interface MCPImplementation {
@@ -244,10 +232,6 @@ export interface MCPToolCallResult {
 	isError?: boolean;
 }
 
-// =============================================================================
-// Transport Types
-// =============================================================================
-
 export interface MCPRequestOptions {
 	/** Abort signal (e.g. Escape-to-interrupt) */
 	signal?: AbortSignal;
@@ -277,10 +261,6 @@ export interface MCPTransport {
 
 /** Transport factory function */
 export type TransportFactory = (config: MCPServerConfig) => Promise<MCPTransport>;
-
-// =============================================================================
-// MCP Client Types
-// =============================================================================
 
 /** Connected MCP server state */
 export interface MCPServerConnection {
@@ -313,10 +293,6 @@ export interface MCPToolWithServer {
 	server: MCPServerConnection;
 	tool: MCPToolDefinition;
 }
-
-// =============================================================================
-// MCP Resource Types
-// =============================================================================
 
 /** Annotations for resources, templates, and content blocks */
 export interface MCPAnnotations {
@@ -381,10 +357,6 @@ export interface MCPResourceSubscribeParams {
 	uri: string;
 }
 
-// =============================================================================
-// MCP Prompt Types
-// =============================================================================
-
 /** An argument definition for an MCP prompt */
 export interface MCPPromptArgument {
 	name: string;
@@ -433,10 +405,6 @@ export interface MCPGetPromptResult {
 	description?: string;
 	messages: MCPPromptMessage[];
 }
-
-// =============================================================================
-// MCP Notification Method Names
-// =============================================================================
 
 /** MCP server notification method names */
 export const MCPNotificationMethods = {

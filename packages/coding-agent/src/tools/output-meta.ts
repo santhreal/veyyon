@@ -12,7 +12,6 @@ import type {
 	AgentToolUpdateCallback,
 } from "@veyyon/agent-core";
 import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/ai";
-// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 // `getDefault` from the SCHEMA that owns it, not through the store's re-export: the store is 95 modules
@@ -51,10 +50,6 @@ function countNewlines(text: string): number {
 	}
 	return count;
 }
-
-// =============================================================================
-// OutputMetaBuilder - Fluent API for building OutputMeta
-// =============================================================================
 
 export interface TruncationOptions {
 	direction: "head" | "tail" | "middle";
@@ -368,10 +363,6 @@ export function outputMeta(): OutputMetaBuilder {
 	return new OutputMetaBuilder();
 }
 
-// =============================================================================
-// Notice formatting
-// =============================================================================
-
 /**
  * Format styled artifact reference with warning color and brackets.
  * For TUI rendering of truncation warnings.
@@ -393,10 +384,6 @@ export function formatStyledTruncationWarning(meta: OutputMeta | undefined, them
 	const message = formatTruncationMetaNotice(meta.truncation);
 	return theme.fg("warning", wrapBrackets(message, theme));
 }
-
-// =============================================================================
-// Tool wrapper
-// =============================================================================
 
 /**
  * Append output notice to tool result content if meta is present.
@@ -422,10 +409,6 @@ function appendOutputNotice(
 }
 
 const kUnwrappedExecute = Symbol("OutputMeta.UnwrappedExecute");
-
-// =============================================================================
-// Centralized artifact spill for large tool results
-// =============================================================================
 
 /** Resolved artifact spill config sourced from the session settings (or schema defaults). */
 /**
@@ -603,10 +586,6 @@ async function spillLargeResultToArtifact(
 
 	return { ...result, content: newContent, details: newDetails };
 }
-
-// =============================================================================
-// Tool wrapper
-// =============================================================================
 
 async function wrappedExecute(
 	this: AgentTool & { [kUnwrappedExecute]: AgentToolExecFn },

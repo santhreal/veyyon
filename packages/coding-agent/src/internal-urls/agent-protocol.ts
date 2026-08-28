@@ -13,7 +13,6 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import { isEnoent } from "@veyyon/utils/fs-error";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { applyQuery, pathToQuery } from "./json-query";

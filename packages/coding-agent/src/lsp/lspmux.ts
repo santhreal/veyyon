@@ -14,10 +14,6 @@ import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
  * Integration is transparent: if lspmux is unavailable, falls back to direct spawning.
  */
 
-// =============================================================================
-// Types
-// =============================================================================
-
 interface LspmuxConfig {
 	instance_timeout?: number;
 	gc_interval?: number;
@@ -33,10 +29,6 @@ interface LspmuxState {
 	binaryPath: string | null;
 	config: LspmuxConfig | null;
 }
-
-// =============================================================================
-// Constants
-// =============================================================================
 
 /**
  * Servers that benefit from lspmux multiplexing.
@@ -55,10 +47,6 @@ const LIVENESS_TIMEOUT_MS = 1000;
 /** Cache duration for lspmux state (5 minutes) */
 const STATE_CACHE_TTL_MS = 5 * 60 * 1000;
 
-// =============================================================================
-// Config Path
-// =============================================================================
-
 /**
  * Get the lspmux config path based on platform.
  * Matches Rust's `dirs::config_dir()` behavior.
@@ -74,10 +62,6 @@ function getConfigPath(): string {
 			return path.join(Bun.env.XDG_CONFIG_HOME ?? path.join(home, ".config"), "lspmux", "config.toml");
 	}
 }
-
-// =============================================================================
-// State Management
-// =============================================================================
 
 let cachedState: LspmuxState | null = null;
 let cacheTimestamp = 0;
@@ -183,10 +167,6 @@ export async function detectLspmux(): Promise<LspmuxState> {
 
 	return cachedState;
 }
-
-// =============================================================================
-// Command Wrapping
-// =============================================================================
 
 /**
  * Check if a server command is supported by lspmux.

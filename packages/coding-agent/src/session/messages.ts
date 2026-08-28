@@ -28,7 +28,6 @@ import type {
 	UserMessage,
 } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { isRecord } from "@veyyon/utils/type-guards";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import { ToolAbortError } from "../tools/tool-errors";

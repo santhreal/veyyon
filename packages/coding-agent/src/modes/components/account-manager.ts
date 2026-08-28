@@ -422,10 +422,7 @@ export class AccountManagerComponent implements Component {
 		return truncateToWidth(`  ${label} ${query}`, width);
 	}
 
-	// ═══════════════════════════════════════════════════════════════════════
 	// Input
-	// ═══════════════════════════════════════════════════════════════════════
-
 	handleInput(data: string): void {
 		if (data.startsWith("\x1b[<")) {
 			routeSgrMouseInput(data, event => this.#routeMouse(event));
@@ -734,10 +731,7 @@ export class AccountManagerComponent implements Component {
 		return true;
 	}
 
-	// ═══════════════════════════════════════════════════════════════════════
 	// Rendering
-	// ═══════════════════════════════════════════════════════════════════════
-
 	#sidebarWidth(): number {
 		let longest = SIDEBAR_MIN_WIDTH;
 		for (let ei = 0; ei < this.#entries.length; ei++) {

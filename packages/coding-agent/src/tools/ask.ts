@@ -49,10 +49,6 @@ import { ASK_OTHER_OPTION_LABEL, isReservedAskOptionLabel } from "./ask-option-l
 import { formatErrorMessage, formatMeta, formatTitle } from "./render-utils";
 import { ToolAbortError } from "./tool-errors";
 
-// =============================================================================
-// Types
-// =============================================================================
-
 const OptionItem = arkType({
 	label: arkType("string").describe("display label"),
 	"description?": arkType("string").describe("optional explanatory text displayed below the label"),
@@ -128,10 +124,6 @@ function getSelectOptionLabel(option: ExtensionUISelectItem): string {
 function toSelectOption(option: AskOption, label = option.label): ExtensionUISelectItem {
 	return option.description ? { label, description: option.description } : label;
 }
-
-// =============================================================================
-// Constants
-// =============================================================================
 
 // Window after the timeout deadline within which an `undefined` selection is
 // attributed to a UI-enforced timeout (for surfaces that close the dialog at
@@ -378,10 +370,6 @@ function formatCustomInputTitle(
 		.map(row => row.text)
 		.join("\n");
 }
-
-// =============================================================================
-// Question Selection Logic
-// =============================================================================
 
 interface SelectionResult {
 	selectedOptions: string[];
@@ -741,10 +729,6 @@ function formatSingleQuestionResponse(result: {
 	}
 	return responseParts.length > 0 ? responseParts.join("\n") : "User cancelled the selection";
 }
-
-// =============================================================================
-// Tool Class
-// =============================================================================
 
 type AskParams = AskToolInput;
 
@@ -1106,10 +1090,6 @@ export class AskTool implements AgentTool<typeof askSchema, AskToolDetails> {
 		return { content: [{ type: "text" as const, text: responseText }], details };
 	}
 }
-
-// =============================================================================
-// TUI Renderer
-// =============================================================================
 
 interface AskRenderOption {
 	label: string;

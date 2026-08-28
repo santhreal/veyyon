@@ -1482,10 +1482,7 @@ export class AgentDashboard extends Container {
 		this.#moveSelection(direction * Math.max(1, this.#computeBodyHeight()));
 	}
 
-	// ========================================================================
 	// Opening an agent
-	// ========================================================================
-
 	/**
 	 * Enter on a row: hand the main view to that agent's live session.
 	 *
@@ -1678,10 +1675,7 @@ export class AgentDashboard extends Container {
 		})();
 	}
 
-	// ========================================================================
 	// Layout
-	// ========================================================================
-
 	/**
 	 * The view strip, styled by the SHARED overlay tab theme rather than a local
 	 * pair of colours.

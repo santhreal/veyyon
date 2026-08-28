@@ -24,10 +24,6 @@ import { theme } from "../modes/theme/theme";
 import { initXdg } from "./commands/init-xdg";
 import { EXIT_USAGE } from "./exit-codes";
 
-// =============================================================================
-// Types
-// =============================================================================
-
 export type ConfigAction = "list" | "get" | "set" | "reset" | "path" | "init-xdg";
 
 export interface ConfigCommandArgs {
@@ -38,10 +34,6 @@ export interface ConfigCommandArgs {
 		json?: boolean;
 	};
 }
-// =============================================================================
-// Setting Filtering
-// =============================================================================
-
 type CliSettingDef = {
 	path: SettingPath;
 	type: string;
@@ -114,10 +106,6 @@ function getSettingValues(def: CliSettingDef): readonly string[] | undefined {
 /** Canonical action list; the `config` command's options validation imports this. */
 export const CONFIG_ACTIONS: ConfigAction[] = ["list", "get", "set", "reset", "path", "init-xdg"];
 
-// =============================================================================
-// Value Formatting
-// =============================================================================
-
 /**
  * Widest opening value token that can still share its key's line in `config list`.
  *
@@ -188,10 +176,6 @@ function getTypeDisplay(def: CliSettingDef): string {
 			return "(string)";
 	}
 }
-
-// =============================================================================
-// Schema-Driven Value Parsing
-// =============================================================================
 
 /**
  * The one sentence every rejected `config set` value ends with.
@@ -291,10 +275,6 @@ function parseAndSetValue(path: SettingPath, rawValue: string): void {
 
 	settings.set(path, parsedValue as SettingValue<typeof path>);
 }
-
-// =============================================================================
-// Command Handlers
-// =============================================================================
 
 export async function runConfigCommand(cmd: ConfigCommandArgs): Promise<void> {
 	await Settings.init();
@@ -541,7 +521,3 @@ async function handleReset(key: string | undefined, flags: { json?: boolean }): 
 function handlePath(): void {
 	console.log(getAgentDir());
 }
-
-// =============================================================================
-// Help
-// =============================================================================

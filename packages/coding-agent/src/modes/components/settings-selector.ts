@@ -3270,10 +3270,6 @@ export class SettingsSelectorComponent implements Component {
 		return true;
 	}
 
-	// ═══════════════════════════════════════════════════════════════════════
-	// Global search (type-to-search across every tab)
-	// ═══════════════════════════════════════════════════════════════════════
-
 	/** Swap the tab content for the global search result list. */
 	#startSearch(initialQuery: string): void {
 		this.#rememberCurrentSelection();

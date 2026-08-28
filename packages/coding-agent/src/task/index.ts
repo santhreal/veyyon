@@ -551,10 +551,6 @@ function discoverAgentsForCreate(cwd: string): Promise<DiscoveryResult> {
 	return pending;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Tool Class
-// ═══════════════════════════════════════════════════════════════════════════
-
 /**
  * Task tool - Delegate tasks to specialized agents.
  *

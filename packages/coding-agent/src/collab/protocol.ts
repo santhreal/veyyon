@@ -8,7 +8,6 @@
  */
 
 import type { Usage as AgentUsage, ImageContent, Model } from "@veyyon/ai";
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import type {
 	BusChannel,
@@ -628,7 +627,6 @@ export type CollabFrame =
 	| { t: "bye"; reason: string }
 	| { t: "error"; message: string };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // Wire envelope: [4B uint32 BE peerId][sealed payload]
 // Host→relay: peerId 0 broadcasts to all guests; peerId N targets guest N.
 // Guest→relay: always 0; the relay rewrites it to the sender's id.
@@ -637,13 +635,7 @@ export type CollabFrame =
 // the host and the browser guest cannot disagree about the byte order. It is
 // re-exported here because `protocol.ts` is what the collab host and guest
 // import.
-// ═══════════════════════════════════════════════════════════════════════════
-
 export { packEnvelope, rewriteEnvelopePeer, unpackEnvelope } from "@veyyon/wire";
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Link format: wss://<host[:port]>/r/<roomId>.<base64url-32-byte-key>
-// ═══════════════════════════════════════════════════════════════════════════
 
 const ROOM_PATH_RE = /^\/r\/([A-Za-z0-9_-]{10,64})(?:\.([A-Za-z0-9_-]+))?$/;
 const BARE_LINK_RE = /^([A-Za-z0-9_-]{10,64})[#.]([A-Za-z0-9_-]+)$/;

@@ -990,10 +990,7 @@ export async function runRpcMode(
 		const id = command.id;
 
 		switch (command.type) {
-			// =================================================================
 			// Prompting
-			// =================================================================
-
 			case "prompt": {
 				const skillResult = await tryRunRpcSkillCommand(session, command.message, command.streamingBehavior);
 				if (skillResult) {
@@ -1076,10 +1073,7 @@ export async function runRpcMode(
 				return success(id, result.type, result.data);
 			}
 
-			// =================================================================
 			// State
-			// =================================================================
-
 			case "get_state": {
 				const state: RpcSessionState = {
 					model: session.model,
@@ -1171,10 +1165,7 @@ export async function runRpcMode(
 				}
 			}
 
-			// =================================================================
 			// Model
-			// =================================================================
-
 			case "set_model": {
 				const models = session.getAvailableModels();
 				const model = models.find(m => m.provider === command.provider && m.id === command.modelId);
@@ -1198,10 +1189,7 @@ export async function runRpcMode(
 				return success(id, "get_available_models", { models });
 			}
 
-			// =================================================================
 			// Thinking
-			// =================================================================
-
 			case "set_thinking_level": {
 				const refusal = rpcThinkingLevelRefusal(session.model, command.level);
 				if (refusal) return error(id, "set_thinking_level", refusal);
@@ -1217,10 +1205,7 @@ export async function runRpcMode(
 				return success(id, "cycle_thinking_level", { level });
 			}
 
-			// =================================================================
 			// Queue Modes
-			// =================================================================
-
 			case "set_steering_mode": {
 				session.setSteeringMode(command.mode);
 				return success(id, "set_steering_mode");
@@ -1236,10 +1221,7 @@ export async function runRpcMode(
 				return success(id, "set_interrupt_mode");
 			}
 
-			// =================================================================
 			// Compaction
-			// =================================================================
-
 			case "compact": {
 				const result = await session.compact(command.customInstructions);
 				return success(id, "compact", result);
@@ -1250,10 +1232,7 @@ export async function runRpcMode(
 				return success(id, "set_auto_compaction");
 			}
 
-			// =================================================================
 			// Retry
-			// =================================================================
-
 			case "set_auto_retry": {
 				session.setAutoRetryEnabled(command.enabled);
 				return success(id, "set_auto_retry");
@@ -1264,10 +1243,7 @@ export async function runRpcMode(
 				return success(id, "abort_retry");
 			}
 
-			// =================================================================
 			// Bash
-			// =================================================================
-
 			case "bash": {
 				const result = await session.executeBash(command.command);
 				return success(id, "bash", result);
@@ -1278,10 +1254,7 @@ export async function runRpcMode(
 				return success(id, "abort_bash");
 			}
 
-			// =================================================================
 			// Session
-			// =================================================================
-
 			case "get_session_stats": {
 				const stats = session.getSessionStats();
 				return success(id, "get_session_stats", stats);
@@ -1325,18 +1298,12 @@ export async function runRpcMode(
 				return success(id, "handoff", result ? { savedPath: result.savedPath } : null);
 			}
 
-			// =================================================================
 			// Messages
-			// =================================================================
-
 			case "get_messages": {
 				return success(id, "get_messages", { messages: session.messages });
 			}
 
-			// =================================================================
 			// Login
-			// =================================================================
-
 			case "get_login_providers": {
 				const providers = getOAuthProviders().map(provider => ({
 					id: provider.id,

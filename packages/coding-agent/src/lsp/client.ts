@@ -18,10 +18,6 @@ import type {
 } from "./types";
 import { detectLanguageId, fileToUri } from "./utils";
 
-// =============================================================================
-// Client State
-// =============================================================================
-
 const clients = new Map<string, LspClient>();
 const clientLocks = new Map<string, Promise<LspClient>>();
 const fileOperationLocks = new Map<string, Promise<void>>();
@@ -68,10 +64,6 @@ function stopIdleChecker(): void {
 		idleCheckInterval = null;
 	}
 }
-
-// =============================================================================
-// Client Capabilities
-// =============================================================================
 
 const CLIENT_CAPABILITIES = {
 	textDocument: {
@@ -191,10 +183,6 @@ export interface WatchedFileChange {
 	type: FileChangeType;
 }
 
-// =============================================================================
-// LSP Message Protocol
-// =============================================================================
-
 function abortReason(signal: AbortSignal): Error {
 	return signal.reason instanceof Error ? signal.reason : new ToolAbortError();
 }
@@ -281,10 +269,6 @@ function queueWriteMessage(
 	client.writeQueue = result.catch(() => {});
 	return result;
 }
-
-// =============================================================================
-// Message Reader
-// =============================================================================
 
 /**
  * Start background message reader for a client.
@@ -541,10 +525,6 @@ async function sendResponse(
 		logger.error("LSP failed to respond.", { method, error: errorMessage(err) });
 	}
 }
-
-// =============================================================================
-// Client Management
-// =============================================================================
 
 /** Timeout for warmup initialize requests (5 seconds) */
 export const WARMUP_TIMEOUT_MS = 5000;
@@ -1163,10 +1143,6 @@ export async function shutdownClient(key: string): Promise<void> {
 	await shutdownClientInstance(client);
 }
 
-// =============================================================================
-// LSP Protocol Methods
-// =============================================================================
-
 /** Default timeout for LSP requests when no abort signal is provided (30 seconds) */
 const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
 
@@ -1336,10 +1312,6 @@ export function getActiveClients(): LspServerStatus[] {
 		fileTypes: client.config.fileTypes,
 	}));
 }
-
-// =============================================================================
-// Process Cleanup
-// =============================================================================
 
 // Route signal-triggered LSP cleanup through the shared `postmortem` cleanup
 // list so it runs alongside every other session teardown (draft save,

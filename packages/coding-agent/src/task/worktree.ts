@@ -361,11 +361,8 @@ export async function applyNestedPatches(
 	return warnings;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // Unified isolation lifecycle — picks the best backend via the PAL and
 // returns the merged-view path together with the resolved kind.
-// ═══════════════════════════════════════════════════════════════════════════
-
 /**
  * User-facing isolation mode names exposed by the `task.isolation.mode`
  * setting. Mapped to a backend-kind hint via {@link parseIsolationMode};
@@ -498,10 +495,6 @@ export async function cleanupIsolation(handle: IsolationHandle): Promise<void> {
 		await fs.rm(baseDir, { recursive: true, force: true });
 	}
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Branch-mode isolation
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface CommitToBranchResult {
 	branchName?: string;

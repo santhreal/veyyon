@@ -15,10 +15,7 @@ import { DEFAULT_TOOL_CALL_LOOP_EXEMPT_TOOLS } from "./shared";
 
 /** Model domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const MODEL_SETTINGS = {
-	// ────────────────────────────────────────────────────────────────────────
 	// Model
-	// ────────────────────────────────────────────────────────────────────────
-
 	// Reasoning and prompts
 	/**
 	 * Default effort per model, the ONE persisted store the user edits.

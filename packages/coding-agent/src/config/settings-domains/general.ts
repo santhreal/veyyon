@@ -8,9 +8,7 @@ import {
 
 /** General domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const GENERAL_SETTINGS = {
-	// ────────────────────────────────────────────────────────────────────────
 	// General settings (no UI)
-	// ────────────────────────────────────────────────────────────────────────
 	// Retired: superseded by the machine-wide `onboardingVersion` in
 	// ~/.veyyon/config.yml (see settings-domains/global.ts).
 	//

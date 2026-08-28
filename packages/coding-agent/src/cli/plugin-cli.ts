@@ -10,10 +10,6 @@ import { PluginManager, parseSettingValue, validateSetting } from "../extensibil
 import { createMarketplaceManager, type MarketplaceManager } from "../extensibility/plugins/marketplace/index.js";
 import { theme } from "../modes/theme/theme";
 
-// =============================================================================
-// Types
-// =============================================================================
-
 export type PluginAction =
 	| "install"
 	| "uninstall"
@@ -65,10 +61,6 @@ import { EXIT_USAGE } from "./exit-codes";
 
 export { classifyInstallTarget } from "./classify-install-target";
 
-// =============================================================================
-// Command Handlers
-// =============================================================================
-
 /**
  * Run a plugin command.
  */
@@ -114,10 +106,6 @@ export async function runPluginCommand(cmd: PluginCommandArgs): Promise<void> {
 			break;
 	}
 }
-
-// =============================================================================
-// Marketplace Handlers
-// =============================================================================
 
 function makeMarketplaceManager(): Promise<MarketplaceManager> {
 	return createMarketplaceManager(getProjectDir());
@@ -905,7 +893,3 @@ async function handleSetEnabled(
 		}
 	}
 }
-
-// =============================================================================
-// Help
-// =============================================================================

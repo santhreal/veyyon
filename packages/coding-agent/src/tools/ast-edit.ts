@@ -541,10 +541,6 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 	}
 }
 
-// =============================================================================
-// TUI Renderer
-// =============================================================================
-
 interface AstEditRenderArgs {
 	ops?: Array<{ pat?: string; out?: string }>;
 	paths?: string[];

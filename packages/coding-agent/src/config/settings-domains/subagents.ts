@@ -165,10 +165,7 @@ export const SUBAGENT_RECURSION_DEPTH_OPTIONS = [
 ] as const;
 
 export const SUBAGENTS_SETTINGS = {
-	// ────────────────────────────────────────────────────────────────────────
 	// Delegation
-	// ────────────────────────────────────────────────────────────────────────
-
 	"subagent.enabled": {
 		type: "boolean",
 		default: true,
@@ -224,12 +221,10 @@ export const SUBAGENTS_SETTINGS = {
 		},
 	},
 
-	// ────────────────────────────────────────────────────────────────────────
 	// Subagents — which ones this session offers, how deep they may go, and what
 	// they run. One section, because those are one decision: an operator turning
 	// a specialist on immediately asks what it will run, and the answer used to
 	// be two sections away under a heading of its own.
-	// ────────────────────────────────────────────────────────────────────────
 	/**
 	 * Per-agent settings keyed by agent name; see {@link SubagentAgentSettings}.
 	 *
@@ -344,10 +339,7 @@ export const SUBAGENTS_SETTINGS = {
 		},
 	},
 
-	// ────────────────────────────────────────────────────────────────────────
 	// Limits
-	// ────────────────────────────────────────────────────────────────────────
-
 	"subagent.maxConcurrency": {
 		type: "number",
 		default: 32,
@@ -516,10 +508,7 @@ export const SUBAGENTS_SETTINGS = {
 		},
 	},
 
-	// ────────────────────────────────────────────────────────────────────────
 	// Isolation
-	// ────────────────────────────────────────────────────────────────────────
-
 	"subagent.isolation.mode": {
 		type: "enum",
 		values: [
@@ -616,6 +605,4 @@ export const SUBAGENTS_SETTINGS = {
 				"Base directory for agent-managed worktrees: subagent isolation copies, `github` PR checkouts, and `veyyon worktree` cleanup all live here. Unset uses the active profile's `wt/` directory (~/.veyyon/profiles/<name>/wt, or its XDG data equivalent). Must be an absolute or ~-relative path; relative paths are ignored. The VEYYON_WORKTREE_DIR env var overrides this.",
 		},
 	},
-
-	// ────────────────────────────────────────────────────────────────────────
 } as const;

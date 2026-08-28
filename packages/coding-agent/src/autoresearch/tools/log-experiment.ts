@@ -371,9 +371,6 @@ async function revertFailedExperiment(
 		}
 	}
 
-	// A status this cannot read used to parse as "no dirty paths", so the revert reported "nothing to
-	// revert" and returned success while the experiment's changes stayed in the tree -- the one outcome a
-	// discard must never produce. The caller surfaces this error to the agent instead.
 	let statusText: string;
 	let workDirPrefix: string;
 	try {

@@ -36,10 +36,6 @@ function clearEnabledPluginsCache(): void {
 
 registerPluginCacheInvalidator(clearEnabledPluginsCache);
 
-// =============================================================================
-// Runtime Config Loading
-// =============================================================================
-
 /**
  * Load plugin runtime config from lock file.
  *
@@ -234,10 +230,6 @@ async function loadEnabledPlugins(cwd: string, home?: string, pluginsRoot?: stri
 	for (const plugin of projectPlugins) merged.set(plugin.name, plugin);
 	return Array.from(merged.values());
 }
-
-// =============================================================================
-// Path Resolution
-// =============================================================================
 
 const MANIFEST_ENTRY_MODULE_EXTENSIONS = [".ts", ".js", ".mjs", ".cjs"];
 const MANIFEST_ENTRY_INDEX_NAMES = MANIFEST_ENTRY_MODULE_EXTENSIONS.map(ext => `index${ext}`);
@@ -497,10 +489,6 @@ export function resolvePluginCommandPaths(plugin: InstalledPlugin): string[] {
 export function resolvePluginExtensionPaths(plugin: InstalledPlugin): string[] {
 	return resolvePluginPaths(plugin, "extensions");
 }
-
-// =============================================================================
-// Aggregated Discovery
-// =============================================================================
 
 /**
  * Get all tool paths from all enabled plugins.

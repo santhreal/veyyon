@@ -1,4 +1,3 @@
-// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import { escapeRegExp } from "@veyyon/utils/regex";
 import { errorMessage } from "@veyyon/utils/type-guards";
 // TYPE ONLY, which is erased. The class is 870 modules (the client, the transports, the tool loader)

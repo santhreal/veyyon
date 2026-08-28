@@ -347,10 +347,6 @@ async function maybeMarkExecutableForShebang(absolutePath: string, content: stri
 	}
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Tool Class
-// ═══════════════════════════════════════════════════════════════════════════
-
 type WriteParams = WriteToolInput;
 
 interface ResolvedArchiveWritePath {
@@ -1159,10 +1155,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		});
 	}
 }
-
-// =============================================================================
-// TUI Renderer
-// =============================================================================
 
 interface WriteRenderArgs {
 	path?: unknown;

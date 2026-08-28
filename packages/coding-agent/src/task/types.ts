@@ -1,5 +1,4 @@
 import type { Usage } from "@veyyon/ai";
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { $envpos } from "@veyyon/utils/env";
 import { type BaseType, type } from "arktype";
 import type { RetryRecoveryMode } from "../modes/retry-display";

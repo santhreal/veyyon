@@ -5,10 +5,6 @@ import { ToolError } from "../tools/tool-errors";
 import type { CreateFile, DeleteFile, Range, RenameFile, TextDocumentEdit, TextEdit, WorkspaceEdit } from "./types";
 import { comparePosition, positionsEqual, rangesEqual, uriToFile } from "./utils";
 
-// =============================================================================
-// Text Edit Application
-// =============================================================================
-
 /**
  * Apply text edits to a string in-memory.
  * Edits are applied in reverse order (bottom-to-top) to preserve line/character indices.
@@ -133,10 +129,6 @@ export async function applyTextEdits(filePath: string, edits: TextEdit[]): Promi
 	const result = applyTextEditsToString(content, edits);
 	await Bun.write(filePath, result);
 }
-
-// =============================================================================
-// Workspace Edit Application
-// =============================================================================
 
 type WorkspaceEditOp =
 	| { kind: "text"; uri: string; edits: TextEdit[] }

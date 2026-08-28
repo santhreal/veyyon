@@ -17,7 +17,6 @@
  * render now.
  */
 
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import {
 	DEFAULT_PROFILE_DIR_NAME,
 	readGlobalAuthBrokerSafe,

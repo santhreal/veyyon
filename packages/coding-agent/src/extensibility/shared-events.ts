@@ -21,10 +21,6 @@ import type { Goal, GoalModeState } from "../goals/state";
 import type { BranchSummaryEntry, CompactionEntry, SessionEntry } from "../session/session-entries";
 import type { TodoItem } from "../tools/todo";
 
-// ============================================================================
-// Session Events
-// ============================================================================
-
 /** Fired on initial session load */
 export interface SessionStartEvent {
 	type: "session_start";
@@ -163,10 +159,6 @@ export type SessionEvent =
 	| SessionTreeEvent
 	| GoalUpdatedEvent;
 
-// ============================================================================
-// Agent / Turn Events
-// ============================================================================
-
 /**
  * Fired before each LLM call.
  *
@@ -208,10 +200,6 @@ export interface TurnEndEvent {
 	message: AgentMessage;
 	toolResults: ToolResultMessage[];
 }
-
-// ============================================================================
-// Auto-compaction / Auto-retry Events
-// ============================================================================
 
 /** Fired when auto-compaction starts */
 export interface AutoCompactionStartEvent {
@@ -265,10 +253,6 @@ export interface AutoRetryEndEvent {
 	recoveredErrors?: RecoveredRetryError[];
 }
 
-// ============================================================================
-// TTSR / Todo Reminders
-// ============================================================================
-
 /** Fired when TTSR rule matching interrupts generation */
 export interface TtsrTriggeredEvent {
 	type: "ttsr_triggered";
@@ -282,10 +266,6 @@ export interface TodoReminderEvent {
 	attempt: number;
 	maxAttempts: number;
 }
-
-// ============================================================================
-// Shared Event Result Shapes
-// ============================================================================
 
 /**
  * Return type for `tool_call` handlers.

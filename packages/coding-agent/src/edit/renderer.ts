@@ -45,15 +45,7 @@ import { type ApplyPatchEntry, expandApplyPatchToEntries, expandApplyPatchToPrev
 import type { Operation } from "./modes/patch";
 import type { PerFileDiffPreview } from "./streaming";
 
-// ═══════════════════════════════════════════════════════════════════════════
-// LSP Batching
-// ═══════════════════════════════════════════════════════════════════════════
-
 export { getLspBatchRequest, type LspBatchRequest };
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Tool Details Types
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface EditToolPerFileResult {
 	path: string;
@@ -104,10 +96,6 @@ export interface EditToolDetails {
 	/** Pre-move source path; set only when the edit moved/renamed the file. The header renders `sourcePath → path`. */
 	sourcePath?: string;
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// TUI Renderer
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface EditRenderArgs {
 	path?: unknown;

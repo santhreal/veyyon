@@ -2,10 +2,6 @@ import type { ptree } from "@veyyon/utils";
 import { type } from "arktype";
 import { describeTimeoutParam } from "../tools/tool-timeouts";
 
-// =============================================================================
-// Tool Schema
-// =============================================================================
-
 export const lspSchema = type({
 	action:
 		"'diagnostics' | 'definition' | 'references' | 'hover' | 'symbols' | 'rename' | 'rename_file' | 'code_actions' | 'type_definition' | 'implementation' | 'status' | 'reload' | 'capabilities' | 'request'",
@@ -28,10 +24,6 @@ export interface LspToolDetails {
 	request?: LspParams;
 }
 
-// =============================================================================
-// Core LSP Protocol Types
-// =============================================================================
-
 export interface Position {
 	line: number;
 	character: number;
@@ -53,10 +45,6 @@ export interface LocationLink {
 	targetRange: Range;
 	targetSelectionRange: Range;
 }
-
-// =============================================================================
-// Diagnostics
-// =============================================================================
 
 export type DiagnosticSeverity = 1 | 2 | 3 | 4; // error, warning, info, hint
 
@@ -88,10 +76,6 @@ export interface PublishDiagnosticsParams {
 	version?: number | null;
 }
 
-// =============================================================================
-// Text Edits
-// =============================================================================
-
 export interface TextEdit {
 	range: Range;
 	newText: string;
@@ -117,10 +101,6 @@ export interface TextDocumentEdit {
 	textDocument: OptionalVersionedTextDocumentIdentifier;
 	edits: (TextEdit | AnnotatedTextEdit)[];
 }
-
-// =============================================================================
-// Resource Operations
-// =============================================================================
 
 export interface CreateFileOptions {
 	overwrite?: boolean;
@@ -164,10 +144,6 @@ export interface WorkspaceEdit {
 	changeAnnotations?: Record<string, { label: string; needsConfirmation?: boolean; description?: string }>;
 }
 
-// =============================================================================
-// Code Actions
-// =============================================================================
-
 export type CodeActionKind =
 	| "quickfix"
 	| "refactor"
@@ -201,10 +177,6 @@ export interface CodeActionContext {
 	only?: CodeActionKind[];
 	triggerKind?: 1 | 2; // Invoked = 1, Automatic = 2
 }
-
-// =============================================================================
-// Symbols
-// =============================================================================
 
 export type SymbolKind =
 	| 1 // File
@@ -283,10 +255,6 @@ export interface SymbolInformation {
 	containerName?: string;
 }
 
-// =============================================================================
-// Hover
-// =============================================================================
-
 export interface MarkupContent {
 	kind: "plaintext" | "markdown";
 	value: string;
@@ -298,10 +266,6 @@ export interface Hover {
 	contents: MarkupContent | MarkedString | MarkedString[];
 	range?: Range;
 }
-
-// =============================================================================
-// Linter Client Interface
-// =============================================================================
 
 /**
  * Interface for linter/formatter clients.
@@ -320,10 +284,6 @@ export interface LinterClient {
 
 /** Factory function to create a LinterClient */
 export type LinterClientFactory = (config: ServerConfig, cwd: string) => LinterClient;
-
-// =============================================================================
-// Server Configuration
-// =============================================================================
 
 export interface ServerCapabilities {
 	flycheck?: boolean;
@@ -364,10 +324,6 @@ export interface ServerConfig {
 	 */
 	createClient?: LinterClientFactory;
 }
-
-// =============================================================================
-// Client State
-// =============================================================================
 
 export interface OpenFile {
 	version: number;
@@ -416,10 +372,6 @@ export interface LspClient {
 	/** Call to signal that project loading has completed */
 	resolveProjectLoaded: () => void;
 }
-
-// =============================================================================
-// JSON-RPC Protocol Types
-// =============================================================================
 
 /** JSON-RPC request/response identifier accepted by LSP peers. */
 export type LspJsonRpcId = number | string;

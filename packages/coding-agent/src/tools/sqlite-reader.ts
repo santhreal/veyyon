@@ -1,6 +1,5 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { stringifyJsonSafe } from "@veyyon/utils/json";
-// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import { clampLow } from "@veyyon/utils/math";
 import { sqlPlaceholders, tableExists } from "@veyyon/utils/sqlite";
 import { formatBytes, replaceTabs, truncateToWidth } from "./render-utils";

@@ -5,10 +5,7 @@ import { STT_SUBMIT_TRIGGER_OPTIONS, STT_SUBMIT_TRIGGER_VALUES } from "../../stt
 
 /** Interaction domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const INTERACTION_SETTINGS = {
-	// ────────────────────────────────────────────────────────────────────────
 	// Interaction
-	// ────────────────────────────────────────────────────────────────────────
-
 	// Conversation flow
 	steeringMode: {
 		type: "enum",

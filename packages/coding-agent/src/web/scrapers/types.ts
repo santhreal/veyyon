@@ -3,7 +3,6 @@
  */
 import { scheduler } from "node:timers/promises";
 import { isCancellation } from "@veyyon/utils/abortable";
-// Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { clamp } from "@veyyon/utils/math";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type TurndownService from "turndown";

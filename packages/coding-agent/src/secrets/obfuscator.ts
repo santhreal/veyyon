@@ -17,10 +17,6 @@ import {
 import { canObfuscatePlainValue, MIN_OBFUSCATABLE_LENGTH, type SecretRejection, secretCharacterLength } from "./policy";
 import { compileSecretRegex } from "./regex";
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Types
-// ═══════════════════════════════════════════════════════════════════════════
-
 /**
  * Where a configured secret came from.
  *
@@ -216,10 +212,6 @@ export interface MaskedInventory {
 	/** How many of `count` arrived with no label at all, and so can only be counted. */
 	unlabelled: number;
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Deterministic replacement generation
-// ═══════════════════════════════════════════════════════════════════════════
 
 const REPLACEMENT_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const PROCESS_PLACEHOLDER_KEY = crypto.randomBytes(32);
@@ -447,10 +439,6 @@ function resolveSafeReplacement(
 	}
 	return generateDeterministicReplacement(secret, key, forbidden);
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SecretObfuscator
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface ProtectedSpan {
 	start: number;
@@ -1668,10 +1656,6 @@ export class SecretObfuscator {
 	}
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Display restore (inbound, persisted/provider → local display)
-// ═══════════════════════════════════════════════════════════════════════════
-
 /**
  * Restore secret placeholders for local display. Only message kinds the model
  * itself authored from obfuscated context carry placeholders, and assistant
@@ -1849,10 +1833,6 @@ export function obfuscateToolArguments(
 	if (!obfuscator.hasSecrets()) return args;
 	return mapJsonStrings(args as JsonWithOptionalFields, s => obfuscator.obfuscate(s)) as Record<string, unknown>;
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Outbound obfuscation (local → provider)
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** Fail closed rather than modifying authenticated provider replay metadata or sending a secret in it. */
 function assertOpaqueProviderFieldSafe(obfuscator: SecretObfuscator, value: string | undefined, field: string): void {

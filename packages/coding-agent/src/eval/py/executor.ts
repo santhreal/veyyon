@@ -133,15 +133,12 @@ export interface PythonResult {
 	stdinRequested: boolean;
 }
 
-// ---------------------------------------------------------------------------
 // Session bookkeeping
 //
 // One PythonKernel subprocess per (session id, cwd, interpreter) tuple. The
 // runner mutates process-global cwd/sys.path during execution, so cross-directory
 // work must never share a live kernel. Multiple agent owners can still register against
 // the same tuple; the kernel stays alive until the last owner detaches.
-// ---------------------------------------------------------------------------
-
 interface PythonSession {
 	sessionKey: string;
 	sessionId: string;
@@ -157,10 +154,6 @@ interface PythonSession {
 const sessions = new Map<string, PythonSession>();
 const startingSessions = new Map<string, Promise<PythonSession>>();
 const resettingSessions = new Map<string, Promise<void>>();
-
-// ---------------------------------------------------------------------------
-// Cancellation plumbing
-// ---------------------------------------------------------------------------
 
 class PythonExecutionCancelledError extends Error {
 	readonly timedOut: boolean;
@@ -181,18 +174,10 @@ function requireRemainingTimeoutMs(deadlineMs?: number): number | undefined {
 	return remainingMs;
 }
 
-// ---------------------------------------------------------------------------
-// Result formatting
-// ---------------------------------------------------------------------------
-
 function createCancelledPythonResult(timedOut: boolean, timeoutMs?: number): PythonResult {
 	const output = timedOut ? formatTimeoutAnnotation(timeoutMs) : "";
 	return createCancelledKernelResult(output);
 }
-
-// ---------------------------------------------------------------------------
-// Kernel start helpers
-// ---------------------------------------------------------------------------
 
 async function startKernel(cwd: string, options: PythonExecutorOptions): Promise<PythonKernel> {
 	requireRemainingTimeoutMs(options.deadlineMs);
@@ -278,10 +263,6 @@ async function resetSession(sessionKey: string): Promise<void> {
 	await releaseKernel(existing.kernel, "python-session-reset");
 }
 
-// ---------------------------------------------------------------------------
-// Public dispose entry points
-// ---------------------------------------------------------------------------
-
 export async function disposeAllKernelSessions(): Promise<void> {
 	const pending = Array.from(startingSessions.values());
 	startingSessions.clear();
@@ -343,10 +324,6 @@ export async function disposeKernelSessionsByOwner(ownerId: string): Promise<voi
 		if (!sessions.has(session.sessionKey)) sessions.set(session.sessionKey, session);
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Execution
-// ---------------------------------------------------------------------------
 
 async function executeWithKernel(
 	kernel: KernelExecutor,

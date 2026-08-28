@@ -28,10 +28,6 @@ import {
 } from "./render-utils";
 import type { VibeOp, VibeToolDetails } from "./vibe";
 
-// =============================================================================
-// TUI Renderer — mini composer (spawn/send) + TV wall (wait/list)
-// =============================================================================
-
 const COMPOSER_LINE_MAX = 96;
 const TV_LINE_MAX = 110;
 const TV_TRACE_COLLAPSED = 2;

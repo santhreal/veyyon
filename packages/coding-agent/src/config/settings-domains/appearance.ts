@@ -3,10 +3,7 @@ import { DEFAULT_ARTIFACT_SPILL_THRESHOLD_KB } from "./shared";
 
 /** Appearance domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const APPEARANCE_SETTINGS = {
-	// ────────────────────────────────────────────────────────────────────────
 	// Appearance
-	// ────────────────────────────────────────────────────────────────────────
-
 	// Theme
 	"theme.dark": {
 		type: "string",

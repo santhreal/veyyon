@@ -1,11 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-// Leaf subpaths, not the `@veyyon/utils` barrel: cli.ts statically imports this
-// module (for the profile-alias bootstrap), and the barrel re-exports ./env,
-// which eagerly parses the agent-directory .env at import time. Pulling that in
-// here would load .env before `setProfile` runs (see profile-cli.test.ts). Both
-// atomic-write.ts and file-lock.ts are env-free, so importing them eagerly is safe.
 import { atomicWriteFile } from "@veyyon/utils/atomic-write";
 import { normalizeProfileName } from "@veyyon/utils/dirs";
 import { withFileLock } from "@veyyon/utils/file-lock";

@@ -1,9 +1,6 @@
 /** Tasks domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const TASKS_SETTINGS = {
-	// ────────────────────────────────────────────────────────────────────────
 	// Tasks
-	// ────────────────────────────────────────────────────────────────────────
-
 	// Plan mode
 	"plan.enabled": {
 		type: "boolean",
@@ -160,6 +157,4 @@ export const TASKS_SETTINGS = {
 			description: "Load commands from ~/.config/opencode/commands/",
 		},
 	},
-
-	// ────────────────────────────────────────────────────────────────────────
 } as const;

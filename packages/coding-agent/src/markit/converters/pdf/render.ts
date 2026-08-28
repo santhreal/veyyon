@@ -26,9 +26,6 @@ interface RenderLine {
 /** A content block carrying the Y of its last wrapped line during merging. */
 type WrapBlock = ContentBlock & { lastTopY: number };
 
-// ---------------------------------------------------------------------------
-// Utility
-// ---------------------------------------------------------------------------
 /** Convert full-width ASCII characters (Ａ→A, ！→! etc.) to normal ASCII. */
 function normalizeFullWidthAscii(text: string): string {
 	return text.replace(/[！-～]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xfee0));
@@ -60,9 +57,6 @@ export function parsePipeRow(line: string): string[] {
 		.map(cell => cell.trim());
 }
 
-// ---------------------------------------------------------------------------
-// Table rendering
-// ---------------------------------------------------------------------------
 /**
  * Render a TableGrid as a markdown table.
  */
@@ -171,9 +165,6 @@ function promoteSubHeaderPrefixes(matrix: string[][]): string[][] {
 	return result.filter((_, r) => !rowsToRemove.has(r));
 }
 
-// ---------------------------------------------------------------------------
-// Free text rendering
-// ---------------------------------------------------------------------------
 /** Y tolerance for grouping text boxes onto the same visual line. */
 const TEXT_LINE_Y_TOLERANCE = 3;
 /** Minimum X gap between adjacent boxes to mark line as tabular. */
@@ -275,9 +266,6 @@ function headingPrefix(fontSize: number, bodyFontSize: number, isBold: boolean):
 	return "";
 }
 
-// ---------------------------------------------------------------------------
-// Block merging
-// ---------------------------------------------------------------------------
 /** Merge consecutive blocks with the same heading prefix (wrapped headings). */
 function mergeConsecutiveHeadings(blocks: ContentBlock[], bodyFS: number): ContentBlock[] {
 	if (blocks.length === 0) return [];
@@ -358,9 +346,6 @@ function removePageNumbers(blocks: ContentBlock[]): ContentBlock[] {
 	});
 }
 
-// ---------------------------------------------------------------------------
-// Detached first-column table reconstruction
-// ---------------------------------------------------------------------------
 /**
  * Fix tables where the first column was emitted as free text blocks
  * around a markdown table containing only the right-side columns.
@@ -469,9 +454,6 @@ export function normalizeDetachedFirstColumnTables(blocks: ContentBlock[]): Cont
 	return out;
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 /**
  * Render one page's content: free text and tables interleaved top-to-bottom.
  */

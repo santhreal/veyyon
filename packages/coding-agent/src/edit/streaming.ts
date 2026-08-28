@@ -118,10 +118,6 @@ export interface EditStreamingStrategy<Args = unknown> {
 	matcherEntries(args: Args): readonly EditMatcherEntry[] | undefined;
 }
 
-// -----------------------------------------------------------------------------
-// Partial-JSON handling
-// -----------------------------------------------------------------------------
-
 /**
  * Given an edits array parsed from partial JSON, drop the last entry when the
  * corresponding object in `partialJson` has not yet closed with `}`.
@@ -189,10 +185,6 @@ export function dropIncompleteLastEdit<T>(edits: readonly T[], partialJson: stri
 	}
 	return edits.slice();
 }
-
-// -----------------------------------------------------------------------------
-// Apply_patch remains multi-file because the Codex envelope carries paths per hunk.
-// -----------------------------------------------------------------------------
 
 function groupApplyPatchEntriesByPath(entries: readonly ApplyPatchEntry[]): Map<string, ApplyPatchEntry[]> {
 	const groups = new Map<string, ApplyPatchEntry[]>();
@@ -329,10 +321,6 @@ function splitApplyPatchPerFile(input: string): EditMatcherEntry[] {
 	}
 	return Array.from(byPath, ([path, digest]) => ({ path, digest }));
 }
-
-// -----------------------------------------------------------------------------
-// Strategies
-// -----------------------------------------------------------------------------
 
 interface ReplaceArgs {
 	path?: string;
@@ -694,10 +682,6 @@ export const EDIT_MODE_STRATEGIES: Record<EditMode, EditStreamingStrategy<unknow
 };
 
 export { resolveEditMode };
-
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
 
 function toPerFilePreview(path: string, result: DiffResult | DiffError): PerFileDiffPreview {
 	if ("error" in result) {

@@ -11,7 +11,6 @@ import type { AuthCredential, AuthCredentialStore, StoredAuthCredential } from "
 import { SqliteAuthCredentialStore } from "@veyyon/ai/auth-storage-sqlite";
 import { AsyncDrain } from "@veyyon/utils/async";
 import { getAgentDbPath, getStatsDbPath } from "@veyyon/utils/dirs";
-// Owners, not the `@veyyon/utils` barrel: 5 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { SQLITE_NOW_EPOCH } from "@veyyon/utils/sqlite";
 import { DAY_MS } from "@veyyon/utils/time";

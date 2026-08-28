@@ -1,5 +1,4 @@
 import type { DeviceType } from "@huggingface/transformers";
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { $env } from "@veyyon/utils/env";
 
 export type TinyModelDevice = DeviceType;

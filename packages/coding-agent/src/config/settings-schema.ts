@@ -1,4 +1,3 @@
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { isRecord } from "@veyyon/utils/type-guards";
 import { UNSET_NUMBER_OPTION_VALUE } from "./optional-number";
 import { APPEARANCE_SETTINGS } from "./settings-domains/appearance";
@@ -31,10 +30,6 @@ export { type BashInterceptorRule, DEFAULT_BASH_INTERCEPTOR_RULES } from "./bash
  *   settings.get("compaction.enabled")  // => boolean
  *   settings.set("theme.dark", "titanium")  // sync, saves in background
  */
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Schema Definition Types
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type SettingTab =
 	| "global"
@@ -410,10 +405,6 @@ export function isSettingType(value: string): value is SettingType {
 	return Object.hasOwn(SETTING_TYPE_ROWS, value);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Schema Definition
-// ═══════════════════════════════════════════════════════════════════════════
-
 export interface ModelTagDef {
 	name: string;
 	color?: string;
@@ -465,10 +456,6 @@ export const SETTINGS_SCHEMA = {
 	...SUBAGENTS_SETTINGS,
 	...PROVIDERS_SETTINGS,
 } as const;
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Type Inference
-// ═══════════════════════════════════════════════════════════════════════════
 
 type Schema = typeof SETTINGS_SCHEMA;
 
@@ -687,10 +674,6 @@ export function getEnumValues(path: SettingPath): readonly string[] | undefined 
 	return "values" in def ? (def.values as readonly string[]) : undefined;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Derived Types from Schema
-// ═══════════════════════════════════════════════════════════════════════════
-
 /** Status line preset - derived from schema */
 export type StatusLinePreset = SettingValue<"statusLine.preset">;
 
@@ -702,10 +685,6 @@ export type TreeFilterMode = SettingValue<"treeFilterMode">;
 
 /** Personality preset - derived from schema */
 export type Personality = SettingValue<"personality">;
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Typed Group Definitions
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface CompactionSettings {
 	enabled: boolean;

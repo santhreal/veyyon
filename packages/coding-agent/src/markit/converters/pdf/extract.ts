@@ -11,7 +11,6 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-// Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
 import { getAgentDir } from "@veyyon/utils/dirs";
 import { errorMessage } from "@veyyon/utils/type-guards";
@@ -158,9 +157,6 @@ interface RawTextItem {
 	isBold: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Text extraction
-// ---------------------------------------------------------------------------
 /** Y tolerance for merging text fragments on the same visual line. */
 const SAME_LINE_Y_TOLERANCE = 2;
 /** Max horizontal gap (pts) to merge adjacent fragments into one text box. */
@@ -259,9 +255,6 @@ function extractTextBoxes(
 		.filter(b => b.text.length > 0);
 }
 
-// ---------------------------------------------------------------------------
-// Vector segment extraction from raw content stream
-// ---------------------------------------------------------------------------
 /** Minimum aspect ratio for a filled rect to be considered a line. */
 const LINE_ASPECT_THRESHOLD = 6;
 /** Minimum length (pts) for a segment to count. */
@@ -336,9 +329,6 @@ function ctmApply(m: number[], x: number, y: number): [number, number] {
 	return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
 }
 
-// ---------------------------------------------------------------------------
-// Content stream parsing
-// ---------------------------------------------------------------------------
 /**
  * Parse a PDF content stream and extract line segments from thin filled
  * rectangles (re+f), stroked rectangles (re+S), and explicit lines (m/l+S).
@@ -581,9 +571,6 @@ function tokenizeContentStream(raw: string): string[] {
 	return tokens;
 }
 
-// ---------------------------------------------------------------------------
-// Image region detection
-// ---------------------------------------------------------------------------
 /** Minimum area (pts²) for an image to be considered a diagram, not an icon. */
 const MIN_IMAGE_AREA = 5000;
 
@@ -605,9 +592,6 @@ function extractImageRegions(stext: StructuredTextJSON, pageNumber: number, page
 	return regions;
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 /**
  * Render an image region from a PDF page as a PNG buffer.
  * Uses mupdf's DrawDevice to render just the cropped area at 2x resolution.

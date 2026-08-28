@@ -270,17 +270,12 @@ import { usesCursorRuleDelivery } from "../cursor";
 import { RawSseDebugBuffer } from "../debug/raw-sse-buffer";
 import { loadCapability } from "../discovery";
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
-// The owning modules, not the `../edit` barrel. The barrel `export *`s the streaming applier, the
-// hashline engine and the EditTool, and pulls in 44 modules nothing else here reaches; these six
-// symbols are declared in four leaves that reach a handful between them.
 import { normalizeDiff, ParseError } from "../edit/diff";
 import { getFileSnapshotStore } from "../edit/file-snapshot-store";
 import { expandApplyPatchToEntries } from "../edit/modes/apply-patch";
 import { previewPatch } from "../edit/modes/patch";
 import { normalizeToLF, stripBom } from "../edit/normalize";
 import { executePython as executePythonCommand, type PythonResult } from "../eval/py/executor";
-// The leaf, not `../eval/py`: that module declares the Python backend descriptor and reaches
-// hundreds of modules, and all this needs is the id prefix.
 import { namespaceSessionId as namespacePythonSessionId } from "../eval/py/session-namespace";
 import { defaultEvalSessionId } from "../eval/session-id";
 import { type BashResult, executeBash as executeBashCommand } from "../exec/bash-executor";
@@ -317,9 +312,6 @@ import { expandSlashCommand, type FileSlashCommand } from "../extensibility/slas
 import { GoalRuntime } from "../goals/runtime";
 import type { Goal, GoalAbortReason, GoalModeState } from "../goals/state";
 import type { HindsightSessionState } from "../hindsight/state";
-// The owning module, not the `../internal-urls` barrel: the barrel re-exports every protocol
-// handler and reaches several hundred modules, and all three of these are declared in
-// `local-protocol`, which reaches seven.
 import {
 	type LocalProtocolOptions,
 	listLocalPlanFileUrls,
@@ -446,8 +438,6 @@ import {
 } from "./codex-auto-reset";
 import { findCompactMode } from "./compact-modes";
 import { type ContentBlockLike, contentText } from "./content-text";
-// The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
-// terminal UI on the session engine's graph and cost the layering gate a standing exception each.
 import {
 	buildContextSnapshot,
 	computeNonMessageBreakdown,
@@ -990,10 +980,6 @@ export interface PlanYolo {
 	thinkingLevel?: ConfiguredThinkingLevel;
 }
 
-// ============================================================================
-// Types
-// ============================================================================
-
 /**
  * Immutable authority admitted for one provider request.
  *
@@ -1493,9 +1479,6 @@ export interface FreshSessionResult {
 }
 
 /** Internal marker for hook messages queued through the agent loop */
-// ============================================================================
-// Constants
-// ============================================================================
 
 /** Standard thinking levels */
 
@@ -1713,10 +1696,6 @@ function createHandoffFileName(date = new Date()): string {
 	return `handoff-${fileTimestamp}.md`;
 }
 
-// ============================================================================
-// ACP Permission Gate
-// ============================================================================
-
 /** Tools that require user permission before execution when an ACP client is connected. */
 const PERMISSION_REQUIRED_TOOLS = new Set([TOOL.bash, TOOL.edit, "delete", "move"]);
 
@@ -1875,10 +1854,6 @@ function extractPermissionLocations(
 	pushPath(a.destination);
 	return out;
 }
-
-// ============================================================================
-// AgentSession Class
-// ============================================================================
 
 /** Entry returned by {@link AgentSession.clearQueue} / {@link AgentSession.popLastQueuedMessage}. */
 export type RestoredQueuedMessage = { text: string; images?: ImageContent[] };
@@ -2152,8 +2127,6 @@ export class AgentSession {
 
 	#promptTemplates: PromptTemplate[];
 	#slashCommands: FileSlashCommand[];
-
-	// Event subscription state
 	#unsubscribeAgent?: () => void;
 	#cancelExitRecorder?: () => void;
 	#exitRecorded = false;
@@ -2214,19 +2187,11 @@ export class AgentSession {
 	#acpPermissionDecisions: Map<string, "allow_always" | "reject_always"> = new Map();
 	/** Session file created by this session's `/move`; removed on dispose if it stayed empty. */
 	#movedFromEmptySessionFile?: string;
-
-	// Compaction state
 	#compactionAbortController: AbortController | undefined = undefined;
 	#autoCompactionAbortController: AbortController | undefined = undefined;
-
-	// Branch summarization state
 	#branchSummaryAbortController: AbortController | undefined = undefined;
-
-	// Handoff state
 	#handoffAbortController: AbortController | undefined = undefined;
 	#skipPostTurnMaintenanceAssistantTimestamp: number | undefined = undefined;
-
-	// Retry state
 	#retryAbortController: AbortController | undefined = undefined;
 	#retryAttempt = 0;
 	/** Continuations spent on transport deaths inside an unreplayable tool batch;
@@ -2237,7 +2202,6 @@ export class AgentSession {
 	#retryResolve: (() => void) | undefined = undefined;
 	#activeRetryFallback: ActiveRetryFallbackState | undefined = undefined;
 	#pendingRecoveredRetryErrors: PendingRecoveredRetryError[] = [];
-	// Todo completion reminder state
 	#todoReminderCount = 0;
 	/**
 	 * Set after a reminder is appended and cleared only by tool-level progress or
@@ -2307,12 +2271,8 @@ export class AgentSession {
 	#titleSystemPrompt: string | undefined;
 	#toolChoiceQueue = new ToolChoiceQueue();
 	readonly #verificationEvidence = new VerificationEvidenceLedger();
-
-	// Bash execution state
 	#bashAbortControllers = new Set<AbortController>();
 	#pendingBashMessages: BashExecutionMessage[] = [];
-
-	// Python execution state
 	#evalAbortControllers = new Set<AbortController>();
 	#evalKernelOwnerId: string;
 	#parentEvalSessionId: string | undefined;
@@ -2347,7 +2307,6 @@ export class AgentSession {
 	#freshProviderSessionId: string | undefined;
 	#inheritedProviderPromptCacheKey: string | undefined;
 	#isDisposed = false;
-	// Extension system
 	#extensionRunner: ExtensionRunner | undefined = undefined;
 	#turnIndex = 0;
 	#messageEndPersistenceTail: Promise<void> = Promise.resolve();
@@ -2356,18 +2315,12 @@ export class AgentSession {
 
 	#skills: Skill[];
 	readonly #operatorNotices: OperatorNotices;
-
-	// Custom commands (TypeScript slash commands)
 	#customCommands: LoadedCustomCommand[] = [];
 	/** MCP prompt commands (updated dynamically when prompts are loaded) */
 	#mcpPromptCommands: LoadedCustomCommand[] = [];
 
 	#skillsSettings: SkillsSettings | undefined;
-
-	// Model registry for API key resolution
 	#modelRegistry: ModelRegistry;
-
-	// Tool registry and prompt builder for extensions
 	#toolRegistry: Map<string, AgentTool>;
 	#createVibeTools: (() => AgentTool[]) | undefined;
 	#installedVibeToolNames = new Set<string>();
@@ -3532,9 +3485,6 @@ export class AgentSession {
 				});
 		});
 	}
-	// -------------------------------------------------------------------------
-	// Advisor runtime lifecycle
-	// -------------------------------------------------------------------------
 	#advisorImmuneTurnLimit(): number {
 		const immuneTurns = this.settings.get("advisor.immuneTurns") as number;
 		if (!Number.isFinite(immuneTurns) || immuneTurns <= 0) return 0;
@@ -4867,10 +4817,6 @@ export class AgentSession {
 			manager.hasPendingDeliveries(ownerFilter)
 		);
 	}
-
-	// =========================================================================
-	// Event Subscription
-	// =========================================================================
 
 	/** Emit an event to all listeners */
 	#emit(event: AgentSessionEvent): void {
@@ -8705,10 +8651,6 @@ export class AgentSession {
 		};
 	}
 
-	// =========================================================================
-	// Read-only State Access
-	// =========================================================================
-
 	/** Full agent state */
 	get state(): AgentState {
 		return this.agent.state;
@@ -10496,10 +10438,6 @@ export class AgentSession {
 		this.#mcpPromptCommands = commands;
 		this.#notifyCommandMetadataChanged();
 	}
-
-	// =========================================================================
-	// Prompting
-	// =========================================================================
 
 	/**
 	 * Build a plan mode message.
@@ -12431,10 +12369,6 @@ export class AgentSession {
 		return true;
 	}
 
-	// =========================================================================
-	// Model Management
-	// =========================================================================
-
 	/**
 	 * Set model directly.
 	 * Validates that a credential source is configured (synchronously, without
@@ -12720,10 +12654,6 @@ export class AgentSession {
 		if (!patterns || patterns.length === 0) return all;
 		return filterAvailableModelsByEnabledPatterns(all, patterns, this.settings);
 	}
-
-	// =========================================================================
-	// Thinking Level Management
-	// =========================================================================
 
 	#resolvedEffortForModel(
 		model: Model | undefined,
@@ -13067,10 +12997,6 @@ export class AgentSession {
 		return getSupportedEfforts(this.model);
 	}
 
-	// =========================================================================
-	// Message Queue Mode Management
-	// =========================================================================
-
 	/**
 	 * Apply a live instrumentation change to settings, future model loops, and
 	 * the session journal's lifecycle interval as one transition.
@@ -13107,10 +13033,6 @@ export class AgentSession {
 		this.agent.setInterruptMode(mode);
 		this.settings.set("interruptMode", mode);
 	}
-
-	// =========================================================================
-	// Compaction
-	// =========================================================================
 
 	/**
 	 * Append plan-read protection to an operator-requested shake config so the
@@ -17283,10 +17205,6 @@ export class AgentSession {
 		return !isThresholdCompactionDisabled(compaction.enabled, compaction.strategy);
 	}
 
-	// =========================================================================
-	// Auto-Retry
-	// =========================================================================
-
 	/**
 	 * Classify retry decisions against the active session model. Test stream
 	 * shims and provider adapters can emit generic assistant metadata, but retry
@@ -18468,10 +18386,6 @@ export class AgentSession {
 		return true;
 	}
 
-	// =========================================================================
-	// Bash Execution
-	// =========================================================================
-
 	async #saveBashOriginalArtifact(originalText: string): Promise<string | undefined> {
 		try {
 			return await this.sessionManager.saveArtifact(originalText, "bash-original");
@@ -18602,10 +18516,6 @@ export class AgentSession {
 
 		this.#pendingBashMessages = [];
 	}
-
-	// =========================================================================
-	// User-Initiated Python Execution
-	// =========================================================================
 
 	/**
 	 * Execute Python code in the shared kernel.
@@ -18776,10 +18686,6 @@ export class AgentSession {
 
 		this.#pendingPythonMessages = [];
 	}
-
-	// =========================================================================
-	// IRC Delivery
-	// =========================================================================
 
 	/**
 	 * Surfaces and consumes pending IRC incoming records before the next model
@@ -19181,10 +19087,6 @@ export class AgentSession {
 		}
 	}
 
-	// =========================================================================
-	// Session Management
-	// =========================================================================
-
 	/**
 	 * Reload the current session from disk.
 	 *
@@ -19351,8 +19253,6 @@ export class AgentSession {
 			} else if (didReloadConversationChange) {
 				this.#closeAllProviderSessions("session reload");
 			}
-
-			// Restore model if saved
 			const targetModelStrings = getRestorableSessionModels(
 				sessionContext.models,
 				this.sessionManager.getLastModelChangeRole(),
@@ -19567,12 +19467,8 @@ export class AgentSession {
 			}
 			skipConversationRestore = result?.skipConversationRestore ?? false;
 		}
-
-		// Clear pending messages (bound to old session state)
 		this.#pendingNextTurnMessages = [];
 		this.#scheduledHiddenNextTurnGeneration = undefined;
-
-		// Flush pending writes before branching
 		await this.sessionManager.flush();
 		this.#cancelOwnAsyncJobs();
 
@@ -19718,10 +19614,6 @@ export class AgentSession {
 		return { cancelled: false, sessionFile: this.sessionFile };
 	}
 
-	// =========================================================================
-	// Tree Navigation
-	// =========================================================================
-
 	/**
 	 * Navigate to a different node in the session tree.
 	 * Unlike branch() which creates a new session file, this stays in the same file.
@@ -19743,8 +19635,6 @@ export class AgentSession {
 		sessionContext?: SessionContext;
 	}> {
 		const oldLeafId = this.sessionManager.getLeafId();
-
-		// No-op if already at target
 		if (targetId === oldLeafId) {
 			return { cancelled: false };
 		}
@@ -19765,8 +19655,6 @@ export class AgentSession {
 			oldLeafId,
 			targetId,
 		);
-
-		// Prepare event data
 		const preparation: TreePreparation = {
 			targetId,
 			oldLeafId,
@@ -19774,8 +19662,6 @@ export class AgentSession {
 			entriesToSummarize,
 			userWantsSummary: options.summarize ?? false,
 		};
-
-		// Set up abort controller for summarization
 		this.#branchSummaryAbortController = new AbortController();
 		let hookSummary: { summary: string; details?: unknown } | undefined;
 		let fromExtension = false;
@@ -19798,8 +19684,6 @@ export class AgentSession {
 				fromExtension = true;
 			}
 		}
-
-		// Run default summarizer if needed
 		let summaryText: string | undefined;
 		let summaryDetails: unknown;
 		if (options.summarize && entriesToSummarize.length > 0 && !hookSummary) {
@@ -20534,10 +20418,6 @@ export class AgentSession {
 		});
 	}
 
-	// =========================================================================
-	// Utilities
-	// =========================================================================
-
 	/**
 	 * Get text content of last assistant message.
 	 * Useful for /copy command.
@@ -20567,7 +20447,6 @@ export class AgentSession {
 			if (message.role !== "assistant") continue;
 
 			const assistantMessage = message as AssistantMessage;
-			// Skip aborted messages with no content
 			if (assistantMessage.stopReason === "aborted" && assistantMessage.content.length === 0) continue;
 
 			return assistantMessage;
@@ -20920,10 +20799,6 @@ export class AgentSession {
 			.map(a => `### Advisor: ${a.name} (${a.agent.state.model.provider}/${a.agent.state.model.id})\n\n${dump(a)}`)
 			.join("\n\n");
 	}
-
-	// =========================================================================
-	// Extension System
-	// =========================================================================
 
 	/**
 	 * Check if extensions have handlers for a specific event type.

@@ -201,10 +201,6 @@ function normalizeToolResult<TDetails>(result: RpcClientToolResult<TDetails>): A
 	return result;
 }
 
-// ============================================================================
-// RPC Client
-// ============================================================================
-
 export class RpcClient {
 	#process: ptree.ChildProcess | null = null;
 	#eventListeners: RpcEventListener[] = [];
@@ -444,10 +440,7 @@ export class RpcClient {
 		return timer;
 	}
 
-	// =========================================================================
 	// Command Methods
-	// =========================================================================
-
 	/**
 	 * Send a prompt to the agent.
 	 * Returns immediately after sending; use onEvent() to receive streaming events.
@@ -798,10 +791,7 @@ export class RpcClient {
 		return this.#getData<{ toolNames: string[] }>(response).toolNames;
 	}
 
-	// =========================================================================
 	// Helpers
-	// =========================================================================
-
 	/**
 	 * Wait for agent to become idle (no streaming).
 	 * Resolves when agent_end event is received.
@@ -862,10 +852,7 @@ export class RpcClient {
 		return eventsPromise;
 	}
 
-	// =========================================================================
 	// Internal
-	// =========================================================================
-
 	#handleLine(data: unknown): void {
 		// Check if it's a response to a pending request
 		if (isRpcResponse(data)) {

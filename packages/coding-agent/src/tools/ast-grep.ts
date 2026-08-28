@@ -452,10 +452,6 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 	}
 }
 
-// =============================================================================
-// TUI Renderer
-// =============================================================================
-
 interface AstGrepRenderArgs {
 	pat?: string;
 	path?: string | string[];

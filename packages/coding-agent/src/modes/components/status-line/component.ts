@@ -13,7 +13,6 @@ import {
 } from "@veyyon/tui";
 import { formatClock, getProjectDir, scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils";
 import { resolveContextLimit } from "../../../config/compaction-strategy";
-// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../config/settings-instance";
 import { accountDisplayLabel, accountsForProvider, buildAccountInventory } from "../../../session/account-inventory";
 import type { AgentSession } from "../../../session/agent-session";
@@ -71,8 +70,6 @@ const EMPTY_USAGE_STATS_WITH_RATE: SegmentContext["usageStats"] = {
 };
 const EMPTY_SEGMENT_OPTIONS: StatusLineSegmentOptions = {};
 
-// Re-export for existing importers (tests, barrel). The definitions live in
-// ./location-fit and ./context-usage now.
 export type { ContextUsageMemo } from "./context-usage";
 export { messageFingerprint } from "./context-usage";
 export type { QuietPart, QuietSegmentBounds } from "./location-fit";
@@ -314,10 +311,6 @@ function hasUsageSegment(segments: readonly StatusLineSegmentId[]): boolean {
 function hasGitBackedSegment(segments: readonly StatusLineSegmentId[]): boolean {
 	return hasGitSegment(segments) || hasPrSegment(segments);
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// StatusLineComponent
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** How the host paints the footline's motion. */
 export interface StatusLineMotionOptions {

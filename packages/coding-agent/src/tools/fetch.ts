@@ -9,7 +9,6 @@ import { type Component, Text } from "@veyyon/tui";
 import { isCancellation } from "@veyyon/utils/abortable";
 import { formatCount, formatMoreLines, truncate } from "@veyyon/utils/format";
 import { isEnoent } from "@veyyon/utils/fs-error";
-// Owners, not the `@veyyon/utils` barrel: 8 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import * as ptree from "@veyyon/utils/ptree";
 import { errorMessage } from "@veyyon/utils/type-guards";
@@ -58,10 +57,6 @@ import { listTables, looksLikeSqlite, renderTableList } from "./sqlite-reader";
 import { ToolError, throwIfAborted } from "./tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout } from "./tool-timeouts";
-
-// =============================================================================
-// Types and Constants
-// =============================================================================
 
 const FETCH_DEFAULT_MAX_LINES = 300;
 
@@ -166,10 +161,6 @@ const IMAGE_MIME_BY_EXTENSION = new Map<string, string>([
 const SUPPORTED_INLINE_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const MAX_INLINE_IMAGE_SOURCE_BYTES = 20 * 1024 * 1024;
 const MAX_INLINE_IMAGE_OUTPUT_BYTES = 300 * 1024;
-
-// =============================================================================
-// Utilities
-// =============================================================================
 
 /**
  * Check if a command exists (cross-platform)
@@ -1263,10 +1254,6 @@ async function tryRenderBinaryPayload(
 	return null;
 }
 
-// =============================================================================
-// Unified Special Handler Dispatch
-// =============================================================================
-
 let specialHandlersPromise: Promise<SpecialHandler[]> | undefined;
 
 /**
@@ -1342,10 +1329,6 @@ export async function handleSpecialUrls(
 	}
 	return null;
 }
-
-// =============================================================================
-// Main Render Function
-// =============================================================================
 
 /**
  * Main render function implementing the full pipeline
@@ -1832,10 +1815,6 @@ async function renderUrl(
 	};
 }
 
-// =============================================================================
-// Tool Definition
-// =============================================================================
-
 export interface ReadUrlToolDetails {
 	kind: "url";
 	url: string;
@@ -2122,10 +2101,6 @@ export async function executeReadUrl(
 
 	return resultBuilder.done();
 }
-
-// =============================================================================
-// TUI Rendering
-// =============================================================================
 
 /** Count non-empty lines */
 function countNonEmptyLines(text: string): number {

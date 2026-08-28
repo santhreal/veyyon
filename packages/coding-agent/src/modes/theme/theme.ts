@@ -6,7 +6,6 @@ import { blendHex, colorEnabled, parseHexColor, sliceWithWidth, TERMINAL, visibl
 import { adjustHsv, colorLuma } from "@veyyon/utils/color";
 import { getCustomThemesDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
-// Owners, not the `@veyyon/utils` barrel: 5 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { clamp } from "@veyyon/utils/math";
 import { errorMessage } from "@veyyon/utils/type-guards";
@@ -57,10 +56,6 @@ export type { SpinnerType, SymbolKey, SymbolPreset } from "./symbols";
 export { isLightTheme, isLightThemeJson } from "./theme-luminance";
 export type { ThemeBg, ThemeColor };
 export { Theme };
-
-// ============================================================================
-// Theme Loading
-// ============================================================================
 
 export async function getAvailableThemes(): Promise<string[]> {
 	const themes = new Set<string>(Object.keys(getBuiltinThemes()));
@@ -296,10 +291,6 @@ function getDefaultTheme(): string {
 	const bg = detectTerminalBackground();
 	return bg === "light" ? autoLightTheme : autoDarkTheme;
 }
-
-// ============================================================================
-// Global Theme Instance
-// ============================================================================
 
 // The binding itself lives in `./theme-binding`, a leaf, so a caller that only
 // needs to READ the active theme does not have to import this engine. Re-exported
@@ -567,10 +558,6 @@ export function getColorBlindMode(): boolean {
 	return currentColorBlindMode;
 }
 
-// ============================================================================
-// Live application of theme settings
-// ============================================================================
-
 /**
  * Apply `theme.dark`, `theme.light`, `symbolPreset` and `colorBlindMode` to the
  * running engine when an operator changes them mid-session.
@@ -819,10 +806,6 @@ function reevaluateAutoTheme(debugLabel: string, event: ThemeChangeEvent = {}): 
 		});
 }
 
-// ============================================================================
-// macOS Appearance Fallback Observer
-// ============================================================================
-
 var macObserver: { stop(): void } | undefined;
 
 type MacAppearanceObserverStarter = (callback: (err: Error | null, appearance: string) => void) => { stop(): void };
@@ -866,10 +849,6 @@ function stopMacAppearanceObserver(): void {
 	macOSReportedAppearance = undefined;
 }
 
-// ============================================================================
-// SIGWINCH Listener
-// ============================================================================
-
 /** Re-check appearance on SIGWINCH and switch dark/light when using auto-detected theme. */
 function startSigwinchListener(): void {
 	stopSigwinchListener();
@@ -909,10 +888,6 @@ export function stopThemeWatcher(): void {
 	stopSigwinchListener();
 	terminalReportedAppearance = undefined;
 }
-
-// ============================================================================
-// HTML Export Helpers
-// ============================================================================
 
 function getHtmlDefaultTextForSurface(surface: string | number | undefined): string {
 	const luminance = surface === undefined ? undefined : colorLuma(surface);
@@ -1005,10 +980,6 @@ export async function getThemeExportColors(themeName?: string): Promise<{
 		return {};
 	}
 }
-
-// ============================================================================
-// TUI Helpers
-// ============================================================================
 
 /**
  * The symbol reader lives in `./symbol-theme`, a leaf beside the theme binding, and is re-exported here so

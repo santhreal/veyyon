@@ -18,10 +18,6 @@ import { framedBlock, renderStatusLine, renderTreeList } from "../tui";
 import { normalizePathLikeInput, resolveToCwd } from "./path-utils";
 import { formatErrorDetail } from "./render-utils";
 
-// =============================================================================
-// Types
-// =============================================================================
-
 export type { TodoStatus };
 /** Operation names accepted by the todo tool and echoed in successful result details. */
 export type TodoOperation = "init" | "start" | "done" | "rm" | "drop" | "append" | "view";
@@ -207,10 +203,6 @@ export interface TodoOpReport {
 	notes: string[];
 }
 
-// =============================================================================
-// Schema
-// =============================================================================
-
 const TodoOp = type('"init" | "start" | "done" | "rm" | "drop" | "append" | "view"').describe("operation to apply");
 
 const InitListEntry = type({
@@ -277,10 +269,6 @@ type TodoSchema = typeof todoSchema.infer;
 type TodoParams = TodoSchema & { op: TodoOperation };
 /** A single normalized todo op entry. */
 type TodoOpEntryValue = TodoParams;
-
-// =============================================================================
-// State helpers
-// =============================================================================
 
 /**
  * Outcome of resolving free text against the board. `ambiguous` exists so a
@@ -1021,10 +1009,6 @@ export function applyOpsToPhases(
 	return { phases: next, ...report };
 }
 
-// =============================================================================
-// Markdown round-trip
-// =============================================================================
-
 const STATUS_TO_MARKER: Record<TodoStatus, string> = {
 	pending: " ",
 	in_progress: "/",
@@ -1253,10 +1237,6 @@ function formatSummaryBody(phases: TodoPhase[], errors: string[], readOnly: bool
 	return lines.join("\n");
 }
 
-// =============================================================================
-// Tool Class
-// =============================================================================
-
 export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
 	readonly name = "todo";
 	readonly approval = "read" as const;
@@ -1416,10 +1396,6 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
 	}
 }
 
-// =============================================================================
-// TUI Renderer
-// =============================================================================
-
 type TodoRenderOp = {
 	op?: string;
 	task?: string;
@@ -1445,10 +1421,6 @@ function normalizeTodoArg(args: TodoRenderArgs | undefined): TodoRenderOp[] {
 	}
 	return typeof args.op === "string" ? [args] : [];
 }
-
-// =============================================================================
-// Phase numbering (display-only)
-// =============================================================================
 
 const ROMAN_PAIRS: Array<[number, string]> = [
 	[1000, "M"],

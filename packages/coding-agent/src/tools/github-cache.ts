@@ -21,14 +21,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getGithubCacheDbPath } from "@veyyon/utils/dirs";
-// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import type { Settings } from "../config/settings";
 import { ToolAbortError } from "./tool-errors";
-
-// ────────────────────────────────────────────────────────────────────────────
-// Storage layer
-// ────────────────────────────────────────────────────────────────────────────
 
 export type CacheKind = "issue" | "pr" | "pr-diff";
 
@@ -426,10 +421,6 @@ export function resetForTests(): void {
 	lastSweepAt = 0;
 	authKeyMemo.clear();
 }
-
-// ────────────────────────────────────────────────────────────────────────────
-// Cache-aware lookup wrapper
-// ────────────────────────────────────────────────────────────────────────────
 
 export interface FreshResult<T> {
 	rendered: string;

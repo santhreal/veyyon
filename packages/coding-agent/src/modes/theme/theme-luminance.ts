@@ -1,7 +1,5 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-// Owners, not the `@veyyon/utils` barrel: 19 modules against 82. `dirs.ts` is 18 of the 19 and is
-// unavoidable, since a custom theme is read out of a resolved directory; `color.ts` is 2.
 import { colorLuma } from "@veyyon/utils/color";
 import { getCustomThemesDir } from "@veyyon/utils/dirs";
 import { resolveVarRefs, type ThemeJson } from "./color";

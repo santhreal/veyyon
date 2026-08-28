@@ -6,8 +6,6 @@
  * Reviewers now finish via incremental `yield`; this tool remains for
  * compatibility with older or custom review agents.
  */
-// ─────────────────────────────────────────────────────────────────────────────
-
 import path from "node:path";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";

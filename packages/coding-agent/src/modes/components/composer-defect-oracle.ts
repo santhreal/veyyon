@@ -172,10 +172,6 @@ export function isHairlineLine(plainLine: string): boolean {
 	return barCount >= trimmed.length * 0.7;
 }
 
-// ---------------------------------------------------------------------------
-// Individual Oracle Predicates
-// ---------------------------------------------------------------------------
-
 /**
  * Guarantee 1: exactlyOneComposerPrompt
  * Exactly one composer prompt row exists in the active terminal viewport frame when the
@@ -597,10 +593,6 @@ export function checkVirtualScrollPreservesFooterStability(state: ComposerOracle
 
 	return null;
 }
-
-// ---------------------------------------------------------------------------
-// Master Evaluator
-// ---------------------------------------------------------------------------
 
 /**
  * Run all composer defect oracles on a frame state.

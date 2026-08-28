@@ -1,7 +1,3 @@
-// =============================================================================
-// Plugin Manifest Types (from the package.json veyyon manifest field; legacy omp/pi)
-// =============================================================================
-
 /**
  * Feature definition for selective plugin installation.
  * Features allow plugins to expose optional functionality.
@@ -48,10 +44,6 @@ export interface PluginManifest {
 	settings?: Record<string, PluginSettingSchema>;
 }
 
-// =============================================================================
-// Plugin Settings Schema Types
-// =============================================================================
-
 export type PluginSettingType = "string" | "number" | "boolean" | "enum";
 
 interface PluginSettingBase {
@@ -92,10 +84,6 @@ export interface EnumSetting extends PluginSettingBase {
 
 export type PluginSettingSchema = StringSetting | NumberSetting | BooleanSetting | EnumSetting;
 
-// =============================================================================
-// Installed Plugin Types
-// =============================================================================
-
 /**
  * Represents an installed plugin with full metadata.
  */
@@ -117,10 +105,6 @@ export interface InstalledPlugin {
 	/** Whether the plugin is enabled */
 	enabled: boolean;
 }
-
-// =============================================================================
-// Runtime Config Types (stored in veyyon-plugins.lock.json)
-// =============================================================================
 
 /**
  * Per-plugin runtime state stored in lock file.
@@ -145,10 +129,6 @@ export interface PluginRuntimeConfig {
 	settings: Record<string, Record<string, unknown>>;
 }
 
-// =============================================================================
-// Project Override Types
-// =============================================================================
-
 /**
  * Project-local plugin overrides (stored in .veyyon/plugin-overrides.json).
  * Allows per-project plugin configuration without modifying global state.
@@ -162,10 +142,6 @@ export interface ProjectPluginOverrides {
 	settings?: Record<string, Record<string, unknown>>;
 }
 
-// =============================================================================
-// Doctor Types
-// =============================================================================
-
 export interface DoctorCheck {
 	/** Check identifier */
 	name: string;
@@ -176,10 +152,6 @@ export interface DoctorCheck {
 	/** Whether --fix resolved this issue */
 	fixed?: boolean;
 }
-
-// =============================================================================
-// Install Options Types
-// =============================================================================
 
 export interface InstallOptions {
 	/** Overwrite existing without prompting */

@@ -17,10 +17,6 @@ import { withHardTimeout } from "./search/providers/utils";
 
 const KAGI_SEARCH_URL = "https://kagi.com/api/v1/search";
 
-// ---------------------------------------------------------------------------
-// Request / Response Types
-// ---------------------------------------------------------------------------
-
 /** V1 search request body. */
 export interface KagiSearchRequest {
 	query: string;
@@ -89,10 +85,6 @@ export interface KagiErrorResponse {
 	detail?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Error Handling
-// ---------------------------------------------------------------------------
-
 export class KagiApiError extends Error {
 	readonly statusCode?: number;
 	/**
@@ -119,10 +111,6 @@ function createKagiApiError(statusCode: number, body?: string): KagiApiError {
 function parseKagiErrorResponse(statusCode: number, responseText: string): KagiApiError {
 	return createKagiApiError(statusCode, responseText);
 }
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 
 export interface KagiSearchOptions {
 	limit?: number;

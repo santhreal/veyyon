@@ -223,10 +223,6 @@ export const STRING_SETTERS: Record<string, StringSetter> = {
 				.map(s => s.trim())
 				.filter(Boolean),
 		);
-		// A typo here used to be dropped with a log line nobody sees, and because
-		// every name was dropped the session started with an EMPTY toolset: the
-		// agent then answered "I have no tools available" mid-run. Refuse instead,
-		// so `--tools=raed` never masquerades as a deliberate `--no-tools`.
 		const unknown = names.filter(name => !deps.builtinToolNames.includes(name));
 		if (unknown.length > 0) {
 			throw new CliUsageError(

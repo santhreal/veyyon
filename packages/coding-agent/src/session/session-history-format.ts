@@ -8,7 +8,6 @@
  */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, TextContent, ToolResultMessage } from "@veyyon/ai";
-// Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { formatCount, truncate } from "@veyyon/utils/format";
 import { escapeXmlText } from "@veyyon/utils/sanitize-text";

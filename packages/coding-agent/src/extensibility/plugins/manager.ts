@@ -37,10 +37,6 @@ import type {
 	ProjectPluginOverrides,
 } from "./types";
 
-// =============================================================================
-// Validation
-// =============================================================================
-
 /** Valid npm package name pattern (scoped and unscoped, with optional version) */
 const VALID_PACKAGE_NAME = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*(@[a-z0-9-._^~>=<]+)?$/i;
 
@@ -184,10 +180,6 @@ interface PluginPackageSnapshot {
 interface RuntimePackageJson {
 	name?: unknown;
 }
-// =============================================================================
-// Plugin Manager
-// =============================================================================
-
 export class PluginManager {
 	#runtimeConfig: PluginRuntimeConfig | null = null;
 	#cwd: string;
@@ -196,10 +188,7 @@ export class PluginManager {
 		this.#cwd = cwd;
 	}
 
-	// ==========================================================================
 	// Runtime Config Management
-	// ==========================================================================
-
 	async #loadRuntimeConfig(): Promise<PluginRuntimeConfig> {
 		const lockPath = getPluginsLockfile();
 		try {
@@ -245,10 +234,7 @@ export class PluginManager {
 		}
 	}
 
-	// ==========================================================================
 	// Directory Management
-	// ==========================================================================
-
 	async #ensurePluginsDir(): Promise<void> {
 		await fs.promises.mkdir(getPluginsDir(), { recursive: true });
 		await fs.promises.mkdir(getPluginsNodeModules(), { recursive: true });
@@ -477,10 +463,7 @@ export class PluginManager {
 		}
 	}
 
-	// ==========================================================================
 	// Install / Uninstall
-	// ==========================================================================
-
 	/**
 	 * Install a plugin with optional feature selection.
 	 *
@@ -987,10 +970,7 @@ export class PluginManager {
 		};
 	}
 
-	// ==========================================================================
 	// Enable / Disable
-	// ==========================================================================
-
 	/**
 	 * Enable or disable a plugin globally.
 	 */
@@ -1003,10 +983,7 @@ export class PluginManager {
 		await this.#saveRuntimeConfig();
 	}
 
-	// ==========================================================================
 	// Features
-	// ==========================================================================
-
 	/**
 	 * Get enabled features for a plugin.
 	 */
@@ -1044,10 +1021,7 @@ export class PluginManager {
 		await this.#saveRuntimeConfig();
 	}
 
-	// ==========================================================================
 	// Settings
-	// ==========================================================================
-
 	/**
 	 * Get all settings for a plugin.
 	 */
@@ -1084,10 +1058,7 @@ export class PluginManager {
 		}
 	}
 
-	// ==========================================================================
 	// Doctor
-	// ==========================================================================
-
 	/**
 	 * Run health checks on the plugin system.
 	 *
@@ -1417,10 +1388,6 @@ export class PluginManager {
 		return true;
 	}
 }
-
-// =============================================================================
-// Setting Validation
-// =============================================================================
 
 /**
  * The outcome of validating one plugin setting against its schema.

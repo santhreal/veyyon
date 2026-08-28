@@ -1,5 +1,4 @@
 import type { AgentToolUpdateCallback } from "@veyyon/agent-core";
-// Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { capTextBytes, truncateHeadBytes, truncateTailBytes } from "@veyyon/utils/byte-truncate";
 import { clampLow } from "@veyyon/utils/math";
 import { sanitizeText, splitTrailingPartialEscape } from "@veyyon/utils/sanitize-text";
@@ -9,10 +8,6 @@ export { type ByteTruncationResult, truncateHeadBytes, truncateTailBytes } from 
 import { DEFAULT_INLINE_FLOOR_FRACTION, DEFAULT_INLINE_OUTPUT_MAX_BYTES } from "../config/settings-domains/shared";
 import { formatBytes } from "../tools/render-utils";
 import { sanitizeWithOptionalSixelPassthrough } from "../utils/sixel";
-
-// =============================================================================
-// Constants
-// =============================================================================
 
 export const DEFAULT_MAX_LINES = 3000;
 /**
@@ -39,10 +34,6 @@ export const ARTIFACT_DEFAULT_HEAD_BYTES = 3 * 1024 * 1024; // 3 MiB
 
 const NL = "\n";
 const ELLIPSIS = "…";
-
-// =============================================================================
-// Interfaces
-// =============================================================================
 
 export interface OutputSummary {
 	output: string;
@@ -154,10 +145,6 @@ export interface HeadTruncationNoticeOptions {
 	totalFileLines?: number;
 }
 
-// =============================================================================
-// Internal low-level helpers
-// =============================================================================
-
 /** Count newline characters via native substring search. */
 function countNewlines(text: string): number {
 	let count = 0;
@@ -169,10 +156,6 @@ function countNewlines(text: string): number {
 	return count;
 }
 
-// =============================================================================
-// Line-level utilities
-// =============================================================================
-
 /**
  * Truncate a single line to max characters, appending '…' if truncated.
  */
@@ -183,10 +166,6 @@ export function truncateLine(
 	if (line.length <= maxChars) return { text: line, wasTruncated: false };
 	return { text: `${line.slice(0, maxChars)}…`, wasTruncated: true };
 }
-
-// =============================================================================
-// Content truncation (line + byte aware, no full Buffer allocation)
-// =============================================================================
 
 /** Shared helper to build a no-truncation result. */
 export function noTruncResult(content: string, totalLines?: number, totalBytes?: number): TruncationResult {
@@ -407,10 +386,6 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
 	};
 }
 
-// =============================================================================
-// Middle elision (keep head + tail, drop middle)
-// =============================================================================
-
 /**
  * Format the inline marker substituted for the elided middle region.
  * Returned without surrounding newlines so callers can position it freely.
@@ -494,10 +469,6 @@ export function truncateMiddle(content: string, options: TruncationOptions = {})
 		firstLineExceedsLimit: false,
 	};
 }
-
-// =============================================================================
-// Inline byte cap — final defense at the tool-result boundary
-// =============================================================================
 
 /**
  * Footer appended to a spilled tool result, pointing at the artifact that holds
@@ -653,10 +624,6 @@ export async function enforceInlineByteCap(text: string, options: InlineByteCapO
 	return `${capped.text}${sep}${artifactFooter(artifactId)}`;
 }
 
-// =============================================================================
-// TailBuffer — ring-style tail buffer with lazy joining
-// =============================================================================
-
 const MAX_PENDING = 10;
 
 export class TailBuffer {
@@ -740,10 +707,6 @@ export class TailBuffer {
 		this.#pending.length = 1;
 	}
 }
-
-// =============================================================================
-// OutputSink — line-buffered output with file spill support
-// =============================================================================
 
 export class OutputSink {
 	#buffer = "";
@@ -1318,10 +1281,6 @@ export class OutputSink {
 	}
 }
 
-// =============================================================================
-// Truncation notice formatting
-// =============================================================================
-
 /**
  * Format a truncation notice for tail-truncated output (bash, python, ssh).
  * Returns empty string if not truncated.
@@ -1370,10 +1329,6 @@ export function formatHeadTruncationNotice(
 	const notice = `[Showing lines ${startLineDisplay}-${endLineDisplay} of ${totalFileLines}. Use :${nextOffset} to continue]`;
 	return `\n\n${notice}`;
 }
-
-// =============================================================================
-// Streaming tail update helper (shared by bash/ssh tools)
-// =============================================================================
 
 /**
  * Build an onChunk handler that appends to a TailBuffer and emits a streaming

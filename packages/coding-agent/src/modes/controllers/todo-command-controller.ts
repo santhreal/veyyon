@@ -42,10 +42,6 @@ const USAGE = [
 	"  /todo help                         Show this help",
 ].join("\n");
 
-// =============================================================================
-// Fuzzy matching
-// =============================================================================
-
 function findPhaseFuzzy(phases: TodoPhase[], query: string): TodoPhase | undefined {
 	const q = query.trim().toLowerCase();
 	if (!q) return undefined;
@@ -83,10 +79,6 @@ function findTaskFuzzy(phases: TodoPhase[], query: string): { task: TodoItem; ph
 	if (active.length === 1) return active[0];
 	return undefined;
 }
-
-// =============================================================================
-// Build system reminder
-// =============================================================================
 
 function buildSystemReminder(action: string, phases: TodoPhase[], removed = false): string {
 	const md = phases.length === 0 ? "(empty)" : phasesToMarkdown(phases).trimEnd();

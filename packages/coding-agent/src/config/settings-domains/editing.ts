@@ -4,10 +4,7 @@ import { EMPTY_STRING_ARRAY, EMPTY_STRING_RECORD } from "./shared";
 
 /** Editing domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const EDITING_SETTINGS = {
-	// ────────────────────────────────────────────────────────────────────────
 	// Editing
-	// ────────────────────────────────────────────────────────────────────────
-
 	// Edit tool
 	"edit.mode": {
 		type: "enum",

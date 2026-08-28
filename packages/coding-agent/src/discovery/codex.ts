@@ -41,10 +41,6 @@ const PROVIDER_ID = "codex";
 const DISPLAY_NAME = "OpenAI Codex";
 const PRIORITY = 70;
 
-// =============================================================================
-// Context Files (AGENTS.md)
-// =============================================================================
-
 /**
  * Load Codex context files.
  *
@@ -77,10 +73,6 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 
 	return { items, warnings };
 }
-
-// =============================================================================
-// MCP Servers (config.toml)
-// =============================================================================
 
 async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> {
 	const userConfigPath = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "config.toml");
@@ -193,28 +185,16 @@ function extractMCPServersFromToml(toml: Record<string, unknown>): Record<string
 	return result;
 }
 
-// =============================================================================
-// Skills (skills/)
-// =============================================================================
-
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const userSkillsDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "skills");
 	return await scanSkillsFromDir({ dir: userSkillsDir, providerId: PROVIDER_ID, level: "user" });
 }
-
-// =============================================================================
-// Extension Modules (extensions/)
-// =============================================================================
 
 async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<ExtensionModule>> {
 	const userExtensionsDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "extensions");
 	const userPaths = await discoverExtensionModulePaths(userExtensionsDir);
 	return { items: buildExtensionModuleItems(PROVIDER_ID, userPaths, []), warnings: [] };
 }
-
-// =============================================================================
-// Slash Commands (commands/)
-// =============================================================================
 
 async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
 	const userCommandsDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "commands");
@@ -235,10 +215,6 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 	});
 }
 
-// =============================================================================
-// Prompts (prompts/*.md)
-// =============================================================================
-
 async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 	const userPromptsDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "prompts");
 
@@ -257,10 +233,6 @@ async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 		},
 	});
 }
-
-// =============================================================================
-// Hooks (hooks/)
-// =============================================================================
 
 async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	const userHooksDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "hooks");
@@ -288,10 +260,6 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	});
 }
 
-// =============================================================================
-// Tools (tools/)
-// =============================================================================
-
 async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
 	const userToolsDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "tools");
 
@@ -306,10 +274,6 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 			}) as DiscoveredCustomTool,
 	});
 }
-
-// =============================================================================
-// Provider Registration (executes on module import)
-// =============================================================================
 
 registerProvider<ContextFile>(contextFileCapability.id, {
 	id: PROVIDER_ID,

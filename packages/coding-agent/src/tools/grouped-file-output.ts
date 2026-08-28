@@ -2,10 +2,6 @@ import path from "node:path";
 
 import { buildPathTree, isUrlLikePath, type PathTreeInput, walkPathTree } from "@veyyon/utils/path-tree";
 
-// =============================================================================
-// Grouped file output (grep / ast-grep / ast-edit / lsp diagnostics)
-// =============================================================================
-
 /**
  * One file's contribution to a grouped file output. The header itself is generated
  * by `formatGroupedFiles` (one `#` per nesting level); use `headerSuffix` to tack
@@ -84,10 +80,6 @@ export function formatGroupedFiles(
 
 	return { model, display };
 }
-
-// =============================================================================
-// Parsing grouped output back into per-line context (TUI renderers)
-// =============================================================================
 
 const GROUPED_HEADER_RE = /^(#+)\s+(.*)$/;
 const HEADER_SUFFIX_RE = /\s+\([^)]*\)\s*$/;

@@ -330,10 +330,7 @@ export class ModelHubComponent implements Component {
 
 	invalidate(): void {}
 
-	// ═══════════════════════════════════════════════════════════════════════
 	// Data pipeline
-	// ═══════════════════════════════════════════════════════════════════════
-
 	#visibleRoleIds(): string[] {
 		return getKnownRoleIds(this.#settings).filter(role => !getRoleInfo(role, this.#settings).hidden);
 	}
@@ -664,10 +661,7 @@ export class ModelHubComponent implements Component {
 		return false;
 	}
 
-	// ═══════════════════════════════════════════════════════════════════════
 	// Provider discovery refresh
-	// ═══════════════════════════════════════════════════════════════════════
-
 	#startRefreshSpinner(): void {
 		if (this.#refreshSpinnerInterval) return;
 		this.#refreshSpinnerInterval = setInterval(() => {
@@ -781,10 +775,7 @@ export class ModelHubComponent implements Component {
 		}
 	}
 
-	// ═══════════════════════════════════════════════════════════════════════
 	// Assignment flow
-	// ═══════════════════════════════════════════════════════════════════════
-
 	#activateItem(item: ModelBrowserItem): void {
 		if (this.#assigning) {
 			const target = this.#assigning;
@@ -1045,10 +1036,7 @@ export class ModelHubComponent implements Component {
 		this.#focus = "list";
 	}
 
-	// ═══════════════════════════════════════════════════════════════════════
 	// Quick-switch cycle (ctrl+p) editing
-	// ═══════════════════════════════════════════════════════════════════════
-
 	#cycleOrder(): string[] {
 		try {
 			return this.#settings.get("cycleOrder").slice();
@@ -1100,10 +1088,7 @@ export class ModelHubComponent implements Component {
 		this.#startAssign(name);
 	}
 
-	// ═══════════════════════════════════════════════════════════════════════
 	// Input
-	// ═══════════════════════════════════════════════════════════════════════
-
 	handleInput(data: string): void {
 		if (data.startsWith("\x1b[<")) {
 			routeSgrMouseInput(data, event => this.#routeMouseEvent(event));
@@ -1378,10 +1363,7 @@ export class ModelHubComponent implements Component {
 		}
 	}
 
-	// ═══════════════════════════════════════════════════════════════════════
 	// Mouse
-	// ═══════════════════════════════════════════════════════════════════════
-
 	#routeMouseEvent(event: SgrMouseEvent): boolean {
 		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
 			motion: event.motion,
@@ -1518,10 +1500,7 @@ export class ModelHubComponent implements Component {
 		return index;
 	}
 
-	// ═══════════════════════════════════════════════════════════════════════
 	// Rendering
-	// ═══════════════════════════════════════════════════════════════════════
-
 	#sidebarWidth(): number {
 		let longest = 0;
 		for (let ei = 0; ei < this.#entries.length; ei++) {

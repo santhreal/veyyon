@@ -7,10 +7,6 @@
 
 import { SUB_CELL_BAR_RAMP, type SubCellBarRamp } from "@veyyon/tui/sub-cell-bar";
 
-// ============================================================================
-// Symbol Presets
-// ============================================================================
-
 export type SymbolPreset = "unicode" | "nerd" | "ascii";
 
 /**

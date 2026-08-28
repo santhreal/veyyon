@@ -18,7 +18,6 @@
  * merely start with `<` or `=` never match.
  */
 
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { formatCount } from "@veyyon/utils/format";
 import type { ToolSession } from "./index";
 import { ToolError } from "./tool-errors";

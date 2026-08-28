@@ -1,4 +1,3 @@
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { TinyModelDtype } from "../tiny/dtype";
 

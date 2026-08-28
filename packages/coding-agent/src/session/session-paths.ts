@@ -158,10 +158,6 @@ export function computeDefaultSessionDir(
 	return sessionDir;
 }
 
-// =============================================================================
-// Terminal breadcrumbs: maps terminal (TTY) -> last session file for --continue
-// =============================================================================
-
 /**
  * Write a breadcrumb linking the current terminal to a session file.
  * The breadcrumb contains the cwd and session path so --continue can

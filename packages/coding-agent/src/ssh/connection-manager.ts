@@ -3,7 +3,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getRemoteHostDir, getSshControlDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
-// Owners, not the `@veyyon/utils` barrel: 6 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import * as postmortem from "@veyyon/utils/postmortem";
 import * as ptree from "@veyyon/utils/ptree";

@@ -20,11 +20,8 @@
 import { areJsonValuesEqual, isMultipleOf, validateJsonSchemaValue } from "@veyyon/ai/utils/schema";
 import { codePointLength, isDateOnly, isRecord, isUuid } from "@veyyon/utils";
 
-// ---------------------------------------------------------------------------
 // Type aliases — exported so `import type { Static, TSchema } from "..."`
 // patterns keep compiling at the call site.
-// ---------------------------------------------------------------------------
-
 export type TSchema = ArkSchema;
 export type Static<T extends ArkSchema> = T["__infer"];
 export type TAny = ArkSchema;
@@ -44,10 +41,6 @@ export type TEnum<_T extends readonly (string | number)[] = readonly (string | n
 export type TRecord<_K extends ArkSchema, _V extends ArkSchema> = ArkSchema;
 /** TypeBox-compatible wrapper for raw JSON Schema documents. */
 export type TUnsafe<_T = unknown> = ArkSchema;
-
-// ---------------------------------------------------------------------------
-// ArkSchema wrapper — JSON Schema object with hidden validator metadata
-// ---------------------------------------------------------------------------
 
 const VALIDATION_FAILURE = Symbol("pi.typebox.validationFailure");
 
@@ -175,10 +168,6 @@ function withMetadata(schema: ArkSchema, newMeta: Record<string, unknown>): ArkS
 	);
 }
 
-// ---------------------------------------------------------------------------
-// Option shapes — loose subset of JSON Schema metadata + per-type constraints.
-// ---------------------------------------------------------------------------
-
 interface Meta {
 	title?: string;
 	description?: string;
@@ -217,10 +206,6 @@ interface ObjectOpts extends Meta {
 	 */
 	additionalProperties?: boolean | ArkSchema;
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function applyMeta(schema: ArkSchema, opts: Meta | undefined): ArkSchema {
 	if (!opts) return schema;
@@ -592,10 +577,6 @@ function schemaWithoutOptional(schema: ArkSchema): ArkSchema {
 		additionalProperties: base.__additionalProperties,
 	});
 }
-
-// ---------------------------------------------------------------------------
-// Builders
-// ---------------------------------------------------------------------------
 
 function tString(opts?: StringOpts): ArkSchema {
 	let validator: (data: unknown) => unknown = opts?.format
@@ -972,10 +953,6 @@ function tComposite(objects: readonly ArkSchema[], opts?: Meta): ArkSchema {
 
 	return applyMeta(createArkSchema(validator, { allOf: objects.map(jsonSchemaOf) }), opts);
 }
-
-// ---------------------------------------------------------------------------
-// Public `Type` namespace
-// ---------------------------------------------------------------------------
 
 export const Type = {
 	String: tString,

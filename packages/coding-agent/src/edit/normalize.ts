@@ -18,10 +18,6 @@ export {
 	stripBom,
 } from "@veyyon/hashline";
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Whitespace Utilities
-// ═══════════════════════════════════════════════════════════════════════════
-
 /** Count leading whitespace characters in a line */
 export function countLeadingWhitespace(line: string): number {
 	let count = 0;
@@ -165,10 +161,6 @@ export function convertLeadingTabsToSpaces(text: string, spacesPerTab: number): 
 		.join("\n");
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Unicode Normalization
-// ═══════════════════════════════════════════════════════════════════════════
-
 const UNICODE_REPLACEMENTS: [RegExp, string][] = [
 	// Various dash/hyphen code-points → ASCII '-'
 	[/[\u2010-\u2015\u2212]/g, "-"],
@@ -302,10 +294,6 @@ function hasNonEmptyIndentProfiles(...profiles: IndentProfile[]): boolean {
 function hasMixedIndentation(...profiles: IndentProfile[]): boolean {
 	return profiles.some(profile => profile.mixed);
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Indentation Adjustment
-// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Adjust newText indentation to match the indentation delta between

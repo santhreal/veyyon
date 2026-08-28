@@ -2002,22 +2002,16 @@ async function executeRepoView(
 	return buildTextResult(formatRepoView(data, { repo, branch }), data.url);
 }
 
-// ────────────────────────────────────────────────────────────────────────────
 // Cached issue/PR view fetchers
 //
 // Used by `executeIssueView`/`executePrView` and by the `issue://` / `pr://`
 // internal-URL protocol handlers. The cache wrapper lives in `./github-cache`;
 // the fresh fetchers stay here to share the existing formatter helpers.
-// ────────────────────────────────────────────────────────────────────────────
-
-// ────────────────────────────────────────────────────────────────────────────
 // PR diff fetcher
 //
 // Used by the `pr://<n>/diff[/…]` internal-URL family. Stores the verbatim
 // `gh pr diff` text plus a parsed file index so the listing, full-diff, and
 // per-file slice variants all share one cache row.
-// ────────────────────────────────────────────────────────────────────────────
-
 function joinSections(sections: string[]): string[] {
 	return sections.flatMap((section, idx) => (idx === 0 ? [section] : ["", "---", "", section]));
 }

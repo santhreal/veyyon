@@ -9,10 +9,7 @@ import { EMPTY_STRING_ARRAY, HINDSIGHT_RECALL_TYPES_DEFAULT } from "./shared";
 
 /** Context domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const CONTEXT_SETTINGS = {
-	// ────────────────────────────────────────────────────────────────────────
 	// Context
-	// ────────────────────────────────────────────────────────────────────────
-
 	// Context promotion
 	"contextPromotion.enabled": {
 		type: "boolean",

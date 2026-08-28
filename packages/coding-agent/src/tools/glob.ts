@@ -512,10 +512,6 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 	}
 }
 
-// =============================================================================
-// TUI Renderer
-// =============================================================================
-
 interface GlobRenderArgs {
 	path?: string | string[];
 	/** Legacy pre-`path` argument name; kept so historical transcripts still render a scope. */

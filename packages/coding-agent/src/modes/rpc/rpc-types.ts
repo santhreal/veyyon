@@ -20,10 +20,6 @@ import type {
 } from "../../task";
 import type { TodoPhase } from "../../tools/todo";
 
-// ============================================================================
-// RPC Commands (stdin)
-// ============================================================================
-
 export type RpcCommand =
 	// Prompting
 	| { id?: string; type: "prompt"; message: string; images?: ImageContent[]; streamingBehavior?: "steer" | "followUp" }
@@ -85,10 +81,6 @@ export type RpcCommand =
 	// Login
 	| { id?: string; type: "get_login_providers" }
 	| { id?: string; type: "login"; providerId: string };
-
-// ============================================================================
-// RPC State
-// ============================================================================
 
 export interface RpcSessionState {
 	model?: Model;
@@ -161,10 +153,6 @@ export interface RpcSubagentMessagesResult {
 	entries: FileEntry[];
 	messages: AgentMessage[];
 }
-
-// ============================================================================
-// RPC Responses (stdout)
-// ============================================================================
 
 // Success responses with data
 export type RpcResponse =
@@ -298,10 +286,6 @@ export type RpcResponse =
 	// Error response (any command can fail)
 	| { id?: string; type: "response"; command: string; success: false; error: string };
 
-// ============================================================================
-// Subagent Events (stdout)
-// ============================================================================
-
 export interface RpcSubagentLifecycleFrame {
 	type: "subagent_lifecycle";
 	payload: SubagentLifecyclePayload;
@@ -320,10 +304,6 @@ export interface RpcSubagentEventFrame {
 export type RpcSubagentFrame = RpcSubagentLifecycleFrame | RpcSubagentProgressFrame | RpcSubagentEventFrame;
 
 export type RpcSessionEventFrame = AgentSessionEvent | RpcSubagentFrame;
-
-// ============================================================================
-// Extension UI Events (stdout)
-// ============================================================================
 
 /** Emitted when an extension needs user input */
 export type RpcExtensionUIRequest =
@@ -390,10 +370,6 @@ export type RpcExtensionUIRequest =
 			instructions?: string;
 	  };
 
-// ============================================================================
-// Host Tool Frames (bidirectional)
-// ============================================================================
-
 export interface RpcHostToolDefinition {
 	name: string;
 	label?: string;
@@ -432,10 +408,6 @@ export interface RpcHostToolResult {
 	result: AgentToolResult<unknown>;
 	isError?: boolean;
 }
-
-// ============================================================================
-// Host URI Frames (bidirectional)
-// ============================================================================
 
 export interface RpcHostUriSchemeDefinition {
 	/** URL scheme without trailing `://` (e.g. `db`, `notion`). */
@@ -488,18 +460,10 @@ export interface RpcHostUriResult {
 	error?: string;
 }
 
-// ============================================================================
-// Extension UI Commands (stdin)
-// ============================================================================
-
 /** Response to an extension UI request */
 export type RpcExtensionUIResponse =
 	| { type: "extension_ui_response"; id: string; value: string }
 	| { type: "extension_ui_response"; id: string; confirmed: boolean }
 	| { type: "extension_ui_response"; id: string; cancelled: true; timedOut?: boolean };
-
-// ============================================================================
-// Helper type for extracting command types
-// ============================================================================
 
 export type RpcCommandType = RpcCommand["type"];

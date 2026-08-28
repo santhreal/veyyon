@@ -9,7 +9,6 @@
  *   - retention transcript framing
  */
 
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { hasAlphanumeric } from "@veyyon/utils/regex";
 
 export interface HindsightMessage {

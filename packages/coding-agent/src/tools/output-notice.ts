@@ -21,7 +21,6 @@
  * `output-meta.ts` re-exports every name below, so no existing caller changed.
  */
 
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { formatBytes, pluralize } from "@veyyon/utils/format";
 import { formatGroupedDiagnosticMessages } from "../lsp/utils";
 

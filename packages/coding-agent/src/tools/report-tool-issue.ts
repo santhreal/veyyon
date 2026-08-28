@@ -105,10 +105,6 @@ export function openAutoQaDb(): Database | null {
 	}
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// Backend push
-// ───────────────────────────────────────────────────────────────────────────
-
 export interface FlushResult {
 	pushed: number;
 	ok: boolean;

@@ -1,7 +1,6 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import { getBlobsDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
-// Owners, not the `@veyyon/utils` barrel: 4 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { readLines } from "@veyyon/utils/stream";
 import {

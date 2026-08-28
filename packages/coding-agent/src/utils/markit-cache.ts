@@ -4,7 +4,6 @@ import * as path from "node:path";
 import { atomicWriteFile } from "@veyyon/utils/atomic-write";
 import { getDocumentConversionCacheDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
-// Owners, not the `@veyyon/utils` barrel: 6 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { removeTempPath } from "@veyyon/utils/temp";
 import { errorMessage } from "@veyyon/utils/type-guards";

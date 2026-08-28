@@ -254,10 +254,7 @@ export class AgentTranscriptViewer implements Component {
 		this.#pollTimer = undefined;
 	}
 
-	// ========================================================================
 	// Transcript loading
-	// ========================================================================
-
 	/** Refresh the transcript from a local file or remote host. */
 	#refresh(): void {
 		if (this.#disposed) return;
@@ -495,10 +492,7 @@ export class AgentTranscriptViewer implements Component {
 		this.deps.requestRender();
 	}
 
-	// ========================================================================
 	// Input
-	// ========================================================================
-
 	handleInput(data: string): void {
 		if (data.startsWith("\x1b[<")) {
 			routeSgrMouseInput(data, event => this.#routeMouse(event));
@@ -640,10 +634,7 @@ export class AgentTranscriptViewer implements Component {
 		this.deps.requestRender();
 	}
 
-	// ========================================================================
 	// Render
-	// ========================================================================
-
 	render(width: number): readonly string[] {
 		const termHeight = process.stdout.rows || 40;
 		const sizing = sizingForArea(MODAL_SIZING_LARGE, termHeight);

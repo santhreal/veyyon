@@ -2,10 +2,6 @@ import type { TabBarTheme } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
 import { hoverBand, theme } from "./theme/theme";
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Text Sanitization
-// ═══════════════════════════════════════════════════════════════════════════
-
 /**
  * Sanitize text for display in a single-line status indicator. Strips all
  * 7-bit and 8-bit ANSI escape sequences via `@veyyon/utils`, maps remaining
@@ -23,10 +19,6 @@ export function sanitizeStatusText(text: string): string {
 		.trim();
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Tab Bar Theme
-// ═══════════════════════════════════════════════════════════════════════════
-
 /** Shared tab bar theme used by fullscreen overlays (settings, the Agent Control Center). */
 export function getTabBarTheme(): TabBarTheme {
 	return {
@@ -40,10 +32,6 @@ export function getTabBarTheme(): TabBarTheme {
 		hint: (text: string) => theme.fg("dim", text),
 	};
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Working-message hint
-// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Suffix appended to the loader's working message to remind users they can

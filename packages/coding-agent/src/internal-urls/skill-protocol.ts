@@ -10,7 +10,6 @@
 import type * as fsTypes from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { isEnoent } from "@veyyon/utils/fs-error";
 // The slot, not the loader: `../extensibility/skills` discovers and parses skills and reaches 365
 // modules, and this handler only reads which ones are active.

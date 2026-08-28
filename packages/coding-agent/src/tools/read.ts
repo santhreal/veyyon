@@ -3704,10 +3704,6 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	}
 }
 
-// =============================================================================
-// TUI Renderer
-// =============================================================================
-
 export interface ReadRenderArgs {
 	path?: unknown;
 	file_path?: unknown;

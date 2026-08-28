@@ -70,10 +70,6 @@ const MARKETPLACE_DETAIL_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "esc back", clickable: true, id: "back" },
 ];
 
-// =============================================================================
-// Plugin List Component
-// =============================================================================
-
 /**
  * One row in the unified plugin list. npm and marketplace plugins live in
  * separate registries with different shapes, so a tagged union keeps both
@@ -225,10 +221,6 @@ export class PluginListComponent extends MouseRoutedSubmenu {
 		this.#selectList.handleInput(data);
 	}
 }
-
-// =============================================================================
-// Plugin Detail Component
-// =============================================================================
 
 export interface PluginDetailCallbacks {
 	onEnabledChange: (enabled: boolean) => void;
@@ -412,10 +404,6 @@ export class PluginDetailComponent extends MouseRoutedSubmenu {
 	}
 }
 
-// =============================================================================
-// Marketplace Plugin Detail Component
-// =============================================================================
-
 export interface MarketplacePluginDetailCallbacks {
 	onEnabledChange: (enabled: boolean) => void;
 	onBack: () => void;
@@ -506,10 +494,6 @@ export class MarketplacePluginDetailComponent extends MouseRoutedSubmenu {
 		this.#settingsList.handleInput(data);
 	}
 }
-
-// =============================================================================
-// Config Submenus
-// =============================================================================
 
 /**
  * Submenu for enum config values.
@@ -618,10 +602,6 @@ class ConfigInputSubmenu extends MouseRoutedSubmenu {
 		handleInputOrEscape(data, this.#input, this.onCancel);
 	}
 }
-
-// =============================================================================
-// Main Plugin Settings Selector
-// =============================================================================
 
 export interface PluginSettingsCallbacks {
 	onClose: () => void;

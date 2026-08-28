@@ -103,10 +103,6 @@ export type { AppKeybinding, KeybindingsManager } from "../../config/keybindings
 export type { ExecOptions, ExecResult } from "../../exec/exec";
 export type { AgentToolResult, AgentToolUpdateCallback };
 
-// ============================================================================
-// UI Context
-// ============================================================================
-
 export interface ExtensionUISelectOption {
 	label: string;
 	description?: string;
@@ -343,10 +339,6 @@ export interface ExtensionUIContext {
 	setToolsExpanded(expanded: boolean): void;
 }
 
-// ============================================================================
-// Extension Context
-// ============================================================================
-
 export interface ContextUsage {
 	/** Estimated context tokens. */
 	tokens: number;
@@ -488,10 +480,6 @@ export interface ExtensionCommandContext extends ExtensionContext {
 	compact(instructionsOrOptions?: string | CompactOptions): Promise<void>;
 }
 
-// ============================================================================
-// Tool Types
-// ============================================================================
-
 /** Rendering options for tool results */
 export interface ToolRenderResultOptions {
 	/** Whether the result view is expanded */
@@ -570,10 +558,6 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	) => Component;
 }
 
-// ============================================================================
-// Resource Events
-// ============================================================================
-
 /** Fired after session_start to allow extensions to provide additional resource paths. */
 export interface ResourcesDiscoverEvent {
 	type: "resources_discover";
@@ -588,11 +572,8 @@ export interface ResourcesDiscoverResult {
 	themePaths?: string[];
 }
 
-// ============================================================================
-// Session Events (shared with hooks subsystem)
-// ============================================================================
-
 export type {
+	ContextEvent,
 	SessionBeforeBranchEvent,
 	SessionBeforeCompactEvent,
 	SessionBeforeSwitchEvent,
@@ -607,12 +588,6 @@ export type {
 	SessionTreeEvent,
 	TreePreparation,
 } from "../shared-events";
-
-// ============================================================================
-// Agent Events
-// ============================================================================
-
-export type { ContextEvent } from "../shared-events";
 
 /** Fired before a provider request is sent. Can replace the payload. */
 export interface BeforeProviderRequestEvent {
@@ -706,10 +681,6 @@ export interface CredentialDisabledEvent {
 	disabledCause: string;
 }
 
-// ============================================================================
-// User Bash Events
-// ============================================================================
-
 /** Fired when user executes a bash command via ! or !! prefix */
 export interface UserBashEvent {
 	type: "user_bash";
@@ -720,10 +691,6 @@ export interface UserBashEvent {
 	/** Current working directory */
 	cwd: string;
 }
-
-// ============================================================================
-// User Python Events
-// ============================================================================
 
 /** Fired when user executes Python code via $ or $$ prefix */
 export interface UserPythonEvent {
@@ -736,10 +703,6 @@ export interface UserPythonEvent {
 	cwd: string;
 }
 
-// ============================================================================
-// Input Events
-// ============================================================================
-
 /** Fired when the user submits input (interactive mode only). */
 export interface InputEvent {
 	type: "input";
@@ -747,10 +710,6 @@ export interface InputEvent {
 	images?: ImageContent[];
 	source: "interactive" | "rpc" | "extension";
 }
-
-// ============================================================================
-// Tool Events
-// ============================================================================
 
 export interface ToolApprovalRequestedEvent {
 	type: "tool_approval_requested";
@@ -942,10 +901,6 @@ export type ExtensionEvent =
 	| ToolApprovalRequestedEvent
 	| ToolApprovalResolvedEvent;
 
-// ============================================================================
-// Event Results
-// ============================================================================
-
 export interface ContextEventResult {
 	messages?: AgentMessage[];
 }
@@ -1005,10 +960,6 @@ export type {
 	SessionCompactingResult,
 } from "../shared-events";
 
-// ============================================================================
-// Message Rendering
-// ============================================================================
-
 export interface MessageRenderOptions {
 	expanded: boolean;
 }
@@ -1031,10 +982,6 @@ export type AssistantThinkingRenderer = (
 	theme: Theme,
 ) => Component | undefined;
 
-// ============================================================================
-// Command Registration
-// ============================================================================
-
 // fallow-ignore-next-line code-duplication
 // Parallel to HookAPI's RegisteredCommand: extensions add
 // `getArgumentCompletions` and bind handlers to ExtensionCommandContext.
@@ -1045,10 +992,6 @@ export interface RegisteredCommand {
 	handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
 }
 
-// ============================================================================
-// Extension API
-// ============================================================================
-
 /** Handler function type for events */
 // biome-ignore lint/suspicious/noConfusingVoidType: void allows bare return statements
 export type ExtensionHandler<E, R = undefined> = (event: E, ctx: ExtensionContext) => Promise<R | void> | R | void;
@@ -1057,10 +1000,7 @@ export type ExtensionHandler<E, R = undefined> = (event: E, ctx: ExtensionContex
  * ExtensionAPI passed to extension factory functions.
  */
 export interface ExtensionAPI {
-	// =========================================================================
 	// Module Access
-	// =========================================================================
-
 	/** File logger for error/warning/debug messages */
 	logger: typeof PiLogger;
 
@@ -1075,10 +1015,7 @@ export interface ExtensionAPI {
 	/** Injected coding-agent exports for accessing SDK utilities */
 	pi: typeof PiCodingAgent;
 
-	// =========================================================================
 	// Event Subscription
-	// =========================================================================
-
 	on(event: "resources_discover", handler: ExtensionHandler<ResourcesDiscoverEvent, ResourcesDiscoverResult>): void;
 	on(event: "session_start", handler: ExtensionHandler<SessionStartEvent>): void;
 	on(
@@ -1134,17 +1071,11 @@ export interface ExtensionAPI {
 	on(event: "user_bash", handler: ExtensionHandler<UserBashEvent, UserBashEventResult>): void;
 	on(event: "user_python", handler: ExtensionHandler<UserPythonEvent, UserPythonEventResult>): void;
 
-	// =========================================================================
 	// Tool Registration
-	// =========================================================================
-
 	/** Register a tool that the LLM can call. */
 	registerTool<TParams extends TSchema = TSchema, TDetails = unknown>(tool: ToolDefinition<TParams, TDetails>): void;
 
-	// =========================================================================
 	// Command, Shortcut, Flag Registration
-	// =========================================================================
-
 	/** Register a custom command. */
 	registerCommand(
 		name: string,
@@ -1180,20 +1111,14 @@ export interface ExtensionAPI {
 	/** Get the value of a registered CLI flag. */
 	getFlag(name: string): boolean | string | undefined;
 
-	// =========================================================================
 	// Message Rendering
-	// =========================================================================
-
 	/** Register a custom renderer for CustomMessageEntry. */
 	registerMessageRenderer<T = unknown>(customType: string, renderer: MessageRenderer<T>): void;
 
 	/** Register a renderer for assistant thinking blocks. Rendered after the original thinking text. */
 	registerAssistantThinkingRenderer(renderer: AssistantThinkingRenderer): void;
 
-	// =========================================================================
 	// Actions
-	// =========================================================================
-
 	/**
 	 * Send a custom message to the session.
 	 *
@@ -1252,10 +1177,7 @@ export interface ExtensionAPI {
 	/** Set the session name. Persists to the session file. */
 	setSessionName(name: string): Promise<void>;
 
-	// =========================================================================
 	// Provider Registration
-	// =========================================================================
-
 	/**
 	 * Register or override a model provider.
 	 *
@@ -1296,10 +1218,6 @@ export interface ExtensionAPI {
 	/** Shared event bus for extension communication. */
 	events: EventBus;
 }
-
-// ============================================================================
-// Provider Registration Types
-// ============================================================================
 
 /** Configuration for registering a provider via pi.registerProvider(). */
 export interface ProviderConfig {
@@ -1369,10 +1287,6 @@ export interface ProviderModelConfig {
 
 /** Extension factory function type. Supports both sync and async initialization. */
 export type ExtensionFactory = (pi: ExtensionAPI) => void | Promise<void>;
-
-// ============================================================================
-// Loaded Extension Types
-// ============================================================================
 
 export interface RegisteredTool<TParams extends TSchema = TSchema, TDetails = unknown> {
 	definition: ToolDefinition<TParams, TDetails>;
@@ -1518,10 +1432,6 @@ export interface LoadExtensionsResult {
 	withheld: Array<{ path: string; reason: string }>;
 	runtime: ExtensionRuntime;
 }
-
-// ============================================================================
-// Extension Error
-// ============================================================================
 
 export interface ExtensionError {
 	extensionPath: string;

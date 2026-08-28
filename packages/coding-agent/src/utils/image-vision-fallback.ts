@@ -24,8 +24,6 @@ import { extractTextContent } from "../commit/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { expandRoleAlias, getModelMatchPreferences, resolveModelFromString } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
-// The owning module, not the `../internal-urls` barrel: the barrel re-exports every protocol
-// handler and reaches hundreds of modules, and both of these live in `local-protocol`.
 import { type LocalProtocolOptions, resolveLocalRoot } from "../internal-urls/local-protocol";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { canonicalizeImageContent } from "./image-resize";

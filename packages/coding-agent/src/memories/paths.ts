@@ -18,7 +18,6 @@
  */
 
 import * as path from "node:path";
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { getMemoriesDir } from "@veyyon/utils/dirs";
 
 /**

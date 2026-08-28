@@ -2456,10 +2456,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 			}
 
 			switch (action) {
-				// =====================================================================
 				// Standard LSP Operations
-				// =====================================================================
-
 				case "definition": {
 					const result = (await sendRequest(
 						client,

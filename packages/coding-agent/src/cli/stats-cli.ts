@@ -52,23 +52,11 @@ function shortenSessionFile(p: string): string {
 	return idx >= 0 ? p.slice(idx + marker.length) : p;
 }
 
-// =============================================================================
-// Types
-// =============================================================================
-
 export interface StatsCommandArgs {
 	port: number;
 	json: boolean;
 	summary: boolean;
 }
-
-// =============================================================================
-// Argument Parser
-// =============================================================================
-
-// =============================================================================
-// Command Handler
-// =============================================================================
 
 export async function runStatsCommand(cmd: StatsCommandArgs): Promise<void> {
 	// Lazy import to avoid loading stats module when not needed
@@ -158,7 +146,3 @@ async function printStatsSummary(): Promise<void> {
 
 	console.log("");
 }
-
-// =============================================================================
-// Help
-// =============================================================================

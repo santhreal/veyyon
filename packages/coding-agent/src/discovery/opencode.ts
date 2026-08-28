@@ -43,10 +43,6 @@ const PROVIDER_ID = "opencode";
 const DISPLAY_NAME = "OpenCode";
 const PRIORITY = 55;
 
-// =============================================================================
-// JSON Config Loading
-// =============================================================================
-
 async function loadJsonConfig(configPath: string): Promise<Record<string, unknown> | null> {
 	const content = await readFile(configPath);
 	if (!content) return null;
@@ -58,10 +54,6 @@ async function loadJsonConfig(configPath: string): Promise<Record<string, unknow
 	}
 	return parsed;
 }
-
-// =============================================================================
-// Context Files (AGENTS.md)
-// =============================================================================
 
 /**
  * Load OpenCode context files.
@@ -97,10 +89,6 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 
 	return { items, warnings };
 }
-
-// =============================================================================
-// MCP Servers (opencode.json → mcp)
-// =============================================================================
 
 /** OpenCode MCP server config (from opencode.json "mcp" key) */
 interface OpenCodeMCPConfig {
@@ -224,10 +212,6 @@ function extractMCPServers(config: Record<string, unknown>, configPath: string):
 	return { items, warnings };
 }
 
-// =============================================================================
-// Skills (skills/)
-// =============================================================================
-
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const userSkillsDir = getUserPath(ctx, "opencode", "skills");
 	if (!userSkillsDir) return { items: [], warnings: [] };
@@ -235,19 +219,11 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 	return await scanSkillsFromDir({ dir: userSkillsDir, providerId: PROVIDER_ID, level: "user" });
 }
 
-// =============================================================================
-// Extension Modules (plugins/)
-// =============================================================================
-
 async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<ExtensionModule>> {
 	const userPluginsDir = getUserPath(ctx, "opencode", "plugins");
 	const userPaths = userPluginsDir ? await discoverExtensionModulePaths(userPluginsDir) : [];
 	return { items: buildExtensionModuleItems(PROVIDER_ID, userPaths, []), warnings: [] };
 }
-
-// =============================================================================
-// Slash Commands (commands/)
-// =============================================================================
 
 /**
  * Read the OpenCode command-loading toggle from settings.
@@ -282,10 +258,6 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 		},
 	});
 }
-
-// =============================================================================
-// Provider Registration
-// =============================================================================
 
 registerProvider(contextFileCapability.id, {
 	id: PROVIDER_ID,

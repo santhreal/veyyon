@@ -1635,10 +1635,6 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 	}
 }
 
-// =============================================================================
-// TUI Renderer
-// =============================================================================
-
 interface GrepRenderArgs {
 	pattern: string;
 	path?: string | string[];

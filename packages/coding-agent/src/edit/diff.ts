@@ -51,10 +51,6 @@ export class ApplyPatchError extends Error {
 	}
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Diff String Generation
-// ═══════════════════════════════════════════════════════════════════════════
-
 function formatNumberedDiffLine(prefix: "+" | "-" | " ", lineNum: number, content: string): string {
 	return `${prefix}${lineNum}|${content}`;
 }
@@ -355,10 +351,6 @@ export function generateDiffString(
 
 	return { diff: output.join("\n"), firstChangedLine };
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Replace Mode Logic
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ReplaceOptions {
 	/** Allow fuzzy matching */
@@ -901,10 +893,6 @@ export function replaceText(content: string, oldText: string, newText: string, o
 
 	return { content: normalizedContent, count: 1 };
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Preview/Diff Computation
-// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Compute the diff for an edit operation without applying it.

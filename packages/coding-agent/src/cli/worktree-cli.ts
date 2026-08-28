@@ -164,10 +164,6 @@ export async function clearWorktrees(options: ClearWorktreesOptions): Promise<vo
 	if (failed > 0) process.exitCode = 1;
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// Scanner
-// ───────────────────────────────────────────────────────────────────────────
-
 async function scanWorktrees(): Promise<WorktreeEntry[]> {
 	const root = getWorktreesDir();
 	let topLevel: string[];

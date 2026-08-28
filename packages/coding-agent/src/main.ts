@@ -311,9 +311,6 @@ async function readPipedInput(havePromptArgument = false): Promise<string | unde
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Startup watchdog
-// ---------------------------------------------------------------------------
 // Speculative-hang reporter: until startup hands off to a mode runner, print a
 // stderr line every 10s naming the deepest in-flight startup phase. Turns
 // zero-output indefinite hangs (stuck discovery read, network wait, stdin
