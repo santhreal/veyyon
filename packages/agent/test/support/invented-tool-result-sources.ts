@@ -22,7 +22,7 @@ export async function loopSource(): Promise<string> {
 	const main = await fs.readFile(path.join(PACKAGES_DIR, LOOP), "utf8");
 	let text = main;
 	try {
-		text += "\n" + await fs.readFile(path.join(PACKAGES_DIR, LOOP_HELPERS), "utf8");
+		text += `\n${await fs.readFile(path.join(PACKAGES_DIR, LOOP_HELPERS), "utf8")}`;
 	} catch {}
 	return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
 }

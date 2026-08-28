@@ -9,9 +9,9 @@ import {
 	trace,
 } from "@opentelemetry/api";
 import type { AssistantMessage, Message, Model, ServiceTier, StopReason, ToolChoice, Usage } from "@veyyon/ai";
+import { stringifyJsonSafe } from "@veyyon/utils/json";
 import type { AgentRunCollector, AgentRunCoverage, AgentRunSummary, ToolStatus } from "./run-collector";
 import type { AgentTool } from "./types";
-import { stringifyJsonSafe } from "@veyyon/utils/json";
 
 export const DEFAULT_TRACER_NAME = "@veyyon/agent-core";
 
