@@ -13,6 +13,7 @@
 - Added `supportsServerCompaction` capability data for ChatGPT Codex backend models on the Responses API.
 
 ### Changed
+- `openai-compat.ts` resolver sections extracted into `openai-compat/` module (helpers, overrides, providers, resolvers).
 - Verbose inline comments stripped from `openai-compat.ts`, `variant-collapse.ts`, and `types.ts`.
 
 - The GitLab Duo Workflow provider descriptor in `provider-models/special.ts` loads the zod-dependent discovery module lazily on first model manager construction instead of at module import, deferring 28 MiB of zod and its locale files from the static boot graph.
