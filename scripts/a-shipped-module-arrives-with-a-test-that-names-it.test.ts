@@ -222,6 +222,8 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/catalog/src/discovery/devin-gen/exa/reactive_component_pb/reactive_component_pb.ts",
 	"packages/catalog/src/discovery/devin-gen/exa/trust_pb/trust_pb.ts",
 	"packages/catalog/src/provider-models/bundled-references.ts",
+	"packages/catalog/src/provider-models/openai-compat/overrides.ts",
+	"packages/catalog/src/provider-models/openai-compat/resolvers.ts",
 	"packages/coding-agent/src/autoresearch/dashboard.ts",
 	"packages/coding-agent/src/autoresearch/shortcuts.ts",
 	"packages/coding-agent/src/cli/auth-gateway-cli.ts",
