@@ -18,6 +18,7 @@
  * make sense for this piece of work. It overrides to zero for this session
  * only, never writes config, and `reset` puts it back.
  */
+import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../../config/settings";
 import { sessionCpuLimit } from "../../session/cpu-limit";
 import { anyMachineLimitActive, type MachineBudgetLimits, machineBudgetLimits } from "../../session/machine-budget";
@@ -56,7 +57,7 @@ function describeMachineLimits(): string | undefined {
 	} catch (error) {
 		// A machine limit that cannot be read is holding nothing, and status is
 		// exactly where that has to be visible rather than absent.
-		return `Machine limits: unreadable (${error instanceof Error ? error.message : String(error)}), so none is held.`;
+		return `Machine limits: unreadable (${errorMessage(error)}), so none is held.`;
 	}
 	if (!anyMachineLimitActive(limits)) return undefined;
 	const parts: string[] = [];

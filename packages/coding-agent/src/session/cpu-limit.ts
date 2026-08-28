@@ -90,6 +90,7 @@ import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../config/settings";
 import { settingsOrNull } from "../config/settings-instance";
+import { formatCpuMaxValue, formatLimitFileValue, formatSystemdCpuQuota } from "./cgroup-format";
 import {
 	addMachineHarnessWrite,
 	anyMachineLimitActive,
@@ -109,9 +110,6 @@ import {
 	WriteAccountant,
 } from "./write-accounting";
 
-/** cgroup v2 cpu.max period the quota is expressed against (microseconds). */
-export const CPU_LIMIT_PERIOD_USEC = 100_000;
-
 /** Default watcher cadence: one usage sample per second. */
 export const CPU_LIMIT_WATCH_INTERVAL_MS = 1_000;
 
@@ -126,35 +124,6 @@ const SATURATION_RATIO = 0.95;
 
 /** Nice level applied to budget members on sustained saturation where no kernel quota exists. */
 export const CPU_LIMIT_SATURATION_NICE = 10;
-
-/** The `cpu.max` value for `cores` cores: quota over the fixed period, or `max` when lifted. */
-export function formatCpuMaxValue(cores: number): string {
-	if (!Number.isFinite(cores) || cores <= 0) return `max ${CPU_LIMIT_PERIOD_USEC}`;
-	// A positive budget that rounds to 0 µs is a freeze (`0 100000`), the same
-	// trap as writing a zero quota at cores=0. Floor at 1 µs: the smallest cap
-	// cpu.max can express, matching Windows CpuRate 1 for a tiny-but-nonzero budget.
-	const quota = Math.max(1, Math.round(cores * CPU_LIMIT_PERIOD_USEC));
-	return `${quota} ${CPU_LIMIT_PERIOD_USEC}`;
-}
-
-/**
- * systemd `CPUQuota=` for `cores` cores. systemd rejects `CPUQuota=0%` and
- * scientific notation (`1e-10%`); a positive budget that would print as either
- * floors at 0.001% — one microsecond of a 100ms period, the same 1 µs floor as
- * {@link formatCpuMaxValue}.
- */
-export function formatSystemdCpuQuota(cores: number): string | undefined {
-	if (!Number.isFinite(cores) || cores <= 0) return undefined;
-	// JS Number.toString uses scientific notation at 1e21. systemd rejects that.
-	const percent = Math.min(1e18, Math.max(0.001, cores * 100));
-	const rendered = Number.isInteger(percent)
-		? String(percent)
-		: percent
-				.toFixed(6)
-				.replace(/\.0+$/, "")
-				.replace(/(\.\d*?)0+$/, "$1");
-	return `CPUQuota=${rendered}%`;
-}
 
 /** Result of running a helper binary (systemd-run, systemctl) during probe or setup. */
 export interface CpuLimitCommandResult {
@@ -272,11 +241,6 @@ async function readOptional(file: string): Promise<string | undefined> {
 	} catch {
 		return undefined;
 	}
-}
-
-/** The `pids.max` / `memory.max` value for a limit, or the kernel's "no cap". */
-function limitFileValue(value: number): string {
-	return value > 0 ? String(Math.floor(value)) : "max";
 }
 
 /**
@@ -1291,11 +1255,11 @@ export class SessionCpuLimit {
 			}
 			return;
 		}
-		this.#pidsEnforced = await this.#writeCgroupFile(dir, "pids.max", limitFileValue(this.#maxProcesses));
+		this.#pidsEnforced = await this.#writeCgroupFile(dir, "pids.max", formatLimitFileValue(this.#maxProcesses));
 		this.#memoryEnforced = await this.#writeCgroupFile(
 			dir,
 			"memory.max",
-			limitFileValue(this.#memoryLimitGb > 0 ? this.#memoryLimitGb * BYTES_PER_GB : 0),
+			formatLimitFileValue(this.#memoryLimitGb > 0 ? this.#memoryLimitGb * BYTES_PER_GB : 0),
 		);
 		if (this.#maxProcesses > 0 && !this.#pidsEnforced) {
 			this.#emitNoticeOnce(

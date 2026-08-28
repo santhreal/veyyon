@@ -39,6 +39,7 @@ import * as path from "node:path";
 import { type GlobalResourceLimit, getGlobalConfigFilePath, resolveGlobalResourceLimit } from "@veyyon/utils/dirs";
 import { withFileLockSync } from "@veyyon/utils/file-lock";
 import * as logger from "@veyyon/utils/logger";
+import { formatCpuMaxValue, formatLimitFileValue } from "./cgroup-format";
 import { BYTES_PER_GB, parseIoStatWrittenBytes } from "./write-accounting";
 
 /**
@@ -115,11 +116,6 @@ function passthrough(parentDir: string, unenforceable?: string): MachineBudgetPl
 		kernelHeld: { cpu: false, pids: false, memory: false },
 		unenforceable,
 	};
-}
-
-/** The `cpu.max`, `memory.max` or `pids.max` body for a limit, or the kernel's "no cap". */
-function limitValue(value: number, scale = 1): string {
-	return value > 0 ? String(Math.floor(value * scale)) : "max";
 }
 
 /**
@@ -234,9 +230,9 @@ export async function ensureMachineBudget(
 		);
 	}
 	const kernelHeld: MachineKernelHold = {
-		cpu: await writeControl(dir, "cpu.max", cpuMaxValue(limits.cpuLimitCores)),
-		pids: await writeControl(dir, "pids.max", limitValue(limits.maxProcesses)),
-		memory: await writeControl(dir, "memory.max", limitValue(limits.memoryLimitGb, BYTES_PER_GB)),
+		cpu: await writeControl(dir, "cpu.max", formatCpuMaxValue(limits.cpuLimitCores)),
+		pids: await writeControl(dir, "pids.max", formatLimitFileValue(limits.maxProcesses)),
+		memory: await writeControl(dir, "memory.max", formatLimitFileValue(limits.memoryLimitGb, BYTES_PER_GB)),
 	};
 	return {
 		parentDir: dir,
@@ -244,15 +240,6 @@ export async function ensureMachineBudget(
 		kernelHeld,
 		unenforceable: describeUnheld(limits, kernelHeld),
 	};
-}
-
-/** cgroup v2 `cpu.max` period the machine quota is expressed against (microseconds). */
-export const MACHINE_CPU_PERIOD_USEC = 100_000;
-
-/** The `cpu.max` body for `cores` cores, or the kernel's "no cap". */
-export function cpuMaxValue(cores: number): string {
-	if (cores <= 0) return `max ${MACHINE_CPU_PERIOD_USEC}`;
-	return `${Math.floor(cores * MACHINE_CPU_PERIOD_USEC)} ${MACHINE_CPU_PERIOD_USEC}`;
 }
 
 /**
