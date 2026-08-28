@@ -32,6 +32,7 @@
 - `usage/google-antigravity.ts` replaces `[...new Set(...)].sort()` with `Array.from(new Set(...)).sort()` and `[...ANTIGRAVITY_ENDPOINTS]` with `.slice()`.
 - `validation.ts`, `json-schema-validator.ts`, `draft.ts`, `equality.ts`, `normalize.ts`, `wire.ts`, `registry.ts`, `oauth/index.ts`, and `github-copilot.ts` replace `[...arr]` spreads with `.slice()`/`.concat()`/`Array.from()` in schema validation, normalization, path building, usage provider listing, and OAuth provider enumeration.
 - Auth, broker, gateway, dialect, error, and provider files replace Set/Map/array spreads with `Array.from()`, `.slice()`, and `.concat()` across credential identifier extraction, auth storage listener fan-out, snapshot credential management, usage report merging, tag prefix construction, error trace deduplication, and provider request building.
+- Responses API codec (`processResponsesStream`, `buildResponsesInput`, `convertResponsesAssistantMessage`, `appendResponsesToolResultMessages`, reasoning summary accumulators, tool-call argument accumulators, `mapOpenAIResponsesStopReason`, `applyResponsesCompatPolicy`, `applyResponsesReasoningParams`, `populateResponsesUsageFromResponse`, `buildResponsesDeltaInput`, and related types/helpers) extracted from `openai-shared.ts` into `openai-responses-codec.ts`, reducing `openai-shared.ts` from 3,146 to 1,051 lines. `openai-shared.ts` re-exports from the new module so existing importers are unchanged.
 
 ### Fixed
 
