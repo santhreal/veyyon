@@ -94,10 +94,10 @@ describe("settings rows show option labels, not stored values", () => {
 		const panel = subagentsPanel();
 
 		expect(panel).toContain("Prune After");
-		expect(panel).toContain("5 minutes");
-		expect(panel).toContain("30 minutes");
-		expect(panel).not.toContain("300000");
-		expect(panel).not.toContain("1800000");
+		expect(panel).toContain("1 hour");
+		expect(panel).toContain("2 hours");
+		expect(panel).not.toContain("3600000");
+		expect(panel).not.toContain("7200000");
 	});
 
 	/**
@@ -137,7 +137,7 @@ describe("settings rows show option labels, not stored values", () => {
 
 		const stored = Settings.instance.get("subagent.prune.waitingAfterMs");
 		expect(typeof stored).toBe("number");
-		expect(stored).toBe(1_800_000);
+		expect(stored).toBe(7_200_000);
 	});
 
 	/**
@@ -233,9 +233,7 @@ describe("stage one of the park/prune lifecycle is on the settings screen", () =
 		const panel = subagentsPanel();
 
 		expect(panel).toContain("Park After");
-		// Its default is the same 5 minutes as the quiet prune budget, so the row is
-		// only proved present by the label appearing twice, once per row.
-		expect(panel.match(/5 minutes/g)?.length).toBe(2);
+		expect(panel).toContain("5 minutes");
 		expect(panel).not.toContain("300000");
 	});
 
@@ -289,7 +287,7 @@ describe("search results are labelled too", () => {
 		const panel = component.render(100).map(stripVTControlCharacters).join("\n");
 
 		expect(panel).toContain("Prune After");
-		expect(panel).toContain("5 minutes");
-		expect(panel).not.toContain("300000");
+		expect(panel).toContain("1 hour");
+		expect(panel).not.toContain("3600000");
 	});
 });
