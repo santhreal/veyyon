@@ -175,7 +175,6 @@ export const PROMPT_IDS: readonly string[] = [
 	"tools/resolve",
 	"tools/retain",
 	"tools/rewind",
-	"tools/runtime",
 	"tools/search",
 	"tools/search-tool-bm25",
 	"tools/set-cwd",

@@ -23,7 +23,6 @@
 - `/omfg` forges rules that carry the extended TTSR frontmatter (`astCondition`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, `repeatCompactions`, `warmupMatches`), confirms ast-grep conditions against the conversation's tool history through the same gate chain a live stream applies, and fails loudly on a malformed optional field instead of dropping it.
 - `/omfg` saves forged rules to the active profile's rules directory only; the project target is gone, because project `.veyyon/rules` was never discovered across sessions.
 - Settings → Stream Interrupts (TTSR) groups the profile's own rules under a leading `User created` section instead of `From native`, ahead of foreign-tool and built-in sections.
-- An opt-in `tools.unifiedRuntime` experiment replaces the model-facing `eval` and `launch` tools with one `runtime` tool while preserving their existing kernel and process implementations.
 - An opt-in `eval.pyWorkspace` experiment teaches the agent to keep large tool results and repeated repository operations inside the persistent Python kernel, reducing intermediate transcript output without changing kernel execution.
 
 ### Changed
@@ -74,7 +73,6 @@
 - An explicit `--model` pointing at a dynamically-discovered model (a provider`s `/v1/models` entry or models.dev overlay absent from the bundled catalog) no longer fails with "not found among N models" when the background discovery refresh has not completed before model resolution. The deferred pattern path does a synchronous cache-aware discovery pass when none of the patterns resolve against the static catalog, mirroring the fallback already present for default-role models.
 - Unified search now preserves purpose-specific field semantics through the Antigravity tool-schema adapter, replaces primitive search tools in explicit tool lists, keeps plan/subagent/bash guidance aligned with the active tool, and redirects intercepted shell searches to `search`.
 - A bash-interceptor rule that still names a retired search primitive (`grep`, `glob`, `find`, `ast_grep`) now redirects to `search` naming the `type` field the tool accepts, instead of the `purpose` field it rejects.
-- The `runtime` tool's implementation is imported when the tool is built rather than when the tool registry loads, so a session that never enables `tools.unifiedRuntime` no longer parses the eval kernel and launch broker graphs at startup.
 - File and structure search results are head-truncated at their own byte budget with the full output saved to an artifact, instead of relying on the shared spill layer's middle-elision. File search uses a 4 KB head window (paths are dense and mtime-sorted, so the most recently modified files are on top), and structure search uses the same 8 KB budget as text search. Both recover the full output through an `artifact://` footer.
 - `veyyon --help` describes the `grep` dev command as the standalone native text-search probe, which is what the command itself says, instead of naming the retired standalone grep tool.
 - Bundled edit and write guidance now uses TTSR's deferred reminder path instead of inheriting the global interrupt policy and aborting the active model response. Every bundled tool-scoped rule must now declare its interrupt policy explicitly.
@@ -170,6 +168,10 @@
 - `debug` reaches the Python debugger on a host that installs `python3` and no unsuffixed `python`, which is every current Linux and macOS. The bundled `debugpy` adapter named `python`, so launching answered `adapter 'debugpy' is not available` on a machine that had Python; an adapter may now declare alternate spellings, and a command written in `dap.json` is still used exactly as written.
 - A subagent that calls `yield` with unusable data now fails the run instead of returning success with the system warning as its result, matching how a subagent that never yields at all is already reported.
 - A subagent result that cannot be serialized now fails the run and reports the serialization error, instead of returning success with an unparseable error envelope as its payload.
+
+### Removed
+
+- The `tools.unifiedRuntime` experiment and the `runtime` tool it gated. The unified tool never shipped enabled, duplicated the `eval` and `launch` prompts at 2,368 tokens, and the experiment was abandoned in favour of keeping `eval` and `launch` as separate tools.
 
 ## [1.2.0] - 2026-08-23
 
