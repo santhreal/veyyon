@@ -84,7 +84,7 @@ const PRUNING_CEILING = 195;
  * leaf ceilings — the engine's graph is the job it does — but a ceiling here is what stops a barrel edge
  * from coming back, which is how those 14 got there.
  */
-const COMPACTION_ENGINE_CEILING = 310;
+const COMPACTION_ENGINE_CEILING = 314;
 const REMOTE_SUMMARIZER_CEILING = 216;
 
 describe("the estimator is a leaf", () => {

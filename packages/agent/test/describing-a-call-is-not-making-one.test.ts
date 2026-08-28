@@ -106,11 +106,12 @@ describe("the span vocabulary is a leaf", () => {
 	 */
 	it("names the owners rather than the two barrels", () => {
 		const imports = runtimeImportsOf("telemetry.ts");
+		const helpersImports = runtimeImportsOf("telemetry-helpers.ts");
 
 		expect(imports).toContain("@veyyon/ai/types");
-		expect(imports).toContain("@veyyon/utils/json");
+		expect(helpersImports).toContain("@veyyon/utils/json");
 		expect(imports).not.toContain("@veyyon/ai");
-		expect(imports).not.toContain("@veyyon/utils");
+		expect(helpersImports).not.toContain("@veyyon/utils");
 	});
 
 	/**
