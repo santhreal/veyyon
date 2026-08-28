@@ -26,8 +26,8 @@ const SRC = join(import.meta.dir, "..", "..", "src");
 
 /** The files that decide WHICH tools a session gets. Each one compared names by hand before. */
 const SELECTION_SITES = [
-	"tools/index.ts",
-	"task/index.ts",
+	"tools/tool-registry.ts",
+	"task/task-tool.ts",
 	"sdk.ts",
 	"discovery/helpers.ts",
 	"session/agent-session.ts",
@@ -125,7 +125,7 @@ describe("what the constant must not change", () => {
 	 * lives in the leaf and not in this file.
 	 */
 	it("loads every tool module dynamically and none of them eagerly", () => {
-		const source = read("tools/index.ts");
+		const source = read("tools/tool-registry.ts");
 		const registries = source.slice(
 			source.indexOf("export const BUILTIN_TOOLS"),
 			source.indexOf("export type ToolName"),

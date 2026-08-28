@@ -54,7 +54,7 @@ const TOOL_SOURCES: ReadonlyArray<readonly [name: string, file: string]> = [
 	["ast_edit", "ast-edit.ts"],
 	["ast_grep", "ast-grep.ts"],
 	["bash", "bash.ts"],
-	["edit", "../edit/index.ts"],
+	["edit", "../edit/edit-tool.ts"],
 	["glob", "glob.ts"],
 	["grep", "grep.ts"],
 	["inspect_image", "inspect-image.ts"],
