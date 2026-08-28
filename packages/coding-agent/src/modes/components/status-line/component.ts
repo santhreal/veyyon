@@ -909,6 +909,18 @@ export class StatusLineComponent implements Component {
 	// frame instead of allocating a new ~25-field object. Safe because ctx is
 	// consumed synchronously by renderSegment and never stored.
 	#ctx: SegmentContext | undefined;
+	// Pre-allocated arrays for #gatherQuietSegments: cleared and refilled every
+	// frame instead of allocating new arrays. Safe because both callers
+	// (renderQuietLine, renderQuietLines) consume them synchronously.
+	#quietLocation: QuietPart[] = [];
+	#quietCapLeft: QuietPart[] = [];
+	#quietCapRight: QuietPart[] = [];
+	#quietContextFromLeft: QuietPart[] = [];
+	#quietGatherResult: { location: QuietPart[]; capLeft: QuietPart[]; capRight: QuietPart[] } = {
+		location: this.#quietLocation,
+		capLeft: this.#quietCapLeft,
+		capRight: this.#quietCapRight,
+	};
 
 	/**
 	 * The path expansion, as a value between the collapsed row and the expanded one, or
@@ -2012,9 +2024,12 @@ export class StatusLineComponent implements Component {
 			includeUsage,
 		);
 		const subagentBadge = this.#subagentBadgeText();
-		const location: QuietPart[] = [];
-		const capLeft: QuietPart[] = [];
-		const capRight: QuietPart[] = [];
+		const location = this.#quietLocation;
+		location.length = 0;
+		const capLeft = this.#quietCapLeft;
+		capLeft.length = 0;
+		const capRight = this.#quietCapRight;
+		capRight.length = 0;
 		// The context gauge is the footline's one LIVE value; everything else on the
 		// right is standing state. A gauge configured on the left still belongs in the
 		// right group (it is a capability reading, not a location), but pushing it there
@@ -2024,7 +2039,8 @@ export class StatusLineComponent implements Component {
 		// fell out of which loop ran first. Held aside and appended after the right
 		// group instead, so the live value is the line's last word. A gauge the user
 		// configured on the RIGHT keeps the position they gave it.
-		const contextFromLeft: QuietPart[] = [];
+		const contextFromLeft = this.#quietContextFromLeft;
+		contextFromLeft.length = 0;
 		for (const id of leftCfg) {
 			if (LOCATION_SEGMENT_IDS[id]) pushQuietPart(id, ctx, location);
 			else if (CONTEXT_SEGMENT_IDS[id]) pushQuietPart(id, ctx, contextFromLeft);
@@ -2043,7 +2059,7 @@ export class StatusLineComponent implements Component {
 		const badgeSlot = this.#animatedBadgeSlot(badgeParts);
 		if (badgeSlot !== null) capRight.unshift({ id: "badges", content: badgeSlot });
 		capRight.unshift({ id: "subagents", content: subagentBadge });
-		return { location, capLeft, capRight };
+		return this.#quietGatherResult;
 	}
 
 	// Cached quiet options: the base spread (segmentOptions + model.roomy) is constant
