@@ -22,6 +22,8 @@
 - Nested optional-argument LaTeX constructs parse in linear time without character-by-character concatenation allocations.
 - Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
 - Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
+- Pinned footer screen bounds derive the live-tail window anchor from the current viewport height instead of the last painted one, so a resize whose repaint is deferred by the multiplexer settle timer no longer routes footer clicks to transcript rows.
+- A pinned footer keeps the bottom rows of the viewport when the terminal is shorter than the footer itself, rather than reserving a content row that cannot exist.
 
 ## [1.2.0] - 2026-08-23
 
