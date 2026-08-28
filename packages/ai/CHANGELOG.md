@@ -11,6 +11,7 @@
 
 ### Changed
 - Deep comment strip pass on `auth-storage.ts` removed 383 lines.
+- Anthropic tool schema normalization extracted from `anthropic.ts` (3,963→3,527 lines) into `anthropic-schema.ts`.
 - Verbose inline comments stripped from `stream.ts`, `index.ts`, `openai-shared.ts`, `openai-responses-codec.ts`, `amazon-bedrock.ts`, `request-debug.ts`, and 20+ other source files.
 - `streamAnthropicOnce` SSE event handling extracted into modular helper functions.
 - `streamOpenAICompletionsOnce` SSE chunk parsing, tool call assembly, and error recovery extracted into helper functions.
