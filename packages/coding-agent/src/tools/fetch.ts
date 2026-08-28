@@ -60,15 +60,7 @@ import { clampTimeout } from "./tool-timeouts";
 
 const FETCH_DEFAULT_MAX_LINES = 300;
 
-// The native `htmlToMarkdown` recurses per nested element and hard-crashes the
-// whole process (unrecoverable native stack overflow, not a catchable throw) on
-// deeply nested HTML — ~2000 nested elements is fine, ~5000 core-dumps. Fetch
-// runs it on attacker-controlled pages, so a hostile/malformed page with deep
-// nesting would take down the agent. Real pages nest well under ~100 deep, so a
-// cap of 500 never rejects legitimate content while keeping the input far below
-// the crash threshold; over-nested HTML skips the native path and falls through
-// to the next extractor. The native binary is prebuilt (no in-repo source), so
-// this boundary guard is the only place to fix it.
+// Cap nesting depth to prevent native parser crashes on deeply nested HTML.
 const MAX_HTML_NESTING_DEPTH = 500;
 // HTML void elements never nest (no closing tag), so they must not count toward
 // depth or a page with a long run of them (many <br>/<img>) would false-trip.
@@ -90,16 +82,7 @@ const VOID_HTML_ELEMENTS = new Set([
 ]);
 const HTML_TAG_RE = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*?(\/?)>/g;
 
-/**
- * True when `html`'s element nesting exceeds {@link MAX_HTML_NESTING_DEPTH}.
- * A linear tag scan: opening tags increase depth, closing tags decrease it, and
- * void/self-closing tags are depth-neutral. Approximate (it does not validate
- * mismatched tags), but it cannot under-count the pure `<div>`-repeat attack,
- * and over-counting only matters far above any real page's depth.
- *
- * Exported for the DoS regression test (calling htmlToMarkdown on the attack
- * input would core-dump the test process, so the guard is verified directly).
- */
+/** True when HTML nesting depth exceeds MAX_HTML_NESTING_DEPTH. */
 export function htmlNestingExceeds(html: string, limit: number): boolean {
 	let depth = 0;
 	HTML_TAG_RE.lastIndex = 0;
@@ -162,16 +145,10 @@ const SUPPORTED_INLINE_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "i
 const MAX_INLINE_IMAGE_SOURCE_BYTES = 20 * 1024 * 1024;
 const MAX_INLINE_IMAGE_OUTPUT_BYTES = 300 * 1024;
 
-/**
- * Check if a command exists (cross-platform)
- */
 function hasCommand(cmd: string): boolean {
 	return Boolean($which(cmd));
 }
 
-/**
- * Build llms.txt candidates scoped to the requested URL
- */
 function buildLlmEndpointCandidates(url: string): string[] {
 	try {
 		const parsed = new URL(url);
@@ -197,20 +174,13 @@ function buildLlmEndpointCandidates(url: string): string[] {
 	}
 }
 
-/**
- * Repair a URL whose scheme `//` collapsed to a single `/`. Node's `path.normalize`/
- * `path.resolve` collapse `//` → `/`, so any URL routed through path normalization arrives
- * as `https:/host/x` instead of `https://host/x`. No local filesystem path begins with
- * `http:/` or `https:/`, so repairing the scheme back to `//` is unambiguous.
- */
+/** Repair a URL whose scheme // collapsed to a single /. */
 function repairCollapsedScheme(value: string): string {
 	const m = value.match(/^(https?):\/(?!\/)/i);
 	return m ? `${m[1]}://${value.slice(m[0].length)}` : value;
 }
 
-/**
- * Normalize URL (repair a collapsed scheme, then add a scheme if one is missing).
- */
+/** Normalize URL scheme and format. */
 function normalizeUrl(url: string): string {
 	url = repairCollapsedScheme(url);
 	if (!url.match(/^https?:\/\//i)) {
@@ -284,15 +254,7 @@ function looksLikeOpaqueUrlCredential(candidate: string): boolean {
 	);
 }
 
-/**
- * Detect a URL capability that must go only to the target host/local readers.
- *
- * Remote reader services need the complete URL to fetch it, so redacting a
- * credential would both break the URL and still disclose its shape. Detection
- * is deliberately conservative: false positives merely use the already-loaded
- * HTML or a direct reader, while a false negative discloses the capability to a
- * secondary service.
- */
+/** Detect URL credentials/capabilities that must only go to the target host. */
 export function hasCredentialBearingUrl(value: string): boolean {
 	let parsed: URL;
 	try {
@@ -330,10 +292,7 @@ export function hasCredentialBearingUrl(value: string): boolean {
 	return false;
 }
 
-// URL line selectors mirror the file form: `:50`, `:50-100`, `:50+150`, `:5-10,20-30`, `:raw`,
-// or `:raw:N-M` / `:N-M:raw` to combine raw mode with a range. If a URL would otherwise look
-// like `host:port`, add a trailing slash before the selector (e.g. `https://example.com/:80`
-// to read line 80 of the document at `https://example.com/`).
+// Parse line selectors from URL (e.g. :50-100, :raw).
 
 export interface ParsedReadUrlTarget {
 	path: string;
@@ -399,12 +358,7 @@ export function parseReadUrlTarget(readPath: string): ParsedReadUrlTarget | null
 	return { path: urlPath, raw, ranges };
 }
 
-/**
- * Peel one or more selector tokens off the right of a URL string. Walks back through
- * trailing `:tok` segments while each token (a) looks like a selector and (b) leaves
- * behind a string that still parses as a URL. Returns selectors left-to-right so callers
- * can apply them in source order.
- */
+/** Peel trailing selector tokens off a URL string. */
 function tryExtractEmbeddedUrlSelector(readPath: string): { path: string; sels: string[] } | null {
 	let basePath = readPath;
 	const sels: string[] = [];
@@ -432,9 +386,6 @@ function tryExtractEmbeddedUrlSelector(readPath: string): { path: string; sels: 
 	return { path: basePath, sels };
 }
 
-/**
- * Normalize MIME type (lowercase, strip charset/params)
- */
 function normalizeMime(contentType: string): string {
 	return contentType.split(";")[0].trim().toLowerCase();
 }
@@ -445,9 +396,6 @@ function getFilenameExtensionHint(filename: string): string {
 	return path.extname(filename).toLowerCase();
 }
 
-/**
- * Get extension from URL or Content-Disposition
- */
 function getExtensionHint(url: string, contentDisposition?: string): string {
 	// Try Content-Disposition filename first
 	if (contentDisposition) {
@@ -471,9 +419,6 @@ function getExtensionHint(url: string, contentDisposition?: string): string {
 	return "";
 }
 
-/**
- * Check if content type is convertible via markit.
- */
 function isConvertible(mime: string, extensionHint: string): boolean {
 	if (CONVERTIBLE_MIMES.has(mime)) return true;
 	if (mime === "application/octet-stream" && CONVERTIBLE_EXTENSIONS.has(extensionHint)) return true;
@@ -493,9 +438,6 @@ function isInlineImageMimeTypeSupported(mimeType: string): boolean {
 	return SUPPORTED_INLINE_IMAGE_MIME_TYPES.has(mimeType);
 }
 
-/**
- * Try fetching URL with .md appended (llms.txt convention)
- */
 async function tryMdSuffix(url: string, timeout: number, signal?: AbortSignal): Promise<string | null> {
 	const candidates: string[] = [];
 
@@ -536,9 +478,6 @@ async function tryMdSuffix(url: string, timeout: number, signal?: AbortSignal): 
 	return null;
 }
 
-/**
- * Try to fetch LLM-friendly endpoints
- */
 async function tryLlmEndpoints(
 	url: string,
 	timeout: number,
@@ -562,9 +501,6 @@ async function tryLlmEndpoints(
 	return null;
 }
 
-/**
- * Try content negotiation for markdown/plain
- */
 async function tryContentNegotiation(
 	url: string,
 	timeout: number,
@@ -590,9 +526,6 @@ async function tryContentNegotiation(
 	return null;
 }
 
-/**
- * Read a single HTML attribute from a tag string
- */
 function getHtmlAttribute(tag: string, attribute: string): string | null {
 	const pattern = new RegExp(`\\b${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>]+))`, "i");
 	const match = tag.match(pattern);
@@ -600,9 +533,6 @@ function getHtmlAttribute(tag: string, attribute: string): string | null {
 	return (match[1] ?? match[2] ?? match[3] ?? "").trim();
 }
 
-/**
- * Extract bounded <head> markup to avoid expensive whole-page parsing
- */
 function extractHeadHtml(html: string): string {
 	const lower = html.toLowerCase();
 	const headStart = lower.indexOf("<head");
@@ -620,16 +550,9 @@ function extractHeadHtml(html: string): string {
 	return html.slice(headStart, headEnd === -1 ? fallbackEnd : headEnd + 7);
 }
 
-/**
- * Parse alternate links from HTML head
- */
 export function parseAlternateLinks(html: string, pageUrl: string): string[] {
 	const links: string[] = [];
 
-	// Only the URL parse can throw here, and the sole reason it would is a page URL
-	// that is not a URL. Wrapping the whole loop instead meant any later fault
-	// returned however many links had been collected so far, and a truncated list
-	// is indistinguishable from a page that genuinely has no alternates.
 	let pagePath: string;
 	try {
 		pagePath = new URL(pageUrl).pathname;
@@ -672,9 +595,6 @@ export function parseAlternateLinks(html: string, pageUrl: string): string[] {
 	return links;
 }
 
-/**
- * Extract document links from HTML (for PDF/DOCX wrapper pages)
- */
 export function extractDocumentLinks(html: string, baseUrl: string): string[] {
 	const links: string[] = [];
 	const seen = new Set<string>();
@@ -706,18 +626,7 @@ export function extractDocumentLinks(html: string, baseUrl: string): string[] {
 	return links;
 }
 
-/**
- * Strip the CDATA wrapper, decode HTML entities, then strip HTML tags from a
- * feed text node.
- *
- * Entity-decode runs before tag-strip on purpose: a feed that encodes markup as
- * `&lt;script&gt;` decodes to a real `<script>` tag which the tag-strip then
- * removes, so encoded markup does not leak into the output. Decoding goes
- * through the shared {@link decodeHtmlEntities} owner (single pass, `&amp;`-safe,
- * decimal/hex/named) instead of the four hand-rolled entity replacements this
- * carried, which decoded `&amp;` before the others and so double-decoded a
- * literal like `&amp;quot;`.
- */
+/** Strip CDATA, decode HTML entities, and strip tags from feed text. */
 function cleanFeedText(text: string): string {
 	const withoutCdata = text.replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "");
 	return decodeHtmlEntities(withoutCdata)
@@ -725,9 +634,7 @@ function cleanFeedText(text: string): string {
 		.trim();
 }
 
-/**
- * Parse RSS/Atom feed to markdown
- */
+/** Parse RSS/Atom feed to markdown. */
 async function parseFeedToMarkdown(content: string, maxItems = 10): Promise<string> {
 	const { parseHTML } = await import("linkedom");
 	try {
@@ -786,11 +693,7 @@ async function parseFeedToMarkdown(content: string, maxItems = 10): Promise<stri
 	return content; // Fall back to raw content
 }
 
-/**
- * Cap on any single remote reader-mode request (Parallel, Jina) so a stalled
- * remote endpoint cannot consume the whole reader-mode budget and starve the
- * local fallback renderers (trafilatura, lynx, native). See #1449.
- */
+/** Timeout cap for remote reader-mode requests (Parallel, Jina). */
 const REMOTE_READER_MAX_MS = 10_000;
 
 /** Reader backends for {@link renderHtmlToText}, in default priority order. */
@@ -798,21 +701,7 @@ export type FetchProvider = "native" | "trafilatura" | "lynx" | "parallel" | "ji
 
 const FETCH_PROVIDER_ORDER: readonly FetchProvider[] = ["native", "trafilatura", "lynx", "parallel", "jina"];
 
-/**
- * Render HTML to markdown by trying reader backends in priority order: native
- * (in-process), trafilatura, lynx, Parallel, then Jina. The `providers.fetch`
- * setting picks the order — `auto` uses the default above; any specific backend
- * is tried first, then the remaining backends as fallbacks. Every backend's
- * output must clear the same quality gate (>100 non-whitespace chars and not
- * {@link isLowQualityOutput}) before it is accepted, otherwise the next backend
- * is tried.
- *
- * The overall `timeout` budget bounds the whole call; remote backends (Parallel,
- * Jina) are additionally capped at `REMOTE_READER_MAX_MS` so a hung endpoint
- * cannot starve later renderers — especially the purely-local native converter,
- * which always works on already-loaded HTML. Only a real `userSignal`
- * cancellation aborts the chain (#1449).
- */
+/** Render HTML to markdown via prioritized reader backends. */
 export async function renderHtmlToText(
 	url: string,
 	html: string,
@@ -843,10 +732,7 @@ export async function renderHtmlToText(
 		const allowSecondaryReaders = !hasCredentialBearingUrl(url);
 
 		const runners: Record<FetchProvider, () => Promise<string | null>> = {
-			// Purely local, no network/subprocess: still works on already-loaded HTML
-			// even after remote/subprocess attempts are aborted by the budget. Deeply
-			// nested HTML crashes the native converter (see MAX_HTML_NESTING_DEPTH), so
-			// skip it for such input and let the chain fall through to another reader.
+			// Skip native converter for over-nested HTML to avoid crashes.
 			native: () =>
 				htmlNestingExceeds(html, MAX_HTML_NESTING_DEPTH)
 					? Promise.resolve(null)
@@ -866,9 +752,7 @@ export async function renderHtmlToText(
 				if (!allowSecondaryReaders || !findParallelApiKey(storage)) return null;
 				const transform = resolveProviderTextTransform(resolveTextTransform, "Parallel remote reader");
 				if (transform(url) !== url) return null;
-				// Per-attempt budget for remote endpoints so one stall cannot consume
-				// the whole reader-mode budget and starve the local fallbacks; scoped
-				// so the timer is cleared when the attempt settles.
+
 				const remoteTimeout = scopedTimeoutSignal(remoteBudgetMs, userSignal);
 				try {
 					const parallelResult = await extractWithParallel(
@@ -911,10 +795,6 @@ export async function renderHtmlToText(
 				? FETCH_PROVIDER_ORDER
 				: [preference, ...FETCH_PROVIDER_ORDER.filter(method => method !== preference)];
 
-		// Highest-priority output that is substantial but fails the low-quality gate.
-		// Surfaced (ok: true) only when no backend clears the gate, so the caller's
-		// targeted fallbacks (llms.txt / document extraction) still run and we beat
-		// returning the unrendered raw HTML.
 		let lowQuality: { content: string; method: FetchProvider } | null = null;
 
 		for (const method of order) {
@@ -942,9 +822,6 @@ export async function renderHtmlToText(
 	}
 }
 
-/**
- * Check if lynx output looks JS-gated or mostly navigation
- */
 function isLowQualityOutput(content: string): boolean {
 	const lower = content.toLowerCase();
 
@@ -970,9 +847,6 @@ function isLowQualityOutput(content: string): boolean {
 	return false;
 }
 
-/**
- * Format JSON
- */
 function formatJson(content: string): string {
 	try {
 		return JSON.stringify(JSON.parse(content), null, 2);
@@ -1020,11 +894,7 @@ function isArchiveHint(mime: string, extensionHint: string): boolean {
 	return ARCHIVE_MIMES.has(mime) || ARCHIVE_EXTENSIONS.has(extensionHint);
 }
 
-/**
- * Content types whose payload renderUrl always re-fetches via fetchBinary.
- * Skipping the initial body read for them avoids downloading and
- * string-decoding huge binaries (PDFs, archives, images) twice.
- */
+/** Content types whose payload renderUrl always re-fetches via fetchBinary. */
 function shouldSkipBodyDownload(contentType: string): boolean {
 	return (
 		CONVERTIBLE_MIMES.has(contentType) ||
@@ -1256,19 +1126,12 @@ async function tryRenderBinaryPayload(
 
 let specialHandlersPromise: Promise<SpecialHandler[]> | undefined;
 
-/**
- * Lazily load the site-specific scraper handlers. The scrapers barrel eagerly
- * imports ~80 site modules, none of which are needed until the first fetch that
- * requires a special handler, so we keep them out of the cold-startup graph.
- */
+/** Lazily load site-specific scraper handlers. */
 function loadSpecialHandlers(): Promise<SpecialHandler[]> {
 	specialHandlersPromise ??= import("../web/scrapers").then(m => m.specialHandlers);
 	return specialHandlersPromise;
 }
 
-/**
- * Try all special handlers
- */
 export async function handleSpecialUrls(
 	url: string,
 	timeout: number,
@@ -1284,31 +1147,9 @@ export async function handleSpecialUrls(
 		try {
 			result = await handler(url, timeout, signal, storage);
 		} catch (error) {
-			// STOP, DO NOT DEGRADE. `isCancellation` is the repo-wide owner of this
-			// test and it covers both halves: the user aborting, AND a deadline
-			// expiring. The deadline half is the one this guard used to miss, and it
-			// is the half that actually fires here. A handler receives `timeout` and
-			// builds its own `scopedTimeoutSignal` from it, so when a slow site
-			// exhausts the budget the rejection is a `TimeoutError` while the USER's
-			// signal is still unaborted. The old condition asked only
-			// `signal?.aborted || error instanceof ToolAbortError`, so a timeout fell
-			// through to the note-and-continue below and the generic fetch then made
-			// the very request that had just run out of time, against the same site,
-			// with the budget already spent. `scraperDegrade` in
-			// `web/scrapers/types.ts` exists to prevent exactly that and rethrows a
-			// cancellation for exactly this reason; the dispatcher's own catch, one
-			// layer above it, never got the same guard, so a handler that threw
-			// rather than returning a degrade bypassed the protection entirely.
-			//
-			// The error is rethrown AS IS rather than replaced with a bare
-			// `new ToolAbortError()`. A minted one carries no reason and no `cause`,
-			// which is what makes a timeout indistinguishable from an abort by the
-			// time it reaches the agent loop -- and those mean different things to a
-			// user: work they stopped, versus work worth retrying with a longer limit.
+			// Rethrow cancellation and timeout errors directly without degrading.
 			if (isCancellation(error)) throw error;
-			// The signal aborted but the handler threw something else, so it swallowed
-			// the cancellation on the way out. Report the cancellation, keeping the
-			// signal's own reason as the cause.
+			// Propagate signal abortion reason.
 			throwIfAborted(signal, "fetch");
 			// A handler must never take the whole fetch down: record the failure
 			// loudly and keep going so the generic fetch still runs.
@@ -1319,9 +1160,6 @@ export async function handleSpecialUrls(
 		throwIfAborted(signal, "fetch");
 		if (!result) continue;
 		if (isScraperDegrade(result)) {
-			// The handler matched the URL but could not scrape it. Surface the
-			// degrade on the generic-fetch result — never silently — and stop
-			// probing: no other handler claims this site.
 			notes.push(result.note);
 			return null;
 		}
@@ -1330,9 +1168,6 @@ export async function handleSpecialUrls(
 	return null;
 }
 
-/**
- * Main render function implementing the full pipeline
- */
 async function renderUrl(
 	url: string,
 	timeout: number,
@@ -1554,9 +1389,6 @@ async function renderUrl(
 	const isText = mime.includes("text/plain") || mime.includes("text/markdown");
 	const isFeed = mime.includes("rss") || mime.includes("atom") || mime.includes("feed");
 
-	// Raw mode skips every text-shaping branch below (JSON pretty-print, feed-to-markdown,
-	// HTML extraction) and returns the response body verbatim. Binary-oriented branches
-	// above already ran because raw isn't useful for binary payloads.
 	if (raw) {
 		const output = finalizeOutput(rawContent);
 		return {
@@ -1844,11 +1676,7 @@ function getReadUrlCacheKey(session: ToolSession, requestedUrl: string, raw: boo
 	return `${scope}::${raw ? "raw" : "rendered"}::${normalizeUrl(requestedUrl)}`;
 }
 
-/**
- * Resolve an `artifact://<id>` reference to the file that holds it, or null when there is no such
- * artifact. Exported for the regression suite that pins what an unreadable artifact directory
- * reports; production callers reach it through the read_url cache.
- */
+/** Resolve an artifact:// URI to its backing file path. */
 export async function findArtifactPath(session: ToolSession, artifactId: string): Promise<string | null> {
 	const artifactsDir = session.getArtifactsDir?.();
 	if (!artifactsDir) return null;
@@ -1858,9 +1686,6 @@ export async function findArtifactPath(session: ToolSession, artifactId: string)
 		const match = files.find(file => file.startsWith(`${artifactId}.`));
 		return match ? path.join(artifactsDir, match) : null;
 	} catch (err) {
-		// An absent directory means no artifact has been written yet, which is a genuine miss. A
-		// directory that is there and unreadable is not: returning the same null told the user their
-		// `artifact://` URL pointed at nothing, when it pointed at a file this process could not list.
 		if (!isEnoent(err)) {
 			logger.warn("Artifact directory could not be read; the artifact cannot be resolved", {
 				dir: artifactsDir,
@@ -1958,10 +1783,6 @@ async function buildReadUrlCacheEntry(
 ): Promise<ReadUrlCacheEntry> {
 	const { path: url, raw = false } = params;
 
-	// The read-url path exposes no per-call timeout, so the fetch tool's
-	// configured default is the single source of truth (TOOL_TIMEOUTS.fetch).
-	// Passing no override keeps the value in ONE place instead of a literal here
-	// that silently diverged from the config's `default`.
 	const effectiveTimeout = clampTimeout("fetch", undefined, session.settings.get("tools.maxTimeout"));
 
 	throwIfAborted(signal, "fetch");

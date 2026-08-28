@@ -31,14 +31,7 @@ export interface GitStatusSummary {
 	staged: number;
 	unstaged: number;
 	untracked: number;
-	/**
-	 * True when git's output was cut at the size cap, so the counts are LOWER
-	 * BOUNDS rather than totals.
-	 *
-	 * Present so the shortfall cannot be silent. A caller that renders these
-	 * numbers has to say the count is partial, because a repository with 400k
-	 * untracked files would otherwise show a confident, wrong, and stable figure.
-	 */
+	/** True when git output was truncated at the byte limit. */
 	truncated: boolean;
 }
 
@@ -154,27 +147,12 @@ export interface GitDetachedHead extends GitHeadBase {
 
 export type GitHeadState = GitRefHead | GitDetachedHead;
 
-/**
- * A multi-step git operation that is part-way through.
- *
- * These matter because HEAD alone does not describe them. A conflicted merge
- * leaves HEAD on its branch, so the repository looks ordinary while every
- * command behaves differently. A rebase is worse: it detaches HEAD, so the
- * branch you are rebasing disappears from view and the only honest thing HEAD
- * can say is "detached".
- */
+/** Represents an in-progress multi-step git operation (merge, rebase, cherry-pick, etc.). */
 export type GitOperationKind = "am" | "bisect" | "cherry-pick" | "merge" | "rebase" | "revert";
 
 export interface GitInProgressOperation {
 	kind: GitOperationKind;
-	/**
-	 * The branch the operation will return to, when git records one.
-	 *
-	 * A rebase writes the original branch to `head-name`, which is the only way
-	 * to recover it while HEAD is detached. `null` when git records nothing,
-	 * which includes rebasing a detached HEAD, and callers must handle it rather
-	 * than assume a name is always available.
-	 */
+	/** Branch the operation returns to when complete, or null if detached/unknown. */
 	branch: string | null;
 }
 
@@ -227,26 +205,13 @@ const GH_NON_INTERACTIVE_ENV = {
 
 /** Default deadline for git and gh subprocesses spawned by the coding agent. */
 export const GIT_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
-/**
- * Default deadline for git subprocesses that perform network transfers
- * (`clone`/`fetch`). Large-repo transfers legitimately outlive
- * {@link GIT_COMMAND_TIMEOUT_MS}, so they get a wider deadline; local plumbing
- * commands keep the short one.
- */
+/** Default timeout for git network operations (clone/fetch). */
 export const GIT_NETWORK_TIMEOUT_MS = 30 * 60 * 1000;
 /** Maximum captured stdout or stderr bytes retained from git and gh subprocesses. */
 export const GIT_COMMAND_OUTPUT_LIMIT_BYTES = 8 * 1024 * 1024;
 
 const GIT_COMMAND_TIMEOUT_EXIT_CODE = 124;
-/**
- * The line appended in place of output dropped at {@link GIT_COMMAND_OUTPUT_LIMIT_BYTES}.
- *
- * Split from the surrounding newlines so parsers can compare a whole line
- * against it. Every parser that consumes capped git output MUST recognise it:
- * it is prose in the middle of machine-readable text, and a parser that does not
- * know it either mistakes it for a record or, worse, silently returns a short
- * answer as if the output had ended naturally.
- */
+/** Truncation marker appended when output exceeds GIT_COMMAND_OUTPUT_LIMIT_BYTES. */
 const GIT_OUTPUT_TRUNCATED_NOTICE = "[git subprocess output truncated after 8 MiB]";
 const GIT_OUTPUT_TRUNCATED_MARKER = `\n${GIT_OUTPUT_TRUNCATED_NOTICE}\n`;
 const GIT_COMMAND_TERMINATE_GRACE_MS = 5_000;
@@ -378,9 +343,7 @@ async function collectSubprocessResult(
 		resolveTimeoutMs(options.timeoutMs),
 	);
 	if (exit.timedOut) {
-		// The timeout itself is already reported: this returns GIT_COMMAND_TIMEOUT_EXIT_CODE and the timeout's
-		// own stderr. The two reads are then abandoned mid-stream, so their rejections describe the streams
-		// being torn down, not why the command timed out; marking them handled keeps that noise out.
+		// Mark stream errors as handled on timeout.
 		void stdoutPromise.catch(() => undefined);
 		void stderrPromise.catch(() => undefined);
 		await Promise.all([cancelOutput(stdoutStream), cancelOutput(stderrStream)]);
@@ -505,25 +468,10 @@ async function tryText(
 	return result.stdout;
 }
 
-// Git uses lock files (`.git/config.lock`, commit-graph chain locks,
-// `packed-refs.lock`, …) for many of its mutating operations. Each is created
-// O_EXCL with no waiter, so concurrent in-process git invocations against the
-// same repository fail immediately rather than block. Worktrees share the
-// primary repo's `.git` directory, so racing across worktrees has the same
-// failure mode. We give callers a single per-repo serialization point keyed by
-// the primary repo root: any block that mutates repo state should hold this
-// lock so unrelated callers cannot collide on git's internal locks.
+// Per-repo mutation lock to serialize in-process git operations sharing a .git directory.
 const repoWriteChain = new Map<string, Promise<unknown>>();
 
-/**
- * Serialize an async block that mutates a git repository against other
- * in-process callers operating on the same repository. The lock is keyed by
- * the primary repo root so worktrees of the same repo share a single queue.
- * Failures in one block do not poison the queue for the next caller.
- *
- * Not reentrant: do NOT nest acquisitions for the same repo. Helpers in this
- * module never auto-acquire — callers wrap the critical section themselves.
- */
+/** Serialize an async block mutating a git repository across in-process callers. */
 export async function withRepoLock<T>(cwd: string, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
 	const key = (await repo.primaryRoot(cwd, signal)) ?? cwd;
 	const prior = repoWriteChain.get(key);
@@ -604,13 +552,7 @@ function shouldRetry(err: unknown, n: number) {
 	throw err;
 }
 
-/**
- * Bounded retry for synchronous I/O against `EINTR`. POSIX permits short syscalls
- * to be interrupted by signals; when that happens libc traditionally retries.
- * Node's sync wrappers surface the raw `EINTR` so we replicate the retry locally.
- * Any other error (and persistent EINTR after `EINTR_MAX_RETRIES`) is rethrown
- * for the caller's normal "optional metadata" classifier to handle.
- */
+/** Retry synchronous filesystem operations on EINTR. */
 const EINTR_MAX_RETRIES = 3;
 function retryOnEintrSync<T>(op: () => T): T | null {
 	for (let attempt = 0; attempt <= EINTR_MAX_RETRIES; attempt += 1) {
@@ -1028,38 +970,14 @@ async function readRef(repository: GitRepository, targetRef: string, signal?: Ab
 	return null;
 }
 
-/**
- * Read the branch a rebase or am recorded, as a bare branch name.
- *
- * git writes the full ref (`refs/heads/topic`) and occasionally the literal
- * `detached HEAD` when there was no branch to begin with, which must come back
- * as `null` rather than being shown to a user as if it were a branch called
- * "detached HEAD".
- */
+/** Read the branch recorded by an in-progress rebase or am. */
 function readOperationHeadName(directory: string): string | null {
 	const raw = readOptionalTextSync(path.join(directory, "head-name"))?.trim();
 	if (!raw?.startsWith(LOCAL_BRANCH_PREFIX)) return null;
 	return raw.slice(LOCAL_BRANCH_PREFIX.length) || null;
 }
 
-/**
- * Which multi-step operation, if any, is part-way through in this repository.
- *
- * Detection is by the marker files git itself uses, and the ORDER is load
- * bearing rather than arbitrary. A conflicted rebase leaves both its own state
- * directory and, while a conflict is being resolved, marker files that a bare
- * merge or cherry-pick would also write, so the enclosing operation has to be
- * reported or the status line would announce a merge in the middle of a rebase.
- * `git`'s own status output resolves the same ambiguity the same way.
- *
- * `rebase-apply` is shared between `git rebase` and `git am`, which are told
- * apart by the `applying` marker that only am writes. Reporting an am as a
- * rebase would send a user to `git rebase --abort`, which does not apply.
- *
- * Cost is bounded and small, a handful of stats against the git directory, with
- * no subprocess: this runs on the status line's synchronous path, where
- * spawning `git` per render is exactly what must not happen.
- */
+/** Detect any in-progress multi-step git operation from state files. */
 function resolveInProgressOperation(repository: GitRepository): GitInProgressOperation | null {
 	const gitDir = repository.gitDir;
 	const rebaseMerge = path.join(gitDir, "rebase-merge");
@@ -1157,16 +1075,7 @@ function extractFileHeader(diffText: string): string {
 	return headerLines.join("\n");
 }
 
-/**
- * Filter a file's hunks to the requested 1-based indices. Each index is floored and
- * clamped to at least 1, matching the operator-facing 1-based numbering (`hunk.index`
- * is 0-based, so `hunk.index + 1` is the displayed number). This is the single owner
- * of index-based hunk selection, shared by the internal selector below and the
- * `git_hunk` custom tool. The empty-list default (all vs. none) is left to each
- * caller, because those two callers legitimately disagree: the internal selector
- * treats an empty index list as "no hunks", while the tool treats "no indices given"
- * as "the whole file".
- */
+/** Filter a file's hunks to the requested 1-based indices. */
 export function selectHunksByIndices<H extends { index: number }>(
 	hunks: readonly H[],
 	indices: readonly number[],
@@ -1208,9 +1117,7 @@ function validateHunkSelectionsFromMap(
 			errors.push({ path: selection.path, message: `Cannot select hunks for binary file ${selection.path}` });
 			continue;
 		}
-		// `parseFileHunks` refuses a hunk header it cannot read rather than placing the hunk
-		// at line zero. This layer's contract is a list of operator-facing errors, so the
-		// refusal becomes one of those instead of escaping as an exception.
+
 		let selected: FileHunks["hunks"];
 		try {
 			selected = selectHunks(parseFileHunks(fileDiff), selection.hunks);
@@ -1240,11 +1147,7 @@ function parseStatusPorcelain(text: string): GitStatusSummary {
 	let truncated = false;
 	for (const line of text.split("\n")) {
 		if (!line) continue;
-		// The truncation notice is prose, not a status entry, and it was being
-		// counted as one: its first two characters are `[g`, neither a space nor a
-		// `?`, so the old loop scored it as both a staged AND an unstaged file. A
-		// repository big enough to hit the cap therefore reported one phantom
-		// change on top of counts that were already short.
+		// Skip truncation notice line in status parsing.
 		if (line === GIT_OUTPUT_TRUNCATED_NOTICE) {
 			truncated = true;
 			continue;
@@ -1410,11 +1313,7 @@ export async function commit(cwd: string, message: string, options: CommitOption
 
 /** Push the current branch (branch-scoped: never follows tags). */
 export async function push(cwd: string, options: PushOptions = {}): Promise<void> {
-	// `--no-follow-tags` overrides a user's `push.followTags = true`, which
-	// would otherwise ride every reachable annotated tag along with the
-	// branch — rejected refs ("permission denied") on remotes the user
-	// cannot tag (e.g. PR-head forks), failing the call after the branch
-	// itself already updated. Tool pushes push exactly the named refspec.
+	// Do not push tags automatically to avoid permission failures on forks.
 	const args = ["push", "--no-follow-tags"];
 	if (options.forceWithLease) args.push("--force-with-lease");
 	if (options.remote) args.push(options.remote);
@@ -1518,17 +1417,7 @@ export const branch = {
 		return result.stdout.trim() || null;
 	},
 
-	/**
-	 * Current branch name, or the literal `HEAD` when there is none.
-	 *
-	 * The spelling a human-facing surface wants: a detached HEAD, a repository with no commits, and a
-	 * directory that is not a repository at all are all ordinary states there, and each one prints as
-	 * `HEAD`, which is what git itself calls that position. Two bundled commands (`/review` and
-	 * `/ci-green`) each had a private copy of this, so a change to how a detached HEAD reads would have
-	 * landed in one of them.
-	 *
-	 * Prefer {@link branch.current} anywhere the distinction between "no branch" and a name matters.
-	 */
+	/** Current branch name, or "HEAD" when detached or uncommitted. */
 	async currentOrHead(cwd: string, signal?: AbortSignal): Promise<string> {
 		try {
 			return (await branch.current(cwd, signal)) ?? "HEAD";
@@ -1608,13 +1497,7 @@ export const remote = {
 		return trimScalar(await tryText(cwd, ["remote", "get-url", name], { readOnly: true, signal }));
 	},
 
-	/**
-	 * Add a remote pointing at `url`. Idempotent: if a remote named `name`
-	 * already exists with the same URL (e.g. an in-process race or a leftover
-	 * remote from a previous run), this is treated as success. Throws when the
-	 * remote exists with a different URL — that's a real conflict the caller
-	 * needs to resolve, not paper over.
-	 */
+	/** Add a remote pointing at url, or succeed if it already matches. */
 	async add(cwd: string, name: string, url: string, signal?: AbortSignal): Promise<void> {
 		const result = await git(cwd, ["remote", "add", name, url], { signal });
 		if (result.exitCode === 0) return;
@@ -1784,23 +1667,11 @@ export const cherryPick = Object.assign(
 		async abort(cwd: string, signal?: AbortSignal): Promise<void> {
 			await runEffect(cwd, ["cherry-pick", "--abort"], { signal });
 		},
-		/**
-		 * Skip the current commit of an in-progress cherry-pick sequence and
-		 * continue with the rest of the range. Use after {@link isEmptyError}
-		 * reports the current attempt collapsed to a no-op — the alternative,
-		 * `--abort`, throws away every remaining commit in the range.
-		 */
+		/** Skip current commit in cherry-pick sequence. */
 		async skip(cwd: string, signal?: AbortSignal): Promise<void> {
 			await runEffect(cwd, ["cherry-pick", "--skip"], { signal });
 		},
-		/**
-		 * True when a cherry-pick failure was caused by the current commit
-		 * being empty against HEAD — either redundant with an already-applied
-		 * change, or auto-resolved to HEAD by a 3-way merge. Callers should
-		 * `--skip` in this case to advance the sequencer rather than aborting
-		 * the whole range: an empty commit is not a merge conflict, and any
-		 * later commits in the range still deserve to land.
-		 */
+		/** True when cherry-pick failed because the commit was empty against HEAD. */
 		isEmptyError(err: unknown): boolean {
 			return err instanceof GitCommandError && /the previous cherry-pick is now empty/i.test(err.result.stderr);
 		},
@@ -1824,11 +1695,7 @@ export const stash = {
 		if (options?.index) args.push("--index");
 		await runEffect(cwd, args);
 	},
-	/**
-	 * Return the working-tree patch that `stash@{0}` would apply, in a form
-	 * that `git apply --check` can consume. Empty string when no stash entry
-	 * exists or the stash contains no diffable working-tree changes.
-	 */
+	/** Return working-tree patch for top stash entry. */
 	async showPatch(cwd: string): Promise<string> {
 		return (await tryText(cwd, ["stash", "show", "-p", "--binary", "stash@{0}"], { readOnly: true })) ?? "";
 	},
@@ -1837,24 +1704,9 @@ export const stash = {
 		const output = await tryText(cwd, ["ls-tree", "-r", "-z", "--name-only", "stash@{0}^3"], { readOnly: true });
 		return output?.split("\0").filter(Boolean) ?? [];
 	},
-	/**
-	 * Attempt to restore the top stash entry. On success returns `true` and
-	 * git drops the stash entry. On conflict returns `false`, leaves the stash
-	 * entry preserved for manual resolution, and guarantees the failed restore
-	 * leaves no unmerged index entries or partially-restored untracked files.
-	 *
-	 * The historical raw `pop` catches the failure in a `finally` block and
-	 * only logs — it leaves `.git/index` with stage 1/2/3 unmerged entries
-	 * that survive indefinitely, corrupting every subsequent overlay-isolated
-	 * task that reads through this repo's `.git/`. See issue #4175.
-	 */
+	/** Restore top stash entry with clean recovery on conflict. */
 	async tryPop(cwd: string, options?: { index?: boolean }): Promise<boolean> {
-		// Preflight: `git stash pop` internally does a 3-way merge, so a plain
-		// `git apply --check` is too strict — it rejects hunks whose context
-		// drifted from HEAD even when 3-way merge would resolve them cleanly.
-		// Match pop's semantics with `--3way --check`, which succeeds iff the
-		// patch either applies directly or merges without conflict against
-		// the patch's `index abc..def` base blobs.
+		// Preflight with 3-way check to match stash pop merge semantics.
 		const workingPatch = await stash.showPatch(cwd);
 		if (workingPatch.trim() && !(await patch.canApplyText(cwd, workingPatch, { threeWay: true }))) {
 			return false;
@@ -1864,14 +1716,7 @@ export const stash = {
 			await stash.pop(cwd, options);
 			return true;
 		} catch {
-			// Preflight can still miss mode-only or delete/modify conflicts. If
-			// the pop left unmerged entries, wipe them: HEAD holds the merged
-			// state so `reset --hard HEAD` restores a clean index and working
-			// tree without losing the cherry-picked commits. A failed pop can
-			// still restore unrelated untracked files before exiting while
-			// preserving the stash entry, so clean only the untracked paths
-			// recorded in that stash. The user's WIP remains recoverable via
-			// `git stash pop`.
+			// Clean up index and working tree on failed pop while preserving stash.
 			try {
 				await reset(cwd, { hard: true });
 			} catch {
@@ -1894,10 +1739,7 @@ export async function clone(url: string, targetDir: string, options: CloneOption
 	const absoluteTarget = path.resolve(targetDir);
 	await fs.promises.mkdir(path.dirname(absoluteTarget), { recursive: true });
 
-	// `git clone --depth 1 --single-branch` only fetches the tip of the target
-	// branch, so any subsequent `git checkout <sha>` for a non-tip commit fails
-	// with "reference is not a tree". When the caller pinned a specific SHA we
-	// fall back to a full clone so the object is guaranteed to be present.
+	// Fall back to full clone when caller requested a specific SHA.
 	const shallow = !options.sha;
 	const args = ["clone"];
 	if (shallow) args.push("--depth", "1");
@@ -1933,11 +1775,7 @@ export async function restore(cwd: string, options: RestoreOptions = {}): Promis
 	await runEffect(cwd, args, { signal: options.signal });
 }
 
-/**
- * Run `git reset` with options. Default is a soft reset (no flag); pass `hard: true` for a destructive reset.
- *
- * NOTE: stage.reset() handles the per-file unstaging case. This helper exists for tree-wide resets.
- */
+/** Run git reset with options (soft by default, or hard). */
 export async function reset(
 	cwd: string,
 	options: { hard?: boolean; mixed?: boolean; soft?: boolean; target?: string; signal?: AbortSignal } = {},
@@ -2004,54 +1842,20 @@ export const ls = {
 };
 
 export const head = {
-	/**
-	 * The multi-step operation in progress, if any.
-	 *
-	 * Takes an already-resolved repository rather than a cwd so a caller that has
-	 * a head state (which extends {@link GitRepository}) pays no second
-	 * repository lookup. The status line calls it on every render.
-	 */
+	/** In-progress multi-step operation, if any. */
 	operation(repository: GitRepository): GitInProgressOperation | null {
 		return resolveInProgressOperation(repository);
 	},
 
-	/**
-	 * How to name this checkout in one short label.
-	 *
-	 * The ONE owner of that phrasing. It was previously written inline at the
-	 * status line as `branchName ?? ref`, falling back to the bare string
-	 * "detached", which is wrong in the case that matters most: a rebase detaches
-	 * HEAD, so a user mid-rebase saw "detached" with neither the branch they were
-	 * rebasing nor any hint that a rebase was running. Recovering the branch from
-	 * the operation's own record and appending the operation is what git's status
-	 * output does, and what a reader already expects from a prompt.
-	 *
-	 * Shape is `branch|OPERATION`, e.g. `topic|REBASE`, and just `branch` when
-	 * nothing is in progress. A detached HEAD with no operation stays `detached`.
-	 */
+	/** Format a short display label for the current repository HEAD/operation. */
 	label(state: GitHeadState, operation: GitInProgressOperation | null): string {
 		const fromHead = state.kind === "ref" ? (state.branchName ?? state.ref) : null;
-		// The operation's recorded branch wins ONLY when HEAD cannot supply one,
-		// which is the detached-during-rebase case. When HEAD is on a branch it is
-		// the truth and the recorded name is at best a duplicate.
+
 		const branch = fromHead ?? operation?.branch ?? "detached";
 		return operation ? `${branch}|${operation.kind.toUpperCase()}` : branch;
 	},
 
-	/**
-	 * The branch name to look things up BY, or `null` when there is not one.
-	 *
-	 * Deliberately separate from {@link label}. A label is for a human to read
-	 * and is decorated (`topic|REBASE`); handing that same string to a pull
-	 * request lookup would query a branch that does not exist. The two were one
-	 * value before, which worked only because the sole decoration was the literal
-	 * "detached" and the lookup special-cased that exact word.
-	 *
-	 * Returns `null` while an operation is in progress even though a branch name
-	 * may be recoverable: mid-rebase the branch does not yet point where it will,
-	 * so a pull request looked up against it describes a state that is about to
-	 * change.
-	 */
+	/** Target branch name for queries/lookups, or null if detached. */
 	branchForLookup(state: GitHeadState, operation: GitInProgressOperation | null): string | null {
 		if (operation) return null;
 		if (state.kind !== "ref") return null;
@@ -2109,22 +1913,7 @@ export const repo = {
 		return result.stdout.trim() || null;
 	},
 
-	/**
-	 * Which of `paths` this repository ignores.
-	 *
-	 * Answered by git rather than by reading `.gitignore`, because the real rules are the union of
-	 * nested ignore files, negations, the global excludes file and `.git/info/exclude`, and a
-	 * hand-rolled reader agrees with git right up until it does not.
-	 *
-	 * `git check-ignore` exits 1 to mean "nothing here is ignored", which is an ANSWER and not a
-	 * failure, so only a higher code is treated as one. Returns null when the command could not run
-	 * at all, so a caller can tell "nothing is ignored" apart from "the question was not answered".
-	 *
-	 * Paths go in on stdin rather than as arguments. `-z` is what makes the exchange unambiguous
-	 * when a path contains a newline, and git refuses `-z` in any other mode ("-z only makes sense
-	 * with --stdin"); passing them as arguments would also put an unbounded list on the command
-	 * line.
-	 */
+	/** Check which paths are ignored by git in this repository. */
 	async ignored(root: string, paths: readonly string[], signal?: AbortSignal): Promise<Set<string> | null> {
 		if (paths.length === 0) return new Set();
 		const result = await git(root, ["check-ignore", "-z", "--stdin"], {
@@ -2150,26 +1939,14 @@ export const repo = {
 		return repoRoot;
 	},
 
-	/**
-	 * Sync sibling of {@link primaryRoot}. Resolves only via on-disk `.git`/
-	 * `commondir` walking — no subprocess fallback — so it stays usable from
-	 * paths where async I/O is impractical (e.g. `computeBankScope`). Returns
-	 * `null` when `cwd` is outside a repository. Bare-repo worktrees resolve to
-	 * the shared common dir (`foo.git`) because they have no primary checkout.
-	 */
+	/** Resolve primary checkout root synchronously via filesystem inspection. */
 	primaryRootSync(cwd: string): string | null {
 		const repository = resolveRepositorySync(cwd);
 		if (!repository) return null;
 		return primaryRootFromRepositorySync(repository);
 	},
 
-	/**
-	 * Linked-worktree metadata for `cwd`, or `null` when `cwd` is the primary
-	 * checkout (or outside a repository). `root` is the worktree's own checkout
-	 * root; `primaryRoot` is the shared main checkout that names the project.
-	 * Resolves purely via on-disk `.git`/`commondir` walking — no subprocess —
-	 * so the status line may call it on every render.
-	 */
+	/** Linked worktree metadata for cwd, or null if primary checkout. */
 	linkedWorktreeSync(cwd: string): { root: string; primaryRoot: string } | null {
 		const repository = resolveRepositorySync(cwd);
 		if (!repository || !isLinkedWorktree(repository)) return null;

@@ -1,14 +1,4 @@
-/**
- * Fullscreen /models hub, shown on the alternate screen like /settings.
- *
- * Layout: a sidebar of scopes (recently used, role management, all models,
- * one entry per provider — locked providers included, dimmed) beside a
- * {@link ModelBrowser} body. The Roles view manages assignments directly:
- * pick a role, pick a model, adjust thinking in an inline strip, or clear the
- * role back to inheriting the main model. Locked providers forward to the /login flow.
- * Fully mouse-navigable (hover, wheel, click). Session-only switching lives
- * in the compact alt+p picker ({@link ./model-picker}).
- */
+/** Fullscreen /models hub component. */
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
@@ -65,12 +55,7 @@ import { fit } from "./overlay-box";
 import { renderSegmentTrack } from "./segment-track";
 import { hoverBandAt, SCROLL_LIST_THEME } from "./selector-helpers";
 
-/**
- * A row of the Roles view: a role, a model/wildcard chain-key header, one of a
- * chain's fallback entries, or the trailing "+ New role…". Fallback rows under
- * a chain-key header carry the key in `role` — `retry.fallbackChains` treats
- * roles, `provider/model-id`, and `provider/*` keys uniformly.
- */
+/** Row definition for Roles view. */
 type RolesRow =
 	| { kind: "role"; role: string }
 	| { kind: "chainKey"; role: string }
@@ -79,11 +64,7 @@ type RolesRow =
 	| { kind: "newFallback" }
 	| { kind: "newRole" };
 
-/**
- * What the model browser is currently picking for: a role's model, a slot in
- * a fallback chain (`role` may be a role name, model selector, or `provider/*`
- * key), or the primary model a brand-new fallback chain protects.
- */
+/** Target selection context for model browser. */
 type AssignTarget =
 	| { kind: "role"; role: string }
 	| { kind: "fallback"; role: string; index: number | null }
@@ -163,11 +144,7 @@ const RECENT_LIMIT = 15;
 const SIDEBAR_MIN_WIDTH = 18;
 const SIDEBAR_MAX_WIDTH = 26;
 
-/**
- * Providers already auto-refreshed this process. Selecting a provider fetches
- * its live model list at most once per application lifetime (surviving hub
- * close/reopen); F5 re-fetches on demand.
- */
+/** Process-level cache of auto-refreshed providers. */
 const autoRefreshedProviders = new Set<string>();
 
 /** Test hook: forget which providers were auto-refreshed this process. */
@@ -175,15 +152,7 @@ export function resetProviderAutoRefreshGuard(): void {
 	autoRefreshedProviders.clear();
 }
 
-/**
- * The model hub component: a floating ModalShell LARGE card (title + `[x]`,
- * click-outside/Esc cancel), hosted fullscreen via
- * `ui.showOverlay(..., { fullscreen: true })` like `/settings`. The sidebar
- * (scopes/providers) and body (roles/browser/locked) render as split panes
- * inside the shell, joined by a plain vertical rule — the shell owns the
- * chrome, not a DynamicBorder box. The host must call
- * {@link ModelHubComponent.dispose} when the overlay closes.
- */
+/** Fullscreen model hub overlay component. */
 export class ModelHubComponent implements Component {
 	#tui: TUI;
 	#settings: Settings;
@@ -463,12 +432,7 @@ export class ModelHubComponent implements Component {
 		this.#composeEntries();
 	}
 
-	/**
-	 * Assemble `#entries` from the stored sections. While a search is active,
-	 * providers with matches float to the top of the provider section (each
-	 * group stays alphabetical) so the hop order, mouse hit-testing, and the
-	 * paint all agree.
-	 */
+	/** Assemble sidebar entries from configured sections. */
 	#composeEntries(): void {
 		const counts = this.#searchCounts;
 		let providers = this.#unlockedProviderEntries;
@@ -548,11 +512,7 @@ export class ModelHubComponent implements Component {
 		}
 	}
 
-	/**
-	 * The configured `retry.fallbackChains` record with malformed keys/entries
-	 * dropped: non-array chains and non-string selectors never reach the rows
-	 * or chain editors, so an edit through the hub replaces them wholesale.
-	 */
+	/** Configured fallback chains with invalid entries filtered. */
 	#fallbackChains(): Record<string, string[]> {
 		try {
 			const chains = this.#settings.get("retry.fallbackChains");
@@ -572,11 +532,7 @@ export class ModelHubComponent implements Component {
 		}
 	}
 
-	/**
-	 * Rebuild the Roles view rows: each visible role followed by its
-	 * fallback-chain entries, then model-oriented chains (`provider/model-id`
-	 * and `provider/*` keys) as headed groups.
-	 */
+	/** Rebuild Roles view rows including fallback chains. */
 	#buildRolesRows(): void {
 		const rows: RolesRow[] = [];
 		const chains = this.#fallbackChains();
@@ -609,12 +565,7 @@ export class ModelHubComponent implements Component {
 		this.#tui.requestRender();
 	}
 
-	/**
-	 * Recompute per-provider match counts for the active query. Providers
-	 * without matches gray out and the scope hop skips them; a provider scope
-	 * that just lost its last match falls back to All models so the results
-	 * never silently vanish.
-	 */
+	/** Recompute match counts per provider for active search query. */
 	#onQueryChanged(query: string): void {
 		if (!query.trim()) {
 			this.#searchCounts = null;
@@ -644,11 +595,7 @@ export class ModelHubComponent implements Component {
 		}
 	}
 
-	/**
-	 * Entries the scope hop skips: separators always; while searching, also
-	 * the Roles view (not a model scope), an empty Recent, locked providers,
-	 * and providers without matches.
-	 */
+	/** Ineligible sidebar entries skipped during navigation hops. */
 	#isHopSkipped(entry: SidebarEntry): boolean {
 		if (entry.kind === "separator") return true;
 		if (!this.#searchCounts) return false;
@@ -1700,24 +1647,14 @@ export class ModelHubComponent implements Component {
 		const cycleOrder = this.#cycleOrder();
 		const listFocused = this.#focus === "list";
 
-		// The roles list is taller than its pane once a role has a fallback chain
-		// (eight roles, + New role…, the separator, then a chain key, its
-		// selectors and + New fallback…), and it used to just stop drawing at the
-		// budget. Rows past the cut vanished with no cue, and arrowing onto one
-		// moved a cursor nobody could see, so the last row of the chains section
-		// was unreachable in practice. Window it around the selection instead.
+		// Window roles list around selection.
 		const visibleRows = Math.max(1, rows - 2 - this.#rolesRowStart);
 		const maxScroll = Math.max(0, this.#rolesRows.length - visibleRows);
 		if (this.#rolesScroll > this.#roleIndex) this.#rolesScroll = this.#roleIndex;
 		if (this.#roleIndex >= this.#rolesScroll + visibleRows) this.#rolesScroll = this.#roleIndex - visibleRows + 1;
 		this.#rolesScroll = Math.min(Math.max(0, this.#rolesScroll), maxScroll);
 
-		// A window with no cue is the browser's old bug in a new pane: the rows are
-		// simply not there and nothing says so. `ScrollView` with `scrollbar: auto`
-		// is the one idiom this TUI uses for that (the model browser composes rows
-		// the same way), so the roles list borrows it rather than inventing a
-		// second convention. It reserves two columns when the list overflows, and
-		// rows are composed inside that band so nothing is truncated against it.
+		// Reserve scrollbar columns when list overflows.
 		const overflows = this.#rolesRows.length > visibleRows;
 		const barCols = overflows ? 2 : 0;
 		const width = fullWidth - barCols;
@@ -1926,12 +1863,7 @@ export class ModelHubComponent implements Component {
 		return `Enter assign roles · ${arrows} · type to search${refresh} · Esc close`;
 	}
 
-	/**
-	 * Full-width row below the sidebar|body split: the active strip (chips)
-	 * or the contextual hint line. This is body content, not ModalShell's own
-	 * shortcut chips ({@link #shortcuts}) — it carries per-state detail (which
-	 * row kind, which chip is selected) that a static footer can't.
-	 */
+	/** Full-width strip or hint row below sidebar/body split. */
 	#renderStripRow(width: number): string {
 		this.#chipRanges = [];
 		const strip = this.#strip;
@@ -2001,10 +1933,7 @@ export class ModelHubComponent implements Component {
 		return truncateToWidth(line, width);
 	}
 
-	/**
-	 * Centered, focus-aware ModalShell footer chips — a static, discoverable
-	 * complement to the detailed per-state hint in {@link #renderStripRow}.
-	 */
+	/** Centered footer shortcut chips. */
 	#shortcuts(): readonly ModalShortcut[] {
 		const strip = this.#strip;
 		if (strip) {
@@ -2060,11 +1989,7 @@ export class ModelHubComponent implements Component {
 		];
 	}
 
-	/**
-	 * Floating ModalShell LARGE card: sidebar|body split panes inside the
-	 * shell body (Grok idiom — chrome is the shell, not a DynamicBorder box),
-	 * a full-width strip/hint row below the split, and centered footer chips.
-	 */
+	/** Render modal shell with sidebar/body split and footer chips. */
 	render(width: number): string[] {
 		const height = Math.max(16, this.#tui.terminal?.rows || process.stdout.rows || 40);
 		const sizing = sizingForArea(MODAL_SIZING_LARGE, height);
@@ -2079,15 +2004,7 @@ export class ModelHubComponent implements Component {
 		const paneSep = theme.fg("dim", ` ${theme.boxSharp.vertical} `);
 		const bodyWidth = Math.max(1, contentWidth - sidebarWidth - 3);
 
-		// The strip row is the LAST body line, and the shell silently truncates a
-		// body that overruns its budget, so the split above the strip has to be
-		// sized against what the card will ACTUALLY show. This restated the
-		// arithmetic as `3 + footerLines + vPad`, charging vPad once where the
-		// shell charges it twice (above AND below the body); the body ran two rows
-		// long, the shell ate the tail, and the strip row — the hint line and every
-		// chip strip — never rendered at all on an ordinary 40-row terminal.
-		// `planModalChrome` is the one owner, and it accounts for wrapped chips and
-		// the short-card shrink order too, which a static minimum cannot.
+		// Size split panes based on available body lines accounting for strip row.
 		const shortcuts = this.#shortcuts();
 		const chrome = planModalChrome({
 			sizing,
@@ -2097,11 +2014,7 @@ export class ModelHubComponent implements Component {
 			hoveredShortcutId: this.#hoveredShortcutId,
 		});
 		const bodyBudget = Math.max(1, chrome.maxBodyRows);
-		// The split gets everything the strip row does not. A `Math.max(4, …)`
-		// floor here meant a short card asked for five body rows when it could
-		// show one, and the shell dropped the strip again — the same silent
-		// truncation, one level up. A cramped split is recoverable (it scrolls);
-		// a missing strip row takes the key hints with it.
+
 		const splitRows = Math.max(0, bodyBudget - 1);
 
 		const entry = this.#activeEntry();

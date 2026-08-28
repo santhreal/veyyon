@@ -39,21 +39,12 @@ const STARTUP_MODEL_CACHE_PROVIDER_IDS: readonly string[] = [
 	...SPECIAL_MODEL_MANAGER_PROVIDER_IDS,
 ];
 
-// Sentinels for local-only OAuth tokens — declared inline to avoid loading
-// provider modules at startup. Must match packages/ai/src/registry/llama-cpp.ts,
-// packages/ai/src/registry/lm-studio.ts, and packages/ai/src/registry/vllm.ts.
+// Sentinels for local-only OAuth tokens declared inline to avoid loading provider modules at startup.
 const LOCAL_PROVIDER_PLACEHOLDERS = new Set<string>(["llama-cpp-local", "lm-studio-local", "vllm-local"]);
 
-/**
- * Hard bound for extension-provided fetchDynamicModels to prevent indefinite hangs
- * during runtime provider discovery. Uses a cancellable manual timer (not AbortSignal.timeout)
- * so a successful fast path does not leave an armed timeout signal for concurrent GC.
- */
+/** Hard bound for extension-provided fetchDynamicModels to prevent hangs. */
 const RUNTIME_DYNAMIC_MODEL_FETCH_TIMEOUT_MS = 15_000;
-// Built-in discovery preflight mirror of the catalog model-manager's private
-// cache timings (model-manager.ts: DEFAULT_CACHE_TTL_MS / NON_AUTHORITATIVE_RETRY_MS).
-// Built-in descriptors never override cacheTtlMs, so agreeing with these values
-// makes the OAuth-refresh preflight fire exactly when the manager will fetch.
+// Built-in discovery preflight mirror of model-manager cache timings.
 const BUILT_IN_DISCOVERY_CACHE_TTL_MS = 2 * HOUR_MS;
 const BUILT_IN_DISCOVERY_NON_AUTHORITATIVE_RETRY_MS = 5 * 60 * 1000;
 
@@ -104,27 +95,13 @@ function isDiscoveryBearerApiKey(apiKey: string | undefined | null): apiKey is s
 	return isAuthenticated(apiKey) && !LOCAL_PROVIDER_PLACEHOLDERS.has(apiKey);
 }
 
-/**
- * The local runtimes veyyon probes without being told to, and how each one is spelled.
- *
- * ONE TABLE, because there used to be three near-identical `if` blocks and the discovery
- * severity split reads what they set. A fourth runtime added as a fourth block would get
- * the loopback-refusal treatment by accident rather than by decision, and no test could
- * see it: `a-provider-nobody-configured-does-not-warn.test.ts` sweeps this list, so a new
- * row is exercised the moment it lands and an unexercised row fails.
- *
- * `baseUrl` is a function because two of the three read the environment, and reading it at
- * module load would pin whatever the process started with.
- */
+/** Implicit local runtimes probed without explicit configuration. */
 interface ImplicitLocalRuntime {
 	readonly provider: string;
 	readonly api: Api;
 	readonly baseUrl: () => string;
 	readonly discovery: "ollama" | "llama.cpp" | "lm-studio";
-	/**
-	 * `unless-authenticated` is llama.cpp's: it accepts a key, so a stored one means the
-	 * endpoint is not keyless and the discovery probe has to send it.
-	 */
+	/** `unless-authenticated` sends stored keys if available. */
 	readonly keyless: "always" | "unless-authenticated";
 }
 
@@ -155,14 +132,7 @@ const IMPLICIT_LOCAL_RUNTIMES: readonly ImplicitLocalRuntime[] = [
 /** Every implicit local runtime's id, for a sweep that has to cover all of them. */
 export const IMPLICIT_LOCAL_RUNTIME_IDS: readonly string[] = IMPLICIT_LOCAL_RUNTIMES.map(runtime => runtime.provider);
 
-/**
- * Whether a URL addresses this machine.
- *
- * The wildcard bind addresses count: a client URL of `http://0.0.0.0:8080` is how a local
- * server that binds every interface is reached, and it is this machine either way. A
- * hostname is matched whole rather than by prefix, because `127.example.com` is a legal
- * remote name and a prefix test silences a remote endpoint's failures.
- */
+/** Whether a URL addresses this machine (loopback or wildcard bind). */
 function isLoopbackUrl(url: string | undefined): boolean {
 	if (!url) return false;
 	let hostname: string;
@@ -178,26 +148,14 @@ function isLoopbackUrl(url: string | undefined): boolean {
 	return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
 }
 
-/**
- * Whether a discovery failure means nothing answered, as opposed to something answering badly.
- *
- * The distinction is the whole severity decision, and it has to be read out of text: by the
- * time a failure reaches the reporter it is a formatted message, with the provider's own
- * wording in it. Bun's fetch says "Unable to connect", node says `ECONNREFUSED`, and a
- * probe that gave up says it failed to connect.
- */
+/** Whether a discovery failure indicates the endpoint was unreachable. */
 function isConnectionRefusalError(error: string): boolean {
 	return /unable to connect|econnrefused|connection refused|ehostunreach|enetunreach|econnreset|failed to connect/i.test(
 		error,
 	);
 }
 
-/**
- * Wraps an extension-provided fetchDynamicModels call with a hard timeout.
- * Uses a cancellable manual timer (not AbortSignal.timeout) so that a fast
- * successful path does not leave an armed timeout signal for concurrent GC.
- * The inner fetcher does not receive a signal (extension contract has none).
- */
+/** Wraps an extension fetchDynamicModels call with a hard timeout. */
 async function withRuntimeDynamicModelsTimeout<T>(timeoutMs: number, run: () => Promise<T>): Promise<T> {
 	const { promise: timeoutPromise, reject: timeoutReject } = Promise.withResolvers<never>();
 	const timer = setTimeout(() => {
@@ -220,32 +178,7 @@ interface ProviderOverride {
 	transport?: Model<Api>["transport"];
 }
 
-/**
- * Merge a freshly discovered model with the matching bundled/configured entry
- * (or a runtime provider override when no bundled entry exists).
- *
- * `baseUrl` resolution priority:
- *   1. User-set `providerOverride.baseUrl` (explicit override in models.json)
- *   2. Discovered baseUrl (xiaomi `tp-` token-plan keys resolve to
- *      `token-plan-sgp.xiaomimimo.com` at discovery time)
- *   3. Existing bundled baseUrl (the host baked into `models.json`)
- *
- * `transport` resolution priority:
- *   1. `providerOverride.transport` (e.g. `pi-native` for auth-gateway users)
- *   2. `existing.transport` (carried over from boot-time override application)
- *   3. `model.transport` (rarely set — discovery defaults omit it)
- *
- * Without (1), the user's override would lose to discovery; without (2)
- * preferred over (3), the bundled `api.xiaomimimo.com` would shadow the
- * tp- token-plan host and produce 401s on the first stream call.
- * Without explicit transport propagation, an openrouter (or any) entry
- * marked `transport: pi-native` in models.yml silently reverts to the
- * default openai-completions transport after the background catalog
- * refresh — so the first `/model` switch after boot hits the raw OpenAI
- * chat-completions URL instead of the gateway's `/v1/pi/stream` (#2555).
- * See `xiaomi-tp-discovery-merge.test.ts` and the `refresh()` baseUrl-override
- * regression in `model-registry.test.ts`.
- */
+/** Merge a freshly discovered model with bundled/configured entries and provider overrides. */
 export function mergeDiscoveredModel<TApi extends Api>(
 	model: Model<TApi>,
 	existing: Model<Api> | undefined,
@@ -302,11 +235,7 @@ function dropProviderModels(models: readonly Model<Api>[], providers: ReadonlySe
 	return models.filter(model => !providers.has(model.provider));
 }
 
-/**
- * Merge `incoming` entries into a copy of `base`, keyed by `provider`+`id`.
- * Matches are replaced with `combine(existing, entry)`; new entries are
- * appended as `combine(undefined, entry)`.
- */
+/** Merge `incoming` entries into a copy of `base`, keyed by provider+id. */
 function mergeByModelKey<T extends { provider: string; id: string }>(
 	base: readonly Model<Api>[],
 	incoming: readonly T[],
@@ -370,20 +299,13 @@ interface CustomModelsResult {
 
 const COMMAND_TIMEOUT_MS = 10_000;
 
-/**
- * Run a `!command` synchronously and return its trimmed stdout, or `undefined`
- * on any failure. The caching, back-off and report-once policy is shared with
- * the async resolver through `configCommandPolicy`, so both paths cache
- * successes and back off failures identically; only the execution differs.
- */
+/** Run a `!command` synchronously and return trimmed stdout, or `undefined` on failure. */
 function resolveCommandConfig(command: string): string | undefined {
 	const cached = configCommandPolicy.getCached(command);
 	if (cached !== undefined) return cached;
 	if (configCommandPolicy.isBackedOff(command)) return undefined;
 	try {
-		// stderr is captured rather than inherited so a failure can be explained.
-		// It is deliberately kept apart from stdout, which carries the secret and
-		// must never be reported (see `reportUnresolvedConfigValue`).
+		// Capture stderr separately so secrets on stdout are not leaked in errors.
 		const stdout = execSync(command, {
 			encoding: "utf8",
 			timeout: COMMAND_TIMEOUT_MS,
@@ -392,9 +314,6 @@ function resolveCommandConfig(command: string): string | undefined {
 		});
 		const trimmed = stdout.trim();
 		if (trimmed.length === 0) {
-			// Succeeded and printed nothing, which is the more confusing failure:
-			// the command looks fine when run by hand if it writes its value
-			// somewhere other than stdout.
 			configCommandPolicy.recordFailure(command, undefined, commandFailureReason.emptyOutput);
 			return undefined;
 		}
@@ -417,13 +336,7 @@ interface CommandApiKeyResolution {
 	configured: boolean;
 	value?: string;
 }
-/**
- * Resolve a models.yml/models.yaml secret/config value to an actual value.
- * `!cmd` runs a shell command and returns trimmed stdout; `${NAME}` / `$NAME`
- * and a bare environment name resolve from the environment and produce nothing
- * when the variable is unset or empty; `literal:<text>` and any other bare value
- * are the value itself.
- */
+/** Resolve a models.yml/models.yaml secret/config value to an actual value. */
 function resolveConfigValue(valueConfig: string, describedAs?: string): string | undefined {
 	const command = parseConfigValueCommand(valueConfig);
 	if (command !== null) return resolveCommandConfig(command);
@@ -572,20 +485,12 @@ function mergeCompat<TBase extends object, TOverride extends object>(
 	return merged as TBase & TOverride;
 }
 
-/**
- * Project a built model back to spec shape for the model-manager/cache
- * boundary: sparse compat comes from `compatConfig`, never from the resolved
- * record.
- */
+/** Project a built model back to spec shape for the model-manager/cache boundary. */
 function toModelSpec<TApi extends Api>(model: Model<TApi>): ModelSpec<TApi> {
 	return { ...model, compat: model.compatConfig } as ModelSpec<TApi>;
 }
 
-/**
- * The patchable subset of `Model` fields shared by `modelOverrides` entries,
- * custom model definitions, and parsed custom-model overlays. `undefined`
- * always means "leave the base value alone".
- */
+/** Patchable subset of Model fields shared by overrides and custom definitions. */
 interface ModelPatch {
 	name?: string;
 	reasoning?: boolean;
@@ -603,13 +508,7 @@ interface ModelPatch {
 	premiumMultiplier?: number;
 }
 
-/**
- * How a patch treats the base model's transport metadata (headers/compat):
- * - `merge`: fold the patch into the base's (modelOverrides semantics).
- * - `replace`: the patch owns transport wholesale — same-id custom definitions
- *   already folded provider-level headers/compat in during parsing, so bundled
- *   transport metadata must not be re-merged (see `#mergeCustomModels`).
- */
+/** How a patch treats the base model's transport metadata (headers/compat). */
 type ModelTransportPolicy = "merge" | "replace";
 
 function applyModelPatch(base: Model<Api>, patch: ModelPatch, transport: ModelTransportPolicy): Model<Api> {
@@ -687,13 +586,7 @@ function mergeAuthHeaderSources(
 	return createLiveConfigHeaders(sources, { authHeader, apiKeyConfig });
 }
 
-/**
- * Decide whether a custom-yaml model should force OAuth-style request shaping.
- * - Explicit `auth: oauth` → force on.
- *   endpoints are typically Claude-Code-style proxies (e.g. CLIProxyAPI) that expect
- *   the cloaked request shape regardless of how the proxy itself is authenticated.
- * - Otherwise → unset.
- */
+/** Decide whether a custom-yaml model should force OAuth-style request shaping. */
 function resolveCustomModelIsOAuth(api: Api, providerAuth: ProviderAuthMode | undefined): boolean | undefined {
 	if (providerAuth === "oauth") return true;
 	if (providerAuth !== undefined) return undefined;
@@ -796,11 +689,7 @@ function normalizeSuppressedSelector(
 	return `${parsed.provider}/${aliasId ?? parsed.id}`;
 }
 
-/**
- * Look up a model's override, falling back to entries keyed by retired
- * effort-tier variant ids (models.yml authored before collapsing). A raw key
- * only re-binds when no live model holds that id.
- */
+/** Look up a model override, falling back to retired effort-tier variant IDs. */
 function resolveModelOverrideWithAliases(
 	overrides: Map<string, ModelOverride>,
 	model: Model<Api>,
@@ -831,13 +720,7 @@ function getDisabledProviderIdsFromSettings(): Set<string> {
 	}
 }
 
-/**
- * Bump when the persisted static stage's contract changes: the resolved record
- * shape, a hardcoded model policy, or the merge semantics feeding `#loadModels`.
- * The version prefixes every fingerprint, so old files miss instead of serving
- * state produced under retired rules — the same discipline as
- * `CACHE_SCHEMA_VERSION` in `@veyyon/catalog/model-cache`.
- */
+/** Schema version for persisted static model stage. */
 const REGISTRY_SNAPSHOT_VERSION = 5;
 
 interface StaticModelStage {
@@ -882,9 +765,7 @@ export class ModelRegistry {
 	// Runtime extension model overlays — persist across refresh() cycles so that
 	// models registered by extensions survive the model selector's offline reload.
 	#runtimeModelOverlays: CustomModelOverlay[] = [];
-	// Context windows the provider itself reported, keyed `${provider}/${id}`.
-	// Outrank catalog/discovery values, which are a guess for gateway models the
-	// catalog predates. Survive refresh() for the same reason the overlays do.
+	// Provider-reported context windows, keyed `${provider}/${id}`.
 	#providerReportedWindows: Map<string, number> = new Map();
 	#runtimeProviderApiKeys: Map<string, string> = new Map();
 	#runtimeProviderOverrides: Map<string, ProviderOverride> = new Map();
@@ -913,22 +794,12 @@ export class ModelRegistry {
 		if (resolved) {
 			this.authStorage.setConfigApiKey(provider, resolved);
 		} else if (isConfigValueCommand(keyConfig) || describeConfigEnvReference(keyConfig)) {
-			// The config names a source that produced nothing — a failing command or an
-			// unset variable. Whatever was installed for this provider before is not what
-			// the config says now, so it is dropped rather than kept and sent.
+			// Drop provider when config source produces an empty/failing value.
 			this.authStorage.removeConfigApiKey(provider);
 		}
 	}
 
-	/**
-	 * @param authStorage - Auth storage for API key resolution
-	 *
-	 * Sync constructor — eagerly loads bundled + cached models so tests and
-	 * synchronous callers see a fully-populated registry immediately. Production
-	 * boot paths SHOULD prefer {@link ModelRegistry.create} so the YAML/JSONC
-	 * migration step lands off the event loop's hot path before the first
-	 * `tryLoad()` runs.
-	 */
+	/** Eagerly loads bundled + cached models. */
 	constructor(
 		readonly authStorage: AuthStorage,
 		modelsPath?: string,
@@ -942,9 +813,7 @@ export class ModelRegistry {
 		this.#snapshotIo = options?.snapshotIo ?? !isBunTestRuntime();
 		this.#modelsConfigFile = ModelsConfigFile.relocate(modelsPath);
 		this.#cacheDbPath = modelsPath ? path.join(path.dirname(modelsPath), "models.db") : undefined;
-		// The enriched bundled registry persists beside the same database, and only
-		// when this registry persists its own stage: a test process shares the
-		// operator's profile directory, so nothing reads or writes there unasked.
+
 		setEnrichedRegistrySnapshotStore(
 			this.#snapshotIo ? createEnrichedRegistrySnapshotStore(this.#cacheDbPath) : undefined,
 		);
@@ -958,9 +827,7 @@ export class ModelRegistry {
 		this.#loadModels();
 	}
 
-	/**
-	 * Reload models from disk (built-in + custom config).
-	 */
+	/** Reload models from disk (built-in + custom config). */
 	async refresh(strategy: ModelRefreshStrategy = "online-if-uncached"): Promise<void> {
 		this.#reloadStaticModels();
 		this.#suppressedSelectors.clear();
@@ -995,9 +862,7 @@ export class ModelRegistry {
 		await this.#refreshRuntimeDiscoveries(strategy, new Set([providerId]));
 	}
 
-	/**
-	 * Refresh dynamic metadata that can appear only after a local model loads.
-	 */
+	/** Refresh dynamic metadata that can appear only after a local model loads. */
 	async refreshSelectedModelMetadata(model: Model<Api>): Promise<Model<Api>> {
 		const isLlamaCppDiscovery = this.#discoverableProviders.some(
 			providerConfig => providerConfig.provider === model.provider && providerConfig.discovery.type === "llama.cpp",
@@ -1056,15 +921,7 @@ export class ModelRegistry {
 		return patched;
 	}
 
-	/**
-	 * Discover models for providers registered at runtime via `fetchDynamicModels`
-	 * (extension providers). Merges the discovered catalog into the existing model
-	 * set without reloading static models, so dynamically-discovered models from
-	 * other providers are preserved. No-op when no runtime providers are registered.
-	 *
-	 * Drives the same SQLite model cache as built-in providers, so the default
-	 * `online-if-uncached` strategy fetches at most once per cache TTL (24 h).
-	 */
+	/** Discover models for extension-registered providers via `fetchDynamicModels`. */
 	async refreshRuntimeProviders(
 		strategy: ModelRefreshStrategy = "online-if-uncached",
 		providerId?: string,
@@ -1091,9 +948,7 @@ export class ModelRegistry {
 		this.#customProviderApiKeys.clear();
 		this.#keylessProviders.clear();
 		this.#discoverableProviders = [];
-		// Drop config-sourced apiKeys from AuthStorage before reload; entries
-		// removed from models.yml must actually disappear from the resolver, not
-		// linger from the previous parse. The post-load setters below repopulate.
+		// Clear config-sourced apiKeys from AuthStorage before reloading.
 		this.authStorage.clearConfigApiKeys();
 		// Restore runtime API keys before #loadModels — survives because
 		// #loadModels only calls .set() on #customProviderApiKeys, never reassigns it.
@@ -1107,9 +962,7 @@ export class ModelRegistry {
 		this.#loadModels();
 	}
 
-	/**
-	 * Get any error from loading custom models config (undefined if no error).
-	 */
+	/** Get any error from loading custom models config. */
 	getError(): ConfigError | undefined {
 		return this.#configError;
 	}
@@ -1134,11 +987,7 @@ export class ModelRegistry {
 
 		this.#addImplicitDiscoverableProviders(configuredProviders);
 
-		// The three data layers below are a pure function of the bundled catalog
-		// bytes, the discovery cache database and the custom-config structures —
-		// nothing auth- or runtime-derived enters them. That makes the stage
-		// safe to persist: a fingerprint over exactly those inputs either names
-		// this exact state or misses, and a miss rebuilds through the same code.
+		// Data layers are a pure function of bundled catalog, cache db, and custom config.
 		const staticFingerprint = this.#staticModelStageFingerprint();
 		const restored = this.#snapshotIo ? this.#readStaticModelStage(staticFingerprint) : null;
 		let builtInModels: Model<Api>[];
@@ -1173,11 +1022,7 @@ export class ModelRegistry {
 			}
 		}
 
-		// Only drop bundled fallback models when the cached project-catalog row is
-		// itself fresh AND authoritative. A stale or non-authoritative snapshot
-		// (e.g. after ADC discovery failure rewrote the row with authoritative=0)
-		// must not strip bundled Vertex Gemini entries — that would leave only the
-		// stale project-scoped rows in API-key-only environments.
+		// Only drop bundled fallback models when the cached row is fresh and authoritative.
 		const cachedAuthoritativeProviders = new Set<string>();
 		for (const provider of providersWithAuthoritativeProjectCatalog(cachedStandardModels)) {
 			if (authoritativeFreshProviders.has(provider)) {
@@ -1209,16 +1054,7 @@ export class ModelRegistry {
 	/** Content digest of everything the static stage reads. */
 	#staticModelStageFingerprint(): string {
 		const dbPath = this.#cacheDbPath ?? getModelDbPath();
-		// Content stamp, not file stamps: SQLite moves the -wal/-shm sidecars on
-		// every connection, so mtime-based inputs missed on the launch after every
-		// write. The ordered row-content digests move only when persisted model
-		// content changes, and the stamp's freshness bits move when a row crosses
-		// the 24 h TTL these layers read it under — the verdicts in the stage are
-		// only true for as long as those bits hold.
-		//
-		// `models.yml`'s mtime is an input in its own right: a discovery row older
-		// than the config file is treated as stale, so a rewrite with identical
-		// content still changes what these layers conclude.
+		// Content stamp based on row-content digests and config mtime.
 		const parts: Array<string | number> = [
 			REGISTRY_SNAPSHOT_VERSION,
 			bundledCatalogDigest(),
@@ -1301,12 +1137,7 @@ export class ModelRegistry {
 		}
 	}
 
-	/**
-	 * Validate an array of persisted model records shallowly and cast. The
-	 * snapshot digest proves the payload matches bytes this format's writer
-	 * produced; the guards reject invalid records even when the digest was
-	 * recomputed by an external writer.
-	 */
+	/** Validate an array of persisted model records shallowly and cast. */
 	#snapshotModelArray(value: unknown): Model<Api>[] | null {
 		if (!Array.isArray(value)) return null;
 		for (const entry of value) {
@@ -1549,9 +1380,7 @@ export class ModelRegistry {
 				api: runtime.api,
 				baseUrl: runtime.baseUrl(),
 				discovery: { type: runtime.discovery },
-				// Optional is what marks a provider nobody asked for, and the discovery-failure
-				// severity split reads it: a failure from one of these is only reported at warn
-				// when the endpoint answers, because the operator never said it would be there.
+				// Unconfigured optional provider failures are only reported when the endpoint answers.
 				optional: true,
 			});
 			if (runtime.keyless === "always" || !this.authStorage.hasAuth(runtime.provider)) {
@@ -1627,9 +1456,7 @@ export class ModelRegistry {
 				const disableStrictCompat = providerConfig.disableStrictTools ? { disableStrictTools: true } : undefined;
 				discoverableProviders.push({
 					provider: providerName,
-					// Proxy discovery derives per-model api from /v1/models's
-					// supported_endpoint_types; the provider-level api is only a
-					// fallback for entries that don't advertise one.
+					// Proxy discovery derives per-model API from supported_endpoint_types.
 					api: (providerConfig.api ?? "openai-completions") as Api,
 					baseUrl: providerConfig.baseUrl,
 					headers: resolvedProviderHeaders,
@@ -1639,10 +1466,7 @@ export class ModelRegistry {
 				});
 			}
 
-			// Store API key for fallback resolver AND register as config override
-			// so it wins over OAuth tokens from the broker — when the user pins a
-			// bearer in models.yml (e.g. for an auth-gateway baseUrl), that bearer
-			// must authenticate the outbound request.
+			// Store API key and register override so explicit bearer wins over OAuth.
 			if (providerConfig.apiKey) {
 				this.#installProviderApiKey(providerName, providerConfig.apiKey);
 			}
@@ -1723,9 +1547,7 @@ export class ModelRegistry {
 			return `${providerConfig.provider}:openai-models-list-context-v2`;
 		}
 		if (providerConfig.discovery.type === "litellm") {
-			// rich-v2 invalidates rows cached before reseller usage-suffix stripping
-			// (stale display names like `MiniMax-M3 (3x usage)`); keep in lockstep
-			// with the catalog package's `litellm:rich-vN` namespace.
+			// rich-v2 invalidates rows cached before usage-suffix stripping.
 			return `${providerConfig.provider}:litellm-rich-v2`;
 		}
 		return providerConfig.provider;
@@ -1845,18 +1667,7 @@ export class ModelRegistry {
 		};
 	}
 
-	/**
-	 * Report that a provider's model discovery did not produce a catalog.
-	 *
-	 * The ONE owner of this message. It was written for discovery that THREW, and a discovery that merely
-	 * returned no list -- a refused connection, a 401, an endpoint that is not OpenAI-compatible -- reached
-	 * no reporter at all, so a provider whose models the user pays for disappeared from the picker with
-	 * nothing anywhere explaining it. Both paths come through here now, and the built-in manager path used
-	 * to log the same sentence again from its own catch, without this dedup.
-	 *
-	 * Deduplicated per provider on the exact reason: discovery re-runs on a timer and on demand, and the
-	 * same unreachable endpoint must not fill the log. A CHANGED reason is reported, because that is news.
-	 */
+	/** Report that a provider's model discovery did not produce a catalog. */
 	#hasStoredCredential(provider: string): boolean {
 		return (
 			this.authStorage.hasAuth(provider) ||
@@ -1865,12 +1676,7 @@ export class ModelRegistry {
 		);
 	}
 
-	/**
-	 * Whether anything says this provider's endpoint is meant to be there.
-	 *
-	 * An explicit `baseUrl` in `models.yml`, a runtime override, a non-optional discovery
-	 * row, or a model overlay naming a URL are all somebody saying where the provider is.
-	 */
+	/** Whether configuration or metadata indicates this provider endpoint is expected. */
 	#hasConfiguredEndpoint(provider: string): boolean {
 		return (
 			this.#providerOverrides.get(provider)?.baseUrl !== undefined ||
@@ -1881,15 +1687,7 @@ export class ModelRegistry {
 		);
 	}
 
-	/**
-	 * Whether a discovery failure is a fault, or software the operator never started.
-	 *
-	 * A configured provider is always a fault: a credential or an endpoint is a statement
-	 * that it should work. Absent both, the failure is a fault only if something answered —
-	 * a status, a malformed body — or if the endpoint is not on this machine, because a
-	 * remote address is itself a configuration. What is left is a loopback port with nothing
-	 * behind it, which is the ordinary state of a machine that does not run that runtime.
-	 */
+	/** Whether a discovery failure is an actual fault vs unstarted local runtime. */
 	#shouldWarnOnDiscoveryFailure(provider: string, url: string | undefined, error: string): boolean {
 		if (this.#hasStoredCredential(provider) || this.#hasConfiguredEndpoint(provider)) {
 			return true;
@@ -2107,10 +1905,7 @@ export class ModelRegistry {
 			const manager = createModelManager({
 				...options,
 				cacheDbPath: this.#cacheDbPath,
-				// A dynamic fetch that returns no list is why a model can vanish from the picker, and until now
-				// it reached nothing: only a THROWN failure was reported. The stage is in the message because it
-				// decides where the reader looks -- `request` at the network, `status` at credentials, `payload`
-				// at whether the endpoint speaks the protocol at all.
+
 				onDiscoveryFailure: failure =>
 					this.#warnProviderDiscoveryFailure(
 						options.providerId,
@@ -2270,21 +2065,7 @@ export class ModelRegistry {
 		return models;
 	}
 
-	/**
-	 * Correct a model's context window from a value the provider reported on the
-	 * wire, so every reader of `model.contextWindow` agrees.
-	 *
-	 * Discovery has to guess a window for a gateway model the catalog has never
-	 * seen (`AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW`). When the provider then
-	 * states the real one per turn, the guess is simply wrong, and it is wrong
-	 * in the denominator of the context gauge and the compaction threshold at
-	 * once: a conversation the gateway reports as one fifth used renders as
-	 * empty and asks to compact on every turn. The correction is stored keyed by
-	 * provider/model and reapplied after each reload so discovery cannot put the
-	 * guess back.
-	 *
-	 * Returns true when this changed the registry.
-	 */
+	/** Correct a model's context window from a provider-reported wire value. */
 	recordProviderReportedContextWindow(provider: string, id: string, contextWindow: number): boolean {
 		if (!Number.isFinite(contextWindow) || contextWindow <= 0) return false;
 		const key = `${provider}/${id}`;
@@ -2311,12 +2092,7 @@ export class ModelRegistry {
 		return this.#models;
 	}
 
-	/**
-	 * Availability predicate with per-provider memoization. Auth lookups
-	 * (`authStorage.hasAuth`) and the disabled-provider set are resolved once
-	 * per provider instead of once per model, which matters when filtering the
-	 * full bundled catalog (thousands of models, ~50 providers).
-	 */
+	/** Availability predicate with per-provider memoization. */
 	#createAvailabilityCheck(): (model: Model<Api>) => boolean {
 		const disabledProviders = getDisabledProviderIdsFromSettings();
 		const byProvider = new Map<string, boolean>();
@@ -2340,22 +2116,7 @@ export class ModelRegistry {
 		return this.#models.filter(this.#createAvailabilityCheck());
 	}
 
-	/**
-	 * Check whether auth is configured for a model's provider.
-	 *
-	 * Mirrors the upstream `@mariozechner/pi-coding-agent` API surface so that
-	 * external plugins/extensions and downstream wrappers (e.g. subagent launch
-	 * paths that pre-flight auth before model resolution) can probe a model
-	 * without resolving an API key. Returns true for keyless providers as well
-	 * as providers with stored credentials. See issue #993.
-	 *
-	 * Side-effect-free and synchronous: a command-backed key (`!cmd`) counts as
-	 * configured by its presence alone — the program is NOT executed — and OAuth
-	 * tokens are NOT refreshed (`authStorage.hasAuth`). This is what keeps the
-	 * model-switch pre-flight off the event loop's hot path; the real key
-	 * (command execution + OAuth refresh) is resolved lazily per request via
-	 * {@link ModelRegistry.resolver}.
-	 */
+	/** Check whether auth is configured for a model's provider. */
 	hasConfiguredAuth(model: Model<Api>): boolean {
 		const keyConfig = this.#customProviderApiKeys.get(model.provider);
 		return (
@@ -2407,13 +2168,7 @@ export class ModelRegistry {
 		return this.authStorage.getApiKey(model.provider, sessionId, { baseUrl: model.baseUrl, modelId: model.id });
 	}
 
-	/**
-	 * Get API key for a provider (e.g., "openai").
-	 *
-	 * `options.forceRefresh` powers step (b) of the auth-retry policy — it
-	 * re-mints the session-sticky OAuth token even when the cached copy still
-	 * looks valid. `options.signal` is threaded into any broker-bound refresh.
-	 */
+	/** Get API key for a provider. */
 	async getApiKeyForProvider(
 		provider: string,
 		sessionId?: string,
@@ -2432,13 +2187,7 @@ export class ModelRegistry {
 		});
 	}
 
-	/**
-	 * Build an {@link ApiKeyResolver} implementing the central a/b/c auth-retry
-	 * policy. Accepts a provider id with options, or a model with an optional
-	 * session id (`resolver(model, sessionId)`) which derives `baseUrl`/`modelId`
-	 * from the model. Callers that need the initial key for a guard can call
-	 * `resolveApiKeyOnce(resolver)`.
-	 */
+	/** Build an ApiKeyResolver implementing central auth-retry policy. */
 	resolver(provider: string, options?: ApiKeyResolverOptions): ApiKeyResolver;
 	resolver(model: ApiKeyResolverModel, sessionId?: string): ApiKeyResolver;
 	resolver(target: string | ApiKeyResolverModel, optionsOrSessionId?: ApiKeyResolverOptions | string): ApiKeyResolver {
@@ -2513,14 +2262,7 @@ export class ModelRegistry {
 		}
 	}
 
-	/**
-	 * Register a provider dynamically (from extensions).
-	 *
-	 * If provider has models: replaces all existing models for this provider.
-	 * If provider has only baseUrl/headers: overrides existing models' URLs.
-	 * If provider has streamSimple: registers a custom API streaming function.
-	 * If provider has oauth: registers OAuth provider for /login support.
-	 */
+	/** Register a provider dynamically from extensions. */
 	registerProvider(providerName: string, config: ProviderConfigInput, sourceId?: string): void {
 		if (config.streamSimple && !config.api) {
 			throw new Error(`Provider ${providerName}: "api" is required when registering streamSimple.`);
@@ -2766,12 +2508,7 @@ export interface ProviderConfigInput {
 		getApiKey?(credentials: OAuthCredentials): string;
 		modifyModels?(models: Model<Api>[], credentials: OAuthCredentials): Model<Api>[];
 	};
-	/**
-	 * Async factory that fetches the live model list from the provider endpoint.
-	 * When present, the result is run through the same SQLite model-cache as
-	 * built-in providers (keyed by provider name, default 24 h TTL).
-	 * The factory receives the resolved API key (undefined when unauthenticated).
-	 */
+	/** Async factory that fetches the live model list from the provider endpoint. */
 	fetchDynamicModels?: (
 		apiKey: string | undefined,
 	) => Promise<readonly NonNullable<ProviderConfigInput["models"]>[number][]>;
