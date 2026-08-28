@@ -2,14 +2,6 @@ import { randomUUID } from "node:crypto";
 import * as fsSync from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent } from "./fs-error";
-import { tryParseJson } from "./json";
-import * as logger from "./logger";
-import { getProcessStartIdentity, isProcessInstanceAlive } from "./process-liveness";
-import { sleepSync } from "./sleep";
-import { escapeTerminalText } from "./terminal-safe";
-import { isRecord } from "./type-guards";
-
 import type {
 	FileIdentity,
 	FileLockOptions,
@@ -19,8 +11,6 @@ import type {
 	RetireResult,
 } from "./file-lock";
 import {
-	OWNER_INFO_GRACE_MS,
-	RESTORE_ATTEMPTS,
 	assertParentIdentity,
 	assertParentIdentitySync,
 	buildLockInfo,
@@ -32,7 +22,9 @@ import {
 	inspectParentSync,
 	isLockStale,
 	isLockStaleSync,
+	OWNER_INFO_GRACE_MS,
 	observationIsStale,
+	RESTORE_ATTEMPTS,
 	readLockInfo,
 	readLockInfoSync,
 	removeObservedDirectory,
@@ -42,6 +34,10 @@ import {
 	sameObservationIdentity,
 	validateOptions,
 } from "./file-lock";
+import { isEnoent } from "./fs-error";
+import * as logger from "./logger";
+import { sleepSync } from "./sleep";
+import { escapeTerminalText } from "./terminal-safe";
 
 function restoreTransitionSync(lockPath: string, expected: LockObservation): boolean {
 	const transitionPath = getTransitionPath(lockPath);
