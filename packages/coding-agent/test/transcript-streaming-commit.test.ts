@@ -9,9 +9,9 @@
  */
 import { describe, expect, it } from "bun:test";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, TUI } from "@veyyon/tui";
 import { Markdown, type MarkdownTheme } from "@veyyon/tui/components/markdown";
-import { StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
 import { defaultMarkdownTheme } from "@veyyon/tui/test-support";
 
 class MutableLiveBlock implements Component {

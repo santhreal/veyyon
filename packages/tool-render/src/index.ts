@@ -6,7 +6,7 @@
 export { genericRenderer } from "./generic";
 export * from "./parts";
 export * from "./registry";
+export * from "./ThemeToggle";
 export * from "./ToolView";
 export * from "./types";
 export * from "./util";
-export * from "./ThemeToggle";

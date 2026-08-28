@@ -49,8 +49,8 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
 import { HomeAnchorLayout } from "@veyyon/coding-agent/modes/controllers/home-anchor-layout";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
 import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
+import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
 
 /** A block whose height is set from the test, the way live content changes it. */
 class HeightBlock implements Component {

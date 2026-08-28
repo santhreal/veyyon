@@ -8,10 +8,18 @@
 
 import { stripVTControlCharacters } from "node:util";
 import { ThinkingLevel } from "@veyyon/agent-core";
+import {
+	type ComposerOracleFrameState,
+	type CorpusCaseState,
+	evaluateAllComposerOracles,
+	type FrameSegmentSnapshot,
+	type OracleEvaluationResult,
+	settleFrames,
+	VirtualTerminal,
+} from "@veyyon/render-oracle";
 import { type Component, Container, Editor, Spacer, TUI } from "@veyyon/tui";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/tui/mouse";
 import { stripAnsi } from "@veyyon/utils";
-import { type ComposerOracleFrameState, type CorpusCaseState, evaluateAllComposerOracles, type FrameSegmentSnapshot, type OracleEvaluationResult, settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import {
 	CardPadRow,
 	COMPOSER_BOTTOM_MARGIN_ROWS,

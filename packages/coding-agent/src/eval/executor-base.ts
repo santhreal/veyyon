@@ -1,9 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage, getProjectDir, isCancellation, isTimeoutError, logger } from "@veyyon/utils";
+import { Settings } from "../config/settings";
 import { gateSessionCpuSpawn } from "../session/cpu-limit";
 import { registerOwnedResourceDisposer } from "../session/owned-resources";
-import { Settings } from "../config/settings";
 import { OutputSink } from "../session/streaming-output";
 import type { ToolSession } from "../tools";
 import { inlineBudgetFor } from "../tools/output-artifact";
@@ -650,8 +650,7 @@ export interface ManagedKernelSession<TKernel extends SessionKernel = SessionKer
 	kernel: TKernel;
 }
 
-export interface StartingManagedKernelSession<TKernel extends SessionKernel = SessionKernel>
-	extends SessionOwnerState {
+export interface StartingManagedKernelSession<TKernel extends SessionKernel = SessionKernel> extends SessionOwnerState {
 	promise: Promise<ManagedKernelSession<TKernel>>;
 }
 
@@ -749,11 +748,7 @@ export class KernelSessionPool<
 		}
 	}
 
-	async replaceSessionKernel(
-		session: ManagedKernelSession<TKernel>,
-		cwd: string,
-		options: TOptions,
-	): Promise<void> {
+	async replaceSessionKernel(session: ManagedKernelSession<TKernel>, cwd: string, options: TOptions): Promise<void> {
 		if (this.#options.warnOnDiedSubprocess) {
 			logger.warn(`${this.#options.languageName} subprocess died or is unresponsive; spawning fresh process`, {
 				sessionKey: session.sessionKey,
@@ -780,7 +775,8 @@ export class KernelSessionPool<
 
 	async resetSession(sessionKey: string): Promise<void> {
 		const session =
-			this.#sessions.get(sessionKey) ?? (await this.#startingSessions.get(sessionKey)?.promise.catch(() => undefined));
+			this.#sessions.get(sessionKey) ??
+			(await this.#startingSessions.get(sessionKey)?.promise.catch(() => undefined));
 		if (!session) return;
 		this.#sessions.delete(sessionKey);
 		const timeoutMs = this.#options.shutdownGraceMs ?? KERNEL_SHUTDOWN_GRACE_MS;
@@ -918,7 +914,7 @@ export function createKernelExecutionDriver<
 		formatKernelTimeoutAnnotation: formatKernelTimeout = formatKernelTimeoutAnnotation,
 		formatTimeoutAnnotation: formatTimeout = formatTimeoutAnnotation,
 		createCancelledResult = (timedOut, timeoutMs) =>
-			createCancelledKernelResult(timedOut ? formatTimeout(timeoutMs) ?? "" : ""),
+			createCancelledKernelResult(timedOut ? (formatTimeout(timeoutMs) ?? "") : ""),
 		resolveDeadlineMs: customResolveDeadlineMs,
 		isJulia,
 		shutdownGraceMs,

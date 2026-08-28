@@ -13,11 +13,7 @@ import {
 	type KernelExecutorBaseOptions,
 	type KernelMode,
 } from "../executor-base";
-import {
-	checkPythonKernelAvailability,
-	type KernelDisplayOutput,
-	PythonKernel,
-} from "./kernel";
+import { checkPythonKernelAvailability, type KernelDisplayOutput, PythonKernel } from "./kernel";
 import { resolveExplicitPythonRuntime } from "./runtime";
 
 export type { KernelDisplayOutput };

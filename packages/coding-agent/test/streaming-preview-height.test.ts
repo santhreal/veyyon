@@ -9,9 +9,9 @@ import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/compo
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 import { TUI, visibleWidth } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
-import { VirtualTerminal } from "@veyyon/render-oracle";
 import { createToolExecution } from "./helpers/tool-execution";
 
 // The streaming edit preview is a fixed-height tail window ("cursor"): the last

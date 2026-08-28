@@ -67,8 +67,6 @@ const GLOBAL_MARKER = "GLOBAL-SCOPE-BYTES-c3f1";
 const PROFILE_MARKER = "PROFILE-SCOPE-BYTES-9a27";
 const PROJECT_ROOT_MARKER = "PROJECT-ROOT-BYTES-51bd";
 const PROJECT_NESTED_MARKER = "PROJECT-NESTED-BYTES-7e40";
-/** The synthetic path the provider gives the rule that carries the assembled prompt. */
-const SYSTEM_PROMPT_RULE = "veyyon://system-prompt.mdc";
 /** Bytes that exist only after the operator edits the global file mid-session. */
 const EDITED_MARKER = "EDITED-GLOBAL-BYTES-5b0e";
 

@@ -24,7 +24,6 @@
  */
 
 import { afterEach, describe, expect, it } from "bun:test";
-import * as path from "node:path";
 import { EDITING_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/editing";
 import { juliaBackend, rubyBackend } from "@veyyon/coding-agent/eval";
 import { disposeAllJuliaKernelSessions, executeJulia } from "@veyyon/coding-agent/eval/jl/executor";
@@ -34,6 +33,7 @@ import { RubyKernel } from "@veyyon/coding-agent/eval/rb/kernel";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { TempDir } from "@veyyon/utils";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
+
 // The executors open `AgentStorage`, which resolves under the ACTIVE PROFILE's agent dir, so without
 // this the suite writes into the developer's real `~/.veyyon` and trips the real-data tripwire.
 useIsolatedAgentDir();

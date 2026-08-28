@@ -22,10 +22,6 @@ import {
 	ConversationStepSchema,
 	type ConversationTokenDetails,
 	ConversationTurnStructureSchema,
-	type CursorRule,
-	CursorRuleSchema,
-	CursorRuleTypeGlobalSchema,
-	CursorRuleTypeSchema,
 	DeleteErrorSchema,
 	DeleteRejectedSchema,
 	DeleteResultSchema,
@@ -565,10 +561,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			// The h2 stream also ends when the connection simply stops, and those two
 			// are not the same event.
 			let turnCompleted = false;
-			// Whether THIS turn answered a `requestContextArgs` ask. Distinct from the
-			// conversation ledger: a turn that did not deliver is only a fault when the
-			// conversation has never delivered either.
-			let requestContextDelivered = false;
 			// A gateway that refuses answers with an HTTP status and a body, not
 			// with Connect frames. The status arrived at the handler below and was
 			// read only for the debug log, so a `401`, a `429` or a proxy's error
@@ -701,9 +693,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 								{
 									systemPromptBlobIds,
 									onFatal: failTurn,
-									onRequestContextDelivered: () => {
-										requestContextDelivered = true;
-									},
 								},
 							);
 						})();
@@ -1043,7 +1032,6 @@ export async function handleServerMessage(
 				output,
 				stream,
 				state,
-				delivery,
 			),
 		);
 	} else if (msgCase === "conversationCheckpointUpdate") {
@@ -1059,16 +1047,13 @@ export async function handleServerMessage(
  * prompt and a miss on some historical turn are the same event, and they are not: one is a
  * degraded transcript, the other is a model running with no instructions at all.
  *
- * `onRequestContextDelivered` is the other half of the same guarantee on the other channel. Both
- * channels can drop the caller's instructions without any error, so both report what they actually
- * did and let the turn decide.
+ * The rules payload the `requestContext` frame carries is empty by construction — the operator's
+ * instructions ride the active user turn — so that frame reports nothing back to the turn.
  */
 interface CursorTurnDelivery {
 	systemPromptBlobIds: ReadonlySet<string>;
 	/** Fails the turn. Wired to the same `endStreamError` channel a Connect end-stream error uses. */
 	onFatal: (error: Error) => void;
-	/** Called once the `requestContextResult` frame carrying the rules has been written. */
-	onRequestContextDelivered?: () => void;
 }
 
 function handleKvServerMessage(
@@ -1448,7 +1433,6 @@ async function handleExecServerMessage(
 	output: AssistantMessage,
 	stream: AssistantMessageEventStream,
 	state: BlockState,
-	delivery?: CursorTurnDelivery,
 ): Promise<void> {
 	const execCase = execMsg.message.case;
 	log("exec", "dispatch", { execCase, execId: execMsg.execId, hasHandlers: !!execHandlers });
@@ -1478,7 +1462,6 @@ async function handleExecServerMessage(
 		});
 
 		sendExecClientMessage(h2Request, execMsg, "requestContextResult", requestContextResult);
-		delivery?.onRequestContextDelivered?.();
 		log("execClient", "requestContextResult", { tools: requestContextTools.length });
 		return;
 	}
@@ -3236,8 +3219,7 @@ function countInstructionCopies(requestBytes: Uint8Array, headBlobs: readonly st
 	const decoder = new TextDecoder();
 	const escaped = JSON.stringify(instructions).slice(1, -1);
 	const countIn = (text: string): number =>
-		countTextOccurrences(text, instructions) +
-		(escaped === instructions ? 0 : countTextOccurrences(text, escaped));
+		countTextOccurrences(text, instructions) + (escaped === instructions ? 0 : countTextOccurrences(text, escaped));
 	let copies = countIn(decoder.decode(requestBytes));
 	for (const blob of headBlobs) copies += countIn(blob);
 	return copies;
