@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
-import { type SlashCommand, slashCommandCapability } from "@veyyon/coding-agent/capability/slash-command";
 import { resetSettingsForTest } from "@veyyon/coding-agent/config/settings";
 import { loadCapability } from "@veyyon/coding-agent/discovery";
+import { clearCache as clearFsCache } from "@veyyon/coding-agent/discovery/capability/fs";
+import { type SlashCommand, slashCommandCapability } from "@veyyon/coding-agent/discovery/capability/slash-command";
 import { removeWithRetries } from "@veyyon/utils";
 
 async function writeFile(filePath: string, content: string): Promise<void> {

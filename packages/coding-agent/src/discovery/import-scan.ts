@@ -9,11 +9,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 // Provider registrations are side effects of the discovery barrel.
 import "./index";
-import { FOREIGN_PROVIDER_IDS, loadCapability } from "../capability";
-import type { ContextFile } from "../capability/context-file";
-import { contextFileCapability } from "../capability/context-file";
-import type { DiscoveredSkill } from "../capability/skill";
-import { skillCapability } from "../capability/skill";
+import { FOREIGN_PROVIDER_IDS, loadCapability } from "./capability";
+import type { ContextFile } from "./capability/context-file";
+import { contextFileCapability } from "./capability/context-file";
+import type { DiscoveredSkill } from "./capability/skill";
+import { skillCapability } from "./capability/skill";
 
 export interface ImportCandidate {
 	kind: "skill" | "instructions";

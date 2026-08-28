@@ -6,9 +6,9 @@
  * and retry/replay once. Non-corrupt errors must NOT retry.
  */
 import { describe, expect, it } from "bun:test";
+import { TtsClient } from "../../src/speech/tts/tts-client";
+import type { TtsWorkerInbound, TtsWorkerOutbound } from "../../src/speech/tts/tts-protocol";
 import type { RefCountedWorkerHandle } from "../../src/subprocess/worker-client";
-import { TtsClient } from "../../src/tts/tts-client";
-import type { TtsWorkerInbound, TtsWorkerOutbound } from "../../src/tts/tts-protocol";
 
 const CORRUPT_ERROR =
 	"Load model from /cache/tiny-models/onnx-community/Kokoro-82M-v1.0-ONNX/onnx/model_quantized.onnx failed:Protobuf parsing failed.";

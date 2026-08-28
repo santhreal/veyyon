@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { decodePcmS16LE, decodeWavToMono16k, resampleLinear, TARGET_SAMPLE_RATE } from "@veyyon/coding-agent/stt/wav";
+import {
+	decodePcmS16LE,
+	decodeWavToMono16k,
+	resampleLinear,
+	TARGET_SAMPLE_RATE,
+} from "@veyyon/coding-agent/speech/stt/wav";
 
 /**
  * wav.ts is the pure-TypeScript WAV/PCM front end for speech-to-text: it decodes a

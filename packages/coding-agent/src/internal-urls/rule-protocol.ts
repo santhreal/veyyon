@@ -4,7 +4,7 @@
  * URL forms:
  * - rule://<name> - Reads rule content
  */
-import { getActiveRules } from "../capability/rule";
+import { getActiveRules } from "../discovery/capability/rule";
 import type { InternalResource, InternalUrl, ProtocolHandler, UrlCompletion } from "./types";
 
 export class RuleProtocolHandler implements ProtocolHandler {

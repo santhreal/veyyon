@@ -90,20 +90,20 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 | `session/` | `AgentSession`, JSONL session tree, storage, history | [session.md](../../docs/internal/session.md), [session-tree-architecture.md](../../docs/internal/session-tree-architecture.md) |
 | `config/`, `registry/`, `secrets/` | Settings, model/provider registry, secret obfuscation | [settings.md](../../docs/handbook/src/reference/settings.md), [config-usage.md](../../docs/handbook/src/architecture/config.md), [models.md](../../docs/handbook/src/reference/models-yml.md), [secrets.md](../../docs/handbook/src/architecture/secrets.md) |
 | `tools/` | Built-in tool implementations + render/meta helpers | [custom-tools.md](../../docs/handbook/src/using/custom-tools.md), [`tools/`](../../docs/tools/) |
-| `exec/`, `eval/`, `ssh/`, `dap/`, `debug/` | Execution backends (shell, py/js kernels, ssh, debugger) | [bash-tool-runtime.md](../../docs/internal/bash-tool-runtime.md), [python-repl.md](../../docs/handbook/src/features/python-repl.md) |
+| `exec/`, `eval/`, `ssh/`, `debug/` | Execution backends (shell, py/js kernels, ssh, debugger; `debug/dap/` is the adapter protocol) | [bash-tool-runtime.md](../../docs/internal/bash-tool-runtime.md), [python-repl.md](../../docs/handbook/src/features/python-repl.md) |
 | `lsp/` | Language-server client/runtime | [lsp-config.md](../../docs/handbook/src/features/lsp.md), [tools/lsp.md](../../docs/tools/lsp.md) |
-| `task/`, `swarm/`, `irc/`, `goals/`, `plan-mode/` | Subagent delegation, parallelism, inter-agent IRC, plan mode | [task-agent-discovery.md](../../docs/internal/task-agent-discovery.md), [tools/task.md](../../docs/tools/task.md) |
+| `task/`, `swarm/`, `goals/`, `plan-mode/` | Subagent delegation, parallelism, inter-agent IRC (`task/irc-bus.ts`), plan mode | [task-agent-discovery.md](../../docs/internal/task-agent-discovery.md), [tools/task.md](../../docs/tools/task.md) |
 | `web/`, `exa/` | Fetch, browser automation, search providers, scrapers | [tools/web_search.md](../../docs/tools/web_search.md), [tools/browser.md](../../docs/tools/browser.md) |
 | `mcp/` | MCP transport / manager / loader / tool bridge | [mcp-config.md](../../docs/handbook/src/reference/mcp-config.md), [mcp-runtime-lifecycle.md](../../docs/internal/mcp-runtime-lifecycle.md) |
 | `extensibility/`, `slash-commands/` | Extensions, hooks, custom tools/commands, skills, plugins | [extensions.md](../../docs/handbook/src/features/extensions.md), [hooks.md](../../docs/handbook/src/reference/hooks.md), [skills.md](../../docs/handbook/src/reference/skills.md) |
-| `capability/`, `discovery/`, `tool-discovery/` | Capability registry + provider discovery modules | [extension-loading.md](../../docs/internal/extension-loading.md), [context-files.md](../../docs/handbook/src/context/context-files.md) |
+| `discovery/` | Provider discovery plus the capability registry in `discovery/capability/` | [extension-loading.md](../../docs/internal/extension-loading.md), [context-files.md](../../docs/handbook/src/context/context-files.md) |
 | `advisor/`, `autolearn/`, `autoresearch/` | Advisor/watchdog, managed skills, background research | [advisor-watchdog.md](../../docs/handbook/src/features/advisor.md) |
-| `memories/`, `memory-backend/`, `mnemopi/`, `hindsight/` | Memory subsystems and backends | [memory.md](../../docs/handbook/src/architecture/memory.md), [mnemosyne-memory-backend.md](../../docs/internal/mnemosyne-memory-backend.md) |
+| `memory/` | Memory subsystems and backends, with `memory/mnemopi/` and `memory/hindsight/` | [memory.md](../../docs/handbook/src/architecture/memory.md), [mnemosyne-memory-backend.md](../../docs/internal/mnemosyne-memory-backend.md) |
 | `internal-urls/` | Router + handlers (`agent://`, `docs://`, `rule://`, …) | [tree.md](../../docs/handbook/src/reference/tree-command.md) |
 | `tui/`, `collab/` | Low-level TUI primitives, live session sharing | [tui.md](../../docs/handbook/src/architecture/tui.md), [collab.md](../../docs/handbook/src/features/collab.md) |
-| `tts/`, `stt/` | Text-to-speech / speech-to-text | — |
-| `tiny/`, `auto-thinking/` | Embedded tiny-model experiments, auto thinking level | [local-tiny-models.md](../../docs/internal/local-tiny-models.md) |
-| `async/`, `lib/`, `utils/`, `prompts/`, `edit/` | Shared plumbing, prompt assets, patch/diff engine | [tools/edit.md](../../docs/tools/edit.md) |
+| `speech/` | Text-to-speech (`speech/tts/`) and speech-to-text (`speech/stt/`) | — |
+| `tiny/`, `thinking/` | Embedded tiny-model experiments, thinking levels and the auto classifier | [local-tiny-models.md](../../docs/internal/local-tiny-models.md) |
+| `async/`, `utils/`, `prompts/`, `edit/` | Shared plumbing, prompt assets, patch/diff engine | [tools/edit.md](../../docs/tools/edit.md) |
 | `system-prompt-builder/` | Section and statement registries, banner grammar, gate resolution, prompt inspection | [system-prompt-architecture.md](../../docs/internal/system-prompt-architecture.md), [system-prompt-customization.md](../../docs/handbook/src/models/system-prompt.md) |
 
 ## Subsystem reference

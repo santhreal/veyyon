@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { xmlNodeText } from "@veyyon/coding-agent/markit/converters/xml-text";
+import { xmlNodeText } from "@veyyon/coding-agent/export/markit/converters/xml-text";
 
 /**
  * xmlNodeText is the one owner of "get the text out of a fast-xml-parser node"

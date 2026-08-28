@@ -3,15 +3,15 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import * as dapModule from "@veyyon/coding-agent/dap";
-import { DapClient } from "@veyyon/coding-agent/dap/client";
-import { DapSessionManager } from "@veyyon/coding-agent/dap/session";
+import * as dapModule from "@veyyon/coding-agent/debug/dap";
+import { DapClient } from "@veyyon/coding-agent/debug/dap/client";
+import { DapSessionManager } from "@veyyon/coding-agent/debug/dap/session";
 import type {
 	DapCapabilities,
 	DapClientState,
 	DapEventMessage,
 	DapResolvedAdapter,
-} from "@veyyon/coding-agent/dap/types";
+} from "@veyyon/coding-agent/debug/dap/types";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { DebugTool } from "@veyyon/coding-agent/tools/debug";
 import { removeWithRetries } from "@veyyon/utils";

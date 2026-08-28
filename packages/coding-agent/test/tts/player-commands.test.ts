@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { type PlayerLookup, playerCommandsFor } from "@veyyon/coding-agent/tts/player";
+import { type PlayerLookup, playerCommandsFor } from "@veyyon/coding-agent/speech/tts/player";
 
 /**
  * playerCommandsFor builds the ordered list of audio-playback commands to try for a file on a given

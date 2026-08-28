@@ -34,7 +34,7 @@
  * the right glyph, which is the symbol theme's business.
  */
 import { describe, expect, it } from "bun:test";
-import type { Rule } from "@veyyon/coding-agent/capability/rule";
+import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
 import { createSourceMeta } from "@veyyon/coding-agent/discovery/helpers";
 import { TodoReminderComponent } from "@veyyon/coding-agent/modes/components/todo-reminder";
 import { renderTranscriptNote } from "@veyyon/coding-agent/modes/components/transcript-note";

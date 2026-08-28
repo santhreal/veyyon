@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeDetachedFirstColumnTables } from "@veyyon/coding-agent/markit/converters/pdf/render";
-import type { ContentBlock } from "@veyyon/coding-agent/markit/converters/pdf/types";
+import { normalizeDetachedFirstColumnTables } from "@veyyon/coding-agent/export/markit/converters/pdf/render";
+import type { ContentBlock } from "@veyyon/coding-agent/export/markit/converters/pdf/types";
 
 /**
  * normalizeDetachedFirstColumnTables reconstructs a table whose first column the

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { SpeakableStream } from "@veyyon/coding-agent/tts/speakable";
+import { SpeakableStream } from "@veyyon/coding-agent/speech/tts/speakable";
 
 /** Push each delta in order, then flush; returns per-push segments plus the flush tail. */
 function speak(...deltas: string[]): { pushed: string[][]; all: string[] } {
@@ -90,7 +90,7 @@ describe("SpeakableStream inline markup and line markers", () => {
 
 describe("SpeakableStream file paths", () => {
 	it("collapses a multi-directory path to its basename", () => {
-		const { all } = speak("Edit packages/coding-agent/src/tts/vocalizer.ts to fix it.\n");
+		const { all } = speak("Edit packages/coding-agent/src/speech/tts/vocalizer.ts to fix it.\n");
 		expect(all).toEqual(["Edit vocalizer.ts to fix it."]);
 	});
 

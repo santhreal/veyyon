@@ -23,7 +23,7 @@ Boundary rule: the TUI engine is message-agnostic. It only knows `Component.rend
 - [`packages/coding-agent/src/modes/components/custom-editor.ts`](../../packages/coding-agent/src/modes/components/custom-editor.ts)
 - [`packages/tui/src/tui.ts`](../../packages/tui/src/tui.ts)
 - [`packages/tui/src/terminal.ts`](../../packages/tui/src/terminal.ts)
-- [`packages/tui/src/editor-component.ts`](../../packages/tui/src/editor-component.ts)
+- [`packages/tui/src/components/editor-component.ts`](../../packages/tui/src/components/editor-component.ts)
 - [`packages/tui/src/stdin-buffer.ts`](../../packages/tui/src/stdin-buffer.ts)
 - [`packages/tui/src/components/loader.ts`](../../packages/tui/src/components/loader.ts)
 
@@ -230,4 +230,4 @@ Throttled/debounced paths:
 
 The runtime therefore mixes event-driven state transitions with bounded render cadence to keep interactivity responsive without repaint storms.
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `632fd91c3b4e` on 2026-08-28.*

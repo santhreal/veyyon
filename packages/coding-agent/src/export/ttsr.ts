@@ -8,8 +8,8 @@
 import * as path from "node:path";
 import { AstMatchStrictness, astMatch } from "@veyyon/natives";
 import { errorMessage, logger, nearestNames } from "@veyyon/utils";
-import type { Rule } from "../capability/rule";
 import type { TtsrSettings } from "../config/settings";
+import type { Rule } from "../discovery/capability/rule";
 
 export type TtsrMatchSource = "text" | "thinking" | "tool";
 

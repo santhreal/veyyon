@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { contextFileCapability } from "@veyyon/coding-agent/capability/context-file";
 import {
 	ensureProfileAgentsFile,
 	ensureProfileAgentsFileAt,
@@ -9,6 +8,7 @@ import {
 	PROFILE_AGENTS_GUIDANCE,
 	stripManagedGuidance,
 } from "@veyyon/coding-agent/discovery/agents-guidance";
+import { contextFileCapability } from "@veyyon/coding-agent/discovery/capability/context-file";
 import { setAgentDir, TempDir } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 import * as logger from "@veyyon/utils/logger";

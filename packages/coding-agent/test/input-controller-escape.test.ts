@@ -4,7 +4,7 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
 import type { InteractiveModeContext, SubmittedUserInput } from "@veyyon/coding-agent/modes/types";
 import { USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
-import { vocalizer } from "@veyyon/coding-agent/tts/vocalizer";
+import { vocalizer } from "@veyyon/coding-agent/speech/tts/vocalizer";
 import * as logger from "@veyyon/utils/logger";
 
 type Spy = Mock<(...args: unknown[]) => unknown>;

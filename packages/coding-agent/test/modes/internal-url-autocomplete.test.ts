@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import * as capability from "@veyyon/coding-agent/capability";
-import type { Rule } from "@veyyon/coding-agent/capability/rule";
-import { resetActiveRulesForTests, setActiveRules } from "@veyyon/coding-agent/capability/rule";
-import type { SSHHost } from "@veyyon/coding-agent/capability/ssh";
-import type { CapabilityResult } from "@veyyon/coding-agent/capability/types";
+import * as capability from "@veyyon/coding-agent/discovery/capability";
+import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
+import { resetActiveRulesForTests, setActiveRules } from "@veyyon/coding-agent/discovery/capability/rule";
+import type { SSHHost } from "@veyyon/coding-agent/discovery/capability/ssh";
+import type { CapabilityResult } from "@veyyon/coding-agent/discovery/capability/types";
 import type { Skill } from "@veyyon/coding-agent/extensibility/skills";
 import { resetActiveSkillsForTests, setActiveSkills } from "@veyyon/coding-agent/extensibility/skills";
 import { InternalUrlRouter } from "@veyyon/coding-agent/internal-urls/router";

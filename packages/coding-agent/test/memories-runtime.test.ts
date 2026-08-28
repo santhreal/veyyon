@@ -10,8 +10,8 @@ import {
 	buildMemoryToolDeveloperInstructions,
 	getMemoryRoot,
 	startMemoryStartupTask,
-} from "@veyyon/coding-agent/memories";
-import * as memoryStorage from "@veyyon/coding-agent/memories/storage";
+} from "@veyyon/coding-agent/memory/local";
+import * as memoryStorage from "@veyyon/coding-agent/memory/storage";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { getAgentDbPath, Snowflake, TempDir } from "@veyyon/utils";
 

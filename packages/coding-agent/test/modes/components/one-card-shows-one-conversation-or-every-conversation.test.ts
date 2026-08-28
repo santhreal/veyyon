@@ -29,12 +29,12 @@
  * process-global and this is a per-process surface.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { IrcBus } from "@veyyon/coding-agent/irc/bus";
 import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { IrcBus } from "@veyyon/coding-agent/task/irc-bus";
 import type { TUI } from "@veyyon/tui";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 

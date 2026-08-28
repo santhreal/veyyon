@@ -13,11 +13,11 @@ import { Args, Command, Flags } from "@veyyon/utils/cli";
 import chalk from "chalk";
 import { makeCoarseStepPrinter } from "../cli/progress-line";
 import { Settings, settings } from "../config/settings";
-import { TTS_LOCAL_MODEL_VALUES, TTS_LOCAL_MODELS, TTS_LOCAL_VOICE_VALUES } from "../tts/models";
-import { SpeakableStream } from "../tts/speakable";
-import { StreamingAudioPlayer } from "../tts/streaming-player";
-import { shutdownTtsClient, ttsClient } from "../tts/tts-client";
-import { encodeWav } from "../tts/wav";
+import { TTS_LOCAL_MODEL_VALUES, TTS_LOCAL_MODELS, TTS_LOCAL_VOICE_VALUES } from "../speech/tts/models";
+import { SpeakableStream } from "../speech/tts/speakable";
+import { StreamingAudioPlayer } from "../speech/tts/streaming-player";
+import { shutdownTtsClient, ttsClient } from "../speech/tts/tts-client";
+import { encodeWav } from "../speech/tts/wav";
 
 export default class Say extends Command {
 	static description = "Synthesize text with the local TTS engine and play it through the speakers";

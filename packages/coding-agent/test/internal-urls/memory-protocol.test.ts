@@ -3,13 +3,13 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { InternalUrlRouter } from "@veyyon/coding-agent/internal-urls";
-import { getMemoryRoot } from "@veyyon/coding-agent/memories";
+import { getMemoryRoot } from "@veyyon/coding-agent/memory/local";
 import {
 	loadMnemopi,
 	loadMnemopiCore,
 	MnemopiSessionState,
 	setMnemopiSessionState,
-} from "@veyyon/coding-agent/mnemopi/state";
+} from "@veyyon/coding-agent/memory/mnemopi/state";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { removeWithRetries, setAgentDir, TempDir } from "@veyyon/utils";

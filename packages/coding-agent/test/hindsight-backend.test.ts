@@ -10,9 +10,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { hindsightBackend, reloadMentalModelsForSession } from "@veyyon/coding-agent/hindsight/backend";
-import { HindsightApi } from "@veyyon/coding-agent/hindsight/client";
-import type { HindsightSessionState } from "@veyyon/coding-agent/hindsight/state";
+import { hindsightBackend, reloadMentalModelsForSession } from "@veyyon/coding-agent/memory/hindsight/backend";
+import { HindsightApi } from "@veyyon/coding-agent/memory/hindsight/client";
+import type { HindsightSessionState } from "@veyyon/coding-agent/memory/hindsight/state";
 import type { AgentSessionEventListener } from "@veyyon/coding-agent/session/agent-session";
 
 interface FakeSessionDeps {

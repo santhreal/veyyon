@@ -14,8 +14,8 @@
   - `packages/coding-agent/src/tools/browser/attach.ts`: CDP attach/reuse, target picking, spawned-app process handling.
   - `packages/coding-agent/src/tools/browser/tab-protocol.ts`: worker init/run/result message schema.
   - `packages/coding-agent/src/tools/browser/readable.ts`: `tab.extract()` readability extraction.
-  - `packages/coding-agent/src/tools/browser/aria/aria-snapshot.ts`: `captureAriaSnapshot()` (puppeteer/CDP path) and `buildAriaSnapshotScript()` (cmux path); imports the committed `aria-snapshot.bundle.txt`.
-  - `packages/coding-agent/src/tools/browser/aria/aria-snapshot.bundle.txt`: generated, committed artifact: Playwright's injected ARIA-snapshot sources (Apache-2.0, (c) Microsoft; ARIA tree + W3C accessible-name computation) bundled to a CJS module. Upstream sources are not vendored into the repo.
+  - `packages/coding-agent/src/tools/browser/aria-snapshot.ts`: `captureAriaSnapshot()` (puppeteer/CDP path) and `buildAriaSnapshotScript()` (cmux path); imports the committed `aria-snapshot.bundle.txt`.
+  - `packages/coding-agent/src/tools/browser/aria-snapshot.bundle.txt`: generated, committed artifact: Playwright's injected ARIA-snapshot sources (Apache-2.0, (c) Microsoft; ARIA tree + W3C accessible-name computation) bundled to a CJS module. Upstream sources are not vendored into the repo.
   - `packages/coding-agent/scripts/generate-aria-snapshot.ts`: fetches the pinned Playwright sources to a temp dir and bundles them into `aria-snapshot.bundle.txt` (CJS, browser target). Dev-time, network-bound; only the bundle is committed.
   - `packages/coding-agent/src/tools/browser/cmux/rpc.ts`: cmux browser-kind resolution plus snapshot/eval/wait-state helpers for the cmux backend.
   - `packages/coding-agent/src/tools/browser/cmux/socket-client.ts`: `CmuxSocketClient`: JSON-RPC over the cmux unix socket.

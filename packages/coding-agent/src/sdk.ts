@@ -38,9 +38,6 @@ import {
 import { armArgotAfterStartup } from "./argot-cache";
 import { AsyncJobManager, type AsyncJobType } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
-import { type CapabilityResult, loadCapability } from "./capability";
-import { type Rule, ruleCapability, setActiveRules } from "./capability/rule";
-import { bucketRules, type RuleBuckets } from "./capability/rule-buckets";
 import { shouldEnableAppendOnlyContext } from "./config/append-only-context-mode";
 import { isAuthenticated, kNoAuth } from "./config/auth-state";
 import { resolveDialect } from "./config/dialect-format";
@@ -64,6 +61,9 @@ import { loadPromptTemplates as loadPromptTemplatesInternal, type PromptTemplate
 import { buildServiceTierByFamily } from "./config/service-tier";
 import { Settings, type SkillsSettings } from "./config/settings";
 import { CursorExecHandlers, cursorContextFileRules, usesCursorRuleDelivery } from "./cursor";
+import { type CapabilityResult, loadCapability } from "./discovery/capability";
+import { type Rule, ruleCapability, setActiveRules } from "./discovery/capability/rule";
+import { bucketRules, type RuleBuckets } from "./discovery/capability/rule-buckets";
 import { TtsrManager } from "./export/ttsr";
 import { DEFAULT_PLAN_FILE_URL } from "./plan-mode/plan-file-url";
 import { resolveGateInputs, resolveIntentField } from "./system-prompt-builder/gate-inputs";
@@ -79,6 +79,16 @@ import { buildArgotGate, expandToolArguments } from "./argot-wire";
 import { DEFAULT_MODEL_SLOT } from "./config/model-roles";
 import { optionalNumber } from "./config/optional-number";
 import { initializeWithSettings } from "./discovery";
+import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "./discovery/mode";
+import {
+	collectDiscoverableTools,
+	type DiscoverableTool,
+	filterBySource,
+	formatDiscoverableToolServerSummary,
+	isMCPToolName,
+	selectDiscoverableToolNamesByServer,
+	summarizeDiscoverableTools,
+} from "./discovery/tool-index";
 import { disposeAllJuliaKernelSessions, disposeJuliaKernelSessionsByOwner } from "./eval/jl/executor";
 import { disposeAllVmContexts, disposeVmContextsByOwner } from "./eval/js/context-manager";
 import { disposeAllKernelSessions, disposeKernelSessionsByOwner } from "./eval/py/executor";
@@ -114,8 +124,6 @@ import {
 	setActiveSkills,
 } from "./extensibility/skills";
 import { type FileSlashCommand, loadSlashCommands as loadSlashCommandsInternal } from "./extensibility/slash-commands";
-import { resolveHarnessProfileForModel, resolvePromptSectionOrderForModel } from "./harness/model-profile";
-import type { HindsightSessionState } from "./hindsight/state";
 import { LocalProtocolHandler, type LocalProtocolOptions } from "./internal-urls";
 import { type JsonWithOptionalFields, mapJsonStrings } from "./json-transform";
 import { describeLegacyPromptFile, findLegacyPromptFiles } from "./legacy-system-prompt-files";
@@ -130,12 +138,13 @@ import {
 	parseMCPToolName,
 } from "./mcp";
 import { MCP_CONNECTION_STATUS_EVENT_CHANNEL, type McpConnectionStatusEvent } from "./mcp/startup-events";
-import { createSessionMemoryRuntimeContext, resolveMemoryBackend } from "./memory-backend";
-import type { MnemopiSessionState } from "./mnemopi/state";
+import { createSessionMemoryRuntimeContext, resolveMemoryBackend } from "./memory/backend";
+import type { HindsightSessionState } from "./memory/hindsight/state";
+import type { MnemopiSessionState } from "./memory/mnemopi/state";
 import { toolsPrompts } from "./prompts/tools/rows";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID, mainAgentIdFor } from "./registry/agent-registry";
-import { createRepairToolCallArgumentsHook } from "./repair/agent-hook";
+import { resolveHarnessProfileForModel, resolvePromptSectionOrderForModel } from "./registry/model-profile";
 import {
 	collectEnvSecrets,
 	deobfuscateToolArguments,
@@ -203,16 +212,6 @@ import {
 	shouldDisableReasoning,
 	toReasoningEffort,
 } from "./thinking";
-import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "./tool-discovery/mode";
-import {
-	collectDiscoverableTools,
-	type DiscoverableTool,
-	filterBySource,
-	formatDiscoverableToolServerSummary,
-	isMCPToolName,
-	selectDiscoverableToolNamesByServer,
-	summarizeDiscoverableTools,
-} from "./tool-discovery/tool-index";
 import {
 	BUILTIN_TOOLS,
 	type ContextFileEntry,
@@ -233,6 +232,7 @@ import {
 } from "./tools/image-gen";
 import { resolveDiscoveryAllForceActive, resolveInitialActiveToolNames } from "./tools/loading";
 import { wrapToolWithMetaNotice } from "./tools/output-meta";
+import { createRepairToolCallArgumentsHook } from "./tools/repair/agent-hook";
 import { queueResolveHandler } from "./tools/resolve";
 import { renderSearchToolBm25Description, SearchToolBm25Tool } from "./tools/search-tool-bm25";
 import { ttsTool } from "./tools/tts";

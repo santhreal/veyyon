@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { renderTableToMarkdown } from "@veyyon/coding-agent/markit/converters/pdf/render";
-import type { TableCell, TableGrid } from "@veyyon/coding-agent/markit/converters/pdf/types";
+import { renderTableToMarkdown } from "@veyyon/coding-agent/export/markit/converters/pdf/render";
+import type { TableCell, TableGrid } from "@veyyon/coding-agent/export/markit/converters/pdf/types";
 
 /**
  * renderTableToMarkdown turns a resolved PDF TableGrid into a GFM markdown table.

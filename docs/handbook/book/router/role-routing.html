@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-89f274d4.js";
+            window.path_to_searchindex_js = "../searchindex-59599711.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -214,7 +214,7 @@ Edit roles under Settings → Model → Roles and subagent policy under Settings
 continuous-review mechanism rather than a mode you invoke; <code>/advisor</code> reports and configures it.
 See <code>docs/handbook/src/features/advisor.md</code>.</li>
 <li><strong>Addressed inter-agent messaging</strong> via the <code>irc</code> tool (<code>packages/coding-agent/src/tools/irc.ts</code>,
-<code>packages/coding-agent/src/irc/bus.ts</code>): <code>send</code>/<code>wait</code>/<code>inbox</code>/<code>list</code> ops over a process-global bus.
+<code>packages/coding-agent/src/task/irc-bus.ts</code>): <code>send</code>/<code>wait</code>/<code>inbox</code>/<code>list</code> ops over a process-global bus.
 <code>send</code> is fire-and-forget with delivery receipts; the bus wakes an idle recipient with a real turn,
 revives a parked one, or injects a non-interrupting aside into a busy one, the shipped analogue of
 wake-now-vs-defer message routing. <code>wait</code> (or <code>send await:true</code>) observes the recipient’s reply as a

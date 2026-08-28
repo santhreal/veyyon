@@ -246,7 +246,7 @@ export default class Index extends Command {
 		// paints no card no-ops, and the runs that skip the paint (`--version`,
 		// `--export`, `--print`, a protocol mode) load `../main` immediately
 		// below regardless, making this module load noise against that.
-		const { runStartupPrologue, shouldPrepaintLaunchCard } = await import("../startup/launch-card");
+		const { runStartupPrologue, shouldPrepaintLaunchCard } = await import("../cli/launch-card");
 		if (shouldPrepaintLaunchCard(parsed)) await runStartupPrologue(parsed);
 		const { runRootCommand } = await import("../main");
 		await runRootCommand(parsed, args);

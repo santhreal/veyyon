@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-89f274d4.js";
+            window.path_to_searchindex_js = "searchindex-59599711.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -430,12 +430,12 @@ prompt ──► │  veyyon (packages/coding-agent)                            
 <li><strong>One primary edit path.</strong> Hashline is the default edit surface; alternate <code>edit.mode</code> values exist for compatibility.</li>
 <li><strong>Explicit failures.</strong> Invalid config, stale hashline tags, and denied actions return actionable errors to the operator or model. Denied tools do not auto-escalate permissions.</li>
 </ol>
-<p>Tool-call argument repair (alias maps, strict unknown-key rejection, parse leniency) runs at the dispatch seam in <code>packages/coding-agent/src/repair/schema-repair.ts</code>. See <a href="#tool-call-repair">Repair</a>. Providers and models: <a href="#the-provider-stack-and-bring-your-own-key">Providers</a>.</p>
+<p>Tool-call argument repair (alias maps, strict unknown-key rejection, parse leniency) runs at the dispatch seam in <code>packages/coding-agent/src/tools/repair/schema-repair.ts</code>. See <a href="#tool-call-repair">Repair</a>. Providers and models: <a href="#the-provider-stack-and-bring-your-own-key">Providers</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="performance"><a class="header" href="#performance">Performance</a></h1>
 <p>Agent execution latency is composed of model generation latency, tool execution I/O, validation failure retries, and harness runtime overhead.</p>
 <h2 id="retry-bounds"><a class="header" href="#retry-bounds">Retry bounds</a></h2>
-<p>Tool calls or edits that fail schema validation or patch application require additional model turns. Schema repair on tool arguments and patch validation on edits catch structural issues before execution. Implementation: <code>packages/coding-agent/src/repair/</code>, <code>@veyyon/hashline</code>.</p>
+<p>Tool calls or edits that fail schema validation or patch application require additional model turns. Schema repair on tool arguments and patch validation on edits catch structural issues before execution. Implementation: <code>packages/coding-agent/src/tools/repair/</code>, <code>@veyyon/hashline</code>.</p>
 <h2 id="edit-path"><a class="header" href="#edit-path">Edit path</a></h2>
 <p>Hashline edits reference surrounding anchor lines rather than full file rewrites, so a patch contains the changed lines and their anchors instead of a new copy of the file. Applying one costs <code>O(file bytes + output bytes + patch)</code>. The applier splits the body into lines once, walks it once, and joins the result once, so cost tracks file length rather than patch length: about 1ns per input byte, or 3ms for a 100,000-line file on a Ryzen 9 9950X. A file with CRLF endings costs roughly twice that, because the body is normalized to LF before the edit and restored after it. Run <code>bun bench/hot-paths.bench.ts</code> in <code>packages/hashline</code> to reproduce the curve. It prints the cost per byte at 10,000, 100,000 and 1,000,000 lines for a single edit and for a range delete, and fails when that cost stops being flat. See <a href="#the-hashline-edit-engine">Hashline engine</a>.</p>
 <h2 id="edit-preview-while-arguments-stream"><a class="header" href="#edit-preview-while-arguments-stream">Edit preview while arguments stream</a></h2>
@@ -7258,7 +7258,7 @@ See <a href="#approvals">Approvals</a>.</p>
 <li>An empty or whitespace-only personality file is treated as absent: the next tier (or the built-in) is used instead, so the block is never emitted empty.</li>
 <li>Setting <code>personality</code> to a name that resolves to nothing (no built-in, user, or project file) falls back to <code>default</code> and prints a visible warning; the <code>&lt;personality&gt;</code> block is never silently emitted empty for a real (non-<code>none</code>) request.</li>
 </ul>
-<p>See <code>packages/coding-agent/src/personality/resolver.ts</code> for the resolver implementation.</p>
+<p>See <code>packages/coding-agent/src/config/personality-resolver.ts</code> for the resolver implementation.</p>
 <h2 id="boundaries"><a class="header" href="#boundaries">Boundaries</a></h2>
 <ul>
 <li>Personality does not grant tools, change <code>tools.approvalMode</code>, or bypass sandboxing.</li>
@@ -15638,7 +15638,7 @@ written.</p>
 </ul>
 <p>Key integration points:</p>
 <ul>
-<li><code>packages/coding-agent/src/capability/index.ts</code></li>
+<li><code>packages/coding-agent/src/discovery/capability/index.ts</code></li>
 <li><code>packages/coding-agent/src/discovery/index.ts</code></li>
 <li><code>packages/coding-agent/src/extensibility/skills.ts</code></li>
 <li><code>packages/coding-agent/src/extensibility/hooks/loader.ts</code></li>
@@ -16595,8 +16595,8 @@ memories every turn.</p>
 <p>Additional tuning knobs (concurrency, lease durations, token budgets) are available in config for advanced use.</p>
 <h2 id="key-files-2"><a class="header" href="#key-files-2">Key files</a></h2>
 <ul>
-<li><code>packages/coding-agent/src/memories/index.ts</code>: pipeline orchestration, injection, clear/enqueue entry points (the <code>/memory</code> command routes here via <code>packages/coding-agent/src/memory-backend/local-backend.ts</code>)</li>
-<li><code>packages/coding-agent/src/memories/storage.ts</code>: SQLite-backed job queue and thread registry</li>
+<li><code>packages/coding-agent/src/memory/local.ts</code>: pipeline orchestration, injection, clear/enqueue entry points (the <code>/memory</code> command routes here via <code>packages/coding-agent/src/memory/local-backend.ts</code>)</li>
+<li><code>packages/coding-agent/src/memory/storage.ts</code>: SQLite-backed job queue and thread registry</li>
 <li><code>packages/coding-agent/src/prompts/memories/</code>: memory prompt templates</li>
 <li><code>packages/coding-agent/src/internal-urls/memory-protocol.ts</code>: <code>memory://</code> URL handler</li>
 </ul>
@@ -17151,7 +17151,8 @@ After navigation with summary:
 <li><strong>Sanitize tabs/content</strong> from external sources using <code>replaceTabs()</code> (and higher-level sanitizers in coding-agent render paths).</li>
 </ol>
 <p>Minimal pattern:</p>
-<pre><code class="language-ts">import { replaceTabs, truncateToWidth } from "@veyyon/tui";
+<pre><code class="language-ts">import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 
 render(width: number): readonly string[] {
   return this.lines.map(line =&gt; truncateToWidth(replaceTabs(line), width));
@@ -17249,12 +17250,10 @@ return loader;
 </code></pre>
 <h2 id="realistic-custom-component-example-extension-command"><a class="header" href="#realistic-custom-component-example-extension-command">Realistic custom component example (extension command)</a></h2>
 <pre><code class="language-ts">import type { Component } from "@veyyon/tui";
-import {
-  SelectList,
-  matchesKey,
-  replaceTabs,
-  truncateToWidth,
-} from "@veyyon/tui";
+import { SelectList } from "@veyyon/tui";
+import { matchesKey } from "@veyyon/utils/keys";
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import {
   getSelectListTheme,
   type ExtensionAPI,
@@ -17321,8 +17320,8 @@ export default function extension(pi: ExtensionAPI): void {
 <h2 id="key-implementation-files-1"><a class="header" href="#key-implementation-files-1">Key implementation files</a></h2>
 <ul>
 <li><code>packages/tui/src/tui.ts</code>: <code>Component</code>, <code>Focusable</code>, cursor marker, focus, overlay, input dispatch.</li>
-<li><code>packages/tui/src/utils.ts</code>: width/truncation/sanitization primitives.</li>
-<li><code>packages/tui/src/keys.ts</code> / <code>keybindings.ts</code>: key parsing and configurable action mapping.</li>
+<li><code>packages/utils/src/width.ts</code>: width/truncation/sanitization primitives.</li>
+<li><code>packages/utils/src/keys.ts</code> / <code>keybindings.ts</code>: key parsing and configurable action mapping.</li>
 <li><code>packages/coding-agent/src/modes/controllers/extension-ui-controller.ts</code>: interactive mounting/unmounting for extension/hook/custom-tool UI.</li>
 <li><code>packages/coding-agent/src/extensibility/extensions/types.ts</code>: extension UI and renderer contracts.</li>
 <li><code>packages/coding-agent/src/extensibility/hooks/types.ts</code>: hook UI contract (legacy custom signature).</li>
@@ -17532,7 +17531,7 @@ that writes a render into <code>assets/</code>. Drivers write outside the tracke
 </tbody>
 </table>
 </div>
-<p>Implementation: <code>packages/coding-agent/src/repair/schema-repair.ts</code><br>Tests: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code></p>
+<p>Implementation: <code>packages/coding-agent/src/tools/repair/schema-repair.ts</code><br>Tests: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code></p>
 <h2 id="related-18"><a class="header" href="#related-18">Related</a></h2>
 <ul>
 <li><a href="#the-repair-cascade">The repair cascade</a>: ordered rules</li>
@@ -17542,7 +17541,7 @@ that writes a render into <code>assets/</code>. Drivers write outside the tracke
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-repair-cascade"><a class="header" href="#the-repair-cascade">The repair cascade</a></h1>
-<p>Before argument validation, the agent loop runs <code>packages/coding-agent/src/repair/schema-repair.ts</code> in this order:</p>
+<p>Before argument validation, the agent loop runs <code>packages/coding-agent/src/tools/repair/schema-repair.ts</code> in this order:</p>
 <ol>
 <li><strong>Parse leniency</strong>: trailing commas / relaxed JSON; stringified argument blobs.</li>
 <li><strong>Alias / typo key rename</strong>: unknown keys that match a common alias (<code>filepath</code> → <code>path</code>, <code>contents</code> → <code>content</code>) or a casing/separator typo of a declared property are renamed to the declared name. Refuse when the rename would be ambiguous (two unknown keys map to the same property, one unknown key matches more than one declared property, or the alias target already has a value).</li>
@@ -18909,7 +18908,7 @@ Edit roles under Settings → Model → Roles and subagent policy under Settings
 continuous-review mechanism rather than a mode you invoke; <code>/advisor</code> reports and configures it.
 See <code>docs/handbook/src/features/advisor.md</code>.</li>
 <li><strong>Addressed inter-agent messaging</strong> via the <code>irc</code> tool (<code>packages/coding-agent/src/tools/irc.ts</code>,
-<code>packages/coding-agent/src/irc/bus.ts</code>): <code>send</code>/<code>wait</code>/<code>inbox</code>/<code>list</code> ops over a process-global bus.
+<code>packages/coding-agent/src/task/irc-bus.ts</code>): <code>send</code>/<code>wait</code>/<code>inbox</code>/<code>list</code> ops over a process-global bus.
 <code>send</code> is fire-and-forget with delivery receipts; the bus wakes an idle recipient with a real turn,
 revives a parked one, or injects a non-interrupting aside into a busy one, the shipped analogue of
 wake-now-vs-defer message routing. <code>wait</code> (or <code>send await:true</code>) observes the recipient’s reply as a

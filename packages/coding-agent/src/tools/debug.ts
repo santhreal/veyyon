@@ -37,7 +37,7 @@ import {
 	resolveLaunchOverrides,
 	selectAttachAdapter,
 	selectLaunchAdapter,
-} from "../dap";
+} from "../debug/dap";
 import type { Theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { renderStatusLine } from "../tui";

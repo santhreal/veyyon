@@ -7,7 +7,7 @@ import {
 	initializeWithSettings,
 	type RegistrySnapshot,
 	restoreRegistryForTests,
-} from "@veyyon/coding-agent/capability";
+} from "@veyyon/coding-agent/discovery/capability";
 import "@veyyon/coding-agent/discovery";
 import { clearCustomApis } from "@veyyon/ai/api-registry";
 import { createMockModel, registerMockApi } from "@veyyon/ai/providers/mock";

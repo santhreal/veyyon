@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import * as capability from "../../capability";
-import type { SSHHost } from "../../capability/ssh";
-import type { CapabilityResult, SourceMeta } from "../../capability/types";
+import * as capability from "../../discovery/capability";
+import type { SSHHost } from "../../discovery/capability/ssh";
+import type { CapabilityResult, SourceMeta } from "../../discovery/capability/types";
 import * as fileTransfer from "../../ssh/file-transfer";
 import { parseInternalUrl } from "../parse";
 import { SshProtocolHandler } from "../ssh-protocol";

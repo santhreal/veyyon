@@ -27,7 +27,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { HindsightSessionState } from "@veyyon/coding-agent/hindsight/state";
+import { HindsightSessionState } from "@veyyon/coding-agent/memory/hindsight/state";
 import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 import { logger } from "@veyyon/utils";
 

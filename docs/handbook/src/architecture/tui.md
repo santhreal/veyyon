@@ -58,7 +58,8 @@ Your `render(width)` output must be terminal-safe:
 Minimal pattern:
 
 ```ts
-import { replaceTabs, truncateToWidth } from "@veyyon/tui";
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 
 render(width: number): readonly string[] {
   return this.lines.map(line => truncateToWidth(replaceTabs(line), width));
@@ -186,12 +187,10 @@ return loader;
 
 ```ts
 import type { Component } from "@veyyon/tui";
-import {
-  SelectList,
-  matchesKey,
-  replaceTabs,
-  truncateToWidth,
-} from "@veyyon/tui";
+import { SelectList } from "@veyyon/tui";
+import { matchesKey } from "@veyyon/utils/keys";
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import {
   getSelectListTheme,
   type ExtensionAPI,
@@ -259,8 +258,8 @@ export default function extension(pi: ExtensionAPI): void {
 ## Key implementation files
 
 - `packages/tui/src/tui.ts`: `Component`, `Focusable`, cursor marker, focus, overlay, input dispatch.
-- `packages/tui/src/utils.ts`: width/truncation/sanitization primitives.
-- `packages/tui/src/keys.ts` / `keybindings.ts`: key parsing and configurable action mapping.
+- `packages/utils/src/width.ts`: width/truncation/sanitization primitives.
+- `packages/utils/src/keys.ts` / `keybindings.ts`: key parsing and configurable action mapping.
 - `packages/coding-agent/src/modes/controllers/extension-ui-controller.ts`: interactive mounting/unmounting for extension/hook/custom-tool UI.
 - `packages/coding-agent/src/extensibility/extensions/types.ts`: extension UI and renderer contracts.
 - `packages/coding-agent/src/extensibility/hooks/types.ts`: hook UI contract (legacy custom signature).

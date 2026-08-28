@@ -6,7 +6,7 @@ import {
 	markGlobalPhase2Succeeded,
 	openMemoryDb,
 	upsertThreads,
-} from "@veyyon/coding-agent/memories/storage";
+} from "@veyyon/coding-agent/memory/storage";
 import { TempDir } from "@veyyon/utils";
 
 describe("memory storage schema migration", () => {

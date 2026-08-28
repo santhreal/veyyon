@@ -22,7 +22,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { MnemopiSessionState } from "@veyyon/coding-agent/mnemopi/state";
+import type { MnemopiSessionState } from "@veyyon/coding-agent/memory/mnemopi/state";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { MemoryEditTool } from "@veyyon/coding-agent/tools/memory-edit";
 import { MemoryRetainTool } from "@veyyon/coding-agent/tools/memory-retain";

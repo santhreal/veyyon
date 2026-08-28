@@ -8,7 +8,7 @@
  * deleted by hand.
  */
 import { describe, expect, it } from "bun:test";
-import { isCorruptModelCacheError } from "@veyyon/coding-agent/tts/models";
+import { isCorruptModelCacheError } from "@veyyon/coding-agent/speech/tts/models";
 
 describe("isCorruptModelCacheError", () => {
 	it("matches the live onnxruntime truncated-weights error", () => {

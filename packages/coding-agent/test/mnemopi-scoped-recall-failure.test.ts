@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { MnemopiSessionState } from "@veyyon/coding-agent/mnemopi/state";
+import { MnemopiSessionState } from "@veyyon/coding-agent/memory/mnemopi/state";
 import { useIsolatedAgentDir } from "./helpers/isolated-agent-dir";
 
 // The code under test opens `AgentStorage`, which resolves `agent.db` under the

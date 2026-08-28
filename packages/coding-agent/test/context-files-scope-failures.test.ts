@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { setDisabledProviders } from "@veyyon/coding-agent/capability";
+import { setDisabledProviders } from "@veyyon/coding-agent/discovery/capability";
 import { loadProjectContextFiles, loadProjectContextFilesWithWarnings } from "@veyyon/coding-agent/system-prompt";
 import {
 	GLOBAL_BODY,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { encodeWav } from "@veyyon/coding-agent/tts/wav";
+import { encodeWav } from "@veyyon/coding-agent/speech/tts/wav";
 
 /**
  * encodeWav turns transformers.js Float32 PCM into a self-contained mono PCM16 WAV byte buffer, with

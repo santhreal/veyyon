@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-89f274d4.js";
+            window.path_to_searchindex_js = "../searchindex-59599711.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -244,7 +244,8 @@
 <li><strong>Sanitize tabs/content</strong> from external sources using <code>replaceTabs()</code> (and higher-level sanitizers in coding-agent render paths).</li>
 </ol>
 <p>Minimal pattern:</p>
-<pre><code class="language-ts">import { replaceTabs, truncateToWidth } from "@veyyon/tui";
+<pre><code class="language-ts">import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 
 render(width: number): readonly string[] {
   return this.lines.map(line =&gt; truncateToWidth(replaceTabs(line), width));
@@ -342,12 +343,10 @@ return loader;
 </code></pre>
 <h2 id="realistic-custom-component-example-extension-command"><a class="header" href="#realistic-custom-component-example-extension-command">Realistic custom component example (extension command)</a></h2>
 <pre><code class="language-ts">import type { Component } from "@veyyon/tui";
-import {
-  SelectList,
-  matchesKey,
-  replaceTabs,
-  truncateToWidth,
-} from "@veyyon/tui";
+import { SelectList } from "@veyyon/tui";
+import { matchesKey } from "@veyyon/utils/keys";
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import {
   getSelectListTheme,
   type ExtensionAPI,
@@ -414,8 +413,8 @@ export default function extension(pi: ExtensionAPI): void {
 <h2 id="key-implementation-files"><a class="header" href="#key-implementation-files">Key implementation files</a></h2>
 <ul>
 <li><code>packages/tui/src/tui.ts</code>: <code>Component</code>, <code>Focusable</code>, cursor marker, focus, overlay, input dispatch.</li>
-<li><code>packages/tui/src/utils.ts</code>: width/truncation/sanitization primitives.</li>
-<li><code>packages/tui/src/keys.ts</code> / <code>keybindings.ts</code>: key parsing and configurable action mapping.</li>
+<li><code>packages/utils/src/width.ts</code>: width/truncation/sanitization primitives.</li>
+<li><code>packages/utils/src/keys.ts</code> / <code>keybindings.ts</code>: key parsing and configurable action mapping.</li>
 <li><code>packages/coding-agent/src/modes/controllers/extension-ui-controller.ts</code>: interactive mounting/unmounting for extension/hook/custom-tool UI.</li>
 <li><code>packages/coding-agent/src/extensibility/extensions/types.ts</code>: extension UI and renderer contracts.</li>
 <li><code>packages/coding-agent/src/extensibility/hooks/types.ts</code>: hook UI contract (legacy custom signature).</li>

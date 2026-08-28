@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { SSHHost } from "@veyyon/coding-agent/capability/ssh";
-import type { SourceMeta } from "@veyyon/coding-agent/capability/types";
 import * as discovery from "@veyyon/coding-agent/discovery";
+import type { SSHHost } from "@veyyon/coding-agent/discovery/capability/ssh";
+import type { SourceMeta } from "@veyyon/coding-agent/discovery/capability/types";
 import type { SSHHostInfo } from "@veyyon/coding-agent/ssh/connection-manager";
 import * as connectionManager from "@veyyon/coding-agent/ssh/connection-manager";
 import * as sshExecutor from "@veyyon/coding-agent/ssh/ssh-executor";

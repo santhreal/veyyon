@@ -31,7 +31,7 @@ import { mediumModalContentWidth } from "../modes/components/modal-shell";
 import { getMarkdownTheme } from "../modes/theme/markdown-theme";
 import { type Theme, theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
-import { vocalizer } from "../tts/vocalizer";
+import { vocalizer } from "../speech/tts/vocalizer";
 import { framedBlock, renderStatusLine } from "../tui";
 import type { ToolSession } from ".";
 // Only the free-text label and the reserved-label predicate: the other two labels were declared here purely to

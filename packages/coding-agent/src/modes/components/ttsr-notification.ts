@@ -1,4 +1,4 @@
-import type { Rule } from "../../capability/rule";
+import type { Rule } from "../../discovery/capability/rule";
 import { withIcon } from "../../modes/theme/icon-label";
 import { theme } from "../../modes/theme/theme";
 import { actionKeyHint } from "../utils/key-hint";

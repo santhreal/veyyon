@@ -26,10 +26,10 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getCapability } from "../src/capability";
-import type { ContextFile } from "../src/capability/context-file";
-import { contextFileCapability } from "../src/capability/context-file";
-import type { LoadContext, Provider } from "../src/capability/types";
+import { getCapability } from "../src/discovery/capability";
+import type { ContextFile } from "../src/discovery/capability/context-file";
+import { contextFileCapability } from "../src/discovery/capability/context-file";
+import type { LoadContext, Provider } from "../src/discovery/capability/types";
 // Importing the module is what registers the provider, which is how it reaches production.
 import "../src/discovery/agents-md";
 

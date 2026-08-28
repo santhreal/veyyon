@@ -21,7 +21,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getAdapterConfigs, resolveAdapter } from "@veyyon/coding-agent/dap/config";
+import { getAdapterConfigs, resolveAdapter } from "@veyyon/coding-agent/debug/dap/config";
 import { removeWithRetries } from "@veyyon/utils";
 
 const created: string[] = [];

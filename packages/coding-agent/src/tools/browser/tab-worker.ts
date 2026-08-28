@@ -30,7 +30,7 @@ import {
 	captureAriaSnapshot,
 	parseAriaRefSelector,
 	resolveAriaRefHandle,
-} from "./aria/aria-snapshot";
+} from "./aria-snapshot";
 import { releaseHandle, releaseHandles } from "./handle-release";
 import {
 	applyStealthPatches,

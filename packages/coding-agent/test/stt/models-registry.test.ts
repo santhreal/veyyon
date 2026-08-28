@@ -4,7 +4,7 @@ import {
 	getSttModelSpec,
 	isSttModelKey,
 	resolveSttModelSpec,
-} from "@veyyon/coding-agent/stt/models";
+} from "@veyyon/coding-agent/speech/stt/models";
 
 /**
  * The speech-to-text model registry and its resolvers had no direct test. resolveSttModelSpec is

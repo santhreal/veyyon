@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-89f274d4.js";
+            window.path_to_searchindex_js = "../searchindex-59599711.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -332,8 +332,8 @@ memories every turn.</p>
 <p>Additional tuning knobs (concurrency, lease durations, token budgets) are available in config for advanced use.</p>
 <h2 id="key-files"><a class="header" href="#key-files">Key files</a></h2>
 <ul>
-<li><code>packages/coding-agent/src/memories/index.ts</code>: pipeline orchestration, injection, clear/enqueue entry points (the <code>/memory</code> command routes here via <code>packages/coding-agent/src/memory-backend/local-backend.ts</code>)</li>
-<li><code>packages/coding-agent/src/memories/storage.ts</code>: SQLite-backed job queue and thread registry</li>
+<li><code>packages/coding-agent/src/memory/local.ts</code>: pipeline orchestration, injection, clear/enqueue entry points (the <code>/memory</code> command routes here via <code>packages/coding-agent/src/memory/local-backend.ts</code>)</li>
+<li><code>packages/coding-agent/src/memory/storage.ts</code>: SQLite-backed job queue and thread registry</li>
 <li><code>packages/coding-agent/src/prompts/memories/</code>: memory prompt templates</li>
 <li><code>packages/coding-agent/src/internal-urls/memory-protocol.ts</code>: <code>memory://</code> URL handler</li>
 </ul>

@@ -21,8 +21,8 @@
  * repositories that wrap their runner, which is where it is needed.
  */
 import { beforeEach, describe, expect, test } from "bun:test";
-import type { Rule } from "../../src/capability/rule";
 import { buildBuiltinRules } from "../../src/discovery/builtin-defaults";
+import type { Rule } from "../../src/discovery/capability/rule";
 import { TtsrManager } from "../../src/export/ttsr";
 
 const RULE_NAME = "test-scope";

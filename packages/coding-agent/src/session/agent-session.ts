@@ -211,9 +211,6 @@ import {
 	expandSessionMessageEntries,
 } from "../argot-wire";
 import { type AsyncJob, type AsyncJobDeliveryState, AsyncJobManager } from "../async";
-import { classifyDifficulty } from "../auto-thinking/classifier";
-import { reset as resetCapabilities } from "../capability";
-import type { Rule } from "../capability/rule";
 import { shouldEnableAppendOnlyContext } from "../config/append-only-context-mode";
 import type { CompactionEngineAction } from "../config/compaction-strategy";
 import {
@@ -269,7 +266,19 @@ import {
 import { usesCursorRuleDelivery } from "../cursor";
 import { RawSseDebugBuffer } from "../debug/raw-sse-buffer";
 import { loadCapability } from "../discovery";
+import { reset as resetCapabilities } from "../discovery/capability";
+import type { Rule } from "../discovery/capability/rule";
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
+import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "../discovery/mode";
+import {
+	buildDiscoverableToolSearchIndex,
+	collectDiscoverableTools,
+	type DiscoverableTool,
+	type DiscoverableToolSearchIndex,
+	filterBySource,
+	isMCPToolName,
+	selectDiscoverableToolNamesByServer,
+} from "../discovery/tool-index";
 // The owning modules, not the `../edit` barrel. The barrel `export *`s the streaming applier, the
 // hashline engine and the EditTool, and pulls in 44 modules nothing else here reaches; these six
 // symbols are declared in four leaves that reach a handful between them.
@@ -316,7 +325,6 @@ import type { Skill } from "../extensibility/skills";
 import { expandSlashCommand, type FileSlashCommand } from "../extensibility/slash-commands";
 import { GoalRuntime } from "../goals/runtime";
 import type { Goal, GoalAbortReason, GoalModeState } from "../goals/state";
-import type { HindsightSessionState } from "../hindsight/state";
 // The owning module, not the `../internal-urls` barrel: the barrel re-exports every protocol
 // handler and reaches several hundred modules, and all three of these are declared in
 // `local-protocol`, which reaches seven.
@@ -325,16 +333,10 @@ import {
 	listLocalPlanFileUrls,
 	resolveLocalUrlToPath,
 } from "../internal-urls/local-protocol";
-import {
-	IrcBus,
-	type IrcMessage,
-	type IrcPersistedDeliveryFacts,
-	type IrcPersistedDeliveryTelemetry,
-	projectIrcDeliveryTelemetry,
-} from "../irc/bus";
-import { resolveMemoryBackend } from "../memory-backend";
-import { shutdownMnemopiEmbedClient } from "../mnemopi/embed-client";
-import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../mnemopi/state";
+import { resolveMemoryBackend } from "../memory/backend";
+import type { HindsightSessionState } from "../memory/hindsight/state";
+import { shutdownMnemopiEmbedClient } from "../memory/mnemopi/embed-client";
+import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../memory/mnemopi/state";
 import { containsOrchestrate, ORCHESTRATE_NOTICE } from "../modes/orchestrate-keyword";
 import type { RetryRecoveryMode } from "../modes/retry-display";
 import { theme } from "../modes/theme/theme-binding";
@@ -372,6 +374,13 @@ import {
 } from "../slash-commands/helpers/parse";
 import { invalidateHostMetadata } from "../ssh/connection-manager";
 import { isLivePromptGate } from "../system-prompt-builder/gate-registry";
+import {
+	IrcBus,
+	type IrcMessage,
+	type IrcPersistedDeliveryFacts,
+	type IrcPersistedDeliveryTelemetry,
+	projectIrcDeliveryTelemetry,
+} from "../task/irc-bus";
 import { usesCodexTaskPrompt } from "../task/prompt-policy";
 import { enabledSubagentNames, preferredSubagentName, resolveDelegation } from "../task/subagent-settings";
 import {
@@ -386,18 +395,9 @@ import {
 	shouldDisableReasoning,
 	toReasoningEffort,
 } from "../thinking";
+import { classifyDifficulty } from "../thinking/auto-classifier";
 import { formatTitleConversationContext, type TitleConversationTurn } from "../tiny/message-preproc";
 import { shutdownTinyTitleClient } from "../tiny/title-client";
-import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
-import {
-	buildDiscoverableToolSearchIndex,
-	collectDiscoverableTools,
-	type DiscoverableTool,
-	type DiscoverableToolSearchIndex,
-	filterBySource,
-	isMCPToolName,
-	selectDiscoverableToolNamesByServer,
-} from "../tool-discovery/tool-index";
 import {
 	resolveEffectiveApprovalMode,
 	validateApprovalModeSetting,
@@ -434,7 +434,6 @@ import { formatLocalCalendarDate } from "../utils/local-date";
 import { normalizePromptPath } from "../utils/prompt-path";
 import { generateSessionTitle } from "../utils/title-generator";
 import { buildNamedToolChoice, isToolChoiceActive } from "../utils/tool-choice";
-import type { VibeModeState } from "../vibe/state";
 import type { AuthStorage } from "./auth-storage";
 import type { ClientBridge, ClientBridgePermissionOption, ClientBridgePermissionOutcome } from "./client-bridge";
 import {
@@ -526,6 +525,7 @@ import {
 	VERIFICATION_EVIDENCE_REMINDER_TYPE,
 	VerificationEvidenceLedger,
 } from "./verification-evidence-ledger";
+import type { VibeModeState } from "./vibe-runtime";
 import { YieldQueue } from "./yield-queue";
 
 const SESSION_STOP_CONTINUATION_CAP = 8;

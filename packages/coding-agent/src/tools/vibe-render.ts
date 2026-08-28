@@ -13,9 +13,9 @@ import { Text } from "@veyyon/tui";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { shimmerEnabled, shimmerText } from "../modes/theme/shimmer";
 import type { Theme } from "../modes/theme/theme";
+import type { VibeCli, VibeScreenSnapshot, VibeSessionState } from "../session/vibe-runtime";
 import { oneLineLabel } from "../task/types";
 import { renderStatusLine } from "../tui";
-import type { VibeCli, VibeScreenSnapshot, VibeSessionState } from "../vibe/runtime";
 import {
 	Ellipsis,
 	formatBadge,

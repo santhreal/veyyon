@@ -1,6 +1,10 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
 import { type } from "arktype";
-import { MEMORY_RETAIN_MAX_BYTES, MEMORY_RETAIN_MAX_ITEM_BYTES, MEMORY_RETAIN_MAX_ITEMS } from "../hindsight/state";
+import {
+	MEMORY_RETAIN_MAX_BYTES,
+	MEMORY_RETAIN_MAX_ITEM_BYTES,
+	MEMORY_RETAIN_MAX_ITEMS,
+} from "../memory/hindsight/state";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from ".";
 import { abortedPartway } from "./aborted-partway";

@@ -19,9 +19,9 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { renderTrustReport, runTrustCommand, runTrustSlashCommand } from "../../src/cli/trust-cli";
+import { canonicalProjectRoot, ProjectTrust } from "../../src/config/project-trust";
 import { clearClaudePluginRootsCache, listClaudePluginRoots } from "../../src/discovery/helpers";
 import { loadExtensions } from "../../src/extensibility/extensions/loader";
-import { canonicalProjectRoot, ProjectTrust } from "../../src/security/project-trust";
 import { useTrackedTempDirFactory } from "../helpers/tracked-temp-dir";
 
 const makeTempDir = useTrackedTempDirFactory();

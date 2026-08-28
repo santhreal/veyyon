@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { createMemoryRuntimeContext, resolveMemoryBackend } from "@veyyon/coding-agent/memory-backend";
+import { createMemoryRuntimeContext, resolveMemoryBackend } from "@veyyon/coding-agent/memory/backend";
 
 describe("resolveMemoryBackend", () => {
 	beforeEach(() => {

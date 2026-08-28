@@ -123,9 +123,9 @@ describe("parseJsonWithRepair relaxed (final) parsing", () => {
 	it("recovers an unquoted bareword string value (real-world input_json_delta malformation)", () => {
 		expect(
 			parseJsonWithRepair<{ paths: string; i: string }>(
-				'{"paths": packages/coding-agent/src/stt/*, "i": "Listing stt module files"}',
+				'{"paths": packages/coding-agent/src/speech/stt/*, "i": "Listing stt module files"}',
 			),
-		).toEqual({ paths: "packages/coding-agent/src/stt/*", i: "Listing stt module files" });
+		).toEqual({ paths: "packages/coding-agent/src/speech/stt/*", i: "Listing stt module files" });
 	});
 
 	it("recovers barewords in array position and trims trailing whitespace before the delimiter", () => {
@@ -182,9 +182,9 @@ describe("parseStreamingJson partial parsing", () => {
 	});
 
 	it("rolls back a bareword at the streaming edge or mid-buffer instead of committing junk", () => {
-		expect(parseStreamingJson<Record<string, unknown>>('{"paths": packages/coding-agent/src/stt/*')).toEqual({});
+		expect(parseStreamingJson<Record<string, unknown>>('{"paths": packages/coding-agent/src/speech/stt/*')).toEqual({});
 		expect(
-			parseStreamingJson<Record<string, unknown>>('{"paths": packages/coding-agent/src/stt/*, "i": "Listing st'),
+			parseStreamingJson<Record<string, unknown>>('{"paths": packages/coding-agent/src/speech/stt/*, "i": "Listing st'),
 		).toEqual({});
 	});
 });

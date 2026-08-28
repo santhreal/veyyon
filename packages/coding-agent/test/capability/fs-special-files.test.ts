@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clearCache, readFile } from "@veyyon/coding-agent/capability/fs";
+import { clearCache, readFile } from "@veyyon/coding-agent/discovery/capability/fs";
 import { logger } from "@veyyon/utils";
 
 const isWindows = process.platform === "win32";

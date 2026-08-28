@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	captureRegistryForTests,
 	disableProvider,
@@ -13,9 +14,8 @@ import {
 	initializeWithSettings,
 	type RegistrySnapshot,
 	restoreRegistryForTests,
-} from "@veyyon/coding-agent/capability";
-import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
-import { Settings } from "@veyyon/coding-agent/config/settings";
+} from "@veyyon/coding-agent/discovery/capability";
+import { clearCache as clearFsCache } from "@veyyon/coding-agent/discovery/capability/fs";
 import { clearClaudePluginRootsCache } from "@veyyon/coding-agent/discovery/helpers";
 import { discoverAgents } from "@veyyon/coding-agent/task/discovery";
 import { removeSyncWithRetries } from "@veyyon/utils";

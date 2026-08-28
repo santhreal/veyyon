@@ -1,9 +1,9 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, ApiKey, Model } from "@veyyon/ai";
 import { $env } from "@veyyon/utils";
-import { parseFileDiffs } from "../../commit/git/diff";
 import type { ConventionalAnalysis } from "../../commit/types";
 import { isExcludedFile } from "../../commit/utils/exclusions";
+import { parseFileDiffs } from "../git-diff";
 import type { ResolveObfuscateProviderText } from "../shared-llm";
 import { runMapPhase } from "./map-phase";
 import { runReducePhase } from "./reduce-phase";

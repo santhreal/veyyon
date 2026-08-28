@@ -12,10 +12,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { Rule } from "../../src/capability/rule";
-import { bucketRules } from "../../src/capability/rule-buckets";
 import { buildBuiltinRules } from "../../src/discovery/builtin-defaults";
 import { BUILTIN_RULE_SOURCES, isExperimentalSection } from "../../src/discovery/builtin-rules";
+import type { Rule } from "../../src/discovery/capability/rule";
+import { bucketRules } from "../../src/discovery/capability/rule-buckets";
 import { TtsrManager } from "../../src/export/ttsr";
 import { getSettingDef, invalidateSettingDefsCache } from "../../src/modes/components/settings-defs";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";

@@ -1,5 +1,5 @@
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { GoalTool } from "@veyyon/coding-agent/goals/tools/goal-tool";
+import { GoalTool } from "@veyyon/coding-agent/goals/goal-tool";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 
 export interface GoalBudgetContextMeasurement {

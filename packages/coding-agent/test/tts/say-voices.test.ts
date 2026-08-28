@@ -7,7 +7,7 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { DIR_OVERRIDE_ENV_KEYS } from "@veyyon/utils";
-import { KOKORO_VOICES, TTS_LOCAL_MODELS } from "../../src/tts/models";
+import { KOKORO_VOICES, TTS_LOCAL_MODELS } from "../../src/speech/tts/models";
 import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 
 // Tracked temp directories: the factory deletes what it made when this file finishes.

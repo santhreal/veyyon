@@ -22,14 +22,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { reset as resetDiscoveryCache } from "@veyyon/coding-agent/discovery";
 import {
 	captureRegistryForTests,
 	initializeWithSettings,
 	type RegistrySnapshot,
 	restoreRegistryForTests,
-} from "@veyyon/coding-agent/capability";
-import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { reset as resetDiscoveryCache } from "@veyyon/coding-agent/discovery";
+} from "@veyyon/coding-agent/discovery/capability";
 import { readMCPConfigFile, setMcpServerEnabled, setServerDisabled } from "@veyyon/coding-agent/mcp/config-writer";
 import { loadAllExtensions } from "@veyyon/coding-agent/modes/components/extensions/state-manager";
 import { getMCPConfigPath, removeWithRetries, setAgentDir } from "@veyyon/utils";

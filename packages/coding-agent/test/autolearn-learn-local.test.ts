@@ -8,8 +8,8 @@ import {
 	getMemoryRoot,
 	refreshMemoryToolDeveloperInstructionsCacheAfterStartup,
 	saveLearnedLesson,
-} from "@veyyon/coding-agent/memories";
-import { localBackend } from "@veyyon/coding-agent/memory-backend/local-backend";
+} from "@veyyon/coding-agent/memory/local";
+import { localBackend } from "@veyyon/coding-agent/memory/local-backend";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { LearnTool } from "@veyyon/coding-agent/tools/learn";

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { LoadContext } from "@veyyon/coding-agent/capability/types";
 import { getConfigDirs } from "@veyyon/coding-agent/config";
+import type { LoadContext } from "@veyyon/coding-agent/discovery/capability/types";
 import { getUserPath } from "@veyyon/coding-agent/discovery/helpers";
 import { DEFAULT_PROFILE_DIR_NAME, getActiveProfile, getAgentDir } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";

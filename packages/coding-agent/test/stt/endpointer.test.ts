@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { DEFAULT_ENDPOINTER_CONFIG, type EndpointerEvent, StreamEndpointer } from "@veyyon/coding-agent/stt/endpointer";
+import {
+	DEFAULT_ENDPOINTER_CONFIG,
+	type EndpointerEvent,
+	StreamEndpointer,
+} from "@veyyon/coding-agent/speech/stt/endpointer";
 
 /**
  * StreamEndpointer splits a continuous 16 kHz mono float stream into speech segments

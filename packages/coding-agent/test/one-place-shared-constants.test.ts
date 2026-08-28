@@ -37,7 +37,7 @@ import * as path from "node:path";
 
 import { SUMMARY_MAX_CHARS as AGENTIC_SUMMARY_MAX_CHARS } from "../src/commit/agentic/validation";
 import { SUMMARY_MAX_CHARS, validateSummary } from "../src/commit/analysis/validation";
-import { PROJECT_TAG_PREFIX } from "../src/hindsight/bank";
+import { PROJECT_TAG_PREFIX } from "../src/memory/hindsight/bank";
 import {
 	calculateTokensPerSecond,
 	MIN_RATE_DURATION_MS,

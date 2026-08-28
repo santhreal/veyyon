@@ -9,7 +9,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { Markit } from "@veyyon/coding-agent/markit";
+import { Markit } from "@veyyon/coding-agent/export/markit";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import * as markit from "@veyyon/coding-agent/utils/markit";

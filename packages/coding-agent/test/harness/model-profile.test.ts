@@ -11,7 +11,7 @@ import {
 	resetHarnessProfileFileCache,
 	resolveHarnessProfileForModel,
 	resolvePromptSectionOrderForModel,
-} from "@veyyon/coding-agent/harness/model-profile";
+} from "@veyyon/coding-agent/registry/model-profile";
 import { logger, removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 

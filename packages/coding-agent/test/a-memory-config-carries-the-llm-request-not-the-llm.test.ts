@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { mnemopiBackend } from "@veyyon/coding-agent/mnemopi/backend";
-import { loadMnemopiConfig } from "@veyyon/coding-agent/mnemopi/config";
-import { getMnemopiSessionState, setMnemopiSessionState } from "@veyyon/coding-agent/mnemopi/state";
-import { MNEMOPI_MEMORY_EDIT_OPERATIONS } from "@veyyon/coding-agent/mnemopi/verbs";
+import { mnemopiBackend } from "@veyyon/coding-agent/memory/mnemopi/backend";
+import { loadMnemopiConfig } from "@veyyon/coding-agent/memory/mnemopi/config";
+import { getMnemopiSessionState, setMnemopiSessionState } from "@veyyon/coding-agent/memory/mnemopi/state";
+import { MNEMOPI_MEMORY_EDIT_OPERATIONS } from "@veyyon/coding-agent/memory/mnemopi/verbs";
 import { MemoryEditTool } from "@veyyon/coding-agent/tools/memory-edit";
 import { TempDir } from "@veyyon/utils";
 

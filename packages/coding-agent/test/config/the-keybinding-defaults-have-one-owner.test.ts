@@ -53,13 +53,13 @@ describe("the keybinding defaults have one owner", () => {
 	 * profile resolver, and one import of the loader from here would undo that
 	 * silently, since everything would still compile and pass.
 	 */
-	it("imports nothing but the TUI from the leaf", () => {
+	it("imports nothing but the keyboard primitives from the leaf", () => {
 		const imported = [...moduleSpecifiersIn(DEFS_SOURCE), ...typeOnlyModuleSpecifiersIn(DEFS_SOURCE)];
 
 		expect(
 			imported.sort(),
-			"keybinding-defs.ts is the leaf a UI component reads. Keep its imports to @veyyon/tui",
-		).toEqual(["@veyyon/tui", "@veyyon/tui"]);
+			"keybinding-defs.ts is the leaf a UI component reads. Keep its imports to the @veyyon/utils keyboard modules",
+		).toEqual(["@veyyon/utils/keybindings", "@veyyon/utils/keys"]);
 	});
 
 	/**

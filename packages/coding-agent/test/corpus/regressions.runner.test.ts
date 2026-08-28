@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseGalleryStates } from "@veyyon/coding-agent/cli/gallery-cli";
 import { parseUnreleasedSection } from "@veyyon/coding-agent/commit/changelog/parse";
-import { extractPathFromRename, parseFileDiffs, parseNumstat } from "@veyyon/coding-agent/commit/git/diff";
+import { extractPathFromRename, parseFileDiffs, parseNumstat } from "@veyyon/coding-agent/commit/git-diff";
 import { parseJsonPayload } from "@veyyon/coding-agent/commit/utils/analysis";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import {

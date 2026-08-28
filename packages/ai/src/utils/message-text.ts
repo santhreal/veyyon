@@ -24,7 +24,7 @@ export function assistantText(message: Pick<AssistantMessage, "content">, separa
  * the middle of the text.
  *
  * It exists because two callers needed exactly this and each hand-rolled it
- * (`coding-agent/src/mnemopi/state.ts` and `typescript-edit-benchmark/src/argot-bench.ts`),
+ * (`coding-agent/src/memory/mnemopi/state.ts` and `typescript-edit-benchmark/src/argot-bench.ts`),
  * which meant three copies of the rule for what counts as assistant text. When a new
  * content-block shape lands, the copies do not stop working, they silently return less
  * text than the message contained.

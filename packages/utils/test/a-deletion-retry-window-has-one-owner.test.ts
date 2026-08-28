@@ -1,5 +1,5 @@
 /**
- * WHY: `packages/coding-agent/src/mnemopi/backend.ts` declared its own `removeWithRetries` that shadowed
+ * WHY: `packages/coding-agent/src/memory/mnemopi/backend.ts` declared its own `removeWithRetries` that shadowed
  * the exported one in `packages/utils/src/temp.ts`, with half its retry window — 40 × 25 ms against the
  * owner's 40 × 50 ms. The owner's comment states why 50 ms: a Windows SQLite lock can outlive `close()`
  * by about 1.5 s, and 1 s "was too short". The copy applied 1 s to SQLite DB files and their WAL/SHM

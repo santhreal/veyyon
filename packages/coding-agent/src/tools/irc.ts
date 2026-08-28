@@ -13,9 +13,9 @@ import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallb
 import type { ToolExample } from "@veyyon/ai";
 import { errorMessage, formatDuration, prompt } from "@veyyon/utils";
 import { type } from "arktype";
-import { IrcBus, type IrcDeliveryReceipt, type IrcMessage } from "../irc/bus";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { AgentRegistry } from "../registry/agent-registry";
+import { IrcBus, type IrcDeliveryReceipt, type IrcMessage } from "../task/irc-bus";
 import type { ToolSession } from ".";
 
 const DEFAULT_IRC_TIMEOUT_MS = 120_000;

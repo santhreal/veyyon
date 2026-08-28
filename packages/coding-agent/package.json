@@ -149,14 +149,6 @@
       "types": "./src/autoresearch/tools/*.ts",
       "import": "./src/autoresearch/tools/*.ts"
     },
-    "./capability": {
-      "types": "./src/capability/index.ts",
-      "import": "./src/capability/index.ts"
-    },
-    "./capability/*": {
-      "types": "./src/capability/*.ts",
-      "import": "./src/capability/*.ts"
-    },
     "./cli/*": {
       "types": "./src/cli/*.ts",
       "import": "./src/cli/*.ts"
@@ -168,10 +160,6 @@
     "./cli/gallery-fixtures/*": {
       "types": "./src/cli/gallery-fixtures/*.ts",
       "import": "./src/cli/gallery-fixtures/*.ts"
-    },
-    "./cli/commands/*": {
-      "types": "./src/cli/commands/*.ts",
-      "import": "./src/cli/commands/*.ts"
     },
     "./commands/*": {
       "types": "./src/commands/*.ts",
@@ -217,10 +205,6 @@
       "types": "./src/commit/changelog/*.ts",
       "import": "./src/commit/changelog/*.ts"
     },
-    "./commit/git/*": {
-      "types": "./src/commit/git/*.ts",
-      "import": "./src/commit/git/*.ts"
-    },
     "./commit/map-reduce": {
       "types": "./src/commit/map-reduce/index.ts",
       "import": "./src/commit/map-reduce/index.ts"
@@ -237,14 +221,6 @@
       "types": "./src/config/*.ts",
       "import": "./src/config/*.ts"
     },
-    "./dap": {
-      "types": "./src/dap/index.ts",
-      "import": "./src/dap/index.ts"
-    },
-    "./dap/*": {
-      "types": "./src/dap/*.ts",
-      "import": "./src/dap/*.ts"
-    },
     "./debug": {
       "types": "./src/debug/index.ts",
       "import": "./src/debug/index.ts"
@@ -253,6 +229,14 @@
       "types": "./src/debug/*.ts",
       "import": "./src/debug/*.ts"
     },
+    "./debug/dap": {
+      "types": "./src/debug/dap/index.ts",
+      "import": "./src/debug/dap/index.ts"
+    },
+    "./debug/dap/*": {
+      "types": "./src/debug/dap/*.ts",
+      "import": "./src/debug/dap/*.ts"
+    },
     "./discovery": {
       "types": "./src/discovery/index.ts",
       "import": "./src/discovery/index.ts"
@@ -260,6 +244,14 @@
     "./discovery/*": {
       "types": "./src/discovery/*.ts",
       "import": "./src/discovery/*.ts"
+    },
+    "./discovery/capability": {
+      "types": "./src/discovery/capability/index.ts",
+      "import": "./src/discovery/capability/index.ts"
+    },
+    "./discovery/capability/*": {
+      "types": "./src/discovery/capability/*.ts",
+      "import": "./src/discovery/capability/*.ts"
     },
     "./edit": {
       "types": "./src/edit/index.ts",
@@ -285,6 +277,10 @@
       "types": "./src/export/*.ts",
       "import": "./src/export/*.ts"
     },
+    "./export/markit": {
+      "types": "./src/export/markit/index.ts",
+      "import": "./src/export/markit/index.ts"
+    },
     "./export/html": {
       "types": "./src/export/html/index.ts",
       "import": "./src/export/html/index.ts"
@@ -306,12 +302,12 @@
       "import": "./src/extensibility/custom-commands/*.ts"
     },
     "./extensibility/custom-commands/bundled/ci-green": {
-      "types": "./src/extensibility/custom-commands/bundled/ci-green/index.ts",
-      "import": "./src/extensibility/custom-commands/bundled/ci-green/index.ts"
+      "types": "./src/extensibility/custom-commands/bundled/ci-green.ts",
+      "import": "./src/extensibility/custom-commands/bundled/ci-green.ts"
     },
     "./extensibility/custom-commands/bundled/review": {
-      "types": "./src/extensibility/custom-commands/bundled/review/index.ts",
-      "import": "./src/extensibility/custom-commands/bundled/review/index.ts"
+      "types": "./src/extensibility/custom-commands/bundled/review.ts",
+      "import": "./src/extensibility/custom-commands/bundled/review.ts"
     },
     "./extensibility/custom-tools": {
       "types": "./src/extensibility/custom-tools/index.ts",
@@ -381,14 +377,6 @@
       "types": "./src/lsp/clients/*.ts",
       "import": "./src/lsp/clients/*.ts"
     },
-    "./markit": {
-      "types": "./src/markit/index.ts",
-      "import": "./src/markit/index.ts"
-    },
-    "./markit/*": {
-      "types": "./src/markit/*.ts",
-      "import": "./src/markit/*.ts"
-    },
     "./mcp": {
       "types": "./src/mcp/index.ts",
       "import": "./src/mcp/index.ts"
@@ -397,33 +385,25 @@
       "types": "./src/mcp/*.ts",
       "import": "./src/mcp/*.ts"
     },
+    "./memory/*": {
+      "types": "./src/memory/*.ts",
+      "import": "./src/memory/*.ts"
+    },
+    "./memory/hindsight": {
+      "types": "./src/memory/hindsight/index.ts",
+      "import": "./src/memory/hindsight/index.ts"
+    },
+    "./memory/hindsight/*": {
+      "types": "./src/memory/hindsight/*.ts",
+      "import": "./src/memory/hindsight/*.ts"
+    },
+    "./memory/mnemopi/*": {
+      "types": "./src/memory/mnemopi/*.ts",
+      "import": "./src/memory/mnemopi/*.ts"
+    },
     "./mcp/transports/*": {
       "types": "./src/mcp/transports/*.ts",
       "import": "./src/mcp/transports/*.ts"
-    },
-    "./memories": {
-      "types": "./src/memories/index.ts",
-      "import": "./src/memories/index.ts"
-    },
-    "./memories/*": {
-      "types": "./src/memories/*.ts",
-      "import": "./src/memories/*.ts"
-    },
-    "./memory-backend": {
-      "types": "./src/memory-backend/index.ts",
-      "import": "./src/memory-backend/index.ts"
-    },
-    "./memory-backend/*": {
-      "types": "./src/memory-backend/*.ts",
-      "import": "./src/memory-backend/*.ts"
-    },
-    "./hindsight": {
-      "types": "./src/hindsight/index.ts",
-      "import": "./src/hindsight/index.ts"
-    },
-    "./hindsight/*": {
-      "types": "./src/hindsight/*.ts",
-      "import": "./src/hindsight/*.ts"
     },
     "./modes": {
       "types": "./src/modes/index.ts",
@@ -513,17 +493,25 @@
       "types": "./src/slash-commands/*.ts",
       "import": "./src/slash-commands/*.ts"
     },
+    "./speech/stt": {
+      "types": "./src/speech/stt/index.ts",
+      "import": "./src/speech/stt/index.ts"
+    },
+    "./speech/stt/*": {
+      "types": "./src/speech/stt/*.ts",
+      "import": "./src/speech/stt/*.ts"
+    },
+    "./speech/tts": {
+      "types": "./src/speech/tts/index.ts",
+      "import": "./src/speech/tts/index.ts"
+    },
+    "./speech/tts/*": {
+      "types": "./src/speech/tts/*.ts",
+      "import": "./src/speech/tts/*.ts"
+    },
     "./ssh/*": {
       "types": "./src/ssh/*.ts",
       "import": "./src/ssh/*.ts"
-    },
-    "./stt": {
-      "types": "./src/stt/index.ts",
-      "import": "./src/stt/index.ts"
-    },
-    "./stt/*": {
-      "types": "./src/stt/*.ts",
-      "import": "./src/stt/*.ts"
     },
     "./task": {
       "types": "./src/task/index.ts",
@@ -533,9 +521,9 @@
       "types": "./src/task/*.ts",
       "import": "./src/task/*.ts"
     },
-    "./tool-discovery/*": {
-      "types": "./src/tool-discovery/*.ts",
-      "import": "./src/tool-discovery/*.ts"
+    "./thinking": {
+      "types": "./src/thinking/index.ts",
+      "import": "./src/thinking/index.ts"
     },
     "./tools": {
       "types": "./src/tools/index.ts",

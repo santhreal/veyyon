@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { extractSegmentsFromContentStream } from "@veyyon/coding-agent/markit/converters/pdf/extract";
+import { extractSegmentsFromContentStream } from "@veyyon/coding-agent/export/markit/converters/pdf/extract";
 
 /**
  * Locks FINDING-PDF-STROKEWIDTH-ZERO-DISCARDED. The `w` (line width) operator

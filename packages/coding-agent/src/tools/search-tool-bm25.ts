@@ -3,10 +3,7 @@ import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
 import { type } from "arktype";
-import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import type { Theme } from "../modes/theme/theme";
-import { toolsPrompts } from "../prompts/tools/rows";
-import { resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
+import { resolveEffectiveToolDiscoveryMode } from "../discovery/mode";
 import {
 	buildDiscoverableToolSearchIndex,
 	type DiscoverableTool,
@@ -15,7 +12,10 @@ import {
 	formatDiscoverableToolServerSummary,
 	searchDiscoverableTools,
 	summarizeDiscoverableTools,
-} from "../tool-discovery/tool-index";
+} from "../discovery/tool-index";
+import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import type { Theme } from "../modes/theme/theme";
+import { toolsPrompts } from "../prompts/tools/rows";
 import { framedBlock, renderStatusLine, truncateToWidth } from "../tui";
 import type { ToolSession } from ".";
 import { formatCount, formatExpandHint, formatMoreItems, replaceTabs, TRUNCATE_LENGTHS } from "./render-utils";

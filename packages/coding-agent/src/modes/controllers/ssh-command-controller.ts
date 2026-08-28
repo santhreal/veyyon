@@ -4,8 +4,8 @@
  * Handles /ssh subcommands for managing SSH host configurations.
  */
 import { errorMessage, getProjectDir, getSSHConfigPath, logger } from "@veyyon/utils";
-import { type SSHHost, sshCapability } from "../../capability/ssh";
 import { loadCapability } from "../../discovery";
+import { type SSHHost, sshCapability } from "../../discovery/capability/ssh";
 import { removedOptionMessage } from "../../slash-commands/helpers/parse";
 import { addSSHHost, readSSHConfigFile, removeSSHHost, type SSHHostConfig } from "../../ssh/config-writer";
 import { parseCommandArgs } from "../shared";

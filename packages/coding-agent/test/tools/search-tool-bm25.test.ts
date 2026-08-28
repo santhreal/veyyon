@@ -4,7 +4,7 @@ import {
 	buildDiscoverableToolSearchIndex,
 	type DiscoverableTool,
 	type DiscoverableToolSearchIndex,
-} from "@veyyon/coding-agent/tool-discovery/tool-index";
+} from "@veyyon/coding-agent/discovery/tool-index";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { renderSearchToolBm25Description, SearchToolBm25Tool } from "@veyyon/coding-agent/tools/search-tool-bm25";
 

@@ -15,6 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	captureRegistryForTests,
 	getCapabilityInfo,
@@ -24,9 +25,8 @@ import {
 	isProviderEnabled,
 	type RegistrySnapshot,
 	restoreRegistryForTests,
-} from "@veyyon/coding-agent/capability";
-import { skillCapability } from "@veyyon/coding-agent/capability/skill";
-import { Settings } from "@veyyon/coding-agent/config/settings";
+} from "@veyyon/coding-agent/discovery/capability";
+import { skillCapability } from "@veyyon/coding-agent/discovery/capability/skill";
 
 // Ensure the skill discovery providers (claude/codex/agents/native/...) are
 // registered on the global capability registry.

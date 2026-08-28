@@ -11,8 +11,8 @@ import {
 	resolveLaunchOverrides,
 	selectAttachAdapter,
 	selectLaunchAdapter,
-} from "../../src/dap/config";
-import type { DapResolvedAdapter } from "../../src/dap/types";
+} from "../../src/debug/dap/config";
+import type { DapResolvedAdapter } from "../../src/debug/dap/types";
 import { injectPluginDirRoots } from "../../src/discovery/helpers";
 
 const tempDirs: string[] = [];

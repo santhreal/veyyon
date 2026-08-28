@@ -27,7 +27,7 @@ These are genuinely good patterns. Refactors must preserve behavior.
    subagent definitions) and the `task` tool registered in
    `packages/coding-agent/src/tools/index.ts`.
 3. **Addressed inter-agent messaging**: the `irc` tool (`packages/coding-agent/src/tools/irc.ts`,
-   bus in `packages/coding-agent/src/irc/bus.ts`): `send`/`wait`/`inbox`/`list` ops, delivery receipts,
+   bus in `packages/coding-agent/src/task/irc-bus.ts`): `send`/`wait`/`inbox`/`list` ops, delivery receipts,
    reply-to threading. This is the shipped equivalent of the old point-to-point
    `InterAgentCommunication`/`send_message`/`wait` model, `send` wakes an idle recipient with a real
    turn, revives a parked one via the lifecycle manager, or injects a non-interrupting aside into a
@@ -81,4 +81,4 @@ the shipped model-slots-plus-3-knob-compaction design (see [Compaction & project
 handoff prompt, preserve behavior. If it touches model-routing *settings knobs*, follow the shipped
 model-slots design above, do not resurrect a role→model matrix because an old fork had one.
 
-*Verified against `7e4c6374` on 2026-08-06.*
+*Verified against `632fd91c3b4e` on 2026-08-28.*

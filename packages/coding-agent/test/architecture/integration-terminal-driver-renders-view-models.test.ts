@@ -12,6 +12,14 @@
  * derived from `TRANSCRIPT_BLOCK_KINDS`, the run-time table `@veyyon/wire` locks
  * against its own union, so a new block kind fails here until it has rows.
  *
+ * Driving the driver drives the row builders behind it: `driver.ts` composes
+ * rows from `src/modes/terminal/block-rows.ts` for the transcript and
+ * `src/modes/terminal/chrome-rows.ts` for the status line and composer, and
+ * both resolve their escapes through `src/modes/terminal/theme-ansi.ts`. Those
+ * three are pure string functions with no terminal of their own, so their
+ * contract is what a VT displays, and it is asserted here rather than against
+ * their return values.
+ *
  * What it does NOT catch: colour fidelity on a 256-colour terminal (the encoding
  * is chosen by `@veyyon/utils/color-format` and asserted in its own suite), and
  * mouse routing, which the engine owns.

@@ -443,7 +443,7 @@ Supported formats: PNG, JPEG, GIF, WebP. Dimensions are parsed from the image he
 Supports both slash commands and file paths.
 
 ```typescript
-import { CombinedAutocompleteProvider } from "@veyyon/tui";
+import { CombinedAutocompleteProvider } from "@veyyon/utils/autocomplete";
 import { getProjectDir } from "@veyyon/utils";
 
 const provider = new CombinedAutocompleteProvider(
@@ -473,7 +473,7 @@ autocomplete (including the modifier helpers `Key.ctrl`, `Key.shift`, `Key.alt`
 and their combinations):
 
 ```typescript
-import { Key, matchesKey } from "@veyyon/tui";
+import { Key, matchesKey } from "@veyyon/utils/keys";
 
 if (matchesKey(data, Key.ctrl("c"))) {
 	process.exit(0);
@@ -490,7 +490,7 @@ To go the other way, `parseKey(data)` returns a normalized identifier such as
 recognized key sequence. Use it when you want to switch over many keys at once:
 
 ```typescript
-import { parseKey } from "@veyyon/tui";
+import { parseKey } from "@veyyon/utils/keys";
 
 switch (parseKey(data)) {
 	case "enter":
@@ -547,7 +547,8 @@ String and escape primitives are `@veyyon/utils` subpath modules, not `@veyyon/t
 
 ```typescript
 import { Ellipsis } from "@veyyon/natives";
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@veyyon/utils/width";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 
 // Get visible width of string (ignoring ANSI codes, uses Bun.stringWidth)
 const width = visibleWidth("\x1b[31mHello\x1b[0m"); // 5

@@ -29,9 +29,9 @@ import { describe, expect, it } from "bun:test";
 // The type import is itself an assertion: it fails `check:ts` if the interface
 // stops being exported, which is the half a runtime key check cannot see because
 // an interface leaves nothing behind at runtime.
-import type { VibeSpawnOutcome } from "@veyyon/coding-agent/vibe/runtime";
+import type { VibeSpawnOutcome } from "@veyyon/coding-agent/session/vibe-runtime";
 
-const MODULE = "@veyyon/coding-agent/vibe/runtime";
+const MODULE = "@veyyon/coding-agent/session/vibe-runtime";
 
 describe("vibe/runtime export surface", () => {
 	/**
@@ -93,7 +93,7 @@ describe("vibe/runtime export surface", () => {
 
 		for await (const rel of glob.scan({ cwd: root, onlyFiles: true })) {
 			if (rel.startsWith("node_modules/") || rel.startsWith("dist/")) continue;
-			if (rel === "src/vibe/runtime.ts" || rel.endsWith("vibe-runtime-export-surface.test.ts")) continue;
+			if (rel === "src/session/vibe-runtime.ts" || rel.endsWith("vibe-runtime-export-surface.test.ts")) continue;
 			const text = await Bun.file(`${root}${rel}`).text();
 			scanned += 1;
 			if (/\bVIBE_CLI_AGENT\b|\bVibeTurnError\b/.test(text)) offenders.push(rel);

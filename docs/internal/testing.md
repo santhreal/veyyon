@@ -786,7 +786,7 @@ carried a hand-written list of workspace packages, and two of them listed `@veyy
 not the name of any package here: the directory is `packages/agent` and the package is
 `@veyyon/agent-core`. Every one of the 569 imports of it resolved to nothing, and so did
 `@veyyon/mnemopi`, `@veyyon/stats`, `@veyyon/natives` and `@veyyon/tool-render`.
-`packages/coding-agent/src/thinking.ts` was pinned at 12 modules with a comment calling it "nearly a
+`packages/coding-agent/src/thinking/index.ts` was pinned at 12 modules with a comment calling it "nearly a
 leaf"; it was 407, because it named the `@veyyon/agent-core` barrel.
 
 So do not write that list. `workspaceModuleReachResolution(repoRoot)` from
@@ -901,7 +901,7 @@ missing `yield` handler once surfaced as seventeen unrelated-looking failures.
 | One owner for the default chords | `coding-agent/test/config/the-keybinding-defaults-have-one-owner.test.ts` |
 | Session does not import the UI | `coding-agent/test/architecture/session-does-not-import-the-ui.test.ts` |
 | Tools import the UI only to draw | `coding-agent/test/architecture/tools-reach-the-ui-only-to-draw.test.ts` |
-| OSC 66 spans measure the same in both width oracles | `packages/tui/test/visible-width-osc66-spans.test.ts` |
+| OSC 66 spans measure the same in both width oracles | `packages/utils/test/visible-width-osc66-spans.test.ts` |
 | The utils barrel re-exports and defines nothing | `packages/utils/test/the-barrel-owns-nothing.test.ts` |
 | A temp dir is not made in the repository | `packages/utils/test/a-temp-dir-is-not-made-in-the-repository.test.ts` |
 | Byte and well-formedness measurements | `packages/utils/test/string-byte-and-form-measurements.test.ts` |
@@ -1219,4 +1219,4 @@ Wiring you can't exercise in-process (worker spawn, install flow) is covered by 
 runtime smoke probe (`veyyon --smoke-test`) and the install-test scripts, not by a
 source grep.
 
-*Verified against `96175566f` on 2026-08-22.*
+*Verified against `632fd91c3b4e` on 2026-08-28.*

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { detectColumns } from "@veyyon/coding-agent/markit/converters/pdf/columns";
-import type { TextBox } from "@veyyon/coding-agent/markit/converters/pdf/types";
+import { detectColumns } from "@veyyon/coding-agent/export/markit/converters/pdf/columns";
+import type { TextBox } from "@veyyon/coding-agent/export/markit/converters/pdf/types";
 
 /**
  * detectColumns splits a PDF page's text boxes into reading-order columns so a

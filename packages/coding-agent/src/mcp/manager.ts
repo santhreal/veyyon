@@ -11,10 +11,10 @@ import type { TSchema } from "@veyyon/ai";
 // belongs to the flag it decides, and `error/flags.ts` is where that flag lives.
 import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/flags";
 import { errorMessage, logger } from "@veyyon/utils";
-import { FOREIGN_PROVIDER_IDS } from "../capability/index";
-import type { SourceMeta } from "../capability/types";
 import { describeConfigEnvReference } from "../config/config-value-resolution";
 import { invalidateConfigValue, resolveConfigValue } from "../config/resolve-config-value";
+import { FOREIGN_PROVIDER_IDS } from "../discovery/capability";
+import type { SourceMeta } from "../discovery/capability/types";
 import type { CustomTool } from "../extensibility/custom-tools/types";
 import { type AuthStorage, REMOTE_REFRESH_SENTINEL } from "../session/auth-storage";
 import {

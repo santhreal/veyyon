@@ -28,7 +28,7 @@
  */
 import { Box, Spacer, Text } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
-import type { Rule } from "../../packages/coding-agent/src/capability/rule";
+import type { Rule } from "../../packages/coding-agent/src/discovery/capability/rule";
 import { createSourceMeta } from "../../packages/coding-agent/src/discovery/helpers";
 import { TodoReminderComponent } from "../../packages/coding-agent/src/modes/components/todo-reminder";
 import type { TranscriptNote } from "../../packages/coding-agent/src/modes/components/transcript-note";

@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Markit } from "@veyyon/coding-agent/markit";
+import { Markit } from "@veyyon/coding-agent/export/markit";
 import { convertBufferWithMarkit, convertFileWithMarkit } from "@veyyon/coding-agent/utils/markit";
 import {
 	MARKIT_CONVERSION_CACHE_VERSION,

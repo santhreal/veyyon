@@ -5,7 +5,7 @@
 ## Source
 - Entry: `packages/coding-agent/src/tools/memory-edit.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/memory-edit.md`
-- Backend collaborator: `packages/coding-agent/src/mnemopi/state.ts` (`editScopedMemory(...)`)
+- Backend collaborator: `packages/coding-agent/src/memory/mnemopi/state.ts` (`editScopedMemory(...)`)
 
 ## Inputs
 

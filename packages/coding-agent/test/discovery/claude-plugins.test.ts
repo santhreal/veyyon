@@ -2,15 +2,15 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	captureRegistryForTests,
 	initializeWithSettings,
 	loadCapability,
 	type RegistrySnapshot,
 	restoreRegistryForTests,
-} from "@veyyon/coding-agent/capability";
-import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
-import { Settings } from "@veyyon/coding-agent/config/settings";
+} from "@veyyon/coding-agent/discovery/capability";
+import { clearCache as clearFsCache } from "@veyyon/coding-agent/discovery/capability/fs";
 import {
 	clearClaudePluginRootsCache,
 	listClaudePluginRoots,
@@ -20,9 +20,9 @@ import { loadSlashCommands } from "@veyyon/coding-agent/extensibility/slash-comm
 import { discoverAgents } from "@veyyon/coding-agent/task/discovery";
 import { removeWithRetries } from "@veyyon/utils";
 import "@veyyon/coding-agent/discovery/claude-plugins";
-import { type MCPServer, mcpCapability } from "@veyyon/coding-agent/capability/mcp";
-import type { DiscoveredSkill } from "@veyyon/coding-agent/capability/skill";
-import type { SlashCommand } from "@veyyon/coding-agent/capability/slash-command";
+import { type MCPServer, mcpCapability } from "@veyyon/coding-agent/discovery/capability/mcp";
+import type { DiscoveredSkill } from "@veyyon/coding-agent/discovery/capability/skill";
+import type { SlashCommand } from "@veyyon/coding-agent/discovery/capability/slash-command";
 
 // claude-plugins is a foreign provider gated behind the (default-off)
 // importForeignConfig master toggle. Turn it on for the whole file so the

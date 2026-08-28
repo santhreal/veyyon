@@ -13,13 +13,13 @@
  * messages. Every fold is announced with the count it hid, and Ctrl+O unfolds.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { IrcBus } from "@veyyon/coding-agent/irc/bus";
 import { codeNameFor } from "@veyyon/coding-agent/modes/components/agent-activity";
 import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { IrcBus } from "@veyyon/coding-agent/task/irc-bus";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;

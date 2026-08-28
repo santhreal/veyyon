@@ -8,7 +8,7 @@ import { Snowflake } from "@veyyon/utils/snowflake";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { $which } from "@veyyon/utils/which";
 import type { Subprocess } from "bun";
-import { parseDiffFileHunks, parseFileDiffs, parseFileHunks, parseNumstat } from "../commit/git/diff";
+import { parseDiffFileHunks, parseFileDiffs, parseFileHunks, parseNumstat } from "../commit/git-diff";
 import type { FileDiff, FileHunks, NumstatEntry } from "../commit/types";
 import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import { ToolAbortError, ToolError, throwIfAborted } from "../tools/tool-errors";

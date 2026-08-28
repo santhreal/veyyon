@@ -1,7 +1,7 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
 import { logger, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
-import { ensureBankExists } from "../hindsight/bank";
+import { ensureBankExists } from "../memory/hindsight/bank";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from ".";
 

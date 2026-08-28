@@ -343,8 +343,8 @@ describe("the redaction authority the rest of the app reads", () => {
 		const sources = [
 			"../../src/modes/controllers/event-controller.ts",
 			"../../src/modes/controllers/input-controller.ts",
-			"../../src/hindsight/state.ts",
-			"../../src/mnemopi/backend.ts",
+			"../../src/memory/hindsight/state.ts",
+			"../../src/memory/mnemopi/backend.ts",
 		];
 		for (const relative of sources) {
 			const text = await fs.readFile(path.resolve(import.meta.dir, relative), "utf8");

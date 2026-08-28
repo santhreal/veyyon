@@ -33,4 +33,4 @@ prompt ──► │  veyyon (packages/coding-agent)                            
 1. **One primary edit path.** Hashline is the default edit surface; alternate `edit.mode` values exist for compatibility.
 2. **Explicit failures.** Invalid config, stale hashline tags, and denied actions return actionable errors to the operator or model. Denied tools do not auto-escalate permissions.
 
-Tool-call argument repair (alias maps, strict unknown-key rejection, parse leniency) runs at the dispatch seam in `packages/coding-agent/src/repair/schema-repair.ts`. See [Repair](../repair/overview.md). Providers and models: [Providers](../models/providers.md).
+Tool-call argument repair (alias maps, strict unknown-key rejection, parse leniency) runs at the dispatch seam in `packages/coding-agent/src/tools/repair/schema-repair.ts`. See [Repair](../repair/overview.md). Providers and models: [Providers](../models/providers.md).

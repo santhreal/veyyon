@@ -146,7 +146,7 @@ describe("a real agent turn reaches the terminal through the presentation seam",
 		await settleFrames(rig.terminal, rig.driver.tui);
 
 		const frame = rig.viewport();
-		// The user's own words: the bridge seeded and followed the transcript.
+		// The prompt text itself: the bridge seeded and followed the transcript.
 		expect(frame).toContain("what port does src/config.ts use");
 		// The tool the model asked for, by name, from a toolCall block.
 		expect(frame).toContain("read");

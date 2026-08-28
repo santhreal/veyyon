@@ -18,12 +18,12 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getCapability } from "@veyyon/coding-agent/capability";
-import { clearCache } from "@veyyon/coding-agent/capability/fs";
-import { type Rule, ruleCapability } from "@veyyon/coding-agent/capability/rule";
-import type { LoadContext } from "@veyyon/coding-agent/capability/types";
 // Importing discovery registers all providers as a side effect.
 import { loadCapability } from "@veyyon/coding-agent/discovery";
+import { getCapability } from "@veyyon/coding-agent/discovery/capability";
+import { clearCache } from "@veyyon/coding-agent/discovery/capability/fs";
+import { type Rule, ruleCapability } from "@veyyon/coding-agent/discovery/capability/rule";
+import type { LoadContext } from "@veyyon/coding-agent/discovery/capability/types";
 import { removeSyncWithRetries, setAgentDir } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 

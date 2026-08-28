@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { resolveTableGrids } from "@veyyon/coding-agent/markit/converters/pdf/grid";
-import type { Segment, TextBox } from "@veyyon/coding-agent/markit/converters/pdf/types";
+import { resolveTableGrids } from "@veyyon/coding-agent/export/markit/converters/pdf/grid";
+import type { Segment, TextBox } from "@veyyon/coding-agent/export/markit/converters/pdf/types";
 
 /**
  * resolveTableGrids reconstructs table grids from a PDF page's vector line

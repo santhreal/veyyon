@@ -10,19 +10,19 @@ import { errorMessage, getAgentDir, hasFsCode, isEacces, isEnoent, logger, repor
 import type { KeyId } from "@veyyon/utils/keys";
 import { Type } from "arktype";
 import * as zodModule from "zod/v4";
-import { type ExtensionModule, extensionModuleCapability } from "../../capability/extension-module";
-import { type Hook, hookCapability } from "../../capability/hook";
-import { loadCapability } from "../../discovery";
-import { discoverExtensionModulePaths, getExtensionNameFromPath } from "../../discovery/helpers";
-import type { ExecOptions } from "../../exec/exec";
-import { execCommand, withSessionCpuExec } from "../../exec/exec";
 import {
 	canonicalProjectRoot,
 	describeProjectExecutable,
 	describeRefusal,
 	type ProjectExecutable,
 	ProjectTrust,
-} from "../../security/project-trust";
+} from "../../config/project-trust";
+import { loadCapability } from "../../discovery";
+import { type ExtensionModule, extensionModuleCapability } from "../../discovery/capability/extension-module";
+import { type Hook, hookCapability } from "../../discovery/capability/hook";
+import { discoverExtensionModulePaths, getExtensionNameFromPath } from "../../discovery/helpers";
+import type { ExecOptions } from "../../exec/exec";
+import { execCommand, withSessionCpuExec } from "../../exec/exec";
 import type { CustomMessagePayload } from "../../session/messages";
 import { EventBus } from "../../utils/event-bus";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
