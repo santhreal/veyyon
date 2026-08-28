@@ -3,6 +3,7 @@ import * as t from "@babel/types";
 
 import {
 	applySourceEdits,
+	BaseAstMutation,
 	BooleanLiteralFlipMutation,
 	CallArgumentSwapMutation,
 	type Candidate,
@@ -10,7 +11,6 @@ import {
 	isLengthMemberExpression,
 	type Mutation,
 	type MutationInfo,
-	BaseAstMutation,
 	NullishCoalescingSwapMutation,
 	nodeLine,
 	nodeRange,

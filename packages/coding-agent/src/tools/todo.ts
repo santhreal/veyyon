@@ -44,6 +44,7 @@ import {
 	todoSchema,
 } from "./todo-helpers";
 
+export type { TodoStatus } from "@veyyon/wire";
 export {
 	boundedTodoPreviewText,
 	createBoundedTodoPreview,
@@ -69,7 +70,6 @@ export {
 	todoMatchesAnyDescription,
 	USER_TODO_EDIT_CUSTOM_TYPE,
 } from "./todo-helpers";
-export type { TodoStatus } from "@veyyon/wire";
 
 function removeTasks(phases: TodoPhase[], entry: TodoOpEntryValue, errors: string[]): TodoPhase[] {
 	if (entry.task) {

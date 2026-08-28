@@ -51,6 +51,7 @@ export {
 	type InstalledVersionVerification,
 	type InstallLocation,
 	type InstallReleaseResult,
+	parseSha256Sidecar,
 	probeSearchWorks,
 	type ReleaseInfo,
 	type ReleaseListing,
@@ -74,7 +75,6 @@ export {
 	verifyBinaryVersion,
 	verifyDownloadChecksum,
 	windowsCompletionTargets,
-	parseSha256Sidecar,
 } from "./update-cli-helpers";
 
 export async function installRelease(
