@@ -155,7 +155,7 @@ describe("no component restates the chrome arithmetic", () => {
 	 * right up until someone changes `vPad` or `footerLines`.
 	 */
 	const componentsDir = path.join(import.meta.dir, "..", "src", "modes", "terminal", "components");
-	const OWNER = path.join(componentsDir, "modal-shell.ts");
+	const OWNER = path.join(componentsDir, "chrome", "modal-shell.ts");
 
 	function sourceFiles(dir: string): string[] {
 		const out: string[] = [];

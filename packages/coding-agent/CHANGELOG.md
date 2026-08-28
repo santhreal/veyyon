@@ -64,9 +64,12 @@
 - The browser tab worker and supervisor state why each teardown step and each optional probe discards its failure; behavior is unchanged.
 - The browser tab worker and supervisor reach `bestEffort` and `optionalResult` through `@veyyon/utils/discarded-fault` rather than the package barrel; behavior is unchanged.
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
+- The legacy Pi bundled-module generator states which package roots a compatibility shim serves, so the compiled-mode override sweep derives that set instead of carrying its own copy; behavior is unchanged.
 
 ### Fixed
 
+- A submission arriving in the tick after the terminal asks for input is no longer dropped, and loop mode's auto-submit timer no longer arms a tick late: the goal-mode exit check ran as an `await` on every turn, and an `async` guard that returns early still yields before the input callback is installed.
+- An extension published against the old `@veyyon/tui` barrel loads again. Moving the width, key, mouse, motion, LaTeX, fuzzy and paint primitives to `@veyyon/utils` removed them from that barrel, so a plugin importing `visibleWidth` or `Key` from `@earendil-works/pi-tui` failed at import time and its whole extension went inactive; the bare tui package root now resolves to a compatibility surface carrying the renderer plus every module the barrel dropped.
 - A model selector that names a provider and no model (`openai/`, `openai/:high`) is rejected where it is written instead of parsing to a model id of the empty string, which every caller then carried until a lookup failed somewhere else.
 - A personality named after a property JavaScript objects inherit, such as `toString` or `constructor`, is reported as unknown and falls back to the default like any other unrecognized name; the built-in catalog was indexed without an own-property check, so those names resolved to a function, the system prompt build failed silently, and the default was substituted with no warning and any `personality/default.md` override ignored.
 - A personality spec can no longer spell a prompt tag such as `<critical>` and have it render as prompt structure; only `<personality>` was neutralized before, and a project's `.veyyon/personalities` file, which arrives with a cloned repository and outranks the user's own, is injected into every request.

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { __buildLegacyPiPackageRootOverrides } from "@veyyon/coding-agent/extensibility/plugins/legacy-pi-compat";
-import { collectBundledPiEntries } from "../../scripts/legacy-pi-virtual-module";
+import { collectBundledPiEntries, collectShimmedRootKeys } from "../../scripts/legacy-pi-virtual-module";
 
 const bundledModuleKeys = new Set((await collectBundledPiEntries()).map(entry => entry.key));
+const shimmedRootKeys = new Set(await collectShimmedRootKeys());
 
 // Regression for issue #3442: extension validation in compiled-binary mode
 // failed to resolve `@earendil-works/pi-ai/oauth` because the override map
@@ -71,15 +72,31 @@ describe("legacy pi compat compiled-mode subpath overrides (issue #3442)", () =>
 		const overrides = __buildLegacyPiPackageRootOverrides(true, bundledModuleKeys);
 		const missing: string[] = [];
 		for (const key of bundledModuleKeys) {
-			// pi-ai/pi-coding-agent roots intentionally use the legacy compat shims
-			// (they re-attach `Type`, `defineTool`, etc. dropped from the canonical
-			// package surface); typebox is served via TYPEBOX_SHIM_PATH.
-			if (key === "@veyyon/ai" || key === "@veyyon/coding-agent" || key === "typebox") continue;
+			// A root served by a legacy compat shim re-attaches a surface the
+			// canonical barrel dropped (`Type`, `defineTool`, the string and input
+			// primitives that moved to `@veyyon/utils`), so it routes to the shim
+			// rather than to the canonical package. The set is derived from the
+			// generator, not listed here, because a list here goes stale the next
+			// time a package gains a shim — which is exactly what happened when
+			// pi-tui got one. typebox is served through TYPEBOX_SHIM_PATH and is
+			// pinned by its own case below.
+			if (shimmedRootKeys.has(key) || key === "typebox") continue;
 			if (overrides[key] !== `veyyon-legacy-pi-bundled:${key}`) {
 				missing.push(key);
 			}
 		}
 		expect(missing).toEqual([]);
+	});
+
+	it("derives the shimmed roots from the generator, and every one is a bundled key", () => {
+		// Keeps the sweep above from going vacuous: a generator that returned every
+		// bundled key would make it skip everything and pass. Pinned by equality, so
+		// a package that gains a root shim turns this red until the decision is
+		// recorded here.
+		expect([...shimmedRootKeys].sort()).toEqual(["@veyyon/ai", "@veyyon/coding-agent", "@veyyon/tui"]);
+		for (const key of shimmedRootKeys) {
+			expect(bundledModuleKeys.has(key)).toBe(true);
+		}
 	});
 
 	it("keeps pi-ai/pi-coding-agent roots routed to their compat shims in compiled mode", () => {

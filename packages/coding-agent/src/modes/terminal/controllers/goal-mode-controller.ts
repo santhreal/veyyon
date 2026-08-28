@@ -330,9 +330,22 @@ export class GoalModeController {
 		return "handled";
 	}
 
-	/** Leave a goal the session reports as exiting, before the next user input. */
-	async exitIfSessionIsExiting(): Promise<void> {
-		if (this.#context.session.getGoalModeState()?.mode !== "exiting") return;
+	/**
+	 * Whether the session reports a goal that is exiting, which has to be left
+	 * before the next user input.
+	 *
+	 * Split from the exit itself, and deliberately synchronous, because the caller
+	 * is `getUserInput`. An `async` check that early-returns still yields a
+	 * microtask, and everything after it — installing `onInputCallback`, arming the
+	 * loop auto-submit timer, arming the goal continuation — would happen one tick
+	 * late on every turn. Input arriving inside that tick has no callback to reach.
+	 */
+	get sessionGoalIsExiting(): boolean {
+		return this.#context.session.getGoalModeState()?.mode === "exiting";
+	}
+
+	/** Leave a goal the session reports as exiting. Call behind `sessionGoalIsExiting`. */
+	async exitCompletedGoal(): Promise<void> {
 		await this.#exit({ reason: "completed", silent: true });
 	}
 

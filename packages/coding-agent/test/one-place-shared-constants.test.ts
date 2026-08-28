@@ -99,7 +99,7 @@ describe("the per-project hindsight tag prefix", () => {
 	 */
 	it("is declared in exactly one module", async () => {
 		expect(await declarersOf("PROJECT_TAG_PREFIX")).toEqual([
-			path.join("coding-agent", "src", "hindsight", "bank.ts"),
+			path.join("coding-agent", "src", "memory", "hindsight", "bank.ts"),
 		]);
 	});
 

@@ -24,7 +24,7 @@ import {
 import { moduleSpecifiersIn, namedImportsFrom } from "@veyyon/utils/module-reach";
 
 const SRC_DIR = path.resolve(import.meta.dir, "../src");
-const COMPONENTS_DIR = path.join(SRC_DIR, "modes/components");
+const COMPONENTS_DIR = path.join(SRC_DIR, "modes/terminal/components");
 const DASHBOARD_DIR = path.join(COMPONENTS_DIR, "dashboard");
 const OWNER = path.join(DASHBOARD_DIR, "agent-view-timings.ts");
 

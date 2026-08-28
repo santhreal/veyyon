@@ -59,6 +59,26 @@ describe("InteractiveMode loop auto-submit", () => {
 		resetSettingsForTest();
 	});
 
+	/**
+	 * The invariant every test below rests on, asserted at the choke point rather
+	 * than through one of its symptoms. `getUserInput` installs the input callback
+	 * and arms the loop and goal timers with no `await` in front of them. An
+	 * `async` guard that early-returns still yields a microtask, and in that tick
+	 * there is no callback for an arriving submission to reach and no timer armed
+	 * for the loop; the compact test below is the symptom that showed it, but a
+	 * later refactor can reintroduce the await without touching loop mode at all.
+	 */
+	it("installs the input callback before it yields, so no submission lands in a gap", () => {
+		vi.useFakeTimers();
+		mode.loopModeEnabled = true;
+		mode.loopPrompt = "armed synchronously";
+
+		void mode.getUserInput();
+
+		expect(mode.onInputCallback).toBeDefined();
+		expect(vi.getTimerCount()).toBeGreaterThan(0);
+	});
+
 	it("does not resolve the next loop prompt while compaction is running", async () => {
 		vi.useFakeTimers();
 		let compacting = true;
