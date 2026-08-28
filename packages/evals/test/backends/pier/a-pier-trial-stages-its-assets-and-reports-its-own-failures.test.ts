@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { pierBackend } from "../../../backends/pier/main";
+import { PierExecutionBackend, pierBackend } from "../../../backends/pier/main";
 import {
 	checkPierPreflight,
 	cleanupPierContainers,
@@ -189,6 +189,19 @@ describe("Pier ExecutionBackend", () => {
 		const outRoot = path.join(tmpRoot, "out");
 		const checkout = path.join(tmpRoot, "checkout");
 		try {
+			// The contract here is that a run's directories are keyed by its run id, which the
+			// staged build and credential store say nothing about. Staging them from fixtures
+			// keeps that contract off the checkout's own `dist/vey` and login database, whose
+			// presence is a property of the machine and not of this backend.
+			const fixtures = path.join(tmpRoot, "fixtures");
+			fs.mkdirSync(fixtures, { recursive: true });
+			const veyBinary = path.join(fixtures, "vey");
+			fs.writeFileSync(veyBinary, "#!/bin/sh\nexit 0\n");
+			fs.chmodSync(veyBinary, 0o755);
+			const authDb = path.join(fixtures, "agent.db");
+			fs.writeFileSync(authDb, "");
+			const backend = new PierExecutionBackend({ veyBinary, authDb });
+
 			const contextA: RunContext = {
 				runId: "run_alpha",
 				suite: createMockSuite(),
@@ -204,8 +217,8 @@ describe("Pier ExecutionBackend", () => {
 				harnesses,
 			};
 
-			await pierBackend.prepare(contextA);
-			await pierBackend.prepare(contextB);
+			await backend.prepare(contextA);
+			await backend.prepare(contextB);
 
 			expect(fs.existsSync(path.join(outRoot, "run_alpha", "jobs"))).toBe(true);
 			expect(fs.existsSync(path.join(outRoot, "run_beta", "jobs"))).toBe(true);

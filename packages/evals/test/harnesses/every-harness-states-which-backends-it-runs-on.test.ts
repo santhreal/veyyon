@@ -26,10 +26,23 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import type { EvalSuite, HarnessAdapter, TaskDescriptor } from "../../engine/contracts";
+import * as path from "node:path";
+import type { EvalSuite, HarnessAdapter, SuiteContext, TaskDescriptor } from "../../engine/contracts";
 import { harnesses, suites } from "../../engine/loaded-members";
 import { Registry } from "../../engine/member-registry";
 import { buildRunPlan, UnboundHarnessBackendError } from "../../engine/run-plan";
+
+/**
+ * A suite discovers its tasks out of a dataset directory, and the harbor-backed suite defaults
+ * to a corpus that is downloaded rather than committed. This sweep is about which backends a
+ * harness declares, so it reads the committed fixture corpus instead of whatever the machine
+ * happens to have downloaded.
+ */
+const TERMINAL_BENCH_FIXTURES = path.resolve(import.meta.dirname, "../suites/terminal-bench/fixtures");
+
+function contextFor(suite: EvalSuite): SuiteContext {
+	return suite.id === "terminal-bench" ? { datasetDir: TERMINAL_BENCH_FIXTURES } : {};
+}
 
 describe("every harness states which backends it runs on", () => {
 	it("sweeps builtinHarnesses × builtinSuites and pins refused pairs by exact equality", async () => {
@@ -45,7 +58,8 @@ describe("every harness states which backends it runs on", () => {
 		for (const harness of allHarnesses) {
 			for (const suite of allSuites) {
 				const pair = { harness: harness.id, suite: suite.id, backend: suite.backend };
-				const tasks = await suite.discoverTasks({});
+				const context = contextFor(suite);
+				const tasks = await suite.discoverTasks(context);
 				const sampleTasks = tasks.slice(0, 1);
 
 				if (harness.backends[suite.backend]) {
@@ -58,6 +72,7 @@ describe("every harness states which backends it runs on", () => {
 							models: ["anthropic/claude-sonnet-4-5"],
 						},
 						tasks: sampleTasks,
+						context,
 					});
 
 					expect(plan.variants.length).toBe(1);
@@ -75,6 +90,7 @@ describe("every harness states which backends it runs on", () => {
 								models: ["anthropic/claude-sonnet-4-5"],
 							},
 							tasks: sampleTasks,
+							context,
 						});
 					} catch (err) {
 						threwError = err;

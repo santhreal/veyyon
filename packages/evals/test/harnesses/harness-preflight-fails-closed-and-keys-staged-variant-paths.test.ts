@@ -91,7 +91,11 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 				db.close();
 				return {
 					options: {
-						binary: binPath,
+						// The adapter declares `vey-binary`, and an undeclared `binary` key was
+						// silently ignored: preflight then fell back to the checkout's own build,
+						// so this fixture passed on a machine that had one and failed where none
+						// was built. The fixture names the flag the adapter reads.
+						"vey-binary": binPath,
 						"auth-db": authDbPath,
 						model: "google-antigravity/gemini-3.5-flash",
 					},
