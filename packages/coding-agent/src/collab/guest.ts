@@ -20,7 +20,10 @@ import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
 import { getConfigRootDir, logger } from "@veyyon/utils";
 import { SNAPSHOT_PROGRESS_TIMEOUT_MS, TRANSCRIPT_TIMEOUT_MS, WELCOME_TIMEOUT_MS } from "@veyyon/wire";
-import type { AgentTranscriptRemote, AgentTranscriptRemoteRead } from "../modes/components/agent-transcript-viewer";
+import type {
+	AgentTranscriptRemote,
+	AgentTranscriptRemoteRead,
+} from "../modes/components/dashboard/agent-transcript-viewer";
 import type { InteractiveModeContext } from "../modes/types";
 import { AgentRegistry } from "../registry/agent-registry";
 import type { AgentSessionEvent } from "../session/agent-session";

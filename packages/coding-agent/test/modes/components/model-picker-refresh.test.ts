@@ -21,7 +21,7 @@ import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { ModelPickerComponent } from "@veyyon/coding-agent/modes/components/model-picker";
+import { ModelPickerComponent } from "@veyyon/coding-agent/modes/components/selectors/model-picker";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { TUI } from "@veyyon/tui";
 

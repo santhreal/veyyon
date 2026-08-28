@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { createBackgroundTanDispatchBlock } from "@veyyon/coding-agent/modes/components/background-tan-message";
+import { createBackgroundTanDispatchBlock } from "@veyyon/coding-agent/modes/components/transcript/background-tan-message";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE, type CustomMessage } from "@veyyon/coding-agent/session/messages";
 

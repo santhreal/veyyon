@@ -19,7 +19,7 @@
  *     ground by breaking the other.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { LIGHT_SILVER_STOPS, SILVER_STOPS, silverEscape } from "@veyyon/coding-agent/modes/components/welcome";
+import { LIGHT_SILVER_STOPS, SILVER_STOPS, silverEscape } from "@veyyon/coding-agent/modes/components/dialogs/welcome";
 import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
 import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import { createTheme, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";

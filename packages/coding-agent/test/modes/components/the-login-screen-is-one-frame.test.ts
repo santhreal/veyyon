@@ -22,7 +22,7 @@
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { LoginDialogComponent } from "@veyyon/coding-agent/modes/components/login-dialog";
+import { LoginDialogComponent } from "@veyyon/coding-agent/modes/components/dialogs/login-dialog";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { formatProviderName } from "@veyyon/coding-agent/slash-commands/helpers/format";
 import * as openModule from "@veyyon/coding-agent/utils/open";

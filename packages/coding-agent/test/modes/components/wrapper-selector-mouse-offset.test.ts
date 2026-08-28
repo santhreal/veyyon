@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
-import { QueueModeSelectorComponent } from "@veyyon/coding-agent/modes/components/queue-mode-selector";
-import { ThemeSelectorComponent } from "@veyyon/coding-agent/modes/components/theme-selector";
-import { ThinkingSelectorComponent } from "@veyyon/coding-agent/modes/components/thinking-selector";
+import { QueueModeSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/queue-mode-selector";
+import { ThemeSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/theme-selector";
+import { ThinkingSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/thinking-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { ConfiguredThinkingLevel } from "@veyyon/coding-agent/thinking";
 import type { SgrMouseEvent } from "@veyyon/utils/mouse";

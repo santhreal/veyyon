@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
-import { CustomEditor } from "@veyyon/coding-agent/modes/components/custom-editor";
+import { CustomEditor } from "@veyyon/coding-agent/modes/components/composer/custom-editor";
 import { getEditorTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { StdinBuffer } from "@veyyon/tui/stdin-buffer";
 

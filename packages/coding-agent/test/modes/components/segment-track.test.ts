@@ -3,7 +3,7 @@ import {
 	renderSegmentTrack,
 	resolveSegmentPalette,
 	type TrackSegment,
-} from "@veyyon/coding-agent/modes/components/segment-track";
+} from "@veyyon/coding-agent/modes/components/chrome/segment-track";
 import { initTheme, type ThemeColor, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {

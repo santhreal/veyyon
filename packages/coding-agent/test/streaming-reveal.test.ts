@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
-import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/assistant-message";
 import {
 	BlockUnitCounter,
 	buildDisplayMessage,

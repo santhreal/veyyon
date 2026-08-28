@@ -13,7 +13,7 @@ import { formatCount, formatNumber, isRecord, sanitizeText } from "@veyyon/utils
 import { settings } from "../config/settings-instance";
 import { EXIT_CODE_NOTICE_RE } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { modelBadgeFromSelector } from "../modes/components/agent-model-badge";
+import { modelBadgeFromSelector } from "../modes/components/dashboard/agent-model-badge";
 import { formatContextUsage } from "../modes/components/status-line/context-thresholds";
 import { getMarkdownTheme } from "../modes/theme/markdown-theme";
 import type { Theme } from "../modes/theme/theme";

@@ -12,7 +12,7 @@
  * guess).
  */
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
-import { CardPadRow, ComposerHairline } from "@veyyon/coding-agent/modes/components/composer-chrome";
+import { CardPadRow, ComposerHairline } from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
 import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
 import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import {

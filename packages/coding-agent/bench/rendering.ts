@@ -5,10 +5,10 @@ import type { AssistantMessage } from "@veyyon/ai";
 import { Editor } from "@veyyon/tui";
 import { makeBench } from "@veyyon/utils/bench-harness";
 import { Settings } from "../src/config/settings";
-import { AssistantMessageComponent } from "../src/modes/components/assistant-message";
-import { TranscriptContainer } from "../src/modes/components/transcript-container";
-import { truncateToVisualLines } from "../src/modes/components/visual-truncate";
-import { WelcomeComponent } from "../src/modes/components/welcome";
+import { WelcomeComponent } from "../src/modes/components/dialogs/welcome";
+import { AssistantMessageComponent } from "../src/modes/components/transcript/assistant-message";
+import { TranscriptContainer } from "../src/modes/components/transcript/transcript-container";
+import { truncateToVisualLines } from "../src/modes/components/transcript/visual-truncate";
 import {
 	BlockUnitCounter,
 	buildDisplayMessage,

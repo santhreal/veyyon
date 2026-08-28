@@ -21,7 +21,7 @@
  * and could not be opened; `/settings` -> Subagents owns that table.
  */
 
-import { AgentDashboard } from "../../packages/coding-agent/src/modes/components/agent-dashboard";
+import { AgentDashboard } from "../../packages/coding-agent/src/modes/components/dashboard/agent-dashboard";
 import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
 import { AgentRegistry, MAIN_AGENT_ID } from "../../packages/coding-agent/src/registry/agent-registry";
 import type { AgentSession } from "../../packages/coding-agent/src/session/agent-session";

@@ -4,7 +4,7 @@ import {
 	CacheInvalidationMarkerComponent,
 	detectCacheInvalidation,
 	usesExplicitPromptCache,
-} from "@veyyon/coding-agent/modes/components/cache-invalidation-marker";
+} from "@veyyon/coding-agent/modes/components/transcript/cache-invalidation-marker";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 function usage(parts: { input?: number; cacheRead?: number; cacheWrite?: number; output?: number }): Usage {

@@ -29,7 +29,7 @@ import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { TODO_BOARD_FRAME_DIVISOR } from "@veyyon/coding-agent/modes/components/todo-board";
+import { TODO_BOARD_FRAME_DIVISOR } from "@veyyon/coding-agent/modes/components/dashboard/todo-board";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
 import { initTheme, stopThemeWatcher, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";

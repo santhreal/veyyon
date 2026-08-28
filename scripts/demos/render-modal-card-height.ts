@@ -20,7 +20,7 @@ import {
 	MODAL_SIZING_MEDIUM,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
-} from "../../packages/coding-agent/src/modes/components/modal-shell";
+} from "../../packages/coding-agent/src/modes/components/chrome/modal-shell";
 import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
 import { flag, renderWidth } from "./render-args";
 

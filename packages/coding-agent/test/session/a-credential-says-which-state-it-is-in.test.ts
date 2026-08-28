@@ -28,7 +28,7 @@ import {
 	accountGlyphKind,
 	accountHeadLine,
 	accountNoticeLines,
-} from "@veyyon/coding-agent/modes/components/account-manager-rows";
+} from "@veyyon/coding-agent/modes/components/account/account-manager-rows";
 import type { AccountCredentialState, AccountRow } from "@veyyon/coding-agent/session/account-inventory";
 import {
 	accountCredentialStatus,

@@ -31,7 +31,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { forgetImageDisplays } from "@veyyon/coding-agent/session/image-visibility";
 import { convertToLlm, replaceLlmImagesWithText } from "@veyyon/coding-agent/session/messages";

@@ -26,7 +26,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { HookInputComponent } from "@veyyon/coding-agent/modes/components/hook-input";
+import type { HookInputComponent } from "@veyyon/coding-agent/modes/components/dialogs/hook-input";
 import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { resolveVaultLocations, SecretVault } from "@veyyon/coding-agent/secrets/vault";

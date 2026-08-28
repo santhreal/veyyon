@@ -15,7 +15,7 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { UserMessageComponent } from "@veyyon/coding-agent/modes/components/user-message";
+import { UserMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/user-message";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { stripAnsi } from "@veyyon/utils";
 

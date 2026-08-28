@@ -1,0 +1,67 @@
+import type { Component } from "@veyyon/tui";
+import { Box, Container } from "@veyyon/tui";
+import type { MessageRenderer } from "../../../extensibility/extensions/types";
+import type { CustomMessage } from "../../../session/messages";
+import { theme } from "../../theme/theme";
+import { renderFramedMessage } from "./message-frame";
+
+/**
+ * Component that renders a custom message entry from extensions.
+ * Uses distinct styling to differentiate from user messages.
+ */
+export class CustomMessageComponent extends Container {
+	#box: Box;
+	#customComponent?: Component;
+	#expanded = false;
+
+	constructor(
+		private readonly message: CustomMessage<unknown>,
+		private readonly customRenderer?: MessageRenderer,
+	) {
+		super();
+
+		// Unpainted box: the inline TUI never paints backgrounds (slab-class fix).
+		this.#box = new Box(1, 1);
+		this.#box.setIgnoreTight(true);
+
+		this.#rebuild();
+	}
+
+	setExpanded(expanded: boolean): void {
+		if (this.#expanded !== expanded) {
+			this.#expanded = expanded;
+			this.#rebuild();
+		}
+	}
+
+	override invalidate(): void {
+		super.invalidate();
+		this.#rebuild();
+	}
+
+	#rebuild(): void {
+		if (this.#customComponent) {
+			this.removeChild(this.#customComponent);
+			this.#customComponent = undefined;
+		}
+		this.removeChild(this.#box);
+
+		// The transcript dispatch routes both `custom` and legacy `hookMessage` roles here:
+		// tag hooks with the hook glyph, other injected messages with a neutral package.
+		const isHook = (this.message.role as string) === "hookMessage";
+		const custom = renderFramedMessage({
+			message: this.message,
+			box: this.#box,
+			expanded: this.#expanded,
+			customRenderer: this.customRenderer,
+			icon: isHook ? theme.icon.extensionHook : theme.icon.package,
+		});
+
+		if (custom) {
+			this.#customComponent = custom;
+			this.addChild(custom);
+		} else {
+			this.addChild(this.#box);
+		}
+	}
+}

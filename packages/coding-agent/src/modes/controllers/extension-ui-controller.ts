@@ -23,16 +23,16 @@ import type {
 } from "../../extensibility/extensions";
 import { getSessionSlashCommands } from "../../extensibility/extensions/get-commands-handler";
 import { createExtensionModelQuery } from "../../extensibility/extensions/model-api";
-import { AskDialogComponent, boundPromptTitle } from "../../modes/components/ask-dialog";
-import { HookEditorComponent } from "../../modes/components/hook-editor";
-import { HookInputComponent } from "../../modes/components/hook-input";
-import { HookSelectorComponent, type HookSelectorSlider } from "../../modes/components/hook-selector";
 import { getAvailableThemesWithPaths, getThemeByName, setTheme, type Theme, theme } from "../../modes/theme/theme";
 import type { InteractiveModeContext, InteractiveSelectorDialogOptions } from "../../modes/types";
 import { abortDetached } from "../../session/detached-abort";
 import { normalizeCustomMessagePayload, USER_INTERRUPT_LABEL } from "../../session/messages";
 import { ASK_CHAT_OPTION_LABEL, ASK_NEXT_OPTION_LABEL, ASK_OTHER_OPTION_LABEL } from "../../tools/ask-option-labels";
 import { setSessionTerminalTitle, setTerminalTitle } from "../../utils/title-generator";
+import { AskDialogComponent, boundPromptTitle } from "../components/dialogs/ask-dialog";
+import { HookEditorComponent } from "../components/dialogs/hook-editor";
+import { HookInputComponent } from "../components/dialogs/hook-input";
+import { HookSelectorComponent, type HookSelectorSlider } from "../components/selectors/hook-selector";
 
 /**
  * The slice of the interactive context this uses: 31 members of the 215

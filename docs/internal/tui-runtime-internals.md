@@ -20,7 +20,7 @@ Boundary rule: the TUI engine is message-agnostic. It only knows `Component.rend
 - [`packages/coding-agent/src/modes/interactive-mode.ts`](../../packages/coding-agent/src/modes/interactive-mode.ts)
 - [`packages/coding-agent/src/modes/controllers/event-controller.ts`](../../packages/coding-agent/src/modes/controllers/event-controller.ts)
 - [`packages/coding-agent/src/modes/controllers/input-controller.ts`](../../packages/coding-agent/src/modes/controllers/input-controller.ts)
-- [`packages/coding-agent/src/modes/components/custom-editor.ts`](../../packages/coding-agent/src/modes/components/custom-editor.ts)
+- [`packages/coding-agent/src/modes/components/composer/custom-editor.ts`](../../packages/coding-agent/src/modes/components/composer/custom-editor.ts)
 - [`packages/tui/src/tui.ts`](../../packages/tui/src/tui.ts)
 - [`packages/tui/src/terminal.ts`](../../packages/tui/src/terminal.ts)
 - [`packages/tui/src/components/editor-component.ts`](../../packages/tui/src/components/editor-component.ts)

@@ -23,7 +23,7 @@
  * `--expanded` lists every phase with its tasks. Flags take the space form.
  */
 
-import { renderTodoBoardLines } from "../../packages/coding-agent/src/modes/components/todo-board";
+import { renderTodoBoardLines } from "../../packages/coding-agent/src/modes/components/dashboard/todo-board";
 import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
 import type { TodoItem, TodoPhase } from "../../packages/coding-agent/src/tools/todo";
 import { paintRailMotion, railIdleHeadAt } from "../../packages/coding-agent/src/tui/rail-motion";

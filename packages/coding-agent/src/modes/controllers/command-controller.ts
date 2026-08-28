@@ -35,14 +35,6 @@ import {
 	seedAlreadyExists,
 	summarizeMentalModel,
 } from "../../memory/hindsight";
-import { BashExecutionComponent } from "../../modes/components/bash-execution";
-import { compactionActionLabel, willCompactRemotely } from "../../modes/components/compaction-summary-message";
-import { COMPOSER_INSET_COLS } from "../../modes/components/composer-chrome";
-import { ComposerLoader } from "../../modes/components/composer-loader";
-import { EvalExecutionComponent } from "../../modes/components/eval-execution";
-import { MoveOverlay, type MoveOverlayResult } from "../../modes/components/move-overlay";
-import { mountTranscriptBlock, transcriptBlockText } from "../../modes/components/transcript-block-chrome";
-import { TranscriptBlock } from "../../modes/components/transcript-container";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { getSymbolTheme, theme } from "../../modes/theme/theme";
 import type { InteractiveModeContext } from "../../modes/types";
@@ -63,6 +55,14 @@ import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
 import { copyToClipboard } from "../../utils/clipboard";
 import { openPath } from "../../utils/open";
 import { setSessionTerminalTitle } from "../../utils/title-generator";
+import { COMPOSER_INSET_COLS } from "../components/composer/composer-chrome";
+import { ComposerLoader } from "../components/composer/composer-loader";
+import { MoveOverlay, type MoveOverlayResult } from "../components/selectors/move-overlay";
+import { BashExecutionComponent } from "../components/transcript/bash-execution";
+import { compactionActionLabel, willCompactRemotely } from "../components/transcript/compaction-summary-message";
+import { EvalExecutionComponent } from "../components/transcript/eval-execution";
+import { mountTranscriptBlock, transcriptBlockText } from "../components/transcript/transcript-block-chrome";
+import { TranscriptBlock } from "../components/transcript/transcript-container";
 import { renderContextUsage } from "../utils/context-usage";
 
 /**

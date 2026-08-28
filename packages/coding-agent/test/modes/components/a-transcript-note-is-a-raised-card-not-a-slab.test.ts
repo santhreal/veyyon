@@ -36,9 +36,9 @@
 import { describe, expect, it } from "bun:test";
 import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
 import { createSourceMeta } from "@veyyon/coding-agent/discovery/helpers";
-import { TodoReminderComponent } from "@veyyon/coding-agent/modes/components/todo-reminder";
-import { renderTranscriptNote } from "@veyyon/coding-agent/modes/components/transcript-note";
-import { TtsrNotificationComponent } from "@veyyon/coding-agent/modes/components/ttsr-notification";
+import { TodoReminderComponent } from "@veyyon/coding-agent/modes/components/dashboard/todo-reminder";
+import { renderTranscriptNote } from "@veyyon/coding-agent/modes/components/transcript/transcript-note";
+import { TtsrNotificationComponent } from "@veyyon/coding-agent/modes/components/transcript/ttsr-notification";
 import { resetGroundTintsForTest, setDetectedTerminalGround } from "@veyyon/coding-agent/modes/theme/ground-tints";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { Component } from "@veyyon/tui";

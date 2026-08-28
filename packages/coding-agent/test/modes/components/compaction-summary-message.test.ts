@@ -6,7 +6,7 @@ import {
 	compactionActionLabel,
 	createHandoffSummaryMessageComponent,
 	HandoffSummaryMessageComponent,
-} from "@veyyon/coding-agent/modes/components/compaction-summary-message";
+} from "@veyyon/coding-agent/modes/components/transcript/compaction-summary-message";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { CustomMessage } from "@veyyon/coding-agent/session/messages";
 import { getKeybindings, setKeybindings } from "@veyyon/utils/keybindings";

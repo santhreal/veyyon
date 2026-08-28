@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { HistorySearchComponent } from "@veyyon/coding-agent/modes/components/history-search";
+import { HistorySearchComponent } from "@veyyon/coding-agent/modes/components/composer/history-search";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { HistoryEntry, HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
 import { useFullColor } from "../../helpers/theme-assertions";

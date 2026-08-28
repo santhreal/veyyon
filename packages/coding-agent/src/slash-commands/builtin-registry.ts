@@ -41,7 +41,7 @@ import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../
 import { shareSession } from "../export/share";
 import { PluginManager } from "../extensibility/plugins";
 import { buildMemoryPayloadForDisplay, resolveMemoryBackend } from "../memory/backend";
-import { runPauseScreen } from "../modes/components/pause-screen";
+import { runPauseScreen } from "../modes/components/dialogs/pause-screen";
 import { describeLoopLimitRuntime } from "../modes/loop-limit";
 import { theme } from "../modes/theme/theme";
 import type { InteractiveModeContext } from "../modes/types";

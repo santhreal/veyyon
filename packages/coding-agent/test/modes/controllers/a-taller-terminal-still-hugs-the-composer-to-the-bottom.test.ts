@@ -23,7 +23,7 @@
  * where a fill row is the feature rather than a defect.
  */
 import { beforeAll, describe, expect, test } from "bun:test";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
 import { HomeAnchorLayout } from "@veyyon/coding-agent/modes/controllers/home-anchor-layout";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";

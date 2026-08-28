@@ -12,8 +12,8 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
 import type { SessionContext } from "../../session/session-context";
-import type { ToolExecutionHandle } from "../components/tool-execution";
-import type { TranscriptContainer } from "../components/transcript-container";
+import type { ToolExecutionHandle } from "../components/transcript/tool-execution";
+import type { TranscriptContainer } from "../components/transcript/transcript-container";
 import type { SubmittedUserInput } from "../types";
 
 /** The host capabilities transcript composition is a function of. Rendering

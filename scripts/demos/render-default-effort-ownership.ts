@@ -21,8 +21,8 @@ import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
 import type { ModelRegistry } from "../../packages/coding-agent/src/config/model-registry";
 import { resetSettingsForTest, Settings } from "../../packages/coding-agent/src/config/settings";
-import { DEFAULT_MODEL_SETTING_ID } from "../../packages/coding-agent/src/modes/components/settings-defs";
-import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/components/settings-selector";
+import { DEFAULT_MODEL_SETTING_ID } from "../../packages/coding-agent/src/modes/components/selectors/settings-defs";
+import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/components/selectors/settings-selector";
 import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
 import { renderWidth } from "./render-args";
 

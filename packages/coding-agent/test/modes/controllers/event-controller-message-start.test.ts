@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { TextContent, UserMessage } from "@veyyon/ai";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
 import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";

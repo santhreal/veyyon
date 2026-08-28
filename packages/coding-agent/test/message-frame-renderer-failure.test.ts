@@ -19,8 +19,8 @@ import {
 	type FramedMessage,
 	framedRendererSubject,
 	renderFramedMessage,
-} from "@veyyon/coding-agent/modes/components/message-frame";
-import { rendererFailureNotice } from "@veyyon/coding-agent/modes/components/renderer-failure";
+} from "@veyyon/coding-agent/modes/components/transcript/message-frame";
+import { rendererFailureNotice } from "@veyyon/coding-agent/modes/components/transcript/renderer-failure";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { Box } from "@veyyon/tui";
 

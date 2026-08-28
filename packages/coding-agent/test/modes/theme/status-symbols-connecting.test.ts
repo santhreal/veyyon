@@ -67,7 +67,7 @@ describe("status.connecting / status.active symbols", () => {
 		for (const rel of [
 			"modes/controllers/mcp-command-controller.ts",
 			"modes/controllers/command-controller.ts",
-			"modes/components/advisor-config.ts",
+			"modes/components/dialogs/advisor-config.ts",
 		]) {
 			const src = fs.readFileSync(path.join(SRC, rel), "utf8");
 			// Comments may mention the glyphs; code strings must not.

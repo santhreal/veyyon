@@ -31,8 +31,8 @@
  * private, is already covered.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
-import type { ModalSizing } from "@veyyon/coding-agent/modes/components/modal-shell";
-import * as modalShell from "@veyyon/coding-agent/modes/components/modal-shell";
+import type { ModalSizing } from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
+import * as modalShell from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
 import {
 	computeModalDims,
 	MODAL_SIZING_LARGE,
@@ -41,7 +41,7 @@ import {
 	planModalChrome,
 	renderModalShell,
 	sizingForArea,
-} from "@veyyon/coding-agent/modes/components/modal-shell";
+} from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 const WIDTH = 100;

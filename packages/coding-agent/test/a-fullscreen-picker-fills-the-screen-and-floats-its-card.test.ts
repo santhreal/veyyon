@@ -45,8 +45,12 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { MODAL_SIZING_LARGE, renderModalShell, sizingForArea } from "@veyyon/coding-agent/modes/components/modal-shell";
-import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
+import {
+	MODAL_SIZING_LARGE,
+	renderModalShell,
+	sizingForArea,
+} from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
+import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/session-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
 

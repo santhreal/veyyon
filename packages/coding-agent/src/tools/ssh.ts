@@ -8,7 +8,7 @@ import type { SSHHost } from "../discovery/capability/ssh";
 import { sshCapability } from "../discovery/capability/ssh";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { truncateToVisualLines } from "../modes/components/visual-truncate";
+import { truncateToVisualLines } from "../modes/components/transcript/visual-truncate";
 import type { Theme } from "../modes/theme/theme";
 import { expandHintSuffix } from "../modes/utils/key-hint";
 import { toolsPrompts } from "../prompts/tools/rows";

@@ -4,7 +4,7 @@
  * construct components and reset editor state identically.
  */
 import type { AssistantMessage } from "@veyyon/ai";
-import { AssistantMessageComponent } from "../components/assistant-message";
+import { AssistantMessageComponent } from "../components/transcript/assistant-message";
 import type { InteractiveModeContext } from "../types";
 
 /**

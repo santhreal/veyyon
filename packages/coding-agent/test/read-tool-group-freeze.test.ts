@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { ReadToolGroupComponent } from "@veyyon/coding-agent/modes/components/read-tool-group";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { ReadToolGroupComponent } from "@veyyon/coding-agent/modes/components/transcript/read-tool-group";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
 import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
 import type { Component } from "@veyyon/tui";
 

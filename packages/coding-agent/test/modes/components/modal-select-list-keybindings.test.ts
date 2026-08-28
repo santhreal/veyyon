@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
-import { layoutShortcutRows, SELECT_LIST_SHORTCUTS } from "@veyyon/coding-agent/modes/components/modal-shell";
+import { layoutShortcutRows, SELECT_LIST_SHORTCUTS } from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { getKeybindings, setKeybindings } from "@veyyon/utils/keybindings";
 

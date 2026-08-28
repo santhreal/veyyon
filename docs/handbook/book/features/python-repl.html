@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-59599711.js";
+            window.path_to_searchindex_js = "../searchindex-abf3f424.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -208,7 +208,7 @@ operational failure modes.</p>
 <li>Prelude helpers loaded into every kernel: <code>src/eval/py/prelude.py</code></li>
 <li>Host-side subagent helper bridge: <code>src/eval/agent-bridge.ts</code></li>
 <li>MIME bundle renderer (text + structured outputs): <code>src/eval/py/display.ts</code></li>
-<li>Interactive-mode renderer for user-triggered Python runs: <code>src/modes/components/eval-execution.ts</code></li>
+<li>Interactive-mode renderer for user-triggered Python runs: <code>src/modes/components/transcript/eval-execution.ts</code></li>
 <li>Runtime/env filtering and Python resolution: <code>src/eval/py/runtime.ts</code></li>
 </ul>
 <h2 id="what-evals-python-backend-is"><a class="header" href="#what-evals-python-backend-is">What eval’s Python backend is</a></h2>
@@ -399,7 +399,7 @@ kv.delete("cursor_handle")
 </ul>
 </li>
 </ul>
-<p>The bash execution block (<code>bash-execution.ts</code>) shares all three of those limits, along with the clamp itself, through <code>modes/components/execution-shared.ts</code>.</p>
+<p>The bash execution block (<code>bash-execution.ts</code>) shares all three of those limits, along with the clamp itself, through <code>modes/components/transcript/execution-shared.ts</code>.</p>
 <h2 id="operational-troubleshooting"><a class="header" href="#operational-troubleshooting">Operational troubleshooting</a></h2>
 <ul>
 <li><strong>Python backend not available</strong>: Check <code>eval.py</code>, <code>VEYYON_PY</code>, and that <code>python</code>/<code>python3</code> is on PATH. If preflight fails and <code>eval.js</code> is enabled, use a <code>js</code> cell.</li>

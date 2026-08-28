@@ -11,9 +11,9 @@ import {
 	type ModalShortcut,
 	type ShortcutHitRect,
 	type ShortcutLayoutRow,
-} from "../components/modal-shell";
-import { sunMark } from "../components/sun";
-import { silverEscape } from "../components/welcome";
+} from "../components/chrome/modal-shell";
+import { sunMark } from "../components/chrome/sun";
+import { silverEscape } from "../components/dialogs/welcome";
 import { theme } from "../theme/theme";
 import { renderSetupOutro, SETUP_OUTRO_MS } from "./scenes/outro";
 import { renderSetupSplash, SETUP_SPLASH_MS, SETUP_TICK_MS } from "./scenes/splash";

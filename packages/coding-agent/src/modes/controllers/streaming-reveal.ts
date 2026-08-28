@@ -3,7 +3,7 @@ import type { Component } from "@veyyon/tui";
 import { getSegmenter } from "@veyyon/utils/width";
 import { LRUCache } from "lru-cache/raw";
 import { formatThinkingForDisplay, hasDisplayableThinking } from "../../utils/thinking-display";
-import type { AssistantMessageComponent } from "../components/assistant-message";
+import type { AssistantMessageComponent } from "../components/transcript/assistant-message";
 
 export const STREAMING_REVEAL_FRAME_MS = 1000 / 30;
 export const MIN_STEP = 3;

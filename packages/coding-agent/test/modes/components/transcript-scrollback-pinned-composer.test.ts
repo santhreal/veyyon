@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { ComposerShortcutsBar } from "@veyyon/coding-agent/modes/components/composer-shortcuts";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { ComposerShortcutsBar } from "@veyyon/coding-agent/modes/components/composer/composer-shortcuts";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
 import { settleFrames } from "../../../../tui/test/helpers/settle-frames";

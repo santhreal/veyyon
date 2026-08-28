@@ -7,7 +7,12 @@ import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { visibleWidth } from "@veyyon/utils/width";
 import { Settings } from "../../../config/settings";
 import { getThemeByName, setThemeInstance, type Theme } from "../../theme/theme";
-import { MoveOverlay, type MoveOverlayResult, resolveExistingDirectory, resolveMovePath } from "../move-overlay";
+import {
+	MoveOverlay,
+	type MoveOverlayResult,
+	resolveExistingDirectory,
+	resolveMovePath,
+} from "../selectors/move-overlay";
 
 // Strip SGR colors so assertions see visible text only.
 

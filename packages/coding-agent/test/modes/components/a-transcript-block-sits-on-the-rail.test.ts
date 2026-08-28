@@ -33,17 +33,17 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { BtwPanelComponent, type BtwPanelState } from "@veyyon/coding-agent/modes/components/btw-panel";
-import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer-chrome";
-import { ComposerLoader } from "@veyyon/coding-agent/modes/components/composer-loader";
-import { ErrorBannerComponent } from "@veyyon/coding-agent/modes/components/error-banner";
-import { OmfgPanelComponent, type OmfgPanelState } from "@veyyon/coding-agent/modes/components/omfg-panel";
-import { TinyTitleDownloadProgressComponent } from "@veyyon/coding-agent/modes/components/tiny-title-download-progress";
+import { TinyTitleDownloadProgressComponent } from "@veyyon/coding-agent/modes/components/chrome/tiny-title-download-progress";
+import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
+import { ComposerLoader } from "@veyyon/coding-agent/modes/components/composer/composer-loader";
+import { BtwPanelComponent, type BtwPanelState } from "@veyyon/coding-agent/modes/components/dialogs/btw-panel";
+import { OmfgPanelComponent, type OmfgPanelState } from "@veyyon/coding-agent/modes/components/dialogs/omfg-panel";
+import { ErrorBannerComponent } from "@veyyon/coding-agent/modes/components/transcript/error-banner";
 import {
 	mountTranscriptBlock,
 	transcriptBlockText,
-} from "@veyyon/coding-agent/modes/components/transcript-block-chrome";
-import { TranscriptBlock } from "@veyyon/coding-agent/modes/components/transcript-container";
+} from "@veyyon/coding-agent/modes/components/transcript/transcript-block-chrome";
+import { TranscriptBlock } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
 import { showCommandMessage } from "@veyyon/coding-agent/modes/controllers/command-controller-shared";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { TinyTitleProgressEvent, TinyTitleProgressStatus } from "@veyyon/coding-agent/tiny/title-protocol";

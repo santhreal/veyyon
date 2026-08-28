@@ -23,7 +23,7 @@
  * out painted in the selection colour.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { selectionBand } from "@veyyon/coding-agent/modes/components/selector-helpers";
+import { selectionBand } from "@veyyon/coding-agent/modes/components/selectors/selector-helpers";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, ScrollView, setAnsiPolicy } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/utils/width";

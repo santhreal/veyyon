@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
-import { SubcommandPickerComponent } from "@veyyon/coding-agent/modes/components/subcommand-picker";
+import { SubcommandPickerComponent } from "@veyyon/coding-agent/modes/components/selectors/subcommand-picker";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";

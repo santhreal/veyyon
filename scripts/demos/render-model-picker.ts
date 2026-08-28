@@ -20,7 +20,7 @@ import type { Model } from "../../packages/ai/src/index";
 import { buildModel } from "../../packages/catalog/src/build";
 import type { ModelRegistry } from "../../packages/coding-agent/src/config/model-registry";
 import { Settings } from "../../packages/coding-agent/src/config/settings";
-import { ModelPickerComponent } from "../../packages/coding-agent/src/modes/components/model-picker";
+import { ModelPickerComponent } from "../../packages/coding-agent/src/modes/components/selectors/model-picker";
 import type { TUI } from "../../packages/tui/src/index";
 import { flag, hasFlag, initRender, renderWidth } from "./render-args";
 

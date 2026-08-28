@@ -23,7 +23,7 @@
  * with `display.transitions: off` draws. Flags take the space form.
  */
 
-import { renderSubagentHudLines } from "../../packages/coding-agent/src/modes/components/subagent-hud";
+import { renderSubagentHudLines } from "../../packages/coding-agent/src/modes/components/dashboard/subagent-hud";
 import type { ObservableSession } from "../../packages/coding-agent/src/modes/session-observer-registry";
 import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
 import type { AgentProgress } from "../../packages/coding-agent/src/task";

@@ -12,7 +12,7 @@ import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { CustomEditor } from "@veyyon/coding-agent/modes/components/custom-editor";
+import { CustomEditor } from "@veyyon/coding-agent/modes/components/composer/custom-editor";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";

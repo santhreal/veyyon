@@ -9,7 +9,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
 import { kStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/tool-execution";
 import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
 import { STREAMING_REVEAL_FRAME_MS } from "@veyyon/coding-agent/modes/controllers/streaming-reveal";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";

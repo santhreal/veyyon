@@ -57,7 +57,7 @@ import {
 	getAllSettingDefs,
 	getSettingsForTab,
 	invalidateSettingDefsCache,
-} from "@veyyon/coding-agent/modes/components/settings-defs";
+} from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
 import { SYMBOL_PRESETS, type SymbolKey } from "@veyyon/coding-agent/modes/theme/symbols";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import * as YAML from "yaml";

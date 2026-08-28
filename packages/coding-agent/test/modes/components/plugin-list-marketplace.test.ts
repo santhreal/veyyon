@@ -12,7 +12,7 @@ import {
 	PluginListComponent,
 	type PluginListEntry,
 	PluginSettingsComponent,
-} from "@veyyon/coding-agent/modes/components/plugin-settings";
+} from "@veyyon/coding-agent/modes/components/dialogs/plugin-settings";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {

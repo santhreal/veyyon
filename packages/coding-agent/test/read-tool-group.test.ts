@@ -6,7 +6,7 @@ import { getDefault } from "@veyyon/coding-agent/config/settings-schema";
 import {
 	ReadToolGroupComponent,
 	readArgsTargetInternalUrl,
-} from "@veyyon/coding-agent/modes/components/read-tool-group";
+} from "@veyyon/coding-agent/modes/components/transcript/read-tool-group";
 import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 import { useFullColor } from "./helpers/theme-assertions";

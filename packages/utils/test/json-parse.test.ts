@@ -182,9 +182,13 @@ describe("parseStreamingJson partial parsing", () => {
 	});
 
 	it("rolls back a bareword at the streaming edge or mid-buffer instead of committing junk", () => {
-		expect(parseStreamingJson<Record<string, unknown>>('{"paths": packages/coding-agent/src/speech/stt/*')).toEqual({});
+		expect(parseStreamingJson<Record<string, unknown>>('{"paths": packages/coding-agent/src/speech/stt/*')).toEqual(
+			{},
+		);
 		expect(
-			parseStreamingJson<Record<string, unknown>>('{"paths": packages/coding-agent/src/speech/stt/*, "i": "Listing st'),
+			parseStreamingJson<Record<string, unknown>>(
+				'{"paths": packages/coding-agent/src/speech/stt/*, "i": "Listing st',
+			),
 		).toEqual({});
 	});
 });

@@ -1,6 +1,9 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { getAllSettingDefs, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
+import {
+	getAllSettingDefs,
+	invalidateSettingDefsCache,
+} from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
 
 const AUTO_QA_SETTING_PATHS = ["dev.autoqa", "dev.autoqaPush.enabled", "dev.autoqaPush.endpoint"] as const;
 

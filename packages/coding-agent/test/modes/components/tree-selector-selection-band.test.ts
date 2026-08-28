@@ -21,7 +21,7 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
-import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/tree-selector";
+import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/tree-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";

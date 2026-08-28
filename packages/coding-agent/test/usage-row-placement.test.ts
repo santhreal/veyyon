@@ -8,7 +8,7 @@
  */
 import { beforeAll, describe, expect, it, vi } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
-import { ReadToolGroupComponent } from "@veyyon/coding-agent/modes/components/read-tool-group";
+import { ReadToolGroupComponent } from "@veyyon/coding-agent/modes/components/transcript/read-tool-group";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";

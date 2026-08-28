@@ -33,7 +33,7 @@
 // is what the recorded proof is for.
 
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
-import { modalRevealGround } from "@veyyon/coding-agent/modes/components/modal-shell";
+import { modalRevealGround } from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
 import {
 	applyGroundPaint,
 	getVisibleGround,

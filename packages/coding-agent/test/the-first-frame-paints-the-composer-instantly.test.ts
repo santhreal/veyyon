@@ -8,7 +8,7 @@ import {
 	COMPOSER_RESTING_ROWS,
 	ComposerHairline,
 	StaticComposerFrame,
-} from "@veyyon/coding-agent/modes/components/composer-chrome";
+} from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";

@@ -1,8 +1,8 @@
 import { TERMINAL } from "@veyyon/tui";
 import { APP_NAME, clampLow } from "@veyyon/utils";
 import { centerLine, padLineToWidth } from "@veyyon/utils/padding";
-import { sunMark } from "../../components/sun";
-import { silverEscape } from "../../components/welcome";
+import { sunMark } from "../../components/chrome/sun";
+import { silverEscape } from "../../components/dialogs/welcome";
 import { theme } from "../../theme/theme";
 
 export const SETUP_SPLASH_MS = 2400;

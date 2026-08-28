@@ -15,7 +15,7 @@ import {
 	buildSidebarEntries,
 	providerHeaderLine,
 	sidebarSummaryLine,
-} from "@veyyon/coding-agent/modes/components/account-manager-rows";
+} from "@veyyon/coding-agent/modes/components/account/account-manager-rows";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AccountInventory, AccountRow } from "@veyyon/coding-agent/session/account-inventory";
 

@@ -20,7 +20,7 @@
 // viewport and not by where the bytes came from.
 
 import { type Component, CURSOR_MARKER, type Focusable, ProcessTerminal, TUI } from "@veyyon/tui";
-import { TranscriptContainer } from "../../packages/coding-agent/src/modes/components/transcript-container";
+import { TranscriptContainer } from "../../packages/coding-agent/src/modes/components/transcript/transcript-container";
 import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
 
 const args = process.argv.slice(2);

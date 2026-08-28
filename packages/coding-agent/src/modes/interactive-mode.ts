@@ -145,9 +145,8 @@ import { getEditorCommand, openInEditor } from "../utils/external-editor";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../utils/session-color";
 import { messageHasDisplayableThinking } from "../utils/thinking-display";
 import { popTerminalTitle, pushTerminalTitle, setSessionTerminalTitle } from "../utils/title-generator";
-import type { AssistantMessageComponent } from "./components/assistant-message";
-import type { BashExecutionComponent } from "./components/bash-execution";
-import { ChatBlock, type ChatBlockHost } from "./components/chat-block";
+import { modalRevealGround, pointerMotionEnabled } from "./components/chrome/modal-shell";
+import { renderSunsetField } from "./components/chrome/sun";
 import {
 	COMPOSER_INSET_COLS,
 	COMPOSER_PLACEHOLDER,
@@ -155,19 +154,10 @@ import {
 	mountComposerZone,
 	QuietZoneLine,
 	resolveComposerAccents,
-} from "./components/composer-chrome";
-import { buildComposerShortcuts, ComposerShortcutsBar } from "./components/composer-shortcuts";
-import { CustomEditor } from "./components/custom-editor";
-import { ErrorBannerComponent } from "./components/error-banner";
-import type { EvalExecutionComponent } from "./components/eval-execution";
-import type { HookEditorComponent } from "./components/hook-editor";
-import type { HookInputComponent } from "./components/hook-input";
-import type { HookSelectorComponent, HookSelectorSlider } from "./components/hook-selector";
-import { modalRevealGround, pointerMotionEnabled } from "./components/modal-shell";
-import { PlanReviewOverlay } from "./components/plan-review-overlay";
-import { StatusLineComponent } from "./components/status-line";
-import { renderSubagentHudLines } from "./components/subagent-hud";
-import { renderSunsetField } from "./components/sun";
+} from "./components/composer/composer-chrome";
+import { buildComposerShortcuts, ComposerShortcutsBar } from "./components/composer/composer-shortcuts";
+import { CustomEditor } from "./components/composer/custom-editor";
+import { renderSubagentHudLines } from "./components/dashboard/subagent-hud";
 import {
 	renderTodoBoardLines,
 	TODO_BOARD_FRAME_DIVISOR,
@@ -175,9 +165,19 @@ import {
 	todoBoardIsLive,
 	todoBoardMarkerAnimates,
 	todoBoardRailTravels,
-} from "./components/todo-board";
-import type { ToolExecutionHandle } from "./components/tool-execution";
-import { TranscriptContainer } from "./components/transcript-container";
+} from "./components/dashboard/todo-board";
+import type { HookEditorComponent } from "./components/dialogs/hook-editor";
+import type { HookInputComponent } from "./components/dialogs/hook-input";
+import { PlanReviewOverlay } from "./components/dialogs/plan-review-overlay";
+import type { HookSelectorComponent, HookSelectorSlider } from "./components/selectors/hook-selector";
+import { StatusLineComponent } from "./components/status-line";
+import type { AssistantMessageComponent } from "./components/transcript/assistant-message";
+import type { BashExecutionComponent } from "./components/transcript/bash-execution";
+import { ChatBlock, type ChatBlockHost } from "./components/transcript/chat-block";
+import { ErrorBannerComponent } from "./components/transcript/error-banner";
+import type { EvalExecutionComponent } from "./components/transcript/eval-execution";
+import type { ToolExecutionHandle } from "./components/transcript/tool-execution";
+import { TranscriptContainer } from "./components/transcript/transcript-container";
 import { BtwController } from "./controllers/btw-controller";
 import { CommandController } from "./controllers/command-controller";
 import { EventController } from "./controllers/event-controller";

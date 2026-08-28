@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { buildBrowserItems, ModelBrowser } from "@veyyon/coding-agent/modes/components/model-browser";
+import { buildBrowserItems, ModelBrowser } from "@veyyon/coding-agent/modes/components/selectors/model-browser";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 /**

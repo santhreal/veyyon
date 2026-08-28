@@ -15,7 +15,7 @@
  *     detail renders a single line.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { renderSliderLines } from "@veyyon/coding-agent/modes/components/segment-track";
+import { renderSliderLines } from "@veyyon/coding-agent/modes/components/chrome/segment-track";
 import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
 import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import { createTheme, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";

@@ -35,7 +35,7 @@ import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { Settings } from "../../../config/settings";
 import type { TinyTitleProgressEvent } from "../../../tiny/title-protocol";
 import { getThemeByName, setThemeInstance } from "../../theme/theme";
-import { TinyTitleDownloadProgressComponent } from "../tiny-title-download-progress";
+import { TinyTitleDownloadProgressComponent } from "../chrome/tiny-title-download-progress";
 
 const FRAME_MS = 1000 / 60;
 const WIDTH = 70;

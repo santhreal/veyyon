@@ -22,7 +22,7 @@
  */
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { setActiveTheme, theme } from "@veyyon/coding-agent/modes/theme/theme-binding";
 import type { Theme } from "@veyyon/coding-agent/modes/theme/theme-class";

@@ -1,6 +1,6 @@
 import { ProcessTerminal, TUI } from "@veyyon/tui";
 import { logger } from "@veyyon/utils";
-import { SessionSelectorComponent } from "../modes/components/session-selector";
+import { SessionSelectorComponent } from "../modes/components/selectors/session-selector";
 import { HistoryStorage } from "../session/history-storage";
 import type { SessionInfo } from "../session/session-listing";
 import { SessionManager } from "../session/session-manager";

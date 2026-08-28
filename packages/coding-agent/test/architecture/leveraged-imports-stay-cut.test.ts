@@ -460,7 +460,7 @@ describe("the theme engine, second in the same ranking", () => {
 	 * `tools/read.ts`, which 54 test files import.
 	 *
 	 * `modes/theme/symbol-theme.ts` is that function beside the binding. MEASURED: `markdown-theme`
-	 * 319 -> 175, `tui/code-cell.ts` 327 -> 220, `tools/read.ts` 648 -> 542, `modes/components/diff.ts`
+	 * 319 -> 175, `tui/code-cell.ts` 327 -> 220, `tools/read.ts` 648 -> 542, `modes/components/transcript/diff.ts`
 	 * 288 -> 181.
 	 */
 	it("keeps the symbol reader a leaf, so reading the active symbols costs the binding and nothing else", () => {
@@ -514,11 +514,11 @@ describe("the theme engine, second in the same ranking", () => {
 	it.each([
 		"tui/code-cell.ts",
 		"tui/file-list.ts",
-		"modes/components/diff.ts",
-		"modes/components/ask-dialog.ts",
-		"modes/components/copy-selector.ts",
-		"modes/components/eval-execution.ts",
-		"modes/components/execution-shared.ts",
+		"modes/components/transcript/diff.ts",
+		"modes/components/dialogs/ask-dialog.ts",
+		"modes/components/selectors/copy-selector.ts",
+		"modes/components/transcript/eval-execution.ts",
+		"modes/components/transcript/execution-shared.ts",
 		"tools/bash.ts",
 		"tools/write.ts",
 		"lsp/render.ts",
@@ -536,11 +536,11 @@ describe("the theme engine, second in the same ranking", () => {
 	 *   - `tools/bash.ts` and `tools/write.ts` took three names from the local `../tui` barrel, which
 	 *     `export *`s `./file-list`, and THAT module took `getLanguageFromPath` from the engine. So a
 	 *     status line cost 282 modules of presentation layer, four hops away.
-	 *   - `modes/components/eval-execution.ts` took `getSymbolTheme` and `theme` from
+	 *   - `modes/components/transcript/eval-execution.ts` took `getSymbolTheme` and `theme` from
 	 *     `./execution-shared`, which took them from the engine.
 	 *
 	 * MEASURED: `tui/file-list.ts` 289 -> 180, the local `tui/index.ts` barrel 352 -> 246,
-	 * `tools/bash.ts` 504 -> 353, `tools/write.ts` 536 -> 386, `modes/components/eval-execution.ts`
+	 * `tools/bash.ts` 504 -> 353, `tools/write.ts` 536 -> 386, `modes/components/transcript/eval-execution.ts`
 	 * 299 -> 193, and the whole suite 857,632 -> 832,035 module instantiations.
 	 *
 	 * Asserted by REACHABILITY rather than by the import list, because that is the difference between the
@@ -556,8 +556,8 @@ describe("the theme engine, second in the same ranking", () => {
 		["tui/index.ts", "modes/theme/theme-binding.ts"],
 		["tools/bash.ts", "modes/theme/theme-binding.ts"],
 		["tools/write.ts", "modes/theme/theme-binding.ts"],
-		["modes/components/eval-execution.ts", "modes/theme/symbol-theme.ts"],
-		["modes/components/execution-shared.ts", "modes/theme/symbol-theme.ts"],
+		["modes/components/transcript/eval-execution.ts", "modes/theme/symbol-theme.ts"],
+		["modes/components/transcript/execution-shared.ts", "modes/theme/symbol-theme.ts"],
 	])("%s reaches the theme engine by no path at all", (relative, control) => {
 		const reached = reachedNames(relative);
 

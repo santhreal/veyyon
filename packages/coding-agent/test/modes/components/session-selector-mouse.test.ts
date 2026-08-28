@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
+import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/session-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
 

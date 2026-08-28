@@ -50,7 +50,7 @@ import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";

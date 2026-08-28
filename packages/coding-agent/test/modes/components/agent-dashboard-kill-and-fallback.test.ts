@@ -22,8 +22,8 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as path from "node:path";
-import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
-import type { AgentTranscriptRemote } from "@veyyon/coding-agent/modes/components/agent-transcript-viewer";
+import { AgentDashboard } from "@veyyon/coding-agent/modes/components/dashboard/agent-dashboard";
+import type { AgentTranscriptRemote } from "@veyyon/coding-agent/modes/components/dashboard/agent-transcript-viewer";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";

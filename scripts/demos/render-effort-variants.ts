@@ -19,7 +19,7 @@
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
 import { Container, Spacer } from "@veyyon/tui";
-import { renderEffortStep } from "../../packages/coding-agent/src/modes/components/effort-picker";
+import { renderEffortStep } from "../../packages/coding-agent/src/modes/components/selectors/effort-picker";
 import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
 import { renderWidth } from "./render-args";
 

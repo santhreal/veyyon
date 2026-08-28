@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { AdvisorConfigOverlayComponent } from "@veyyon/coding-agent/modes/components/advisor-config";
+import { AdvisorConfigOverlayComponent } from "@veyyon/coding-agent/modes/components/dialogs/advisor-config";
 import {
 	CommandController,
 	type CommandControllerContext,

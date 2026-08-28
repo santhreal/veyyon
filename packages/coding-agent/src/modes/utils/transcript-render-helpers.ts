@@ -18,8 +18,8 @@ import {
 import { createIrcMessageCard } from "../../tools/irc";
 import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../../tools/render-utils";
 import { canonicalizeMessage } from "../../utils/thinking-display";
-import { COMPOSER_INSET_COLS } from "../components/composer-chrome";
-import { TranscriptBlock } from "../components/transcript-container";
+import { COMPOSER_INSET_COLS } from "../components/composer/composer-chrome";
+import { TranscriptBlock } from "../components/transcript/transcript-container";
 import { theme } from "../theme/theme";
 
 type CustomOrHookMessage = Extract<AgentMessage, { role: "custom" | "hookMessage" }>;

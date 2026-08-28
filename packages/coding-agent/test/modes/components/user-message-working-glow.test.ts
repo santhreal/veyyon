@@ -13,7 +13,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { UserMessageComponent } from "@veyyon/coding-agent/modes/components/user-message";
+import { UserMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/user-message";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { TERMINAL } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";

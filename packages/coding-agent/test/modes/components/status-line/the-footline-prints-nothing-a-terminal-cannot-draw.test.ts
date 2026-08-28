@@ -65,7 +65,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer-chrome";
+import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
 import { fitLocation } from "@veyyon/coding-agent/modes/components/status-line/component";
 import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/components/status-line/presets";

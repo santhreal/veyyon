@@ -76,25 +76,25 @@ import {
 	setExcludedSearchProviders,
 	setPreferredSearchProvider,
 } from "../../web/search";
-import { AccountManagerComponent } from "../components/account-manager";
-import { AdvisorConfigOverlayComponent } from "../components/advisor-config";
-import { AgentDashboard } from "../components/agent-dashboard";
-import { AssistantMessageComponent } from "../components/assistant-message";
-import { CopySelectorComponent } from "../components/copy-selector";
+import { AccountManagerComponent } from "../components/account/account-manager";
+import { HistorySearchComponent } from "../components/composer/history-search";
+import { AgentDashboard } from "../components/dashboard/agent-dashboard";
+import { AdvisorConfigOverlayComponent } from "../components/dialogs/advisor-config";
+import { LoginDialogComponent } from "../components/dialogs/login-dialog";
 import { ExtensionDashboard } from "../components/extensions";
-import { HistorySearchComponent } from "../components/history-search";
-import { LoginDialogComponent } from "../components/login-dialog";
-import { ModelHubComponent } from "../components/model-hub";
-import { ModelPickerComponent } from "../components/model-picker";
-import { ResetUsageSelectorComponent } from "../components/reset-usage-selector";
-import { SessionSelectorComponent } from "../components/session-selector";
-import { SettingsSelectorComponent } from "../components/settings-selector";
-import { SubcommandPickerComponent } from "../components/subcommand-picker";
-import { ThinkingSelectorComponent } from "../components/thinking-selector";
-import { ToolExecutionComponent } from "../components/tool-execution";
-import { TranscriptBlock } from "../components/transcript-container";
-import { TreeSelectorComponent } from "../components/tree-selector";
-import { UserMessageSelectorComponent } from "../components/user-message-selector";
+import { CopySelectorComponent } from "../components/selectors/copy-selector";
+import { ModelHubComponent } from "../components/selectors/model-hub";
+import { ModelPickerComponent } from "../components/selectors/model-picker";
+import { ResetUsageSelectorComponent } from "../components/selectors/reset-usage-selector";
+import { SessionSelectorComponent } from "../components/selectors/session-selector";
+import { SettingsSelectorComponent } from "../components/selectors/settings-selector";
+import { SubcommandPickerComponent } from "../components/selectors/subcommand-picker";
+import { ThinkingSelectorComponent } from "../components/selectors/thinking-selector";
+import { TreeSelectorComponent } from "../components/selectors/tree-selector";
+import { UserMessageSelectorComponent } from "../components/selectors/user-message-selector";
+import { AssistantMessageComponent } from "../components/transcript/assistant-message";
+import { ToolExecutionComponent } from "../components/transcript/tool-execution";
+import { TranscriptBlock } from "../components/transcript/transcript-container";
 import type { SessionObserverRegistry } from "../session-observer-registry";
 import { buildCopyTargets } from "../utils/copy-targets";
 

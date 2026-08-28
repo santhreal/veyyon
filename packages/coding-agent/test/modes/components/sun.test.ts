@@ -8,7 +8,7 @@ import {
 	renderSunsetField,
 	type SunFieldOptions,
 	sunMark,
-} from "../../../src/modes/components/sun";
+} from "../../../src/modes/components/chrome/sun";
 
 /** The truecolor fg escape for an ember band, derived from the exported ramp so
  *  these tests pin the band-SELECTION logic while brand-conformance pins the ramp

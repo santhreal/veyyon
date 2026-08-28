@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
-import { LoginDialogComponent } from "@veyyon/coding-agent/modes/components/login-dialog";
+import { LoginDialogComponent } from "@veyyon/coding-agent/modes/components/dialogs/login-dialog";
 import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";

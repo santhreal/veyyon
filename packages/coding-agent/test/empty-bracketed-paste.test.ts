@@ -25,7 +25,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ImageContent } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { CustomEditor } from "@veyyon/coding-agent/modes/components/custom-editor";
+import { CustomEditor } from "@veyyon/coding-agent/modes/components/composer/custom-editor";
 import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
 import { getEditorTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";

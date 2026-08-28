@@ -17,7 +17,7 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { WelcomeComponent } from "@veyyon/coding-agent/modes/components/welcome";
+import { WelcomeComponent } from "@veyyon/coding-agent/modes/components/dialogs/welcome";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 function home(sessions: { name: string; timeAgo: string }[]): string {

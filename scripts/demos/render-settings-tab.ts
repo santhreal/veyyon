@@ -13,7 +13,7 @@
  * rows in the image are the rows the schema produces.
  */
 import type { SettingTab } from "../../packages/coding-agent/src/config/settings-schema";
-import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/components/settings-selector";
+import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/components/selectors/settings-selector";
 import { flag, initRender, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

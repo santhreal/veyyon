@@ -29,7 +29,7 @@
  * process-global and this is a per-process surface.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
+import { AgentDashboard } from "@veyyon/coding-agent/modes/components/dashboard/agent-dashboard";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";

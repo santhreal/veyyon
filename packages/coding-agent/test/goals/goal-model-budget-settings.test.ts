@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { stubStdoutGeometry } from "../helpers/stdout-geometry";
 

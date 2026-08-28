@@ -21,8 +21,8 @@ import {
 	EMBER as SUN_EMBER_RAMP,
 	FALLOFF as SUN_FALLOFF,
 	GLYPH as SUN_GLYPH,
-} from "@veyyon/coding-agent/modes/components/sun";
-import { SILVER_STOPS } from "@veyyon/coding-agent/modes/components/welcome";
+} from "@veyyon/coding-agent/modes/components/chrome/sun";
+import { SILVER_STOPS } from "@veyyon/coding-agent/modes/components/dialogs/welcome";
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 
 const BRAND_SILVER = "#C6CBD4";
@@ -229,7 +229,7 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 	// written, including the terminal owner, so a fifth copy cannot appear
 	// unnoticed and the four existing ones cannot drift.
 	const FALLOFF_SOURCES = [
-		{ label: "sun.ts", rel: "../src/modes/components/sun.ts" },
+		{ label: "sun.ts", rel: "../src/modes/components/chrome/sun.ts" },
 		{ label: "website/sun.js", rel: "../../../website/sun.js" },
 		{ label: "website/sunmark.js", rel: "../../../website/sunmark.js" },
 		{ label: "packages/ai oauth.html", rel: "../../ai/src/registry/oauth/oauth.html" },

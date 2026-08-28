@@ -10,7 +10,7 @@ import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { formatProviderName } from "../../../slash-commands/helpers/format";
 import { copyToClipboard } from "../../../utils/clipboard";
-import { OAuthSelectorComponent } from "../../components/oauth-selector";
+import { OAuthSelectorComponent } from "../../components/selectors/oauth-selector";
 import { theme } from "../../theme/theme";
 import type { SetupKeyHint, SetupSceneHost, SetupTab } from "./types";
 

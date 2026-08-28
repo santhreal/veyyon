@@ -20,7 +20,7 @@ import {
 	setLaunchTip,
 	updateInstalledTip,
 	WelcomeComponent,
-} from "../../packages/coding-agent/src/modes/components/welcome";
+} from "../../packages/coding-agent/src/modes/components/dialogs/welcome";
 import { initTheme, theme } from "../../packages/coding-agent/src/modes/theme/theme";
 import { flag, renderWidth } from "./render-args";
 

@@ -15,7 +15,7 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { ModalSelectListComponent } from "@veyyon/coding-agent/modes/components/modal-select-list";
+import { ModalSelectListComponent } from "@veyyon/coding-agent/modes/components/selectors/modal-select-list";
 import { getSelectListTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {

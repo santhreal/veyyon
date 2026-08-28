@@ -43,7 +43,7 @@ import {
 	SETTINGS_SCHEMA,
 	type SettingPath,
 } from "@veyyon/coding-agent/config/settings-schema";
-import { getSettingDef } from "@veyyon/coding-agent/modes/components/settings-defs";
+import { getSettingDef } from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
 
 /** Every boolean setting that ships off, whether or not it is a feature master. */
 function optionalBooleans(): SettingPath[] {

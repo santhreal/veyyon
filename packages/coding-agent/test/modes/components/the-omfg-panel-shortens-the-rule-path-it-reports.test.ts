@@ -20,7 +20,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import os from "node:os";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { OmfgPanelComponent, type OmfgPanelState } from "@veyyon/coding-agent/modes/components/omfg-panel";
+import { OmfgPanelComponent, type OmfgPanelState } from "@veyyon/coding-agent/modes/components/dialogs/omfg-panel";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { TUI } from "@veyyon/tui";
 

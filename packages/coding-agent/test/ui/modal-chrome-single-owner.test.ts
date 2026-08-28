@@ -24,7 +24,7 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MODAL_SIZING_LARGE, minModalChromeRows } from "@veyyon/coding-agent/modes/components/modal-shell";
+import { MODAL_SIZING_LARGE, minModalChromeRows } from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
 
 const COMPONENTS = fileURLToPath(new URL("../../src/modes/components/", import.meta.url));
 

@@ -5,7 +5,7 @@ import { parseArgs } from "@veyyon/coding-agent/cli/args";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { buildSessionOptions } from "@veyyon/coding-agent/main";
-import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";

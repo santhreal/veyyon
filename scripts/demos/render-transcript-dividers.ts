@@ -24,13 +24,13 @@ import {
 	createCustomMessage,
 } from "../../packages/agent/src/compaction/messages";
 import { KEYBINDINGS } from "../../packages/coding-agent/src/config/keybindings";
-import { CacheInvalidationMarkerComponent } from "../../packages/coding-agent/src/modes/components/cache-invalidation-marker";
+import { COMPOSER_INSET_COLS } from "../../packages/coding-agent/src/modes/components/composer/composer-chrome";
+import { CacheInvalidationMarkerComponent } from "../../packages/coding-agent/src/modes/components/transcript/cache-invalidation-marker";
 import {
 	BranchSummaryMessageComponent,
 	CompactionSummaryMessageComponent,
 	HandoffSummaryMessageComponent,
-} from "../../packages/coding-agent/src/modes/components/compaction-summary-message";
-import { COMPOSER_INSET_COLS } from "../../packages/coding-agent/src/modes/components/composer-chrome";
+} from "../../packages/coding-agent/src/modes/components/transcript/compaction-summary-message";
 import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
 import { flag, hasFlag, renderWidth } from "./render-args";
 

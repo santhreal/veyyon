@@ -21,7 +21,11 @@
  */
 import { afterEach, beforeAll, describe, expect, it, setSystemTime } from "bun:test";
 import { Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { CardPadRow, ComposerHairline, QuietZoneLine } from "@veyyon/coding-agent/modes/components/composer-chrome";
+import {
+	CardPadRow,
+	ComposerHairline,
+	QuietZoneLine,
+} from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
 import { setShimmerActivity } from "@veyyon/coding-agent/modes/theme/shimmer";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { visibleWidth } from "@veyyon/utils/width";

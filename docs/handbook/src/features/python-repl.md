@@ -13,7 +13,7 @@ operational failure modes.
 - Prelude helpers loaded into every kernel: `src/eval/py/prelude.py`
 - Host-side subagent helper bridge: `src/eval/agent-bridge.ts`
 - MIME bundle renderer (text + structured outputs): `src/eval/py/display.ts`
-- Interactive-mode renderer for user-triggered Python runs: `src/modes/components/eval-execution.ts`
+- Interactive-mode renderer for user-triggered Python runs: `src/modes/components/transcript/eval-execution.ts`
 - Runtime/env filtering and Python resolution: `src/eval/py/runtime.ts`
 
 ## What eval's Python backend is
@@ -237,7 +237,7 @@ Output is streamed through `OutputSink` and may be persisted to artifact storage
   - keeps at most 100 output lines while a cell is streaming (`EXECUTION_STREAMING_LINE_CAP`, five screenfuls). When more arrive the oldest are dropped and the footer states it: `… N earlier lines dropped while streaming`. That note is separate from the `… N more lines (ctrl+o to expand)` hint, because expanding reveals hidden lines and cannot bring back dropped ones. Once the cell finishes, the full output replaces what streaming kept, so the note disappears.
   - shows cancellation/error/truncation notices
 
-The bash execution block (`bash-execution.ts`) shares all three of those limits, along with the clamp itself, through `modes/components/execution-shared.ts`.
+The bash execution block (`bash-execution.ts`) shares all three of those limits, along with the clamp itself, through `modes/components/transcript/execution-shared.ts`.
 
 ## Operational troubleshooting
 

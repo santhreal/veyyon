@@ -23,7 +23,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import type { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
+import type { AgentDashboard } from "@veyyon/coding-agent/modes/components/dashboard/agent-dashboard";
 import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
 import { SessionObserverRegistry } from "@veyyon/coding-agent/modes/session-observer-registry";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";

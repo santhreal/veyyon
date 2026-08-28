@@ -31,7 +31,7 @@
  * the "earlier lines" banner beyond the counts, which are what a reader acts on.
  */
 import { beforeAll, describe, expect, it, vi } from "bun:test";
-import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/render-utils";
 import type { TUI } from "@veyyon/tui";

@@ -45,7 +45,7 @@ import type { ExecOptions, ExecResult } from "../../exec/exec";
 import type * as PiCodingAgent from "../../index";
 import type { LocalProtocolOptions } from "../../internal-urls/local-protocol";
 import type { MemoryRuntimeContext } from "../../memory/backend";
-import type { CustomEditor } from "../../modes/components/custom-editor";
+import type { CustomEditor } from "../../modes/components/composer/custom-editor";
 import type { Theme } from "../../modes/theme/theme";
 import type { CompactMode } from "../../session/compact-modes";
 import type { CustomMessage, CustomMessagePayload } from "../../session/messages";
