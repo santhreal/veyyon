@@ -4,6 +4,7 @@
 
 ### Added
 
+- Esc pressed twice within half a second over a composer holding text discards the draft; undo brings it back, and a single Esc still leaves the draft alone.
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
 - `session.newKeepsBackground` decides what `/new` does to a turn still streaming: off (the default) stops it and closes its provider stream before the new session starts, on keeps the old conversation running and says which one.
 - The status line carries a background chip counting conversations this process is still running that no screen is showing, present in every preset and silent at zero.
@@ -58,6 +59,7 @@
 ### Fixed
 
 - A settings search box reduced to nothing but spaces leaves search and shows the settings list again, instead of holding an apparently empty box over zero matches until `esc`.
+- A session file that another window wrote its `session_exit` record into no longer reports that window as a live second writer, so a session whose duplicate window was closed by SIGHUP stops telling the operator to close a session that has already closed.
 - The collab host, guest client and relay socket load when `/collab` or `/join` runs instead of during every interactive startup, and a settings domain reads the relay default from `@veyyon/wire` rather than through the collab protocol module.
 - Argot's dictionary generator, corpus walker and project vocabulary load when a project dictionary is first read instead of during every startup, so a session with `argot.enabled` off no longer evaluates them.
 - The stats dashboard's aggregator, SQLite layer and embedded client load when `/stats` first runs instead of during every interactive startup, so a session that never opens the dashboard stops parsing them.
@@ -207,6 +209,7 @@
 ### Removed
 
 - The `/providers` account card no longer writes `accounts.loadBalancing`: its `b` key and footer chip are gone, Settings → Providers → Accounts is the one writer, and the card reports the stored value.
+- Dropped the Ecosia web search engine; it answered a search with a Cloudflare challenge rather than results, and the Public Web aggregate now fans out to Startpage, Google, DuckDuckGo and Mojeek.
 - A launch from your home directory no longer prints the three-line notice about relocating to a scratch directory; the relocation is unchanged, and `/cwd` and the status line state the session's directory.
 
 ## [1.2.0] - 2026-08-23
