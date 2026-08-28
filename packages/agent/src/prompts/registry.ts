@@ -71,6 +71,4 @@ export const AGENT_PROMPTS = agentCorePrompts.prompts;
 
 /** The id of a registered agent-core prompt. A value outside this union is a compile error. */
 /** Every registered id, for enumeration. */
-export const AGENT_PROMPT_IDS = agentCorePrompts.ids;
-
 /** The lookups live on `agentCorePrompts`, not under package-specific names. */

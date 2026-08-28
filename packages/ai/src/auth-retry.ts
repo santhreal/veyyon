@@ -51,8 +51,6 @@ export function seedApiKeyResolver(seed: string | undefined, resolver: ApiKeyRes
 
 export { isAuthRetryableError };
 
-export const AUTH_RETRY_STEPS: readonly boolean[] = [false, true];
-
 export const AUTH_RETRY_MAX_ATTEMPTS = 64;
 
 export async function resolveRetryKey(
