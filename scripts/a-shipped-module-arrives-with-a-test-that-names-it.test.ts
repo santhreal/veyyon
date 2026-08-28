@@ -374,6 +374,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/tools/bash-helpers.ts",
 	"packages/coding-agent/src/tools/browser/handle-release.ts",
 	"packages/coding-agent/src/tools/browser/tab-worker-entry.ts",
+	"packages/coding-agent/src/tools/browser/tab-worker-helpers.ts",
 	"packages/coding-agent/src/tools/fetch-helpers.ts",
 	"packages/coding-agent/src/tools/gh-helpers.ts",
 	"packages/coding-agent/src/tools/grep-helpers.ts",
