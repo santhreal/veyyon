@@ -500,9 +500,9 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			);
 			conversationStateCache.set(conversationId, conversationState);
 			const requestContextTools = buildMcpToolDefinitions(context.tools);
-			// Composed once per request: the assembled session prompt, which carries every
-			// instruction layer the caller resolved, delivered when the server asks for the
-			// request context (see buildCursorRules).
+			// Composed once per request: the assembled session prompt, plus one rule per
+			// operator instruction file at its real path, delivered when the server asks
+			// for the request context (see buildCursorRules).
 			const requestContextRules = buildCursorRules(context.systemPrompt);
 
 			const baseUrl = model.baseUrl || CURSOR_API_URL;
@@ -3129,18 +3129,17 @@ function createCursorRule(fullPath: string, content: string): CursorRule {
 }
 
 /**
- * Compose the `requestContext.rules` payload: the session system prompt, as one rule.
+ * Compose the `requestContext.rules` payload: the session system prompt as one rule.
  *
- * Rules are Cursor's only honored client-instruction channel: the system-prompt blobs
- * at the `rootPromptMessagesJson` head are fetched and then replaced by the server's
- * own prompt (wire capture, 2026-08), so without this the model runs with none of the
- * caller's instructions.
+ * The server applies none of these. A capture that replaced the payload with a single
+ * rule reading "every reply must be exactly RULE-OK" changed nothing about the answer,
+ * and the system-prompt blobs at the `rootPromptMessagesJson` head are fetched and then
+ * replaced by the server's own CLI prompt. The instructions that reach the model ride
+ * on the active user turn instead (see buildGrpcRequest).
  *
- * The prompt is the WHOLE instruction payload, context files included, exactly as every
- * other api receives it. This function used to take a second, separately composed list
- * of file units, and the caller filtered that list by scope while inlining nothing in
- * the prompt: the two halves disagreed, and a whole scope reached the model on no
- * channel at all. There is one channel and one composer now, so they cannot disagree.
+ * The payload stays because the request-context exchange is what the delivery invariant
+ * observes: a turn that ends without the server ever asking for it fails closed rather
+ * than running a model that was handed nothing.
  *
  * Exported for tests.
  */
@@ -3354,7 +3353,8 @@ function extractImages(content: (TextContent | ImageContent)[]) {
 		);
 }
 
-async function buildGrpcRequest(
+/** Build the run request. Exported so a test can read what the active turn carries. */
+export async function buildGrpcRequest(
 	model: Model<"cursor-agent">,
 	context: Context,
 	options: CursorOptions | undefined,
@@ -3393,6 +3393,24 @@ async function buildGrpcRequest(
 		} else {
 			userText = extractText(userContent);
 			hasUserImages = hasImages(userContent);
+		}
+	}
+
+	// The active user turn is the ONLY thing this server delivers to the model verbatim.
+	// It replaces the `rootPromptMessagesJson` head with its own canned CLI prompt (wire
+	// capture: the head comes back as [Cursor's system prompt, a bookkeeping blob, the user
+	// turn]), and it applies none of `requestContext.rules` — a lone rule reading "every
+	// reply must be exactly RULE-OK" changed nothing about the answer. So the assembled
+	// prompt, which carries every operator instruction layer, rides on the turn itself.
+	const instructions = normalizeSystemPrompts(context.systemPrompt).join("\n\n");
+	if (instructions.length > 0 && userContent !== undefined) {
+		const preamble = `<operator-instructions>\n${instructions}\n</operator-instructions>\n\n`;
+		if (typeof userContent === "string") {
+			userContent = preamble + userContent;
+			userText = userContent.trim();
+		} else {
+			userContent = [{ type: "text", text: preamble } as TextContent, ...userContent];
+			userText = extractText(userContent);
 		}
 	}
 

@@ -12,7 +12,7 @@
  * repository content and excluded from the prompt because the list was supposed to carry it.
  *
  * The fix is structural: there is one channel now. Every api inlines its context files into the
- * assembled prompt, and the Cursor provider wraps that prompt as the single rule Cursor honors.
+ * assembled prompt, and the Cursor provider carries that prompt on the active user turn.
  * This suite pins the property that survives it — for every api, the operator's bytes and the
  * project's bytes are in what the model receives — and pins the per-api decision that used to
  * be the hiding place.
@@ -35,8 +35,8 @@ import { describe, expect, it, setDefaultTimeout } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { create, fromBinary } from "@bufbuild/protobuf";
-import { buildCursorRules, handleServerMessage } from "@veyyon/ai/providers/cursor";
-import type { AssistantMessage, Model } from "@veyyon/ai/types";
+import { buildCursorRules, buildGrpcRequest, handleServerMessage } from "@veyyon/ai/providers/cursor";
+import type { AssistantMessage, Context, ImageContent, Model, TextContent } from "@veyyon/ai/types";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import {
 	AgentClientMessageSchema,
@@ -72,12 +72,13 @@ setDefaultTimeout(60_000);
  * How the assembled prompt travels to the model on an api.
  *
  * Both channels carry the SAME prompt, context files inlined. `system-prompt` sends it as the
- * request's system prompt; `cursor-rules` sends it as the one `requestContext.rules` entry,
- * because Cursor's server discards client prompt blobs and replaces them with its own. Nothing
- * about the composition differs, which is the property that closed the defect: an api can no
- * longer withhold a scope the prompt build rendered.
+ * request's system prompt; `cursor-user-turn` prepends it to the active user message, because
+ * Cursor's server discards client prompt blobs, replaces the prompt head with its own, and
+ * applies none of the request-context rules. Nothing about the composition differs, which is the
+ * property that closed the defect: an api can no longer withhold a scope the prompt build
+ * rendered.
  */
-type DeliveryChannel = "system-prompt" | "cursor-rules";
+type DeliveryChannel = "system-prompt" | "cursor-user-turn";
 
 /**
  * One recorded decision per api. Exhaustive by type: a new `KnownApi` member breaks the build
@@ -96,7 +97,7 @@ const DELIVERY: Record<KnownApi, DeliveryChannel> = {
 	"google-gemini-cli": "system-prompt",
 	"google-vertex": "system-prompt",
 	"ollama-chat": "system-prompt",
-	"cursor-agent": "cursor-rules",
+	"cursor-agent": "cursor-user-turn",
 	"gitlab-duo-agent": "system-prompt",
 	"devin-agent": "system-prompt",
 };
@@ -255,6 +256,35 @@ async function rulesOnTheWire(systemPrompt: string[]): Promise<string[]> {
 	return rules.map(rule => rule.content);
 }
 
+/** A 1x1 transparent PNG, so the multimodal branch has a real image to carry. */
+const ONE_PIXEL_PNG =
+	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+/**
+ * Build a REAL Cursor run request through the provider's own request builder and return the
+ * text of the active user turn — the field this server delivers to the model verbatim.
+ *
+ * Decoded from the serialized frame, not read off an intermediate value, so a change that
+ * assembles the preamble and then fails to put it on the wire fails here.
+ */
+async function activeUserTurnText(
+	systemPrompt: string[],
+	content: string | (TextContent | ImageContent)[],
+): Promise<string> {
+	const model = bundledModelFor("cursor-agent") as Model<"cursor-agent">;
+	const built = await buildGrpcRequest(
+		model,
+		{ systemPrompt, messages: [{ role: "user", content }] } as Context,
+		undefined,
+		{ conversationId: "conv-1", blobStore: new Map() },
+	);
+	const message = fromBinary(AgentClientMessageSchema, built.requestBytes);
+	if (message.message.case !== "runRequest") throw new Error(`unexpected: ${message.message.case}`);
+	const action = message.message.value.action?.action;
+	if (action?.case !== "userMessageAction") throw new Error(`unexpected action: ${action?.case}`);
+	return action.value.userMessage?.text ?? "";
+}
+
 describe("operator instruction delivery, per api", () => {
 	it("records a delivery channel for every api a bundled model can select", () => {
 		// Catalog-side closure. The type union is one way an api arrives; the generated catalog
@@ -281,8 +311,8 @@ describe("operator instruction delivery, per api", () => {
 		for (const api of RECORDED_APIS) {
 			const systemPrompt = await sessionPromptFor(api, scopes);
 			const delivered =
-				DELIVERY[api] === "cursor-rules"
-					? (await rulesOnTheWire(systemPrompt)).join("\n\n")
+				DELIVERY[api] === "cursor-user-turn"
+					? await activeUserTurnText(systemPrompt, "hello")
 					: systemPrompt.join("\n\n");
 
 			if (!delivered.includes(GLOBAL_MARKER)) missing.push(`${api}: global file absent from ${DELIVERY[api]}`);
@@ -311,8 +341,8 @@ describe("operator instruction delivery, per api", () => {
 		for (const api of RECORDED_APIS) {
 			const systemPrompt = await sessionPromptFor(api, scopes);
 			const delivered =
-				DELIVERY[api] === "cursor-rules"
-					? (await rulesOnTheWire(systemPrompt)).join("\n\n")
+				DELIVERY[api] === "cursor-user-turn"
+					? await activeUserTurnText(systemPrompt, "hello")
 					: systemPrompt.join("\n\n");
 			for (const level of levels) {
 				observed.push([api, level, delivered.includes(markerFor[level]) ? "delivered" : "withheld"]);
@@ -325,7 +355,8 @@ describe("operator instruction delivery, per api", () => {
 	it("renders one context-file payload, identical on every api", async () => {
 		// The structural guarantee behind the sweep. An api that composes its own instruction
 		// payload is free to drop a scope the others keep, which is precisely how this broke; if
-		// every api renders the same blocks, one api cannot be quietly poorer than the rest.
+		// every api renders the same blocks into the same prompt, one of them cannot be quietly
+		// poorer. No api is exempt: cursor-agent used to be, and that exemption WAS the defect.
 		const scopes = await operatorScopes();
 		const blocks = scopes.contextFiles.map(file => renderedContextBlock(file.path, file.content));
 		expect(blocks.length).toBeGreaterThan(0);
@@ -341,15 +372,50 @@ describe("operator instruction delivery, per api", () => {
 		expect(poorer).toEqual([]);
 	});
 
-	it("puts the whole assembled prompt on the Cursor wire as one rule", async () => {
-		// The join, on the api that had two composers. What Cursor receives is the prompt, not a
-		// second list assembled beside it: one rule, byte-identical to the prompt the session
-		// built. A second rule here means a second composer has come back.
+	it("still ships the assembled prompt as the request-context rule Cursor asks for", async () => {
+		// The fail-closed exchange the provider observes. The server applies none of these rules,
+		// but a turn that never sees the ask is a turn the model ran without instructions, so the
+		// payload has to stay both present and identical to what the user turn carries.
 		const scopes = await operatorScopes();
 		const systemPrompt = await sessionPromptFor("cursor-agent", scopes);
-
 		const rules = await rulesOnTheWire(systemPrompt);
-
 		expect(rules).toEqual([systemPrompt.join("\n\n")]);
+		expect(rules[0]).toContain(PROJECT_ROOT_MARKER);
+	});
+
+	it("puts the whole assembled prompt on Cursor's active user turn", async () => {
+		// The api that cannot use a system prompt at all. Its server fetches the client's
+		// system-prompt blobs and then rebuilds the prompt head with its own, and it applies
+		// none of `requestContext.rules`; the active user turn is the one thing it delivers
+		// verbatim, so the operator's bytes ride there or they reach the model nowhere.
+		const scopes = await operatorScopes();
+		const systemPrompt = await sessionPromptFor("cursor-agent", scopes);
+		const turn = await activeUserTurnText(systemPrompt, "what is the first rule?");
+
+		expect(turn).toContain("<operator-instructions>");
+		expect(turn).toContain("</operator-instructions>");
+		// The operator's question survives the preamble, and comes after it.
+		expect(turn.indexOf("what is the first rule?")).toBeGreaterThan(turn.indexOf("</operator-instructions>"));
+		// Every layer, inlined by the one composer, is inside the delimited block.
+		const block = turn.slice(0, turn.indexOf("</operator-instructions>"));
+		for (const marker of [GLOBAL_MARKER, PROFILE_MARKER, PROJECT_ROOT_MARKER]) {
+			expect(block).toContain(marker);
+		}
+	});
+
+	it("still carries the prompt on the user turn when the turn is multimodal", async () => {
+		// The array-content branch. An image turn takes a different path through the request
+		// builder, and an operator who pastes a screenshot must not lose their instructions.
+		const scopes = await operatorScopes();
+		const systemPrompt = await sessionPromptFor("cursor-agent", scopes);
+		const turn = await activeUserTurnText(systemPrompt, [
+			{ type: "text", text: "what is the first rule?" },
+			{ type: "image", data: ONE_PIXEL_PNG, mimeType: "image/png" },
+		]);
+
+		expect(turn).toContain("<operator-instructions>");
+		expect(turn).toContain(GLOBAL_MARKER);
+		expect(turn).toContain(PROJECT_ROOT_MARKER);
+		expect(turn).toContain("what is the first rule?");
 	});
 });
