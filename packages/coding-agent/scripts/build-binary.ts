@@ -92,6 +92,14 @@ async function main(): Promise<void> {
 			outfile: outputPath,
 			transformersVersion,
 			target: crossBuild?.target,
+			// What `ci-release-build-binaries.ts` passes. Bun's standalone loader
+			// links the whole bytecode blob before the entry's first statement, so
+			// the blob's size is startup latency: minified identifiers take the
+			// local binary from 310.7MB to 303.4MB and the launch card from 143ms
+			// to 131ms. `keepNames` is on either way, so stack traces still name
+			// functions. Without this a local binary is a different, slower
+			// program from the one that ships.
+			minifyIdentifiers: true,
 			skipBuiltinCodesign: shouldAdhocSignDarwinBinary(crossBuild),
 		});
 

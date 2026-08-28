@@ -24,9 +24,9 @@
  *
  * Stopping a conversation is deliberately not a verb here. Ending a turn closes
  * a provider stream and settles a transcript, which is the responsibility of the
- * session running it and is what `session.newKeepsBackground` selects.
- * `/process-manager` reports that rather than offering a kill that would only
- * half-work.
+ * session running it and is what `session.newKeepsBackground` selects. The
+ * status line counts these conversations rather than offering a kill that would
+ * only half-work.
  */
 
 import * as path from "node:path";

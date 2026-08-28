@@ -28,13 +28,6 @@
  * a new package cannot join the tree already exempt. A list entry naming a
  * package that has no tests fails too, so a deleted or renamed package cannot rot
  * in the list and quietly shrink the run.
- *
- * A bucket entry MAY name a subtree rather than a package root: `packages/bench`
- * holds four benchmark harnesses under one manifest, and they need different
- * concurrency, so each is listed as `packages/bench/src/<harness>`. A subtree
- * entry only excuses the package for the test files it actually covers — a fifth
- * harness added beside the four fails here with the file that nothing runs, which
- * is the same guarantee a package-root entry gives.
  */
 import { describe, expect, it } from "bun:test";
 import { type Dirent, readdirSync, statSync } from "node:fs";
@@ -45,7 +38,6 @@ import {
 	localOnlyWorkspacePackages,
 	nativeAndIntegrationPackages,
 	workspaceTestPackages,
-	workspaceTestScope,
 } from "./ci-test-ts";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -69,10 +61,10 @@ function isPackageDir(dir: string): boolean {
 	}
 }
 
-/** Every test file under a directory, repo-relative, skipping trees that are not ours. */
-function testFilesUnder(dir: string): string[] {
+/** Count the test files under a directory, skipping trees that are not ours. */
+function testFileCount(dir: string): number {
 	const SKIP = new Set(["node_modules", ".git", "dist", "target", "repo-cache", "runs", "deep-swe", "assets"]);
-	const found: string[] = [];
+	let found = 0;
 	const walk = (abs: string): void => {
 		let entries: Dirent[];
 		try {
@@ -86,23 +78,13 @@ function testFilesUnder(dir: string): string[] {
 				walk(join(abs, entry.name));
 				continue;
 			}
-			// `.test.tsx` counts: collab-web and the metaharness dashboard ship component
-			// suites, and counting only `.test.ts` is how those two looked smaller than they are.
-			if (/\.test\.tsx?$/.test(entry.name)) found.push(relative(REPO_ROOT, join(abs, entry.name)));
+			// `.test.tsx` counts: collab-web and metaharness ship component suites, and
+			// counting only `.test.ts` is how those two looked smaller than they are.
+			if (/\.test\.tsx?$/.test(entry.name)) found += 1;
 		}
 	};
 	walk(join(REPO_ROOT, dir));
-	return found.sort();
-}
-
-/** Count the test files under a directory. */
-function testFileCount(dir: string): number {
-	return testFilesUnder(dir).length;
-}
-
-/** Whether a test file is reached by a bucket entry, directly or as a subtree of one. */
-function coveredBy(listed: readonly string[], file: string): boolean {
-	return listed.some(dir => file === dir || file.startsWith(`${dir}/`));
+	return found;
 }
 
 /** Every `packages/*` directory that ships at least one test file. */
@@ -131,19 +113,10 @@ describe("the workspace test runner covers every package that ships tests", () =
 	it("runs the tests of every package that has them", () => {
 		// The direction that was broken: a package ships tests and no bucket names
 		// it, so `bun run test` and CI both skip it in silence.
-		//
-		// Asked per FILE rather than per package, because a bucket entry may name a
-		// subtree. A package whose entries cover some of its suites and not others
-		// reads as listed and runs short, which is the same silence one level down.
-		const unrun: string[] = [];
-		for (const dir of packagesWithTests()) {
-			if (DISCOVERED_NOT_LISTED[dir] !== undefined) continue;
-			for (const file of testFilesUnder(dir)) {
-				if (!coveredBy(workspaceTestPackages, file)) unrun.push(file);
-			}
-		}
+		const listed = new Set(workspaceTestPackages);
+		const unrun = packagesWithTests().filter(dir => !listed.has(dir) && DISCOVERED_NOT_LISTED[dir] === undefined);
 
-		// Listed rather than counted: the failure has to name the file nothing runs.
+		// Listed rather than counted: the failure has to name the package to add.
 		expect(unrun).toEqual([]);
 	});
 
@@ -188,24 +161,6 @@ describe("the workspace test runner covers every package that ships tests", () =
 			expect(isPackageDir(dir), `${dir} is exempted but is not a package`).toBe(true);
 			expect(testFileCount(dir), `${dir} is exempted but ships no tests`).toBeGreaterThan(0);
 			expect(reason.length, `${dir}'s exemption gives no reason`).toBeGreaterThan(20);
-		}
-	});
-
-	it("runs a subtree entry from its package root, so the package bunfig is read", () => {
-		// The subtree branch above is only honest while something uses it. If every
-		// entry became a package root, `coveredBy` would degrade to set membership and
-		// the per-file assertion would stop proving anything it did not already prove.
-		const subtrees = workspaceTestPackages.filter(dir => !isPackageDir(dir));
-
-		expect(subtrees.length).toBeGreaterThan(0);
-		// And the runner has to hand each one to bun as a path filter under the
-		// package's own cwd. A cwd inside the subtree reads no bunfig at all, which is
-		// how a suite loses the real-data tripwire without any signal.
-		for (const dir of subtrees) {
-			const scope = workspaceTestScope(dir);
-
-			expect(isPackageDir(scope.cwd), `${dir} resolves to a non-package cwd`).toBe(true);
-			expect(`${scope.cwd}/${scope.filter}`).toBe(dir);
 		}
 	});
 

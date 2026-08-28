@@ -6,7 +6,7 @@
 {
 	// A solution file owns no files of its own. Without this, `include` defaults to
 	// `**/*` and `tsc -p tsconfig.json` compiles the WHOLE tree — including the
-	// third-party repositories `packages/bench/src/deepswe/repo-cache/` downloads,
+	// third-party repositories `packages/evals/datasets/repo-cache/` downloads,
 	// which are other people's source and fail on syntax this compiler does not
 	// accept. The real gate never hits that path, so the breakage only ever
 	// reached whoever pointed a compiler or an editor at the root directly.

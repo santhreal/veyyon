@@ -90,7 +90,7 @@ async function main() {
 			[
 				"QA instruction. Follow exactly:",
 				"1) Call checkpoint with goal 'Validate rewind context behavior in RPC mode'.",
-				"2) During that checkpoint, call find with pattern 'src/modes/rpc/*.ts'.",
+				"2) During that checkpoint, call search with type 'files' and input 'src/modes/rpc/*.ts'.",
 				"3) Call read on 'src/modes/rpc/rpc-mode.ts' with limit 20.",
 				"4) Call rewind with report containing two bullet points: findings and risks.",
 				"5) Final assistant response must be exactly DONE.",
@@ -99,7 +99,7 @@ async function main() {
 				"You did not complete QA steps.",
 				"Now do only tool workflow:",
 				"- checkpoint(goal='Validate rewind context behavior in RPC mode')",
-				"- find(pattern='src/modes/rpc/*.ts')",
+				"- search(type='files', input='src/modes/rpc/*.ts')",
 				"- read(path='src/modes/rpc/rpc-mode.ts', limit=20)",
 				"- rewind(report with bullets 'findings' and 'risks')",
 				"Then respond exactly DONE.",
@@ -134,7 +134,7 @@ async function main() {
 
 		const hasCheckpoint = toolSequence.includes("checkpoint");
 		const hasRewind = toolSequence.includes("rewind");
-		const hasGlob = toolSequence.includes("glob");
+		const hasSearch = toolSequence.includes("search");
 		const hasRead = toolSequence.includes("read");
 
 		const activeHasRewindReport = messages.some(
@@ -146,7 +146,7 @@ async function main() {
 			.map(message => message.toolName);
 
 		const activeHasRewindResult = activeToolResults.includes("rewind");
-		const activeHasGlobResult = activeToolResults.includes("glob");
+		const activeHasSearchResult = activeToolResults.includes("search");
 		const activeHasReadResult = activeToolResults.includes("read");
 
 		const rewindReportEntries = customMessages.filter(entry => entry.customType === "rewind-report");
@@ -177,8 +177,8 @@ async function main() {
 		if (!hasCheckpoint || !hasRewind) {
 			throw new Error("Agent did not execute both checkpoint and rewind.");
 		}
-		if (!hasGlob || !hasRead) {
-			throw new Error("Agent did not perform requested exploratory find/read inside checkpoint.");
+		if (!hasSearch || !hasRead) {
+			throw new Error("Agent did not perform requested exploratory search/read inside checkpoint.");
 		}
 		if (!activeHasRewindReport) {
 			throw new Error("Active context missing rewind-report custom message after rewind.");
@@ -186,8 +186,8 @@ async function main() {
 		if (activeHasRewindResult) {
 			throw new Error("Active context still contains rewind tool result; rewind did not prune it.");
 		}
-		if (activeHasGlobResult || activeHasReadResult) {
-			throw new Error("Active context still contains exploratory find/read tool results after rewind.");
+		if (activeHasSearchResult || activeHasReadResult) {
+			throw new Error("Active context still contains exploratory search/read tool results after rewind.");
 		}
 		if (rewindReportEntries.length === 0) {
 			throw new Error("Session entries missing persisted rewind-report custom_message entry.");

@@ -386,13 +386,15 @@ export function renderIssueTitle(finding: Finding): string {
 	return `fuzz: ${finding.target} ${finding.signature.kind} at ${where}`;
 }
 
-/** Parse `--flag=value` options into a map. Bare words are the command and targets. */
-export function parseArgs(argv: readonly string[]): {
+export interface FuzzTriageArgs {
 	command: Command;
 	targets: string[];
 	keepStale: boolean;
 	repo?: string;
-} {
+}
+
+/** Parse `--flag=value` options into a map. Bare words are the command and targets. */
+export function parseArgs(argv: readonly string[]): FuzzTriageArgs {
 	const [command, ...rest] = argv;
 	if (!command || !(COMMANDS as readonly string[]).includes(command)) {
 		throw new UsageError(`Unknown command: ${command ?? "(none)"}`);
@@ -458,7 +460,7 @@ export function renderReport(result: {
 }
 
 export function main(argv: readonly string[]): number {
-	let parsed: ReturnType<typeof parseArgs>;
+	let parsed: FuzzTriageArgs;
 	try {
 		parsed = parseArgs(argv);
 	} catch (error) {

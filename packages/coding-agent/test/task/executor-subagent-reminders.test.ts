@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import { AgentBusyError, type AgentTelemetryConfig, type Tracer } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
 import { Effort } from "@veyyon/catalog/effort";
+import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ExtensionActions } from "@veyyon/coding-agent/extensibility/extensions/types";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
@@ -53,7 +54,7 @@ describe("runSubprocess yield reminders", () => {
 		settings: Settings.isolated(),
 		modelRegistry: {
 			refresh: async () => {},
-		} as unknown as import("@veyyon/coding-agent/config/model-registry").ModelRegistry,
+		} as unknown as ModelRegistry,
 		enableLsp: false,
 	};
 
@@ -150,7 +151,7 @@ describe("runSubprocess yield reminders", () => {
 		const createAgentSessionSpy = mockCreateAgentSession(session);
 		const modelRegistry = {
 			refresh: async () => {},
-		} as unknown as import("@veyyon/coding-agent/config/model-registry").ModelRegistry;
+		} as unknown as ModelRegistry;
 		const refreshSpy = vi.spyOn(modelRegistry, "refresh");
 
 		await runSubprocess({ ...baseOptions, id: "subagent-skip-refresh", modelRegistry });
@@ -413,7 +414,7 @@ describe("runSubprocess yield reminders", () => {
 		const modelRegistry = {
 			refresh: async () => {},
 			getAvailable: () => [{ provider: "openai", id: "gpt-4o", name: "GPT-4o" }],
-		} as unknown as import("@veyyon/coding-agent/config/model-registry").ModelRegistry;
+		} as unknown as ModelRegistry;
 
 		await runSubprocess({
 			...baseOptions,
@@ -581,7 +582,7 @@ describe("runSubprocess yield reminders", () => {
 		const modelRegistry = {
 			authStorage: fakeAuthStorage,
 			refresh: async () => {},
-		} as unknown as import("@veyyon/coding-agent/config/model-registry").ModelRegistry;
+		} as unknown as ModelRegistry;
 
 		await runSubprocess({ ...baseOptions, id: "subagent-registry-only", modelRegistry });
 
@@ -597,7 +598,7 @@ describe("runSubprocess yield reminders", () => {
 		const modelRegistry = {
 			authStorage: registryStorage,
 			refresh: async () => {},
-		} as unknown as import("@veyyon/coding-agent/config/model-registry").ModelRegistry;
+		} as unknown as ModelRegistry;
 
 		const result = await runSubprocess({
 			...baseOptions,
@@ -780,7 +781,7 @@ describe("runSubprocess telemetry propagation", () => {
 		settings: Settings.isolated(),
 		modelRegistry: {
 			refresh: async () => {},
-		} as unknown as import("@veyyon/coding-agent/config/model-registry").ModelRegistry,
+		} as unknown as ModelRegistry,
 		enableLsp: false,
 	};
 

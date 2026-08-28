@@ -300,7 +300,7 @@ Related APIs:
 
 ```ts
 const { session } = await createAgentSession({
-  toolNames: ["read", "grep", "glob", "write"],
+  toolNames: ["read", "search", "write"],
   requireYieldTool: true,
 });
 ```
@@ -330,8 +330,7 @@ Those stay literals and carry a `// not-a-tool-name:` comment saying which they 
 `test/tools/tool-name-literals-have-one-owner.test.ts` reads the selection sites and fails on any
 unmarked tool-name literal.
 
-As a caller of the SDK you keep passing plain strings: `toolNames` takes the names as text, and
-legacy spellings (`search` for `grep`, `find` for `glob`) are still normalized for you.
+As a caller of the SDK you keep passing plain strings: `toolNames` takes the names as text. Retired workspace-search names (`glob`, `grep`, `find`, and `ast_grep`) normalize to the canonical `search` builtin at this compatibility boundary; they are not registered as model-facing tools.
 
 ### Extensions
 
@@ -436,7 +435,7 @@ const { session } = await createAgentSession({
   modelRegistry,
   settings,
   sessionManager: SessionManager.inMemory(),
-  toolNames: ["read", "grep", "glob", "edit", "write"],
+  toolNames: ["read", "search", "edit", "write"],
   enableMCP: false,
   enableLsp: true,
 });

@@ -8,8 +8,8 @@ import { parseInternalUrl } from "@veyyon/coding-agent/internal-urls/parse";
 import { InternalUrlRouter } from "@veyyon/coding-agent/internal-urls/router";
 import { SshProtocolHandler } from "@veyyon/coding-agent/internal-urls/ssh-protocol";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { GrepTool } from "@veyyon/coding-agent/tools/grep";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { SearchTool } from "@veyyon/coding-agent/tools/search";
 import { WriteTool } from "@veyyon/coding-agent/tools/write";
 
 // Live integration against `ssh localhost`. Skips automatically where key-based
@@ -168,7 +168,7 @@ describe.skipIf(!SSH_OK)("ssh:// handler against a real localhost ssh", () => {
 	);
 });
 
-describe.skipIf(!SSH_OK)("ssh:// through the real read/grep/write tools (localhost)", () => {
+describe.skipIf(!SSH_OK)("ssh:// through the real read/search/write tools (localhost)", () => {
 	const TMP = `/tmp/veyyon-ssh-tools-e2e-${process.pid}`;
 
 	function createSession(): ToolSession {
@@ -177,7 +177,7 @@ describe.skipIf(!SSH_OK)("ssh:// through the real read/grep/write tools (localho
 			hasUI: false,
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
-			settings: Settings.isolated({ "grep.contextBefore": 0, "grep.contextAfter": 0 }),
+			settings: Settings.isolated({ "search.contextBefore": 0, "search.contextAfter": 0 }),
 		};
 	}
 
@@ -218,14 +218,16 @@ describe.skipIf(!SSH_OK)("ssh:// through the real read/grep/write tools (localho
 		expect(range).not.toContain("OMEGALINE");
 	});
 
-	it("GrepTool reports matches under the ssh:// URL with no scratch-temp leak", async () => {
+	it("SearchTool (text) reports matches under the ssh:// URL with no scratch-temp leak", async () => {
 		mockEmptyHosts();
-		const tool = new GrepTool(createSession());
-		const result = await tool.execute("s", { pattern: "beta", path: `ssh://localhost${TMP}/read.txt` });
+		const tool = new SearchTool(createSession());
+		const result = await tool.execute("s", { type: "text", input: "beta", path: `ssh://localhost${TMP}/read.txt` });
 		const out = textOf(result);
 		expect(out).toContain("beta");
 		// The resource is reported under its ssh:// URL, not a local scratch path.
-		expect(result.details?.files).toContain(`ssh://localhost${TMP}/read.txt`);
+		expect((result.details as { result?: { files?: string[] } })?.result?.files).toContain(
+			`ssh://localhost${TMP}/read.txt`,
+		);
 		// The pure-virtual RE2 probe's scratch dir must never leak into text or metadata.
 		const detailsJson = JSON.stringify(result.details ?? {});
 		expect(out).not.toContain("veyyon-search-probe");

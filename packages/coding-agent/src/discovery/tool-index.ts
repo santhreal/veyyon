@@ -10,8 +10,21 @@ export type DiscoverableToolSource = "builtin" | "mcp" | "extension" | "custom";
 export interface DiscoverableTool {
 	name: string;
 	label: string;
-	/** Short BM25 corpus entry; falls back to description first 200 chars */
+	/**
+	 * Curated one-line blurb, or the description's first 200 characters when a tool declares none.
+	 * Weighted above {@link DiscoverableTool.description} because an opening sentence names the
+	 * tool's purpose, while the body names its mechanics.
+	 */
 	summary: string;
+	/**
+	 * The tool's full description, indexed for recall. A tool declares a 40-to-60 character
+	 * `summary`, so indexing only that left 96-99% of what a tool says about itself unsearchable:
+	 * `launch` scored zero for "tail the output of a server" and `eval` zero for "evaluate
+	 * javascript", because "server", "tail" and "javascript" all sit past the blurb. Worse, the
+	 * tools WITH a curated blurb were indexed on a quarter of the text of the tools without one,
+	 * so short-description tools outranked the tool that owned the capability.
+	 */
+	description?: string;
 	source: DiscoverableToolSource;
 	/** MCP only */
 	serverName?: string;
@@ -58,6 +71,7 @@ const FIELD_WEIGHTS = {
 	serverName: 2,
 	mcpToolName: 4,
 	summary: 2,
+	description: 1,
 	schemaKey: 1,
 } as const;
 
@@ -80,25 +94,41 @@ function getSchemaPropertyKeys(tool: Pick<AiTool, "name" | "description" | "para
 	return Object.keys(properties as Record<string, unknown>).sort();
 }
 
+/**
+ * Split text into BM25 terms, emitting a compound word BOTH whole and in parts.
+ *
+ * Splitting alone made a lowercase query unable to reach the word it names: the corpus's
+ * "JavaScript" became "java script" while a query's "javascript" stayed one term, so the two never
+ * matched. "TypeScript", "SQLite" and "IPython" failed the same way, and "SQLite" also contributed
+ * the junk term "sq". Emitting both forms keeps "foo bar" reaching `fooBar` and lets "sqlite" reach
+ * `SQLite`, and it stays symmetric because the query runs through this same function.
+ */
 function tokenize(value: string): string[] {
-	return (
-		value
-			.normalize("NFKD")
-			// Drop combining marks (accents) so "café" → "cafe".
-			.replace(/\p{M}+/gu, "")
+	const normalized = value
+		.normalize("NFKD")
+		// Drop combining marks (accents) so "café" → "cafe".
+		.replace(/\p{M}+/gu, "")
+		// Everything that isn't a letter or digit becomes a separator. This subsumes markdown
+		// punctuation (`|*_`#-~>[]()`), box-drawing glyphs (─│┌), em/en dashes, smart quotes,
+		// zero-width spaces, NBSPs, etc.
+		.replace(NON_ALNUM_RUN_RE, " ")
+		.trim();
+	const tokens: string[] = [];
+	for (const word of normalized.split(/\s+/)) {
+		if (word.length === 0) continue;
+		tokens.push(word.toLowerCase());
+		const parts = word
 			// Split ACRONYMBoundary: "MCPTool" → "MCP Tool".
 			.replace(/(\p{Lu}+)(\p{Lu}\p{Ll})/gu, "$1 $2")
 			// Split camelCase / digit→letter: "fooBar" → "foo Bar", "v2Beta" → "v2 Beta".
 			.replace(/(\p{Ll}|\p{N})(\p{Lu})/gu, "$1 $2")
-			// Everything that isn't a letter or digit becomes a separator. This subsumes markdown
-			// punctuation (`|*_`#-~>[]()`), box-drawing glyphs (─│┌), em/en dashes, smart quotes,
-			// zero-width spaces, NBSPs, etc.
-			.replace(NON_ALNUM_RUN_RE, " ")
-			.toLowerCase()
-			.trim()
-			.split(/\s+/)
-			.filter(token => token.length > 0)
-	);
+			.split(" ");
+		if (parts.length < 2) continue;
+		for (const part of parts) {
+			if (part.length > 0) tokens.push(part.toLowerCase());
+		}
+	}
+	return tokens;
 }
 
 function addWeightedTokens(termFrequencies: Map<string, number>, value: string | undefined, weight: number): void {
@@ -115,6 +145,7 @@ function buildSearchDocument(tool: DiscoverableTool): DiscoverableToolSearchDocu
 	addWeightedTokens(termFrequencies, tool.serverName, FIELD_WEIGHTS.serverName);
 	addWeightedTokens(termFrequencies, tool.mcpToolName, FIELD_WEIGHTS.mcpToolName);
 	addWeightedTokens(termFrequencies, tool.summary, FIELD_WEIGHTS.summary);
+	addWeightedTokens(termFrequencies, tool.description, FIELD_WEIGHTS.description);
 	for (const schemaKey of tool.schemaKeys) {
 		addWeightedTokens(termFrequencies, schemaKey, FIELD_WEIGHTS.schemaKey);
 	}
@@ -153,6 +184,7 @@ export function getDiscoverableTool(
 		name: tool.name,
 		label: typeof toolRecord.label === "string" ? toolRecord.label : tool.name,
 		summary,
+		description: rawDescription === "" ? undefined : rawDescription,
 		source,
 		serverName: typeof toolRecord.mcpServerName === "string" ? toolRecord.mcpServerName : undefined,
 		mcpToolName: typeof toolRecord.mcpToolName === "string" ? toolRecord.mcpToolName : undefined,

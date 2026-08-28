@@ -11,22 +11,26 @@ import { logger } from "@veyyon/utils";
 import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot/constants";
 import type { ArgotSession } from "argot/session";
 import type { AsyncJobManager } from "../async/job-manager";
+import type { ModelRegistry } from "../config/model-registry";
 import type { PromptTemplate } from "../config/prompt-templates";
 import type { Settings } from "../config/settings";
 import type { ContextFile } from "../discovery/capability/context-file";
 import type { Rule } from "../discovery/capability/rule";
 import { resolveEffectiveToolDiscoveryMode } from "../discovery/mode";
-import type { DiscoverableTool, DiscoverableToolSearchIndex } from "../discovery/tool-index";
+import type { DiscoverableTool, DiscoverableToolSearchIndex, DiscoverableToolSource } from "../discovery/tool-index";
+import type { NoopLoopGuard } from "../edit/hashline/noop-loop-guard";
 import type { ToolPathWithSource } from "../extensibility/custom-tools";
 import type { Skill } from "../extensibility/skills";
 import type { GoalModeState, GoalRuntime } from "../goals";
 import type { LocalProtocolOptions } from "../internal-urls";
+import type { DiagnosticsLedger } from "../lsp/diagnostics-ledger";
 import type { MCPManager } from "../mcp";
 import type { HindsightSessionState } from "../memory/hindsight/state";
 import type { MnemopiSessionState } from "../memory/mnemopi/state";
 import type { PlanModeState } from "../plan-mode/state";
 import type { AgentRegistry } from "../registry/agent-registry";
 import type { ArtifactManager } from "../session/artifacts";
+import type { AuthStorage } from "../session/auth-storage";
 import type { ClientBridge } from "../session/client-bridge";
 import type { CustomMessage } from "../session/messages";
 import type { SubagentSpawnRecord, UsageStatistics } from "../session/session-entries";
@@ -40,6 +44,7 @@ import type { EventBus } from "../utils/event-bus";
 import type { WorkspaceTree } from "../workspace-tree";
 import { type BuiltinToolName, type HiddenToolName, normalizeToolNames, TOOL } from "./builtin-names";
 import type { CheckpointState, CompletedRewindState } from "./checkpoint";
+import type { ConflictHistory } from "./conflict-detect";
 import { resolveEvalBackends } from "./eval-backends";
 import { isIrcEnabled } from "./irc-enabled";
 import {
@@ -56,16 +61,10 @@ import { wrapToolWithMetaNotice } from "./output-meta";
 import { RerootDetector, wrapToolWithRerootHint } from "./reroot-hint";
 import type { TodoPhase } from "./todo";
 
-// NOTE: tool implementation modules are intentionally NOT imported eagerly
-// here. Each factory in BUILTIN_TOOLS / HIDDEN_TOOLS dynamic-imports its
-// module on first construction, so the CLI boot path never parses tool
-// implementations it does not activate. The public re-exports of every tool
-// module live in `src/index.ts` (the library entry), not in this barrel.
-// Type-only re-exports below are erased at runtime and cost nothing.
+// Builtin implementation modules remain lazy so the CLI boot path does not
+// parse tools this session never activates.
 export type { LspStartupServerInfo } from "../lsp";
 export type { BashToolDetails, BashToolInput } from "./bash";
-export type { GlobToolDetails, GlobToolInput } from "./glob";
-export type { GrepToolDetails, GrepToolInput } from "./grep";
 // Tool-loading rules now live in `./loading`. Re-exported here because `@veyyon/coding-agent/tools`
 // is the documented import path for them and the SDK plus several suites use it.
 export {
@@ -74,6 +73,7 @@ export {
 	filterInitialToolsForDiscoveryAll,
 } from "./loading";
 export type { ReadToolDetails, ReadToolInput } from "./read";
+export type { SearchToolDetails, SearchToolInput } from "./search";
 export type { WriteToolInput } from "./write";
 
 /** Tool type (AgentTool from pi-ai) */
@@ -326,9 +326,9 @@ export interface ToolSession {
 	/** Get the session's live per-family service tiers (undefined = none). Source of truth for subagent `tier.subagent: inherit`. */
 	getServiceTierByFamily?: () => ServiceTierByFamily | undefined;
 	/** Auth storage for passing to subagents (avoids re-discovery) */
-	authStorage?: import("../session/auth-storage").AuthStorage;
+	authStorage?: AuthStorage;
 	/** Model registry for passing to subagents (avoids re-discovery) */
-	modelRegistry?: import("../config/model-registry").ModelRegistry;
+	modelRegistry?: ModelRegistry;
 	/** Agent output manager for unique agent:// IDs across task invocations */
 	agentOutputManager?: AgentOutputManager;
 	/**
@@ -382,9 +382,7 @@ export interface ToolSession {
 	/** Whether any form of tool discovery is active (tools.discoveryMode !== "off" or mcp.discoveryMode). */
 	isToolDiscoveryEnabled?: () => boolean;
 	/** Get all hidden-but-discoverable tools for search_tool_bm25 prompts. */
-	getDiscoverableTools?: (filter?: {
-		source?: import("../discovery/tool-index").DiscoverableToolSource;
-	}) => DiscoverableTool[];
+	getDiscoverableTools?: (filter?: { source?: DiscoverableToolSource }) => DiscoverableTool[];
 	/** Get the cached generic discoverable search index. */
 	getDiscoverableToolSearchIndex?: () => DiscoverableToolSearchIndex;
 	/** Get tool names activated by prior search_tool_bm25 calls (all sources). */
@@ -428,18 +426,18 @@ export interface ToolSession {
 	 *  `read`. Each entry gets a stable id N referenced by `write conflict://N`
 	 *  to splice the recorded region with replacement content. Lazily initialized
 	 *  by `getConflictHistory`. */
-	conflictHistory?: import("./conflict-detect").ConflictHistory;
+	conflictHistory?: ConflictHistory;
 
 	/** Per-session ledger of post-edit LSP diagnostics already surfaced to the
 	 *  model for each file. Lazily initialized by `getDiagnosticsLedger`. */
-	diagnosticsLedger?: import("../lsp/diagnostics-ledger").DiagnosticsLedger;
+	diagnosticsLedger?: DiagnosticsLedger;
 
 	/** Per-session ledger of consecutive byte-identical no-op edits, keyed by
 	 *  canonical file path. The hashline executor escalates a soft no-op hint
 	 *  to a thrown error once the same payload no-ops `NOOP_HARD_LIMIT` times,
 	 *  breaking subagent loops that ignore the textual hint (issue #2081).
 	 *  Lazily initialized by `getNoopLoopGuard`. */
-	noopLoopGuard?: import("../edit/hashline/noop-loop-guard").NoopLoopGuard;
+	noopLoopGuard?: NoopLoopGuard;
 
 	/** Queue a hidden message to be injected at the next agent turn. */
 	queueDeferredMessage?(message: CustomMessage): void;
@@ -484,15 +482,13 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	bash: async s => new (await import("./bash")).BashTool(s),
 	launch: async s => new (await import("./launch")).LaunchTool(s),
 	edit: async s => new (await import("../edit")).EditTool(s),
-	ast_grep: async s => new (await import("./ast-grep")).AstGrepTool(s),
+	search: async s => new (await import("./search")).SearchTool(s),
 	ast_edit: async s => new (await import("./ast-edit")).AstEditTool(s),
 	ask: async s => (await import("./ask")).AskTool.createIf(s),
 	debug: async s => (await import("./debug")).DebugTool.createIf(s),
 	eval: async s => (await import("./eval")).EvalTool.create(s),
 	ssh: async s => (await import("./ssh")).loadSshTool(s),
 	github: async s => (await import("./gh")).GithubTool.createIf(s),
-	glob: async s => new (await import("./glob")).GlobTool(s, { rootPathAlias: true }),
-	grep: async s => new (await import("./grep")).GrepTool(s),
 	lsp: async s => (await import("../lsp")).LspTool.createIf(s),
 	inspect_image: async s => new (await import("./inspect-image")).InspectImageTool(s),
 	browser: async s => new (await import("./browser")).BrowserTool(s),
@@ -555,7 +551,6 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		toolNames && toolNames.length > 0
 			? augmentRequestedToolNames(normalizeToolNames(toolNames), {
 					goalEnabled,
-					astGrepEnabled: session.settings.get("astGrep.enabled"),
 					astEditEnabled: session.settings.get("astEdit.enabled"),
 					memoryBackend,
 					autolearnEnabled: session.settings.get("autolearn.enabled"),
@@ -645,10 +640,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		debugEnabled: session.settings.get("debug.enabled"),
 		requireYieldTool: includeYield,
 		todoEnabled: session.settings.get("todo.enabled"),
-		globEnabled: session.settings.get("glob.enabled"),
-		grepEnabled: session.settings.get("grep.enabled"),
 		githubEnabled: session.settings.get("github.enabled"),
-		astGrepEnabled: session.settings.get("astGrep.enabled"),
 		astEditEnabled: session.settings.get("astEdit.enabled"),
 		inspectImageEnabled: session.settings.get("inspect_image.enabled"),
 		webSearchEnabled: session.settings.get("web_search.enabled"),

@@ -166,7 +166,7 @@ const providerModuleOverrides = new Map<Api, LazyProviderModule<Api>>();
  * The installed overrides, exactly as they stand, for a harness that has to put one back.
  *
  * A tripwire cannot ask "is anything installed" and be right about both callers.
- * `packages/bench/src/simulations/turn-sim/harness.ts` replaces all twelve apis at module scope on purpose
+ * `packages/simulations/src/turn-sim/harness.ts` replaces all twelve apis at module scope on purpose
  * and keeps them for the life of the process, so an empty-set rule reds every simulation. What is
  * always wrong is a test ending with an override it did not inherit, which a snapshot taken before
  * the test and compared after it detects.

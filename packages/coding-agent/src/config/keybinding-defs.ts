@@ -179,14 +179,14 @@ export const KEYBINDINGS = {
 	},
 	"app.agents.hub": {
 		defaultKeys: "alt+a",
-		description: "Open the Agent Control Center",
+		description: "Open the subagent dashboard",
 	},
 	// Two chords, one screen. `app.session.observe` was bound to a separate
 	// observation view; it opens the same card, and both close it again, so the
 	// key you opened it with is the key that dismisses it.
 	"app.session.observe": {
 		defaultKeys: "ctrl+s",
-		description: "Open the Agent Control Center",
+		description: "Open the subagent dashboard",
 	},
 	// SEVEN IDS USED TO SIT HERE AND NOTHING READ ANY OF THEM. `app.session.rename`,
 	// `togglePath`, `toggleSort` and `deleteNoninvasive` named actions the session
@@ -196,7 +196,7 @@ export const KEYBINDINGS = {
 	// binding, so remapping it did nothing. A dead entry here is not inert: every id
 	// is advertised to the user by `/hotkeys` and by the generated `keybindings.yml`,
 	// so `toggleSort` told them ctrl+s sorts the session list when ctrl+s opens the
-	// Agent Control Center (`app.session.observe`, same default key, right below).
+	// subagent dashboard (`app.session.observe`, same default key, right below).
 	// `every-keybinding-id-is-read-by-something.test.ts` fails if another one appears.
 	"app.plan.toggle": {
 		defaultKeys: "alt+shift+p",

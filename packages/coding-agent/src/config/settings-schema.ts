@@ -143,7 +143,8 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 		"Available Tools",
 		"Todos",
 		"Launch",
-		"Grep & Browser",
+		"Search Context",
+		"Browser",
 		"GitHub",
 		"Output Limits",
 		"Execution",
@@ -151,7 +152,7 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 		"Developer",
 	],
 	tasks: ["Modes", "Commands & Skills"],
-	subagents: ["Delegation", "Subagents", "Limits", "Auto Close", "Isolation", "Coordination"],
+	subagents: ["Delegation", "Subagents", "Limits", "Park", "Prune", "Isolation", "Coordination"],
 	providers: ["Accounts", "Services", "Discovery", "Fireworks", "Tiny Model", "Protocol", "Timeouts", "Privacy"],
 	experimental: ["Argot", "Tool Calling", "Auto-Learn"],
 };

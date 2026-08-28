@@ -26,14 +26,22 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import { existingOnly } from "./check-doc-links";
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 
-/** Every text file git tracks, so a new file is scanned the moment it is added. */
+/**
+ * Every text file git tracks, so a new file is scanned the moment it is added. `existingOnly`
+ * because the index still lists a file deleted in the working tree, and reading one killed this
+ * gate with an ENOENT naming the deleted path; see its doc in check-doc-links.ts.
+ */
 async function trackedFiles(): Promise<string[]> {
 	const { stdout } = await execFileAsync("git", ["ls-files", "-z"], { cwd: REPO_ROOT, maxBuffer: 64 * 1024 * 1024 });
-	return stdout.split("\0").filter(entry => entry.length > 0);
+	return existingOnly(
+		REPO_ROOT,
+		stdout.split("\0").filter(entry => entry.length > 0),
+	);
 }
 
 /**

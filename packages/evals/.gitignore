@@ -1,0 +1,14 @@
+# Review-only notes and scratch: audits, commit messages, gate logs.
+.internal/
+
+# Trial outputs: job dirs, transcripts, reports.
+runs/
+# Seeded provider credentials copied out of the developer profile.
+assets/auth-agent.db*
+# Vendored task corpora and cloned upstream repositories, fetched not committed.
+datasets/deep-swe/corpus/
+datasets/repo-cache/
+.cache/
+# Compiled artifacts of TS entrypoints (the .ts file is the source).
+*.js
+!dashboard/**/*.js

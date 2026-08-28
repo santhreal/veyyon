@@ -35,7 +35,7 @@ export const ESC = "\x1b";
 /**
  * Control Sequence Introducer, `ESC [`. Starts every cursor move, erase, and SGR attribute change.
  *
- * Named CSI, its actual ANSI name, and not `ESC`. `packages/bench/src/metaharness/runner.ts` called this `ESC`, so one
+ * Named CSI, its actual ANSI name, and not `ESC`. The Harbor backend's runner called this `ESC`, so one
  * name meant `\x1b` in this module and `\x1b[` in that one, and `${ESC}0m` there read as an escape byte followed
  * by `0m` when it was really a full SGR sequence.
  */

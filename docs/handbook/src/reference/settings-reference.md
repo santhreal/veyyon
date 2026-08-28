@@ -176,7 +176,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `session.newKeepsBackground` | /new Keeps The Old Session | boolean | `false` | On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations and /process-manager opens them. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen. |
+| `session.newKeepsBackground` | /new Keeps The Old Session | boolean | `false` | Requires a restart: switching this on or off changes nothing in the running session. On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen. |
 
 ### Approvals
 
@@ -398,7 +398,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `readLineNumbers` | Line Numbers | boolean | `false` | Prepend line numbers to read tool output by default. |
-| `read.defaultLimit` | Default Read Limit | number | `300` | Default number of lines returned when agent calls read without a limit. |
+| `read.defaultLimit` | Default Read Limit | number | `300` | Line count returned when read is called without one. The window also stops at the tool output budget, so a file of long lines returns fewer lines than this. |
 | `read.toolResultPreview` | Inline Read Previews | boolean | `false` | Render read tool results inline in the transcript instead of summary rows. |
 
 ### Read Summaries
@@ -462,11 +462,8 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `todo.enabled` | Todos | boolean | `true` | Enable the todo tool for task tracking. |
-| `glob.enabled` | Glob | boolean | `true` | Enable the glob tool for glob-based file lookup. |
-| `grep.enabled` | Grep | boolean | `true` | Enable the grep tool for regex content search. |
-| `astGrep.enabled` | AST Grep | boolean | `true` | Enable the ast_grep tool for structural AST search. |
 | `astEdit.enabled` | AST Edit | boolean | `true` | Enable the ast_edit tool for structural AST rewrites. |
-| `debug.enabled` | Debug | boolean | `true` | Enable the debug tool for DAP-based debugging. |
+| `debug.enabled` | Debug | boolean | `true` | Enable the debug tool for DAP-based debugging. The tool loads only where a configured adapter command resolves. |
 | `launch.enabled` | Launch | boolean | `true` | Enable the launch tool for supervising shared long-running project processes. |
 | `speechgen.enabled` | Speech Generation | boolean | `false` | Enable the tts tool for on-device (Kokoro) or xAI Grok Voice speech-file synthesis. |
 | `generate_image.enabled` | Generate Image | boolean | `false` | Enable the generate_image tool for text-to-image generation and editing. |
@@ -494,12 +491,17 @@ veyyon config get compaction.threshold
 |---|---|---|---|---|
 | `launch.cleanupWaitMs` | Launch Cleanup Wait | number | `900000` | How long an exited process record is retained before being purged from memory and disk (0 = never clean up). |
 
-### Grep & Browser
+### Search Context
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `grep.contextBefore` | Grep Context Before | number | `1` | Lines of context before each grep match. |
-| `grep.contextAfter` | Grep Context After | number | `3` | Lines of context after each grep match. |
+| `search.contextBefore` | Text Context Before | number | `1` | Lines of context before each text search match. |
+| `search.contextAfter` | Text Context After | number | `1` | Lines of context after each text search match. |
+
+### Browser
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
 | `browser.headless` | Headless Browser | boolean | `true` | Launch browser in headless mode (disable to show browser UI). |
 | `browser.cmux` | cmux Browser | boolean | `true` | Use cmux WKWebView surfaces for browser automation when a cmux socket is available. Set VEYYON_BROWSER_CMUX=0 or VEYYON_BROWSER_CMUX=1 to override. |
 | `browser.screenshotDir` | Screenshot Directory | string | _(unset)_ | Directory to save screenshots. If unset, screenshots go to a temp file. Supports ~. Examples: ~/Downloads, ~/Desktop, /sdcard/Download (Android). |
@@ -516,12 +518,12 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `tools.artifactSpillThreshold` | Artifact Spill Threshold (KB) | number | `50` | Tool output above this size is saved as an artifact and the result keeps a head/tail window plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as grep and the browser. |
-| `tools.artifactTailBytes` | Artifact Tail Size (KB) | number | `20` | Amount of tail content kept inline when output spills to artifact. |
-| `tools.artifactHeadBytes` | Artifact Head Size (KB) | number | `20` | Amount of head content kept inline alongside the tail when output spills to artifact (middle elision). 0 disables — keep tail only. |
+| `tools.artifactSpillThreshold` | Artifact Spill Threshold (KB) | number | `50` | Tool output above this size is saved as an artifact and the result keeps a head/tail window no larger than this size, plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as search and the browser. |
+| `tools.artifactTailBytes` | Artifact Tail Size (KB) | number | `20` | Amount of tail content kept inline when output spills to artifact, bounded by the spill threshold. |
+| `tools.artifactHeadBytes` | Artifact Head Size (KB) | number | `20` | Amount of head content kept inline alongside the tail when output spills to artifact (middle elision), bounded with the tail by the spill threshold. 0 disables — keep tail only. |
 | `tools.outputMaxColumns` | Output Column Cap | number | `768` | Per-line byte cap for streaming tool outputs (bash, ssh, python, js eval) and `read`. Lines wider than this are ellipsis-truncated; remaining bytes up to the next newline are dropped. 0 disables. |
 | `tools.artifactTailLines` | Artifact Tail Lines | number | `500` | Maximum lines of tail content kept inline when output spills to artifact. |
-| `tools.inlineOutputFloor` | Inline Output Floor | number | `0.25` | Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as grep and the browser. Shown under the tab's Advanced fold. |
+| `tools.inlineOutputFloor` | Inline Output Floor | number | `0.25` | Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as search and the browser. Shown under the tab's Advanced fold. |
 
 ### Execution
 
@@ -538,7 +540,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `tools.discoveryMode` | Tool Discovery | enum | `auto` | Hide tools behind a search tool to save tokens. 'auto' hides MCP tools once the tool set has more than 40 tools; 'mcp-only' always hides MCP tools; 'all' also hides non-essential built-ins and first-party heavyweight tools such as generate_image. Values: `auto`, `off`, `mcp-only`, `all`. |
-| `tools.essentialOverride` | Essential Tools Override | array | `[]` | Override the always-loaded built-in tools (default: read, bash, launch, edit, write, glob, eval). Leave empty to use defaults. |
+| `tools.essentialOverride` | Essential Tools Override | array | `[]` | Override the always-loaded built-in tools (default: read, bash, launch, edit, write, search, eval). Leave empty to use defaults. |
 | `mcp.discoveryMode` | MCP Tool Discovery | boolean | `false` | Hide MCP tools by default and expose them through a tool discovery tool. |
 | `mcp.discoveryDefaultServers` | MCP Discovery Default Servers | array | `[]` | Keep MCP tools from these servers visible while discovery mode hides other MCP tools. |
 | `mcp.notifications` | MCP Update Injection | boolean | `false` | Inject MCP resource updates into the agent conversation. |
@@ -605,14 +607,19 @@ veyyon config get compaction.threshold
 | `subagent.softRequestBudgetNotice` | Soft Request Budget Notice | boolean | `true` | Inject one steering notice when a subagent crosses its soft request budget, asking it to wrap up before the 1.5x forced-yield stop. |
 | `subagent.enableLsp` | LSP in Subagents | boolean | `false` | Allow spawned subagents to use the lsp tool. Off by default to keep subagents cheap; enable when LSP-aware delegation is worth the extra tokens. |
 
-### Auto Close
+### Park
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.idleTtlMs` | Park After | number | `300000` | How long a finished subagent stays live before parking (ms). The default is 5 minutes. Parking releases the live session and keeps the transcript, so a parked agent revives automatically when messaged or resumed. Set 'Until exit' to keep idle agents live for the whole session. Counted from the agent's last activity, so a revived agent starts this budget again from the revival. |
-| `subagent.autoClose.enabled` | Close Parked Subagents | boolean | `true` | Close a parked subagent for good once it has been quiet long enough, instead of keeping it in the roster for the whole session. Parking already released the session; this decides whether the revivable reference is eventually dropped too. Turn it off to keep every finished subagent listed and revivable until you exit. |
-| `subagent.autoClose.parkedMs` | Close After | number | `300000` | How long a parked subagent stays listed and revivable before it is closed (ms). Counted from the moment it parked, not from when it started. Its transcript survives either way and stays readable through `history://`. |
-| `subagent.autoClose.waitingMs` | Close After (Waiting) | number | `1800000` | The same budget for a subagent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it gets a longer grace than one that simply went quiet: closing it on the ordinary timer would drop the agent you are most likely to message next. Set it equal to Close After to treat both the same. |
+| `subagent.idleTtlMs` | Park After | number | `300000` | Stage one. How long a finished subagent stays live before it parks (ms). Parking releases the live session — the process, its MCP clients, its memory — and keeps everything else: the row stays in the roster and the agent rebuilds itself when messaged or opened. Counted from the agent's last activity, so a revived agent starts this budget again from the revival. 'Until exit' keeps idle agents live for the whole session. |
+
+### Prune
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `subagent.prune.enabled` | Prune Parked Subagents | boolean | `true` | Stage two, and a different thing from parking. Pruning takes a parked subagent out of the roster and gives up the ability to wake it; parking only released its session. Nothing on disk is touched: the transcript stays where it is and stays readable at `history://\<agent>`. Off keeps every parked subagent listed and wakeable until you exit. |
+| `subagent.prune.afterMs` | Prune After | number | `3600000` | How long a parked subagent stays in the roster before it is pruned (ms). Counted from its last activity, so a subagent read back from a previous run is judged on when its transcript was last written rather than on when this session found it. |
+| `subagent.prune.waitingAfterMs` | Prune After While Waiting | number | `7200000` | The same budget for a subagent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it keeps its row longer than one that simply went quiet: pruning it on the ordinary budget would drop the agent you are most likely to message next. Set it equal to Prune After to treat both the same; a shorter value is raised to it. |
 
 ### Isolation
 
@@ -771,7 +778,7 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `auth.broker.token` | string | _(unset)_ |  |
 | `auth.broker.url` | string | _(unset)_ |  |
 | `autolearn.minToolCalls` | number | `5` |  |
-| `bashInterceptor.patterns` | array | `[{"pattern":"^\\s*(cat\|head\|tail\|less\|more)\\s+","tool":"read","message":"Use the `read` tool instead of cat/head/tail. It provides better context and handles binary files."},{"pattern":"^\\s*(grep\|rg\|ripgrep\|ag\|ack)\\s+","tool":"grep","message":"Use the `grep` tool instead of grep/rg. It respects .gitignore and provides structured output."},{"pattern":"^\\s*(find\|fd\|locate)\\s+.*(-name\|-iname\|-type\|--type\|-glob)","tool":"glob","message":"Use the `glob` tool instead of find/fd. It respects .gitignore and is faster for glob patterns."},{"pattern":"^\\s*sed\\s+(-i\|--in-place)","tool":"edit","message":"Use the `edit` tool instead of sed -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*perl\\s+.*-[pn]?i","tool":"edit","message":"Use the `edit` tool instead of perl -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*awk\\s+.*-i\\s+inplace","tool":"edit","message":"Use the `edit` tool instead of awk -i inplace. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*(echo\|printf\|cat\\s*\<\<)\\s+(?:(?:[^\"'>]\|\"[^\"]*\"\|'[^']*')\|(?\<!\\\|)>{1,2}\\\|?\\s*(?:\"/dev/(?:null\|tty\|stdout\|stderr)\"\|'/dev/(?:null\|tty\|stdout\|stderr)'\|/dev/(?:null\|tty\|stdout\|stderr))(?:[\\s;&\|]\|$))*(?\<!\\\|)>{1,2}\\\|?\\s*(?!(?:\"/dev/(?:null\|tty\|stdout\|stderr)\"\|'/dev/(?:null\|tty\|stdout\|stderr)'\|/dev/(?:null\|tty\|stdout\|stderr))(?:[\\s;&\|]\|$))[$\\w./~\"'-]","tool":"write","message":"Use the `write` tool instead of echo/cat redirection. It handles encoding and provides confirmation."},{"pattern":"^\\s*nohup\\s+\|(?\<!&)\\&\\s*$","tool":"launch","message":"Use the `launch` tool instead of nohup or background shell syntax so the process stays observable and managed."},{"pattern":"^\\s*(?:(?:bun\|npm\|pnpm\|yarn)\\s+(?:run\\s+)?(?:dev\|start)(?:\\s\|$)\|(?:vite\|next\\s+dev\|nuxt\\s+dev\|nodemon\|lldb\|gdb\|tail\\s+-f)(?:\\s\|$)\|docker\\s+compose\\s+up(?!.*(?:\\s-d(?:\\s\|$)\|--detach))(?:\\s\|$))","tool":"launch","message":"Use the `launch` tool for services, watchers, and debuggers so other veyyon instances can observe and control them."},{"pattern":"^\\s*(?:(?:bun\|npm\|pnpm\|yarn)\\s+(?:run\\s+)?\\S+\|cargo\\s+watch\|watchexec\|pytest\|vitest\|jest\|tsc)(?:.\|\\n)*(?:--watch\|-w)(?:\\s\|$)","tool":"launch","message":"Use the `launch` tool for watch mode so its output, input, and lifecycle stay managed."}]` |  |
+| `bashInterceptor.patterns` | array | `[{"pattern":"^\\s*(cat\|head\|tail\|less\|more)\\s+","tool":"read","message":"Use the `read` tool instead of cat/head/tail. It provides better context and handles binary files."},{"pattern":"^\\s*(grep\|rg\|ripgrep\|ag\|ack)\\s+","tool":"search","message":"Use `search` with `type: \"text\"` instead of shell grep/rg."},{"pattern":"^\\s*(find\|fd\|locate)\\s+.*(-name\|-iname\|-type\|--type\|-glob)","tool":"search","message":"Use `search` with `type: \"files\"` instead of shell find/fd."},{"pattern":"^\\s*sed\\s+(-i\|--in-place)","tool":"edit","message":"Use the `edit` tool instead of sed -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*perl\\s+.*-[pn]?i","tool":"edit","message":"Use the `edit` tool instead of perl -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*awk\\s+.*-i\\s+inplace","tool":"edit","message":"Use the `edit` tool instead of awk -i inplace. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*(echo\|printf\|cat\\s*\<\<)\\s+(?:(?:[^\"'>]\|\"[^\"]*\"\|'[^']*')\|(?\<!\\\|)>{1,2}\\\|?\\s*(?:\"/dev/(?:null\|tty\|stdout\|stderr)\"\|'/dev/(?:null\|tty\|stdout\|stderr)'\|/dev/(?:null\|tty\|stdout\|stderr))(?:[\\s;&\|]\|$))*(?\<!\\\|)>{1,2}\\\|?\\s*(?!(?:\"/dev/(?:null\|tty\|stdout\|stderr)\"\|'/dev/(?:null\|tty\|stdout\|stderr)'\|/dev/(?:null\|tty\|stdout\|stderr))(?:[\\s;&\|]\|$))[$\\w./~\"'-]","tool":"write","message":"Use the `write` tool instead of echo/cat redirection. It handles encoding and provides confirmation."},{"pattern":"^\\s*nohup\\s+\|(?\<!&)\\&\\s*$","tool":"launch","message":"Use the `launch` tool instead of nohup or background shell syntax so the process stays observable and managed."},{"pattern":"^\\s*(?:(?:bun\|npm\|pnpm\|yarn)\\s+(?:run\\s+)?(?:dev\|start)(?:\\s\|$)\|(?:vite\|next\\s+dev\|nuxt\\s+dev\|nodemon\|lldb\|gdb\|tail\\s+-f)(?:\\s\|$)\|docker\\s+compose\\s+up(?!.*(?:\\s-d(?:\\s\|$)\|--detach))(?:\\s\|$))","tool":"launch","message":"Use the `launch` tool for services, watchers, and debuggers so other veyyon instances can observe and control them."},{"pattern":"^\\s*(?:(?:bun\|npm\|pnpm\|yarn)\\s+(?:run\\s+)?\\S+\|cargo\\s+watch\|watchexec\|pytest\|vitest\|jest\|tsc)(?:.\|\\n)*(?:--watch\|-w)(?:\\s\|$)","tool":"launch","message":"Use the `launch` tool for watch mode so its output, input, and lifecycle stay managed."}]` |  |
 | `branchSummary.reserveTokens` | number | `16384` |  |
 | `commit.changelogMaxDiffChars` | number | `120000` |  |
 | `commit.mapReduceEnabled` | boolean | `true` |  |
@@ -800,6 +807,7 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `disabledProviders` | array | `[]` |  |
 | `edit.modelVariants` | record | `{}` |  |
 | `enabledModels` | array | `[]` |  |
+| `eval.pyWorkspace` | boolean | `false` |  |
 | `extensions` | array | `[]` |  |
 | `gc.archive` | boolean | `true` |  |
 | `gc.blobs` | boolean | `true` |  |
@@ -887,4 +895,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-352 settings in /settings, 119 configuration-file keys, 471 in all.
+349 settings in /settings, 120 configuration-file keys, 469 in all.

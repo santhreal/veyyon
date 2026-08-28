@@ -16,6 +16,7 @@ source "${REPO_ROOT}/proof/docker/recorder-image.sh"
 SCENE="${1:?usage: record-x11.sh <scene.sh>}"
 OUT="${OUT_DIR:-${REPO_ROOT}/proof/captures/x11}"
 mkdir -p "${OUT}"
+OUT="$(cd "${OUT}" && pwd)"
 
 # A model served by this host answers on loopback here and on the gateway alias in
 # there. proof/docker/host-endpoint.sh owns the substitution.
@@ -91,8 +92,9 @@ docker run --rm \
 		mkdir -p /sandbox/home/.veyyon
 		cp -r /seed/. /sandbox/home/.veyyon/
 		if [ -d /host-auth ]; then
-			mkdir -p /sandbox/home/.veyyon/shared-auth
+			mkdir -p /sandbox/home/.veyyon/shared-auth /sandbox/home/.veyyon/profiles/default/agent
 			cp -a /host-auth/. /sandbox/home/.veyyon/shared-auth/
+			cp -a /host-auth/. /sandbox/home/.veyyon/profiles/default/agent/
 		fi
 		# A recorder on another machine cannot resolve the llama.cpp container by the
 		# name it has on this daemon, so the base URL is overridable at record time.

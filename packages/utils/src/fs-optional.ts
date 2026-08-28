@@ -47,7 +47,7 @@
  * `test/fs-optional-strict-twins.test.ts` fails if a fourth private copy appears.
  */
 
-// `Stats` is named explicitly rather than inferred through `Awaited<ReturnType<typeof fs.stat>>`, which
+// `Stats` is named explicitly rather than inferred from the return type of `fs.stat`, which
 // is what these signatures used to say. `fs.stat` is OVERLOADED on its options argument, so that
 // expression resolves to `BigIntStats | Stats` and every caller inherited a union it never asked for.
 // Nothing noticed while the only callers read `.size` and `.mtimeMs`, which both members have; the first

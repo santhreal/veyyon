@@ -113,20 +113,23 @@ describe("the provider sources", () => {
 		// An import of the same name from anywhere else would mean a second definition had
 		// appeared somewhere — the exact thing this row was cleaning up — so the SOURCE of
 		// the name is asserted, not merely its presence.
-		const users = providerSources().filter(({ text }) =>
-			/clampNumResults\([^)]*SEARCH_DEFAULT_NUM_RESULTS/.test(text),
+		// Every clamp call in the file is classified, not the first one: brave.ts clamps twice, and a
+		// file where one call took the owner and the other kept a literal would be exactly the drift
+		// this suite exists to catch.
+		const clampers = providerSources()
+			.map(({ name, text }) => ({ name, text, calls: text.match(/clampNumResults\([^)]*\)/g) ?? [] }))
+			.filter(({ calls }) => calls.length > 0);
+		const users = clampers.filter(({ calls }) => calls.every(call => call.includes("SEARCH_DEFAULT_NUM_RESULTS")));
+		const privateValues = clampers.filter(({ calls }) =>
+			calls.every(call => !call.includes("SEARCH_DEFAULT_NUM_RESULTS")),
 		);
 
-		// Derived, not counted: every provider that clamps and is not a registered deviation
-		// must be a user, so a provider added with a private copy shows up on the right of
-		// this equality and not the left. A count would also redden when a provider is
-		// removed upstream, which says nothing about ownership.
-		const owed = providerSources()
-			.filter(({ name, text }) => /clampNumResults\(/.test(text) && !(name in DELIBERATE_DEVIATIONS))
-			.map(({ name }) => name);
-		expect(users.map(({ name }) => name)).toEqual(owed);
-		// Non-vacuity: the sweep saw the provider tree, not an empty directory.
-		expect(owed.length).toBeGreaterThan(10);
+		// Derived from the directory, not pinned: dropping a provider (Ecosia did) or adding one must
+		// not need an edit here, while a provider that clamps against its own value turns this red
+		// until it is registered above, and a file that does both lands in neither list.
+		expect(privateValues.map(({ name }) => name)).toEqual(Object.keys(DELIBERATE_DEVIATIONS).sort());
+		expect(users.length + privateValues.length).toBe(clampers.length);
+		expect(users.length).toBeGreaterThan(10);
 		for (const { name, text } of users) {
 			// The named import, not a hand-split line: it settles the source of the name, survives a
 			// formatter breaking the import across lines (which the single-line scan this replaced

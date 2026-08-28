@@ -69,13 +69,37 @@
 			"!**/devin-gen/**/*",
 			"!.worktrees/**/*",
 			"!.wt/**/*",
-			"!packages/bench/src/deepswe/repo-cache/**/*",
-			"!packages/bench/src/deepswe/runs/**/*",
+			"!packages/evals/datasets/repo-cache/**/*",
+			"!packages/evals/.cache/**/*",
+			"!packages/evals/runs/**/*",
 			"!runs/**/*",
-			"!packages/bench/src/deepswe/deep-swe/**/*",
-			"!packages/bench/src/deepswe/assets/**/*"
+			"!packages/evals/datasets/deep-swe/corpus/**/*",
+			"!packages/evals/assets/**/*"
 		]
 	},
+	"overrides": [
+		{
+			"includes": ["packages/evals/src/core/**", "packages/evals/src/harnesses/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"paths": {},
+								"patterns": [
+									{
+										"group": ["**/suites/**", "**/backends/**", "**/manager/**", "**/server/**"],
+										"message": "The eval package's layering is one-way: a core contract or a harness adapter is imported by a suite, a backend and the manager, never the other way round. Declare what this module needs in core/types.ts and let the caller supply it."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		}
+	],
 	"assist": {
 		"actions": {
 			"source": {

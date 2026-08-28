@@ -1,5 +1,5 @@
 /**
- * The Comms stream of the Agent Control Center, across TWO conversations in one
+ * The Comms stream of the subagent dashboard, across TWO conversations in one
  * process.
  *
  * WHY TWO. The pane reads a PROCESS-GLOBAL bus log. With one conversation

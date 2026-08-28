@@ -11,7 +11,9 @@
 // imports the `@veyyon/ai` barrel and the prompt registry to summarize a conversation; deciding whether a
 // token count is over the trigger is arithmetic. This edge is why `config/settings.ts` reached
 // `@veyyon/ai/stream.ts` while a gate two directories away asserted that it did not.
+import type { CompactionSettings as CoreCompactionSettings } from "@veyyon/agent-core/compaction/threshold";
 import { resolveThresholdTokens } from "@veyyon/agent-core/compaction/threshold";
+import type { CompactionSettings as SchemaCompactionSettings } from "./settings-schema";
 
 /** Stored compaction strategy after migration / schema validation. */
 export type CompactionStrategySetting = "summary";
@@ -75,10 +77,7 @@ export interface ResolvedContextLimit {
  * `isThresholdTokensClampedForWindow` so an operator whose model-independent amount
  * was capped for a smaller model hears about it.
  */
-export function resolveContextLimit(
-	contextWindow: number,
-	settings: import("@veyyon/agent-core/compaction/threshold").CompactionSettings,
-): ResolvedContextLimit {
+export function resolveContextLimit(contextWindow: number, settings: CoreCompactionSettings): ResolvedContextLimit {
 	if (!Number.isFinite(contextWindow) || contextWindow <= 0) return { tokens: 0, kind: "window" };
 	if (isThresholdCompactionDisabled(settings.enabled, settings.strategy)) {
 		return { tokens: contextWindow, kind: "window" };
@@ -97,11 +96,11 @@ export function migrateCompactionStrategyValue(value: unknown): CompactionStrate
 
 /** Map profile compaction settings to the agent compaction module shape. */
 export function toAgentCompactionSettings(
-	settings: Omit<import("./settings-schema").CompactionSettings, "strategy" | "model"> & {
+	settings: Omit<SchemaCompactionSettings, "strategy" | "model"> & {
 		strategy?: string;
 		model?: string;
 	},
-): import("@veyyon/agent-core/compaction/threshold").CompactionSettings {
+): CoreCompactionSettings {
 	const strategy = normalizeCompactionStrategy(settings.strategy);
-	return { ...settings, strategy } as import("@veyyon/agent-core/compaction/threshold").CompactionSettings;
+	return { ...settings, strategy } as CoreCompactionSettings;
 }

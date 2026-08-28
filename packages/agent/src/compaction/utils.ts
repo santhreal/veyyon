@@ -191,7 +191,7 @@ export function computeFileLists(fileOps: FileOperations): { readFiles: string[]
 
 /**
  * Format file operations as one `<files>` tag: a grouped, prefix-folded
- * directory tree (find-tool shape — `# dir/` headers, bare basenames) with a
+ * directory tree (search `files` shape — `# dir/` headers, bare basenames) with a
  * ` (Read)` / ` (Write)` / ` (RW)` marker per file instead of separate
  * read/modified lists. `readSet` is the cumulative read set (`fileOps.read`),
  * used to tell modified files that were also read (RW) from blind writes.

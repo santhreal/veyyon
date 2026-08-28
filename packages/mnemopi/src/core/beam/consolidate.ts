@@ -1,5 +1,8 @@
 import type { SQLQueryBindings } from "bun:sqlite";
-import { collapseWhitespace, DAY_MS, errorMessage, HOUR_MS, logger } from "@veyyon/utils";
+import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
+import * as logger from "@veyyon/utils/logger";
+import { DAY_MS, HOUR_MS } from "@veyyon/utils/time";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { degradeBatchSize, sleepBatchSize, tier2Days, tier3Days, tier3MaxChars } from "../../config";
 import { generateId, stableMemoryId } from "../../util/ids";
 import { unicodeWordTokens, WORD_TOKEN_DOT_HYPHEN_RE } from "../../util/regex";

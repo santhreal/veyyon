@@ -13,7 +13,7 @@ it as the boundary.
 
 Every tool belongs to one of three tiers, ordered by how much it can change:
 
-- **read** looks but does not touch: `read`, `grep`, `glob`, and directory listing.
+- **read** looks but does not touch: `read`, `search`, and directory listing.
 - **write** changes files: `edit` and `write`.
 - **exec** runs commands: `bash` and anything else that executes a program.
 
@@ -73,7 +73,7 @@ entirely inside the working directory that reaches outside it through a symlink 
 as outside. A path that cannot be resolved at all also counts as outside, because
 treating an unreadable path as safe is the assumption you least want to be wrong about.
 
-These tools take part: `read`, `write`, `edit`, `ast_edit`, `grep`, `glob`, `ast_grep`,
+These tools take part: `read`, `write`, `edit`, `ast_edit`, `search`,
 `inspect_image`, and `set_cwd`.
 
 `set_cwd` is on that list because it changes the working directory itself. If it were

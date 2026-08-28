@@ -4,22 +4,20 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-28
+
 ### Changed
 
+- Replaced `@veyyon/utils` barrel imports across mnemopi with direct subpath imports, reducing the memory engine load reach from 161 to 110 modules and consolidate reach from 151 to 99 modules.
 - `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
 - `core/embeddings.ts` imports `ProviderHttpError` from `@veyyon/ai/error/classes` instead of the error barrel, cutting twelve modules off the import graph of every module that can remember something; behavior is unchanged.
+- `config.ts` and `core/extraction/client.ts` take `trimTrailingSlashes` and `withScopedTimeoutSignal` from `@veyyon/utils/url` and `@veyyon/utils/scoped-timeout` instead of the package entry point, cutting the extraction client's import graph from 127 modules to 66; behavior is unchanged.
 
 ### Fixed
 
 - Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
-
-## [1.2.0] - 2026-08-23
-
-### Breaking Changes
-
-- The minimum supported Bun runtime is now 1.4.0.
 
 ## [16.3.9] - 2026-07-06
 
@@ -213,6 +211,12 @@
 - Fixed `extract: true` fact extraction to continue safely when no LLM is configured by turning extraction failures into no-op background tasks
 - Fixed configured LLM fact extraction by using temperature 0 so re-ingesting the same text is deterministic and avoids near-duplicate extractions
 - Fixed `remember(..., { extract: true })` silently dropping the flag: it now schedules the LLM fact extractor (`extractFactsSafe`) over the stored content and persists the extracted facts so they become recallable. Previously the LLM extractor had no production callers and `extract` was dead.
+
+## [1.2.0] - 2026-08-23
+
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
 
 ## [1.0.47] - 2026-08-13
 

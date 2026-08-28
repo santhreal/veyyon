@@ -399,7 +399,7 @@ describe("subagent settings migration", () => {
 	/**
 	 * WHERE EVERY SUBAGENT SETTING'S LEGACY VALUE COMES FROM, ENUMERATED AT RUN TIME.
 	 *
-	 * Each case above pins one legacy key, which closes those incidents and nothing else. The next
+	 * Each case above pins one legacy key, which prunes those incidents and nothing else. The next
 	 * setting added to this section arrives with no case at all, and a legacy key it should have
 	 * consumed is then discovered by an operator whose config silently reverted to a default. So the
 	 * section is enumerated from `SETTINGS_SCHEMA` and every path is probed against the real loader,
@@ -437,9 +437,9 @@ describe("subagent settings migration", () => {
 
 		/** Settings that never existed before this section, so there is nothing to carry. */
 		const NO_LEGACY_SOURCE: readonly string[] = [
-			"subagent.autoClose.enabled",
-			"subagent.autoClose.parkedMs",
-			"subagent.autoClose.waitingMs",
+			"subagent.prune.enabled",
+			"subagent.prune.afterMs",
+			"subagent.prune.waitingAfterMs",
 			"subagent.modelByDepth",
 			"subagent.thinkingLevel",
 		];

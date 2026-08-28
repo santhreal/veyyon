@@ -158,29 +158,6 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// Grep, glob, and AST tools
-	"glob.enabled": {
-		type: "boolean",
-		default: true,
-		ui: {
-			tab: "tools",
-			group: "Available Tools",
-			label: "Glob",
-			description: "Enable the glob tool for glob-based file lookup",
-		},
-	},
-
-	"grep.enabled": {
-		type: "boolean",
-		default: true,
-		ui: {
-			tab: "tools",
-			group: "Available Tools",
-			label: "Grep",
-			description: "Enable the grep tool for regex content search",
-		},
-	},
-
 	// How tightly an early tool result is held before it spills to an artifact.
 	//
 	// A tool result is billed once as fresh input and then re-read as a cache
@@ -202,7 +179,7 @@ export const TOOLS_SETTINGS = {
 			group: "Output Limits",
 			label: "Inline Output Floor",
 			description:
-				"Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as grep and the browser.",
+				"Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as search and the browser.",
 			options: [
 				{ value: "1", label: "Flat cap (no early spill)" },
 				{ value: "0.5", label: "Half budget" },
@@ -213,14 +190,14 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	"grep.contextBefore": {
+	"search.contextBefore": {
 		type: "number",
 		default: 1,
 		ui: {
 			tab: "tools",
-			group: "Grep & Browser",
-			label: "Grep Context Before",
-			description: "Lines of context before each grep match",
+			group: "Search Context",
+			label: "Text Context Before",
+			description: "Lines of context before each text search match",
 			options: [
 				{ value: "0", label: "0 lines" },
 				{ value: "1", label: "1 line" },
@@ -231,14 +208,20 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	"grep.contextAfter": {
+	// Three trailing lines came from the retired `grep` tool, where the number was
+	// chosen for the terminal code frame a person reads. A tool result is also sent
+	// to the model on every later request of the session, so a line kept here is
+	// billed once per remaining request, not once. Measured over eight searches of
+	// this repository, three trailing lines cost 16,836 tokens against 11,483 at
+	// one, for context the model reaches by reading the file at a range instead.
+	"search.contextAfter": {
 		type: "number",
-		default: 3,
+		default: 1,
 		ui: {
 			tab: "tools",
-			group: "Grep & Browser",
-			label: "Grep Context After",
-			description: "Lines of context after each grep match",
+			group: "Search Context",
+			label: "Text Context After",
+			description: "Lines of context after each text search match",
 			options: [
 				{ value: "0", label: "0 lines" },
 				{ value: "1", label: "1 line" },
@@ -247,17 +230,6 @@ export const TOOLS_SETTINGS = {
 				{ value: "5", label: "5 lines" },
 				{ value: "10", label: "10 lines" },
 			],
-		},
-	},
-
-	"astGrep.enabled": {
-		type: "boolean",
-		default: true,
-		ui: {
-			tab: "tools",
-			group: "Available Tools",
-			label: "AST Grep",
-			description: "Enable the ast_grep tool for structural AST search",
 		},
 	},
 
@@ -281,7 +253,8 @@ export const TOOLS_SETTINGS = {
 			tab: "tools",
 			group: "Available Tools",
 			label: "Debug",
-			description: "Enable the debug tool for DAP-based debugging",
+			description:
+				"Enable the debug tool for DAP-based debugging. The tool loads only where a configured adapter command resolves.",
 		},
 	},
 
@@ -483,7 +456,7 @@ export const TOOLS_SETTINGS = {
 		default: true,
 		ui: {
 			tab: "tools",
-			group: "Grep & Browser",
+			group: "Browser",
 			label: "Headless Browser",
 			condition: "browserEnabled",
 			description: "Launch browser in headless mode (disable to show browser UI)",
@@ -495,7 +468,7 @@ export const TOOLS_SETTINGS = {
 		default: true,
 		ui: {
 			tab: "tools",
-			group: "Grep & Browser",
+			group: "Browser",
 			label: "cmux Browser",
 			condition: "browserEnabled",
 			description:
@@ -507,7 +480,7 @@ export const TOOLS_SETTINGS = {
 		default: undefined,
 		ui: {
 			tab: "tools",
-			group: "Grep & Browser",
+			group: "Browser",
 			label: "Screenshot Directory",
 			condition: "browserEnabled",
 			description:
@@ -536,6 +509,12 @@ export const TOOLS_SETTINGS = {
 			description:
 				"With in-band tool calls, stop the model immediately when it starts hallucinating a tool result mid-turn. Disable to let the model finish generating and discard the fabricated continuation instead.",
 		},
+	},
+
+	// Optional Python eval workspace guidance
+	"eval.pyWorkspace": {
+		type: "boolean",
+		default: false,
 	},
 
 	"tools.maxTimeout": {
@@ -691,7 +670,7 @@ export const TOOLS_SETTINGS = {
 			group: "Discovery & MCP",
 			label: "Essential Tools Override",
 			description:
-				"Override the always-loaded built-in tools (default: read, bash, launch, edit, write, glob, eval). Leave empty to use defaults.",
+				"Override the always-loaded built-in tools (default: read, bash, launch, edit, write, search, eval). Leave empty to use defaults.",
 		},
 	},
 

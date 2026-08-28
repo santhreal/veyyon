@@ -48,7 +48,7 @@ describe("the ANSI primitives", () => {
 	/**
 	 * `ESC [`, the Control Sequence Introducer, which starts every cursor move, erase and SGR change.
 	 *
-	 * Named CSI rather than `ESC`, and that distinction is the point. `packages/bench/src/metaharness/runner.ts`
+	 * Named CSI rather than `ESC`, and that distinction is the point. The Harbor backend's runner
 	 * declared `const ESC = "\x1b["`, so one name meant the escape byte here and the full introducer there, and
 	 * its `${ESC}0m` read as an escape byte followed by the text "0m" when it was really a complete SGR reset. A
 	 * reader who learned the name in one package carried the wrong bytes into the other.
@@ -332,7 +332,7 @@ describe("primitive ownership", () => {
 	});
 
 	/**
-	 * The cross-package ratchet for the introducer. `metaharness` cannot import `@veyyon/tui` (it does not depend
+	 * The cross-package ratchet for the introducer. `@veyyon/evals` cannot import `@veyyon/tui` (it does not depend
 	 * on it, and one string is no reason to add a dependency), so the requirement is that nobody calls the
 	 * introducer `ESC`. Keyed on the declaration, so the name is free to mean the escape byte anywhere.
 	 */
@@ -342,7 +342,7 @@ describe("primitive ownership", () => {
 			UTILS_SRC,
 			TUI_SRC,
 			CODING_AGENT_SRC,
-			path.resolve(import.meta.dir, "../../bench/src/metaharness"),
+			path.resolve(import.meta.dir, "../../evals/backends/harbor"),
 		];
 		for (const tree of trees) {
 			for (const file of new Bun.Glob("**/*.ts").scanSync(tree)) {
@@ -353,8 +353,8 @@ describe("primitive ownership", () => {
 			}
 		}
 		expect(offenders).toEqual([]);
-		// Non-vacuity: metaharness really does declare the introducer, under the right name.
-		const runner = await Bun.file(path.resolve(import.meta.dir, "../../bench/src/metaharness/runner.ts")).text();
+		// Non-vacuity: the harbor backend really does declare the introducer, under the right name.
+		const runner = await Bun.file(path.resolve(import.meta.dir, "../../evals/backends/harbor/ui.ts")).text();
 		expect(runner).toContain('const CSI = "\\x1b[";');
 	});
 });

@@ -14,7 +14,10 @@ import * as path from "node:path";
 import * as AIError from "@veyyon/ai/error";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-transcript-viewer";
-import type { ObservableSession } from "@veyyon/coding-agent/modes/terminal/session-observer-registry";
+import type {
+	ObservableSession,
+	SessionObserverRegistry,
+} from "@veyyon/coding-agent/modes/terminal/session-observer-registry";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { SILENT_ABORT_MARKER } from "@veyyon/coding-agent/session/messages";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
@@ -36,7 +39,7 @@ function makeSubagentRegistry(sessions: ObservableSession[]) {
 		onChange: () => () => {},
 		setMainSession: () => {},
 		getActiveSubagentCount: () => sessions.filter(s => s.status === "active").length,
-	} as unknown as import("@veyyon/coding-agent/modes/terminal/session-observer-registry").SessionObserverRegistry;
+	} as unknown as SessionObserverRegistry;
 }
 
 function makeViewer(sessionFile: string, observed: ObservableSession[]): AgentTranscriptViewer {

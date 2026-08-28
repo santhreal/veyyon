@@ -6,7 +6,7 @@
  * of its glyphs has to be one a plain terminal can actually draw, and six of them
  * were not. `⟳` (U+27F3) is absent from DejaVu Sans Mono, still the most widely
  * shipped monospace face there is, and it was `status.running`: every busy row in
- * the Agent Control Center drew a tofu box where the status mark belongs. `⤵` and
+ * the subagent dashboard drew a tofu box where the status mark belongs. `⤵` and
  * `⤴` (U+2935/U+2934) were the token in/out icons in the status line, on screen
  * the whole time, and exist in none of the three fonts measured. `⧉` (U+29C9),
  * `⎇` (U+2387) and `⦸` (U+29B8) were missing from one or two.

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { clampLow, isRecord } from "@veyyon/utils";
+import { clampLow } from "@veyyon/utils/math";
+import { isRecord } from "@veyyon/utils/type-guards";
 import { DEFAULT_DB_FILENAME, dataDir } from "./config";
 import { BankManager } from "./core/banks";
 import { BeamMemory, type RecallOptions } from "./core/beam";

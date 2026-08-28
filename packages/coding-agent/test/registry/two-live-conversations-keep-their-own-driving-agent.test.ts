@@ -99,7 +99,7 @@ describe("Both conversations survive registration", () => {
 	});
 
 	/**
-	 * The tripwire under the id rule, so the class stays closed if a future host
+	 * The tripwire under the id rule, so the class stays pruned if a future host
 	 * mints a colliding id anyway. An id is the key, so a collision is data loss
 	 * — the displaced agent keeps running and reporting through a row that is no
 	 * longer its own — and the shipped defect was exactly that, silent. Reported
@@ -307,7 +307,7 @@ describe("Consumers identify the driver by role", () => {
 	});
 
 	/**
-	 * Adoption arms a park-then-close timer, which is meaningless for a session
+	 * Adoption arms a park-then-prune timer, which is meaningless for a session
 	 * the operator is typing into and destructive for one running in the
 	 * background: parking releases the session. Refused by role, so BOTH drivers
 	 * are refused rather than only the one that answers to the old name.
@@ -317,8 +317,8 @@ describe("Consumers identify the driver by role", () => {
 		const b = driver(CONVERSATION_B);
 		const lifecycle = new AgentLifecycleManager(registry);
 
-		lifecycle.adopt(a.id, { idleTtlMs: 1, closeParkedMs: 1, closeWaitingMs: 1, revive: undefined });
-		lifecycle.adopt(b.id, { idleTtlMs: 1, closeParkedMs: 1, closeWaitingMs: 1, revive: undefined });
+		lifecycle.adopt(a.id, { idleTtlMs: 1, pruneAfterMs: 1, pruneWaitingAfterMs: 1, revive: undefined });
+		lifecycle.adopt(b.id, { idleTtlMs: 1, pruneAfterMs: 1, pruneWaitingAfterMs: 1, revive: undefined });
 
 		expect(lifecycle.has(a.id)).toBe(false);
 		expect(lifecycle.has(b.id)).toBe(false);
@@ -331,7 +331,7 @@ describe("Consumers identify the driver by role", () => {
 		subagent("Worker", a.id, CONVERSATION_A);
 		const lifecycle = new AgentLifecycleManager(registry);
 
-		lifecycle.adopt("Worker", { idleTtlMs: 60_000, closeParkedMs: 0, closeWaitingMs: 0, revive: undefined });
+		lifecycle.adopt("Worker", { idleTtlMs: 60_000, pruneAfterMs: 0, pruneWaitingAfterMs: 0, revive: undefined });
 
 		expect(lifecycle.has("Worker")).toBe(true);
 		lifecycle.dispose();

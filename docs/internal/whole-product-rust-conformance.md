@@ -1,6 +1,6 @@
 # Whole-Product Rust Conformance and Bug-Discovery Engine
 
-Technical architecture and implementation plan for replacing the TypeScript test surface and the simulations package (`packages/bench/src/simulations`) with a unified Rust conformance crate (`crates/veyyon-conformance`).
+Technical architecture and implementation plan for replacing the TypeScript test surface and the simulations package (`packages/simulations`) with a unified Rust conformance crate (`crates/veyyon-conformance`).
 
 Tracking issue: [#877](https://github.com/santhreal/veyyon/issues/877).
 
@@ -773,7 +773,7 @@ production-boundary rule forbids.
 
 ## Migration Waves and Decommissioning Plan
 
-The migration from TypeScript test suites and `packages/bench/src/simulations` to `crates/veyyon-conformance` proceeds in six sequential waves, numbered 0 through 5.
+The migration from TypeScript test suites and `packages/simulations` to `crates/veyyon-conformance` proceeds in six sequential waves, numbered 0 through 5.
 
 ```
 +-----------------------------------------------------------------------------------+
@@ -846,8 +846,8 @@ The migration from TypeScript test suites and `packages/bench/src/simulations` t
 1. **Parity Certification**: Run all 250,000 cases through the target declared by each canonical record; assert zero failures. The 5,000 compiled-product cases use the release artifact.
 2. **Mutation Gate Run**: Execute at least 1,200 mutations; certify at least 1,000 killed and zero critical-path survivors.
 3. **Simulation Package Fold & Deletion**:
-   - Transfer any remaining non-redundant scenario definitions from `packages/bench/src/simulations` into `crates/veyyon-conformance`.
-   - Delete `packages/bench/src/simulations` directory and remove workspace entries from `package.json` and `tsconfig.json`.
+   - Transfer any remaining non-redundant scenario definitions from `packages/simulations` into `crates/veyyon-conformance`.
+   - Delete `packages/simulations` directory and remove workspace entries from `package.json` and `tsconfig.json`.
 4. **Final Product-Test Elimination**: Delete all superseded `.test.ts` files under `packages/`. Retain or explicitly port repository-governance checks under `scripts/`.
 5. **CI Pipeline Migration**:
    - Remove superseded package `bun test` jobs while preserving repository-governance script gates.
@@ -941,7 +941,7 @@ The conformance migration is complete when all the following quantitative criter
 - [ ] **Platform Allocation**: Exactly 240,000 platform-independent direct cases plus 1,000 direct and 1,000 compiled cases for each of the five supported platform/architecture pairs execute on matching runners.
 - [ ] **UI Dual-Ground Verification**: All TUI components verified on both `#1e2127` and `#000000` grounds across all 6 terminal dimension profiles.
 - [ ] **Mutation Proof**: Mutation engine executes >= 1,200 mutants, kills at least 1,000, and leaves zero survivors on credentials, authorization, path traversal, checksum verification, tool-call completeness, and persisted-version rejection.
-- [ ] **Simulations Deletion**: `packages/bench/src/simulations` is deleted from disk and removed from workspace manifests.
+- [ ] **Simulations Deletion**: `packages/simulations` is deleted from disk and removed from workspace manifests.
 - [ ] **TypeScript Product-Test Deletion**: Zero superseded `*.test.ts` files remain in `packages/`; repository-governance checks under `scripts/` are retained or ported with parity.
 - [ ] **CI Performance**: Direct-Rust p95 is <= 1.5 ms, compiled-product p95 is <= 500 ms, three cold calibrations of every exact shard finish in <= 144 seconds, and the complete 250,000-case CI run finishes in < 180 seconds across eight runners.
 - [ ] **Zero Unresolved Mismatches**: Every corpus mismatch is fixed or represented by an explicit reviewed contract change across Linux x86_64, Linux aarch64, macOS x86_64, macOS aarch64, and Windows x86_64.

@@ -95,6 +95,7 @@ import {
 	renderReadUrlResult,
 } from "./fetch";
 import { applyListLimit } from "./list-limit";
+import { type InlinePricingSource, inlineBudgetFor } from "./output-artifact";
 import {
 	formatFullOutputReference,
 	formatStyledTruncationWarning,
@@ -532,6 +533,27 @@ function formatContextPaddingNotice(options: {
 	return `[Showing lines ${options.displayedFirstLine}-${options.displayedLastLine}: you requested ${requested}, plus ${padding.join(" and ")}]`;
 }
 
+/**
+ * The byte budget for one read window.
+ *
+ * A caller who named a line count is asking for those lines, so the budget
+ * scales to hold them at about 512 bytes a line and never falls below the
+ * session's inline budget. A caller who named none is reading the head of a
+ * file whose line lengths it does not know yet, and the 300-line default over
+ * prose returned 79KB in a single result: more than the whole tool prelude,
+ * re-sent on every later request of the session. That window is bounded by
+ * `inlineBudgetFor`, the one owner of how many bytes a tool result may carry,
+ * and the truncation notice states the selector that pages the rest.
+ */
+function readWindowMaxBytes(
+	session: InlinePricingSource,
+	requestedLimit: number | undefined,
+	maxLinesToCollect: number,
+): number {
+	const budget = inlineBudgetFor(session);
+	return requestedLimit === undefined ? budget : Math.max(budget, maxLinesToCollect * 512);
+}
+
 /** What a bounded window of a file's lines came to, however the lines were obtained. */
 interface CollectedWindow {
 	lines: string[];
@@ -966,7 +988,7 @@ const readSchema = type({
 		"Local path, internal URI (e.g. memory://, skill://), or URL. Inline selectors are supported.",
 	),
 	"depth?": type("number.integer > 0").describe(
-		"Directory listings only: recursion depth (1 = top level). Default 2.",
+		"Directory listings only: recursion depth. Omitted lists the top level with per-subdirectory entry counts; 2 recurses one level.",
 	),
 	"limit?": type("number.integer > 0").describe(
 		"Directory listings only: max entries returned; omitted entries are reported with the limit and how to see more.",
@@ -1434,12 +1456,24 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		const imageDir = await this.#ensurePdfImageCache(absolutePdfPath, signal);
 		const members = await this.#listPdfImageMembers(imageDir);
 		if (member.length === 0) {
+			// A scanned document extracts thousands of members, and this list is a
+			// tool result: it takes the same budget as a directory or archive
+			// listing rather than riding on how many images the file happens to
+			// hold.
+			const bounded = truncateHead(members.map(entry => `- read \`${pdfDisplayPath}:${entry}\``).join("\n"), {
+				maxBytes: inlineBudgetFor(this.session),
+				maxLines: Number.MAX_SAFE_INTEGER,
+			});
+			const shown = bounded.content.length === 0 ? 0 : bounded.content.split("\n").length;
+			const remaining = members.length - shown;
 			const text =
 				members.length === 0
 					? "No extractable PDF image members found."
-					: `Extractable PDF image members:\n${members
-							.map(imageMember => `- read \`${pdfDisplayPath}:${imageMember}\``)
-							.join("\n")}`;
+					: `Extractable PDF image members:\n${bounded.content}${
+							remaining > 0
+								? `\n[${formatMoreLines(remaining)} of members; read one of the above to continue]`
+								: ""
+						}`;
 			return toolResult<ReadToolDetails>({ resolvedPath: absolutePdfPath, suffixResolution })
 				.text(prependSuffixResolutionNotice(text, suffixResolution))
 				.sourcePath(absolutePdfPath)
@@ -1623,7 +1657,12 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		const endLine = endLineExpanded;
 		const selectedContent = allLines.slice(startLine, endLine).join("\n");
 		const userLimitedLines = limit !== undefined ? endLine - startLine : undefined;
-		const truncation = ignoreResultLimits ? noTruncResult(selectedContent) : truncateHead(selectedContent);
+		// A notebook, document, archive entry, URL body or internal resource is
+		// bounded by the same budget as a file window: the setting that states how
+		// many bytes a tool result carries, not a constant it cannot reach.
+		const truncation = ignoreResultLimits
+			? noTruncResult(selectedContent)
+			: truncateHead(selectedContent, { maxBytes: inlineBudgetFor(this.session), maxLines: DEFAULT_MAX_LINES });
 
 		const shouldAddHashLines = displayMode.hashLines;
 		const shouldAddLineNumbers = shouldAddHashLines ? false : displayMode.lineNumbers;
@@ -1678,12 +1717,13 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		if (truncation.firstLineExceedsLimit) {
 			const firstLine = allLines[startLine] ?? "";
 			const firstLineBytes = Buffer.byteLength(firstLine, "utf-8");
-			const snippet = truncateHeadBytes(firstLine, DEFAULT_MAX_BYTES);
+			const budget = inlineBudgetFor(this.session);
+			const snippet = truncateHeadBytes(firstLine, budget);
 
 			if (shouldAddHashLines) {
 				outputText = `[Line ${startLineDisplay} is ${formatBytes(
 					firstLineBytes,
-				)}, exceeds ${formatBytes(DEFAULT_MAX_BYTES)} limit. Hashline output requires full lines; cannot emit an editable numbered preview for a truncated line.]`;
+				)}, exceeds ${formatBytes(budget)} limit. Hashline output requires full lines; cannot emit an editable numbered preview for a truncated line.]`;
 			} else {
 				outputText = formatText(snippet.text, startLineDisplay);
 			}
@@ -1691,7 +1731,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			if (snippet.text.length === 0) {
 				outputText = `[Line ${startLineDisplay} is ${formatBytes(
 					firstLineBytes,
-				)}, exceeds ${formatBytes(DEFAULT_MAX_BYTES)} limit. Unable to display a valid UTF-8 snippet.]`;
+				)}, exceeds ${formatBytes(budget)} limit. Unable to display a valid UTF-8 snippet.]`;
 			}
 
 			details.truncation = truncation;
@@ -1913,19 +1953,26 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 
 		for (const range of ranges) {
 			const rangeStart = range.startLine - 1; // 0-indexed
-			const requestedLength = range.endLine !== undefined ? range.endLine - range.startLine + 1 : this.#defaultLimit;
-			const maxLines = Math.min(requestedLength, DEFAULT_MAX_LINES);
+			const requestedLength = range.endLine !== undefined ? range.endLine - range.startLine + 1 : undefined;
+			const maxLines = Math.min(requestedLength ?? this.#defaultLimit, DEFAULT_MAX_LINES);
+			const maxBytesForRead = readWindowMaxBytes(this.session, requestedLength, maxLines);
 
 			// When the full file is already in memory (the common case for files
-			// within the snapshot byte cap), slice ranges from it instead of
-			// re-streaming the file once per range.
+			// within the snapshot byte cap), take ranges from it instead of
+			// re-streaming the file once per range. The window is collected rather
+			// than sliced so an open-ended range is priced the same however the
+			// lines were obtained.
 			let collectedLines: string[];
 			let totalFileLines: number;
+			let stoppedByByteLimit: boolean;
+			let firstLineByteLength: number | undefined;
 			if (fullLines) {
-				totalFileLines = fullLines.length;
-				collectedLines = fullLines.slice(rangeStart, rangeStart + maxLines);
+				const window = collectWindowFromLines(fullLines, rangeStart, maxLines, maxBytesForRead, maxLines);
+				totalFileLines = window.totalFileLines;
+				collectedLines = window.lines;
+				stoppedByByteLimit = window.stoppedByByteLimit;
+				firstLineByteLength = window.firstLineByteLength;
 			} else {
-				const maxBytesForRead = Math.max(DEFAULT_MAX_BYTES, maxLines * 512);
 				const streamResult = await streamLinesFromFile(
 					absolutePath,
 					rangeStart,
@@ -1937,12 +1984,32 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				);
 				totalFileLines = streamResult.totalFileLines;
 				collectedLines = streamResult.lines;
+				stoppedByByteLimit = streamResult.stoppedByByteLimit;
+				firstLineByteLength = streamResult.firstLineByteLength;
 			}
 
 			if (rangeStart >= totalFileLines) {
 				const bound = range.endLine !== undefined ? `${range.startLine}-${range.endLine}` : `${range.startLine}`;
 				notices.push(`[Range ${bound} is beyond end of file (${totalFileLines} lines total); skipped]`);
 				continue;
+			}
+
+			if (stoppedByByteLimit) {
+				// Zero lines collected means the range's own first line is over the
+				// budget, so `${startLine}-${startLine - 1}` would be a backwards range
+				// and the continuation selector would point back at the line that just
+				// failed. Name the line instead.
+				if (collectedLines.length === 0) {
+					const size = firstLineByteLength === undefined ? "" : `${formatBytes(firstLineByteLength)}, `;
+					notices.push(
+						`[Line ${range.startLine} is ${size}over the ${formatBytes(maxBytesForRead)} output budget; nothing shown for this range]`,
+					);
+				} else {
+					const shown = range.startLine + collectedLines.length - 1;
+					notices.push(
+						`[Lines ${range.startLine}-${shown} reached the ${formatBytes(maxBytesForRead)} output budget. Use :${shown + 1} to continue]`,
+					);
+				}
 			}
 
 			// Column truncation is display-only; clone before stamping ellipsis so
@@ -2040,14 +2107,15 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		const limitedEntries = listLimit.items;
 		const limitMeta = listLimit.meta;
 
-		for (let index = 0; index < limitedEntries.length; index++) {
-			throwIfAborted(signal);
-		}
+		throwIfAborted(signal);
 		const results = formatArchiveEntryLines(limitedEntries);
 
 		const output = results.length > 0 ? results.join("\n") : "(empty archive directory)";
 		const text = prependSuffixResolutionNotice(output, details.suffixResolution);
-		const truncation = truncateHead(text, { maxLines: Number.MAX_SAFE_INTEGER });
+		const truncation = truncateHead(text, {
+			maxBytes: inlineBudgetFor(this.session),
+			maxLines: Number.MAX_SAFE_INTEGER,
+		});
 		const directoryDetails: ReadToolDetails = { ...details, isDirectory: true };
 		const resultBuilder = toolResult<ReadToolDetails>(directoryDetails).text(truncation.content);
 		resultBuilder.sourcePath(archivePath).limits({ resultLimit: limitMeta.resultLimit?.reached });
@@ -2170,27 +2238,22 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			db.run("PRAGMA busy_timeout = 3000");
 			throwIfAborted(signal);
 
+			// Every selector's rendered output is a tool result, so it takes the byte budget every
+			// other result takes. One wide TEXT or BLOB cell, or a raw query over many columns,
+			// used to arrive whole whatever `tools.artifactSpillThreshold` said: the row and column
+			// caps below bound how many rows are rendered, never how many bytes a row carries.
+			let output: string;
+			let resultLimitReached: number | undefined;
 			switch (selector.kind) {
 				case "list": {
 					const listLimit = applyListLimit(listTables(db), { limit: 500 });
-					const output = prependSuffixResolutionNotice(
-						renderTableList(listLimit.items),
-						resolvedSqlitePath.suffixResolution,
-					);
-					const truncation = truncateHead(output, { maxLines: Number.MAX_SAFE_INTEGER });
-					details.truncation = truncation.truncated ? truncation : undefined;
-					const resultBuilder = toolResult<ReadToolDetails>(details)
-						.text(truncation.content)
-						.sourcePath(resolvedSqlitePath.absolutePath)
-						.limits({ resultLimit: listLimit.meta.resultLimit?.reached });
-					if (truncation.truncated) {
-						resultBuilder.truncation(truncation, { direction: "head" });
-					}
-					return resultBuilder.done();
+					output = renderTableList(listLimit.items);
+					resultLimitReached = listLimit.meta.resultLimit?.reached;
+					break;
 				}
 				case "schema": {
 					const sampleRows = queryRows(db, selector.table, { limit: selector.sampleLimit, offset: 0 });
-					let output = renderSchema(getTableSchema(db, selector.table), {
+					output = renderSchema(getTableSchema(db, selector.table), {
 						columns: sampleRows.columns,
 						rows: sampleRows.rows,
 					});
@@ -2198,10 +2261,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 						const remaining = sampleRows.totalCount - sampleRows.rows.length;
 						output += `\n[${remaining} more rows; append :${selector.table}?limit=20&offset=${sampleRows.rows.length} to the database path to continue]`;
 					}
-					return toolResult<ReadToolDetails>(details)
-						.text(prependSuffixResolutionNotice(output, resolvedSqlitePath.suffixResolution))
-						.sourcePath(resolvedSqlitePath.absolutePath)
-						.done();
+					break;
 				}
 				case "row": {
 					const lookup = resolveTableRowLookup(db, selector.table);
@@ -2209,43 +2269,23 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 						lookup.kind === "pk"
 							? getRowByKey(db, selector.table, lookup, selector.key)
 							: getRowByRowId(db, selector.table, selector.key);
-					if (!row) {
-						return toolResult<ReadToolDetails>(details)
-							.text(
-								prependSuffixResolutionNotice(
-									`No row found in table '${selector.table}' for key '${selector.key}'.`,
-									resolvedSqlitePath.suffixResolution,
-								),
-							)
-							.sourcePath(resolvedSqlitePath.absolutePath)
-							.done();
-					}
-					return toolResult<ReadToolDetails>(details)
-						.text(prependSuffixResolutionNotice(renderRow(row), resolvedSqlitePath.suffixResolution))
-						.sourcePath(resolvedSqlitePath.absolutePath)
-						.done();
+					output = row ? renderRow(row) : `No row found in table '${selector.table}' for key '${selector.key}'.`;
+					break;
 				}
 				case "query": {
 					const page = queryRows(db, selector.table, selector);
-					return toolResult<ReadToolDetails>(details)
-						.text(
-							prependSuffixResolutionNotice(
-								renderTable(page.columns, page.rows, {
-									totalCount: page.totalCount,
-									offset: selector.offset,
-									limit: selector.limit,
-									table: selector.table,
-									dbPath: resolvedSqlitePath.absolutePath,
-								}),
-								resolvedSqlitePath.suffixResolution,
-							),
-						)
-						.sourcePath(resolvedSqlitePath.absolutePath)
-						.done();
+					output = renderTable(page.columns, page.rows, {
+						totalCount: page.totalCount,
+						offset: selector.offset,
+						limit: selector.limit,
+						table: selector.table,
+						dbPath: resolvedSqlitePath.absolutePath,
+					});
+					break;
 				}
 				case "raw": {
 					const result = executeReadQuery(db, selector.sql);
-					let output = renderTable(result.columns, result.rows, {
+					output = renderTable(result.columns, result.rows, {
 						totalCount: result.rows.length,
 						offset: 0,
 						limit: result.rows.length || DEFAULT_MAX_LINES,
@@ -2255,14 +2295,25 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					if (result.truncated) {
 						output += `\n[Output capped at ${MAX_RAW_QUERY_ROWS} rows; add a LIMIT/OFFSET clause to the query to page through more]`;
 					}
-					return toolResult<ReadToolDetails>(details)
-						.text(prependSuffixResolutionNotice(output, resolvedSqlitePath.suffixResolution))
-						.sourcePath(resolvedSqlitePath.absolutePath)
-						.done();
+					break;
 				}
+				default:
+					throw new ToolError("Unsupported SQLite selector");
 			}
 
-			throw new ToolError("Unsupported SQLite selector");
+			const truncation = truncateHead(prependSuffixResolutionNotice(output, resolvedSqlitePath.suffixResolution), {
+				maxBytes: inlineBudgetFor(this.session),
+				maxLines: Number.MAX_SAFE_INTEGER,
+			});
+			details.truncation = truncation.truncated ? truncation : undefined;
+			const resultBuilder = toolResult<ReadToolDetails>(details)
+				.text(truncation.content)
+				.sourcePath(resolvedSqlitePath.absolutePath)
+				.limits({ resultLimit: resultLimitReached });
+			if (truncation.truncated) {
+				resultBuilder.truncation(truncation, { direction: "head" });
+			}
+			return resultBuilder.done();
 		} catch (error) {
 			if (error instanceof ToolError) {
 				throw error;
@@ -2325,15 +2376,34 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		}
 	}
 
-	#renderSummary(summary: SummaryResult): {
+	/**
+	 * Render a structural summary, stopping at whichever bound it reaches first:
+	 * `maxBytes` of model-facing text, or `maxLines` rendered lines. A summary is
+	 * a projection over the whole file, so a declaration-dense file (generated
+	 * protobuf bindings, a large `.d.ts`) keeps nearly every line and renders
+	 * hundreds of kilobytes from a selector-free read. That text is re-sent on
+	 * every later request of the session, so it takes the same two bounds a
+	 * selector-free file window takes — `read.defaultLimit` lines and the output
+	 * budget in bytes — and the caller states which bound stopped it and the line
+	 * that continues it.
+	 */
+	#renderSummary(
+		summary: SummaryResult,
+		maxBytes: number,
+		maxLines: number,
+	): {
 		text: string;
 		displayText: string;
 		elidedRanges: ElidedRange[];
 		elidedLines: number;
+		stoppedBy: "bytes" | "lines" | undefined;
+		nextLine: number;
+		columnTruncated: number;
 	} {
 		const displayMode = resolveFileDisplayMode(this.session);
 		const shouldAddHashLines = displayMode.hashLines;
 		const shouldAddLineNumbers = shouldAddHashLines ? false : displayMode.lineNumbers;
+		const maxColumns = resolveOutputMaxColumns(this.session.settings);
 
 		// Flatten segments into per-line units so we can merge a kept-head /
 		// elided / kept-tail sandwich into a single brace-pair line when the
@@ -2391,37 +2461,76 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		const displayParts: string[] = [];
 		const elidedRanges: ElidedRange[] = [];
 		let elidedLines = 0;
+		let modelBytes = 0;
+		let stoppedBy: "bytes" | "lines" | undefined;
+		let nextLine = 0;
+		let columnTruncated = 0;
+		const clip = (text: string): string => {
+			if (maxColumns <= 0) return text;
+			const result = truncateLine(text, maxColumns);
+			if (result.wasTruncated) columnTruncated = maxColumns;
+			return result.text;
+		};
 		for (const unit of units) {
+			const unitStartLine = unit.kind === "line" ? unit.line : unit.startLine;
+			let modelPart: string;
+			let displayPart: string;
 			if (unit.kind === "elided") {
-				modelParts.push("…");
-				displayParts.push("…");
-				elidedRanges.push({ start: unit.startLine, end: unit.endLine });
-				elidedLines += unit.endLine - unit.startLine + 1;
-				continue;
-			}
-			if (unit.kind === "merged") {
+				modelPart = "…";
+				displayPart = "…";
+			} else if (unit.kind === "merged") {
 				const formatted = formatMergedBraceLine(
 					unit.startLine,
 					unit.endLine,
-					unit.headText,
-					unit.tailText,
+					clip(unit.headText),
+					clip(unit.tailText),
 					shouldAddHashLines,
 					shouldAddLineNumbers,
 				);
-				modelParts.push(formatted.model);
-				displayParts.push(formatted.display);
+				modelPart = formatted.model;
+				displayPart = formatted.display;
+			} else {
+				const text = clip(unit.text);
+				modelPart = formatSingleLine(unit.line, text, shouldAddHashLines, shouldAddLineNumbers);
+				displayPart = text;
+			}
+
+			const cost = Buffer.byteLength(modelPart, "utf-8") + (modelParts.length > 0 ? 1 : 0);
+			if (modelParts.length > 0 && modelParts.length >= maxLines) {
+				stoppedBy = "lines";
+				nextLine = unitStartLine;
+				break;
+			}
+			if (modelParts.length > 0 && modelBytes + cost > maxBytes) {
+				stoppedBy = "bytes";
+				nextLine = unitStartLine;
+				break;
+			}
+			modelBytes += cost;
+			modelParts.push(modelPart);
+			displayParts.push(displayPart);
+
+			if (unit.kind === "elided") {
+				elidedRanges.push({ start: unit.startLine, end: unit.endLine });
+				elidedLines += unit.endLine - unit.startLine + 1;
+			} else if (unit.kind === "merged") {
 				// Suggest the full brace range so re-reading shows both braces
 				// plus the elided body in one shot.
 				elidedRanges.push({ start: unit.startLine, end: unit.endLine });
 				// Merged brace pair encloses (start+1)..(end-1) as elided.
 				elidedLines += Math.max(0, unit.endLine - unit.startLine - 1);
-				continue;
 			}
-			modelParts.push(formatSingleLine(unit.line, unit.text, shouldAddHashLines, shouldAddLineNumbers));
-			displayParts.push(unit.text);
 		}
 
-		return { text: modelParts.join("\n"), displayText: displayParts.join("\n"), elidedRanges, elidedLines };
+		return {
+			text: modelParts.join("\n"),
+			displayText: displayParts.join("\n"),
+			elidedRanges,
+			elidedLines,
+			stoppedBy,
+			nextLine,
+			columnTruncated,
+		};
 	}
 
 	async execute(
@@ -2767,22 +2876,34 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			) {
 				const summary = await this.#trySummarize(absolutePath, fileSize, signal);
 				if (summary?.parsed && summary.elided) {
-					const renderedSummary = this.#renderSummary(summary);
+					const summaryBudget = inlineBudgetFor(this.session);
+					const renderedSummary = this.#renderSummary(summary, summaryBudget, this.#defaultLimit);
 					const footer = formatSummaryElisionFooter(
 						localReadPath,
 						renderedSummary.elidedRanges,
 						renderedSummary.elidedLines,
 					);
+					const budgetNotice =
+						renderedSummary.stoppedBy === "lines"
+							? `[Summary reached the ${this.#defaultLimit}-line default. Use :${renderedSummary.nextLine} to continue]`
+							: renderedSummary.stoppedBy === "bytes"
+								? `[Summary reached the ${formatBytes(summaryBudget)} output budget. Use :${renderedSummary.nextLine} to continue]`
+								: "";
 					const summaryHashContext = displayMode.hashLines
 						? await readHashlineHeaderContext(this.session, absolutePath, this.session.cwd)
 						: undefined;
-					const bodyText = footer ? `${renderedSummary.text}\n\n${footer}` : renderedSummary.text;
+					const bodyText = [renderedSummary.text, footer, budgetNotice].filter(part => part).join("\n\n");
 					const modelText = prependHashlineHeader(bodyText, summaryHashContext);
 					if (summaryHashContext?.tag) {
 						recordSeenLinesFromBody(this.session, absolutePath, summaryHashContext.tag, renderedSummary.text);
 					}
 					details = {
-						displayContent: { text: renderedSummary.displayText, startLine: 1 },
+						displayContent: {
+							text: budgetNotice
+								? `${renderedSummary.displayText}\n\n${budgetNotice}`
+								: renderedSummary.displayText,
+							startLine: 1,
+						},
 						summary: {
 							lines: countTextLines(renderedSummary.text),
 							elidedSpans: renderedSummary.elidedRanges.length,
@@ -2792,6 +2913,9 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 
 					sourcePath = absolutePath;
 					content = [{ type: "text", text: modelText }];
+					if (renderedSummary.columnTruncated > 0) {
+						columnTruncated = renderedSummary.columnTruncated;
+					}
 				}
 			}
 
@@ -2860,9 +2984,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					const effectiveLimit = limit ?? DEFAULT_LIMIT;
 					const maxLinesToCollect = Math.min(effectiveLimit + leadingContext + trailingContext, DEFAULT_MAX_LINES);
 					const selectedLineLimit = effectiveLimit + leadingContext + trailingContext;
-					// Scale byte budget with line limit so the configured line count actually fits.
-					// Assume ~512 bytes/line average; never go below the shared default.
-					const maxBytesForRead = Math.max(DEFAULT_MAX_BYTES, maxLinesToCollect * 512);
+					const maxBytesForRead = readWindowMaxBytes(this.session, limit, maxLinesToCollect);
 
 					// One materialization, three consumers: this window, the bracket context below, and
 					// the snapshot tag. A file over the snapshot cap, or one whose raw bytes and
@@ -3322,7 +3444,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		const effectiveLimit = limit ?? this.#defaultLimit;
 		const maxLinesToCollect = Math.min(effectiveLimit + leadingContext + trailingContext, DEFAULT_MAX_LINES);
 		const selectedLineLimit = effectiveLimit + leadingContext + trailingContext;
-		const maxBytesForRead = Math.max(DEFAULT_MAX_BYTES, maxLinesToCollect * 512);
+		const maxBytesForRead = readWindowMaxBytes(this.session, limit, maxLinesToCollect);
 		const streamResult = await streamLinesFromFile(
 			artifact.path,
 			startLine,
@@ -3500,9 +3622,20 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		});
 		const details: ReadToolDetails = { resolvedPath: resource.sourcePath, contentType: resource.contentType };
 
-		// If extraction was used, return directly (no pagination)
+		// An extracted field carries no line selector (rejected above), so nothing
+		// pages it: bound it here and state the size, and the caller reads the
+		// resource without extraction to page the rest.
 		if (hasExtraction) {
-			return toolResult(details).text(resource.content).sourceInternal(url).done();
+			const budget = inlineBudgetFor(this.session);
+			const totalBytes = Buffer.byteLength(resource.content, "utf-8");
+			// Byte truncation, not line truncation: an extracted field is routinely
+			// one long line, and a line-based cap drops it whole rather than
+			// carrying the part that fits.
+			const text =
+				totalBytes > budget
+					? `${truncateHeadBytes(resource.content, budget).text}\n[Extracted value reached the ${formatBytes(budget)} output budget; ${formatBytes(totalBytes)} in total. Read ${url} without the extraction to page it]`
+					: resource.content;
+			return toolResult(details).text(text).sourceInternal(url).done();
 		}
 
 		const raw = isRawSelector(parsedSel);
@@ -3582,34 +3715,39 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	): Promise<AgentToolResult<ReadToolDetails>> {
 		const READ_DIRECTORY_MAX_DEPTH = 2;
 		const READ_DIRECTORY_CHILD_LIMIT = 12;
-		// Top-level cap for the concise session-root listing. Generous enough
-		// that an ordinary project root fits whole; a monorepo root gets the
-		// omission notice naming how to see the rest.
-		const ROOT_LISTING_ENTRY_LIMIT = 100;
+		// Top-level cap for the concise listing. Generous enough that an ordinary
+		// directory fits whole; a monorepo root gets the omission notice naming
+		// how to see the rest.
+		const TOP_LEVEL_LISTING_ENTRY_LIMIT = 100;
 
 		throwIfAborted(signal);
-		// Field feedback: `read('.')` on a large workspace usually needs the
-		// top-level convention, not a recursive tree. Default the session
-		// working directory root to a concise depth-1 listing with per-
-		// subdirectory entry counts; an explicit `depth`/`limit`, or any other
-		// directory, keeps the full recursive listing.
-		const conciseRoot =
-			directory.depth === undefined &&
-			directory.entryLimit === undefined &&
-			path.resolve(absolutePath) === path.resolve(this.session.cwd);
+		// A selector-free directory read is orientation, so it answers at the top
+		// level: every entry with each subdirectory's direct-child count beside
+		// it. The second level is a default nobody asked for, and it is expensive
+		// because the result is re-sent on every later request of the session —
+		// `packages/coding-agent/src` of this repository costs 8,163 tokens at
+		// depth 2 against 962 at its top level, and the recursive listing also
+		// caps each directory's fanout at READ_DIRECTORY_CHILD_LIMIT, so it hides
+		// entries the concise listing shows. A named `depth` or `limit` is a
+		// request and is honored in full.
+		const conciseTopLevel = directory.depth === undefined && directory.entryLimit === undefined;
 
 		let tree: DirectoryTree;
 		let rootFooter: string | undefined;
-		// Both builders let a failed scan through, so an unreadable directory reports
-		// the permission rather than rendering as an empty one.
+		// Both listing paths report a failure the same way. The concise path used
+		// to have no handler at all, so a scan that could not run reached line
+		// 3629 as a zero-line tree and was rendered "(empty directory)" — the
+		// answer a genuinely empty directory gets.
 		try {
-			if (conciseRoot) {
-				const listing = await buildTopLevelDirectoryListing(absolutePath, { entryLimit: ROOT_LISTING_ENTRY_LIMIT });
+			if (conciseTopLevel) {
+				const listing = await buildTopLevelDirectoryListing(absolutePath, {
+					entryLimit: TOP_LEVEL_LISTING_ENTRY_LIMIT,
+				});
 				if (listing.totalLines > 1) {
 					rootFooter =
 						listing.omittedTopLevel > 0
-							? `[${listing.omittedTopLevel} more top-level entries not shown (capped at ${ROOT_LISTING_ENTRY_LIMIT}). Re-issue read with depth: 2 for the recursive listing, or read a subdirectory by name.]`
-							: "[Top-level listing of the working directory root. Re-issue read with depth: 2 for the recursive listing, or read a subdirectory by name.]";
+							? `[${listing.omittedTopLevel} more top-level entries not shown (capped at ${TOP_LEVEL_LISTING_ENTRY_LIMIT}). Re-issue read with depth: 1 for every entry, depth: 2 for the recursive listing, or read a subdirectory by name.]`
+							: "[Top-level listing. Re-issue read with depth: 2 for the recursive listing, or read a subdirectory by name.]";
 				}
 				tree = listing;
 			} else {
@@ -3668,12 +3806,21 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					.done();
 			}
 			const end = limit !== undefined ? Math.min(start + limit, allLines.length) : allLines.length;
-			const sliced = allLines.slice(start, end).join("\n");
+			// A sliced listing is a tool result like any other: the caller's line count says how many
+			// entries it wants, the budget says how many it may carry. Without this the slice was the
+			// one read path with no byte bound at all.
+			const bounded = truncateHead(allLines.slice(start, end).join("\n"), {
+				maxBytes: inlineBudgetFor(this.session),
+				maxLines: Number.MAX_SAFE_INTEGER,
+			});
+			if (bounded.truncated) listingTruncated = true;
+			const shownLines = bounded.content.length === 0 ? 0 : bounded.content.split("\n").length;
 			const resultBuilder = toolResult(details).sourcePath(tree.rootPath);
-			let text = sliced;
-			if (end < allLines.length) {
-				const remaining = allLines.length - end;
-				text += `\n\n[${formatMoreLines(remaining)} in listing. Use :${end + 1} to continue]`;
+			let text = bounded.content;
+			const nextLine = start + shownLines + 1;
+			if (nextLine <= allLines.length) {
+				const remaining = allLines.length - nextLine + 1;
+				text += `\n\n[${formatMoreLines(remaining)} in listing. Use :${nextLine} to continue]`;
 			}
 			if (rootFooter) text += `\n\n${rootFooter}`;
 			resultBuilder.text(text);
@@ -3684,6 +3831,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		}
 
 		const truncation = truncateHead(rootFooter ? `${output}\n\n${rootFooter}` : output, {
+			maxBytes: inlineBudgetFor(this.session),
 			maxLines: Number.MAX_SAFE_INTEGER,
 		});
 		const resultBuilder = toolResult(details).text(truncation.content).sourcePath(tree.rootPath);

@@ -173,7 +173,7 @@ describe("the session backup naming", () => {
 	});
 
 	/**
-	 * A backup is NOT itself a transcript, which is what keeps it out of every session listing. The Agent Control Center
+	 * A backup is NOT itself a transcript, which is what keeps it out of every session listing. The subagent dashboard
 	 * and HTML export both rely on this: a backup appearing as a session would show the user a duplicate of a
 	 * session they already have, dated from a crash.
 	 */
@@ -258,7 +258,7 @@ describe("the advisor transcript naming", () => {
 		expect(isAdvisorTranscriptName("__advisor")).toBeFalse();
 	});
 
-	/** The slug, which the Agent Control Center shows: empty for the default advisor, the name for a named one. */
+	/** The slug, which the subagent dashboard shows: empty for the default advisor, the name for a named one. */
 	it("reads the slug of a named advisor and empty for the default", () => {
 		expect(advisorTranscriptSlug("__advisor.jsonl")).toBe("");
 		expect(advisorTranscriptSlug("__advisor.reviewer.jsonl")).toBe("reviewer");
@@ -288,7 +288,7 @@ describe("the naming module has one owner", () => {
 	 *
 	 * Other `.jsonl` files exist and are deliberately NOT this one, each checked the same way: `collab/guest.ts`
 	 * writes a room replica under the collab dir, `autoresearch` names a legacy artifact it cleans out of a work
-	 * dir, and `@veyyon/bench` writes job records. `debug/` is left out of the scan for a different
+	 * dir, and `@veyyon/evals` writes job records. `debug/` is left out of the scan for a different
 	 * reason: `report-bundle.ts` declares `session.jsonl` as a fixed ENTRY NAME inside a debug bundle, so every
 	 * bundle has the same layout whatever session produced it. That is a name for a place in an archive, not the
 	 * extension a scanner matches.

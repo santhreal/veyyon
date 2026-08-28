@@ -261,11 +261,11 @@ describe("BM25 search", () => {
 			schemaKeys: ["channel", "text"],
 		},
 		{
-			name: "glob",
-			label: "glob",
-			summary: "Find files and directories matching a glob pattern",
+			name: "workspace_files",
+			label: "workspace files",
+			summary: "Find files and directories matching a path pattern",
 			source: "builtin",
-			schemaKeys: ["pattern", "path"],
+			schemaKeys: ["input", "path"],
 		},
 	];
 
@@ -284,7 +284,7 @@ describe("BM25 search", () => {
 
 	it("finds built-in tools too", () => {
 		const results = searchDiscoverableTools(index, "find files", 5);
-		expect(results.some(r => r.tool.name === "glob")).toBe(true);
+		expect(results.some(result => result.tool.name === "workspace_files")).toBe(true);
 	});
 
 	it("respects the limit", () => {

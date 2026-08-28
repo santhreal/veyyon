@@ -10,8 +10,8 @@
  * one runs its whole suite unguarded the moment anyone does `cd packages/x &&
  * bun test` — which is how most suites are actually run while working.
  *
- * Three packages had forgotten: `deepswe-bench`, `metaharness`, and
- * `swarm-extension`, twenty test files between them with no guard at all. Every
+ * Three packages had forgotten: the two benchmark packages now folded into `evals`,
+ * and `swarm-extension`, twenty test files between them with no guard at all. Every
  * existing pointer is identical, so nothing about this is hard; it is just
  * invisible, which is exactly what a test is for. `real-data-tripwire.test.ts`
  * proves the tripwire WORKS where it is loaded; this proves it is loaded
@@ -32,8 +32,8 @@ const TRIPWIRE = "real-data-tripwire.ts";
 /**
  * Every `.ts` file each package owns, exempt packages included.
  *
- * `dirs: ["."]` because test files are not all under `test/`: `deepswe-bench`
- * keeps some at its package root and `coding-agent` keeps others beside the
+ * `dirs: ["."]` because test files are not all under `test/`: the eval suites keep
+ * some beside their modules and `coding-agent` keeps others beside the
  * source they cover. `includeExemptPackages` because the `@veyyon/utils`
  * ownership exemption has nothing to do with this question — `argot` has tests
  * like every other package and needs the same guard.
@@ -108,16 +108,16 @@ describe("the root bunfig's test discovery", () => {
 	 * failed all nine on a dependency this repository does not install — noise
 	 * that reads exactly like a real regression in a 29,000-test sweep.
 	 */
-	it("prunes the deepswe benchmark's cloned repositories", () => {
-		expect(rootBunfig).toContain("packages/bench/src/deepswe/repo-cache/**");
+	it("prunes the eval suites' cloned repositories", () => {
+		expect(rootBunfig).toContain("packages/evals/datasets/repo-cache/**");
 	});
 
 	/** The package-local config has to prune them too, because a `bun test` run
 	 *  from inside that package never reads the root config at all. */
-	it("prunes them in the benchmark package's own config as well", () => {
-		const local = readFileSync(path.join(PACKAGES_DIR, "bench/bunfig.toml"), "utf8");
+	it("prunes them in the evals package's own config as well", () => {
+		const local = readFileSync(path.join(PACKAGES_DIR, "evals/bunfig.toml"), "utf8");
 
-		expect(local).toContain("repo-cache/**");
+		expect(local).toContain("datasets/repo-cache/**");
 		expect(local).toContain(TRIPWIRE);
 	});
 

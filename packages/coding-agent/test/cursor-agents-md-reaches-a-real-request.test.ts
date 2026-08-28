@@ -7,12 +7,12 @@
  * own, and applies none of `requestContext.rules`. The active user turn is the one thing it
  * delivers to the model verbatim. The delivery used to be split in two: the session inlined
  * NOTHING in the prompt on this api and shipped a separately composed list of file units as
- * rules instead, and that list was filtered to the operator's own scopes. Each half was correct
- * on its own terms and the join was not: a repository's `AGENTS.md` was excluded from the rules
- * list because it was "repository content", and excluded from the prompt because "the rules list
- * carries it", so on cursor-agent alone it reached the model nowhere, while every other api
- * rendered it. The visible symptom was veyyon not loading AGENTS.md. Even repaired, that
- * channel delivered nothing, because no rule the client sends is applied at all.
+ * rules instead, and that list was filtered to the caller's configured scopes. Each half was
+ * correct on its own terms and the join was not: a repository's `AGENTS.md` was excluded from
+ * the rules list because it was "repository content", and excluded from the prompt because
+ * "the rules list carries it", so on cursor-agent alone it reached the model nowhere, while
+ * every other api rendered it. The defect was reported as veyyon not loading AGENTS.md. Even
+ * repaired, that channel delivered nothing, because no rule the client sends is applied at all.
  *
  * The class is "one api composes instructions its own way". It is closed by deleting the second
  * channel: the session assembles ONE prompt for every api, and the provider prepends that prompt
@@ -409,9 +409,9 @@ describe("a cursor-agent turn carries every instruction layer the session found"
 	});
 
 	it("carries the operator's instructions inside a delimited block, ahead of the question", async () => {
-		// The shape the model receives. The instructions are marked off from the question text,
-		// and the question stays after them, so a turn does not read as a recitation of a
-		// configuration file.
+		// The shape the model receives. The instructions are marked off from the caller's
+		// configuration, and the question stays after them, so a turn does not read as a
+		// reciting of a configuration file.
 		const ws = operatorWorkspace();
 		const { text } = await turnOnTheWire(ws);
 

@@ -11,8 +11,8 @@
  * and report green, and a package unknown to a module-reach table lowers every
  * ceiling that walks through it.
  *
- * Four private benchmark packages had each of those costs paid four times over
- * for one purpose — measuring this product — and became `packages/bench`.
+ * Three private benchmark packages had each of those costs paid three times over
+ * for one purpose — measuring this product — and became `packages/evals`.
  *
  * WHAT THIS DOES NOT ASSERT. Which packages exist, and whether the tables
  * describe them: `scripts/package-map-coverage.test.ts` owns both directions of
@@ -36,9 +36,10 @@ const PACKAGES_DIR = path.join(REPO_ROOT, "packages");
  * raise it in the same commit that adds the package, and say in the message which
  * existing package was considered and why it could not serve.
  *
- * The count went 19 -> 16 on this branch: `deepswe-bench`, `metaharness`,
- * `simulations` and `typescript-edit-benchmark` became subtrees of one
- * `packages/bench`.
+ * The count went 19 -> 17: `deepswe-bench`, `metaharness` and
+ * `typescript-edit-benchmark` became suites, backends and a run store inside one
+ * `packages/evals`, and `packages/simulations` stayed a package of its own
+ * because it drives real sessions rather than scoring models.
  *
  * `tool-render` was folded into `collab-web` here and then restored, which is
  * the counter-example this budget is for. The fold was sound while both of its
@@ -48,7 +49,7 @@ const PACKAGES_DIR = path.join(REPO_ROOT, "packages");
  * this workspace. A shared publishable library with two unrelated consumers is
  * the case where an existing package cannot serve.
  */
-const PACKAGE_BUDGET = 16;
+const PACKAGE_BUDGET = 17;
 
 /** A directory under `packages/` that carries a manifest, which is what makes it a package. */
 function workspacePackages(): string[] {
@@ -65,7 +66,7 @@ function workspacePackages(): string[] {
  * count alone cannot see a merge being undone one package at a time: dropping
  * `bench` and restoring `metaharness` keeps the count flat.
  */
-const MERGED_AWAY = ["deepswe-bench", "metaharness", "simulations", "typescript-edit-benchmark"];
+const MERGED_AWAY = ["bench", "deepswe-bench", "metaharness", "typescript-edit-benchmark"];
 
 describe("the workspace package count", () => {
 	const packages = workspacePackages();

@@ -11,7 +11,7 @@ import {
 	TERMINAL,
 	Text,
 } from "@veyyon/tui";
-import { formatNumber } from "@veyyon/utils";
+import { formatCount, formatNumber } from "@veyyon/utils";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import chalk from "chalk";
 import type { AssistantThinkingRenderer } from "../../../../extensibility/extensions/types";
@@ -588,14 +588,25 @@ export class AssistantMessageComponent extends Container {
 	 * line count to {@link MAX_TRANSCRIPT_ERROR_LINES}, and width-truncates each
 	 * line so a pathological body — e.g. the HTML page a proxy returns on a 502 —
 	 * can't flood the transcript. Mirrors {@link ErrorBannerComponent}.
+	 *
+	 * The clamp reports itself. Width truncation already carries an ellipsis
+	 * ({@link truncateToWidth} defaults to `Ellipsis.Unicode`), but dropped LINES
+	 * left no trace at all: a long provider error rendered as an unremarkable
+	 * eight-line block, so a reader had no way to tell a complete message from an
+	 * abridged one, nor how much was missing.
 	 */
 	#appendErrorBlock(message: string): void {
+		const populated = message.split("\n").filter(line => line.trim()).length;
 		const lines = getPreviewLines(message, MAX_TRANSCRIPT_ERROR_LINES, TRUNCATE_LENGTHS.LINE);
 		if (lines.length === 0) lines.push("Unknown error");
 		// The caller owns the separating Spacer; adding one here doubled the gap.
 		this.#contentContainer.addChild(new Text(theme.fg("error", `Error: ${lines[0]}`), 1, 0));
 		for (const line of lines.slice(1)) {
 			this.#contentContainer.addChild(new Text(theme.fg("error", `  ${line}`), 1, 0));
+		}
+		const dropped = populated - lines.length;
+		if (dropped > 0) {
+			this.#contentContainer.addChild(new Text(theme.fg("muted", `  … ${formatCount("more line", dropped)}`), 1, 0));
 		}
 	}
 

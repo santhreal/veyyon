@@ -1,5 +1,5 @@
 /**
- * Termination is a deliberate two-step interaction in the Agent Control Center.
+ * Termination is a deliberate two-step interaction in the subagent dashboard.
  *
  * WHY. A single stray `x` used to abort a live provider turn and remove the
  * agent immediately. The confirmation keeps that destructive action reversible

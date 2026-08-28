@@ -7,6 +7,19 @@
  */
 import { type BashInterceptorRule, DEFAULT_BASH_INTERCEPTOR_RULES } from "../config/settings-schema";
 
+/**
+ * A rule that still names a retired primitive is answered with `search`, in the
+ * vocabulary the shipped tool takes: a `type`, not the `purpose` the ablation
+ * facade used. A rule naming a field the tool does not have costs the model a
+ * refused call to find out.
+ */
+export const UNIFIED_SEARCH_REDIRECTS: Record<string, string> = {
+	ast_grep: 'Use `search` with `type: "structure"` instead of shell pattern matching.',
+	find: 'Use `search` with `type: "files"` instead of find/fd.',
+	glob: 'Use `search` with `type: "files"` instead of find/fd.',
+	grep: 'Use `search` with `type: "text"` instead of grep/rg.',
+};
+
 export interface InterceptionResult {
 	/** If true, the bash command should be blocked */
 	block: boolean;
@@ -49,16 +62,20 @@ export function checkBashInterception(
 	const compiled = compileRules(rules);
 
 	for (const { rule, regex } of compiled) {
-		// Only block if the suggested tool is actually available
-		if (!availableTools.includes(rule.tool)) {
-			continue;
+		let suggestedTool = rule.tool;
+		let message = rule.message;
+		if (!availableTools.includes(suggestedTool)) {
+			const unifiedMessage = availableTools.includes("search") ? UNIFIED_SEARCH_REDIRECTS[suggestedTool] : undefined;
+			if (unifiedMessage === undefined) continue;
+			suggestedTool = "search";
+			message = unifiedMessage;
 		}
 
 		if (regex.test(normalizedCommand)) {
 			return {
 				block: true,
-				message: `Blocked: ${rule.message}\n\nOriginal command: ${command}`,
-				suggestedTool: rule.tool,
+				message: `Blocked: ${message}\n\nOriginal command: ${command}`,
+				suggestedTool,
 			};
 		}
 	}

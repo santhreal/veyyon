@@ -103,9 +103,24 @@ function removeEmptyVersionEntries(content: string): string {
  * that had nothing to ship in this release. Any pre-existing empty dated section
  * is dropped either way. Pure so the ordering contract is pinned by a test rather
  * than only observed after a real release runs.
+ *
+ * A changelog that already carries `## [version]` is refused rather than given a
+ * second one. Re-cutting the same version is a supported recovery path, and it
+ * normally does nothing because the first cut drained `## [Unreleased]`; if the
+ * section refilled, appending would leave the package documenting one release
+ * twice, which is what `changelog-version-headings-are-unique` forbids and what
+ * a v1.3.0 re-cut actually produced. The caller restores the tree on a throw, so
+ * refusing costs a re-run and shipping a duplicate costs a retracted tag.
  */
 export function applyReleaseToChangelog(content: string, version: string, date: string): string {
 	if (unreleasedEntries(content).length > 0) {
+		if (content.includes(`## [${version}]`)) {
+			throw new Error(
+				`This changelog already has a "## [${version}]" section and [Unreleased] is not empty. ` +
+					`Rolling again would document ${version} twice. Move the [Unreleased] entries into the ` +
+					`existing ${version} section by hand, or cut a different version.`,
+			);
+		}
 		content = content.replace("## [Unreleased]", `## [Unreleased]\n\n## [${version}] - ${date}`);
 	}
 	return removeEmptyVersionEntries(content);

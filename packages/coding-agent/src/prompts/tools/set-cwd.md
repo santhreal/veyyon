@@ -1,6 +1,6 @@
 Re-root this session's working directory for the rest of the session only.
 
-Use when the launch directory is wrong and subsequent relative `read` / `grep` / `bash` / `task` paths should resolve against a different project root. Files inside the working directory get short relative paths in `read` / `edit` headers; a file outside it keeps its full absolute path.
+Use when the launch directory is wrong and subsequent relative `read` / `search` / `bash` / `task` paths should resolve against a different project root. Files inside the working directory get short relative paths in `read` / `edit` headers; a file outside it keeps its full absolute path.
 {{#if argot}}
 
 Re-rooting does NOT arm that project's Argot shorthand; the two are separate. To also compress the project's identifiers, call `argot_load` on it.

@@ -5,11 +5,11 @@ import { buildDiscoverableToolSearchIndex, searchDiscoverableTools } from "@veyy
 describe("generic index: DiscoverableTool round-trip", () => {
 	const tools: DiscoverableTool[] = [
 		{
-			name: "glob",
-			label: "glob",
-			summary: "Find files matching a glob pattern",
+			name: "workspace_files",
+			label: "workspace files",
+			summary: "Find files matching a path pattern",
 			source: "builtin",
-			schemaKeys: ["pattern", "path"],
+			schemaKeys: ["input", "path"],
 		},
 		{
 			name: "mcp__gh_search",
@@ -27,16 +27,16 @@ describe("generic index: DiscoverableTool round-trip", () => {
 		expect(index.documents).toHaveLength(2);
 
 		const findResults = searchDiscoverableTools(index, "find files", 3);
-		expect(findResults.some((r: any) => r.tool.name === "glob")).toBe(true);
+		expect(findResults.some(result => result.tool.name === "workspace_files")).toBe(true);
 
 		const ghResults = searchDiscoverableTools(index, "github search", 3);
-		expect(ghResults.some((r: any) => r.tool.name === "mcp__gh_search")).toBe(true);
+		expect(ghResults.some(result => result.tool.name === "mcp__gh_search")).toBe(true);
 	});
 
 	it("preserves source field in search results", () => {
 		const index = buildDiscoverableToolSearchIndex(tools);
 		const results = searchDiscoverableTools(index, "github", 3);
-		const ghResult = results.find((r: any) => r.tool.name === "mcp__gh_search");
+		const ghResult = results.find(result => result.tool.name === "mcp__gh_search");
 		expect(ghResult).toBeDefined();
 		expect(ghResult!.tool.source).toBe("mcp");
 	});

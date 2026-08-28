@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-28
+
 ### Breaking Changes
 
 - `AgentOptions.cursorRulesResolver` is removed: an agent no longer supplies a second, per-api rule channel beside its system prompt.
@@ -17,6 +19,11 @@
 - Streaming `message_update` snapshots share tool-call arguments by reference instead of deep-cloning them on every delta, cutting a large structured tool call's per-delta snapshot cost from ~0.5 s to ~8 ms, while terminal messages and the authoritative tool call a `toolcall_end` carries keep the sanitizing deep clone.
 - Superseded and useless tool results are now pruned as a batch whose combined size pays for the prompt-cache rewrite it forces, instead of only when a single result sits within 8,000 tokens of the end of the conversation.
 - The tokenizer takes `estimateTokensFromText` from `@veyyon/utils/tokens` rather than the package barrel, cutting the modules a token estimate loads from 92 to 10.
+- Compaction's directory-list documentation now uses canonical `search` `files` terminology instead of the retired `find` tool name. No runtime behavior changed.
+- A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
+- A tool result that ran and failed no longer supersedes an earlier successful read of the same path, which replaced that file's content with a supersede notice and left the conversation only the error text.
+- A tool call whose id already carries a real result in the transcript is never executed a second time, whichever channel answered it; a never-ran placeholder still counts as unanswered and is retried.
+- An interrupted `cursor-agent` turn keeps a tool call whose arguments the start frame already delivered, instead of deleting it and telling the model its arguments never finished.
 
 ### Fixed
 
@@ -25,21 +32,6 @@
 - Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
 - Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
-- A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
-- A tool result that ran and failed no longer supersedes an earlier successful read of the same path, which replaced that file's content with a supersede notice and left the conversation only the error text.
-- A tool call whose id already carries a real result in the transcript is never executed a second time, whichever channel answered it; a never-ran placeholder still counts as unanswered and is retried.
-- An interrupted `cursor-agent` turn keeps a tool call whose arguments the start frame already delivered, instead of deleting it and telling the model its arguments never finished.
-
-## [1.2.0] - 2026-08-23
-
-### Breaking Changes
-
-- The minimum supported Bun runtime is now 1.4.0.
-
-### Fixed
-
-- The remote-summarizer cap comment names the profile-scoped log directory it writes to (`~/.veyyon/profiles/<name>/logs`) instead of the pre-migration `~/.veyyon/logs`. Comment only; the cap and the write path are unchanged.
-- A cancelled turn carries `Flag.Abort` whatever reason it was aborted with, instead of only when its text matched the generic `Request was aborted` sentinel.
 
 ## [16.5.2] - 2026-07-14
 
@@ -1077,6 +1069,17 @@
 ## [1.337.0] - 2026-01-02
 
 Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mono](https://github.com/badlogic/pi-mono).
+
+## [1.2.0] - 2026-08-23
+
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
+
+### Fixed
+
+- The remote-summarizer cap comment names the profile-scoped log directory it writes to (`~/.veyyon/profiles/<name>/logs`) instead of the pre-migration `~/.veyyon/logs`. Comment only; the cap and the write path are unchanged.
+- A cancelled turn carries `Flag.Abort` whatever reason it was aborted with, instead of only when its text matched the generic `Request was aborted` sentinel.
 
 ## [1.1.0] - 2026-08-20
 

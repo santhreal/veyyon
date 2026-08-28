@@ -99,7 +99,7 @@ describe("plan autonomy refuses by tier, so a name cannot dodge it", () => {
 
 	/** Reads are allowed, or the denials above would be indistinguishable from
 	 * plan mode simply refusing everything. */
-	it.each(["read", "grep", "glob"])("allows the read tool %s", name => {
+	it.each(["read", "search"])("allows the read tool %s", name => {
 		expect(underPlanAutonomy(toolWithTier(name, "read")).policy).not.toBe("deny");
 	});
 

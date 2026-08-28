@@ -89,13 +89,13 @@ describe("builtin-defaults rule provider", () => {
 		const manager = new TtsrManager(undefined, { getCwd: () => "/workspaces/veyyon-fixture" });
 		expect(manager.addRule(rule)).toBe(true);
 
-		// A read/grep/glob call carrying a deep absolute path (the shape produced only
-		// when reaching into another project) fires the nudge on each nav tool — once the
-		// rule's own warm-up is past, since it says nothing about the first such reach.
+		// A read/search call carrying a deep absolute path (the shape produced only
+		// when reaching into another project) fires the nudge on each workspace
+		// navigation tool once the rule's own warm-up is past.
 		const foreign =
 			'{"path":"/workspaces/santh-fixture/software/keyhog/crates/cli/src/subcommands/calibrate_autoroute.rs:1-260"}';
 		warmUpRule(manager, rule, foreign, { source: "tool", toolName: "read" });
-		for (const toolName of ["read", "grep", "glob", "ast_grep"]) {
+		for (const toolName of ["read", "search"]) {
 			manager.resetBuffer();
 			expect(
 				manager.checkDelta(foreign, { source: "tool", toolName }).map(r => r.name),

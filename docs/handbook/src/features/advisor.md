@@ -2,7 +2,7 @@
 
 The advisor is an optional second model attached to a session. It reviews the primary agent's transcript after each turn, inspects the workspace with its own tools, and injects concise advice back into the primary session.
 
-The advisor is not a second executor: it cannot approve actions or change primary session state directly. Its default toolset is read-only (`read`, `grep`, `glob`) plus `advise`, but a `WATCHDOG.yml` roster entry may broaden `tools:` to any built-in, including mutating tools such as `edit`, `write`, `bash`, `eval`, and `browser`, so grant those tools only when the advisor model and workspace are trusted (see [Tools and isolation](#tools-and-isolation)).
+The advisor is not a second executor: it cannot approve actions or change primary session state directly. Its default toolset is read-only (`read`, `search`) plus `advise`, but a `WATCHDOG.yml` roster entry may broaden `tools:` to any built-in, including mutating tools such as `edit`, `write`, `bash`, `eval`, and `browser`, so grant those tools only when the advisor model and workspace are trusted (see [Tools and isolation](#tools-and-isolation)).
 
 ## Implementation files
 
@@ -85,8 +85,7 @@ The advisor is a full agent with its own `Agent` instance and a distinct `ToolSe
 Every advisor has the `advise` tool for surfacing notes into the primary transcript. Its investigative pool defaults to the read-only subset:
 
 - `read`
-- `grep`
-- `glob`
+- `search`
 
 A `WATCHDOG.yml` roster entry may broaden this with `tools: [...]`, selecting any subset of the built-in pool the session actually built (a factory that returned `null`, e.g. `lsp` with no matching servers, is absent). Grantable tools include mutating ones: `edit`, `write`, `bash`, `eval`, `browser`, `debug`, `ast_edit`, `task`, `job`, and the memory tools. Tool names outside [`BUILTIN_TOOL_NAMES`](../../../../packages/coding-agent/src/tools/builtin-names.ts) are dropped with a warning.
 
@@ -225,13 +224,13 @@ instructions: |
 advisors:
   - name: Architecture
     model: anthropic/claude-sonnet-4-5:medium
-    tools: [read, grep, glob]
+    tools: [read, search]
     instructions: |
       Watch cross-module coupling and public-API growth.
 
   - name: Fixer
     model: anthropic/claude-sonnet-4-5:high
-    tools: [read, grep, glob, edit, bash]
+    tools: [read, search, edit, bash]
     instructions: |
       You may edit and run tests to prove a fix locally, then advise.
 ```
@@ -241,7 +240,7 @@ Fields:
 - `instructions` (top level): shared prompt prepended to every advisor's system prompt alongside `WATCHDOG.md`. Concatenated across all discovered `WATCHDOG.yml` files.
 - `advisors[].name`: human label; slugified for the session id and the `<session>/__advisor.jsonl` filename. Duplicate slugs across files are resolved by the same specificity rule as `WATCHDOG.md` discovery (project leaf > project ancestor > user).
 - `advisors[].model`: optional model selector with optional `:level` thinking suffix (e.g. `x-ai/grok-code-fast:high`). Omitted → the advisor uses `modelRoles.advisor`.
-- `advisors[].tools`: optional list of built-in tool names to grant. Omitted or empty → the default `read`/`grep`/`glob` subset. Any name in [`BUILTIN_TOOL_NAMES`](../../../../packages/coding-agent/src/tools/builtin-names.ts) is accepted, including mutating tools (`edit`, `write`, `bash`, `eval`, `browser`, `debug`, `ast_edit`, `task`, `job`, and the memory tools). Legacy aliases (`search`→`grep`, `find`→`glob`) are normalized. Unknown names are dropped with a warning. See [Tools and isolation](#tools-and-isolation) for the safety implications of granting mutating tools.
+- `advisors[].tools`: optional list of built-in tool names to grant. Omitted or empty → the default `read`/`search` subset. Any name in [`BUILTIN_TOOL_NAMES`](../../../../packages/coding-agent/src/tools/builtin-names.ts) is accepted, including mutating tools (`edit`, `write`, `bash`, `eval`, `browser`, `debug`, `ast_edit`, `task`, `job`, and the memory tools). Unknown names are dropped with a warning. See [Tools and isolation](#tools-and-isolation) for the safety implications of granting mutating tools.
 - `advisors[].instructions`: this advisor's specialization, appended after the shared baseline. Both instruction fields expand `@path` imports like `WATCHDOG.md`.
 
 ### Discovery locations
@@ -281,8 +280,8 @@ The path is derived from the session file (not the artifacts dir, which subagent
 Why a file:
 
 - **Usage attribution.** `veyyon stats` scans each session folder recursively, so advisor assistant turns (with their usage/cost) are attributed to the same project/session like any other subagent. Advisor "session update" prompts are persisted as `synthetic`, agent-attributed user messages so they never inflate user-message metrics.
-- **Observability.** The Agent Control Center discovers `__advisor.jsonl` on open and shows it as a read-only `advisor`-kind transcript under its owning session. Opening it there shows the transcript rather than handing the main view over, because an advisor is not a session you can talk to.
+- **Observability.** The subagent dashboard discovers `__advisor.jsonl` on open and shows it as a read-only `advisor`-kind transcript under its owning session. Opening it there shows the transcript rather than handing the main view over, because an advisor is not a session you can talk to.
 
 The file follows session switches: on `/new`, resume/switch, and branch the recorder reopens at the new session's path on the next advisor turn; before a `/drop` deletes the old artifacts dir the recorder feed is detached and drained so a queued write cannot recreate the deleted file. The on-disk log is append-only and independent of the in-memory context, re-primes and compaction never truncate it.
 
-The advisor is never a peer. The `advisor`-kind registry ref is excluded from every agent-facing surface, the `irc` peer roster and broadcast targets, the subagent peer prompt, and the `history://` index/lookup/completions, and cannot be messaged (`irc send` and collab chat reject it) or revived/killed from the Agent Control Center or collab. It is not addressable as a peer, regardless of what tools it has been granted.
+The advisor is never a peer. The `advisor`-kind registry ref is excluded from every agent-facing surface, the `irc` peer roster and broadcast targets, the subagent peer prompt, and the `history://` index/lookup/completions, and cannot be messaged (`irc send` and collab chat reject it) or revived/killed from the subagent dashboard or collab. It is not addressable as a peer, regardless of what tools it has been granted.

@@ -35,7 +35,7 @@ import { prompt } from "@veyyon/utils";
 // The benchmark harness is private and has no exports map, so its descriptor is reached
 // by relative path. The alternative is spelling its directory out here as a literal, and
 // a hand-maintained copy of this list is exactly the defect below: it went stale.
-import { editBenchmarkPrompts } from "../../bench/src/metaharness/adapters/edit/prompts/registry";
+import { editBenchmarkPrompts } from "../../evals/suites/typescript-edit/prompts/benchmark-registry";
 import { codingAgentPrompts } from "../src/prompts/registry";
 
 /**
@@ -60,7 +60,7 @@ const PROMPT_DIRS = [codingAgentPrompts, agentCorePrompts, aiPrompts, hashlinePr
 const SOURCE_ROOTS = ["packages"] as const;
 
 /** Directories that are vendored or cached corpora, never our own prompts. */
-const EXCLUDED = ["node_modules", "deepswe-bench/repo-cache", "dist", ".git"];
+const EXCLUDED = ["node_modules", "evals/datasets/repo-cache", "evals/.cache", "dist", ".git"];
 
 export interface PromptTemplateEntry {
 	/** Repository-relative path of the `.md` file. */

@@ -79,7 +79,7 @@ function previewLine(text: string | undefined): string {
 	return truncateToWidth(first, PREVIEW_WIDTH);
 }
 
-/** Omitted means default read/grep/glob; an explicit empty set means no tools. */
+/** Omitted means default read/search; an explicit empty set means no tools. */
 function commitTools(selected: ReadonlySet<string>, all: readonly string[]): string[] | undefined {
 	if (selected.size === 0) return [];
 	if (selected.size === ADVISOR_DEFAULT_TOOL_NAMES.size) {
@@ -96,7 +96,7 @@ function commitTools(selected: ReadonlySet<string>, all: readonly string[]): str
 }
 
 function formatAdvisorTools(tools: readonly string[] | undefined, emptyLabel: string): string {
-	if (tools === undefined) return "read, grep, glob (default)";
+	if (tools === undefined) return "read, search (default)";
 	return tools.length > 0 ? tools.join(", ") : emptyLabel;
 }
 
@@ -547,7 +547,7 @@ export class AdvisorConfigOverlayComponent implements Component {
 		this.#setScreen(
 			"tools",
 			list,
-			"Enter / click toggle · select Done or Esc to apply (empty = no tools; read/grep/glob = default)",
+			"Enter / click toggle · select Done or Esc to apply (empty = no tools; read/search = default)",
 		);
 	}
 

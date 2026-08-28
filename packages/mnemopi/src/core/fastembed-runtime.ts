@@ -1,13 +1,13 @@
 import { createRequire } from "node:module";
 import * as path from "node:path";
+import { getFastembedRuntimeDir } from "@veyyon/utils/dirs";
+import * as logger from "@veyyon/utils/logger";
+import type { RuntimeInstallSpec } from "@veyyon/utils/runtime-install";
 import {
 	ensureRuntimeInstalled,
-	getFastembedRuntimeDir,
 	installRuntimeModuleResolver,
-	logger,
-	type RuntimeInstallSpec,
 	resolveRuntimeModule,
-} from "@veyyon/utils";
+} from "@veyyon/utils/runtime-install";
 import type * as Fastembed from "fastembed";
 import packageManifest from "../../package.json" with { type: "json" };
 

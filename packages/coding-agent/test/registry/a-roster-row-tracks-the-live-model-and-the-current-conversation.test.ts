@@ -4,7 +4,7 @@
  * WHY THIS SUITE EXISTS. `AgentRef` is written once, by `register`, and the
  * driving session was wired to nothing after that: `task/executor.ts` reports a
  * subagent's status and activity, `persisted-revive.ts` reports a revived one's,
- * and no caller reported the main agent's. So its Agent Control Center row was
+ * and no caller reported the main agent's. So its subagent dashboard row was
  * frozen at process start — it named the model the process booted on however
  * many times the operator had switched since, and its age counted from the
  * process rather than from the work. A session a day old, mid-turn, on a model

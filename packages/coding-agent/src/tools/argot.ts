@@ -20,9 +20,9 @@
  */
 
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
-import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot/constants";
+import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL, type ArgotSession } from "argot";
 import { type } from "arktype";
-import { loadArgotFolder, unloadArgotFolder } from "../argot-cache";
+import { type ArgotLoadResult, loadArgotFolder, unloadArgotFolder } from "../argot-cache";
 import type { ToolSession } from ".";
 import { resolveToCwd } from "./path-utils";
 import { ToolError, toolFailure } from "./tool-errors";
@@ -50,16 +50,6 @@ export interface ArgotUnloadDetails {
 	changed: boolean;
 	requested: string;
 }
-
-/**
- * The session's Argot codec, when the session has one.
- *
- * `ToolSession.getArgotSession` is optional and returns an optional, so the type
- * of "a codec that is definitely there" is two `NonNullable`s deep around a
- * `ReturnType`. Written inline it read as noise in the one signature that needs
- * it.
- */
-type ArgotSession = NonNullable<ReturnType<NonNullable<ToolSession["getArgotSession"]>>>;
 
 /** Read the session's Argot codec, or fail loud when Argot is off for this session. */
 function requireArgot(session: ToolSession): ArgotSession {
@@ -113,7 +103,7 @@ export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDe
 		const argot = requireArgot(this.#session);
 		const folder = resolveToCwd(requested, this.#session.cwd);
 
-		let loaded: Awaited<ReturnType<typeof loadArgotFolder>>;
+		let loaded: ArgotLoadResult | undefined;
 		try {
 			// Use the session's configured dictionary budget so a folder loaded mid-session
 			// is generated under the same policy as the session's own project.

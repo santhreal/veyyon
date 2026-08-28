@@ -1,4 +1,4 @@
-Starts a persistent worker session — a full coding agent (edit, bash, grep, everything) that you drive by conversation. Pick the CLI flavor per task:
+Starts a persistent worker session — a full coding agent (edit, bash, search, everything) that you drive by conversation. Pick the CLI flavor per task:
 
 - `fast`: low-latency model for mechanical, well-specified work (renames, boilerplate, running tests, data collection).
 - `good`: strong model for hard work (design, debugging, multi-file changes, judgment calls).

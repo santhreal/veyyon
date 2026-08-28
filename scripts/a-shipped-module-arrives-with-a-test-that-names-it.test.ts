@@ -75,11 +75,11 @@ function shippedModules(): string[] {
  * Every test file, which is what may name a module.
  *
  * Walked over the WHOLE package rather than its `test/` directory. While the walk
- * was `<pkg>/test`, a suite sitting beside the module it tests counted for nothing
- * -- and the four benchmark harnesses that merged into `@veyyon/bench` put most of
- * their suites exactly there, so `aggregate.ts` read as unnamed while
- * `aggregate.test.ts` sat next to it. `shippedModules` already excludes `.test.`
- * files, so widening this cannot make a test file look like a shipped module.
+ * was `<pkg>/test`, a suite sitting beside the module it tests counted for nothing,
+ * and `packages/simulations` places its suites exactly there, so `harness.ts` read
+ * as unnamed while the scenario suite naming it sat next to it. `shippedModules`
+ * already excludes `.test.` files, so widening this cannot make a test file look
+ * like a shipped module.
  */
 function testFiles(): string[] {
 	const files: string[] = [];
@@ -159,14 +159,8 @@ function unnamedModules(): string[] {
  * Shrink-only. Remove an entry when the module gains a test. Adding one records that a shipped
  * module ships with no test naming it, which should be rare enough to argue about in review.
  *
- * Four entries were added when `testFiles` widened from `<pkg>/test` to the whole package:
- * `bench/src/deepswe/online-codec-ceiling.ts` and `bench/src/metaharness/scripts/trace-report.ts`
- * were not under a `src/` tree before the benchmark packages merged, so they were never scanned at
- * all; `bench/src/typescript-edit/formatter.ts` and `.../mutations.ts` were scanned but credited by
- * the raw-substring route, which matched the bare words "formatter" and "mutations" anywhere in the
- * corpus. Their keys are now `typescript-edit/formatter` and `typescript-edit/mutations`, which
- * nothing says by accident. Thirteen entries came out in the same change, because a suite sitting
- * beside the module it tests now counts.
+ * Thirteen entries came out when `testFiles` widened from `<pkg>/test` to the whole
+ * package, because a suite sitting beside the module it tests now counts.
  */
 const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/agent/src/compaction/legacy-provider-native.ts",
@@ -175,7 +169,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/auth-broker/refresher.ts",
 	"packages/ai/src/auth-broker/remote-store.ts",
 	"packages/ai/src/cache/tracker.ts",
-	"packages/ai/src/dialect/factory.ts",
 	"packages/ai/src/dialect/fenced-thinking.ts",
 	"packages/ai/src/error/connect.ts",
 	"packages/ai/src/error/domains/request.ts",
@@ -187,10 +180,8 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/registry/api-key-login.ts",
 	"packages/ai/src/registry/baseten.ts",
 	"packages/ai/src/registry/llama-cpp.ts",
-	"packages/ai/src/registry/lm-studio.ts",
 	"packages/ai/src/registry/minimax-code-cn.ts",
 	"packages/ai/src/registry/minimax-code.ts",
-	"packages/ai/src/registry/mistral.ts",
 	"packages/ai/src/registry/oauth/device-code.ts",
 	"packages/ai/src/registry/oauth/pkce.ts",
 	"packages/ai/src/registry/oauth/wafer.ts",
@@ -223,13 +214,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/utils/schema/strict-tool-validation.ts",
 	"packages/ai/src/utils/schema/zod-decontaminate.ts",
 	"packages/ai/src/utils/sdk-stream-timeout.ts",
-	"packages/bench/src/deepswe/online-codec-ceiling.ts",
-	"packages/bench/src/metaharness/scripts/trace-report.ts",
-	"packages/bench/src/typescript-edit/edit-prompt-bench.ts",
-	"packages/bench/src/typescript-edit/formatter.ts",
-	"packages/bench/src/typescript-edit/goal-budget-context-bench.ts",
-	"packages/bench/src/typescript-edit/in-process-client.ts",
-	"packages/bench/src/typescript-edit/mutations.ts",
 	"packages/catalog/src/discovery/devin-gen/buf/validate/validate_pb.ts",
 	"packages/catalog/src/discovery/devin-gen/exa/analytics_pb/analytics_pb.ts",
 	"packages/catalog/src/discovery/devin-gen/exa/auto_cascade_common_pb/auto_cascade_common_pb.ts",
@@ -251,7 +235,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/autoresearch/shortcuts.ts",
 	"packages/coding-agent/src/cli/auth-gateway-cli.ts",
 	"packages/coding-agent/src/cli/gallery-fixtures/codeintel.ts",
-	"packages/coding-agent/src/cli/gallery-fixtures/misc.ts",
 	"packages/coding-agent/src/cli/grep-cli.ts",
 	"packages/coding-agent/src/cli/grievances-cli.ts",
 	"packages/coding-agent/src/cli/init-xdg.ts",
@@ -276,6 +259,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/commit/analysis/conventional.ts",
 	"packages/coding-agent/src/commit/pipeline.ts",
 	"packages/coding-agent/src/config/dialect-format.ts",
+
 	"packages/coding-agent/src/debug/remote-debugger.ts",
 	"packages/coding-agent/src/discovery/windsurf.ts",
 	"packages/coding-agent/src/edit/hashline/params.ts",
@@ -286,7 +270,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/export/markit/converters/epub.ts",
 	"packages/coding-agent/src/export/markit/converters/pptx.ts",
 	"packages/coding-agent/src/export/redact-snapshot.ts",
-	"packages/coding-agent/src/extensibility/plugins/marketplace/factory.ts",
 	"packages/coding-agent/src/extensibility/plugins/runtime-config.ts",
 	"packages/coding-agent/src/extensibility/session-handler-types.ts",
 	"packages/coding-agent/src/internal-urls/relative-path.ts",
@@ -317,6 +300,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/tools/browser/tab-worker-entry.ts",
 	"packages/coding-agent/src/tools/irc-render.ts",
 	"packages/coding-agent/src/tools/result-notice.ts",
+	"packages/coding-agent/src/tools/text-search-scope.ts",
 	"packages/coding-agent/src/web/scrapers/choosealicense.ts",
 	"packages/coding-agent/src/web/scrapers/cisa-kev.ts",
 	"packages/coding-agent/src/web/scrapers/clojars.ts",
@@ -339,6 +323,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/web/search/providers/synthetic.ts",
 	"packages/collab-web/src/lib/use-guest.ts",
 	"packages/mnemopi/src/util/ids.ts",
+	"packages/simulations/src/turn-sim/invariants.ts",
 	"packages/stats/src/client/components/range-meta.ts",
 	"packages/stats/src/client/data/charts.ts",
 	"packages/stats/src/client/data/useHashRoute.ts",

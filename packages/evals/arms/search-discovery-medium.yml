@@ -1,0 +1,23 @@
+# Reach a non-essential built-in tool by searching for it, instead of carrying its
+# documentation in every request.
+#
+# WHY THIS ARM EXISTS. `tools.discoveryMode: all` leaves 9 tools and 9,201 tokens of
+# tool text in the prompt where the default leaves 17 and 13,964, so it removes 4,763
+# tokens from every request. Tool text is re-sent per request, not per session, so the
+# saving is priced per request. The always-loaded set is read, bash, launch, edit,
+# write, search, eval, goal and resolve; ast_edit, debug, ssh, task, job, todo,
+# web_search and set_cwd are reached through search_tool_bm25.
+#
+# WHAT THIS ARM IS TESTING. A hidden tool costs a discovery round trip on the turn
+# that first needs it, about 21 tokens for the call, and its schema on every request
+# after activation. Reward must hold: a token saving is not a result on its own.
+#
+# Its control is `search-medium.yml`, which is this arm without
+# `tools.discoveryMode`. The pair varies exactly one setting, and both pin the model
+# effort so a reasoning-budget shift cannot be mistaken for a discovery effect.
+argot:
+  enabled: false
+defaultEffort:
+  google-antigravity/gemini-3.7-flash: medium
+tools:
+  discoveryMode: all

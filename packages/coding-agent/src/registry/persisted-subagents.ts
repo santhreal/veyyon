@@ -65,6 +65,36 @@ export async function registerPersistedSubagents(
 	}
 }
 
+/**
+ * When a transcript was started and last written, for the ref restored from it.
+ *
+ * The file's own times, because they are the only record of the agent's history
+ * that survives the process that ran it: the roster prints this as the row's age
+ * and the close budget counts from it. An unreadable stat falls back to now,
+ * which is the pre-existing behaviour and keeps a scan working on a filesystem
+ * that reports no times rather than dropping the agent from the roster.
+ *
+ * `birthtimeMs` is 0 on filesystems that do not record a creation time, so the
+ * write time stands in for it there: an ordering key that reads 1970 sorts every
+ * restored agent below every live one, which is not what the roster means by
+ * oldest. A creation stamp LATER than the last write is not the agent's either —
+ * that is what a copied profile, a restored backup or an rsync without `--times`
+ * looks like, a fresh birthtime over a preserved mtime — so the earlier of the
+ * two is taken and a transcript can never claim to have been written before it
+ * existed.
+ */
+async function transcriptTimes(sessionFile: string): Promise<{ createdAt: number; lastActivity: number }> {
+	try {
+		const stat = await fs.promises.stat(sessionFile);
+		const lastActivity = stat.mtimeMs;
+		const createdAt = stat.birthtimeMs > 0 ? Math.min(stat.birthtimeMs, lastActivity) : lastActivity;
+		return { createdAt, lastActivity };
+	} catch {
+		const now = Date.now();
+		return { createdAt: now, lastActivity: now };
+	}
+}
+
 async function registerPersistedSubagentsFromDir(
 	registry: AgentRegistry,
 	dir: string,
@@ -98,6 +128,7 @@ async function registerPersistedSubagentsFromDir(
 			if (existing?.sessionFile !== sessionFile) {
 				// The id is reused across `/new`; refresh it to the current session's file.
 				if (existing) registry.unregister(advisorId);
+				const wrote = await transcriptTimes(sessionFile);
 				registry.register({
 					id: advisorId,
 					displayName,
@@ -107,6 +138,8 @@ async function registerPersistedSubagentsFromDir(
 					sessionFile,
 					status: "parked",
 					scope,
+					createdAt: wrote.createdAt,
+					lastActivity: wrote.lastActivity,
 				});
 				registered += 1;
 			}
@@ -114,6 +147,7 @@ async function registerPersistedSubagentsFromDir(
 		}
 		const id = entry.name.slice(0, -6);
 		if (!registry.get(id)) {
+			const wrote = await transcriptTimes(sessionFile);
 			registry.register({
 				id,
 				displayName: id,
@@ -123,6 +157,8 @@ async function registerPersistedSubagentsFromDir(
 				sessionFile,
 				status: "parked",
 				scope,
+				createdAt: wrote.createdAt,
+				lastActivity: wrote.lastActivity,
 			});
 			registered += 1;
 		}

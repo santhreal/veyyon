@@ -1,4 +1,4 @@
-import { HOUR_MS } from "@veyyon/utils";
+import { HOUR_MS } from "@veyyon/utils/time";
 import { parseTsFast } from "../util/datetime";
 
 export type MemoryType = keyof typeof WEIBULL_PARAMS;

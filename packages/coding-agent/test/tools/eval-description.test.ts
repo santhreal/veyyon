@@ -173,3 +173,44 @@ describe("eval tool dynamic schema", () => {
 		expect(tool.description).not.toMatch(/julia/i);
 	});
 });
+
+describe("python workspace mode guidance", () => {
+	it("preserves exact default description byte parity when eval.pyWorkspace is false", () => {
+		const baseline = getEvalToolDescription({ py: true, js: true, spawns: true });
+		const withExplicitFalse = getEvalToolDescription({ py: true, js: true, spawns: true, pyWorkspace: false });
+		expect(withExplicitFalse).toBe(baseline);
+		expect(baseline).not.toContain("<workspace>");
+		expect(baseline).not.toContain("Retain large results in variables");
+
+		const defaultSessionTool = new EvalTool(makeSession({}));
+		const explicitFalseSessionTool = new EvalTool(makeSession({ backends: { "eval.pyWorkspace": false } }));
+		expect(defaultSessionTool.description).toBe(explicitFalseSessionTool.description);
+		expect(defaultSessionTool.description).not.toContain("<workspace>");
+	});
+
+	it("includes workspace guidance when pyWorkspace is true and Python is enabled", () => {
+		const description = getEvalToolDescription({ py: true, js: true, spawns: true, pyWorkspace: true });
+		expect(description).toContain("<workspace>");
+		expect(description).toContain("Use the persistent Python kernel as your working data environment:");
+		expect(description).toContain("Retain large results in variables");
+		expect(description).toContain("Inspect and transform in-kernel");
+		expect(description).toContain("Define reusable helpers");
+		expect(description).toContain("Display only compact conclusions");
+
+		const sessionTool = new EvalTool(makeSession({ backends: { "eval.pyWorkspace": true } }));
+		expect(sessionTool.description).toContain("<workspace>");
+		expect(sessionTool.description).toContain("Retain large results in variables");
+	});
+
+	it("omits workspace guidance when Python is disabled even if pyWorkspace is true", () => {
+		const pyDisabledDirect = getEvalToolDescription({ py: false, js: true, spawns: true, pyWorkspace: true });
+		expect(pyDisabledDirect).not.toContain("<workspace>");
+		expect(pyDisabledDirect).not.toContain("Retain large results in variables");
+
+		const pyDisabledSessionTool = new EvalTool(
+			makeSession({ backends: { "eval.py": false, "eval.pyWorkspace": true } }),
+		);
+		expect(pyDisabledSessionTool.description).not.toContain("<workspace>");
+		expect(pyDisabledSessionTool.description).not.toContain("Retain large results in variables");
+	});
+});
