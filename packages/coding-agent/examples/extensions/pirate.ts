@@ -1,8 +1,6 @@
 import type { ExtensionAPI } from "@veyyon/coding-agent";
-
 export default function pirateExtension(pi: ExtensionAPI) {
 	let pirateMode = false;
-
 	pi.registerCommand("pirate", {
 		description: "Toggle pirate mode (agent speaks like a pirate)",
 		handler: async (_args, ctx) => {
@@ -11,6 +9,7 @@ export default function pirateExtension(pi: ExtensionAPI) {
 		},
 	});
 
+	// Append to system prompt when pirate mode is enabled
 	pi.on("before_agent_start", async event => {
 		if (pirateMode) {
 			return {

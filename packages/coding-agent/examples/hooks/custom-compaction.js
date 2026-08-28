@@ -1,17 +1,3 @@
-/**
- * Custom Compaction Hook
- *
- * Replaces the default compaction behavior with a full summary of the entire context.
- * Instead of keeping the last 20k tokens of conversation turns, this hook:
- * 1. Summarizes ALL messages (messagesToSummarize + turnPrefixMessages)
- * 2. Discards all old turns completely, keeping only the summary
- *
- * This example also demonstrates using a different model (Gemini Flash) for summarization,
- * which can be cheaper/faster than the main conversation model.
- *
- * Usage:
- *   veyyon --hook examples/hooks/custom-compaction.ts
- */
 import { serializeConversation } from "@veyyon/agent-core";
 import { complete } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog";
@@ -22,14 +8,11 @@ export default function (pi) {
         ctx.ui.notify("Custom compaction hook triggered", "info");
         const { preparation, branchEntries: _, signal } = event;
         const { messagesToSummarize, turnPrefixMessages, tokensBefore, firstKeptEntryId, previousSummary } = preparation;
-        // Use Gemini Flash for summarization (cheaper/faster than most conversation models)
         const model = getBundledModel("google", "gemini-2.5-flash");
         if (!model) {
             ctx.ui.notify(`Could not find Gemini Flash model, using default compaction`, "warning");
             return;
         }
-        // Resolve credentials before projecting raw history. Credential failures stay generic:
-        // provider/auth diagnostics may echo sensitive source bytes.
         let apiKey;
         try {
             apiKey = await ctx.modelRegistry.getApiKey(model);
@@ -42,11 +25,8 @@ export default function (pi) {
             ctx.ui.notify(`No API key for ${model.provider}, using default compaction`, "warning");
             return;
         }
-        // Combine all messages for full summary
         const allMessages = [...messagesToSummarize, ...turnPrefixMessages];
         ctx.ui.notify(`Custom compaction: summarizing ${allMessages.length} messages (${tokensBefore.toLocaleString()} tokens) with ${model.id}...`, "info");
-        // Keep the raw messages until a physical attempt. The builder first sanitizes every
-        // complete structured string, then performs the lossy conversation serialization.
         const providerContext = { messages: [] };
         const sanitizeLive = (text) => ctx.obfuscateProviderText(text);
         const buildAttemptContext = () => {
@@ -100,8 +80,6 @@ ${conversationText}
                     ctx.ui.notify("Compaction summary was empty, using default compaction", "warning");
                 return;
             }
-            // Return compaction content - SessionManager adds id/parentId
-            // Use firstKeptEntryId from preparation to keep recent messages
             return {
                 compaction: {
                     summary,

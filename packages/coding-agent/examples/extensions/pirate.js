@@ -1,6 +1,5 @@
 export default function pirateExtension(pi) {
     let pirateMode = false;
-    // Register /pirate command to toggle pirate mode
     pi.registerCommand("pirate", {
         description: "Toggle pirate mode (agent speaks like a pirate)",
         handler: async (_args, ctx) => {

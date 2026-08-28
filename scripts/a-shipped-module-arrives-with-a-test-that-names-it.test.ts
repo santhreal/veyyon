@@ -147,6 +147,9 @@ function unnamedModules(): string[] {
  * module ships with no test naming it, which should be rare enough to argue about in review.
  */
 const NAMED_BY_NO_TEST: readonly string[] = [
+	"packages/agent/src/agent-loop-context.ts",
+	"packages/agent/src/agent-loop-snapshots.ts",
+	"packages/agent/src/agent-loop-stream.ts",
 	"packages/agent/src/compaction/legacy-provider-native.ts",
 	"packages/agent/src/compaction/remote-compaction-entry.ts",
 	"packages/agent/src/tool-result-never-ran.ts",
@@ -323,9 +326,9 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/modes/utils/interactive-context-helpers.ts",
 	"packages/coding-agent/src/plan-mode/plan-path.ts",
 	"packages/coding-agent/src/secrets/standalone-runtime.ts",
+	"packages/coding-agent/src/session/agent-session-helpers.ts",
 	"packages/coding-agent/src/session/classifier-tokens.ts",
 	"packages/coding-agent/src/session/session-drafts.ts",
-	"packages/coding-agent/src/session/agent-session-helpers.ts",
 	"packages/coding-agent/src/session/session-entry-index.ts",
 	"packages/coding-agent/src/session/session-lifecycle.ts",
 	"packages/coding-agent/src/session/side-complete.ts",

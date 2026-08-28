@@ -20,7 +20,7 @@ import type { EditToolDetails, EditToolPerFileResult, LspBatchRequest } from "..
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 import { nativeBlockResolver } from "./block-resolver";
 import { HashlineFilesystem } from "./filesystem";
-import { hashPatchInput, NOOP_HARD_LIMIT, recordNoopEdit, resetNoopEdit } from "./noop-loop-guard";
+import { hashPatchInput, recordNoopEdit, resetNoopEdit } from "./noop-loop-guard";
 import { type HashlineParams, hashlineEditParamsSchema } from "./params";
 
 export interface ExecuteHashlineSingleOptions {

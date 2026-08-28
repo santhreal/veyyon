@@ -1,19 +1,13 @@
 export default function (pi) {
     const checkpoints = new Map();
     let currentEntryId;
-    // Track the current entry ID when user messages are saved
     pi.on("tool_result", async (_event, ctx) => {
         const leaf = ctx.sessionManager.getLeafEntry();
         if (leaf)
             currentEntryId = leaf.id;
     });
     pi.on("turn_start", async () => {
-        // `stash create` records the current state as a commit object and prints
-        // its hash. It leaves the working tree and the stash stack alone, so this
-        // runs every turn without ever moving the user's files.
         const { stdout, code } = await pi.exec("git", ["stash", "create"]);
-        // A clean tree has nothing to record and prints nothing. That is not an
-        // error, there is simply no checkpoint for this turn.
         if (code !== 0)
             return;
         const ref = stdout.trim();
@@ -26,13 +20,8 @@ export default function (pi) {
         if (!ref)
             return;
         if (!ctx.hasUI) {
-            // Nobody can answer, so nothing is written. Restoring code over a user's
-            // files is not something to do on an assumed yes.
             return;
         }
-        // Applying merges into what is already in the working tree. Count what is
-        // at risk so the question names it, rather than asking for consent to
-        // something the user cannot see.
         const status = await pi.exec("git", ["status", "--porcelain"]);
         const dirtyCount = status.code === 0 ? status.stdout.split("\n").filter(line => line.trim()).length : 0;
         const yes = dirtyCount > 0 ? `Yes, apply over my ${dirtyCount} uncommitted change(s)` : "Yes, restore code to that point";
@@ -44,16 +33,12 @@ export default function (pi) {
             return;
         const result = await pi.exec("git", ["stash", "apply", ref]);
         if (result.code !== 0) {
-            // Say what happened. Reporting success here regardless is how a user
-            // ends up believing their code was restored when it was not, or when it
-            // was left half-applied with conflict markers in it.
             ctx.ui.notify(`Could not restore checkpoint: ${result.stderr.trim() || `git exited ${result.code}`}`, "error");
             return;
         }
         ctx.ui.notify("Code restored to checkpoint", "info");
     });
     pi.on("agent_end", async () => {
-        // Clear checkpoints after agent completes
         checkpoints.clear();
     });
 }

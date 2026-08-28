@@ -1,6 +1,5 @@
 export default function (pi) {
     const { z } = pi.zod;
-    // Access the logger for debugging
     pi.logger.debug("API demo extension loaded");
     pi.registerTool({
         name: "api_demo",
@@ -10,17 +9,11 @@ export default function (pi) {
             message: z.string().describe("Test message"),
             logLevel: z.enum(["error", "warn", "debug"]).default("debug").describe("Log level to use"),
         }),
-        // `registerTool` takes the signal BEFORE `onUpdate`; a custom tool loaded from
-        // `tools/` takes them the other way round. Copying one order into the other
-        // place types `ctx` as the update callback and every `ctx.*` access fails.
         async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
             const { message, logLevel } = params;
-            // Use logger at specified level
             pi.logger[logLevel]("API demo tool executed", { message, logLevel });
-            // Access pi module utilities
             const { logger: piLogger } = pi.pi;
             piLogger.debug("Accessed pi module from extension", { sessionFile: ctx.sessionManager.getSessionFile() });
-            // Get session information
             const sessionInfo = `Session: ${ctx.sessionManager.getSessionFile()}`;
             const modelInfo = ctx.model ? `Model: ${ctx.model.id}` : "Model: none";
             return {
@@ -54,7 +47,6 @@ export default function (pi) {
             };
         },
     });
-    // Demonstrate event handling with logger
     pi.on("session_start", async () => {
         pi.logger.debug("Session started", { extension: "api-demo" });
     });

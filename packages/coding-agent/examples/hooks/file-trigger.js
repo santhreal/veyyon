@@ -1,12 +1,3 @@
-/**
- * File Trigger Hook
- *
- * Watches a trigger file and injects its contents into the conversation.
- * Useful for external systems to send messages to the agent.
- *
- * Usage:
- *   echo "Run the tests" > /tmp/agent-trigger.txt
- */
 import * as fs from "node:fs";
 export default function (pi) {
     pi.on("session_start", async (_event, ctx) => {
@@ -19,17 +10,11 @@ export default function (pi) {
                         customType: "file-trigger",
                         content: `External trigger: ${content}`,
                         display: true,
-                    }, 
-                    // Second argument is an options object, not a bare boolean: a
-                    // bare `true` is a type error, and older copies of this example
-                    // silently passed one.
-                    { triggerTurn: true });
+                    }, { triggerTurn: true });
                     await Bun.write(triggerFile, ""); // Clear after reading
                 }
             }
-            catch {
-                // File might not exist yet
-            }
+            catch { }
         });
         if (ctx.hasUI) {
             ctx.ui.notify(`Watching ${triggerFile}`, "info");

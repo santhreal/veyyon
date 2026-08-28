@@ -1,8 +1,6 @@
 async function checkDirtyRepo(pi, ctx, action) {
-    // Check for uncommitted changes
     const { stdout, code } = await pi.exec("git", ["status", "--porcelain"]);
     if (code !== 0) {
-        // Not a git repo, allow the action
         return;
     }
     const hasChanges = stdout.trim().length > 0;
@@ -10,10 +8,8 @@ async function checkDirtyRepo(pi, ctx, action) {
         return;
     }
     if (!ctx.hasUI) {
-        // In non-interactive mode, block by default
         return { cancel: true };
     }
-    // Count changed files
     const changedFiles = stdout.trim().split("\n").filter(Boolean).length;
     const choice = await ctx.ui.select(`You have ${changedFiles} uncommitted file(s). ${action} anyway?`, [
         "Yes, proceed anyway",

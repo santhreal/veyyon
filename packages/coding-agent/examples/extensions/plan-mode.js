@@ -1,9 +1,6 @@
 import { Key } from "@veyyon/tui";
-// Read-only tools for plan mode
 const PLAN_MODE_TOOLS = ["read", "bash", "search", "find"];
-// Full set of tools for normal mode
 const NORMAL_MODE_TOOLS = ["read", "bash", "edit", "write"];
-// Patterns for destructive bash commands that should be blocked in plan mode
 const DESTRUCTIVE_PATTERNS = [
     /\brm\b/i,
     /\brmdir\b/i,
@@ -39,7 +36,6 @@ const DESTRUCTIVE_PATTERNS = [
     /\bservice\s+\S+\s+(start|stop|restart)/i,
     /\b(vim?|nano|emacs|code|subl)\b/i,
 ];
-// Read-only commands that are always safe
 const SAFE_COMMANDS = [
     /^\s*cat\b/,
     /^\s*head\b/,
@@ -103,41 +99,27 @@ function isSafeCommand(command) {
     }
     return true;
 }
-/**
- * Clean up extracted step text for display.
- */
 function cleanStepText(text) {
     let cleaned = text
-        // Remove markdown bold/italic
         .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
-        // Remove markdown code
         .replace(/`([^`]+)`/g, "$1")
-        // Remove leading action words that are redundant
         .replace(/^(Use|Run|Execute|Create|Write|Read|Check|Verify|Update|Modify|Add|Remove|Delete|Install)\s+(the\s+)?/i, "")
-        // Clean up extra whitespace
         .replace(/\s+/g, " ")
         .trim();
-    // Capitalize first letter
     if (cleaned.length > 0) {
         cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
     }
-    // Truncate if too long
     if (cleaned.length > 50) {
         cleaned = `${cleaned.slice(0, 49)}…`;
     }
     return cleaned;
 }
-/**
- * Extract todo items from assistant message.
- */
 function extractTodoItems(message) {
     const items = [];
-    // Match numbered lists: "1. Task" or "1) Task" - also handle **bold** prefixes
     const numberedPattern = /^\s*(\d+)[.)]\s+\*{0,2}([^*\n]+)/gm;
     for (const match of message.matchAll(numberedPattern)) {
         let text = match[2].trim();
         text = text.replace(/\*{1,2}$/, "").trim();
-        // Skip if too short or looks like code/command
         if (text.length > 5 && !text.startsWith("`") && !text.startsWith("/") && !text.startsWith("-")) {
             const cleaned = cleanStepText(text);
             if (cleaned.length > 3) {
@@ -145,7 +127,6 @@ function extractTodoItems(message) {
             }
         }
     }
-    // If no numbered items, try bullet points
     if (items.length === 0) {
         const stepPattern = /^\s*[-*]\s*(?:Step\s*\d+[:.])?\s*\*{0,2}([^*\n]+)/gim;
         for (const match of message.matchAll(stepPattern)) {
@@ -166,13 +147,11 @@ export default function planModeExtension(pi) {
     let toolsCalledThisTurn = false;
     let executionMode = false;
     let todoItems = [];
-    // Register --plan CLI flag
     pi.registerFlag("plan", {
         description: "Start in plan mode (read-only exploration)",
         type: "boolean",
         default: false,
     });
-    // Helper to update status displays
     function updateStatus(ctx) {
         if (executionMode && todoItems.length > 0) {
             const completed = todoItems.filter(t => t.completed).length;
@@ -184,7 +163,6 @@ export default function planModeExtension(pi) {
         else {
             ctx.ui.setStatus("plan-mode", undefined);
         }
-        // Show widget during execution (no IDs shown to user)
         if (executionMode && todoItems.length > 0) {
             const lines = [];
             for (const item of todoItems) {
@@ -215,14 +193,12 @@ export default function planModeExtension(pi) {
         }
         updateStatus(ctx);
     }
-    // Register /plan command
     pi.registerCommand("plan", {
         description: "Toggle plan mode (read-only exploration)",
         handler: async (_args, ctx) => {
             await togglePlanMode(ctx);
         },
     });
-    // Register /todos command
     pi.registerCommand("todos", {
         description: "Show current plan todo list",
         handler: async (_args, ctx) => {
@@ -239,14 +215,12 @@ export default function planModeExtension(pi) {
             ctx.ui.notify(`Plan Progress:\n${todoList}`, "info");
         },
     });
-    // Register Shift+P shortcut
     pi.registerShortcut(Key.shift("p"), {
         description: "Toggle plan mode",
         handler: async (ctx) => {
             await togglePlanMode(ctx);
         },
     });
-    // Block destructive bash in plan mode
     pi.on("tool_call", async (event) => {
         if (!planModeEnabled)
             return;
@@ -260,26 +234,20 @@ export default function planModeExtension(pi) {
             };
         }
     });
-    // Track step completion based on tool results
     pi.on("tool_result", async (_event, ctx) => {
         toolsCalledThisTurn = true;
         if (!executionMode || todoItems.length === 0)
             return;
-        // Mark the first uncompleted step as done when any tool succeeds
         const nextStep = todoItems.find(t => !t.completed);
         if (nextStep) {
             nextStep.completed = true;
             updateStatus(ctx);
         }
     });
-    // Filter out stale plan mode context messages from LLM context
-    // This ensures the agent only sees the CURRENT state (plan mode on/off)
     pi.on("context", async (event) => {
-        // Only filter when NOT in plan mode (i.e., when executing)
         if (planModeEnabled) {
             return;
         }
-        // Remove any previous plan-mode-context messages
         const filtered = event.messages.filter(m => {
             if (m.role === "user" && Array.isArray(m.content)) {
                 const hasOldContext = m.content.some((c) => c.type === "text" && c.text?.includes("[PLAN MODE ACTIVE]"));
@@ -291,7 +259,6 @@ export default function planModeExtension(pi) {
         });
         return { messages: filtered };
     });
-    // Inject plan mode context
     pi.on("before_agent_start", async () => {
         if (!planModeEnabled && !executionMode) {
             return;
@@ -336,13 +303,10 @@ Execute each step in order.`,
             };
         }
     });
-    // After agent finishes
     pi.on("agent_end", async (event, ctx) => {
-        // In execution mode, check if all steps complete
         if (executionMode && todoItems.length > 0) {
             const allComplete = todoItems.every(t => t.completed);
             if (allComplete) {
-                // Show final completed list in chat
                 const completedList = todoItems.map(t => `~~${t.text}~~`).join("\n");
                 pi.sendMessage({
                     customType: "plan-complete",
@@ -360,7 +324,6 @@ Execute each step in order.`,
             return;
         if (!ctx.hasUI)
             return;
-        // Extract todos from last message
         const messages = event.messages;
         const lastAssistant = messages.findLast(m => m.role === "assistant");
         if (lastAssistant && Array.isArray(lastAssistant.content)) {
@@ -376,7 +339,6 @@ Execute each step in order.`,
             }
         }
         const hasTodos = todoItems.length > 0;
-        // Show todo list in chat (no IDs shown to user, just numbered)
         if (hasTodos) {
             const todoListText = todoItems.map((t, i) => `${i + 1}. ☐ ${t.text}`).join("\n");
             pi.sendMessage({
@@ -395,8 +357,6 @@ Execute each step in order.`,
             executionMode = hasTodos;
             await pi.setActiveTools(NORMAL_MODE_TOOLS);
             updateStatus(ctx);
-            // Simple execution message - context event filters old plan mode messages
-            // and before_agent_start injects fresh execution context with IDs
             const execMessage = hasTodos
                 ? `Execute the plan. Start with: ${todoItems[0].text}`
                 : "Execute the plan you just created.";
@@ -413,7 +373,6 @@ Execute each step in order.`,
             }
         }
     });
-    // Initialize state on session start
     pi.on("session_start", async (_event, ctx) => {
         if (pi.getFlag("plan") === true) {
             planModeEnabled = true;
@@ -438,7 +397,6 @@ Execute each step in order.`,
         }
         updateStatus(ctx);
     });
-    // Reset tool tracking at start of each turn and persist state
     pi.on("turn_start", async () => {
         toolsCalledThisTurn = false;
         pi.appendEntry("plan-mode", {
@@ -447,12 +405,9 @@ Execute each step in order.`,
             executing: executionMode,
         });
     });
-    // Handle non-tool turns (e.g., analysis, explanation steps)
     pi.on("turn_end", async (_event, ctx) => {
         if (!executionMode || todoItems.length === 0)
             return;
-        // If no tools were called this turn, the agent was doing analysis/explanation
-        // Mark the next uncompleted step as done
         if (!toolsCalledThisTurn) {
             const nextStep = todoItems.find(t => !t.completed);
             if (nextStep) {

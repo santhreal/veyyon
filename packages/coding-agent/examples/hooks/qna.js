@@ -1,11 +1,3 @@
-/**
- * Q&A extraction hook - extracts questions from assistant responses
- *
- * Demonstrates the "prompt generator" pattern:
- * 1. /qna command gets the last assistant message
- * 2. Shows a spinner while extracting (hides editor)
- * 3. Loads the result into the editor for user to fill in answers
- */
 import { complete } from "@veyyon/ai";
 import { ComposerLoader } from "@veyyon/coding-agent";
 import { mapJsonStrings } from "@veyyon/coding-agent/secrets/obfuscator";
@@ -36,7 +28,6 @@ export default function (pi) {
                 ctx.ui.notify("No model selected", "error");
                 return;
             }
-            // Find the last assistant message on the current branch
             const branch = ctx.sessionManager.getBranch();
             let lastAssistantText;
             for (let i = branch.length - 1; i >= 0; i--) {
@@ -62,11 +53,9 @@ export default function (pi) {
                 ctx.ui.notify("No assistant messages found", "error");
                 return;
             }
-            // Run extraction with loader UI
             const result = await ctx.ui.custom((tui, theme, done) => {
                 const loader = new ComposerLoader(tui, theme, `Extracting questions using ${ctx.model.id}…`);
                 loader.onAbort = () => done(null);
-                // Do the work
                 const doExtract = async () => {
                     const apiKey = await ctx.modelRegistry.getApiKey(ctx.model);
                     if (!apiKey)
