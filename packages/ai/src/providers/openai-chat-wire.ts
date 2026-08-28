@@ -537,10 +537,6 @@ export interface ChatCompletionCreateParamsBase {
 	web_search_options?: ChatCompletionCreateParamsWebSearchOptions;
 }
 
-export interface ChatCompletionCreateParamsNonStreaming extends ChatCompletionCreateParamsBase {
-	stream?: false | null;
-}
-
 export interface ChatCompletionCreateParamsStreaming extends ChatCompletionCreateParamsBase {
 	stream: true;
 }

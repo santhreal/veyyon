@@ -412,21 +412,3 @@ export interface PerplexityCost {
 	search_queries_cost?: number | null;
 	total_cost: number;
 }
-
-export interface PerplexityUsageInfo {
-	prompt_tokens: number;
-	completion_tokens: number;
-	total_tokens: number;
-	search_context_size?: string | null;
-	citation_tokens?: number | null;
-	num_search_queries?: number | null;
-	reasoning_tokens?: number | null;
-	cost: PerplexityCost;
-}
-
-export interface PerplexityChoice {
-	index: number;
-	finish_reason?: "stop" | "length" | null;
-	message: PerplexityMessageOutput;
-	delta: PerplexityMessageOutput;
-}

@@ -5,11 +5,6 @@ import { sttClient } from "./asr-client";
 import type { SttProgressStatus } from "./asr-protocol";
 import { resolveSttModelSpec } from "./models";
 
-export interface DownloadProgress {
-	stage: string;
-	percent?: number;
-}
-
 export interface SttDownloadProgress {
 	status: SttProgressStatus;
 	percent: number;
