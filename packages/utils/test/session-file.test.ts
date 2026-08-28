@@ -173,7 +173,7 @@ describe("the session backup naming", () => {
 	});
 
 	/**
-	 * A backup is NOT itself a transcript, which is what keeps it out of every session listing. The Agent Control Center
+	 * A backup is NOT itself a transcript, which is what keeps it out of every session listing. The subagent dashboard
 	 * and HTML export both rely on this: a backup appearing as a session would show the user a duplicate of a
 	 * session they already have, dated from a crash.
 	 */
@@ -258,7 +258,7 @@ describe("the advisor transcript naming", () => {
 		expect(isAdvisorTranscriptName("__advisor")).toBeFalse();
 	});
 
-	/** The slug, which the Agent Control Center shows: empty for the default advisor, the name for a named one. */
+	/** The slug, which the subagent dashboard shows: empty for the default advisor, the name for a named one. */
 	it("reads the slug of a named advisor and empty for the default", () => {
 		expect(advisorTranscriptSlug("__advisor.jsonl")).toBe("");
 		expect(advisorTranscriptSlug("__advisor.reviewer.jsonl")).toBe("reviewer");
