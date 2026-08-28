@@ -204,7 +204,7 @@ function collectOpenAIHostedImageResult(response: OpenAIHostedImageResponse): Op
 	};
 }
 
-function getOpenAIResponseErrorMessage(rawText: string): string {
+function parseProviderErrorMessage(rawText: string): string {
 	try {
 		const parsed = JSON.parse(rawText) as { error?: { message?: string } };
 		return parsed.error?.message ?? rawText;
@@ -309,7 +309,7 @@ async function generateOpenAIHostedImage(
 	if (!response.ok) {
 		const errorText = await response.text();
 		throw Object.assign(
-			new Error(`OpenAI image request failed (${response.status}): ${getOpenAIResponseErrorMessage(errorText)}`),
+			new Error(`OpenAI image request failed (${response.status}): ${parseProviderErrorMessage(errorText)}`),
 			{ status: response.status },
 		);
 	}
@@ -593,14 +593,8 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 									}
 
 									const errorText = await resp.text();
-									let message = errorText;
-									try {
-										const parsedErr = JSON.parse(errorText) as { error?: { message?: string } };
-										message = parsedErr.error?.message ?? message;
-									} catch {}
-
 									lastError = new ProviderHttpError(
-										`Antigravity image request failed (${resp.status}): ${message}`,
+										`Antigravity image request failed (${resp.status}): ${parseProviderErrorMessage(errorText)}`,
 										resp.status,
 										{ headers: resp.headers },
 									);
@@ -703,17 +697,10 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 							});
 							const rawText = await resp.text();
 							if (!resp.ok) {
-								let message = rawText;
-								try {
-									const parsedErr = JSON.parse(rawText) as { error?: { message?: string } };
-									message = parsedErr.error?.message ?? message;
-								} catch {}
 								throw new ProviderHttpError(
-									`xAI image request failed (${resp.status}): ${message}`,
+									`xAI image request failed (${resp.status}): ${parseProviderErrorMessage(rawText)}`,
 									resp.status,
-									{
-										headers: resp.headers,
-									},
+									{ headers: resp.headers },
 								);
 							}
 							return rawText;
@@ -781,13 +768,8 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 							});
 							const text = await resp.text();
 							if (!resp.ok) {
-								let message = text;
-								try {
-									const parsed = JSON.parse(text) as { error?: { message?: string } };
-									message = parsed.error?.message ?? message;
-								} catch {}
 								throw new ProviderHttpError(
-									`OpenRouter image request failed (${resp.status}): ${message}`,
+									`OpenRouter image request failed (${resp.status}): ${parseProviderErrorMessage(text)}`,
 									resp.status,
 									{ headers: resp.headers },
 								);
@@ -867,17 +849,10 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 						);
 						const text = await resp.text();
 						if (!resp.ok) {
-							let message = text;
-							try {
-								const parsed = JSON.parse(text) as { error?: { message?: string } };
-								message = parsed.error?.message ?? message;
-							} catch {}
 							throw new ProviderHttpError(
-								`Gemini image request failed (${resp.status}): ${message}`,
+								`Gemini image request failed (${resp.status}): ${parseProviderErrorMessage(text)}`,
 								resp.status,
-								{
-									headers: resp.headers,
-								},
+								{ headers: resp.headers },
 							);
 						}
 						return text;
