@@ -312,6 +312,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/lsp/clients/lsp-linter-client.ts",
 	"packages/coding-agent/src/lsp/deferred-diagnostics.ts",
 	"packages/coding-agent/src/lsp/lsp-helpers.ts",
+	"packages/coding-agent/src/lsp/lsp-tool.ts",
 	"packages/coding-agent/src/main-helpers.ts",
 	"packages/coding-agent/src/markit/converters/docx.ts",
 	"packages/coding-agent/src/markit/converters/epub.ts",
