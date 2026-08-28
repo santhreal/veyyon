@@ -16,11 +16,14 @@
 - `TUI.onBeforeCompose` runs at the top of every frame, before any root child renders, so a layout whose height is a function of its siblings' heights is sized against the children about to render rather than the previous frame's.
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
 - `MOTION.reflow` states the curve for a row that reflows its content sideways: 320ms, symmetric, where `expand` is 180ms and front-loaded.
+- `TUI.composedFrameLines` exposes the rows of the frame just composed, so a check can tell a row the layout composed blank from a row the renderer composed with content and failed to paint.
+- `Editor.discardDraft()` clears the composer and records an undo state first, so the discarded draft comes back with undo; `setText` still drops the undo history, because it loads text from elsewhere rather than editing what was typed.
 
 ### Changed
 
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
+- The `ui.loop-blocked` warning reports `phase` with the `phaseMs` that earns it, and names the phase only when it held at least half the block; a phase that ran for a sliver of it is reported as `unknown` with the observed label carried as `topPhase`.
 
 ### Fixed
 

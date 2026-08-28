@@ -28,7 +28,6 @@ import { createArgotSession } from "@veyyon/coding-agent/argot-cache";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { formatModelString } from "@veyyon/coding-agent/config/model-resolver";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { usesCursorRuleDelivery } from "@veyyon/coding-agent/cursor";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
@@ -76,13 +75,11 @@ describe("system prompt prefix invalidation", () => {
 	 *
 	 * `resolveEditMode` sends any model whose string contains `kimi` to `replace`
 	 * while everything else keeps the `hashline` default, and neither model may be
-	 * a GPT-5.6 task-policy model or a cursor-agent model, or
-	 * `#currentPromptModelKey` would move too and the reason under test would no
-	 * longer isolate the edit variant.
+	 * a GPT-5.6 task-policy model, or `#currentPromptModelKey` would move too and
+	 * the reason under test would no longer isolate the edit variant.
 	 */
 	function pickEditVariantPair(): [Model, Model] {
-		const sameCohort = (model: Model): boolean => !usesCodexTaskPrompt(model.id) && !usesCursorRuleDelivery(model);
-		const all = modelRegistry.getAll().filter(sameCohort);
+		const all = modelRegistry.getAll().filter(model => !usesCodexTaskPrompt(model.id));
 		const hashline = all.find(model => !formatModelString(model).toLowerCase().includes("kimi"));
 		const replace = all.find(model => formatModelString(model).toLowerCase().includes("kimi"));
 		if (!hashline || !replace) throw new Error("Expected a kimi and a non-kimi model in the same prompt cohort");
@@ -160,7 +157,7 @@ describe("system prompt prefix invalidation", () => {
 	 */
 	it("names the prompt-model-key when the switch moves the model cohort", async () => {
 		const all = modelRegistry.getAll();
-		const defaultPolicy = all.find(model => !usesCodexTaskPrompt(model.id) && !usesCursorRuleDelivery(model));
+		const defaultPolicy = all.find(model => !usesCodexTaskPrompt(model.id));
 		const codexPolicy = all.find(model => usesCodexTaskPrompt(model.id));
 		if (!defaultPolicy || !codexPolicy) throw new Error("Expected default-policy and GPT-5.6 models");
 		authStorage.setRuntimeApiKey(defaultPolicy.provider, "key-a");

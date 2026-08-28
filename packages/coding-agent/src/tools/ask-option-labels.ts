@@ -26,8 +26,8 @@
 
 /**
  * The fourth label of this family, ` (Recommended)`, is NOT here. It is the only one a package outside
- * coding-agent has to read: the shared renderers in `packages/collab-web/src/tool-render/lib` strip it when rendering an answer for
- * HTML export and collab, and they cannot import from coding-agent. It lives in `@veyyon/wire` as
+ * coding-agent has to read: `@veyyon/tool-render` strips it when rendering an answer for HTML export and
+ * collab, and tool-render cannot import from coding-agent. It lives in `@veyyon/wire` as
  * `RECOMMENDED_SUFFIX` with `withRecommendedSuffix` / `stripRecommendedSuffix`. Import it from there.
  */
 

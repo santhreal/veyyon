@@ -5,9 +5,8 @@
  * are read as the map of the repository — `AGENTS.md` is loaded into an agent's context, so its table
  * is what an agent believes the repository contains. Both had been written when there were nine
  * packages and never revisited: ten of the eighteen were missing from both, including every one added
- * in the last year (`argot`, `hashline`, `mnemopi`, `wire`, the then-separate `tool-render`,
- * `collab-web`, `swarm-extension`, `metaharness`, `deepswe-bench`,
- * `typescript-edit-benchmark`).
+ * in the last year (`argot`, `hashline`, `mnemopi`, `wire`, `tool-render`, `collab-web`,
+ * `swarm-extension`, `metaharness`, `deepswe-bench`, `typescript-edit-benchmark`).
  *
  * Omission is the failure mode that does not announce itself. A missing row does not read as
  * "incomplete map", it reads as "that package is not part of this repository", so an agent looking for

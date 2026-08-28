@@ -25,7 +25,8 @@ operator manual.
 |`packages/hashline`|Line-anchored patch language the edit tool applies, with a pluggable filesystem backend|
 |`packages/mnemopi`|Local SQLite memory engine: triples, embeddings, recall|
 |`packages/wire`|Dependency-free collab wire types, so a browser or test client need not depend on coding-agent|
-|`packages/collab-web`|Browser guest client and local relay for collab live sessions, plus the shared React tool-call renderers in `src/tool-render/lib` that HTML export bundles (private)|
+|`packages/tool-render`|Shared React tool-call renderers for HTML export, collab-web and the stats dashboard|
+|`packages/collab-web`|Browser guest client and local relay for collab live sessions (private)|
 |`packages/swarm-extension`|Swarm orchestration extension|
 |`packages/bench`|Benchmark, eval and simulation harnesses, one per subtree of `src/` (private): `deepswe/` DeepSWE runner for performance-affecting changes, `metaharness/` Harbor run storage plus REST/SSE API and dashboard, `simulations/` deterministic offline simulations driving real subsystems end to end, `typescript-edit/` edit-tool benchmark from TypeScript source mutations|
 |`crates/veyyon-natives`|Rust crate for performance-critical text/grep ops|

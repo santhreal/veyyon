@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { currentLoopPhase, popLoopPhase, pushLoopPhase, takeRecentLoopPhase } from "@veyyon/utils";
+import { currentLoopPhase, popLoopPhase, pushLoopPhase, takeLoopPhaseProfile } from "@veyyon/utils";
 
 /**
  * Contract: the loop-phase breadcrumb is a LIFO string stack. `currentLoopPhase()`
@@ -12,7 +12,7 @@ import { currentLoopPhase, popLoopPhase, pushLoopPhase, takeRecentLoopPhase } fr
  */
 function drain(): void {
 	while (currentLoopPhase() !== undefined) popLoopPhase();
-	takeRecentLoopPhase(); // clear the consume-on-read recent slot between cases
+	takeLoopPhaseProfile(); // clear the consume-on-read accounting between cases
 }
 
 beforeEach(drain);
@@ -56,26 +56,66 @@ describe("loop phase stack", () => {
 		expect(currentLoopPhase()).toBe("after-underflow");
 	});
 
-	test("takeRecentLoopPhase surfaces a popped phase once, then clears it", () => {
+	test("takeLoopPhaseProfile surfaces a popped phase once, then clears it", () => {
 		// A synchronous hot path pushes then pops its phase entirely before the
 		// watchdog's delayed tick runs, so the live stack is empty by then.
 		pushLoopPhase("ui.select-filter");
 		popLoopPhase();
 		expect(currentLoopPhase()).toBeUndefined();
 
-		// The recent slot still names the just-finished phase for that one read,
+		// The banked cost still names the just-finished phase for that one read,
 		// then is consumed so a later phase-less block is not blamed on it.
-		expect(takeRecentLoopPhase()).toBe("ui.select-filter");
-		expect(takeRecentLoopPhase()).toBeUndefined();
+		expect(takeLoopPhaseProfile().phase).toBe("ui.select-filter");
+		expect(takeLoopPhaseProfile().phase).toBeUndefined();
 	});
 
-	test("takeRecentLoopPhase prefers a still-held live phase over the recent slot", () => {
+	test("takeLoopPhaseProfile charges a still-held phase for the time it has been open", () => {
 		pushLoopPhase("outer"); // stays held across the inner phase
 		pushLoopPhase("inner");
-		popLoopPhase(); // inner done; recent slot last saw "inner", outer still live
+		popLoopPhase(); // inner done; outer still live
 
-		// A live phase wins over the recent slot — the block is still inside it.
-		expect(takeRecentLoopPhase()).toBe("outer");
+		// A live phase wins: the block is still inside it, and its cost covers the
+		// inner one it encloses.
+		const profile = takeLoopPhaseProfile();
+		expect(profile.phase).toBe("outer");
+		expect(profile.ms).toBeGreaterThanOrEqual(0);
 		popLoopPhase();
+	});
+
+	/**
+	 * THE DEFECT THIS CLOSES: a label alone was reported as the cause of a block.
+	 * Four spans in the product push a phase, so the last one before any block is
+	 * nearly always the render pass — and hundreds of logged blocks of 250-650ms
+	 * were attributed to a pass that benchmarks at 0.03ms streaming and 12ms for a
+	 * cold 2000-block paint. The cost is what separates a cause from a breadcrumb.
+	 */
+	test("a phase reports the synchronous time it actually spent", () => {
+		const spin = (ms: number): void => {
+			const until = performance.now() + ms;
+			while (performance.now() < until) {
+				// Busy-wait: the point is to hold the loop, which is what the watchdog measures.
+			}
+		};
+		pushLoopPhase("cheap");
+		popLoopPhase();
+		pushLoopPhase("expensive");
+		spin(12);
+		popLoopPhase();
+
+		// The costliest label wins, not the most recent one.
+		const profile = takeLoopPhaseProfile();
+		expect(profile.phase).toBe("expensive");
+		expect(profile.ms).toBeGreaterThanOrEqual(10);
+	});
+
+	test("one interval's cost is never billed to the next", () => {
+		pushLoopPhase("first");
+		popLoopPhase();
+		expect(takeLoopPhaseProfile().phase).toBe("first");
+
+		// Nothing ran since, so there is nothing to report and no carried-over cost.
+		const second = takeLoopPhaseProfile();
+		expect(second.phase).toBeUndefined();
+		expect(second.ms).toBe(0);
 	});
 });

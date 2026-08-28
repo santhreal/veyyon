@@ -15,8 +15,7 @@ import { workspaceModuleReachResolution, workspacePackages } from "@veyyon/utils
  * seven packages and four packages respectively, and BOTH listed `@veyyon/agent`, which no package in
  * this workspace is called. The directory is `packages/agent` and the name is `@veyyon/agent-core`, so
  * 569 `@veyyon/agent-core` specifiers resolved to nothing, and `@veyyon/mnemopi` (161 specifiers),
- * `@veyyon/natives` (63) and `@veyyon/stats` (37) were unknown to all four, as was the
- * then-separate `@veyyon/tool-render` (2), since merged into `@veyyon/collab-web`.
+ * `@veyyon/natives` (63), `@veyyon/stats` (37) and `@veyyon/tool-render` (2) were unknown to all four.
  *
  * Nothing failed. Every assertion in those gates is an upper bound or a "does not reach", so a specifier
  * the table does not know stops the walk, lowers the count, and PASSES. That is the exact failure mode
@@ -257,14 +256,16 @@ describe("the real workspace resolves completely", () => {
 	});
 
 	/**
-	 * The packages no hand-written table knew about. Named individually rather than counted, so a
-	 * failure says which one stopped resolving. There was a fourth, `@veyyon/tool-render`; it is not a
-	 * package any more, so its resolution is `@veyyon/collab-web`'s to state.
+	 * The four packages no hand-written table knew about. Named individually rather than counted, so a
+	 * failure says which one stopped resolving.
 	 */
 	it("resolves the packages the hand-written tables omitted entirely", () => {
 		expect(byName.get("@veyyon/mnemopi")).toBe(path.join(REPO_ROOT, "packages", "mnemopi", "src", "index.ts"));
 		expect(byName.get("@veyyon/natives")).toBe(path.join(REPO_ROOT, "packages", "natives", "native", "index.js"));
 		expect(byName.get("@veyyon/stats")).toBe(path.join(REPO_ROOT, "packages", "stats", "src", "index.ts"));
+		expect(byName.get("@veyyon/tool-render")).toBe(
+			path.join(REPO_ROOT, "packages", "tool-render", "src", "index.ts"),
+		);
 	});
 
 	/**
@@ -281,11 +282,8 @@ describe("the real workspace resolves completely", () => {
 
 		expect(missing).toEqual([]);
 		// Non-vacuity: an empty `declaring` would satisfy the line above while measuring nothing, and a
-		// workspace this size has a dozen packages with a bare entry. The floor was 13 until
-		// `@veyyon/tool-render` stopped being a package and became
-		// `packages/collab-web/src/tool-render/lib`; `@veyyon/collab-web` declares no bare entry, so the
-		// count is one lower for a package that merged rather than for one that stopped resolving.
-		expect(declaring.length).toBeGreaterThanOrEqual(12);
+		// workspace this size has more than a dozen packages with a bare entry.
+		expect(declaring.length).toBeGreaterThanOrEqual(13);
 	});
 
 	/**

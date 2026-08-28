@@ -1,25 +1,35 @@
 /**
- * The operator's AGENTS.md reaches a real cursor-agent request, end to end.
+ * Every instruction layer a session discovered reaches a real cursor-agent request.
  *
- * WHY THIS SUITE EXISTS. The operator ran a `cursor-agent` model from `~/tmp` and the model
- * reported "No AGENTS.md content is present in my current context". Every component was tested and
- * every component was fine: discovery produced the two operator scopes, `cursorContextFileRules`
- * kept them, `buildCursorRules` wrapped them, and the provider wrote them out when asked. The
- * defect lived in the JOIN, which nothing drove: on a cursor-agent model `sdk.ts` deliberately
- * inlines NO context files in the prompt, so if the rules channel does not carry them, nothing
- * does, and the turn reports success anyway.
+ * WHY THIS SUITE EXISTS, and what class it closes.
  *
- * So this suite drives the whole thing: a real `createAgentSession` over real discovery from a
- * real bare directory, a real cursor-agent model, the real provider, and a real HTTP/2 socket to a
- * fake Cursor server that asks for the request context and records exactly what the client
- * answered. The only thing not real is the server.
+ * Cursor's server discards the client's system-prompt blobs, rebuilds the prompt head with its
+ * own, and applies none of `requestContext.rules`. The active user turn is the one thing it
+ * delivers to the model verbatim. The delivery used to be split in two: the session inlined
+ * NOTHING in the prompt on this api and shipped a separately composed list of file units as
+ * rules instead, and that list was filtered to the operator's own scopes. Each half was correct
+ * on its own terms and the join was not: a repository's `AGENTS.md` was excluded from the rules
+ * list because it was "repository content", and excluded from the prompt because "the rules list
+ * carries it", so on cursor-agent alone it reached the model nowhere, while every other api
+ * rendered it. The visible symptom was veyyon not loading AGENTS.md. Even repaired, that
+ * channel delivered nothing, because no rule the client sends is applied at all.
  *
- * The two assertions are the two halves of one contract, and BOTH are needed:
- *  - the operator's bytes are in `requestContext.rules`, the only channel Cursor honors;
- *  - they are NOT in the system-prompt rule, because the prompt blobs the client sends are
- *    replaced by Cursor's own and inlining there would be a second copy that never arrives.
+ * The class is "one api composes instructions its own way". It is closed by deleting the second
+ * channel: the session assembles ONE prompt for every api, and the provider prepends that prompt
+ * to the active user turn. A layer can no longer be dropped for cursor-agent without being
+ * dropped for every api, which the per-api suite catches.
+ *
+ * WHAT IS PINNED. Every case below drives the real session (its own discovery, its own prompt
+ * build, the real provider) against a Cursor server that speaks the real protocol; nothing is
+ * stubbed but the socket, and every assertion reads the decoded user turn rather than a payload
+ * the server ignores. The layers are swept from `ContextFile["level"]`, so a new scope does not
+ * compile until someone records what it does here.
+ *
+ * WHAT IT DOES NOT CATCH. It cannot prove Cursor's SERVER hands the turn to the model unchanged
+ * — only a live run does that — and it says nothing about apis other than cursor-agent, which
+ * `operator-instructions-reach-every-api.test.ts` owns.
  */
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, setDefaultTimeout } from "bun:test";
 import * as fs from "node:fs";
 import * as http2 from "node:http2";
 import * as path from "node:path";
@@ -37,20 +47,43 @@ import {
 } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { ContextFile } from "@veyyon/coding-agent/discovery/capability/context-file";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { GLOBAL_BODY, PROFILE_BODY, useContextScopeFixture } from "./helpers/context-scope-fixture";
+import {
+	GLOBAL_BODY,
+	PROFILE_BODY,
+	PROJECT_NESTED_BODY,
+	PROJECT_ROOT_BODY,
+	useContextScopeFixture,
+} from "./helpers/context-scope-fixture";
+
+// Each case boots a session, runs real discovery and completes a turn against a local server.
+setDefaultTimeout(60_000);
 
 const GLOBAL_MARKER = "GLOBAL-SCOPE-BYTES-c3f1";
 const PROFILE_MARKER = "PROFILE-SCOPE-BYTES-9a27";
-/** The synthetic path the provider gives the system-prompt rule. */
-const SYSTEM_PROMPT_RULE = "veyyon://system-prompt.mdc";
+const PROJECT_ROOT_MARKER = "PROJECT-ROOT-BYTES-51bd";
+const PROJECT_NESTED_MARKER = "PROJECT-NESTED-BYTES-7e40";
 /** Bytes that exist only after the operator edits the global file mid-session. */
 const EDITED_MARKER = "EDITED-GLOBAL-BYTES-5b0e";
-/** Bytes from a repository's own AGENTS.md, which must reach neither channel. */
-const PROJECT_MARKER = "PROJECT-SCOPE-BYTES-71da";
+
+/**
+ * What the wire does with each context-file scope, one recorded decision per level.
+ *
+ * Exhaustive by type: adding a member to `ContextFile["level"]` does not compile until someone
+ * records its answer, and the sweep below lays a real file down for every key and reads the
+ * answer off the frames the server received. A scope that is silently dropped on one api is the
+ * defect this file exists for, so "withheld" is not a value any level may take: a layer the
+ * session decided not to deliver must not be discovered in the first place.
+ */
+const LEVEL_ON_THE_WIRE: Record<ContextFile["level"], "delivered"> = {
+	global: "delivered",
+	user: "delivered",
+	project: "delivered",
+};
 
 const fixture = useContextScopeFixture("cursor-e2e-");
 
@@ -119,6 +152,47 @@ function deliveredRules(clientFrames: Buffer[]): CursorRule[] {
 	return [];
 }
 
+/**
+ * The text of the active user turn this stream sent, decoded from the raw bytes the server
+ * received. This is the field Cursor's server delivers to the model verbatim, so it is what
+ * "reached the model" means on this api.
+ */
+function deliveredUserTurn(clientFrames: Buffer[]): string {
+	let buffer = Buffer.concat(clientFrames);
+	while (buffer.length >= 5) {
+		const length = buffer.readUInt32BE(1);
+		if (buffer.length < 5 + length) break;
+		const body = buffer.subarray(5, 5 + length);
+		buffer = buffer.subarray(5 + length);
+		const message = fromBinary(AgentClientMessageSchema, new Uint8Array(body));
+		if (message.message.case !== "runRequest") continue;
+		const action = message.message.value.action?.action;
+		if (action?.case !== "userMessageAction") continue;
+		return action.value.userMessage?.text ?? "";
+	}
+	return "";
+}
+
+/**
+ * Whether this stream's client has answered the `requestContextArgs` ask.
+ *
+ * Keyed on the ANSWER, not on what the answer contains: the payload carries no rules now, and a
+ * trigger that waited for one would hang every turn.
+ */
+function answeredRequestContext(clientFrames: Buffer[]): boolean {
+	let buffer = Buffer.concat(clientFrames);
+	while (buffer.length >= 5) {
+		const length = buffer.readUInt32BE(1);
+		if (buffer.length < 5 + length) break;
+		const body = buffer.subarray(5, 5 + length);
+		buffer = buffer.subarray(5 + length);
+		const message = fromBinary(AgentClientMessageSchema, new Uint8Array(body));
+		if (message.message.case !== "execClientMessage") continue;
+		if (message.message.value.message.case === "requestContextResult") return true;
+	}
+	return false;
+}
+
 interface FakeCursorServer {
 	baseUrl: string;
 	/** One entry per request stream, in order: the raw bytes that turn's client sent. */
@@ -145,7 +219,7 @@ function startFakeCursor(): Promise<FakeCursorServer> {
 		let ended = false;
 		stream.on("data", (chunk: Buffer) => {
 			frames.push(Buffer.from(chunk));
-			if (ended || deliveredRules(frames).length === 0) return;
+			if (ended || !answeredRequestContext(frames)) return;
 			ended = true;
 			stream.write(turnEndedFrame());
 		});
@@ -174,11 +248,20 @@ interface OperatorWorkspace {
 	agentDir: string;
 	globalAgentsPath: string;
 	profileAgentsPath: string;
+	rootAgentsPath: string;
+	nestedAgentsPath: string;
+	agentDirFor: (profile: string) => string;
 	resetCaches: () => void;
-	writeFile: (target: string, body: string) => void;
+	writeFile: (target: string, body: string) => string;
 }
 
-describe("a cursor-agent turn carries the operator's instruction files", () => {
+function countOccurrences(haystack: string, needle: string): number {
+	let count = 0;
+	for (let at = haystack.indexOf(needle); at !== -1; at = haystack.indexOf(needle, at + needle.length)) count++;
+	return count;
+}
+
+describe("a cursor-agent turn carries every instruction layer the session found", () => {
 	let session: AgentSession | undefined;
 	let srv: FakeCursorServer | undefined;
 
@@ -190,34 +273,42 @@ describe("a cursor-agent turn carries the operator's instruction files", () => {
 	});
 
 	/**
-	 * The operator's own situation: a plain directory, no repository, no project file, with the
-	 * two files the operator owns written where discovery will find them.
+	 * Every scope on disk at once: the operator's two files, and the repository's own two at
+	 * their real depths. A case that wants fewer deletes what it does not want.
 	 */
-	function operatorWorkspace(): OperatorWorkspace {
-		const fx = fixture("work");
+	function operatorWorkspace(profile = "work"): OperatorWorkspace {
+		const fx = fixture(profile);
 		fx.writeFile(fx.globalAgentsPath, GLOBAL_BODY);
 		fx.writeFile(fx.profileAgentsPath, PROFILE_BODY);
-		const cwd = path.join(fx.home, "tmp");
-		fs.mkdirSync(cwd, { recursive: true });
+		fx.writeFile(fx.rootAgentsPath, PROJECT_ROOT_BODY);
+		fx.writeFile(fx.nestedAgentsPath, PROJECT_NESTED_BODY);
 		fx.resetCaches();
 		return {
-			cwd,
+			cwd: fx.cwd,
 			home: fx.home,
 			agentDir: fx.agentDir,
 			globalAgentsPath: fx.globalAgentsPath,
 			profileAgentsPath: fx.profileAgentsPath,
+			rootAgentsPath: fx.rootAgentsPath,
+			nestedAgentsPath: fx.nestedAgentsPath,
+			agentDirFor: fx.agentDirFor,
 			resetCaches: fx.resetCaches,
 			writeFile: fx.writeFile,
 		};
 	}
 
-	async function startSession(ws: OperatorWorkspace, baseUrl: string): Promise<AgentSession> {
-		const authStorage = await AuthStorage.create(path.join(ws.home, "auth.db"));
+	async function startSession(
+		ws: OperatorWorkspace,
+		baseUrl: string,
+		overrides: { cwd?: string; agentDir?: string } = {},
+	): Promise<AgentSession> {
+		const cwd = overrides.cwd ?? ws.cwd;
+		const authStorage = await AuthStorage.create(path.join(ws.home, `auth-${path.basename(cwd)}.db`));
 		authStorage.setRuntimeApiKey("cursor", "test-token");
 		const created = await createAgentSession({
-			cwd: ws.cwd,
-			agentDir: ws.agentDir,
-			sessionManager: SessionManager.create(ws.cwd, path.join(ws.home, "sessions")),
+			cwd,
+			agentDir: overrides.agentDir ?? ws.agentDir,
+			sessionManager: SessionManager.create(cwd, path.join(ws.home, "sessions")),
 			authStorage,
 			modelRegistry: new ModelRegistry(authStorage),
 			settings: Settings.isolated({ "async.enabled": false, "advisor.enabled": false }),
@@ -237,7 +328,7 @@ describe("a cursor-agent turn carries the operator's instruction files", () => {
 			// is the step that was never exercised together with the delivery choice.
 			disableExtensionDiscovery: true,
 			skills: [],
-			workspaceTree: { rootPath: ws.cwd, rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] },
+			workspaceTree: { rootPath: cwd, rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] },
 			promptTemplates: [],
 			slashCommands: [],
 			enableMCP: false,
@@ -253,64 +344,148 @@ describe("a cursor-agent turn carries the operator's instruction files", () => {
 	 * and only the ones carrying an answer say anything about delivery.
 	 */
 	function answeredTurns(server: FakeCursorServer): Buffer[][] {
-		return server.turns.filter(turn => deliveredRules(turn).length > 0);
+		return server.turns.filter(turn => answeredRequestContext(turn));
 	}
 
-	/** Join the content of the rules on one turn whose path matches. */
-	function ruleText(turn: Buffer[], matches: (rule: CursorRule) => boolean): string {
-		return deliveredRules(turn)
-			.filter(matches)
-			.map(rule => rule.content)
-			.join("\n\n");
+	/**
+	 * What the model receives on this turn: the text of the active user message.
+	 *
+	 * NOT the rules. The server applies none of them, so a case that reads the rules payload
+	 * proves only that bytes left this process — which is exactly how the defect stayed green
+	 * through two suites.
+	 */
+	function turnText(turn: Buffer[]): string {
+		return deliveredUserTurn(turn);
 	}
 
-	it("puts the global and profile AGENTS.md on the wire and keeps them out of the discarded prompt", async () => {
-		const ws = operatorWorkspace();
+	/** Run one turn and return what the first answering turn delivered. */
+	async function turnOnTheWire(ws: OperatorWorkspace, overrides: { cwd?: string; agentDir?: string } = {}) {
 		srv = await startFakeCursor();
-		session = await startSession(ws, srv.baseUrl);
-
+		session = await startSession(ws, srv.baseUrl, overrides);
 		await session.prompt("what are my standing orders?");
 		await session.waitForIdle();
-
-		// EVERY request the session made, not merely the first: a session issues more than one
-		// (the turn itself, plus whatever else runs on the same model), and one of them arriving
-		// without the operator's files is the same failure wearing a different hat.
 		const turns = answeredTurns(srv);
 		expect(turns.length).toBeGreaterThan(0);
-		for (const turn of turns) {
-			expect(deliveredRules(turn).map(rule => rule.fullPath)).toEqual([
-				SYSTEM_PROMPT_RULE,
-				ws.profileAgentsPath,
-				ws.globalAgentsPath,
-			]);
-		}
-		// Both operator scopes arrived as their own rules, carrying their real paths and bytes.
-		const operatorRules = ruleText(turns[0], rule => rule.fullPath !== SYSTEM_PROMPT_RULE);
-		expect(operatorRules).toContain(GLOBAL_MARKER);
-		expect(operatorRules).toContain(PROFILE_MARKER);
+		return { turns, first: turns[0], text: turnText(turns[0]) };
+	}
 
-		// And they are not ALSO in the system prompt. Cursor's server replaces that blob with
-		// its own, so a copy there is not redundancy, it is a copy that never arrives, and it
-		// hides the fact that the rules channel is the only one that works.
-		const systemPromptRule = ruleText(turns[0], rule => rule.fullPath === SYSTEM_PROMPT_RULE);
-		expect(systemPromptRule).not.toContain(GLOBAL_MARKER);
-		expect(systemPromptRule).not.toContain(PROFILE_MARKER);
+	it("delivers every scope it discovered, one recorded decision per level", async () => {
+		// The sweep. Each level has a real file on disk and a marker of its own, and the answer
+		// is read off the frames rather than asserted about a helper. A level that stops being
+		// delivered fails here by name.
+		const ws = operatorWorkspace();
+		const { text } = await turnOnTheWire(ws);
+
+		const markerFor: Record<ContextFile["level"], string> = {
+			global: GLOBAL_MARKER,
+			user: PROFILE_MARKER,
+			project: PROJECT_ROOT_MARKER,
+		};
+		const levels = Object.keys(LEVEL_ON_THE_WIRE) as ContextFile["level"][];
+		const observed = levels.map(level => [level, text.includes(markerFor[level]) ? "delivered" : "withheld"]);
+
+		expect(observed).toEqual(levels.map(level => [level, LEVEL_ON_THE_WIRE[level]]));
+	});
+
+	it("delivers the repository's own AGENTS.md, the layer this api used to drop", async () => {
+		// The reported regression, named. The repo file was withheld from the rules channel as
+		// "repository content" while the prompt that would have carried it was blanked for this
+		// api, so it reached the model on no channel at all.
+		const ws = operatorWorkspace();
+		const { text } = await turnOnTheWire(ws);
+
+		expect(text).toContain(PROJECT_ROOT_MARKER);
+		expect(text).toContain(fs.readFileSync(ws.rootAgentsPath, "utf8").trim());
+	});
+
+	it("delivers a package's own AGENTS.md beside the repository root's", async () => {
+		// Both project depths, not merely the nearest. A file closer to cwd refines its
+		// ancestors, which only works when the ancestor arrives too.
+		const ws = operatorWorkspace();
+		const { text } = await turnOnTheWire(ws);
+
+		expect(text).toContain(PROJECT_ROOT_MARKER);
+		expect(text).toContain(PROJECT_NESTED_MARKER);
+	});
+
+	it("carries the operator's instructions inside a delimited block, ahead of the question", async () => {
+		// The shape the model receives. The instructions are marked off from the question text,
+		// and the question stays after them, so a turn does not read as a recitation of a
+		// configuration file.
+		const ws = operatorWorkspace();
+		const { text } = await turnOnTheWire(ws);
+
+		const open = text.indexOf("<operator-instructions>");
+		const close = text.indexOf("</operator-instructions>");
+		expect(open).toBe(0);
+		expect(close).toBeGreaterThan(open);
+		expect(text.indexOf("what are my standing orders?")).toBeGreaterThan(close);
+		for (const marker of [GLOBAL_MARKER, PROFILE_MARKER, PROJECT_ROOT_MARKER, PROJECT_NESTED_MARKER]) {
+			expect(text.slice(open, close)).toContain(marker);
+		}
+	});
+
+	it("answers the request-context ask carrying no instruction bytes at all", async () => {
+		// The channel that used to carry a second copy of the whole prompt. The ask is still
+		// answered — a silent client stalls the turn — and the answer is instruction-free.
+		const ws = operatorWorkspace();
+		const { first } = await turnOnTheWire(ws);
+
+		expect(deliveredRules(first)).toEqual([]);
+	});
+
+	it("delivers each layer's bytes exactly once", async () => {
+		// Delivering twice is the failure mode of "fix it by sending it on both channels": it
+		// doubles a 40KB file into every request and hides which channel is the real one.
+		const ws = operatorWorkspace();
+		const { text } = await turnOnTheWire(ws);
+
+		for (const marker of [GLOBAL_MARKER, PROFILE_MARKER, PROJECT_ROOT_MARKER, PROJECT_NESTED_MARKER]) {
+			expect(countOccurrences(text, marker)).toBe(1);
+		}
+	});
+
+	it("keeps the authority order the prompt renders: project, then profile, then global", async () => {
+		// Position IS authority in a prompt, and the operator's own file has to hold the last,
+		// highest-recency slot. A channel that reordered the layers would deliver every byte and
+		// still let a repository outrank the operator.
+		const ws = operatorWorkspace();
+		const { text } = await turnOnTheWire(ws);
+
+		// A missing marker yields -1, which sorts before everything, so a dropped layer would
+		// pass an index comparison on its own. Presence is asserted first, in the same shape.
+		const at = [PROJECT_ROOT_MARKER, PROFILE_MARKER, GLOBAL_MARKER].map(marker => text.indexOf(marker));
+		expect(at.filter(index => index === -1)).toEqual([]);
+		expect(at[0]).toBeLessThan(at[1] as number);
+		expect(at[1]).toBeLessThan(at[2] as number);
+	});
+
+	it("carries them on every turn the session answered, not only the first", async () => {
+		// A session issues more than one request, and one of them arriving without the operator's
+		// instructions is the same failure wearing a different hat.
+		const ws = operatorWorkspace();
+		const { turns } = await turnOnTheWire(ws);
+		if (!session) throw new Error("session not started");
+		await session.prompt("and again");
+		await session.waitForIdle();
+
+		const all = answeredTurns(srv as FakeCursorServer);
+		expect(all.length).toBeGreaterThan(turns.length);
+		for (const turn of all) {
+			expect(turnText(turn)).toContain(GLOBAL_MARKER);
+			expect(turnText(turn)).toContain(PROJECT_ROOT_MARKER);
+		}
 	});
 
 	it("delivers the operator's files as edited after the session re-roots, not as first read", async () => {
-		// The resolver hands over whatever `promptContextFiles` holds AT REQUEST TIME. Capturing
-		// that array once at session start would look identical on turn one and would then serve
-		// the bytes from session start forever, so an operator who edits a file and re-roots is
-		// told the new instructions are live while the model keeps reading the old ones.
+		// The prompt is rebuilt from whatever discovery holds AT REQUEST TIME. Capturing the
+		// files once at session start would look identical on turn one and would then serve the
+		// bytes from session start forever, so an operator who edits a file and re-roots is told
+		// the new instructions are live while the model keeps reading the old ones.
 		const ws = operatorWorkspace();
-		srv = await startFakeCursor();
-		session = await startSession(ws, srv.baseUrl);
-
-		await session.prompt("first");
-		await session.waitForIdle();
-		expect(ruleText(answeredTurns(srv)[0], rule => rule.fullPath === ws.globalAgentsPath)).not.toContain(
-			EDITED_MARKER,
-		);
+		const { first } = await turnOnTheWire(ws);
+		expect(turnText(first)).not.toContain(EDITED_MARKER);
+		if (!session) throw new Error("session not started");
 
 		ws.writeFile(ws.globalAgentsPath, `${GLOBAL_BODY}\nEdited: ${EDITED_MARKER}.`);
 		const elsewhere = path.join(ws.home, "elsewhere");
@@ -321,29 +496,55 @@ describe("a cursor-agent turn carries the operator's instruction files", () => {
 		await session.prompt("second");
 		await session.waitForIdle();
 
-		const turns = answeredTurns(srv);
+		const turns = answeredTurns(srv as FakeCursorServer);
 		expect(turns.length).toBeGreaterThanOrEqual(2);
-		expect(ruleText(turns[turns.length - 1], rule => rule.fullPath === ws.globalAgentsPath)).toContain(EDITED_MARKER);
+		expect(turnText(turns[turns.length - 1])).toContain(EDITED_MARKER);
 	});
 
-	it("never puts a repository's own AGENTS.md on the wire", async () => {
-		// Project files are excluded from BOTH channels on cursor-agent, deliberately: a
-		// repository the operator merely opened does not get to instruct the agent through a
-		// channel the operator cannot see. Excluding them from the prompt without also excluding
-		// them from the rules would quietly promote every checked-in AGENTS.md to operator
-		// authority, which is a worse fault than the one this suite exists for.
+	it("keeps delivering the other layers when one of them is empty", async () => {
+		// An empty file is not an instruction, but it is also not a veto. Treating it as one is
+		// how a freshly created profile used to silence the operator's global file.
 		const ws = operatorWorkspace();
-		fs.writeFileSync(path.join(ws.cwd, "AGENTS.md"), `# Project\nMarker: ${PROJECT_MARKER}.\n`);
+		ws.writeFile(ws.profileAgentsPath, "   \n");
 		ws.resetCaches();
 
-		srv = await startFakeCursor();
-		session = await startSession(ws, srv.baseUrl);
+		const { text } = await turnOnTheWire(ws);
 
-		await session.prompt("what are my standing orders?");
-		await session.waitForIdle();
+		expect(text).not.toContain(PROFILE_MARKER);
+		expect(text).toContain(GLOBAL_MARKER);
+		expect(text).toContain(PROJECT_ROOT_MARKER);
+	});
 
-		const everything = ruleText(answeredTurns(srv)[0], () => true);
-		expect(everything).toContain(GLOBAL_MARKER);
-		expect(everything).not.toContain(PROJECT_MARKER);
+	it("carries the instruction file of the profile the session runs, not the booted one", async () => {
+		// The profile scope resolves from the session's agent dir. A session rooted in another
+		// profile that received the booted profile's file would be obeying rules the operator
+		// wrote for a different context, and would never see the ones they wrote for this one.
+		const ws = operatorWorkspace();
+		const otherAgentDir = ws.agentDirFor("review");
+		const otherMarker = "REVIEW-PROFILE-BYTES-2c8f";
+		ws.writeFile(path.join(otherAgentDir, "AGENTS.md"), `# Review profile\nMarker: ${otherMarker}.`);
+		ws.resetCaches();
+
+		const { text } = await turnOnTheWire(ws, { agentDir: otherAgentDir });
+
+		expect(text).toContain(otherMarker);
+		expect(text).not.toContain(PROFILE_MARKER);
+		// The scopes that do not depend on the profile still arrive.
+		expect(text).toContain(GLOBAL_MARKER);
+	});
+
+	it("delivers a CLAUDE.md at a level that has no AGENTS.md", async () => {
+		// The project rung is a ladder of filenames, not one name. A rung whose file happens to
+		// be the other supported name is still that rung's instructions.
+		const ws = operatorWorkspace();
+		fs.rmSync(ws.nestedAgentsPath);
+		const claudeMarker = "PROJECT-CLAUDE-BYTES-4d17";
+		ws.writeFile(path.join(path.dirname(ws.nestedAgentsPath), "CLAUDE.md"), `# Package rules\n${claudeMarker}`);
+		ws.resetCaches();
+
+		const { text } = await turnOnTheWire(ws);
+
+		expect(text).toContain(claudeMarker);
+		expect(text).toContain(PROJECT_ROOT_MARKER);
 	});
 });

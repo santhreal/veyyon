@@ -1,7 +1,7 @@
 /**
  * Unit coverage for the shared web-search helpers plus a single-owner lock for
  * `collapseWhitespace`. The HTML-scraping providers (google, startpage, mojeek,
- * ecosia, …) all clean extracted result text the same way — collapse every run
+ * …) all clean extracted result text the same way — collapse every run
  * of whitespace to one space and trim — and used to each re-inline
  * `(x ?? "").replace(/\s+/g, " ").trim()` (two even named a private
  * `normalizeText`). They now share `collapseWhitespace`; the lock fails if a

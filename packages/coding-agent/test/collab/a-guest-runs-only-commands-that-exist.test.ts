@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { CollabGuestLink } from "@veyyon/coding-agent/collab/guest";
-import { COLLAB_GUEST_ALLOWED_COMMANDS } from "@veyyon/coding-agent/collab/guest";
+import { COLLAB_GUEST_ALLOWED_COMMANDS } from "@veyyon/coding-agent/collab/guest-commands";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import {
 	BUILTIN_SLASH_COMMAND_DEFS,

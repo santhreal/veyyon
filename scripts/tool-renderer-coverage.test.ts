@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { BUILTIN_TOOLS, HIDDEN_TOOLS } from "@veyyon/coding-agent/tools";
-import { resolveToolRenderer } from "../packages/collab-web/src/tool-render/lib/registry";
+import { resolveToolRenderer } from "@veyyon/tool-render";
 
 /**
  * Every tool the agent can call has a real web renderer.
  *
- * WHY THIS SUITE EXISTS. `packages/collab-web/src/tool-render/lib` maps wire tool names to React
+ * WHY THIS SUITE EXISTS. `packages/tool-render` maps wire tool names to React
  * views, and an unknown name falls back to `genericRenderer`, which dumps the
  * raw arguments and result as JSON. That fallback is the right behaviour for a
  * tool this package has never heard of, an MCP tool or an extension's, and it is
@@ -65,7 +65,7 @@ describe("every agent tool has a web renderer", () => {
 
 		expect(
 			renderer,
-			`${name} has no renderer in packages/collab-web/src/tool-render/lib/registry.ts, so it renders as a raw JSON dump. Add one under lib/tools/ and register it.`,
+			`${name} has no renderer in packages/tool-render/src/registry.ts, so it renders as a raw JSON dump. Add one under src/tools/ and register it.`,
 		).not.toBe(genericRenderer);
 		expect(renderer.Summary).toBeDefined();
 	});

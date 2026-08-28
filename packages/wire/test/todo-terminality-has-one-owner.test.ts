@@ -26,7 +26,7 @@
  * WHAT IT DOES NOT CATCH. Whether a renderer actually asks. A renderer that
  * grows a second private copy of the vocabulary passes here and fails in
  * `packages/coding-agent/test/tools/todo-done-collapse.test.ts` and
- * `packages/collab-web/test/tool-render/todo-done-collapse.test.ts`, which drive the real
+ * `packages/tool-render/test/todo-done-collapse.test.ts`, which drive the real
  * components and compare their decision against this owner for the same cross
  * product.
  */

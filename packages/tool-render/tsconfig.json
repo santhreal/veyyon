@@ -1,0 +1,7 @@
+{
+	"extends": "../tsconfig.workspace.json",
+	"compilerOptions": {
+		"lib": ["ES2024", "DOM", "DOM.Iterable", "DOM.AsyncIterable"]
+	},
+	"include": ["src", "test"]
+}

@@ -286,7 +286,6 @@ const GRANDFATHERED: Readonly<Record<string, number>> = {
 	"packages/coding-agent/test/modes/cwd-change-refreshes-system-prompt.test.ts": 1,
 	"packages/coding-agent/test/modes/setup-wizard-onboarding-scope.test.ts": 1,
 	"packages/coding-agent/test/modes/utils/render-initial-messages.test.ts": 5,
-	"packages/coding-agent/test/multi-file-code-mutations-receive-one-review-before-finalization.test.ts": 4,
 	"packages/coding-agent/test/oauth-flow.test.ts": 4,
 	"packages/coding-agent/test/optimistic-submission-survives-prestream-rebuild.test.ts": 5,
 	"packages/coding-agent/test/phase1-stage1-failures-are-logged.test.ts": 1,

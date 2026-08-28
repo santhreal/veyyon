@@ -14,7 +14,7 @@
  * THE SHAPE OF THE FIX. `stripTaskResultEnvelope` lives in `@veyyon/wire`, which is
  * dependency-free and which both surfaces already depend on. This file is the owner's own
  * suite. The renderers prove they ASK the owner
- * (`packages/collab-web/test/tool-render/job-renderer-strips-the-task-result-envelope.test.ts`, and
+ * (`packages/tool-render/test/job-renderer-strips-the-task-result-envelope.test.ts`, and
  * `packages/coding-agent/test/job-renderer-preview.test.ts`, which renders the REAL prompt and
  * so also pins the tag names this parser looks for).
  *

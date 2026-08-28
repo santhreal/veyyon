@@ -253,7 +253,7 @@ import {
 	onModelRolesChanged,
 	validateProviderMaxInFlightRequests,
 } from "../config/settings";
-import { usesCursorRuleDelivery } from "../cursor";
+import { AFTER_EDIT_CHECKS } from "../config/settings-domains/editing";
 import { RawSseDebugBuffer } from "../debug/raw-sse-buffer";
 import { loadCapability } from "../discovery";
 import { reset as resetCapabilities } from "../discovery/capability";
@@ -1094,6 +1094,7 @@ export class AgentSession {
 	#titleSystemPrompt: string | undefined;
 	#toolChoiceQueue = new ToolChoiceQueue();
 	readonly #verificationEvidence = new VerificationEvidenceLedger();
+	#afterEditCheckReported = false;
 
 	// Bash execution state
 	#bashAbortControllers = new Set<AbortController>();
@@ -7758,12 +7759,7 @@ export class AgentSession {
 	#currentPromptModelKey(): string | undefined {
 		const model = this.model ? formatModelString(this.model) : undefined;
 		if (!model || this.settings.get("includeModelInPrompt")) return model;
-		const taskPolicy = usesCodexTaskPrompt(model) ? "task-policy:gpt-5.6" : "task-policy:default";
-		// Context-file delivery is model policy too: cursor-agent models inline no context
-		// files (operator layers travel as requestContext rules, repository files nowhere),
-		// so switching to or from one must rebuild the prompt even when both models share
-		// a task-policy cohort and this key would otherwise not change.
-		return usesCursorRuleDelivery(this.model) ? `${taskPolicy}:cursor-rules` : taskPolicy;
+		return usesCodexTaskPrompt(model) ? "task-policy:gpt-5.6" : "task-policy:default";
 	}
 
 	/**
@@ -9674,9 +9670,7 @@ export class AgentSession {
 		// re-enables advisor auto-resume that a prior user interrupt suppressed.
 		// Agent-initiated synthetic prompts (auto-continue, plan, reminders) do not.
 		if (options?.userInitiated ?? !options?.synthetic) {
-			this.#verificationEvidence.startUserTurn({
-				preservePendingCodeReview: this.settings.get("edit.critiqueCodeMutations"),
-			});
+			this.#verificationEvidence.startUserTurn();
 			this.#advisorAutoResumeSuppressed = false;
 			this.#planModeReminderCount = 0;
 			this.#planModeReminderAwaitingProgress = false;
@@ -13742,8 +13736,29 @@ export class AgentSession {
 		return true;
 	}
 
+	/**
+	 * A config file is read without enum validation, so a value outside the
+	 * schema arrives verbatim and would match neither pass — silently ending
+	 * every turn with no check at all. Fall back to the default and say so.
+	 */
+	#afterEditCheck(): (typeof AFTER_EDIT_CHECKS)[number] {
+		const configured = this.settings.get("edit.afterEdit");
+		for (const value of AFTER_EDIT_CHECKS) {
+			if (value === configured) return value;
+		}
+		if (!this.#afterEditCheckReported) {
+			this.#afterEditCheckReported = true;
+			logger.warn("edit.afterEdit holds a value the schema does not offer; using the default", {
+				configured,
+				allowed: AFTER_EDIT_CHECKS,
+			});
+		}
+		return "verify";
+	}
+
 	#enforceVerificationBeforeFinalize(): boolean {
 		if (this.#isSubagent) return false;
+		if (this.#afterEditCheck() !== "verify") return false;
 		const reminder = this.#verificationEvidence.takeFinalizationReminder();
 		if (!reminder) return false;
 		const reminderMessage: CustomMessage = {
@@ -13766,10 +13781,23 @@ export class AgentSession {
 		return true;
 	}
 
+	/** The calls the model can still read, so a review knows what it has to re-read. */
+	#toolCallIdsInContext(): ReadonlySet<string> {
+		const ids = new Set<string>();
+		for (const message of this.agent.state.messages) {
+			if (message.role !== "assistant") continue;
+			for (const part of message.content) {
+				if (part.type === "toolCall") ids.add(part.id);
+			}
+		}
+		return ids;
+	}
+
 	#enforceCodeReviewBeforeFinalize(): boolean {
 		if (this.#isSubagent) return false;
-		if (!this.settings.get("edit.critiqueCodeMutations")) return false;
-		const reminder = this.#verificationEvidence.takeCodeReviewReminder();
+		if (this.#afterEditCheck() !== "review") return false;
+		const inContext = this.#toolCallIdsInContext();
+		const reminder = this.#verificationEvidence.takeCodeReviewReminder(id => inContext.has(id));
 		if (!reminder) return false;
 		const reminderMessage: CustomMessage = {
 			role: "custom",

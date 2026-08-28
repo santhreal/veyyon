@@ -21,8 +21,8 @@ import {
 import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
 import { advisorStatusNextStep, describeAdvisorToggle } from "../advisor/messages";
 import { runTrustSlashCommand } from "../cli/trust-cli";
-import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest";
-import { CollabHost } from "../collab/host";
+import { COLLAB_GUEST_ALLOWED_COMMANDS } from "../collab/guest-commands";
+import type { CollabHost } from "../collab/host";
 import { DEFAULT_EFFORT_POINTER } from "../config/effort-resolver";
 import { credentialRemedySentence, missingCredentialsMessage } from "../config/missing-credentials";
 import { modelResolutionFailureMessage } from "../config/model-resolution-failure";
@@ -1603,6 +1603,9 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			// Scheme-less relay args default to wss (ws:// must be spelled out for localhost).
 			const relayUrl = relayInput.includes("://") ? relayInput : `wss://${relayInput}`;
 			const webUrl = ctx.settings.get("collab.webUrl") || "";
+			// The host client (relay socket, room crypto, wire codecs) loads here
+			// rather than at startup: a session that never hosts never evaluates it.
+			const { CollabHost } = await import("../collab/host");
 			const host = new CollabHost(ctx);
 			try {
 				await host.start(relayUrl, webUrl);
@@ -1632,6 +1635,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				return;
 			}
 			try {
+				const { CollabGuestLink } = await import("../collab/guest");
 				await new CollabGuestLink(ctx).join(link);
 			} catch (err) {
 				ctx.showError(`Failed to join collab session: ${errorMessage(err)}`);

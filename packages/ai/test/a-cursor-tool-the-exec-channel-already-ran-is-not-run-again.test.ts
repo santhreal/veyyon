@@ -184,7 +184,6 @@ async function driveMcpCall(order: "block-first" | "exec-first", toolName = "eva
 			execHandlers,
 			undefined,
 			[],
-			[],
 		);
 
 	if (order === "block-first") {
@@ -276,7 +275,6 @@ describe("a Cursor MCP call the exec channel already ran", () => {
 			h2Request,
 			execHandlers,
 			undefined,
-			[],
 			[],
 		);
 

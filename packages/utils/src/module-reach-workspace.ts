@@ -13,7 +13,7 @@
  *     is `packages/agent` and the package is `@veyyon/agent-core`, so all 569 `@veyyon/agent-core`
  *     specifiers in the repository resolved to nothing in both gates.
  *   - none of the four knew `@veyyon/mnemopi` (161 specifiers), `@veyyon/natives` (63), `@veyyon/stats`
- *     (37).
+ *     (37) or `@veyyon/tool-render` (2).
  *
  * Every gate built on this is an UPPER BOUND, so under-resolution is invisible: a specifier the table
  * does not know resolves to nothing, the walk stops there, and the ceiling passes while measuring less

@@ -56,14 +56,15 @@ import {
 } from "./config/model-resolver";
 import { buildServiceTierByFamily } from "./config/service-tier";
 import { Settings } from "./config/settings";
-import { CursorExecHandlers, cursorContextFileRules, usesCursorRuleDelivery } from "./cursor";
+import { CursorExecHandlers } from "./cursor";
 import { setActiveRules } from "./discovery/capability/rule";
 import { bucketRules, type RuleBuckets } from "./discovery/capability/rule-buckets";
 import { TtsrManager } from "./export/ttsr";
 import { DEFAULT_PLAN_FILE_URL } from "./plan-mode/plan-file-url";
 import { resolveGateInputs, resolveIntentField } from "./system-prompt-builder/gate-inputs";
 import "./discovery";
-import { type ArgotGate, renderPreamble, shouldEncode } from "argot";
+import { type ArgotGate, shouldEncode } from "argot/policy";
+import { renderPreamble } from "argot/preamble";
 import {
 	collectArgotLoadedRoots,
 	createArgotSession,
@@ -2733,13 +2734,12 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				agentDir,
 				resolvedCustomPrompt: options.customSystemPrompt,
 				skills: promptSkills,
-				// Cursor's server replaces client system-prompt blobs with its own canned prompt,
-				// so on cursor-agent models the operator's layers travel as requestContext rules
-				// (the `cursorRulesResolver` below) and NOTHING inlines here: a repository file may
-				// not configure the agent, and inlining the operator's files too would deliver
-				// them twice. `[]` is the deliberate "resolved to nothing"
-				// `BuildSystemPromptOptions.contextFiles` documents, not a discovery miss.
-				contextFiles: usesCursorRuleDelivery(agent?.state.model ?? model) ? [] : promptContextFiles,
+				// Every api inlines the operator's layers here, cursor-agent included. That api's
+				// server discards the client's system-prompt blobs and applies none of the
+				// request-context rules, so the provider carries the assembled prompt on the
+				// active user turn — the one thing it delivers verbatim. Either way the prompt
+				// IS the instruction payload, and one composer builds it for every api.
+				contextFiles: promptContextFiles,
 				tools: promptTools,
 				toolNames,
 				rules: promptRulebookRules,
@@ -3089,10 +3089,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				});
 			},
 			cursorExecHandlers,
-			// Reads the live `promptContextFiles` binding at turn time, so a `/reload` or
-			// `/move` reaches the next Cursor request. Composition policy (operator scopes
-			// only, repository files never) lives in `cursorContextFileRules`.
-			cursorRulesResolver: () => cursorContextFileRules(promptContextFiles),
 			transformToolCallArguments: (args, toolName) => {
 				// `display` is what an operator reads and what the session records;
 				// `execution` is what the tool runs with. They diverge on exactly one thing

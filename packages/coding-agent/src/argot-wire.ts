@@ -11,14 +11,10 @@ import {
 	type StreamingPartialJsonCarrier,
 	setStreamingPartialJson,
 } from "@veyyon/ai/utils/block-symbols";
-import {
-	type ArgotGate,
-	type ArgotSession,
-	makeGate,
-	makeStreamDecoder,
-	type StreamDecoder,
-	type Vocabulary,
-} from "argot";
+import { type ArgotGate, makeGate } from "argot/policy";
+import type { ArgotSession } from "argot/session";
+import { makeStreamDecoder, type StreamDecoder } from "argot/stream";
+import type { Vocabulary } from "argot/types";
 import { type JsonWithOptionalFields, mapJsonStrings } from "./json-transform";
 import { mapAgentMessageStrings, mapAssistantContentStrings } from "./secrets/obfuscator";
 import type { SessionContext } from "./session/session-context";

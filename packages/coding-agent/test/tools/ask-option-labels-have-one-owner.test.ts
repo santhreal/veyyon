@@ -221,14 +221,14 @@ describe("the ask option labels have one owner", () => {
  * the caller supplied, and then compares the edited text back. That makes the writer/reader split worse than
  * the three above rather than milder. `tools/ask.ts` appended it and stripped it; `modes/terminal/components/dialogs/ask-dialog.ts`
  * appended it a SECOND time from a bare template literal (`${label} (Recommended)`) and stripped it with a
- * private copy of the string; the shared web renderers stripped it with a third copy when rendering an answer for
+ * private copy of the string; `@veyyon/tool-render` stripped it with a third copy when rendering an answer for
  * HTML export and collab. Four spellings, two of them writers.
  *
  * The failure is silent and lands in the model's context. Change the wording in one writer and the readers stop
  * matching, so the marker survives into the answer and the model is told the user chose
  * "Deploy to production (Recommended)" rather than "Deploy to production". Nothing throws.
  *
- * The owner is `@veyyon/wire` rather than `tools/ask-option-labels.ts` because the web renderers have to read it and
+ * The owner is `@veyyon/wire` rather than `tools/ask-option-labels.ts` because tool-render has to read it and
  * cannot import from coding-agent. wire is dependency-free and both packages already depend on it.
  */
 describe("the recommended-option marker", () => {
@@ -293,11 +293,11 @@ describe("the recommended-option marker has one owner", () => {
 	});
 
 	/**
-	 * The cross-package half. The shared web renderers draw the answer for HTML export and
+	 * The cross-package half. tool-render is a separate package that renders the answer for HTML export and
 	 * collab, so its copy could drift without anything in coding-agent noticing.
 	 */
-	it("has the web renderers reading the marker from wire rather than its own copy", async () => {
-		const rel = "../../../collab-web/src/tool-render/lib/tools/ask.tsx";
+	it("has tool-render reading the marker from wire rather than its own copy", async () => {
+		const rel = "../../../tool-render/src/tools/ask.tsx";
 		const text = await Bun.file(path.resolve(import.meta.dir, rel)).text();
 		expect(MARKER_DECL.test(text)).toBe(false);
 		expect(moduleSpecifiersIn(text)).toContain("@veyyon/wire");

@@ -14,7 +14,7 @@
  *
  * THE CLASS, not the incident. The defect class is "a display decision that asks
  * about SOME statuses". `#isClosedTodo` in the HUD asked about two of them by
- * name; the shared web renderers kept a private copy of the whole vocabulary. So
+ * name; `@veyyon/tool-render` kept a private copy of the whole vocabulary. So
  * the terminality decision now has one owner, `TODO_STATUS_IS_TERMINAL` in
  * `@veyyon/wire`, and the sweep below enumerates that map AT RUN TIME and drives
  * the real renderer once per member. Adding a fifth status turns this suite red
@@ -22,7 +22,7 @@
  *
  * WHAT IT DOES NOT CATCH. It renders the TUI card. The HTML/collab renderer runs
  * the same derivation over the same owner but builds a different component tree,
- * and is covered by `packages/collab-web/test/tool-render/todo-done-collapse.test.ts`. This
+ * and is covered by `packages/tool-render/test/todo-done-collapse.test.ts`. This
  * suite also says nothing about WHERE the card sits in the transcript, only about
  * what it draws.
  */

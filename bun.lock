@@ -187,6 +187,7 @@
       "name": "@veyyon/collab-web",
       "version": "16.3.6",
       "dependencies": {
+        "@veyyon/tool-render": "catalog:",
         "@veyyon/utils": "catalog:",
         "@veyyon/wire": "catalog:",
         "lucide-react": "catalog:",
@@ -258,6 +259,7 @@
         "@tailwindcss/node": "catalog:",
         "@veyyon/ai": "catalog:",
         "@veyyon/catalog": "catalog:",
+        "@veyyon/tool-render": "catalog:",
         "@veyyon/utils": "catalog:",
         "chart.js": "catalog:",
         "date-fns": "catalog:",
@@ -288,6 +290,24 @@
       },
       "peerDependencies": {
         "@veyyon/coding-agent": "catalog:",
+      },
+    },
+    "packages/tool-render": {
+      "name": "@veyyon/tool-render",
+      "version": "1.2.0",
+      "dependencies": {
+        "@veyyon/utils": "catalog:",
+        "@veyyon/wire": "catalog:",
+        "lucide-react": "catalog:",
+        "react": "catalog:",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:",
+        "@types/react": "catalog:",
+      },
+      "peerDependencies": {
+        "react": "catalog:",
+        "react-dom": "catalog:",
       },
     },
     "packages/tui": {
@@ -393,6 +413,7 @@
     "@veyyon/natives": "1.2.0",
     "@veyyon/stats": "1.2.0",
     "@veyyon/swarm-extension": "1.2.0",
+    "@veyyon/tool-render": "1.2.0",
     "@veyyon/tui": "1.2.0",
     "@veyyon/utils": "1.2.0",
     "@veyyon/wire": "1.2.0",
@@ -998,6 +1019,8 @@
     "@veyyon/stats": ["@veyyon/stats@workspace:packages/stats"],
 
     "@veyyon/swarm-extension": ["@veyyon/swarm-extension@workspace:packages/swarm-extension"],
+
+    "@veyyon/tool-render": ["@veyyon/tool-render@workspace:packages/tool-render"],
 
     "@veyyon/tui": ["@veyyon/tui@workspace:packages/tui"],
 

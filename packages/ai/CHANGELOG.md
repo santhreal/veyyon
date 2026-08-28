@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `StreamOptions.cursorRules` and the exported `CursorRuleInput` type are removed, and `buildCursorRules` takes only the system prompt: the Cursor provider builds exactly one request-context rule, the assembled prompt.
+
 ### Added
 
 - `ToolCallLoopGuard` detects consecutive redundant reads of unchanged files whose requested line ranges are already fully present in recent context, steering runaway exploration loops while preserving prompt cache prefixes.
@@ -13,6 +17,7 @@
 
 - A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `packages/bench/`; behavior is unchanged.
 - A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
+- `ToolCallLoopGuard` waits for a third consecutive subsumed read before steering, up from the second, so two narrowing reads of one file are no longer treated as a loop; `model.toolCallLoopGuard.readSubsumptionThreshold` still sets it.
 - Formatted tool-call loop guard whitespace; behavior is unchanged.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
 - `ToolCall.arguments` is a `Readonly<Record<string, unknown>>`, so a producer replaces the object instead of writing into one a streaming snapshot already shares.
@@ -24,6 +29,11 @@
 
 ### Fixed
 
+- A long name whose tail cycles is no longer read as a runaway sampler: a folder, path segment, hex digest or identifier that repeats a short group past the 180-character threshold ended the turn with `Thinking loop detected: repeated "…" N× back-to-back` and re-sampled a prompt that produced the same name for the same reason. A whitespace-free run that continues a longer token is data, on both the streamed detector and the completed-text scanner; a run that begins at a token boundary still trips.
+- A `cursor-agent` model receives the operator's instructions again: the server rebuilds the prompt head with its own system prompt and applies none of the request-context rules, so the assembled prompt now rides on the active user turn inside an `<operator-instructions>` block.
+- A `cursor-agent` request uploads the operator's instructions once instead of three times: the request-context rule payload and the prompt-head blobs, both discarded by that server, no longer carry a copy, and a request that would send any count other than one fails before it is written.
+- Each tool call in a `cursor-agent` batch keeps its own arguments: updates route by the frame's `call_id` instead of a single "current call" pointer, which let a completing call overwrite the arguments of the one opened after it and left the first call with `{}`.
+- A `cursor-agent` turn that ends with tool calls still streaming closes every open call rather than only the one the pointer last named, so a second call of a batch is no longer dropped as unfinished, and each closed call keeps its own parsed arguments and carries no streaming marker.
 - A `503 auth_unavailable` refusal is classified as an authentication failure rather than a bare server status, so compaction falls back to an authenticated model instead of failing the whole compaction ([#986](https://github.com/santhreal/veyyon/issues/986)).
 - A llama.cpp tool-call JSON parse failure explains itself and names the fix on every route to a local server, not only when the provider id is `ollama`, so an LM Studio or llama-cpp user sees why the turn stopped instead of a bare HTTP 500 whose retry was already being suppressed.
 - A llama.cpp tool-call JSON parse failure stops the retry ladder whether it arrives thrown from a request or recorded on an assistant message; the two classifier entry points share one post-walk latch instead of each deciding, so the same 500 no longer burned every attempt on one route while surfacing immediately on the other.

@@ -55,7 +55,7 @@ interface BrowserFallbackOptions {
 	 *
 	 * `timeoutMs` is optional and defaults to {@link RESULT_RENDER_TIMEOUT_MS}: the
 	 * SELECTOR is the provider's own fact and the patience is this mechanism's, and
-	 * when each provider carried both, google and ecosia each declared the same
+	 * when each provider carried both, two of them declared the same
 	 * `RESULT_RENDER_TIMEOUT_MS = 10_000` beside their selector.
 	 */
 	ready?: { selector: string; timeoutMs?: number };

@@ -177,7 +177,7 @@ export function classifyProviderHttpError(
  *
  * This is the ONE owner of the rule every HTML search provider applies to its result anchors: resolve
  * the href against the engine's own home page, require http(s), and reject links that point back at the
- * engine. Ecosia, Mojeek and Startpage each had a byte-identical copy of it differing only in the host
+ * engine. The HTML engines each had a byte-identical copy of it differing only in the host
  * list, which is how the three drifted into checking hosts three different ways -- one spelled `www.`
  * out, one matched subdomains, one did both -- for no reason anyone chose. Subdomain matching is the
  * rule here, so `images.<engine>` and `www.<engine>` are both rejected everywhere.

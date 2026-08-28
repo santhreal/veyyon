@@ -12,9 +12,7 @@
  * ceiling that walks through it.
  *
  * Four private benchmark packages had each of those costs paid four times over
- * for one purpose — measuring this product — and one publishable package,
- * `@veyyon/tool-render`, existed for two consumers that were both `collab-web`.
- * Five packages became `packages/bench` and `packages/collab-web/src/tool-render`.
+ * for one purpose — measuring this product — and became `packages/bench`.
  *
  * WHAT THIS DOES NOT ASSERT. Which packages exist, and whether the tables
  * describe them: `scripts/package-map-coverage.test.ts` owns both directions of
@@ -38,24 +36,19 @@ const PACKAGES_DIR = path.join(REPO_ROOT, "packages");
  * raise it in the same commit that adds the package, and say in the message which
  * existing package was considered and why it could not serve.
  *
- * The count went 19 -> 15 on this branch: `deepswe-bench`, `metaharness`,
+ * The count went 19 -> 16 on this branch: `deepswe-bench`, `metaharness`,
  * `simulations` and `typescript-edit-benchmark` became subtrees of one
- * `packages/bench`, and `tool-render` became
- * `packages/collab-web/src/tool-render/lib`.
+ * `packages/bench`.
  *
- * The budget is 16 rather than 15 because `packages/render-oracle` landed on
- * `main` after this branch left it and arrives with the merge. That is the whole
- * of the slack and it is spoken for; `SPOKEN_FOR` below keeps it from being spent
- * on anything else.
+ * `tool-render` was folded into `collab-web` here and then restored, which is
+ * the counter-example this budget is for. The fold was sound while both of its
+ * consumers were `collab-web`; `@veyyon/stats` became a second consumer, and
+ * `stats` is publishable while `collab-web` declares `"private": true`, so a
+ * published package would have depended on one that resolves for nobody outside
+ * this workspace. A shared publishable library with two unrelated consumers is
+ * the case where an existing package cannot serve.
  */
 const PACKAGE_BUDGET = 16;
-
-/**
- * Packages the budget accounts for that this checkout may not have yet. Named, so
- * the one unspent slot is a statement about a specific package rather than
- * headroom a later reader reads as room to grow.
- */
-const SPOKEN_FOR = ["render-oracle"];
 
 /** A directory under `packages/` that carries a manifest, which is what makes it a package. */
 function workspacePackages(): string[] {
@@ -72,7 +65,7 @@ function workspacePackages(): string[] {
  * count alone cannot see a merge being undone one package at a time: dropping
  * `bench` and restoring `metaharness` keeps the count flat.
  */
-const MERGED_AWAY = ["deepswe-bench", "metaharness", "simulations", "tool-render", "typescript-edit-benchmark"];
+const MERGED_AWAY = ["deepswe-bench", "metaharness", "simulations", "typescript-edit-benchmark"];
 
 describe("the workspace package count", () => {
 	const packages = workspacePackages();
@@ -102,13 +95,15 @@ describe("the workspace package count", () => {
 		).toBeLessThanOrEqual(PACKAGE_BUDGET);
 	});
 
-	it("has no unspent slack beyond the packages the budget names", () => {
-		const absent = SPOKEN_FOR.filter(name => !packages.includes(name));
-
+	it("has no unspent slack", () => {
+		// The budget carries no headroom on purpose. A named held slot was tried here
+		// and it exempted a package that turned out not to exist on `main` at all,
+		// which is a ledger row that guards nothing — the same defect the source-lock
+		// ledger had. A slot is added when the package is.
 		expect(
-			packages.length + absent.length,
-			`${PACKAGE_BUDGET - packages.length - absent.length} slot(s) of the budget are unaccounted for. ` +
-				"A package was removed: lower the number in this file, or name the package the slot is held for.",
+			packages.length,
+			`${PACKAGE_BUDGET - packages.length} slot(s) of the budget are unaccounted for. ` +
+				"A package was removed: lower the number in this file in the same commit.",
 		).toBe(PACKAGE_BUDGET);
 	});
 
