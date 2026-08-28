@@ -37,6 +37,8 @@ All notable changes to `@veyyon/evals` will be documented in this file.
 - `engine/package-paths.ts` is the single owner of the package's directory layout, replacing the DeepSWE-scoped `paths.ts` and the manager's second copy.
 - The search benches write their scratch corpora to the repository's `.internal/` directory instead of creating a stray `packages/.internal/`.
 - Record and config parsing calls `isRecord` and `errorMessage` from `@veyyon/utils` instead of eight local copies.
+- Zero barrel files (`export * from`) remain in the package. Every importer reaches the source module directly, so adding a member requires writing exactly one file with no index or barrel edit.
+- `tsconfig.json` includes the package root and excludes `dashboard/` instead of the removed `src/` tree. `.gitignore` and `scripts/local-endpoint-bridge.sh` no longer reference `src/`.
 
 ### Fixed
 
