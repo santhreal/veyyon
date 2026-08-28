@@ -39,7 +39,7 @@ import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/components/statu
 import type { StatusLinePreset } from "@veyyon/coding-agent/modes/components/status-line/types";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { visibleWidth } from "@veyyon/tui";
+import { visibleWidth } from "@veyyon/utils/width";
 
 beforeAll(async () => {
 	resetSettingsForTest();

@@ -29,7 +29,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getDefaultPasteImageKeys, KEYBINDINGS } from "@veyyon/coding-agent/config/keybindings";
-import { canonicalKeyId } from "@veyyon/tui";
+import { canonicalKeyId } from "@veyyon/utils/keybindings";
 
 const REPO = path.resolve(import.meta.dir, "../../../..");
 const REFERENCE = path.join(REPO, "docs", "handbook", "src", "reference", "keybindings-ref.md");

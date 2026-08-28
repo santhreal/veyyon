@@ -1,13 +1,8 @@
-import {
-	padding,
-	routeSelectListMouse,
-	type SelectItem,
-	type SelectList,
-	type SgrMouseEvent,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
+import type { SelectItem, SelectList } from "@veyyon/tui";
 import { clampLow, errorMessage } from "@veyyon/utils";
+import { routeSelectListMouse, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { withIcon } from "../../theme/icon-label";
 import {
 	enableAutoTheme,

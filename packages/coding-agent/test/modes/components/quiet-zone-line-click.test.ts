@@ -11,7 +11,7 @@
  * reach the handler.
  */
 import { describe, expect, it } from "bun:test";
-import type { SgrMouseEvent } from "@veyyon/tui";
+import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 import { QuietZoneLine } from "../../../src/modes/components/composer-chrome";
 
 function click(col: number, overrides: Partial<SgrMouseEvent> = {}): SgrMouseEvent {

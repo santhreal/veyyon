@@ -2,14 +2,17 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { detectMacOSAppearance, MacAppearanceObserver } from "@veyyon/natives";
 import type { EditorTheme, SelectListTheme, SettingsListTheme } from "@veyyon/tui";
-import { blendHex, colorEnabled, parseHexColor, sliceWithWidth, TERMINAL, visibleWidth } from "@veyyon/tui";
+import { colorEnabled, TERMINAL } from "@veyyon/tui";
 import { adjustHsv, colorLuma } from "@veyyon/utils/color";
 import { getCustomThemesDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
 // Owners, not the `@veyyon/utils` barrel: 5 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { clamp } from "@veyyon/utils/math";
+import { blendHex } from "@veyyon/utils/motion";
+import { parseHexColor } from "@veyyon/utils/paint-ground";
 import { errorMessage } from "@veyyon/utils/type-guards";
+import { sliceWithWidth, visibleWidth } from "@veyyon/utils/width";
 import {
 	onAutoThemeMappingChanged,
 	onColorBlindModeChanged,

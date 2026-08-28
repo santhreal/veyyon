@@ -1,6 +1,9 @@
-import { matchesKey } from "../keys";
+import { Ellipsis } from "@veyyon/natives";
+import { matchesKey } from "@veyyon/utils/keys";
+import { clamp } from "@veyyon/utils/math";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import type { Component } from "../tui";
-import { clamp, Ellipsis, replaceTabs, truncateToWidth, visibleWidth } from "../utils";
 
 const DEFAULT_TRACK = "│";
 const DEFAULT_THUMB = "█";

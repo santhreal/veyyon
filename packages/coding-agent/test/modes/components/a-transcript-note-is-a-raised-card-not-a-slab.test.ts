@@ -42,8 +42,9 @@ import { TtsrNotificationComponent } from "@veyyon/coding-agent/modes/components
 import { resetGroundTintsForTest, setDetectedTerminalGround } from "@veyyon/coding-agent/modes/theme/ground-tints";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { Component } from "@veyyon/tui";
-import { setAnsiPolicy, TERMINAL, visibleWidth } from "@veyyon/tui";
+import { setAnsiPolicy, TERMINAL } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 
 const WIDTH = 100;
 

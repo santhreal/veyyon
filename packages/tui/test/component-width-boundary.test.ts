@@ -17,8 +17,8 @@
 import { describe, expect, it } from "bun:test";
 import { Markdown } from "@veyyon/tui/components/markdown";
 import { Text } from "@veyyon/tui/components/text";
-import { padding } from "@veyyon/tui/utils";
 import { buildString, fuzzSeed, lcg } from "@veyyon/utils/adversarial-strings";
+import { padding } from "@veyyon/utils/padding";
 import { defaultMarkdownTheme } from "./test-themes.js";
 
 // Widths that break naive layout math: zero/one/two cols, negatives, NaN,

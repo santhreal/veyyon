@@ -25,7 +25,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { selectionBand } from "@veyyon/coding-agent/modes/components/selector-helpers";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { type AnsiPolicy, getAnsiPolicy, ScrollView, setAnsiPolicy, visibleWidth } from "@veyyon/tui";
+import { type AnsiPolicy, getAnsiPolicy, ScrollView, setAnsiPolicy } from "@veyyon/tui";
+import { visibleWidth } from "@veyyon/utils/width";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 const BG_OPEN = /\x1b\[(?:4[0-7]|10[0-7]|48;(?:2;\d+;\d+;\d+|5;\d+))m/;

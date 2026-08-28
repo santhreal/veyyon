@@ -1,5 +1,6 @@
-import { type Component, visibleWidth } from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
 import { formatCount } from "@veyyon/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 import type { AdvisorMessageDetails, AdvisorSeverity } from "../../advisor";
 import {
 	createCachedComponent,

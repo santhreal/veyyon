@@ -2,17 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";
-import {
-	type Component,
-	MOTION,
-	type MotionClock,
-	padding,
-	SettleValue,
-	sliceWithWidth,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
 import { formatClock, getProjectDir, scopedTimeoutSignal, stripAnsi, withScopedTimeoutSignal } from "@veyyon/utils";
+import { MOTION, type MotionClock, SettleValue } from "@veyyon/utils/motion";
+import { padding } from "@veyyon/utils/padding";
+import { sliceWithWidth, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { resolveContextLimit } from "../../../config/compaction-strategy";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../config/settings-instance";

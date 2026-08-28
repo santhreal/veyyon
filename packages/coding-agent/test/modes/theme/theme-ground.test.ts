@@ -18,7 +18,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createTheme, getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
-import { parseHexColor } from "@veyyon/tui";
+import { parseHexColor } from "@veyyon/utils/paint-ground";
 
 const darkJson = JSON.parse(fs.readFileSync(path.join(import.meta.dir, "../../../src/modes/theme/dark.json"), "utf-8"));
 

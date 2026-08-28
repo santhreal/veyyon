@@ -12,17 +12,11 @@
  * the change via a normal steering message.
  */
 import { agentPauseGate } from "@veyyon/agent-core";
-import {
-	type Component,
-	centerLine,
-	matchesKey,
-	type OverlayFocusOwner,
-	type OverlayHandle,
-	type OverlayOptions,
-	parseSgrMouse,
-	TERMINAL,
-} from "@veyyon/tui";
+import { type Component, type OverlayFocusOwner, type OverlayHandle, type OverlayOptions, TERMINAL } from "@veyyon/tui";
 import { formatClock } from "@veyyon/utils";
+import { matchesKey } from "@veyyon/utils/keys";
+import { parseSgrMouse } from "@veyyon/utils/mouse";
+import { centerLine } from "@veyyon/utils/padding";
 import { formatDurationCoarse } from "../../slash-commands/helpers/format";
 import { theme } from "../theme/theme";
 import { matchesAppInterrupt } from "../utils/keybinding-matchers";

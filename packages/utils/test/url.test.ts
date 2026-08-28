@@ -199,7 +199,7 @@ const INLINE_STRIP = /replace\(\s*\/\\\/\+\$\//;
 // dir-marker sites where a single trailing slash is a filesystem-path separator,
 // not a URL, and the doubled-slash case never arises: keep them local. Any NEW
 // strip-one URL normalizer fails this lock — call trimTrailingSlashes instead.
-const STRIPONE_GRANDFATHERED = new Set<string>(["tui/src/autocomplete.ts", "utils/src/path-tree.ts"]);
+const STRIPONE_GRANDFATHERED = new Set<string>(["utils/src/autocomplete.ts", "utils/src/path-tree.ts"]);
 // Whitespace-tolerant for the same reason `INLINE_STRIP` is: this required single spaces around the `?`
 // and the whole ternary on one line, so a formatter wrapping it would have hidden a new violation the
 // same way one was hidden in mnemopi. Re-scanned in the widened form, it still finds exactly the two

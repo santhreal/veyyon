@@ -26,8 +26,11 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import type { Model } from "@veyyon/ai";
 import { Effort } from "@veyyon/catalog/effort";
-import type { AnsiPolicy, Component, KeyId, TUI } from "@veyyon/tui";
-import { getAnsiPolicy, motionClock, setAnsiPolicy, TERMINAL, visibleWidth } from "@veyyon/tui";
+import type { AnsiPolicy, Component, TUI } from "@veyyon/tui";
+import { getAnsiPolicy, setAnsiPolicy, TERMINAL } from "@veyyon/tui";
+import type { KeyId } from "@veyyon/utils/keys";
+import { motionClock } from "@veyyon/utils/motion";
+import { visibleWidth } from "@veyyon/utils/width";
 import type { ModelRegistry } from "../../../src/config/model-registry";
 import { Settings } from "../../../src/config/settings";
 import { AccountManagerComponent } from "../../../src/modes/components/account-manager";

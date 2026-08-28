@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AutocompleteItem } from "@veyyon/tui";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
+import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
 import type { ExtensionContext, ExtensionFactory } from "../extensibility/extensions";
 import { autoresearchPrompts } from "../prompts/autoresearch/rows";
 import * as git from "../utils/git";

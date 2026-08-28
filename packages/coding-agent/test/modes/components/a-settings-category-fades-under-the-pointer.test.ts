@@ -36,7 +36,8 @@ import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
 import { getThemeByName, initTheme, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
-import { type AnsiPolicy, getAnsiPolicy, motionClock, setAnsiPolicy, TERMINAL } from "@veyyon/tui";
+import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TERMINAL } from "@veyyon/tui";
+import { motionClock } from "@veyyon/utils/motion";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const WIDTH = 160;

@@ -11,20 +11,14 @@ import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { getModelPricing, modelsAreEqual } from "@veyyon/catalog/models";
-import {
-	type Component,
-	Ellipsis,
-	fuzzyRank,
-	HoverFade,
-	type HoverFadeOptions,
-	Input,
-	matchesKey,
-	ScrollView,
-	type SgrMouseEvent,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
+import { Ellipsis } from "@veyyon/natives";
+import { type Component, Input, ScrollView } from "@veyyon/tui";
 import { clampLow, formatNumber } from "@veyyon/utils";
+import { fuzzyRank } from "@veyyon/utils/fuzzy";
+import { matchesKey } from "@veyyon/utils/keys";
+import { HoverFade, type HoverFadeOptions } from "@veyyon/utils/motion";
+import type { SgrMouseEvent } from "@veyyon/utils/mouse";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { resolveEffort, withLegacyDefaultEffort } from "../../config/effort-resolver";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../../config/model-resolver";
 import { DEFAULT_MODEL_SLOT, getKnownRoleIds, getRoleInfo, MODEL_ROLE_IDS } from "../../config/model-roles";

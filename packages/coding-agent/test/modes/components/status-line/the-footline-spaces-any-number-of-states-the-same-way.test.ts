@@ -50,8 +50,8 @@ import {
 } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/approval-modes";
-import { visibleWidth } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
+import { visibleWidth } from "@veyyon/utils/width";
 
 /** The context patch that turns one base mode on, keyed by its id in the table. */
 const ACTIVATORS: Record<string, Partial<SegmentContext>> = {

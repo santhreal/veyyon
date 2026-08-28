@@ -1,8 +1,10 @@
 import { fileURLToPath } from "node:url";
 import type { ImageContent } from "@veyyon/ai";
-import { addKeyAliases, canonicalKeyId, Editor, type KeyId, parseKey, parseKittySequence } from "@veyyon/tui";
-import { BracketedPasteHandler, PASTE_END, PASTE_START } from "@veyyon/tui/bracketed-paste";
+import { Editor } from "@veyyon/tui";
 import { hasUriScheme } from "@veyyon/utils";
+import { BracketedPasteHandler, PASTE_END, PASTE_START } from "@veyyon/utils/bracketed-paste";
+import { addKeyAliases, canonicalKeyId } from "@veyyon/utils/keybindings";
+import { type KeyId, parseKey, parseKittySequence } from "@veyyon/utils/keys";
 // The leaf table, not the loader: this file needs the shipped chords, not yaml.
 import { KEYBINDINGS } from "../../config/keybinding-defs";
 import type { AppKeybinding } from "../../config/keybindings";

@@ -1,19 +1,13 @@
-import { BracketedPasteHandler, decodeReencodedPasteControls } from "../bracketed-paste";
-import { getKeybindings } from "../keybindings";
-import { extractPrintableText, isLoneLineFeed } from "../keys";
-import { KillRing } from "../kill-ring";
+import { BracketedPasteHandler, decodeReencodedPasteControls } from "@veyyon/utils/bracketed-paste";
+import { getKeybindings } from "@veyyon/utils/keybindings";
+import { extractPrintableText, isLoneLineFeed } from "@veyyon/utils/keys";
+import { KillRing } from "@veyyon/utils/kill-ring";
+import { clampLow } from "@veyyon/utils/math";
+import { padding } from "@veyyon/utils/padding";
+import { getSegmenter, sliceWithWidth, visibleWidth } from "@veyyon/utils/width";
+import { getWordNavKind, moveWordLeft, moveWordRight } from "@veyyon/utils/word-nav";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import { type Component, CURSOR_MARKER, type Focusable } from "../tui";
-import {
-	clampLow,
-	getSegmenter,
-	getWordNavKind,
-	moveWordLeft,
-	moveWordRight,
-	padding,
-	replaceTabs,
-	sliceWithWidth,
-	visibleWidth,
-} from "../utils";
 
 const segmenter = getSegmenter();
 

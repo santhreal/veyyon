@@ -19,7 +19,7 @@
  * 3. Or start in plan mode with --plan flag
  */
 import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent";
-import { Key } from "@veyyon/tui";
+import { Key } from "@veyyon/utils/keys";
 
 // Read-only tools for plan mode
 const PLAN_MODE_TOOLS = ["read", "bash", "search", "find"];

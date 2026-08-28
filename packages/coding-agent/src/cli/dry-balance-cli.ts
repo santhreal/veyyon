@@ -12,8 +12,9 @@ import type {
 	SimpleStreamOptions,
 } from "@veyyon/ai";
 import { streamSimple } from "@veyyon/ai";
-import { replaceTabs, truncateToWidth } from "@veyyon/tui";
 import { formatDuration } from "@veyyon/utils";
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import chalk from "chalk";
 import { modelResolutionFailureMessage } from "../config/model-resolution-failure";
 import {

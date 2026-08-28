@@ -24,7 +24,7 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { type Tab, TabBar, type TabBarTheme } from "@veyyon/tui/components/tab-bar";
-import { visibleWidth } from "@veyyon/tui/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 
 /** Unstyled theme, so every assertion is about layout rather than colour. */
 const PLAIN_THEME: TabBarTheme = {

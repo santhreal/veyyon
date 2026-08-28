@@ -36,9 +36,8 @@
  * already carries; it is bounded by the same envelope and converges to the
  * static bytes rather than to a half-drawn state.
  */
-
-import { blendHex } from "@veyyon/tui";
 import { clamp01 } from "@veyyon/utils/math";
+import { blendHex } from "@veyyon/utils/motion";
 import type { Theme } from "../modes/theme/theme";
 
 /** Milliseconds between idle steps. One repaint of one block per step. */

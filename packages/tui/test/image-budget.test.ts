@@ -3,12 +3,6 @@ import { TUI } from "@veyyon/tui";
 import { Image, ImageBudget } from "@veyyon/tui/components/image";
 import { Text } from "@veyyon/tui/components/text";
 import {
-	encodeKittyVirtualPlacement,
-	getKittyGraphics,
-	KITTY_PLACEHOLDER,
-	setKittyGraphics,
-} from "@veyyon/tui/kitty-graphics";
-import {
 	type CellDimensions,
 	encodeKitty,
 	encodeKittyDeleteImage,
@@ -18,8 +12,14 @@ import {
 	ImageProtocol,
 	setCellDimensions,
 	TERMINAL,
-	wrapTmuxPassthrough,
 } from "@veyyon/tui/terminal-capabilities";
+import {
+	encodeKittyVirtualPlacement,
+	getKittyGraphics,
+	KITTY_PLACEHOLDER,
+	setKittyGraphics,
+} from "@veyyon/utils/kitty-graphics";
+import { wrapTmuxPassthrough } from "@veyyon/utils/tmux";
 import { settleFrames } from "./helpers/settle-frames";
 import { VirtualTerminal } from "./virtual-terminal";
 

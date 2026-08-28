@@ -24,7 +24,7 @@ import { Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { CardPadRow, ComposerHairline, QuietZoneLine } from "@veyyon/coding-agent/modes/components/composer-chrome";
 import { setShimmerActivity } from "@veyyon/coding-agent/modes/theme/shimmer";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
-import { visibleWidth } from "@veyyon/tui/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 
 function strip(s: string): string {
 	return s.replace(/\x1b\[[0-9;]*m/g, "");

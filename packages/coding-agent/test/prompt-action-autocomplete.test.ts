@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { KeybindingsManager as AppKeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { createPromptActionAutocompleteProvider } from "@veyyon/coding-agent/modes/prompt-action-autocomplete";
-import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/tui";
+import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/utils/keybindings";
 
 describe("prompt action autocomplete", () => {
 	beforeEach(() => {

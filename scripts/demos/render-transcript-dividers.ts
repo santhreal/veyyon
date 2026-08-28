@@ -16,6 +16,8 @@
  * Each block is a REAL component built from a real message, not a mock-up of
  * one. `--expanded` opens the detail every summary divider hides behind ctrl+o.
  */
+
+import { KeybindingsManager, setKeybindings } from "@veyyon/utils/keybindings";
 import {
 	createBranchSummaryMessage,
 	createCompactionSummaryMessage,
@@ -30,7 +32,6 @@ import {
 } from "../../packages/coding-agent/src/modes/components/compaction-summary-message";
 import { COMPOSER_INSET_COLS } from "../../packages/coding-agent/src/modes/components/composer-chrome";
 import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
-import { KeybindingsManager, setKeybindings } from "../../packages/tui/src/keybindings";
 import { flag, hasFlag, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

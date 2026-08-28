@@ -1,5 +1,5 @@
 import { matchesKittySequence as nativeMatchesKittySequence } from "@veyyon/natives";
-import { parseKittySequence } from "../src/keys";
+import { parseKittySequence } from "@veyyon/utils/keys";
 import { makeBench } from "./_harness";
 
 const ITERATIONS = 2000;

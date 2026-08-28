@@ -1,12 +1,7 @@
-import { matchesKey } from "../src/keys";
-import {
-	Ellipsis,
-	extractSegments,
-	sliceWithWidth,
-	truncateToWidth,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "../src/utils";
+import { Ellipsis } from "@veyyon/natives";
+import { matchesKey } from "@veyyon/utils/keys";
+import { extractSegments, sliceWithWidth, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { makeBench } from "./_harness";
 
 const ITERATIONS = 2000;

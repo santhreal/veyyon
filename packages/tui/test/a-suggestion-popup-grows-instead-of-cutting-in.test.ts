@@ -34,10 +34,10 @@
 // it paints, or paints a block it has disarmed, is where those two would show.
 
 import { describe, expect, it, vi } from "bun:test";
-import type { AutocompleteItem, AutocompleteProvider } from "@veyyon/tui/autocomplete";
 import { Editor } from "@veyyon/tui/components/editor";
-import { MOTION, MotionClock } from "@veyyon/tui/motion";
-import { parseSgrMouse } from "@veyyon/tui/mouse";
+import type { AutocompleteItem, AutocompleteProvider } from "@veyyon/utils/autocomplete";
+import { MOTION, MotionClock } from "@veyyon/utils/motion";
+import { parseSgrMouse } from "@veyyon/utils/mouse";
 import { Chalk } from "chalk";
 import { defaultEditorTheme, defaultSelectListTheme } from "./test-themes";
 

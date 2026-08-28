@@ -27,10 +27,10 @@
 // What it does NOT catch: whether the host actually TICKS the shared clock (the
 // production clock is `autoTick: true` and owns that), whether `requestRender`
 // reaches the terminal, and the glyph contract itself, which is asserted
-// exhaustively in `packages/tui/test/a-bar-moves-in-eighths-of-a-cell.test.ts`.
+// exhaustively in `packages/utils/test/a-bar-moves-in-eighths-of-a-cell.test.ts`.
 
 import { beforeAll, describe, expect, test } from "bun:test";
-import { MotionClock } from "@veyyon/tui";
+import { MotionClock } from "@veyyon/utils/motion";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { Settings } from "../../../config/settings";
 import type { TinyTitleProgressEvent } from "../../../tiny/title-protocol";

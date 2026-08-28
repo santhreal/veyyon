@@ -20,9 +20,8 @@
  * without 24-bit color there is no glow at all (a loud, documented degrade,
  * never a half-ramp in 16 colors).
  */
-
-import { truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import type { Theme } from "../theme/theme";
 
 /** Visible cells of glowing trail at the newest edge. A little longer than a

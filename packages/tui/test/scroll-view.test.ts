@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { Ellipsis } from "@veyyon/natives";
 import { ScrollView } from "@veyyon/tui/components/scroll-view";
-import { Ellipsis, visibleWidth } from "@veyyon/tui/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 
 const theme = {
 	track: () => "T",

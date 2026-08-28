@@ -1,10 +1,6 @@
-import {
-	routeSelectListMouse,
-	type SelectItem,
-	type SelectList,
-	type SgrMouseEvent,
-	wrapTextWithAnsi,
-} from "@veyyon/tui";
+import type { SelectItem, SelectList } from "@veyyon/tui";
+import { routeSelectListMouse, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { discoverAgents } from "../../../task/discovery";
 import { isSubagentEnabled } from "../../../task/subagent-settings";
 import type { AgentDefinition } from "../../../task/types";

@@ -2,10 +2,11 @@ import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallb
 import type { ToolExample } from "@veyyon/ai";
 import { type SessionTelemetryDetail, sessionTelemetryDetail } from "@veyyon/ai/instrumentation";
 import type { Component } from "@veyyon/tui";
-import { Text, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
 import { formatCount, NON_ALNUM_RUN_RE, prompt } from "@veyyon/utils";
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { sanitizeText } from "@veyyon/utils/sanitize-text";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { isTerminalTodoStatus, isTodoListDone, TODO_DONE_SUMMARY, type TodoStatus } from "@veyyon/wire";
 import { type } from "arktype";
 import chalk from "chalk";

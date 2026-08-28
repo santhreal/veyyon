@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { CompactionCancelledError, type CompactionOutcome } from "@veyyon/agent-core/compaction";
 import { getEnvApiKey, getProviderDetails, type ProviderDetails, type UsageLimit, type UsageReport } from "@veyyon/ai";
 import { resolveUsedFraction } from "@veyyon/ai/usage";
-import { Loader, Markdown, type OverlayHandle, padding, Spacer, subCellBar, Text, visibleWidth } from "@veyyon/tui";
+import { Loader, Markdown, type OverlayHandle, Spacer, Text } from "@veyyon/tui";
 import {
 	APP_NAME,
 	CHANGELOG_URL,
@@ -16,6 +16,9 @@ import {
 	Snowflake,
 	sanitizeText,
 } from "@veyyon/utils";
+import { subCellBar } from "@veyyon/utils/bar";
+import { padding } from "@veyyon/utils/padding";
+import { visibleWidth } from "@veyyon/utils/width";
 import { advisorStatusNextStep } from "../../advisor/messages";
 import { shouldEnableAppendOnlyContext } from "../../config/append-only-context-mode";
 import { type LoadedCustomShare, loadCustomShare } from "../../export/custom-share";

@@ -1,4 +1,5 @@
-import { type SgrMouseEvent, TabBar } from "@veyyon/tui";
+import { TabBar } from "@veyyon/tui";
+import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 import { getTabBarTheme } from "../../shared";
 import { SignInTab } from "./sign-in";
 import type { SetupKeyHint, SetupScene, SetupSceneController, SetupSceneHost, SetupTab } from "./types";

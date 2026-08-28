@@ -17,7 +17,7 @@ import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { type SelectItem, SelectList } from "@veyyon/tui/components/select-list";
 import { TruncatedText } from "@veyyon/tui/components/truncated-text";
-import { visibleWidth } from "@veyyon/tui/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 import { defaultSelectListTheme } from "./test-themes.js";
 
 const ITEMS: SelectItem[] = [

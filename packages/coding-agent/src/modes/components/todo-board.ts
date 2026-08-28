@@ -24,7 +24,7 @@
  * that is decided, once, for all three motion sites.
  */
 
-import { visibleWidth } from "@veyyon/tui";
+import { visibleWidth } from "@veyyon/utils/width";
 import type { TodoItem, TodoPhase } from "../../tools/todo";
 import { boundedTodoPreviewText, formatPhaseDisplayName, todoStrikeReveal } from "../../tools/todo";
 import { renderTreeList } from "../../tui/tree-list";

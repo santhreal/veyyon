@@ -1,17 +1,11 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
-import {
-	type Component,
-	extractPrintableText,
-	fuzzyMatch,
-	HoverFade,
-	type HoverFadeOptions,
-	Input,
-	matchesKey,
-	padding,
-	routeSgrMouseInput,
-	type SgrMouseEvent,
-	truncateToWidth,
-} from "@veyyon/tui";
+import { type Component, Input } from "@veyyon/tui";
+import { fuzzyMatch } from "@veyyon/utils/fuzzy";
+import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
+import { HoverFade, type HoverFadeOptions } from "@veyyon/utils/motion";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth } from "@veyyon/utils/width";
 import type { TreeFilterMode } from "../../config/settings-schema";
 import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";

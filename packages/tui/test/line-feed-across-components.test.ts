@@ -24,8 +24,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { Editor } from "@veyyon/tui/components/editor";
 import { Input } from "@veyyon/tui/components/input";
 import { SettingsList, type SettingsListTheme } from "@veyyon/tui/components/settings-list";
-import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/tui/keybindings";
-import { isKittyProtocolActive, setKittyProtocolActive } from "@veyyon/tui/keys";
+import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/utils/keybindings";
+import { isKittyProtocolActive, setKittyProtocolActive } from "@veyyon/utils/keys";
 import { defaultEditorTheme } from "./test-themes";
 
 const LINE_FEED = "\n";

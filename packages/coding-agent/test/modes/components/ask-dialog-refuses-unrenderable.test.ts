@@ -8,7 +8,7 @@ import type {
 } from "@veyyon/coding-agent/extensibility/extensions/types";
 import { AskDialogComponent } from "@veyyon/coding-agent/modes/components/ask-dialog";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
-import { setKeybindings } from "@veyyon/tui";
+import { setKeybindings } from "@veyyon/utils/keybindings";
 
 /**
  * WHY: the ask dialog renders its fields with no fallback, so one absent string

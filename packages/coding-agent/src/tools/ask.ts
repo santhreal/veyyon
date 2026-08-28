@@ -17,19 +17,11 @@
 
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import {
-	type Component,
-	Ellipsis,
-	Markdown,
-	type MarkdownTheme,
-	renderInlineMarkdown,
-	replaceTabs,
-	TERMINAL,
-	Text,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
+import { Ellipsis } from "@veyyon/natives";
+import { type Component, Markdown, type MarkdownTheme, renderInlineMarkdown, TERMINAL, Text } from "@veyyon/tui";
 import { clamp, clampLow, collapseWhitespace, formatCount, isCancellation, prompt, untilAborted } from "@veyyon/utils";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import { stripRecommendedSuffix, withRecommendedSuffix } from "@veyyon/wire";
 import { type as arkType } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";

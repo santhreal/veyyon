@@ -5,8 +5,8 @@
  */
 
 import { formatCostTiered as formatCost, normalizePremiumRequests } from "@veyyon/stats/format";
-import { truncateToWidth } from "@veyyon/tui/utils";
 import { formatDuration, formatNumber, formatPercent } from "@veyyon/utils";
+import { truncateToWidth } from "@veyyon/utils/width";
 import chalk from "chalk";
 import { openPath } from "../utils/open";
 

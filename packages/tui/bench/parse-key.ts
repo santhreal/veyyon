@@ -1,5 +1,5 @@
 import { parseKey as nativeParseKey } from "@veyyon/natives";
-import * as native from "../src/keys";
+import * as native from "@veyyon/utils/keys";
 import { makeBench } from "./_harness";
 import * as js from "./_jskey";
 import { samples } from "./_key-samples";

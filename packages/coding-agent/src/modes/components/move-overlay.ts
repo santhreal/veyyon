@@ -9,17 +9,11 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	type Component,
-	CURSOR_MARKER,
-	type Focusable,
-	HoverFade,
-	Key,
-	matchesKey,
-	padding,
-	routeSgrMouseInput,
-	type SgrMouseEvent,
-} from "@veyyon/tui";
+import { type Component, CURSOR_MARKER, type Focusable } from "@veyyon/tui";
+import { Key, matchesKey } from "@veyyon/utils/keys";
+import { HoverFade } from "@veyyon/utils/motion";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {

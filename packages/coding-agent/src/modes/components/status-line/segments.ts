@@ -2,7 +2,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import { normalizePremiumRequests } from "@veyyon/stats/format";
-import { sliceWithWidth, TERMINAL, visibleWidth } from "@veyyon/tui";
+import { TERMINAL } from "@veyyon/tui";
 import {
 	clamp01,
 	DEFAULT_PROFILE_DIR_NAME,
@@ -14,6 +14,7 @@ import {
 	pathIsWithin,
 	relativePathWithinRoot,
 } from "@veyyon/utils";
+import { sliceWithWidth, visibleWidth } from "@veyyon/utils/width";
 import { PRIORITY_TIER_LABEL } from "../../../config/service-tier";
 import { withIcon } from "../../../modes/theme/icon-label";
 import { type ThemeColor, theme } from "../../../modes/theme/theme";

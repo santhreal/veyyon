@@ -19,8 +19,9 @@ import { SILENT_ABORT_MARKER, USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 import * as clipboard from "@veyyon/coding-agent/utils/clipboard";
-import { setKeybindings, Text } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
 import { formatNumber, TempDir } from "@veyyon/utils";
+import { setKeybindings } from "@veyyon/utils/keybindings";
 
 /**
  * Matches the plan-approved synthetic-prompt dispatch. `#approvePlan` calls

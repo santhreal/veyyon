@@ -1,16 +1,11 @@
-import {
-	type Component,
-	clampLow,
-	HoverFade,
-	matchesKey,
-	padding,
-	routeSgrMouseInput,
-	type SgrMouseEvent,
-	Text,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
+import { type Component, Text } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";
+import { matchesKey } from "@veyyon/utils/keys";
+import { clampLow } from "@veyyon/utils/math";
+import { HoverFade } from "@veyyon/utils/motion";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "../../tools/render-utils";
 import { highlightCode } from "../theme/highlight";
 import { theme } from "../theme/theme-binding";

@@ -1,5 +1,6 @@
-import type { Component, SelectList, SettingsList, SgrMouseEvent } from "@veyyon/tui";
-import { Container, routeSelectListMouse } from "@veyyon/tui";
+import type { Component, SelectList, SettingsList } from "@veyyon/tui";
+import { Container } from "@veyyon/tui";
+import { routeSelectListMouse, type SgrMouseEvent } from "@veyyon/utils/mouse";
 
 interface RoutableSelectList {
 	routeMouse?: (event: SgrMouseEvent, line: number, col: number) => void;

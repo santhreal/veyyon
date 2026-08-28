@@ -1,18 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { performance } from "node:perf_hooks";
+import { type Component, detectRectangularSgrSupport, setTerminalDeccara, TERMINAL, TUI } from "@veyyon/tui";
 import {
 	analyzeBgFillLine,
-	applyBackgroundToLine,
-	type Component,
 	DECSACE_DEFAULT,
 	DECSACE_RECT,
-	detectRectangularSgrSupport,
 	encodeDeccara,
 	planDeccaraFills,
-	setTerminalDeccara,
-	TERMINAL,
-	TUI,
-} from "@veyyon/tui";
+} from "@veyyon/utils/deccara";
+import { applyBackgroundToLine } from "@veyyon/utils/sgr";
 import { settleFrames } from "./helpers/settle-frames";
 import { VirtualTerminal } from "./virtual-terminal";
 

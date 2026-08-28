@@ -8,10 +8,13 @@
  * - Tab / Arrow Right: Next tab (wraps around)
  * - Shift+Tab / Arrow Left: Previous tab (wraps around)
  */
-import { matchesKey } from "../keys";
-import { HoverFade, type HoverFadeOptions } from "../motion-hover";
+
+import { matchesKey } from "@veyyon/utils/keys";
+import { clampLow } from "@veyyon/utils/math";
+import { HoverFade, type HoverFadeOptions } from "@veyyon/utils/motion";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import type { Component } from "../tui";
-import { clampLow, padding, truncateToWidth, visibleWidth } from "../utils";
 
 /** Tab definition */
 export interface Tab {

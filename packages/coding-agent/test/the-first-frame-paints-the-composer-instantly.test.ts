@@ -15,8 +15,8 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { Component } from "@veyyon/tui";
-import { visibleWidth } from "@veyyon/tui/utils";
 import { TempDir } from "@veyyon/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 
 /**
  * WHY: startup used to paint eight BLANK rows where the composer would live,

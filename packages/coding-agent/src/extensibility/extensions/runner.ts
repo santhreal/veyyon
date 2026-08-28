@@ -3,8 +3,8 @@
  */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { CredentialDisabledEvent, ImageContent, Model, ProviderResponseMetadata } from "@veyyon/ai";
-import type { KeyId } from "@veyyon/tui";
 import { errorMessage, logger } from "@veyyon/utils";
+import type { KeyId } from "@veyyon/utils/keys";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import type { LocalProtocolOptions } from "../../internal-urls/local-protocol";

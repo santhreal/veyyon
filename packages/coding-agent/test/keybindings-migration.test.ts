@@ -4,9 +4,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { KeybindingsManager, profileHasKeybindingsFile } from "@veyyon/coding-agent/config/keybindings";
 import { matchesAppFollowUp } from "@veyyon/coding-agent/modes/utils/keybinding-matchers";
-import { type KeybindingsConfig, resetKeybindingsForTests, setKeybindings } from "@veyyon/tui";
 import { __resetDirsFromEnvForTests, removeWithRetries, setProfile } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
+import { type KeybindingsConfig, resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
 import { YAML } from "bun";
 
 function ctrl(key: string): string {

@@ -3,28 +3,25 @@ import type { Api, Effort, Model } from "@veyyon/ai";
 import {
 	type Component,
 	Container,
-	extractPrintableText,
-	getKeybindings,
 	type ImageBudget,
 	Input,
-	matchesKey,
-	padding,
 	rankSettingItems,
-	replaceTabs,
-	routeSgrMouseInput,
 	type SelectItem,
 	SelectList,
 	type SettingItem,
 	SettingsList,
-	type SgrMouseEvent,
 	Spacer,
 	type Tab,
 	TabBar,
 	Text,
-	truncateToWidth,
-	visibleWidth,
 } from "@veyyon/tui";
 import { clamp, collapseWhitespace, errorMessage, isRecord, VERSION } from "@veyyon/utils";
+import { getKeybindings } from "@veyyon/utils/keybindings";
+import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../../capability/rule";
 import { ANY_MODEL_EFFORT_KEY, withLegacyDefaultEffort } from "../../config/effort-resolver";
 import type { ModelRegistry } from "../../config/model-registry";

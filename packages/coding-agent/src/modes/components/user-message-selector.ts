@@ -1,16 +1,10 @@
-import {
-	type Component,
-	extractPrintableText,
-	fuzzyFilter,
-	HoverFade,
-	type HoverFadeOptions,
-	matchesKey,
-	padding,
-	routeSgrMouseInput,
-	ScrollView,
-	type SgrMouseEvent,
-	truncateToWidth,
-} from "@veyyon/tui";
+import { type Component, ScrollView } from "@veyyon/tui";
+import { fuzzyFilter } from "@veyyon/utils/fuzzy";
+import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
+import { HoverFade, type HoverFadeOptions } from "@veyyon/utils/motion";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth } from "@veyyon/utils/width";
 import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import {

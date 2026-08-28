@@ -1,5 +1,6 @@
-import { centerLine, padLineToWidth, TERMINAL } from "@veyyon/tui";
+import { TERMINAL } from "@veyyon/tui";
 import { APP_NAME, clampLow } from "@veyyon/utils";
+import { centerLine, padLineToWidth } from "@veyyon/utils/padding";
 import { sunMark } from "../../components/sun";
 import { silverEscape } from "../../components/welcome";
 import { theme } from "../../theme/theme";

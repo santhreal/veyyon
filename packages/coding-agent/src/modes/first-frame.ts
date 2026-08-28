@@ -24,17 +24,11 @@
  * one screen, and whoever owns it owns it for the process.
  */
 
-import {
-	matchesKey,
-	ProcessTerminal,
-	planPaintGround,
-	Spacer,
-	setTerminalTextSizing,
-	setTuiTight,
-	TERMINAL,
-	TUI,
-} from "@veyyon/tui";
+import { ProcessTerminal, Spacer, setTerminalTextSizing, TERMINAL, TUI } from "@veyyon/tui";
 import { logger } from "@veyyon/utils";
+import { matchesKey } from "@veyyon/utils/keys";
+import { planPaintGround } from "@veyyon/utils/paint-ground";
+import { setTuiTight } from "@veyyon/utils/tight-mode";
 import { settings } from "../config/settings-instance";
 import { StaticComposerFrame } from "./components/composer-chrome";
 import { WelcomeComponent } from "./components/welcome";

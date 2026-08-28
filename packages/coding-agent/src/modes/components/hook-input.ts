@@ -1,19 +1,12 @@
 /**
  * Single-field text prompt for hooks, drawn as a floating ModalShell card.
  */
-import {
-	Container,
-	Ellipsis,
-	Input,
-	Markdown,
-	padding,
-	routeSgrMouseInput,
-	type SgrMouseEvent,
-	Spacer,
-	type TUI,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
+
+import { Ellipsis } from "@veyyon/natives";
+import { Container, Input, Markdown, Spacer, type TUI } from "@veyyon/tui";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt } from "../../modes/utils/keybinding-matchers";

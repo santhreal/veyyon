@@ -5,7 +5,12 @@
  * padding. Behaviour is identical to the per-component copies these helpers
  * replace.
  */
-import { clampLow, Ellipsis, extractPrintableText, matchesKey, ScrollView, truncateToWidth } from "@veyyon/tui";
+
+import { Ellipsis } from "@veyyon/natives";
+import { ScrollView } from "@veyyon/tui";
+import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
+import { clampLow } from "@veyyon/utils/math";
+import { truncateToWidth } from "@veyyon/utils/width";
 import type { ThemeBg } from "../theme/theme";
 import { paintBand, theme } from "../theme/theme";
 

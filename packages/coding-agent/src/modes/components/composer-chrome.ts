@@ -8,8 +8,10 @@
  */
 
 import type { ThinkingLevel } from "@veyyon/agent-core";
-import type { Component, MouseRoutable, SgrMouseEvent } from "@veyyon/tui";
-import { Spacer, sliceByColumn, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
+import { Spacer, TERMINAL } from "@veyyon/tui";
+import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
+import { sliceByColumn, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { groundHairlineHex, groundTintFgAnsi } from "../theme/ground-tints";
 import { theme } from "../theme/theme";
 import { EMBER } from "./sun";

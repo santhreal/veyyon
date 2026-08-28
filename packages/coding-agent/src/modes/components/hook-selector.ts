@@ -2,28 +2,26 @@
  * Generic selector component for hooks.
  * Displays a list of string options with keyboard navigation.
  */
+
+import { Ellipsis } from "@veyyon/natives";
 import {
 	type Component,
 	Container,
-	clampLow,
-	Ellipsis,
-	extractPrintableText,
-	fuzzyFilter,
-	HoverFade,
 	Markdown,
 	type MarkdownTheme,
-	matchesKey,
-	padding,
 	renderInlineMarkdown,
-	replaceTabs,
-	routeSgrMouseInput,
-	type SgrMouseEvent,
 	Spacer,
 	Text,
 	type TUI,
-	truncateToWidth,
-	wrapTextWithAnsi,
 } from "@veyyon/tui";
+import { fuzzyFilter } from "@veyyon/utils/fuzzy";
+import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
+import { clampLow } from "@veyyon/utils/math";
+import { HoverFade } from "@veyyon/utils/motion";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { type ThemeColor, theme } from "../../modes/theme/theme";
 import {

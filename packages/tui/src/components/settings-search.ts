@@ -26,8 +26,8 @@
  * keeps word order irrelevant, so `theme dark` and `dark theme` rank alike.
  */
 
+import { fuzzyMatch } from "@veyyon/utils/fuzzy";
 import { hasAlphanumeric } from "@veyyon/utils/regex";
-import { fuzzyMatch } from "../fuzzy";
 import type { SettingItem } from "./settings-list";
 
 /**

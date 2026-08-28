@@ -20,7 +20,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { HistorySearchComponent } from "@veyyon/coding-agent/modes/components/history-search";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { HistoryEntry, HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
-import { getAnsiPolicy, setAnsiPolicy, visibleWidth } from "@veyyon/tui";
+import { getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
+import { visibleWidth } from "@veyyon/utils/width";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;

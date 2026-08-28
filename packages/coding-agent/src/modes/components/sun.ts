@@ -12,9 +12,8 @@
  * field itself holds no state, and a caller that wants motion varies `time`,
  * `cx/cy` and `radius` itself. Ripples (cursor/keypress flares) are data.
  */
-
-import { SGR_RESET } from "@veyyon/tui/ansi";
 import { clamp01 } from "@veyyon/utils";
+import { SGR_RESET } from "@veyyon/utils/ansi";
 
 /**
  * The disc's shape: where it fades out, and how it dims toward the limb.

@@ -13,18 +13,12 @@
  * - Wheel over the inspector: scroll the detail pane
  * - Esc: clear search (if active) then close
  */
-import {
-	type Component,
-	matchesKey,
-	padding,
-	parseSgrMouse,
-	ScrollView,
-	type Tab,
-	TabBar,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
+import { type Component, ScrollView, type Tab, TabBar } from "@veyyon/tui";
 import { clampLow, getMCPConfigPath, logger } from "@veyyon/utils";
+import { matchesKey } from "@veyyon/utils/keys";
+import { parseSgrMouse } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { Settings } from "../../../config/settings";
 import { setMcpServerEnabled } from "../../../mcp/config-writer";
 import { getTabBarTheme } from "../../../modes/shared";

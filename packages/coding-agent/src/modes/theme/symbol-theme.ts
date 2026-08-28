@@ -21,7 +21,7 @@
  * if this module's reach grows past the binding.
  */
 
-import type { SymbolTheme } from "@veyyon/tui";
+import type { SymbolTheme } from "@veyyon/utils/symbols";
 import { theme } from "./theme-binding";
 
 /**

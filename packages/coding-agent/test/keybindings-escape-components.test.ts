@@ -7,7 +7,8 @@ import { ModelHubComponent } from "@veyyon/coding-agent/modes/components/model-h
 import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
-import { setKeybindings, type TUI } from "@veyyon/tui";
+import type { TUI } from "@veyyon/tui";
+import { setKeybindings } from "@veyyon/utils/keybindings";
 
 beforeAll(() => {
 	initTheme();

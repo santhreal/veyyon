@@ -25,8 +25,8 @@ import {
 	shortenPath,
 	truncateDiffByHunk,
 } from "@veyyon/coding-agent/tools/render-utils";
-import { resetKeybindingsForTests, setKeybindings } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
+import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
 
 describe("parse error formatting", () => {
 	it("deduplicates parse errors while preserving order", () => {

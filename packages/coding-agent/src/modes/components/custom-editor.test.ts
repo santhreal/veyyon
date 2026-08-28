@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import { CURSOR_MARKER } from "@veyyon/tui";
-import { PASTE_END, PASTE_START } from "@veyyon/tui/bracketed-paste";
-import { setKittyProtocolActive } from "@veyyon/tui/keys";
+import { PASTE_END, PASTE_START } from "@veyyon/utils/bracketed-paste";
+import { setKittyProtocolActive } from "@veyyon/utils/keys";
 import { $ } from "bun";
 import { getDefaultPasteImageKeys } from "../../config/keybindings";
 import { getEditorTheme, initTheme, theme } from "../theme/theme";

@@ -4,7 +4,8 @@ import { HookEditorComponent } from "@veyyon/coding-agent/modes/components/hook-
 import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
-import { getKeybindings, setKeybindings, type TUI } from "@veyyon/tui";
+import type { TUI } from "@veyyon/tui";
+import { getKeybindings, setKeybindings } from "@veyyon/utils/keybindings";
 import { cardBodyLines } from "./helpers/modal-card";
 
 beforeAll(async () => {

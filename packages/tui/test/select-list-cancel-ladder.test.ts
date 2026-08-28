@@ -12,8 +12,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { SelectList, type SelectListTheme } from "@veyyon/tui/components/select-list";
-import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/tui/keybindings";
-import type { BoxSymbols } from "@veyyon/tui/symbols";
+import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/utils/keybindings";
+import type { BoxSymbols } from "@veyyon/utils/symbols";
 
 const box: BoxSymbols = {
 	topLeft: "┌",

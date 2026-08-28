@@ -12,7 +12,7 @@
  * string after the control probe.
  */
 
-const ESC_CHAR = "\x1b";
+import { ESC as ESC_CHAR } from "./ansi";
 
 // Well-formed strings only need control/ANSI detection: C0 (excl. \t \n),
 // CR, DEL, and C1. ESC (0x1B) is in \x0B-\x1F.

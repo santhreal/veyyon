@@ -1,6 +1,6 @@
 import { Container, Markdown } from "@veyyon/tui";
-import { SGR_FG_RESET } from "@veyyon/tui/ansi";
 import { stripAnsi } from "@veyyon/utils";
+import { SGR_FG_RESET } from "@veyyon/utils/ansi";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
 import { imageReferenceHyperlink, renderPlaceholders } from "../image-references";

@@ -1,7 +1,7 @@
 import { encodeSixel } from "@veyyon/natives";
 import { APP_DISPLAY_NAME } from "@veyyon/utils/app-identity";
+import { setAnsiColorFormat } from "@veyyon/utils/color-format";
 import { $env, isBunTestRuntime, isTerminalHeadless } from "@veyyon/utils/env";
-import { sendDesktopNotification, shouldDeliverDesktopNotification } from "./desktop-notify";
 import {
 	detectKittyUnicodePlaceholdersSupport,
 	getKittyGraphics,
@@ -9,11 +9,10 @@ import {
 	kittyPlaceholdersFit,
 	renderKittyPlaceholderLines,
 	setKittyGraphics,
-} from "./kitty-graphics";
-import { isInsideTmux, wrapTmuxPassthrough, wrapTmuxPassthroughIfNeeded } from "./tmux";
+} from "@veyyon/utils/kitty-graphics";
+import { isInsideTmux, wrapTmuxPassthrough, wrapTmuxPassthroughIfNeeded } from "@veyyon/utils/tmux";
+import { sendDesktopNotification, shouldDeliverDesktopNotification } from "./desktop-notify";
 import { isWindowFocused } from "./window-focus";
-
-export { isInsideTmux, wrapTmuxPassthrough } from "./tmux";
 
 export enum ImageProtocol {
 	Kitty = "\x1b_G",
@@ -626,6 +625,12 @@ export const TERMINAL: RuntimeTerminal = (() => {
 	resolved.deccara = detectRectangularSgrSupport(resolved.id, Bun.env) && !isBunTestRuntime();
 	return resolved;
 })();
+
+// The color depth is a property of this device, and every string encoder that has
+// to write a color needs it — LaTeX rendering, markdown, gradients — none of which
+// should import a terminal probe to learn it. Push it once, here, where the probe
+// resolves; `@veyyon/utils/color-format` is what those encoders read.
+setAnsiColorFormat(TERMINAL.trueColor ? "ansi-16m" : "ansi-256");
 
 // Seed Kitty Unicode placeholder support from the resolved terminal id. Only
 // kitty/ghostty are known to honor `U=1` placement; other Kitty-protocol paths

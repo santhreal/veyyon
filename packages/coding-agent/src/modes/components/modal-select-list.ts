@@ -4,14 +4,13 @@
  */
 import {
 	type Component,
-	padding,
-	routeSgrMouseInput,
 	type SelectItem,
 	SelectList,
 	type SelectListLayoutOptions,
 	type SelectListTheme,
-	type SgrMouseEvent,
 } from "@veyyon/tui";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
 import {
 	computeModalDims,
 	consumeModalChipHover,

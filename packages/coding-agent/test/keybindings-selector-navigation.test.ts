@@ -11,8 +11,8 @@ import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
 import type { SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
-import { setKeybindings } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
+import { setKeybindings } from "@veyyon/utils/keybindings";
 
 const CTRL_N = "\x0e";
 const CTRL_P = "\x10";

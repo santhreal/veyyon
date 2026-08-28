@@ -1,5 +1,6 @@
+import { getPaddingX } from "@veyyon/utils/tight-mode";
+import { sliceByColumn, visibleWidth } from "@veyyon/utils/width";
 import type { TUI } from "../tui";
-import { getPaddingX, sliceByColumn, visibleWidth } from "../utils";
 import { Text } from "./text";
 
 const RENDER_INTERVAL_MS = 1000 / 30;

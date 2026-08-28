@@ -1,33 +1,26 @@
-import { getProjectDir } from "@veyyon/utils/dirs";
-import * as logger from "@veyyon/utils/logger";
-import { SGR_BG_RESET } from "../ansi";
+import { SGR_BG_RESET } from "@veyyon/utils/ansi";
 import {
 	type AutocompleteProvider,
 	findLeadingSlashCommandStart,
 	findTrailingSlashCommandStart,
 	midPromptSkillTokenMatches,
-} from "../autocomplete";
-import { BracketedPasteHandler, decodeReencodedPasteControls } from "../bracketed-paste";
-import { getKeybindings, type KeybindingsManager } from "../keybindings";
-import { extractPrintableText, isLoneLineFeed, matchesKey } from "../keys";
-import { KillRing } from "../kill-ring";
-import { BlockReveal, type BlockRevealOptions } from "../motion-grow";
-import type { MouseRoutable, SgrMouseEvent } from "../mouse";
-import type { SymbolTheme } from "../symbols";
+} from "@veyyon/utils/autocomplete";
+import { BracketedPasteHandler, decodeReencodedPasteControls } from "@veyyon/utils/bracketed-paste";
+import { getProjectDir } from "@veyyon/utils/dirs";
+import { getKeybindings, type KeybindingsManager } from "@veyyon/utils/keybindings";
+import { extractPrintableText, isLoneLineFeed, matchesKey } from "@veyyon/utils/keys";
+import { KillRing } from "@veyyon/utils/kill-ring";
+import * as logger from "@veyyon/utils/logger";
+import { clampLow } from "@veyyon/utils/math";
+import { BlockReveal, type BlockRevealOptions } from "@veyyon/utils/motion";
+import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { reopenBackgroundAfterResets } from "@veyyon/utils/sgr";
+import type { SymbolTheme } from "@veyyon/utils/symbols";
+import { getSegmenter, sliceByColumn, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { getWordNavKind, moveWordLeft, moveWordRight } from "@veyyon/utils/word-nav";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import { type Component, CURSOR_MARKER, type Focusable } from "../tui";
-import {
-	clampLow,
-	getSegmenter,
-	getWordNavKind,
-	moveWordLeft,
-	moveWordRight,
-	padding,
-	reopenBackgroundAfterResets,
-	replaceTabs,
-	sliceByColumn,
-	truncateToWidth,
-	visibleWidth,
-} from "../utils";
 import { type SelectItem, SelectList, type SelectListLayoutOptions, type SelectListTheme } from "./select-list";
 
 const AUTOCOMPLETE_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {

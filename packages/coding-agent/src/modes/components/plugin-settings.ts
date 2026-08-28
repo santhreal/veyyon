@@ -8,17 +8,9 @@
  *     - Feature toggles
  *     - Config value editor
  */
-import {
-	Input,
-	matchesKey,
-	type SelectItem,
-	SelectList,
-	type SettingItem,
-	SettingsList,
-	Spacer,
-	Text,
-} from "@veyyon/tui";
+import { Input, type SelectItem, SelectList, type SettingItem, SettingsList, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, logger } from "@veyyon/utils";
+import { matchesKey } from "@veyyon/utils/keys";
 import { PluginManager } from "../../extensibility/plugins/manager";
 import type { InstalledPluginSummary, MarketplaceManager } from "../../extensibility/plugins/marketplace";
 import type { InstalledPlugin, PluginSettingSchema } from "../../extensibility/plugins/types";

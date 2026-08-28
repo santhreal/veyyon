@@ -3,16 +3,13 @@
  */
 
 import type { Component } from "@veyyon/tui";
-import {
-	ImageProtocol,
-	padding,
-	reopenBackgroundAfterResets,
-	TERMINAL,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@veyyon/tui";
-import { SGR_BG_RESET } from "@veyyon/tui/ansi";
+import { ImageProtocol, TERMINAL } from "@veyyon/tui";
+import { SGR_BG_RESET } from "@veyyon/utils/ansi";
 import { clampLow } from "@veyyon/utils/math";
+import { padding } from "@veyyon/utils/padding";
+import { reopenBackgroundAfterResets } from "@veyyon/utils/sgr";
+import { visibleWidth } from "@veyyon/utils/width";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { getSixelLineMask } from "../utils/sixel";
 import type { State } from "./types";

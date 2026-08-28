@@ -9,8 +9,9 @@ import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/compo
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
-import { TUI, visibleWidth } from "@veyyon/tui";
+import { TUI } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal";
 import { createToolExecution } from "./helpers/tool-execution";
 

@@ -84,8 +84,9 @@ import {
 } from "@veyyon/coding-agent/modes/components/status-line/component";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { MOTION, MotionClock, visibleWidth } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
+import { MOTION, MotionClock } from "@veyyon/utils/motion";
+import { visibleWidth } from "@veyyon/utils/width";
 import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";
 
 const ELLIPSIS = "…";

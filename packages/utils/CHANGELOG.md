@@ -6,10 +6,15 @@
 
 ### Added
 
+- The string, escape, keyboard, mouse, motion and layout-math primitives that `@veyyon/tui` used to own are `@veyyon/utils` modules, reachable by subpath and not on the barrel, so a caller that needs the escape bytes or the fuzzy matcher no longer declares a dependency on the terminal renderer.
+- `@veyyon/utils/color-format` states whether escape sequences are written as 24-bit or 256-colour SGR; `@veyyon/tui` sets it once the terminal's capabilities resolve, which is how a utils module renders colour without reading terminal state.
+
 - `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
 - `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
 
 ### Changed
+
+- `sanitize-text.ts` imports the escape byte from `@veyyon/utils/ansi` rather than declaring a second copy of it.
 
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
 - `winston` and `winston-daily-rotate-file` are resolved on the first log write instead of at module load, taking 4.7ms off every process that imports the logger without logging, which is every entry point.

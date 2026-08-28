@@ -7,19 +7,13 @@
  *   (Ctrl+Q / Ctrl+Enter) submits, bordered popup
  * - Prompt-style (ask): Enter submits, Shift+Enter inserts newline, legacy ask chrome
  */
-import {
-	Container,
-	Editor,
-	Ellipsis,
-	matchesKey,
-	padding,
-	routeSgrMouseInput,
-	type SgrMouseEvent,
-	Spacer,
-	Text,
-	type TUI,
-	truncateToWidth,
-} from "@veyyon/tui";
+
+import { Ellipsis } from "@veyyon/natives";
+import { Container, Editor, Spacer, Text, type TUI } from "@veyyon/tui";
+import { matchesKey } from "@veyyon/utils/keys";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth } from "@veyyon/utils/width";
 import { getEditorTheme, theme } from "../../modes/theme/theme";
 import { actionKeyHint } from "../../modes/utils/key-hint";
 import {

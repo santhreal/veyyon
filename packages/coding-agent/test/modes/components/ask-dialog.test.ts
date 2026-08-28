@@ -6,7 +6,7 @@ import { AskDialogComponent } from "@veyyon/coding-agent/modes/components/ask-di
 import { HOOK_EDITOR_TEXT_PAD_COLS } from "@veyyon/coding-agent/modes/components/hook-editor";
 import { activityColorToken, getShimmerActivity, setShimmerActivity } from "@veyyon/coding-agent/modes/theme/shimmer";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
-import { setKeybindings } from "@veyyon/tui";
+import { setKeybindings } from "@veyyon/utils/keybindings";
 import { useFullColor } from "../../helpers/theme-assertions";
 
 const DOWN = "\x1b[B";

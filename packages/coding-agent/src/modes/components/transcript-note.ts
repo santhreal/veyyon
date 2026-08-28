@@ -1,4 +1,7 @@
-import { Container, fillSurface, Spacer, TERMINAL, visibleWidth, wrapTextWithAnsi } from "@veyyon/tui";
+import { Container, Spacer, TERMINAL } from "@veyyon/tui";
+import { fillSurface } from "@veyyon/utils/paint-surface";
+import { visibleWidth } from "@veyyon/utils/width";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { WidthAwareText } from "../../tui";
 import type { ThemeColor } from "../theme/color";
 import { getVisibleGround } from "../theme/ground-tints";

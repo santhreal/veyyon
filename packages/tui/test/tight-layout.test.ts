@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import { setTuiTight } from "@veyyon/utils/tight-mode";
 import { Box } from "../src/components/box";
 import { Editor } from "../src/components/editor";
 import { Markdown } from "../src/components/markdown";
 import { Text } from "../src/components/text";
-import { setTuiTight } from "../src/utils";
 import { defaultEditorTheme, defaultMarkdownTheme } from "./test-themes";
 
 describe("TUI Tight Layout option", () => {

@@ -23,7 +23,7 @@ import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer-chrome";
 import { buildComposerShortcuts, ComposerShortcutsBar } from "@veyyon/coding-agent/modes/components/composer-shortcuts";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { SgrMouseEvent } from "@veyyon/tui";
+import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 
 beforeAll(() => initTheme());
 

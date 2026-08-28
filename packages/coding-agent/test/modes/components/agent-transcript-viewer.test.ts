@@ -23,16 +23,9 @@ import {
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { CURRENT_SESSION_VERSION } from "@veyyon/coding-agent/session/session-entries";
-import {
-	getKittyGraphics,
-	ImageBudget,
-	ImageProtocol,
-	setKittyGraphics,
-	setTerminalImageProtocol,
-	TERMINAL,
-	type TUI,
-} from "@veyyon/tui";
+import { ImageBudget, ImageProtocol, setTerminalImageProtocol, TERMINAL, type TUI } from "@veyyon/tui";
 import { removeSyncWithRetries } from "@veyyon/utils";
+import { getKittyGraphics, setKittyGraphics } from "@veyyon/utils/kitty-graphics";
 
 const TS = new Date().toISOString();
 

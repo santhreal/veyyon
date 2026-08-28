@@ -1,17 +1,11 @@
-import {
-	type Component,
-	matchesKey,
-	type OverlayFocusOwner,
-	padding,
-	padLineToWidth,
-	routeSgrMouseInput,
-	type SgrMouseEvent,
-	TERMINAL,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@veyyon/tui";
-import { SGR_RESET } from "@veyyon/tui/ansi";
+import { type Component, type OverlayFocusOwner, TERMINAL } from "@veyyon/tui";
 import { APP_NAME } from "@veyyon/utils";
+import { SGR_RESET } from "@veyyon/utils/ansi";
+import { matchesKey } from "@veyyon/utils/keys";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding, padLineToWidth } from "@veyyon/utils/padding";
+import { visibleWidth } from "@veyyon/utils/width";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import {
 	layoutShortcutRows,
 	type ModalShortcut,

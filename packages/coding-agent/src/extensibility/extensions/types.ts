@@ -30,8 +30,10 @@ import type {
 	TSchema,
 } from "@veyyon/ai";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "@veyyon/ai/oauth/types";
-import type { AutocompleteItem, AutocompleteProvider, Component, EditorTheme, KeyId, TUI } from "@veyyon/tui";
+import type { Component, EditorTheme, TUI } from "@veyyon/tui";
 import type { logger as PiLogger } from "@veyyon/utils";
+import type { AutocompleteItem, AutocompleteProvider } from "@veyyon/utils/autocomplete";
+import type { KeyId } from "@veyyon/utils/keys";
 import type { Type as arktype } from "arktype";
 import type * as zod from "zod/v4";
 import type { KeybindingsManager } from "../../config/keybindings";

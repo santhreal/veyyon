@@ -23,7 +23,7 @@
 // What it does NOT catch: whether a particular FONT has the partial blocks (the
 // preset is the operator's declaration about that, and there is nothing to
 // measure from inside the process), and the glyph arithmetic itself, which is
-// asserted in `packages/tui/test/a-bar-moves-in-eighths-of-a-cell.test.ts`.
+// asserted in `packages/utils/test/a-bar-moves-in-eighths-of-a-cell.test.ts`.
 
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
@@ -33,7 +33,6 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { BAR_RAMPS, SYMBOL_PRESETS } from "@veyyon/coding-agent/modes/theme/symbols";
 import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { renderAsciiBar } from "@veyyon/coding-agent/slash-commands/helpers/format";
-import { EIGHTH_BLOCKS, subCellBar } from "@veyyon/tui/sub-cell-bar";
 import {
 	captureDirOverrides,
 	getCustomThemesDir,
@@ -41,6 +40,7 @@ import {
 	restoreDirOverrides,
 	setAgentDir,
 } from "@veyyon/utils";
+import { EIGHTH_BLOCKS, subCellBar } from "@veyyon/utils/bar";
 
 const DARK_THEME_PATH = path.join(import.meta.dir, "..", "src", "modes", "theme", "dark.json");
 const dirOverrides = captureDirOverrides();

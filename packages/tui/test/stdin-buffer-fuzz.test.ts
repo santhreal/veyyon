@@ -12,9 +12,9 @@
  * Deterministic LCG so a failing byte stream reproduces from the printed seed.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { setKittyProtocolActive } from "@veyyon/tui/keys";
 import { StdinBuffer } from "@veyyon/tui/stdin-buffer";
 import { fuzzStrings } from "@veyyon/utils/adversarial-strings";
+import { setKittyProtocolActive } from "@veyyon/utils/keys";
 
 // Byte-level fragments spanning every branch of resolveEscapeEnd: ESC intro,
 // CSI/SS3, SGR + X10 mouse, OSC/DCS/APC intros and terminators, kitty CSU,

@@ -5,8 +5,10 @@
  */
 import * as os from "node:os";
 import { isZodSchema, zodToWireSchema } from "@veyyon/ai/utils/schema";
-import { type Component, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
 import { collapseWhitespace, errorMessage, logger } from "@veyyon/utils";
+import { truncateToWidth } from "@veyyon/utils/width";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type { ThemeColor } from "../../../modes/theme/color";
 import { theme } from "../../../modes/theme/theme";
 import { PREVIEW_LIMITS, replaceTabs, shortenPath, TRUNCATE_LENGTHS } from "../../../tools/render-utils";

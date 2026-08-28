@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { Markdown } from "@veyyon/tui/components/markdown";
-import { visibleWidth, wrapTextWithAnsi } from "@veyyon/tui/utils";
+import { visibleWidth } from "@veyyon/utils/width";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { Chalk } from "chalk";
 import { defaultMarkdownTheme } from "./test-themes.js";
 

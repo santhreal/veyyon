@@ -1,7 +1,9 @@
-import { type Component, padding, Text, visibleWidth } from "@veyyon/tui";
+import { type Component, Text } from "@veyyon/tui";
 // The owning leaf, not the `@veyyon/utils` barrel: this is the only vocabulary the renderer
 // needs, and the React renderer of the same tool output reads the same one.
 import { classifyGithubCheckRun, githubIssueRefNumber } from "@veyyon/utils/github-check-run";
+import { padding } from "@veyyon/utils/padding";
+import { visibleWidth } from "@veyyon/utils/width";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { framedBlock, renderStatusLine } from "../tui";

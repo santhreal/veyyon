@@ -27,9 +27,9 @@
  * asserting a geometry (popup above the input) that the layout does not have.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { CombinedAutocompleteProvider } from "@veyyon/tui/autocomplete";
 import { Editor } from "@veyyon/tui/components/editor";
 import { type Component, Container, TUI } from "@veyyon/tui/tui";
+import { CombinedAutocompleteProvider } from "@veyyon/utils/autocomplete";
 import { defaultEditorTheme } from "./test-themes";
 import { VirtualTerminal } from "./virtual-terminal";
 

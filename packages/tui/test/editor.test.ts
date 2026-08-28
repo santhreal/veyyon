@@ -4,11 +4,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { CURSOR_MARKER } from "@veyyon/tui";
-import { CombinedAutocompleteProvider } from "@veyyon/tui/autocomplete";
 import { Editor } from "@veyyon/tui/components/editor";
-import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/tui/keybindings";
-import { setKittyProtocolActive } from "@veyyon/tui/keys";
-import { visibleWidth } from "@veyyon/tui/utils";
+import { CombinedAutocompleteProvider } from "@veyyon/utils/autocomplete";
+import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/utils/keybindings";
+import { setKittyProtocolActive } from "@veyyon/utils/keys";
+import { visibleWidth } from "@veyyon/utils/width";
 import { defaultEditorTheme } from "./test-themes";
 
 describe("Editor component", () => {

@@ -50,8 +50,8 @@ import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/the
 import { BUILTIN_TOOLS, HIDDEN_TOOLS, type ToolSession } from "@veyyon/coding-agent/tools";
 import { AskTool, type AskToolInput } from "@veyyon/coding-agent/tools/ask";
 import type { Component, OverlayHandle } from "@veyyon/tui";
-import { setKeybindings } from "@veyyon/tui";
 import { isRecord } from "@veyyon/utils";
+import { setKeybindings } from "@veyyon/utils/keybindings";
 import { makeToolSession } from "../helpers/tool-session";
 
 /** The shape that killed the session: everything but the text that gets rendered. */

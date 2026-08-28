@@ -52,24 +52,13 @@
  * - Esc, or the key that opened it: close
  */
 import type { AgentTool } from "@veyyon/agent-core";
-import {
-	type Component,
-	Container,
-	matchesKey,
-	type OverlayHandle,
-	padding,
-	replaceTabs,
-	routeSgrMouseInput,
-	ScrollView,
-	Spacer,
-	sanitizeSingleLine,
-	Text,
-	type TUI,
-	truncateToWidth,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@veyyon/tui";
+import { type Component, Container, type OverlayHandle, ScrollView, Spacer, Text, type TUI } from "@veyyon/tui";
 import { clampLow, errorMessage, formatAge, formatMoreLines, getProjectDir, logger } from "@veyyon/utils";
+import { matchesKey } from "@veyyon/utils/keys";
+import { routeSgrMouseInput } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { replaceTabs, sanitizeSingleLine, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type { KeyId } from "../../config/keybindings";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
 import { IrcBus, type IrcLogEntry } from "../../irc/bus";

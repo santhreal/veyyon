@@ -31,8 +31,8 @@
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import type { Component } from "@veyyon/tui";
-import type { MouseRoutable, SgrMouseEvent } from "@veyyon/tui/mouse";
 import { TUI } from "@veyyon/tui/tui";
+import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
 import { VirtualTerminal } from "./virtual-terminal";
 
 /** SGR left-button press report at 0-based (row, col). */

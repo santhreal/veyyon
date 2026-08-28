@@ -17,7 +17,7 @@
  * same commit passed on a short-named checkout.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { visibleWidth } from "@veyyon/tui";
+import { visibleWidth } from "@veyyon/utils/width";
 import { resetSettingsForTest, Settings } from "../../../config/settings";
 import { settings } from "../../../config/settings-instance";
 import type { AgentSession } from "../../../session/agent-session";

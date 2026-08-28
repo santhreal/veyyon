@@ -1,6 +1,5 @@
 import "./warm-natives"; // load the native addon under the real platform before any process.platform mock
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { extractPrintableText } from "@veyyon/tui/keys";
 import { ProcessTerminal, STARTUP_PRIVATE_MODE_PROBES } from "@veyyon/tui/terminal";
 import {
 	type CellDimensions,
@@ -9,6 +8,7 @@ import {
 	setCellDimensions,
 } from "@veyyon/tui/terminal-capabilities";
 import { setTerminalHeadless } from "@veyyon/utils";
+import { extractPrintableText } from "@veyyon/utils/keys";
 
 const stdinIsTtyDescriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
 const stdoutIsTtyDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");

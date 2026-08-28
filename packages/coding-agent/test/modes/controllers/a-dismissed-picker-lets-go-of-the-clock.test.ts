@@ -43,7 +43,8 @@ import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selec
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
-import { motionClock, TERMINAL } from "@veyyon/tui";
+import { TERMINAL } from "@veyyon/tui";
+import { motionClock } from "@veyyon/utils/motion";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const FRAME = 1000 / 60;

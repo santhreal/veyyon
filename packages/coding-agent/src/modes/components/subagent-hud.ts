@@ -18,7 +18,7 @@
  * stood still.
  */
 
-import { visibleWidth } from "@veyyon/tui";
+import { visibleWidth } from "@veyyon/utils/width";
 import { formatTaskId } from "../../task/render";
 import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../../tools/render-utils";
 import type { ObservableSession } from "../session-observer-registry";

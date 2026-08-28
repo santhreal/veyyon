@@ -1,4 +1,4 @@
-import { SGR_FG_RESET } from "@veyyon/tui/ansi";
+import { SGR_FG_RESET } from "@veyyon/utils/ansi";
 import { maskNonProse } from "./markdown-prose";
 import { theme } from "./theme/theme";
 

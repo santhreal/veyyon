@@ -1,7 +1,6 @@
 import {
 	type Component,
 	Container,
-	clampLow,
 	type NativeScrollbackCommittedRows,
 	type NativeScrollbackCompaction,
 	type NativeScrollbackLiveRegion,
@@ -9,6 +8,7 @@ import {
 	type RenderStablePrefix,
 	type ViewportTailProvider,
 } from "@veyyon/tui";
+import { clampLow } from "@veyyon/utils/math";
 
 /**
  * A transcript block that is still mutating (a foreground tool awaiting its

@@ -1,5 +1,6 @@
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth } from "@veyyon/utils/width";
 import type { Component } from "../tui";
-import { padding, truncateToWidth } from "../utils";
 
 /**
  * Text component that truncates to fit viewport width

@@ -72,7 +72,8 @@ import { getThemeByName, initTheme, setThemeInstance, theme } from "@veyyon/codi
 import type { HistoryEntry, HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
 import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
-import { type AnsiPolicy, getAnsiPolicy, motionClock, setAnsiPolicy, TERMINAL } from "@veyyon/tui";
+import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TERMINAL } from "@veyyon/tui";
+import { motionClock } from "@veyyon/utils/motion";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const WIDTH = 110;

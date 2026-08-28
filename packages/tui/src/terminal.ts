@@ -1,22 +1,20 @@
 import { dlopen, FFIType, ptr } from "bun:ffi";
 import * as fs from "node:fs";
 import { $env, isBunTestRuntime, isTerminalHeadless } from "@veyyon/utils/env";
+import { setKittyProtocolActive } from "@veyyon/utils/keys";
 import * as logger from "@veyyon/utils/logger";
+import {
+	OSC11_RESET_BACKGROUND_SEQUENCE,
+	osc11SetBackgroundSequence,
+	oscChannelTo8Bit,
+} from "@veyyon/utils/paint-ground";
 import * as postmortem from "@veyyon/utils/postmortem";
 import { restoreTerminalStderr, suppressTerminalStderr } from "@veyyon/utils/stderr-guard";
+import { isInsideTmux, wrapTmuxPassthrough } from "@veyyon/utils/tmux";
 import { errorMessage } from "@veyyon/utils/type-guards";
-import { setKittyProtocolActive } from "./keys";
-import { OSC11_RESET_BACKGROUND_SEQUENCE, osc11SetBackgroundSequence, oscChannelTo8Bit } from "./paint-ground";
+import { type HangulCompatibilityJamoWidth, setHangulCompatibilityJamoWidth } from "@veyyon/utils/width";
 import { StdinBuffer } from "./stdin-buffer";
-import {
-	isInsideTmux,
-	NotifyProtocol,
-	setCellDimensions,
-	setOsc99Supported,
-	TERMINAL,
-	wrapTmuxPassthrough,
-} from "./terminal-capabilities";
-import { type HangulCompatibilityJamoWidth, setHangulCompatibilityJamoWidth } from "./utils";
+import { NotifyProtocol, setCellDimensions, setOsc99Supported, TERMINAL } from "./terminal-capabilities";
 import {
 	consumeWindowFocusEvent,
 	FOCUS_REPORTING_DISABLE,

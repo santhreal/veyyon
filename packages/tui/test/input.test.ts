@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { CURSOR_MARKER } from "@veyyon/tui";
 import { Input } from "@veyyon/tui/components/input";
-import { setKittyProtocolActive } from "@veyyon/tui/keys";
+import { DEFAULT_TAB_WIDTH } from "@veyyon/utils";
+import { setKittyProtocolActive } from "@veyyon/utils/keys";
 import {
 	resetHangulCompatibilityJamoWidthForTests,
 	setHangulCompatibilityJamoWidth,
 	visibleWidth,
-} from "@veyyon/tui/utils";
-import { DEFAULT_TAB_WIDTH } from "@veyyon/utils";
+} from "@veyyon/utils/width";
 
 function renderedWidth(input: Input, width: number): number {
 	const [line] = input.render(width);

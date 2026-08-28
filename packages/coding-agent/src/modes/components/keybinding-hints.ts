@@ -1,7 +1,9 @@
 /**
  * Utilities for formatting keybinding hints in the UI.
  */
-import { getKeybindings, type Keybinding, type KeyId } from "@veyyon/tui";
+
+import { getKeybindings, type Keybinding } from "@veyyon/utils/keybindings";
+import type { KeyId } from "@veyyon/utils/keys";
 import type { AppKeybinding, KeybindingsManager } from "../../config/keybindings";
 import { theme } from "../../modes/theme/theme";
 

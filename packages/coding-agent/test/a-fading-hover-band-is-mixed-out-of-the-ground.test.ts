@@ -33,7 +33,8 @@ import {
 	setThemeInstance,
 	theme,
 } from "@veyyon/coding-agent/modes/theme/theme";
-import { getAnsiPolicy, setAnsiPolicy, visibleWidth } from "@veyyon/tui";
+import { getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
+import { visibleWidth } from "@veyyon/utils/width";
 
 const originalColorterm = Bun.env.COLORTERM;
 const originalAnsiPolicy = getAnsiPolicy();

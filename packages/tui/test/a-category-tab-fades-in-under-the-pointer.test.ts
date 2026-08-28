@@ -35,8 +35,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { type Tab, TabBar, type TabBarTheme } from "@veyyon/tui/components/tab-bar";
-import { MOTION, MotionClock } from "@veyyon/tui/motion";
-import { HoverFade } from "@veyyon/tui/motion-hover";
+import { HoverFade, MOTION, MotionClock } from "@veyyon/utils/motion";
 
 const FRAME = 1000 / 60;
 

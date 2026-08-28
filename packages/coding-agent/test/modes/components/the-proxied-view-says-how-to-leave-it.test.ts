@@ -31,7 +31,7 @@ import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/statu
 import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/components/status-line/presets";
 import type { StatusLinePreset } from "@veyyon/coding-agent/modes/components/status-line/types";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { visibleWidth } from "@veyyon/tui";
+import { visibleWidth } from "@veyyon/utils/width";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../../helpers/settings-test-state";
 
 let settingsState: SettingsTestState | undefined;

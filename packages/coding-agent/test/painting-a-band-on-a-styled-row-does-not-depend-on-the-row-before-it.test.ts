@@ -37,7 +37,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { getThemeByName, paintBand, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { Theme } from "@veyyon/coding-agent/modes/theme/theme-class";
-import { getAnsiPolicy, setAnsiPolicy, visibleWidth } from "@veyyon/tui";
+import { getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
+import { visibleWidth } from "@veyyon/utils/width";
 
 const originalColorterm = Bun.env.COLORTERM;
 const originalAnsiPolicy = getAnsiPolicy();

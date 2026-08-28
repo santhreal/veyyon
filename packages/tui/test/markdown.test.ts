@@ -3,7 +3,7 @@ import { stripVTControlCharacters } from "node:util";
 import { clearRenderCache, Markdown, renderInlineMarkdown } from "@veyyon/tui/components/markdown";
 import { setTerminalTextSizing, TERMINAL } from "@veyyon/tui/terminal-capabilities";
 import { type Component, TUI } from "@veyyon/tui/tui";
-import { visibleWidth } from "@veyyon/tui/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 import { Chalk } from "chalk";
 import { defaultMarkdownTheme } from "./test-themes.js";
 import { VirtualTerminal } from "./virtual-terminal.js";

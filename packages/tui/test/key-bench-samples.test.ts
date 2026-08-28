@@ -19,9 +19,9 @@
 
 import { describe, expect, it } from "bun:test";
 import { parseKey as nativeParseKey } from "@veyyon/natives";
+import * as native from "@veyyon/utils/keys";
 import * as js from "../bench/_jskey";
 import { samples } from "../bench/_key-samples";
-import * as native from "../src/keys";
 
 /** Kitty protocol on, matching the mode the bench measures in: half the samples are Kitty sequences. */
 const KITTY_ACTIVE = true;

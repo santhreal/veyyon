@@ -21,15 +21,7 @@
  */
 import * as fs from "node:fs";
 import type { AgentTool } from "@veyyon/agent-core";
-import {
-	type Component,
-	Editor,
-	matchesKey,
-	routeSgrMouseInput,
-	ScrollView,
-	type SgrMouseEvent,
-	type TUI,
-} from "@veyyon/tui";
+import { type Component, Editor, ScrollView, type TUI } from "@veyyon/tui";
 import { errorMessage, formatDuration, formatNumber, logger } from "@veyyon/utils";
 import type { KeyId } from "../../config/keybindings";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
@@ -48,6 +40,8 @@ import { COMPOSER_INSET_COLS } from "./composer-chrome";
 // footer share one gutter.
 const RAIL_PAD = " ".repeat(COMPOSER_INSET_COLS);
 
+import { matchesKey } from "@veyyon/utils/keys";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { type AgentDisplayState, agentDisplayState, agentStatusWord } from "./agent-status-display";
 import { ChatTranscriptBuilder } from "./chat-transcript-builder";
 import {
