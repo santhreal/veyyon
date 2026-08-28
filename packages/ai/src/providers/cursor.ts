@@ -832,17 +832,24 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 
 			endCurrentTextBlock(output, stream, state);
 			endCurrentThinkingBlock(output, stream, state);
-			if (state.currentToolCall) {
-				const idx = output.content.indexOf(state.currentToolCall);
-				state.currentToolCall.arguments = parseStreamingJson(state.currentToolCall[kStreamingPartialJson]);
-				clearStreamingPartialJson(state.currentToolCall);
+			// Every call the turn opened and never completed, not only the last
+			// one: a batch completes out of pointer order, so closing "the current
+			// tool call" left every earlier call of the batch without a
+			// `toolcall_end`, and the loop then treated a call whose arguments had
+			// fully arrived as one that never finished streaming.
+			for (const open of openToolCallBlocks(output)) {
+				const idx = output.content.indexOf(open);
+				const partial = open[kStreamingPartialJson];
+				if (partial) open.arguments = parseStreamingJson(partial);
+				clearStreamingPartialJson(open);
 				stream.push({
 					type: "toolcall_end",
 					contentIndex: idx,
-					toolCall: state.currentToolCall,
+					toolCall: open,
 					partial: output,
 				});
 			}
+			state.setToolCall(null);
 
 			output.duration = performance.now() - startTime;
 			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
@@ -892,12 +899,49 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 	return stream;
 };
 
+/**
+ * The `call_id` every tool-call update carries, kept on the block it opened.
+ *
+ * A block's `id` comes from the MCP payload's `tool_call_id`, which is the id
+ * the exec channel and the `toolResult` also use. `ToolCallDeltaUpdate`,
+ * `PartialToolCallUpdate` and `ToolCallCompletedUpdate` address a call by
+ * `call_id` instead. Cursor sends the same string in both fields today, so
+ * recording it costs nothing and keeps routing correct if it ever stops.
+ */
+const kCursorWireCallId = Symbol("provider.block.cursorWireCallId");
+
+/**
+ * Set while a block's argument buffer holds the started frame's own argument
+ * map rather than text streamed by `args_text_delta`.
+ */
+const kCursorSeededArgs = Symbol("provider.block.cursorSeededArgs");
+
+/**
+ * Every tool-call block this turn opened and never closed.
+ *
+ * A closed block has had its argument buffer cleared, so the marker's presence
+ * is the open/closed answer and no separate bookkeeping can disagree with the
+ * blocks themselves. Exec-synthesized blocks open and close in one step and
+ * never carry the marker.
+ */
+function openToolCallBlocks(output: AssistantMessage): ToolCallState[] {
+	const open: ToolCallState[] = [];
+	for (const block of output.content) {
+		if (block.type !== "toolCall") continue;
+		const candidate = block as ToolCallState;
+		if (candidate[kStreamingPartialJson] !== undefined) open.push(candidate);
+	}
+	return open;
+}
+
 export type ToolCallState = ToolCall & {
 	[kStreamingBlockIndex]: number;
 	[kStreamingPartialJson]?: string;
 	[kStreamingLastParseLen]?: number;
 	[kStreamingBlockKind]: "mcp" | "todo" | "cursor-exec";
 	[kCursorExecResolved]?: true;
+	[kCursorWireCallId]?: string;
+	[kCursorSeededArgs]?: boolean;
 };
 
 /**
@@ -2644,6 +2688,39 @@ export interface InteractionUpdateView {
 	};
 }
 
+/**
+ * The block a tool-call update is about.
+ *
+ * WHY. Cursor opens every call of a batch before it streams any of their
+ * arguments, and it completes them in issue order afterwards: `started(A)`,
+ * `started(B)`, `completed(A)`, `completed(B)`. A single "current tool call"
+ * pointer therefore names B by the time A's arguments and completion arrive,
+ * so A's arguments were written onto B and A kept the empty object it opened
+ * with. A recorded two-call turn persisted `set_cwd({})` beside
+ * `eval({path, i})` — B's name over A's arguments — and the empty one then
+ * reached the tool validator as a second execution under an id that already
+ * had a result. Every update carries `call_id`; route by it.
+ *
+ * A call id that names no open block returns nothing rather than the pointer:
+ * writing an unrecognised call's arguments onto whatever is current is the
+ * defect, not a fallback. The pointer answers only an update that carries no
+ * id at all, which is how a provider fixture without one keeps working.
+ */
+function toolCallBlockFor(
+	output: AssistantMessage,
+	state: BlockState,
+	callId: string | undefined,
+): ToolCallState | null {
+	if (!callId) return state.currentToolCall;
+	for (let i = output.content.length - 1; i >= 0; i--) {
+		const block = output.content[i];
+		if (block?.type !== "toolCall") continue;
+		const candidate = block as ToolCallState;
+		if (candidate.id === callId || candidate[kCursorWireCallId] === callId) return candidate;
+	}
+	return null;
+}
+
 /** Exported for tests: drives one Cursor interaction update through the streaming state machine. */
 export function processInteractionUpdate(
 	update: InteractionUpdateView,
@@ -2698,15 +2775,27 @@ export function processInteractionUpdate(
 			const mcpCall = mcpToolCallOf(toolCall);
 			if (mcpCall) {
 				const args = mcpCall.args || {};
-				const toolCallId = args.toolCallId || crypto.randomUUID();
+				const toolCallId = args.toolCallId || value.callId || crypto.randomUUID();
+				// The started frame already carries the whole argument map for a call
+				// Cursor decided server-side, and a call whose completion never
+				// arrives keeps nothing else: an interrupted turn persisted `{}` for
+				// arguments the wire had already delivered, and the loop then deleted
+				// the block as one whose arguments never finished streaming — which
+				// is how a call that HAD run was reported as never run.
+				const startedArgs = decodeMcpArgsMap(args.args) ?? {};
+				const hasStartedArgs = Object.keys(startedArgs).length > 0;
 				const block: ToolCallState = {
 					type: "toolCall",
 					id: toolCallId,
 					name: args.name || args.toolName || "",
-					arguments: {},
+					arguments: startedArgs,
 					[kStreamingBlockIndex]: output.content.length,
-					[kStreamingPartialJson]: "",
+					// A complete argument map is a complete argument buffer: the loop
+					// reads this marker to tell a finished call from a truncated one.
+					[kStreamingPartialJson]: hasStartedArgs ? JSON.stringify(startedArgs) : "",
+					...(hasStartedArgs ? { [kCursorSeededArgs]: true } : {}),
 					[kStreamingBlockKind]: "mcp",
+					...(value.callId ? { [kCursorWireCallId]: value.callId } : {}),
 					// The exec channel may have dispatched this call before its block
 					// opened, in which case the tool has already run and answered.
 					...(state.execDispatchedToolCalls.has(toolCallId) ? { [kCursorExecResolved]: true } : {}),
@@ -2726,7 +2815,13 @@ export function processInteractionUpdate(
 					name: "todo",
 					arguments: todoArgs,
 					[kStreamingBlockIndex]: output.content.length,
+					// Todo args arrive whole, but the block is still open until its
+					// completion: the same marker every open block carries, so
+					// end-of-stream closes this one too.
+					[kStreamingPartialJson]: JSON.stringify(todoArgs),
+					[kCursorSeededArgs]: true,
 					[kStreamingBlockKind]: "todo",
+					...(value.callId ? { [kCursorWireCallId]: value.callId } : {}),
 				};
 				output.content.push(block);
 				state.setToolCall(block);
@@ -2734,55 +2829,66 @@ export function processInteractionUpdate(
 			}
 		}
 	} else if (updateCase === "toolCallDelta" || updateCase === "partialToolCall") {
-		if (state.currentToolCall?.[kStreamingBlockKind] === "mcp") {
+		const target = toolCallBlockFor(output, state, value.callId);
+		if (target?.[kStreamingBlockKind] === "mcp") {
 			// Cursor's `args_text_delta` is "aggregated args text so far" per agent.proto: each
 			// delta is a cumulative snapshot of the JSON-text args. Strip the prefix we already
 			// have to recover the new suffix; fall back to treating the value as an incremental
 			// fragment when it doesn't extend the buffer.
 			const snapshot: string = value.argsTextDelta || "";
-			const current = state.currentToolCall[kStreamingPartialJson] ?? "";
+			// A buffer seeded from the started frame is a complete argument map, not
+			// a prefix of what is now streaming. Streamed text supersedes it whole;
+			// appending would concatenate two JSON objects into an unparseable one.
+			const seeded = target[kCursorSeededArgs] === true;
+			const current =
+				seeded && !snapshot.startsWith(target[kStreamingPartialJson] ?? "")
+					? ""
+					: (target[kStreamingPartialJson] ?? "");
 			const chunk = snapshot.startsWith(current) ? snapshot.slice(current.length) : snapshot;
 			if (chunk.length === 0) {
 				return;
 			}
 			const nextBuffer = current + chunk;
-			state.currentToolCall[kStreamingPartialJson] = nextBuffer;
+			target[kStreamingPartialJson] = nextBuffer;
+			target[kCursorSeededArgs] = undefined;
+			target[kStreamingLastParseLen] = seeded ? 0 : target[kStreamingLastParseLen];
 			// Throttle mid-stream parses to keep total parse work O(N) instead of O(N²)
 			// in the argument-buffer length; the authoritative full parse runs in
 			// `toolCallCompleted` (mcp branch) and the fallback end-of-stream path.
-			const throttled = parseStreamingJsonThrottled(nextBuffer, state.currentToolCall[kStreamingLastParseLen] ?? 0);
+			const throttled = parseStreamingJsonThrottled(nextBuffer, target[kStreamingLastParseLen] ?? 0);
 			if (throttled) {
-				state.currentToolCall.arguments = throttled.value;
-				state.currentToolCall[kStreamingLastParseLen] = throttled.parsedLen;
+				target.arguments = throttled.value;
+				target[kStreamingLastParseLen] = throttled.parsedLen;
 			}
-			const idx = output.content.indexOf(state.currentToolCall);
+			const idx = output.content.indexOf(target);
 			stream.push({ type: "toolcall_delta", contentIndex: idx, delta: chunk, partial: output });
 		}
 	} else if (updateCase === "toolCallCompleted") {
-		if (state.currentToolCall) {
+		const target = toolCallBlockFor(output, state, value.callId);
+		if (target) {
 			const toolCall = value.toolCall;
-			if (state.currentToolCall[kStreamingBlockKind] === "mcp") {
+			if (target[kStreamingBlockKind] === "mcp") {
 				// Authoritative full parse of the accumulated argument buffer; the delta
 				// path throttles mid-stream parses, so `arguments` may lag the buffer.
-				const partial = state.currentToolCall[kStreamingPartialJson];
-				if (partial !== undefined) {
-					state.currentToolCall.arguments = parseStreamingJson(partial);
+				const partial = target[kStreamingPartialJson];
+				if (partial !== undefined && partial.length > 0) {
+					target.arguments = parseStreamingJson(partial);
 				}
 				const decodedArgs = decodeMcpArgsMap(toolCall ? mcpToolCallOf(toolCall)?.args?.args : undefined);
-				state.currentToolCall.arguments = mergeCursorMcpToolCallArgs(
-					state.currentToolCall.arguments as Record<string, unknown> | undefined,
+				target.arguments = mergeCursorMcpToolCallArgs(
+					target.arguments as Record<string, unknown> | undefined,
 					decodedArgs,
 				);
-			} else if (state.currentToolCall[kStreamingBlockKind] === "todo" && toolCall) {
+			} else if (target[kStreamingBlockKind] === "todo" && toolCall) {
 				const todoArgs = buildTodoArgs(toolCall);
 				if (todoArgs) {
-					state.currentToolCall.arguments = todoArgs;
+					target.arguments = todoArgs;
 				}
 			}
-			const idx = output.content.indexOf(state.currentToolCall);
-			clearStreamingPartialJson(state.currentToolCall);
-			stream.push({ type: "toolcall_end", contentIndex: idx, toolCall: state.currentToolCall, partial: output });
-			state.setToolCall(null);
+			const idx = output.content.indexOf(target);
+			clearStreamingPartialJson(target);
+			stream.push({ type: "toolcall_end", contentIndex: idx, toolCall: target, partial: output });
+			if (state.currentToolCall === target) state.setToolCall(null);
 		}
 	} else if (updateCase === "tokenDelta") {
 		// `turnEnded` is deliberately not handled here. It is the turn's only
