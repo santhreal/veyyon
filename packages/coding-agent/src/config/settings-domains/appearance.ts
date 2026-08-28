@@ -185,7 +185,7 @@ export const APPEARANCE_SETTINGS = {
 			group: "Output Limits",
 			label: "Artifact Spill Threshold (KB)",
 			description:
-				"Tool output above this size is saved as an artifact and the result keeps a head/tail window plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as grep and the browser.",
+				"Tool output above this size is saved as an artifact and the result keeps a head/tail window no larger than this size, plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as search and the browser.",
 			options: [
 				{ value: "1", label: "1 KB", description: "~250 tokens" },
 				{ value: "2.5", label: "2.5 KB", description: "~625 tokens" },
@@ -209,7 +209,8 @@ export const APPEARANCE_SETTINGS = {
 			tab: "tools",
 			group: "Output Limits",
 			label: "Artifact Tail Size (KB)",
-			description: "Amount of tail content kept inline when output spills to artifact",
+			description:
+				"Amount of tail content kept inline when output spills to artifact, bounded by the spill threshold.",
 			options: [
 				{ value: "1", label: "1 KB", description: "~250 tokens" },
 				{ value: "2.5", label: "2.5 KB", description: "~625 tokens" },
@@ -230,7 +231,7 @@ export const APPEARANCE_SETTINGS = {
 			group: "Output Limits",
 			label: "Artifact Head Size (KB)",
 			description:
-				"Amount of head content kept inline alongside the tail when output spills to artifact (middle elision). 0 disables — keep tail only.",
+				"Amount of head content kept inline alongside the tail when output spills to artifact (middle elision), bounded with the tail by the spill threshold. 0 disables — keep tail only.",
 			options: [
 				{ value: "0", label: "0 KB", description: "Disabled; tail-only truncation" },
 				{ value: "1", label: "1 KB", description: "~250 tokens" },

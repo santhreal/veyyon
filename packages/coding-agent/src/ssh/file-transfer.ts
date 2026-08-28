@@ -13,7 +13,7 @@ import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import { buildRemoteCommand, ensureConnection, ensureHostInfo, type SSHConnectionTarget } from "./connection-manager";
 import { quotePosixPath, wrapInPosixShell } from "./utils";
 
-/** Per-operation timeout for remote transfers (matches the ssh tool's grep window). */
+/** Per-operation timeout for remote transfers (matches the ssh tool's command window). */
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 /**

@@ -711,7 +711,7 @@ type PersistableMemoryRole = "system" | "developer" | "user" | "assistant" | "to
 interface PersistableMemoryMessage {
 	role: PersistableMemoryRole;
 	text: string;
-	toolName?: "bash" | "eval" | "read" | "grep";
+	toolName?: "bash" | "eval" | "read" | "search" | "grep";
 }
 
 function isPersistableMemoryRole(role: unknown): role is PersistableMemoryRole {
@@ -746,7 +746,15 @@ function extractPersistableMessages(payload: string): PersistableMemoryMessage[]
 		const text = extractMemoryMessageText(row.message);
 		if (role === "toolResult") {
 			const toolName = row.message.toolName;
-			if (toolName !== "bash" && toolName !== "eval" && toolName !== "read" && toolName !== "grep") continue;
+			if (
+				toolName !== "bash" &&
+				toolName !== "eval" &&
+				toolName !== "read" &&
+				toolName !== "search" &&
+				toolName !== "grep"
+			) {
+				continue;
+			}
 			if (text.length === 0) continue;
 			messages.push({ role, toolName, text });
 			continue;

@@ -1,4 +1,5 @@
-import { collapseWhitespace, isRecord } from "@veyyon/utils";
+import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
+import { isRecord } from "@veyyon/utils/type-guards";
 import { extractionPromptOverride, hostLlmModel, hostLlmProvider } from "../config";
 import { extractionDiagnostics, safeForLog } from "./extraction/diagnostics";
 import { callHostLlm } from "./llm-backends";

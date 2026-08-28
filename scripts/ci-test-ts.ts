@@ -217,7 +217,6 @@ export const fastWorkspacePackages = [
 	"packages/stats",
 	"packages/tool-render",
 	"packages/swarm-extension",
-	"packages/deepswe-bench",
 	// mnemopi ran in NO CI job until this entry existed. It sat in
 	// `localOnlyWorkspacePackages` below, excluded as a whole package because "its
 	// embedding suites depend on a ~270MB fastembed model absent from CI runners".
@@ -249,11 +248,10 @@ export const fastWorkspacePackages = [
 export const nativeAndIntegrationPackages = [
 	"packages/natives",
 	"packages/tui",
-	"packages/typescript-edit-benchmark",
 	// Same omission as above. These two belong in this bucket rather than the fast
-	// one for the reason the comment gives: metaharness starts local servers and
-	// collab-web is browser-ish.
-	"packages/metaharness",
+	// one for the reason the comment gives: evals starts local servers and drives
+	// agent sessions against benchmark fixtures, and collab-web is browser-ish.
+	"packages/evals",
 	"packages/collab-web",
 ];
 
@@ -306,10 +304,13 @@ export const workspaceTestPackages = [
 export const repoScriptTests = [
 	"scripts/a-generated-doc-says-so-on-its-first-line.test.ts",
 	"scripts/a-local-action-is-called-with-everything-it-requires.test.ts",
+	"scripts/a-module-is-imported-at-the-top-of-its-file.test.ts",
 	"scripts/a-shipped-module-arrives-with-a-test-that-names-it.test.ts",
+	"scripts/a-suite-is-named-for-the-behavior-it-defends.test.ts",
 	"scripts/a-test-proves-behavior-not-that-a-spy-was-called.test.ts",
 	"scripts/a-production-site-deploy-has-one-owner.test.ts",
 	"scripts/a-third-party-action-is-pinned-in-one-place.test.ts",
+	"scripts/a-type-is-named-not-derived-from-a-function.test.ts",
 	"scripts/ci-concurrency.test.ts",
 	"scripts/ci-test-partitioning-preserves-global-state-isolation.test.ts",
 	"scripts/simulation-watchdogs-do-not-run-under-test-fanout.test.ts",
@@ -461,6 +462,7 @@ export const repoScriptTests = [
 	// landed on disk unwired, which for a scan-the-whole-tree gate means the rule
 	// it enforces stops being enforced the moment nobody reruns it by hand.
 	"scripts/an-off-screen-raster-never-enters-assets.test.ts",
+	"scripts/one-owner-answers-a-command-lookup.test.ts",
 ];
 
 /**

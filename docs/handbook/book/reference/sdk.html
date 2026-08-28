@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d51f25b3.js";
+            window.path_to_searchindex_js = "../searchindex-8b9af2d6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -449,7 +449,7 @@ const { session } = await createAgentSession({
 <li>Hidden tools (for example <code>yield</code>) are opt-in unless required by options.</li>
 </ul>
 <pre><code class="language-ts">const { session } = await createAgentSession({
-  toolNames: ["read", "grep", "glob", "write"],
+  toolNames: ["read", "search", "write"],
   requireYieldTool: true,
 });
 </code></pre>
@@ -471,8 +471,7 @@ symptom is a tool that is no longer there.</p>
 Those stay literals and carry a <code>// not-a-tool-name:</code> comment saying which they are. The test
 <code>test/tools/tool-name-literals-have-one-owner.test.ts</code> reads the selection sites and fails on any
 unmarked tool-name literal.</p>
-<p>As a caller of the SDK you keep passing plain strings: <code>toolNames</code> takes the names as text, and
-legacy spellings (<code>search</code> for <code>grep</code>, <code>find</code> for <code>glob</code>) are still normalized for you.</p>
+<p>As a caller of the SDK you keep passing plain strings: <code>toolNames</code> takes the names as text. Retired workspace-search names (<code>glob</code>, <code>grep</code>, <code>find</code>, and <code>ast_grep</code>) normalize to the canonical <code>search</code> builtin at this compatibility boundary; they are not registered as model-facing tools.</p>
 <h3 id="extensions"><a class="header" href="#extensions">Extensions</a></h3>
 <ul>
 <li><code>extensions</code>: inline <code>ExtensionFactory[]</code></li>
@@ -567,7 +566,7 @@ const { session } = await createAgentSession({
   modelRegistry,
   settings,
   sessionManager: SessionManager.inMemory(),
-  toolNames: ["read", "grep", "glob", "edit", "write"],
+  toolNames: ["read", "search", "edit", "write"],
   enableMCP: false,
   enableLsp: true,
 });

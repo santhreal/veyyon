@@ -115,7 +115,7 @@ describe("streaming string keys follow the renderer, not the name", () => {
 
 	/** A tool with no entry is undefined rather than an empty list, which is what the reveal path branches on. */
 	it("leaves an unlisted tool undefined", () => {
-		expect(streamingStringKeysForTool("glob", false)).toBeUndefined();
+		expect(streamingStringKeysForTool("custom_lookup", false)).toBeUndefined();
 		expect(streamingStringKeysForTool("not_a_tool", false)).toBeUndefined();
 	});
 });

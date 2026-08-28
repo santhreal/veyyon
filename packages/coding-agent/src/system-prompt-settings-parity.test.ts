@@ -5,12 +5,10 @@ import { buildSystemPrompt } from "./system-prompt";
 import { RUNTIME_SECTIONS } from "./system-prompt-builder/section-registry";
 import { PROMPT_STATEMENTS, type StatementCondition } from "./system-prompt-builder/statement-registry";
 import { delegationEnabled } from "./task/subagent-settings";
-import { AstGrepTool } from "./tools/ast-grep";
 import { TOOL } from "./tools/builtin-names";
-import { GlobTool } from "./tools/glob";
-import { GrepTool } from "./tools/grep";
 import type { ToolSession } from "./tools/index";
 import { type BuiltinToolPermissionInputs, isBuiltinToolAllowed } from "./tools/loading/policy";
+import { SearchTool } from "./tools/search";
 import type { ActiveRepoContext } from "./utils/active-repo-context";
 
 /**
@@ -50,7 +48,7 @@ const EMPTY_TREE = {
 };
 
 /** Tool set that unlocks the delegation section and the specialized-tool bullets. */
-const DELEGATION_TOOLS = ["read", "edit", "write", "bash", "grep", "glob", "task"];
+const DELEGATION_TOOLS = ["read", "edit", "write", "bash", "search", "task"];
 
 /**
  * Render the default template's static block (systemPrompt[0]) with pre-loaded
@@ -123,22 +121,18 @@ function demoSkills(): Skill[] {
 const DELEGATION_MENTION = /delegat|subagent|task tool|`task`/i;
 
 /**
- * The three search tools' live descriptions under one subagent configuration.
+ * The unified search tool's live description under one subagent configuration.
  *
- * A tool description describes the tool: its inputs, its results, its usage
- * hints. Delegation is policy, it belongs to the prompt's Delegation section,
- * and these three carried it anyway (`grep` and `ast_grep` behind a
- * master-switch-only `canDelegate` gate, `glob` behind no gate at all), so they
- * ordered a handoff to a `task` subagent in states where the section itself was
- * correctly suppressed. The settings are varied here to prove the descriptions
- * no longer read the delegation settings at all.
+ * A tool description describes the tool: its inputs, results, and usage hints.
+ * Delegation is policy and belongs to the prompt's Delegation section, so the
+ * description must not vary with delegation settings.
  */
 function searchToolDescriptions(subagentsEnabled: boolean, delegation: string): string[] {
 	const session = {
 		cwd: import.meta.dir,
 		settings: Settings.isolated({ "subagent.enabled": subagentsEnabled, "subagent.delegation": delegation }),
 	} as unknown as ToolSession;
-	return [new GrepTool(session).description, new GlobTool(session).description, new AstGrepTool(session).description];
+	return [new SearchTool(session).description];
 }
 
 /**
@@ -187,8 +181,7 @@ const GATING_PROPS = [
 	"hasRead",
 	"hasEdit",
 	"hasWrite",
-	"hasGrep",
-	"hasGlob",
+	"hasSearch",
 	"hasBash",
 	"hasAsk",
 	"hasInspectImage",
@@ -316,8 +309,8 @@ describe("system prompt settings parity: tool policy", () => {
 		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("Todo calls NEVER travel alone");
 	});
 
-	it(`${asserted("hasAstTools")} toggles the AST section`, async () => {
-		expect(await renderBlock0({ toolNames: ["read", "ast_grep"] })).toContain("# AST");
+	it(`${asserted("hasAstTools")} exposes AST guidance for structural edits`, async () => {
+		expect(await renderBlock0({ toolNames: ["read", "ast_edit"] })).toContain("# AST");
 		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("# AST");
 	});
 
@@ -344,14 +337,13 @@ describe("system prompt settings parity: tool policy", () => {
 		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("Create or overwrite");
 	});
 
-	it(`${asserted("hasGrep")} toggles the grep-tool routing bullet`, async () => {
-		expect(await renderBlock0({ toolNames: ["read", "grep"] })).toContain("Regex search");
-		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("Regex search");
-	});
-
-	it(`${asserted("hasGlob")} toggles the glob-tool routing bullet`, async () => {
-		expect(await renderBlock0({ toolNames: ["read", "glob"] })).toContain("Globbing");
-		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("Globbing");
+	it(`${asserted("hasSearch")} toggles unified workspace-search routing`, async () => {
+		const enabled = await renderBlock0({ toolNames: ["read", "search"] });
+		expect(enabled).toContain("# AST");
+		expect(enabled).toContain("Workspace discovery");
+		expect(enabled).toContain('type: "structure"');
+		expect(enabled).toContain('- `search` with `type: "structure"` for structural discovery.');
+		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("Workspace discovery");
 	});
 
 	it(`${asserted("hasBash")} toggles the bash-tool routing bullet`, async () => {
@@ -736,8 +728,7 @@ const IDENTIFIER_TO_PROP: Record<string, (typeof GATING_PROPS)[number]> = {
 	"tools:read": "hasRead",
 	"tools:edit": "hasEdit",
 	"tools:write": "hasWrite",
-	"tools:grep": "hasGrep",
-	"tools:glob": "hasGlob",
+	"tools:search": "hasSearch",
 	"tools:bash": "hasBash",
 	"tools:ask": "hasAsk",
 	"tools:task": "hasTask",
@@ -745,7 +736,6 @@ const IDENTIFIER_TO_PROP: Record<string, (typeof GATING_PROPS)[number]> = {
 	"tools:todo": "hasTodo",
 	"tools:inspect_image": "hasInspectImage",
 	"tools:report_tool_issue": "hasReportToolIssue",
-	"tools:ast_grep": "hasAstTools",
 	"tools:ast_edit": "hasAstTools",
 	"tools:browser": "hasBrowser",
 };

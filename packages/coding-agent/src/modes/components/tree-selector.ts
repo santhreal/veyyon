@@ -16,7 +16,6 @@ import type { TreeFilterMode } from "../../config/settings-schema";
 import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { SessionTreeNode } from "../../session/session-entries";
-import { toPathList } from "../../tools/path-utils";
 import { shortenPath, TRUNCATE_LENGTHS } from "../../tools/render-utils";
 import { canonicalizeMessage } from "../../utils/thinking-display";
 import { resolveAssistantErrorPresentation } from "../utils/transcript-render-helpers";
@@ -860,28 +859,11 @@ class TreeList implements Component {
 					.slice(0, 50);
 				return `[bash: ${cmd}${rawCmd.length > 50 ? "..." : ""}]`;
 			}
-			case "grep": {
-				const pattern = String(args.pattern || "");
-				const searchPathsInput =
-					typeof args.paths === "string" || Array.isArray(args.paths)
-						? args.paths
-						: typeof args.path === "string"
-							? args.path
-							: undefined;
-				const paths = toPathList(searchPathsInput);
-				const scope = paths.length > 0 ? paths.join(", ") : ".";
-				return `[grep: /${pattern}/ in ${shortenPath(scope)}]`;
-			}
-			case "glob": {
-				const globInput =
-					typeof args.path === "string"
-						? args.path
-						: typeof args.paths === "string" || Array.isArray(args.paths)
-							? args.paths
-							: undefined;
-				const paths = toPathList(globInput);
-				const scope = paths.length > 0 ? paths.join(", ") : ".";
-				return `[glob: ${shortenPath(scope)}]`;
+			case "search": {
+				const type = String(args.type || "?");
+				const input = String(args.input || "");
+				const scope = typeof args.path === "string" ? ` in ${shortenPath(args.path)}` : "";
+				return `[search:${type} ${input}${scope}]`;
 			}
 			case "ls": {
 				const path = shortenPath(String(args.path || "."));

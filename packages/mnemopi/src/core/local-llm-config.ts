@@ -19,7 +19,8 @@
  */
 
 import type { Api, ApiKey, Model } from "@veyyon/ai";
-import { estimateTokensFromText, trimTrailingSlashes } from "@veyyon/utils";
+import { estimateTokensFromText } from "@veyyon/utils/tokens";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import {
 	hostLlmContext,
 	hostLlmEnabled as hostLlmEnabledFromEnv,

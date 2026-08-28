@@ -1395,6 +1395,49 @@ let loadedNativeBindings;
  */
 let nativeLoadFailure;
 
+/**
+ * The `code` stamped on every failure that means "this process has no usable
+ * native addon": no `.node` on any candidate path, a GLIBC too old for the one
+ * that shipped, or a copy built for another release.
+ *
+ * It exists so a caller can tell an unavailable addon from a scan that found
+ * nothing. Without it, a directory listing that caught this failure and
+ * returned an empty tree reported an EMPTY WORKSPACE for a full checkout, and
+ * the agent reading that listing searched for a repository it was already
+ * standing in.
+ */
+export const NATIVE_ADDON_UNAVAILABLE_CODE = "VEYYON_NATIVE_ADDON_UNAVAILABLE";
+
+/**
+ * Stamp `NATIVE_ADDON_UNAVAILABLE_CODE` on a load failure and return the same
+ * error, so the memoized failure and the thrown one are one object.
+ *
+ * @param {unknown} error
+ * @returns {unknown}
+ */
+export function markNativeAddonUnavailable(error) {
+	if (error !== null && typeof error === "object") {
+		/** @type {{ code?: unknown }} */ (error).code = NATIVE_ADDON_UNAVAILABLE_CODE;
+	}
+	return error;
+}
+
+/**
+ * True when this error means the native addon could not be loaded at all, so a
+ * result derived from a native call carries no information about the
+ * filesystem and must never be reported as a finding.
+ *
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+export function isNativeAddonUnavailable(error) {
+	return (
+		error !== null &&
+		typeof error === "object" &&
+		/** @type {{ code?: unknown }} */ (error).code === NATIVE_ADDON_UNAVAILABLE_CODE
+	);
+}
+
 /** Load the native addon once (memoized), or throw loudly if it cannot load. */
 export function native() {
 	if (nativeLoadFailure !== undefined) throw nativeLoadFailure;
@@ -1402,7 +1445,7 @@ export function native() {
 		try {
 			loadedNativeBindings = loadNative();
 		} catch (error) {
-			nativeLoadFailure = error ?? new Error("The native addon failed to load.");
+			nativeLoadFailure = markNativeAddonUnavailable(error ?? new Error("The native addon failed to load."));
 			throw nativeLoadFailure;
 		}
 	}
@@ -1472,12 +1515,20 @@ export function lazyNativeClass(name) {
  * the binary in front of us, and quietly loading a different one is how "my rebuild had no effect"
  * happens with nothing in the log to explain it.
  *
+ * A GLIBC or GLIBCXX version mismatch is classified `"incompatible"` rather than `"broken"`: the
+ * binary is intact, the host's C library is too old. This is an environment limitation (common in
+ * DeepSWE containers that ship older GLIBC), not a stale rebuild, so the "stale binary" warning is
+ * both misleading and noise. The error is still collected in the errors list so the aggregate throw
+ * names it if every candidate fails; only the per-candidate warning is suppressed.
+ *
  * @param {unknown} error
- * @returns {"absent" | "broken"}
+ * @returns {"absent" | "incompatible" | "broken"}
  */
 export function classifyCandidateFailure(error) {
 	const code = /** @type {{ code?: unknown }} */ (error)?.code;
 	if (code === "MODULE_NOT_FOUND" || code === "ENOENT") return "absent";
+	const message = error instanceof Error ? error.message : String(error ?? "");
+	if (/GLIBC[A-Z]*_\d+\.\d+.*not found/.test(message)) return "incompatible";
 	return "broken";
 }
 

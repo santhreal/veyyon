@@ -16,6 +16,7 @@ source "${REPO_ROOT}/proof/docker/recorder-image.sh"
 SCENE="${1:?usage: record-x11.sh <scene.sh>}"
 OUT="${OUT_DIR:-${REPO_ROOT}/proof/captures/x11}"
 mkdir -p "${OUT}"
+OUT="$(cd "${OUT}" && pwd)"
 
 # A model served by this host answers on loopback here and on the gateway alias in
 # there. proof/docker/host-endpoint.sh owns the substitution.

@@ -26,10 +26,10 @@ function getText(result: { content: Array<{ type: string; text?: string }> }): s
 }
 
 // A pattern that neither the Rust regex engine nor PCRE2 will compile, so native
-// grep demotes it to a literal search. The tool must say so loudly rather than
+// text search demotes it to a literal search. The tool must say so loudly rather than
 // let the demotion pass silently (Law 10: no silent fallback — a literal search
 // of a regex the caller wrote hides the recall loss).
-describe("grep literal-fallback notice (Law 10)", () => {
+describe("search text literal-fallback notice (Law 10)", () => {
 	let tempDir: string;
 
 	beforeAll(async () => {
@@ -47,11 +47,12 @@ describe("grep literal-fallback notice (Law 10)", () => {
 
 	it("surfaces a loud notice when an uncompilable pattern is demoted to a literal search", async () => {
 		const tools = await createTools(createTestSession(tempDir));
-		const tool = tools.find(entry => entry.name === "grep");
-		if (!tool) throw new Error("Missing grep tool");
+		const tool = tools.find(entry => entry.name === "search");
+		if (!tool) throw new Error("Missing search tool");
 
-		const result = await tool.execute("grep-literal-fallback", {
-			pattern: "foo[bar",
+		const result = await tool.execute("search-literal-fallback", {
+			type: "text",
+			input: "foo[bar",
 			path: ".",
 		});
 		const text = getText(result);
@@ -65,13 +66,14 @@ describe("grep literal-fallback notice (Law 10)", () => {
 
 	it("adds no notice for a pattern that compiles as a regex", async () => {
 		const tools = await createTools(createTestSession(tempDir));
-		const tool = tools.find(entry => entry.name === "grep");
-		if (!tool) throw new Error("Missing grep tool");
+		const tool = tools.find(entry => entry.name === "search");
+		if (!tool) throw new Error("Missing search tool");
 
 		// `foo.bar` is a valid regex; `.` matches the literal `[`, so it still
 		// hits the same line — but nothing was demoted, so no notice appears.
-		const result = await tool.execute("grep-valid-regex", {
-			pattern: "foo.bar",
+		const result = await tool.execute("search-valid-regex", {
+			type: "text",
+			input: "foo.bar",
 			path: ".",
 		});
 		const text = getText(result);

@@ -102,8 +102,8 @@ export interface ResolveContext {
 	/**
 	 * When set, handlers that would otherwise materialize an expensive directory
 	 * listing (e.g. the ssh:// handler draining a full remote `ls`) instead return
-	 * the directory shape (`isDirectory: true`) with empty content. `search`/`find`
-	 * reject directory resources, so they never need the listing.
+	 * the directory shape (`isDirectory: true`) with empty content. `search`
+	 * rejects directory resources, so it never needs the listing.
 	 */
 	skipDirectoryListing?: boolean;
 	/**

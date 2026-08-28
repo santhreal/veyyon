@@ -82,7 +82,7 @@ export const commands: CommandEntry[] = [
 	{
 		name: "grep",
 		load: () => import("./commands/grep").then(m => m.default),
-		summary: { description: "Run the grep tool standalone and show exactly what the agent would see", devTool: true },
+		summary: { description: "Run the standalone native text-search probe", devTool: true },
 	},
 	{
 		name: "gallery",

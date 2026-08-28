@@ -65,11 +65,11 @@ describe("OPTIONAL_VALUE_FLAGS table is honored by args.ts parseArgs", () => {
 	}
 });
 
-describe("--tools legacy aliases", () => {
-	it("maps search and find to grep and glob", () => {
-		const result = parseArgs(["--tools", "search,find,grep"]);
+describe("--tools argument parsing", () => {
+	it("accepts canonical tool names", () => {
+		const result = parseArgs(["--tools", "search,read"]);
 
-		expect(result.tools).toEqual(["grep", "glob"]);
+		expect(result.tools).toEqual(["search", "read"]);
 	});
 });
 

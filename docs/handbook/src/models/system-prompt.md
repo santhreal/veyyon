@@ -36,7 +36,7 @@ A package defines its own prompts. Each package that ships any keeps them under 
 | `@veyyon/agent-core` | `packages/agent/src/prompts/` | compaction: summarizing a session, branch summaries, handoff documents |
 | `@veyyon/ai` | `packages/ai/src/prompts/` | one format guide per tool-call dialect, plus the tool-catalog template that contains them |
 | `@veyyon/hashline` | `packages/hashline/src/` | the hashline patch language, which is the edit tool's description |
-| `@veyyon/metaharness` | `packages/metaharness/adapters/edit/prompts/` | the edit benchmark's task, system, and retry prompts |
+| `@veyyon/evals` | `packages/evals/suites/typescript-edit/prompts/` | the edit benchmark's task, system, and retry prompts |
 
 An id is the file's path under its registry's directory without the `.md`, so `turn-control/auto-continue` is `packages/coding-agent/src/prompts/turn-control/auto-continue.md` and `dialect/gemma` is `packages/ai/src/prompts/dialect/gemma.md`. Ids are unique across the registries, so you never have to name the package to ask about a prompt. `@veyyon/hashline` is the one package whose prompt is not under a `prompts/` directory: its single file is published at `@veyyon/hashline/prompt.md` for anyone embedding hashline in their own agent, so moving it would break a public subpath.
 

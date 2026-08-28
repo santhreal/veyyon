@@ -54,7 +54,7 @@ export interface CredentialRefreshResponse {
 
 /** POST /v1/credential/:id/disable request body. */
 export interface CredentialDisableRequest {
-	cause: string;
+	cause?: string;
 }
 
 /** POST /v1/credential/:id/disable response body. */

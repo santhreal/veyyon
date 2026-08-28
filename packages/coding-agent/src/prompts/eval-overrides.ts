@@ -14,7 +14,7 @@
  * assembler reached 718 modules with that edge and 528 without it.
  *
  * The bench runner performs the same check before it starts a container
- * (`packages/deepswe-bench/arm-prompts.ts`), so a typo normally costs nothing. This is the
+ * (`packages/evals/suites/deep-swe/runner/preflight.ts`), so a typo normally costs nothing. This is the
  * backstop for every other way the variable can be set.
  */
 import { describeUnknownPromptIds, evalPromptOverrides, PROMPT_ID_SHAPE_HINT } from "@veyyon/utils";

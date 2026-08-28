@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d51f25b3.js";
+            window.path_to_searchindex_js = "../searchindex-8b9af2d6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -329,6 +329,7 @@ operational failure modes.</p>
 <li>both backends (<code>eval.py=true</code>, <code>eval.js=true</code>, or <code>VEYYON_PY=1 VEYYON_JS=1</code>)</li>
 </ul>
 <p><code>VEYYON_PY</code> and <code>VEYYON_JS</code> use normal boolean flag parsing. Each flag, when set, overrides only its own setting; an unset flag falls back to its setting (<code>eval.py</code> / <code>eval.js</code>, both default <code>true</code>).</p>
+<p><code>eval.pyWorkspace</code> defaults to <code>false</code>. When enabled, the model-facing <code>eval</code> description tells the agent to retain large <code>tool.*</code> results in Python variables, transform them in the kernel, reuse helper functions, and display only compact conclusions. It adds guidance only; it does not add Python APIs or change cell execution.</p>
 <p>If Python preflight fails and <code>eval.js</code> is enabled, <code>eval</code> remains available for <code>js</code> cells; <code>py</code> cells fail with a Python-backend availability error.</p>
 <p>Python prelude helpers include <code>agent(prompt, *, agent="deep", model=None, label=None, schema=None, handle=False, isolated=None, apply=None, merge=None)</code>. It synchronously calls the host bridge, runs one subagent through the task executor, and returns the final text. When <code>schema</code> is supplied, the helper parses the subagent’s JSON output and returns the object. When <code>handle=True</code>, it instead returns a DAG node dict (<code>{"text", "output", "handle", "id", "agent"}</code>) whose <code>handle</code> is the spawned agent’s recoverable <code>agent://&lt;id&gt;</code> URI (the parsed object lands under <code>"data"</code> when <code>schema</code> is also set), so a downstream <code>pipeline</code>/<code>parallel</code> stage can reference the transcript by handle instead of re-inlining it.</p>
 <h3 id="persisted-helper-state"><a class="header" href="#persisted-helper-state">Persisted helper state</a></h3>

@@ -100,21 +100,21 @@ describe("a session with no artifact store", () => {
 		expect(
 			await saveOutputArtifact(
 				sessionWith(async () => ({})),
-				"grep",
+				"search",
 				"x",
 			),
 		).toBeUndefined();
 		expect(
 			await saveOutputArtifact(
 				sessionWith(async () => ({ id: "only-id" })),
-				"grep",
+				"search",
 				"x",
 			),
 		).toBeUndefined();
 		expect(
 			await saveOutputArtifact(
 				sessionWith(async () => ({ path: "/only/path" })),
-				"grep",
+				"search",
 				"x",
 			),
 		).toBeUndefined();
@@ -148,7 +148,7 @@ describe("an allocation that throws", () => {
 			sessionWith(async () => {
 				throw new Error("boom");
 			}),
-			"grep",
+			"search",
 			"x",
 		);
 
@@ -214,7 +214,7 @@ describe("the reporter itself", () => {
 
 	/** A thrown non-Error still has to produce a usable reason rather than "[object Object]". */
 	it("reports a thrown string", () => {
-		reportLostOutputArtifact("grep", "EROFS: read-only file system");
+		reportLostOutputArtifact("search", "EROFS: read-only file system");
 
 		expect(String(lossReports()[0]?.meta.error)).toContain("read-only file system");
 	});

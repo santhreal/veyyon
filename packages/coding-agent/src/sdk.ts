@@ -3059,8 +3059,21 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// path (resolveModelOverride → resolveModelRoleValue) accepts.
 		if (!model && deferredModelPatterns.length > 0) {
 			const expandedModelPatterns = resolveConfiguredModelPatterns(deferredModelPatterns, settings);
-			const availableModels = modelRegistry.getAll();
+			let availableModels = modelRegistry.getAll();
 			const matchPreferences = getModelMatchPreferences(settings);
+			// The background refresh (refreshInBackground at startup) may not have
+			// completed yet. When an explicit --model points at a dynamically-
+			// discovered model that isn't in the static catalog (e.g. a provider's
+			// /v1/models list or models.dev overlay), the patterns won't resolve
+			// against the static-only registry. Do a synchronous cache-aware
+			// discovery pass and retry before reporting failure. This mirrors the
+			// non-explicit fallback below (resolveModelDiscoveryFallback).
+			if (
+				!expandedModelPatterns.some(pattern => parseModelPattern(pattern, availableModels, matchPreferences).model)
+			) {
+				await logger.time("resolveExplicitModelDiscovery", () => modelRegistry.refresh("online-if-uncached"));
+				availableModels = modelRegistry.getAll();
+			}
 			for (let patternIndex = 0; patternIndex < expandedModelPatterns.length; patternIndex += 1) {
 				const pattern = expandedModelPatterns[patternIndex];
 				const primary = parseModelPattern(pattern, availableModels, matchPreferences);
@@ -3425,7 +3438,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// `resolve` is hidden but must stay in the registry whenever any code path can invoke it:
 		// either a deferrable tool stages a preview action, or plan mode installs a standing handler
 		// that consumes `resolve { action: "apply" }` to submit the plan for approval (issue #1428).
-		// Dropping it on read-only sessions (e.g. plan-mode toolset `read`, `search`, `find`,
+		// Dropping it on read-only sessions (e.g. plan-mode toolset `read`, `search`,
 		// `web_search`) leaves plan mode unable to exit through the intended path.
 		const hasDeferrableTools = Array.from(toolRegistry.values()).some(tool => tool.deferrable === true);
 		const planModeAvailable = settings.get("plan.enabled");
@@ -4298,7 +4311,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// summary caches, all keyed on session identity — stays isolated from the
 		// primary, while edit/bash/write stay fully functional: the advisor is a full
 		// agent and its config's `tools` selects which of these it actually gets
-		// (defaulting to read/grep/glob).
+		// (defaulting to read/search).
 		const advisorToolSession: ToolSession = {
 			...toolSession,
 			get cwd() {

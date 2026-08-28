@@ -47,7 +47,7 @@ export interface ToolRenderHost {
 }
 
 export interface ToolRenderProps {
-	/** Wire tool name (may be an alias of the registry key, e.g. `grep` → search). */
+	/** Wire tool name (may be an alias of the registry key, e.g. `apply_patch` → edit). */
 	name: string;
 	/** Parsed tool-call arguments with the internal `i` intent already stripped. */
 	args: Record<string, unknown>;

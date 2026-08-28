@@ -12,11 +12,11 @@ Total discoverable tools available: {{discoverableToolCount}}.
 {{/if}}
 Input:
 - `query` — required natural-language or keyword query
-- `limit` — optional maximum number of tools to return and activate (default `8`)
+- `limit` — optional maximum number of matches to return (default `8`)
 
 Behavior:
 - Matches against tool name, label, server name, description/summary, and input schema keys
-- Activates the top matching tools for the rest of the current session
+- Activates every match scoring at least half the best match, so a weak match costs nothing
 - Repeated searches add to the active tool set; they do not remove earlier selections
 - Newly activated tools become available before the next model call in the same overall turn
 
@@ -29,4 +29,5 @@ Returns JSON with:
 - `query`
 - `activated_tools` — tools activated by this search call
 - `match_count` — number of ranked matches returned by the search
+- `also_matched` — matches returned but not activated; query one by name to activate it
 - `total_tools`

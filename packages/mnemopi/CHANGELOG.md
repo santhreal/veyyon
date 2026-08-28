@@ -6,6 +6,7 @@
 
 ### Changed
 
+- Replaced `@veyyon/utils` barrel imports across mnemopi with direct subpath imports, reducing the memory engine load reach from 161 to 110 modules and consolidate reach from 151 to 99 modules.
 - `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.

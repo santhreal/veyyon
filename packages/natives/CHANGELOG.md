@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- A load failure carries `code: "VEYYON_NATIVE_ADDON_UNAVAILABLE"`, exported as `NATIVE_ADDON_UNAVAILABLE_CODE` with `isNativeAddonUnavailable` from `@veyyon/natives/loader-state`, so a caller that catches a native call can tell an unavailable addon from a scan that found nothing.
 - The tracked-process renice test states which direction it can move a nice value on the host running it, so a host whose cargo wrapper already starts the test binary at nice 19 lowers where it can, raises where the host permits it, and reports a skip naming the reason where it can do neither, instead of failing an assertion about headroom that host never had.
 - A `cargo` run under `--message-format=json` that fails before rustc, such as a build script exiting non-zero, reports the text cargo printed, so the `Caused by:` chain and the script's own stderr reach the operator instead of a bare failure verdict.
 - A `cargo nextest` run whose profile sets `failure-output = "final"` keeps its panic bodies, so the assertion diff, message, file and line survive the summary instead of being dropped and leaving a failure count with no evidence.
@@ -13,6 +14,8 @@
 - The AVX2 trial load answers from the addon loader's first import and exits, so a compiled host, whose `process.execPath` is the product binary rather than a JavaScript runtime, reports a verdict instead of booting the whole CLI and spawning a trial child of its own at every level.
 - A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
+- Native text context rows now report truncation explicitly, and mixed-language structure searches suppress pattern-compilation diagnostics from unrelated languages when another candidate language accepts the pattern.
+- The native addon loader memoizes a load failure. A failed `loadNative()` re-throws the cached error on subsequent calls instead of re-running the full candidate scan and printing every GLIBC/version warning again on each native access, which produced ~1000 lines of warning spam in containers with older glibc ([#917](https://github.com/santhreal/veyyon/issues/917)).
 - A tab-indented row hangs its wrapped continuations under the tab, instead of counting only spaces as indent and continuing at column zero.
 - The Darwin process list is sized from the count the kernel reports rather than a fixed 4096 entries, so a host past that many live processes no longer loses whole branches of a tracked process tree out of its CPU budget.
 

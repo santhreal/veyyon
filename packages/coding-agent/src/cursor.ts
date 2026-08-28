@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import type {
 	AgentEvent,
-	AgentTool,
 	AgentToolContext,
 	AgentToolResult,
 	AgentToolUpdateCallback,
+	AnyAgentTool,
 } from "@veyyon/agent-core";
 import type {
 	CursorMcpCall,
@@ -18,7 +18,7 @@ import { resolveToCwd } from "./tools/path-utils";
 
 interface CursorExecBridgeOptions {
 	cwd: string;
-	tools: Map<string, AgentTool>;
+	tools: Map<string, AnyAgentTool>;
 	getToolContext?: () => AgentToolContext | undefined;
 	emitEvent?: (event: AgentEvent) => void;
 }
@@ -179,8 +179,9 @@ export class CursorExecHandlers implements ICursorExecHandlers {
 	async grep(args: Parameters<NonNullable<ICursorExecHandlers["grep"]>>[0]) {
 		const toolCallId = decodeToolCallId(args.toolCallId);
 		const searchPath = args.glob ? `${args.path || "."}/${args.glob}` : args.path || ".";
-		const toolResultMessage = await executeTool(this.options, "grep", toolCallId, {
-			pattern: args.pattern,
+		const toolResultMessage = await executeTool(this.options, "search", toolCallId, {
+			type: "text",
+			input: args.pattern,
 			path: searchPath,
 			case: args.caseInsensitive === true ? false : undefined,
 		});

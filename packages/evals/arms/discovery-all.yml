@@ -1,0 +1,25 @@
+# Hide non-essential built-in tools behind search_tool_bm25 instead of carrying
+# their documentation in the prompt.
+#
+# WHY THIS ARM EXISTS. Tool text is re-sent on every request, so it is priced per
+# request rather than per session, and cache reads were 64% of the bill of run
+# 2026-07-25T07-59-48-212Z at published rates. The default is 17 tools and 13,964
+# tokens of tool text; `tools.discoveryMode: all` leaves 9 tools and 9,201, which
+# is 4,763 tokens off every request.
+#
+# The always-loaded set is read, bash, launch, edit, write, search, eval, plus
+# goal and resolve. Hidden: ast_edit, debug, ssh, task, job, todo, web_search,
+# set_cwd.
+#
+# WHAT THIS ARM IS TESTING, and it is two-sided. Fewer tokens per request against
+# a capability cost: a hidden tool costs a discovery round trip on the turn that
+# first needs it, the call itself about 21 tokens, and each tool it activates
+# carries its schema on every request after. Reward must hold; a token saving is
+# not a result on its own.
+#
+# Its control is `baseline` (argot off, defaults otherwise), so baseline against
+# discovery-all varies exactly one thing.
+argot:
+  enabled: false
+tools:
+  discoveryMode: all
