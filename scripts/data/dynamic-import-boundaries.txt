@@ -34,6 +34,7 @@ packages/catalog/src/provider-models/special.ts
 packages/catalog/test/model-id-contracts.test.ts
 packages/catalog/test/provider-endpoints.test.ts
 packages/catalog/test/wire-perplexity-client-identity.test.ts
+packages/coding-agent/src/argot-cache.ts
 packages/coding-agent/src/cli-commands.ts
 packages/coding-agent/src/cli.ts
 packages/coding-agent/src/cli/profile-cli.ts
@@ -63,6 +64,7 @@ packages/coding-agent/src/modes/controllers/selector-controller.ts
 packages/coding-agent/src/modes/setup-wizard/lazy.ts
 packages/coding-agent/src/sdk.ts
 packages/coding-agent/src/session/agent-session.ts
+packages/coding-agent/src/slash-commands/helpers/stats-dashboard.ts
 packages/coding-agent/src/slash-commands/acp-builtins.ts
 packages/coding-agent/src/slash-commands/builtin-registry.ts
 packages/coding-agent/src/system-prompt-builder/section-overrides.ts

@@ -57,21 +57,12 @@ export async function buildDirectoryTree(cwd: string, options: BuildDirectoryTre
 	const perDirLimit = options.perDirLimit === undefined ? null : options.perDirLimit;
 	const rootLimit = options.rootLimit === undefined ? perDirLimit : options.rootLimit;
 
-	let entries: readonly GlobMatch[];
-	let nativeTruncated: boolean;
-	try {
-		const result = await listWorkspace({
-			path: rootPath,
-			maxDepth,
-			hidden: true,
-			gitignore: false,
-		});
-		entries = result.entries;
-		nativeTruncated = result.truncated;
-	} catch (error) {
-		refuseWithoutAddon(error);
-		return emptyTree(rootPath);
-	}
+	const { entries, truncated: nativeTruncated } = await listWorkspace({
+		path: rootPath,
+		maxDepth,
+		hidden: true,
+		gitignore: false,
+	});
 
 	return assembleTree(rootPath, entries, {
 		perDirLimit,
@@ -109,21 +100,12 @@ export async function buildTopLevelDirectoryListing(
 	const rootPath = path.resolve(cwd);
 	const entryLimit = options.entryLimit === undefined ? null : options.entryLimit;
 
-	let entries: readonly GlobMatch[];
-	let nativeTruncated: boolean;
-	try {
-		const result = await listWorkspace({
-			path: rootPath,
-			maxDepth: 2,
-			hidden: true,
-			gitignore: false,
-		});
-		entries = result.entries;
-		nativeTruncated = result.truncated;
-	} catch (error) {
-		refuseWithoutAddon(error);
-		return { ...emptyTree(rootPath), omittedTopLevel: 0 };
-	}
+	const { entries, truncated: nativeTruncated } = await listWorkspace({
+		path: rootPath,
+		maxDepth: 2,
+		hidden: true,
+		gitignore: false,
+	});
 
 	// Direct-child count per top-level directory, from the same depth-2 scan.
 	const childCounts = new Map<string, number>();
