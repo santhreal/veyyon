@@ -1,7 +1,6 @@
 import * as fs from "node:fs/promises";
 import type { ImageContent, Model } from "@veyyon/ai";
 import { formatBytes } from "@veyyon/utils/format";
-import { SUPPORTED_IMAGE_MIME_TYPES } from "@veyyon/utils/mime";
 import { resolveReadPath } from "../tools/path-utils";
 import { canonicalizeImageContent, formatDimensionNote, type ImageResizeOptions, resizeImage } from "./image-resize";
 

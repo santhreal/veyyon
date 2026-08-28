@@ -128,4 +128,3 @@ export function getBundledAgentsMap(): Map<string, AgentDefinition> {
 export function clearBundledAgentsCache(): void {
 	bundledAgentsCache = null;
 }
-

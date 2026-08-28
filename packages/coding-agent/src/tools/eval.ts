@@ -11,7 +11,13 @@ import { upsertStatusEvent } from "../eval/status-events";
 import type { EvalCellResult, EvalDisplayOutput, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "../eval/types";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import { toolsPrompts } from "../prompts/tools/rows";
-import { countNewlines, DEFAULT_MAX_BYTES, OutputSink, type OutputSummary, TailBuffer } from "../session/streaming-output";
+import {
+	countNewlines,
+	DEFAULT_MAX_BYTES,
+	OutputSink,
+	type OutputSummary,
+	TailBuffer,
+} from "../session/streaming-output";
 import { discoverAgents } from "../task/discovery";
 import { resolveSpawnPolicy } from "../task/spawn-policy";
 import { type EnabledSubagentCatalog, resolveEnabledSubagents } from "../task/subagent-settings";

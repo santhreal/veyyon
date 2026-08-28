@@ -11,7 +11,13 @@ import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
 import type { Theme } from "../modes/theme/theme";
-import { countNewlines, type OutputSummary, type TruncationResult, truncateMiddle, truncateTail } from "../session/streaming-output";
+import {
+	countNewlines,
+	type OutputSummary,
+	type TruncationResult,
+	truncateMiddle,
+	truncateTail,
+} from "../session/streaming-output";
 import { inlineBudgetFor } from "./output-artifact";
 import { wrapBrackets } from "./render-utils";
 import { renderError } from "./tool-errors";
