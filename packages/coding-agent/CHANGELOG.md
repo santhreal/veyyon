@@ -57,6 +57,7 @@
 
 ### Fixed
 
+- The stats dashboard's aggregator, SQLite layer and embedded client load when `/stats` first runs instead of during every interactive startup, removing 16 MB of resident memory from a session that never opens the dashboard.
 - The Python, Ruby and Julia eval backends call their kernel and executor modules on every cell instead of holding a copy of each taken when the backend module loaded, so an availability check or executor replaced after startup is the one that runs.
 - A `cursor-agent` model receives the operator's global, profile and project instruction files again: the assembled prompt was blanked for that api in favour of a channel the server ignores, so every layer reached the model on no channel at all; one prompt is now built for every api and carried to Cursor on the active user turn.
 - A personality named after a property JavaScript objects inherit, such as `toString` or `constructor`, is reported as unknown and falls back to the default like any other unrecognized name; the built-in catalog was indexed without an own-property check, so those names resolved to a function, the system prompt build failed silently, and the default was substituted with no warning and any `personality/default.md` override ignored.
