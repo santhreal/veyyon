@@ -173,7 +173,7 @@ never reaches behavior is a dead flag.
 An experimental feature that is off hides its dependent knobs completely — not greyed out, not
 inert, gone. Wire each dependent setting to a `ui.condition` that reads the master toggle. Declare
 the setting in `packages/coding-agent/src/config/settings-domains/<domain>.ts` and register its
-predicate in `CONDITIONS` in `packages/coding-agent/src/modes/components/settings-defs.ts`; the
+predicate in `CONDITIONS` in `packages/coding-agent/src/modes/components/selectors/settings-defs.ts`; the
 selector hides any setting whose condition returns false. The off-vs-on pair proves it: off shows
 only the master toggle, on shows the toggle plus its dependents.
 
