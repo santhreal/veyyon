@@ -293,6 +293,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/edit/modes/patch-helpers.ts",
 	"packages/coding-agent/src/eval/agent-bridge-name.ts",
 	"packages/coding-agent/src/eval/completion-bridge.ts",
+	"packages/coding-agent/src/eval/executor-base-helpers.ts",
 	"packages/coding-agent/src/eval/jl/prelude.ts",
 	"packages/coding-agent/src/eval/js/shared/prelude.ts",
 	"packages/coding-agent/src/eval/py/prelude.ts",
