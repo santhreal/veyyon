@@ -25,6 +25,7 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
 import { type SearchToolInput, type SearchType, searchSchema, TYPE_FIELDS } from "@veyyon/coding-agent/tools/search";
+import { MULTI_FILE_PER_FILE_MATCHES } from "@veyyon/coding-agent/tools/text-search";
 import { removeWithRetries } from "@veyyon/utils";
 
 const SCHEMA_FIELDS = Object.keys(searchSchema.shape);
@@ -170,11 +171,16 @@ describe("a search result never advises a field the tool rejects", () => {
 
 	it("states that the search stopped at its internal ceiling", async () => {
 		// Files past the ceiling were never opened, so a caller reading the file
-		// count as a total concludes the pattern appears nowhere else.
+		// count as a total concludes the pattern appears nowhere else. The native
+		// fetch takes at most `MULTI_FILE_PER_FILE_MATCHES + 1` from each file, so
+		// reaching a 2000-match budget takes files, not a hot file: three files of
+		// 900 lines fetch 63 matches and stop nowhere near it.
 		await withWorkspace(async dir => {
-			const wide = Array.from({ length: 900 }, (_unused, index) => `needle row ${index}`);
-			for (const name of ["cap-a.md", "cap-b.md", "cap-c.md"]) {
-				await fs.writeFile(path.join(dir, name), `${wide.join("\n")}\n`);
+			const perFile = MULTI_FILE_PER_FILE_MATCHES + 1;
+			const fileCount = Math.ceil(2000 / perFile) + 4;
+			const rows = Array.from({ length: perFile }, (_unused, index) => `needle row ${index}`).join("\n");
+			for (let index = 0; index < fileCount; index++) {
+				await fs.writeFile(path.join(dir, `cap-${String(index).padStart(3, "0")}.md`), `${rows}\n`);
 			}
 			const text = await searchText(dir, {
 				callId: "advice-text-ceiling",
