@@ -448,6 +448,7 @@
 - Free functions, types, and constants extracted from `extensibility/legacy-pi-coding-agent-shim.ts` (1,096→600 lines) into `extensibility/legacy-pi-coding-agent-shim-helpers.ts`.
 - Free functions, types, and constants extracted from `tools/path-utils.ts` (1,083→530 lines) into `tools/path-utils-helpers.ts`.
 - Free functions, types, and constants extracted from `eval/executor-base.ts` (1,101→644 lines) into `eval/executor-base-helpers.ts`.
+- Free functions, types, and constants extracted from `session/streaming-output.ts` (999→491 lines) into `session/streaming-output-helpers.ts`.
 ### Added
 
 - Esc pressed twice within half a second over a composer holding text discards the draft; undo brings it back, and a single Esc still leaves the draft alone.
