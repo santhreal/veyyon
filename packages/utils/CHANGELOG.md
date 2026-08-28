@@ -24,6 +24,7 @@
 - `json-parse.ts` `parseStreamingJson` tries `JSON.parse` on the raw input before calling `trimStart`, avoiding a string allocation on the fast path where the buffer is already valid JSON.
 - A blocked event loop names the phase that spent the time rather than the phase that happened to be open: `takeLoopPhaseProfile` banks elapsed time per phase and reports the costliest one with its cost, replacing `takeRecentLoopPhase`, which returned the most recent label and blamed `ui.render` for a stall the render pass never took part in.
 
+- Free functions, types, and constants extracted from `file-lock.ts` (1,048→540 lines) into `file-lock-helpers.ts`.
 ### Fixed
 
 - An empty `~/.veyyon/agent` beside a migrated `profiles/default` no longer refuses to start; a directory holding nothing is not a second candidate profile, so it is removed and startup continues, while one holding data still fails closed.
