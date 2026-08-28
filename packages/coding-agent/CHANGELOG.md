@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Consolidated duplicate `mixRgb` into `color-helpers.ts` (from `shimmer.ts` and `follow.ts`)
+- Consolidated duplicate `findPhaseFuzzy`/`findTaskFuzzy` into `todo-helpers.ts` (from `todo-command-controller.ts` and `slash-commands/helpers/todo.ts`)
+- Removed dead exported constants `AGENT_PROMPT_IDS` and `AUTH_RETRY_STEPS`
 ### Fixed
 - Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
 - Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
