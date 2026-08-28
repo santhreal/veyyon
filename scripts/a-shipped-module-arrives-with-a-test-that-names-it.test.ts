@@ -162,6 +162,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/dialect/fenced-thinking.ts",
 	"packages/ai/src/error/connect.ts",
 	"packages/ai/src/error/domains/request.ts",
+	"packages/ai/src/providers/anthropic-helpers.ts",
 	"packages/ai/src/providers/anthropic-messages-server-schema.ts",
 	"packages/ai/src/providers/anthropic-schema.ts",
 	"packages/ai/src/providers/cursor-helpers.ts",
