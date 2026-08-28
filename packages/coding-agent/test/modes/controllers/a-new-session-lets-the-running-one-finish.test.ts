@@ -15,6 +15,8 @@
  */
 
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
+import { stripVTControlCharacters } from "node:util";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import { CommandController } from "@veyyon/coding-agent/modes/controllers/command-controller";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
@@ -96,13 +98,16 @@ interface Harness {
 	next: FakeSession;
 	attached: string[];
 	counts: { factoryCalls: number };
+	/** Every line the flow presented, VT stripped, in order. */
+	presented(): string[];
 }
 
-function harness(options: { streaming: boolean; withFactory?: boolean }): Harness {
+function harness(options: { streaming: boolean; withFactory?: boolean; keepBackground?: boolean }): Harness {
 	const current = makeSession("session-a", options.streaming);
 	const next = makeSession("session-b", false);
 	const attached: string[] = [];
 	const counts = { factoryCalls: 0 };
+	const lines: string[] = [];
 	const createNextSession = async (): Promise<AgentSession> => {
 		counts.factoryCalls++;
 		return next as unknown as AgentSession;
@@ -110,6 +115,17 @@ function harness(options: { streaming: boolean; withFactory?: boolean }): Harnes
 	const ctx = {
 		session: current,
 		sessionManager: current.sessionManager,
+		// The flow reads exactly one key. Anything else is a caller this harness
+		// has not been taught about, and answering it with a default would let a
+		// new setting silently take its off-value here.
+		settings: {
+			get(key: string): unknown {
+				// Mirrors the shipped default so a test that omits the flag exercises what an
+				// operator who never opened /settings gets.
+				if (key === "session.newKeepsBackground") return options.keepBackground ?? false;
+				throw new Error(`Unexpected setting read: ${key}`);
+			},
+		},
 		createNextSession: options.withFactory === false ? undefined : createNextSession,
 		attachMainSession: (session: AgentSession) => {
 			attached.push((session as unknown as FakeSession).id);
@@ -120,7 +136,13 @@ function harness(options: { streaming: boolean; withFactory?: boolean }): Harnes
 		resetTranscript: () => {},
 		reloadTodos: async () => {},
 		updateEditorBorderColor: () => {},
-		present: () => {},
+		present: (value: unknown) => {
+			for (const item of Array.isArray(value) ? value : [value]) {
+				const component = item as { render?: (width: number) => string[] };
+				if (typeof component.render !== "function") continue;
+				for (const line of component.render(120)) lines.push(stripVTControlCharacters(line).trim());
+			}
+		},
 		showError: () => {},
 		showWarning: () => {},
 		statusLine: { invalidate: () => {}, resetActiveTime: () => {} },
@@ -128,7 +150,14 @@ function harness(options: { streaming: boolean; withFactory?: boolean }): Harnes
 		chatContainer: createContainer(),
 		statusContainer: createContainer(),
 	} as unknown as InteractiveModeContext;
-	return { controller: new CommandController(ctx), current, next, attached, counts };
+	return {
+		controller: new CommandController(ctx),
+		current,
+		next,
+		attached,
+		counts,
+		presented: () => lines.filter(line => line.length > 0),
+	};
 }
 
 /**
@@ -152,7 +181,7 @@ describe("/new while a turn is running", () => {
 	});
 
 	it("does not reset the running session, and displays a new one instead", async () => {
-		const h = harness({ streaming: true });
+		const h = harness({ streaming: true, keepBackground: true });
 
 		await h.controller.handleClearCommand();
 
@@ -188,6 +217,106 @@ describe("/new while a turn is running", () => {
 
 		expect(h.counts.factoryCalls).toBe(0);
 		expect(h.current.calls.newSession).toBe(1);
+	});
+
+	/**
+	 * `session.newKeepsBackground` off. The operator chose to stop paying for a
+	 * conversation the moment it leaves the screen, so the handoff must decline
+	 * and the in-place reset must run — that path is the one that aborts the turn
+	 * and closes the provider stream.
+	 *
+	 * The keeper staying EMPTY is the money assertion available at this seam:
+	 * nothing was handed anywhere, so nothing outlives the command. Whether
+	 * `AgentSession.newSession` really aborts is its own contract and is not
+	 * proven here — the fake counts the call rather than performing it.
+	 */
+	it("stops the running turn instead of backgrounding it when the setting says so", async () => {
+		const h = harness({ streaming: true, keepBackground: false });
+
+		await h.controller.handleClearCommand();
+
+		expect(h.counts.factoryCalls).toBe(0);
+		expect(h.attached).toEqual([]);
+		expect(h.current.calls.newSession).toBe(1);
+		expect(BackgroundSessions.global().size).toBe(0);
+	});
+
+	it("says the old session was stopped, so the operator knows it is not still billing", async () => {
+		const h = harness({ streaming: true, keepBackground: false });
+
+		await h.controller.handleClearCommand();
+
+		expect(h.presented().join(" ")).toContain("previous session stopped");
+	});
+
+	it("says the old session is still running when it is kept", async () => {
+		const h = harness({ streaming: true, keepBackground: true });
+
+		await h.controller.handleClearCommand();
+
+		const outcome = h.presented().join(" ");
+		expect(outcome).toContain("session-a");
+		expect(outcome).toContain("keeps running");
+		expect(outcome).not.toContain("stopped");
+	});
+
+	/**
+	 * The shipped default, read through the real settings machinery rather than
+	 * restated as a literal, so flipping the schema without revisiting this
+	 * contract turns the file red.
+	 *
+	 * `/new` stops the old turn unless the operator asked for otherwise. A
+	 * conversation that leaves the screen stops costing money by default;
+	 * keeping one alive is the deliberate choice, not the accident of having
+	 * typed `/new` while a turn happened to be streaming.
+	 */
+	it("stops the old turn under the shipped default, so /new costs nothing after it leaves the screen", async () => {
+		const shipped = Settings.isolated({}).get("session.newKeepsBackground");
+		expect(shipped).toBe(false);
+
+		const h = harness({ streaming: true, keepBackground: shipped });
+
+		await h.controller.handleClearCommand();
+
+		expect(h.counts.factoryCalls).toBe(0);
+		expect(h.attached).toEqual([]);
+		expect(BackgroundSessions.global().size).toBe(0);
+		expect(h.presented().join(" ")).toContain("previous session stopped");
+	});
+
+	/**
+	 * An idle `/new` reports neither outcome. There was no turn, so "stopped"
+	 * would name a turn that never ran and "keeps running" would name a session
+	 * that is finished — both are the kind of reassurance that teaches an
+	 * operator to stop reading the line.
+	 */
+	it("reports no turn outcome when nothing was running", async () => {
+		for (const keepBackground of [true, false]) {
+			const h = harness({ streaming: false, keepBackground });
+
+			await h.controller.handleClearCommand();
+
+			const outcome = h.presented().join(" ");
+			expect(outcome).toContain("New session started");
+			expect(outcome).not.toContain("stopped");
+			expect(outcome).not.toContain("keeps running");
+		}
+	});
+
+	/**
+	 * `/drop` deletes the transcript, so it resets in place under either value.
+	 * It also must not borrow the `/new` wording: "Session dropped — previous
+	 * session stopped" states one act twice.
+	 */
+	it("leaves /drop stating only its own outcome under either setting", async () => {
+		for (const keepBackground of [true, false]) {
+			const h = harness({ streaming: true, keepBackground });
+
+			await h.controller.handleDropCommand();
+
+			expect(h.counts.factoryCalls).toBe(0);
+			expect(h.presented().join(" ")).not.toContain("previous session stopped");
+		}
 	});
 
 	it("sweeps every session-switch command, so a new one has to record its behavior", () => {

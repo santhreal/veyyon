@@ -35,9 +35,9 @@ import { initTheme, stopThemeWatcher, theme } from "@veyyon/coding-agent/modes/t
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
-import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
 
 /**
  * Whether the anchored board drew a phase row for `Phase One` carrying `tally`.

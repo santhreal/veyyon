@@ -11,7 +11,7 @@ import type { AgentStorage } from "../../session/agent-storage";
 import { ToolAbortError, throwIfAborted } from "../../tools/tool-errors";
 import { isTimeoutError, scopedTimeoutSignal } from "../../utils/fetch-timeout";
 import type * as turndownModule from "../../utils/turndown";
-import { CHROME_WINDOWS_USER_AGENT } from "../search/providers/browser-headers";
+import { CHROME_WINDOWS_USER_AGENT } from "../search/providers/browser-fingerprint-constants";
 
 export { formatNumber } from "@veyyon/utils/format";
 

@@ -565,6 +565,14 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		aliases: ["cockpit", "hub"],
 		description: "Agent Control Center: live agent roster and comms stream",
 	},
+	{
+		// The SAME card `/agents` opens, at the widest scope, not a fifth roster.
+		// It is a separate command rather than an argument because it answers a
+		// different question — "is this process spending anywhere" — and that is
+		// the question you cannot answer by looking at the screen you are on.
+		name: "process-manager",
+		description: "Agent Control Center across every conversation this process is running",
+	},
 
 	{
 		name: "branch",
@@ -873,6 +881,25 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		aliases: ["force:"],
 		inlineHint: "<tool-name> [prompt]",
 		allowArgs: true,
+	},
+
+	{
+		name: "advisor",
+		textMode: true,
+		description: "Show, configure, start or stop the advisor that reviews this session",
+		acpDescription: "Inspect and configure the advisor",
+		acpInputHint: "[status|configure|on|off|dump]",
+		allowArgs: true,
+		// Bare /advisor opens the picker. `status` is a declared subcommand, so a bare form
+		// that reported status would hide `configure` behind knowledge nobody is given: the
+		// roster editor has no other entry point.
+		subcommands: [
+			{ name: "status", description: "Show whether the advisor is running, on what model, and what it has spent" },
+			{ name: "configure", description: "Edit the WATCHDOG.yml advisor roster and apply it to this session" },
+			{ name: "on", description: "Start the advisor for this session" },
+			{ name: "off", description: "Stop the advisor for this session" },
+			{ name: "dump", description: "Copy the advisor's own transcript to the clipboard" },
+		],
 	},
 
 	{

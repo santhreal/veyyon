@@ -727,6 +727,21 @@ export class Container implements Component, MouseRoutable {
 			start += rows;
 		}
 	}
+
+	/**
+	 * True while any child has a click target, so a footer child that only wraps
+	 * other components still asks for the mouse on their behalf. The engine scans
+	 * ROOT footer children alone, and the composer zone mounts its editor inside a
+	 * container: without this the child's targets are reachable only by accident,
+	 * whenever something else in the footer happened to take the mouse.
+	 */
+	wantsPointer(): boolean {
+		for (const child of this.children) {
+			const routable = child as Component & Partial<MouseRoutable>;
+			if (routable.wantsPointer?.() === true) return true;
+		}
+		return false;
+	}
 }
 
 /**
@@ -1031,6 +1046,19 @@ export function findCommittedPrefixResync(
 }
 
 /**
+ * Where the pinned footer sits on screen, in 0-based physical viewport rows.
+ *
+ * `footerTop` may be negative when the footer is taller than the viewport: the
+ * rows it loses are its first ones, so the visible top is `Math.max(0, footerTop)`.
+ */
+export interface PinnedFooterScreenBounds {
+	footerTop: number;
+	footerBottom: number;
+	footerRowOffset: number;
+	contentBottom: number;
+}
+
+/**
  * TUI - Main class for managing terminal UI with differential rendering
  */
 export class TUI extends Container {
@@ -1061,6 +1089,21 @@ export class TUI extends Container {
 	#pressCell: { row: number; col: number } | null = null;
 	#renderRequested = false;
 	#renderTimer: RenderTimer | undefined;
+	/** When the armed `#renderTimer` is due, so a sooner request can pull it earlier. */
+	#renderTimerDueAtMs = 0;
+	/**
+	 * Whether the frame now pending was asked for by input the operator just gave. Adaptive
+	 * backpressure exists to stop a self-driven render loop taking half the CPU; a person typing
+	 * is not that loop, and their keystroke is the one frame nobody is willing to wait 200ms for.
+	 * So a pending interactive frame skips the adaptive floor and keeps every other floor.
+	 *
+	 * It is raised by any request made while input is being dispatched and lowered when the frame
+	 * runs, not when the dispatch ends: the schedule is re-evaluated from a scheduler callback,
+	 * which lands after the handler has returned.
+	 */
+	#renderRequestIsInteractive = false;
+	/** Whether a terminal input event is being dispatched right now. */
+	#dispatchingInput = false;
 	#renderScheduler: RenderScheduler;
 	#lastRenderAt = 0;
 	/**
@@ -1750,9 +1793,24 @@ export class TUI extends Container {
 	 */
 	#scrollSpaceLiveTop(frameRows = this.#previousFrameLength): number {
 		const height = Math.max(1, this.terminal.rows);
-		const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
+		const footerRows = this.#footerRowsInViewport(height);
 		const regionRows = height - footerRows;
 		return Math.max(0, this.#scrollSpaceRows(frameRows) - regionRows);
+	}
+
+	/**
+	 * Viewport rows the pinned footer occupies, which is every row it asks for
+	 * up to the whole viewport.
+	 *
+	 * The footer is clamped because it may be taller than the terminal — a
+	 * composer with several lines of text in a five-row window. It is NOT
+	 * clamped to `height - 1`: reserving a content row when the footer alone
+	 * already fills the viewport buys a row nothing can be drawn in, and pushes
+	 * the footer's own top down off row 0, so the rows it loses are its first
+	 * ones. Where there is no room for content, the footer takes the viewport.
+	 */
+	#footerRowsInViewport(height: number): number {
+		return Math.min(this.#pinnedFooterRows, height);
 	}
 
 	/**
@@ -1762,6 +1820,30 @@ export class TUI extends Container {
 	 */
 	get composedFrameRows(): number {
 		return this.#previousFrameLength;
+	}
+
+	/**
+	 * The rows of the frame just composed, in frame order. Read-only, and the
+	 * array itself rather than a copy, so reading a large frame costs nothing.
+	 *
+	 * A row that is blank here is blank because the layout composed it blank. A
+	 * check that compares the screen against these rows separates that from a row
+	 * the renderer composed with content and then failed to paint, which no
+	 * inspection of the screen alone can tell apart.
+	 */
+	get composedFrameLines(): readonly string[] {
+		return this.#composedFrame;
+	}
+
+	/**
+	 * Where the pinned footer sits on screen for the frame just composed.
+	 *
+	 * Read-only, and the same value the click router uses, so a renderer check
+	 * observes the placement the product acts on rather than recomputing it and
+	 * agreeing with itself.
+	 */
+	get pinnedFooterScreenBounds(): PinnedFooterScreenBounds {
+		return this.#pinnedFooterScreenBounds();
 	}
 
 	/**
@@ -2866,7 +2948,17 @@ export class TUI extends Container {
 			}
 			this.#postFullPaintSettleUntilMs = 0;
 		}
-		if (this.#renderRequested) return;
+		if (this.#dispatchingInput) this.#renderRequestIsInteractive = true;
+		if (this.#renderRequested) {
+			// A frame is already requested. A background caller has nothing to add — the frame it
+			// wants is the one already coming. An operator's keystroke does: the armed frame may
+			// be sitting behind the stream's backpressure, and `#scheduleRender` is what decides
+			// whether it can be pulled forward.
+			if (this.#renderRequestIsInteractive) {
+				this.#renderScheduler.scheduleImmediate(() => this.#scheduleRender());
+			}
+			return;
+		}
 		this.#renderRequested = true;
 		this.#renderScheduler.scheduleImmediate(() => this.#scheduleRender());
 	}
@@ -3045,7 +3137,7 @@ export class TUI extends Container {
 	}
 
 	#scheduleRender(): void {
-		if (this.#stopped || this.#renderTimer || !this.#renderRequested) {
+		if (this.#stopped || !this.#renderRequested) {
 			return;
 		}
 		// Defer any new throttled render scheduled inside the multiplexer
@@ -3066,10 +3158,24 @@ export class TUI extends Container {
 		// than the previous sample, so a sustained slow loop is held to half the
 		// CPU (#4145) and an isolated expensive paint is not charged to the
 		// cheap frame behind it. Capped so a pathological cost cannot lock the UI.
+		//
+		// A frame the operator's own input asked for does not pay it. The duty cycle it
+		// protects is spent by a loop that renders because it just rendered; a person typing
+		// bounds their own rate, and charging their keystroke up to 200ms of somebody else's
+		// stream is the typing lag itself. Cadence and the input-grace window still apply.
 		const adaptiveFloor = Math.min(TUI.#MAX_ADAPTIVE_RENDER_MS, this.#frameCostEstimateMs * 2);
-		const adaptiveDelay = Math.max(0, adaptiveFloor - elapsed);
+		const adaptiveDelay = this.#renderRequestIsInteractive ? 0 : Math.max(0, adaptiveFloor - elapsed);
 		const inputGraceDelay = Math.max(0, this.#inputRenderGraceUntilMs - now);
 		const delay = Math.max(cadenceDelay, adaptiveDelay, inputGraceDelay);
+		if (this.#renderTimer) {
+			// A frame is already armed. Re-arming it earlier is what makes a keystroke land
+			// during a stream: without this the key waits out the backpressure delay that was
+			// computed for the frame in front of it.
+			if (now + delay >= this.#renderTimerDueAtMs) return;
+			this.#renderTimer.cancel();
+			this.#renderTimer = undefined;
+		}
+		this.#renderTimerDueAtMs = now + delay;
 		this.#renderTimer = this.#renderScheduler.scheduleRender(() => {
 			this.#renderTimer = undefined;
 			if (this.#stopped || !this.#renderRequested) {
@@ -3097,6 +3203,9 @@ export class TUI extends Container {
 	#executeRender(): void {
 		const start = this.#renderScheduler.now();
 		this.#lastRenderAt = start;
+		// The frame the keystroke was waiting for is this one. Anything requested after it starts
+		// is a new frame, interactive only if new input asks for it.
+		this.#renderRequestIsInteractive = false;
 		pushLoopPhase("ui.render");
 		try {
 			this.#doRender();
@@ -3110,15 +3219,10 @@ export class TUI extends Container {
 	/** Wheel step for scroll isolation: freeze/walk the transcript region.
 	 * Anchored to the live window top so the first wheel-up starts from the
 	 * currently visible tail; walking down to the tail resumes following. */
-	#pinnedFooterScreenBounds(): {
-		footerTop: number;
-		footerBottom: number;
-		footerRowOffset: number;
-		contentBottom: number;
-	} {
+	#pinnedFooterScreenBounds(): PinnedFooterScreenBounds {
 		if (this.#virtualScrollTop !== null) {
 			const height = Math.max(1, this.terminal.rows);
-			const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
+			const footerRows = this.#footerRowsInViewport(height);
 			const footerTop = height - footerRows;
 			return {
 				footerTop,
@@ -3128,7 +3232,7 @@ export class TUI extends Container {
 			};
 		}
 		const frameLength = this.#composedFrame.length;
-		const windowTop = this.#windowTopRow;
+		const windowTop = this.#tailWindowTop(frameLength, this.terminal.rows);
 		const footerTop = frameLength - this.#pinnedFooterRows - windowTop;
 		const footerBottom = frameLength - 1 - windowTop;
 		return {
@@ -3137,6 +3241,21 @@ export class TUI extends Container {
 			contentBottom: footerBottom,
 			footerRowOffset: footerTop,
 		};
+	}
+
+	/**
+	 * The single definition of the live-tail window anchor: the first composed-frame
+	 * row the viewport shows while following the tail. The painter stores the result
+	 * in `#windowTopRow`, and `#pinnedFooterScreenBounds()` derives from this instead
+	 * of reading that stored value. The two agree in steady state; they diverge for
+	 * the whole deferred-repaint window after a resize, where a multiplexer settle
+	 * timer holds the repaint back and the stored anchor still describes the previous
+	 * viewport height. Mouse routing reads the bounds during that window, so a stale
+	 * anchor sends footer clicks to transcript rows.
+	 */
+	#tailWindowTop(frameLength: number, height: number): number {
+		const commitFloor = this.#pinnedFooterRows > 0 ? 0 : this.#committedRows;
+		return Math.max(commitFloor, frameLength - height, 0);
 	}
 
 	/**
@@ -3232,9 +3351,14 @@ export class TUI extends Container {
 	 */
 	#handleInput(data: string): void {
 		pushLoopPhase("ui.input");
+		// Every render this dispatch asks for is one the operator is waiting to see, whichever
+		// component ends up asking. The marker spans the dispatch rather than a single call so a
+		// handler that renders through a child, a callback or a focus change is covered too.
+		this.#dispatchingInput = true;
 		try {
 			this.#dispatchInput(data);
 		} finally {
+			this.#dispatchingInput = false;
 			popLoopPhase();
 		}
 	}
@@ -4145,7 +4269,16 @@ export class TUI extends Container {
 			// grid would duplicate them for a scrolling reader. On a
 			// multiplexer resize the pane reflowed its own history; committed
 			// rows keep their old wrap there, same as any shell output.
-			windowTop = Math.max(this.#committedRows, frameLength - height, 0);
+			// A pinned footer owns the bottom of the viewport: it always shows the
+			// LAST #pinnedFooterRows rows of the composed frame. Flooring the window
+			// at the commit boundary pushes those rows upward and leaves every row
+			// beneath them blank — the composer stranded mid-screen over a dead
+			// band, which is what a collapsing tool block produces while unfocused.
+			// Law 5 (never re-show a committed row) governs a scrolling transcript
+			// with no pinned chrome; where the two meet, re-showing a committed row
+			// is the lesser fault, and the fallback below already prefers
+			// duplication over loss for exactly this reason.
+			windowTop = this.#tailWindowTop(frameLength, height);
 			// Whatever scrolls above the window commits — the tape is the visual
 			// record; nothing that was painted may vanish. Overlays freeze
 			// commits: composited rows must never enter history, and the hidden
@@ -4221,7 +4354,7 @@ export class TUI extends Container {
 			const uncommittedEnd = Math.max(this.#committedRows, frameLength - this.#pinnedFooterRows);
 			this.#scrollSnapshot ??= [...this.#scrollTape, ...frame.slice(this.#committedRows, uncommittedEnd)];
 			const snapshot = this.#scrollSnapshot;
-			const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
+			const footerRows = this.#footerRowsInViewport(height);
 			const regionRows = height - footerRows;
 			const viewTop = this.#virtualScrollTop!;
 			for (let r = 0; r < height; r++) {
@@ -4658,12 +4791,22 @@ export class TUI extends Container {
 		height: number,
 		hardwareCursor: HardwareCursorUpdate,
 	): void {
+		this.#commitFrameState(lines, window, width, height);
+		this.#recordHardwareCursorUpdate(hardwareCursor);
+	}
+
+	/**
+	 * The half of a commit that describes the FRAME rather than the cursor: what the next diff
+	 * compares against, and the notification that a frame happened. A frame that composed
+	 * something and then found nothing to write owes this much even though it moved no cursor,
+	 * so the two paths share it instead of one of them keeping stale geometry.
+	 */
+	#commitFrameState(lines: readonly string[], window: string[], width: number, height: number): void {
 		this.#previousFrameLength = lines.length;
 		this.#previousWindow = window;
 		this.#forceViewportRepaintOnNextRender = false;
 		this.#previousWidth = width;
 		this.#previousHeight = height;
-		this.#recordHardwareCursorUpdate(hardwareCursor);
 		this.onFrameComposed?.();
 	}
 
@@ -4684,6 +4827,19 @@ export class TUI extends Container {
 		this.#hardwareCursorState = state;
 		this.#hardwareCursorVisible = state.visible;
 		this.#hardwareCursorVisibilityKnown = true;
+	}
+
+	/**
+	 * Keep the tracked cursor row on the same SCREEN row across a window slide that
+	 * painted nothing. The row is a frame-absolute coordinate and every relative move
+	 * is derived from it, so a slide that leaves the terminal untouched still shifts
+	 * the frame row sitting under the physical cursor by the slide distance.
+	 */
+	#slideHardwareCursorRow(scroll: number): void {
+		if (scroll === 0) return;
+		const row = Math.max(0, this.#hardwareCursorRow + scroll);
+		this.#hardwareCursorRow = row;
+		if (this.#hardwareCursorState) this.#hardwareCursorState = { ...this.#hardwareCursorState, row };
 	}
 
 	#recordHardwareCursorRowOnly(row: number, visible?: boolean): void {
@@ -5249,20 +5405,47 @@ export class TUI extends Container {
 		// top-clamped full rewrite.
 		const inPlaceRewrite = repaintVirtualScrollInPlace || scroll !== 0;
 		if (chunkLength === 0) {
-			if (forceWindowRewrite || inPlaceRewrite) this.#fullRedrawCount += 1;
-			let firstChanged = forceWindowRewrite || inPlaceRewrite ? 0 : -1;
-			let lastChanged = forceWindowRewrite || inPlaceRewrite ? height - 1 : -1;
-			if (!forceWindowRewrite && !inPlaceRewrite) {
-				const comparable = previousWindow.length === height;
-				for (let r = 0; r < height; r++) {
-					if (comparable && (window[r] ?? "") === (previousWindow[r] ?? "")) continue;
-					if (firstChanged === -1) firstChanged = r;
-					lastChanged = r;
-				}
+			// What changed decides whether anything is written at all; the frame KIND decides
+			// only how wide the walk has to be once something has. A slid or overlay-composited
+			// window cannot trust a relative move from the tracked row, so when it does write it
+			// walks the whole viewport from a clamped top — but a frame where every row already
+			// matches the screen writes nothing, whatever kind it is, instead of erasing and
+			// reprinting the viewport it just drew.
+			const comparable = !forceWindowRewrite && previousWindow.length === height && width === this.#previousWidth;
+			let firstChanged = -1;
+			let lastChanged = -1;
+			for (let r = 0; r < height; r++) {
+				if (comparable && (window[r] ?? "") === (previousWindow[r] ?? "")) continue;
+				if (firstChanged === -1) firstChanged = r;
+				lastChanged = r;
+			}
+			if (firstChanged !== -1 && (forceWindowRewrite || inPlaceRewrite)) {
+				this.#fullRedrawCount += 1;
+				firstChanged = 0;
+				lastChanged = height - 1;
 			}
 			if (firstChanged === -1) {
 				if (purgeSequence.length > 0) this.terminal.write(purgeSequence);
+				// Nothing is painted on this frame, so the physical cursor does not move —
+				// but the window slid under it, and the tracked row is a frame-absolute
+				// coordinate. The same screen row now names a frame row `scroll` further
+				// down, so rebase before the cursor write derives a RELATIVE move from it:
+				// otherwise every paintless slide emits one spurious CUD/CUU, the physical
+				// cursor drifts a row per frame away from the tracked one, and the next
+				// commit scrolls from the wrong origin and pushes live rows into history.
+				this.#slideHardwareCursorRow(scroll);
 				this.#writeCursorPosition(cursorPos, cursorTrackingLineCount);
+				// A frame that would have rewritten the window, and turned out to match it
+				// byte for byte, still moved the window and still composed a frame: the anchor
+				// and the geometry the next diff compares against are owed either way. Without
+				// this, a stream landing entirely below a frozen view leaves the engine reading
+				// the previous frame's length and losing the rows it is holding. A frame that
+				// was already static keeps the narrower path it always took.
+				if (forceWindowRewrite || inPlaceRewrite) {
+					this.#windowTopRow = windowTop;
+					this.#commitFrameState(frame, window, width, height);
+					return;
+				}
 				this.#previousWidth = width;
 				this.#previousHeight = height;
 				return;
@@ -5291,9 +5474,25 @@ export class TUI extends Container {
 				fillTexts = plan.texts;
 				fillSequence = plan.sequence;
 			}
+			// A slid window shifts every row, so the rewritten SPAN stays full — but a row whose
+			// bytes already match the screen needs neither the erase nor the write. Skipping it
+			// leaves the cursor walk intact, since the newline between rows moves down either
+			// way, and stops a streaming HUD from erasing the whole viewport every frame: on a
+			// terminal without synchronized output that sweep is visible as a flash across rows
+			// that never changed. Only taken where the screen is known: a forced rewrite exists
+			// because the screen cannot be trusted, a width change re-renders every row, and a
+			// DECCARA fill paints rectangles this comparison does not model.
+			const skipUnchangedRows =
+				inPlaceRewrite &&
+				!forceWindowRewrite &&
+				fillSequence.length === 0 &&
+				previousWindow.length === height &&
+				width === this.#previousWidth;
 			for (let r = firstChanged; r <= lastChanged; r++) {
 				if (r > firstChanged) buffer += "\r\n";
-				buffer += this.#lineRewriteSequence(fillTexts ? fillTexts[r - firstChanged] : (window[r] ?? ""), width);
+				const text = fillTexts ? (fillTexts[r - firstChanged] ?? "") : (window[r] ?? "");
+				if (skipUnchangedRows && text === (previousWindow[r] ?? "")) continue;
+				buffer += this.#lineRewriteSequence(text, width);
 			}
 			buffer += fillSequence;
 			// Never park below real content (a height shrink would scroll live

@@ -38,6 +38,7 @@ import { vocalizer } from "../../tts/vocalizer";
 import { canonicalizeMessage } from "../../utils/thinking-display";
 import { formatRetryLine, formatRetrySummary, type RetryTrace, retryReason } from "../retry-display";
 import { interruptHint } from "../shared";
+import { asyncToolState, isLiveBackgroundTask } from "../utils/async-tool-state";
 import { createAssistantMessageComponent } from "../utils/interactive-context-helpers";
 import {
 	assistantHasVisibleContent,
@@ -1276,7 +1277,7 @@ export class EventController {
 		this.#ensureWorkingLoaderWhileStreaming();
 		const component = this.ctx.pendingTools.get(event.toolCallId);
 		if (component) {
-			const asyncState = (event.partialResult.details as { async?: { state?: string } } | undefined)?.async?.state;
+			const asyncState = asyncToolState(event.partialResult.details);
 			const isFinalAsyncState = asyncState === "completed" || asyncState === "failed";
 			// A final async snapshot is terminal only for a parked background
 			// block (the call already returned and was kept alive for its jobs).
@@ -1319,7 +1320,7 @@ export class EventController {
 		// door into "this call finished" and this is it. A background `task` that
 		// reports `async.state === "running"` has NOT finished — its card stays
 		// live and settles from `#handleToolExecutionUpdate`'s terminal branch.
-		const endAsyncState = (event.result.details as { async?: { state?: string } } | undefined)?.async?.state;
+		const endAsyncState = asyncToolState(event.result.details);
 		if (event.toolName !== "task" || endAsyncState !== "running") {
 			this.ctx.settledToolCalls.add(event.toolCallId);
 		}
@@ -1351,8 +1352,7 @@ export class EventController {
 		} else {
 			const component = this.ctx.pendingTools.get(event.toolCallId);
 			if (component) {
-				const asyncState = (event.result.details as { async?: { state?: string } } | undefined)?.async?.state;
-				const isBackgroundTask = event.toolName === "task" && asyncState === "running";
+				const isBackgroundTask = isLiveBackgroundTask(event.toolName, event.result.details);
 				component.updateResult({ ...event.result, isError: event.isError }, isBackgroundTask, event.toolCallId);
 				if (isBackgroundTask) {
 					this.#backgroundTaskCallIds.add(event.toolCallId);

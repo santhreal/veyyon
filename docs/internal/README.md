@@ -67,6 +67,7 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | --- | --- |
 | [tui-core-renderer.md](tui-core-renderer.md) | The append-only renderer contract. |
 | [tui-runtime-internals.md](tui-runtime-internals.md) | TUI runtime internals. |
+| [renderer-defect-oracle.md](renderer-defect-oracle.md) | Terminal renderer composer-zone defect oracles and corpus replay. |
 
 ## Tools and runtime
 
@@ -156,4 +157,4 @@ Per-model tool-call wire-format notes live in [toolconv/](toolconv/) (Anthropic,
 
 Step-by-step runbooks for when something breaks live in [runbooks/](runbooks/).
 
-*Verified against `2402701c9` on 2026-08-24.*
+*Verified against `afbe182a1` on 2026-08-25.*

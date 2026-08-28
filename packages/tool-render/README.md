@@ -7,12 +7,12 @@ Shared React components for rendering tool calls in transcripts. Consumed by:
 
 ## Writing a renderer
 
-A renderer exports `Summary` and optional `Body` React components:
+A renderer lives in `src/tools/` and exports `Summary` and an optional `Body` React component:
 
 ```tsx
-import type { ToolRenderer } from "./types";
-import { PathText, ResultText } from "./parts";
-import { str } from "./util";
+import type { ToolRenderer } from "../types";
+import { PathText, ResultText } from "../parts";
+import { str } from "../util";
 
 export const myToolRenderer: ToolRenderer = {
 	Summary: ({ args }) => <PathText path={str(args.path) ?? ""} />,

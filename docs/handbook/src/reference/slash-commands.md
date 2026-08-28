@@ -175,6 +175,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/plugins …` | Plugin browser |
 | `/extensions`, `/status` | Extension Control Center dashboard. `/status` is an alias for it, not a session-status view |
 | `/agents` (aliases `/cockpit`, `/hub`) | Open the Agent Control Center: live agent roster and the agent-to-agent comms stream |
+| `/process-manager` | Open the Agent Control Center across every conversation this process is running, not only the one on screen. Press `a` in the card to switch between the two scopes |
 | `/ssh …` | SSH host setup. `add` takes the name and host by position, then `user <user>`, a plain port, and `key <keyPath>` in any order: see [Every argument is a plain word](#every-argument-is-a-plain-word) |
 | `/hotkeys` | Active keybinding chords |
 | `/collab …`, `/join`, `/leave` | Live collab sessions |
@@ -186,6 +187,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | --- | --- |
 | `/btw` | Ephemeral side question |
 | `/tan` | Run a full background agent on tangential work |
+| `/advisor …` | Show, configure, start or stop the advisor that reviews each turn |
 | `/omfg` | Forge a TTSR rule from a complaint to stop a recurring behavior |
 | `/vibe` | Toggle vibe mode (director + `vibe_*` worker tools) |
 | `/retry` | Retry failed turn |
@@ -221,5 +223,6 @@ own page; typing the bare command lists them with their descriptions.
 | `/memory` | `view`, `stats`, `diagnose`, `clear`, `reset`, `enqueue`, `rebuild`, `mm list`, `mm show`, `mm refresh`, `mm history`, `mm seed`, `mm delete`, `mm reload` |
 | `/plugins` | `list` |
 | `/trust` | `approve`, `deny`, `forget` |
+| `/advisor` | `status`, `configure`, `on`, `off`, `dump` |
 
 Extension packages (for example swarm) register additional commands when installed. The live set is whatever the session registers; use `/help` or the command palette in the TUI. Status line: `/statusline` opens the Status Line settings group (see [Multi-agent monitoring](../features/cockpit.md)). Keybindings: `/hotkeys`. Memory: `/memory` and settings under the active memory backend.

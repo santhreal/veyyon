@@ -30,12 +30,13 @@ import { type AgentRegistry, MAIN_AGENT_ID } from "./agent-registry";
  *
  * `scope` is the conversation these transcripts belong to, and every ref is
  * registered with it EXPLICITLY rather than inheriting it through `parentId`.
- * Inheritance cannot do the job here: the seeded parent chain terminates at
- * `MAIN_AGENT_ID`, which is the driving agent's id only in the interactive TUI.
- * An ACP root registers as `acp:<sessionId>` and an SDK host names its own, so
- * in exactly the multi-conversation processes that need scoping there is no
- * `Main` ref to inherit from and every seeded agent landed with an UNDEFINED
- * scope. An undefined scope is deliberately visible to everyone, so one
+ * Inheritance cannot do the job here: the parent chain is seeded from the
+ * driving agent of `scope`, whose id differs per host and per conversation — an
+ * ACP root registers as `acp:<sessionId>`, an interactive session as
+ * `main:<sessionId>`, an SDK host names its own — and a conversation whose
+ * driving agent is not registered at all has no ref to inherit from, so every
+ * seeded agent landed with an UNDEFINED scope. An undefined scope is
+ * deliberately visible to everyone, so one
  * conversation opening its Control Center published its whole on-disk subagent
  * tree into every other conversation's roster in the same process.
  *
@@ -52,7 +53,12 @@ export async function registerPersistedSubagents(
 	if (!sessionFile || !isSessionFileName(sessionFile)) return 0;
 	const root = sessionFile.slice(0, -6);
 	try {
-		return await registerPersistedSubagentsFromDir(registry, root, undefined, scope);
+		// The driving agent of this conversation owns every subagent seeded from
+		// its directory. Resolved by role rather than assumed to answer to one
+		// name, so a process holding two conversations seeds each tree under its
+		// real owner instead of piling both under a single shared parent.
+		const owner = registry.mainInScope(scope)?.id ?? MAIN_AGENT_ID;
+		return await registerPersistedSubagentsFromDir(registry, root, owner, scope);
 	} catch (error) {
 		logger.warn("Failed to register persisted subagents", { error });
 		return 0;

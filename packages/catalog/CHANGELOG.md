@@ -4,6 +4,7 @@
 
 ### Added
 
+- Export `normalizeOllamaBaseUrl` and `toOllamaNativeBaseUrl`, the single definition of how an Ollama base URL is spelled for each of its two APIs.
 - Added the Command Code provider catalog, with its documented coding flagships as the offline seed and credentialed discovery for the wider Provider API list.
 - Added the Nous Research provider catalog, whose credentialed discovery keeps tool-capable chat models and excludes embedding, media-generation and non-tool rows.
 - Added the `publishesOwnModelLimits` provider flag, which stops generation from backfilling a context window or output cap from another host's same-family model.

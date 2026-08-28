@@ -3178,6 +3178,21 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	}
 
 	/**
+	 * Whether this editor has anything a click could land on.
+	 *
+	 * The engine takes mouse reporting only while the transcript scrolls or a pinned-footer
+	 * child asks for it, so a component that routes clicks and never asks is reachable by
+	 * accident — in a session short enough that nothing scrolls, no button report arrives at
+	 * all and {@link routeMouse} is dead code. A caret target exists as soon as there is text
+	 * to put the caret in, and a suggestion popup is a target of its own. An empty, idle
+	 * composer asks for nothing, so a session that has not been typed into yet keeps the
+	 * terminal's native drag-select, which is what the grab costs.
+	 */
+	wantsPointer(): boolean {
+		return this.getText().length > 0 || this.#autocompleteState !== null;
+	}
+
+	/**
 	 * A left click accepts a suggestion, or places the caret in the text.
 	 *
 	 * The popup paints as the tail rows of this editor's own frame, so the row

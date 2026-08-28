@@ -1,17 +1,26 @@
 // Regression coverage for gateways (OpenRouter, Vercel AI Gateway, …) that
 // report upstream model failures as a bare `finish_reason: "error"` — e.g.
-// Gemini MALFORMED_FUNCTION_CALL behind an OpenAI-compat endpoint. The mapped
-// error message must match the session retry classifier's transient-transport
-// pattern (`provider.?returned.?error` in agent-session's
-// #isTransientTransportErrorMessage) so the turn is auto-retried instead of
-// stopping with a pinned error banner.
+// Gemini MALFORMED_FUNCTION_CALL behind an OpenAI-compat endpoint. Such a turn
+// must be retried rather than stopping with a pinned error banner.
+//
+// This asserted the wording (`provider.?returned.?error`) rather than the
+// verdict, which is what let the wording carry the decision: the provider
+// phrased its message to suit a regex in another module, and the three
+// providers that phrased it differently walled on the identical failure. The
+// assertion is now the flag the turn domain actually reads, and the string it
+// checks is the one the owner mints.
 import { describe, expect, it } from "bun:test";
+import { Flag } from "@veyyon/ai/error/flag";
+import { classify } from "@veyyon/ai/error/flags";
+import { providerFinishErrorMessage } from "@veyyon/ai/error/provider";
 import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
 import type { Context, FetchImpl, Model } from "@veyyon/ai/types";
 import { getBundledModel } from "@veyyon/catalog/models";
 
-// Mirrors the transient-transport alternative the session retry gate matches on.
-const RETRYABLE_PATTERN = /provider.?returned.?error/i;
+/** Raised on a turn the turn domain is willing to send again. */
+function turnRetries(message: string | undefined): boolean {
+	return (classify(new Error(message ?? "")) & Flag.ProviderFinishError) !== 0;
+}
 
 const completionsModel = {
 	...(getBundledModel("openai", "gpt-4o-mini") as Model<"openai-completions">),
@@ -68,7 +77,8 @@ describe("finish_reason: error", () => {
 		}).result();
 
 		expect(result.stopReason).toBe("error");
-		expect(result.errorMessage).toMatch(RETRYABLE_PATTERN);
+		expect(result.errorMessage).toBe(providerFinishErrorMessage("error"));
+		expect(turnRetries(result.errorMessage)).toBe(true);
 	}, 10_000);
 
 	it("stays an error even when the stream carried tool calls", async () => {
@@ -104,6 +114,7 @@ describe("finish_reason: error", () => {
 		}).result();
 
 		expect(result.stopReason).toBe("error");
-		expect(result.errorMessage).toMatch(RETRYABLE_PATTERN);
+		expect(result.errorMessage).toBe(providerFinishErrorMessage("error"));
+		expect(turnRetries(result.errorMessage)).toBe(true);
 	}, 10_000);
 });

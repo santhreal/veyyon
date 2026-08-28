@@ -1,6 +1,9 @@
 import * as logger from "@veyyon/utils/logger";
 import type { OAuthAccess } from "./auth-storage";
-import * as AIError from "./error";
+// The owners, not the barrel: this module throws two error classes, and reaching
+// them through `./error` pulled the whole registry and every domain behind it.
+import { RequestAbortError } from "./error/abort";
+import { MissingApiKeyError } from "./error/auth";
 import { isAuthRetryableError } from "./error/auth-classify";
 import { isUsageLimit } from "./error/flags";
 
@@ -49,7 +52,7 @@ export function isApiKeyResolver(key: ApiKey | undefined): key is ApiKeyResolver
 
 function throwIfAuthRetryAborted(signal: AbortSignal | undefined): void {
 	if (signal?.aborted) {
-		throw signal.reason ?? new AIError.RequestAbortError("Authentication retry aborted by caller");
+		throw signal.reason ?? new RequestAbortError("Authentication retry aborted by caller");
 	}
 }
 
@@ -242,7 +245,7 @@ export async function withAuth<T>(
 	opts?: { isAuthError?: (error: unknown) => boolean; signal?: AbortSignal; missingKeyMessage?: string },
 ): Promise<T> {
 	const isAuthError = opts?.isAuthError ?? isAuthRetryableError;
-	const missingKey = (): Error => new AIError.MissingApiKeyError(undefined, opts?.missingKeyMessage);
+	const missingKey = (): Error => new MissingApiKeyError(undefined, opts?.missingKeyMessage);
 	const signal = opts?.signal;
 	throwIfAuthRetryAborted(signal);
 
@@ -352,7 +355,7 @@ export async function withOAuthAccess<T>(
 		throwIfAuthRetryAborted(signal);
 	}
 	if (!lastAccess) {
-		throw new AIError.MissingApiKeyError(
+		throw new MissingApiKeyError(
 			provider,
 			opts?.missingAccessMessage ?? `No OAuth credential available for provider: ${provider}`,
 		);

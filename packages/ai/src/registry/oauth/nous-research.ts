@@ -78,10 +78,29 @@ function containsScope(value: unknown, expected: string): boolean {
 	return false;
 }
 
+/**
+ * The body of a Nous Portal response, or the reason there is no usable body.
+ *
+ * The status is read BEFORE the parse failure is reported. Every caller here parses the body
+ * before it looks at `response.ok`, because a Portal error arrives as a JSON `error` field on a
+ * 4xx. A gateway in front of the Portal does not play along: a 502 or a 503 answers with an HTML
+ * page, and reporting that as "returned invalid JSON" of kind `validation` describes the operator's
+ * request as malformed when the Portal was never reached. The status is what happened, so a failed
+ * response says so and keeps the parse failure as its cause.
+ */
 async function responseJson<T>(response: Response, operation: string): Promise<T> {
 	try {
 		return (await response.json()) as T;
 	} catch (cause) {
+		if (!response.ok) {
+			const reason = response.statusText ? ` ${response.statusText}` : "";
+			throw new AIError.OAuthError(`Nous Portal ${operation} failed: ${response.status}${reason}`, {
+				kind: "http",
+				provider: PROVIDER_ID,
+				status: response.status,
+				cause,
+			});
+		}
 		throw new AIError.OAuthError(`Nous Portal ${operation} returned invalid JSON`, {
 			kind: "validation",
 			provider: PROVIDER_ID,

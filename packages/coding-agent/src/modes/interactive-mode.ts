@@ -232,7 +232,7 @@ import {
 	onThemeChange,
 	theme,
 } from "./theme/theme";
-import { flushPendingTtyInput } from "./tty-input-flush";
+import { consumeRelaunchMarker, flushPendingTtyInput, RELAUNCH_MARKER } from "./tty-input-flush";
 import type {
 	CompactionQueuedMessage,
 	InteractiveModeContext,
@@ -322,6 +322,43 @@ const EDITOR_MIN_RENDERED_ROWS = 3; // bordered editor floor: top+bottom border 
  * let the goal spin forever.
  */
 const GOAL_FAILED_TURN_LIMIT = 3;
+
+/** How long the composer stays idle before goal mode opens a continuation turn. */
+const GOAL_CONTINUATION_DELAY_MS = 800;
+
+/**
+ * How long goal mode keeps waiting for a busy session to go idle before it gives up on the
+ * continuation it owes. Post-turn maintenance — a compaction of a large context, a queued
+ * hook — routinely outlasts one delay window, and the goal must still be driving afterwards.
+ */
+const GOAL_CONTINUATION_BUSY_WAIT_MS = 300_000;
+
+/** Why goal mode is not opening a continuation turn right now. */
+type GoalContinuationBlock =
+	| "loop-mode"
+	| "no-input-callback"
+	| "continuation-mode-off"
+	| "plan-mode"
+	| "goal-mode-off"
+	| "suppressed"
+	| "busy"
+	| "submission-pending"
+	| "draft-in-composer"
+	| "images-attached"
+	| "goal-not-active"
+	| "no-prompt";
+
+/**
+ * Blocks that are an ordinary handoff rather than a goal declining to drive. `no-input-callback`
+ * is the common one: every `agent_end` arms the continuation before the loop has returned to
+ * `getUserInput`, and that call is expected to do nothing.
+ */
+const GOAL_CONTINUATION_QUIET_BLOCKS: ReadonlySet<GoalContinuationBlock> = new Set([
+	"loop-mode",
+	"no-input-callback",
+	"continuation-mode-off",
+	"goal-mode-off",
+]);
 
 /**
  * Whether the turn that just ended died rather than finished. An aborted turn is
@@ -610,6 +647,11 @@ export class InteractiveMode implements InteractiveModeContext {
 	#goalSuppressNextContinuation = false;
 	#goalUserContinuationSuppressed = false;
 	#goalUserTurnInFlight = false;
+	/**
+	 * Deadline for the continuation goal mode owes a busy session, set when the first tick finds
+	 * the session busy and cleared by the tick that gets through. Undefined while nothing is owed.
+	 */
+	#goalContinuationBusyUntil: number | undefined;
 	#planModePreviousModelState: { model: Model; thinkingLevel?: ConfiguredThinkingLevel } | undefined;
 	#pendingModelSwitch: { model: Model; thinkingLevel?: ConfiguredThinkingLevel } | undefined;
 	#planModeHasEntered = false;
@@ -734,6 +776,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * the bar cannot be refreshed off those alone.
 	 */
 	#bashForegroundUnsubscribe?: () => void;
+	#backgroundSessionsUnsubscribe?: () => void;
 	#agentRegistrySubscriptionTarget?: AgentRegistry;
 	#mcpPendingServers = new Set<string>();
 	#mcpConnectedServers = new Set<string>();
@@ -915,6 +958,16 @@ export class InteractiveMode implements InteractiveModeContext {
 		// and gets the hard cut.
 		this.statusLine = new StatusLineComponent(session, { requestRender: () => this.ui.requestRender() });
 		this.statusLine.setAutoCompactEnabled(session.autoCompactionEnabled);
+		// The count has to arrive on the keeper's own events, not on the next
+		// repaint that happens for another reason: a handed-off conversation
+		// produces no UI activity at all, so a chip refreshed by ambient redraws
+		// reads zero for as long as the operator sits still — which is exactly the
+		// stretch where an unwatched turn is spending.
+		this.statusLine.setBackgroundSessionCount(BackgroundSessions.global().size);
+		this.#backgroundSessionsUnsubscribe = BackgroundSessions.global().subscribe(() => {
+			this.statusLine.setBackgroundSessionCount(BackgroundSessions.global().size);
+			this.ui.requestRender();
+		});
 		// The borderless composer, per the agreed design mockups: a static
 		// near-invisible hairline, the content inset off the terminal edge, and
 		// ONE quiet metadata footline below the input — location (path · git)
@@ -1255,11 +1308,18 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		// The tty handover. Owned by whoever started the screen: when the launch
 		// card was painted before this mode existed, `first-frame.ts` already
-		// flushed the queue, installed the swallow gate and started the UI, and
-		// the gate has been holding input for the whole of session startup. It
-		// releases here, where the composer exists to receive the next keystroke.
+		// flushed the queue, installed the gate and started the UI, and the gate
+		// has been holding input for the whole of session startup. It releases
+		// here, where the composer exists to receive the next keystroke.
+		//
+		// Startup takes over a second, and the card shows a composer frame for
+		// all of it, so an operator who starts typing straight away is typing at
+		// something that looks live. The gate kept that text instead of dropping
+		// it; it goes into the composer now, unsubmitted, so the draft reads as
+		// though the composer had been listening the whole time.
 		if (this.#firstFrame) {
-			this.#firstFrame.releaseInput();
+			const typedAtCard = this.#firstFrame.releaseInput();
+			if (typedAtCard) this.editor.insertText(typedAtCard);
 		} else {
 			// This process may be a relaunch (`/profile <name>` respawns the CLI),
 			// and between the parent restoring the terminal and the line below
@@ -1273,6 +1333,11 @@ export class InteractiveMode implements InteractiveModeContext {
 			// is source-agnostic: keystrokes, a terminal's replies to the dying
 			// parent's probes, or anything a multiplexer injected all go the same
 			// way, and no timing window is involved.
+			// This branch discards the queue either way, so the marker only has to
+			// be cleared: left set it would reach every child this session spawns,
+			// and a veyyon launched from one would read its operator's typing as a
+			// dead session's backlog.
+			consumeRelaunchMarker();
 			const flushed = flushPendingTtyInput();
 			// Windows consoles have no termios and an unusual libc may not resolve,
 			// so `tcflush` can be unavailable. The documented degrade is to discard
@@ -1683,47 +1748,94 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 	}
 
+	/**
+	 * Why goal mode must not open a continuation turn at this instant, or `undefined` when it may.
+	 *
+	 * ONE owner for the question, asked when the timer is armed and again when it fires. The two
+	 * lists used to be separate copies that disagreed on one entry, and that entry was the defect:
+	 * `busy` existed only at fire time, where it discarded the tick and left a comment saying the
+	 * next `agent_end` would reschedule. For a goal whose post-turn maintenance outlives the delay
+	 * window there is no next `agent_end` — the turn that armed this tick was the last one — so the
+	 * goal sat `active` with every re-arm edge already behind it.
+	 */
+	#goalContinuationBlock(phase: "arm" | "fire"): GoalContinuationBlock | undefined {
+		if (this.loopModeEnabled) return "loop-mode";
+		if (!this.onInputCallback) return "no-input-callback";
+		if (!this.session.settings.get("goal.continuationModes").includes("interactive")) {
+			return "continuation-mode-off";
+		}
+		if (this.planModeEnabled || this.planModePaused) return "plan-mode";
+		if (!this.goalModeEnabled || this.goalModePaused) return "goal-mode-off";
+		if (this.#goalSuppressNextContinuation || this.#goalUserContinuationSuppressed) return "suppressed";
+		// The one transient block: mid-turn, compacting, or draining post-turn maintenance, each of
+		// which ends on its own. Asked at fire time only — at arm time the turn that scheduled this
+		// tick is still settling, which is what the delay is for.
+		if (phase === "fire" && this.#isAutoSubmitBlocked()) return "busy";
+		if (this.#pendingSubmittedInput) return "submission-pending";
+		if (this.editor.getText().trim().length > 0) return "draft-in-composer";
+		if ((this.editor.pendingImages?.length ?? 0) > 0) return "images-attached";
+		const state = this.session.getGoalModeState();
+		if (!state?.enabled || state.goal.status !== "active") return "goal-not-active";
+		return undefined;
+	}
+
+	#reportGoalContinuationBlock(reason: GoalContinuationBlock, phase: "arm" | "fire"): void {
+		if (GOAL_CONTINUATION_QUIET_BLOCKS.has(reason)) return;
+		logger.debug("Goal mode is not opening a continuation turn", {
+			reason,
+			phase,
+			goalId: this.session.getGoalModeState()?.goal.id,
+		});
+	}
+
 	#scheduleGoalContinuation(): void {
 		this.#cancelGoalContinuation();
-		if (this.loopModeEnabled) return;
-		if (!this.onInputCallback) return;
-		if (!this.session.settings.get("goal.continuationModes").includes("interactive")) return;
-		if (this.planModeEnabled || this.planModePaused) return;
-		if (!this.goalModeEnabled || this.goalModePaused) return;
-		if (this.#goalSuppressNextContinuation || this.#goalUserContinuationSuppressed) return;
-		if (this.#pendingSubmittedInput) return;
-		if (this.editor.getText().trim().length > 0) return;
-		if ((this.editor.pendingImages?.length ?? 0) > 0) return;
-		const state = this.session.getGoalModeState();
-		if (!state?.enabled || state.goal.status !== "active") return;
+		this.#goalContinuationBusyUntil = undefined;
+		this.#armGoalContinuation();
+	}
+
+	#armGoalContinuation(): void {
+		this.#cancelGoalContinuation();
+		const blocked = this.#goalContinuationBlock("arm");
+		if (blocked) {
+			this.#reportGoalContinuationBlock(blocked, "arm");
+			return;
+		}
 		const prompt = this.session.goalRuntime.buildContinuationPrompt();
-		if (!prompt) return;
+		if (!prompt) {
+			this.#reportGoalContinuationBlock("no-prompt", "arm");
+			return;
+		}
 		this.#goalContinuationTimer = setTimeout(() => {
 			this.#goalContinuationTimer = undefined;
-			if (!this.onInputCallback) return;
-			if (!this.goalModeEnabled || this.goalModePaused) return;
-			// The 800ms timer can outlive the idle window that scheduled it: a
-			// `/goal set` taken via the streaming branch (or any extension/hook
-			// path that starts a turn while we wait) leaves the agent busy. Firing
-			// the continuation now would route through `submitInteractiveInput` →
-			// `promptCustomMessage` with no `streamingBehavior` and resurface
-			// `AgentBusyError`. Drop this tick; `#handleGoalSessionEvent` reschedules
-			// on the next `agent_end`.
-			if (this.#isAutoSubmitBlocked()) return;
-			if (this.#pendingSubmittedInput) return;
-			if (this.editor.getText().trim().length > 0) return;
-			if ((this.editor.pendingImages?.length ?? 0) > 0) return;
-			const latestState = this.session.getGoalModeState();
-			if (!latestState?.enabled || latestState.goal.status !== "active") return;
+			const blockedNow = this.#goalContinuationBlock("fire");
+			if (blockedNow === "busy") {
+				this.#goalContinuationBusyUntil ??= Date.now() + GOAL_CONTINUATION_BUSY_WAIT_MS;
+				if (Date.now() < this.#goalContinuationBusyUntil) {
+					this.#armGoalContinuation();
+					return;
+				}
+				this.#goalContinuationBusyUntil = undefined;
+				this.#reportGoalContinuationBlock("busy", "fire");
+				this.showWarning("Goal mode stopped waiting for the session to go idle. Send a message to resume it.");
+				return;
+			}
+			this.#goalContinuationBusyUntil = undefined;
+			if (blockedNow) {
+				this.#reportGoalContinuationBlock(blockedNow, "fire");
+				return;
+			}
+			const submit = this.onInputCallback;
+			if (!submit) return;
 			this.#goalContinuationTurnInFlight = true;
-			this.onInputCallback(
+			submit(
 				this.startPendingSubmission({
 					text: prompt,
 					customType: "goal-continuation",
 					display: false,
 				}),
 			);
-		}, 800);
+		}, GOAL_CONTINUATION_DELAY_MS);
 	}
 
 	#cancelGoalContinuation(): void {
@@ -3774,7 +3886,10 @@ export class InteractiveMode implements InteractiveModeContext {
 			// Codex socket instead of leaking one per turn (#5471 review).
 			const guidedGoalSessionId = newGuidedGoalSessionId(this.session);
 			for (let turn = 0; turn < 6; turn++) {
-				const result = await runGuidedGoalTurn(this.session, { messages, sideSessionId: guidedGoalSessionId });
+				const result = await this.#withGuidedGoalProgress(
+					turn === 0 ? "Refining the objective" : "Reading your answer",
+					() => runGuidedGoalTurn(this.session, { messages, sideSessionId: guidedGoalSessionId }),
+				);
 				if (result.objective?.trim()) latestDraftObjective = result.objective.trim();
 				if (result.kind === "question") {
 					messages.push({ role: "assistant", content: result.question });
@@ -4210,6 +4325,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#agentRegistrySubscriptionTarget = undefined;
 		this.#bashForegroundUnsubscribe?.();
 		this.#bashForegroundUnsubscribe = undefined;
+		this.#backgroundSessionsUnsubscribe?.();
+		this.#backgroundSessionsUnsubscribe = undefined;
 		this.#eventController.dispose();
 		this.statusLine.dispose();
 		if (this.#resizeHandler) {
@@ -4342,6 +4459,8 @@ export class InteractiveMode implements InteractiveModeContext {
 			for (const [key, value] of Object.entries({ ...process.env, ...env })) {
 				if (value !== undefined) childEnv[key] = value;
 			}
+			// Tell the child that whatever is queued on the tty predates it.
+			childEnv[RELAUNCH_MARKER] = "1";
 			const child = Bun.spawn(argv, { stdio: ["inherit", "inherit", "inherit"], env: childEnv });
 			await postmortem.quit(await child.exited);
 			return;
@@ -4610,6 +4729,33 @@ export class InteractiveMode implements InteractiveModeContext {
 		// regions, so without it a board that was still when the turn began
 		// stays still until some unrelated event redraws it.
 		this.#renderTodoList();
+	}
+
+	/**
+	 * Run `work` behind a spinner in the status area.
+	 *
+	 * A guided-goal turn is a one-shot completion that streams nothing and
+	 * emits no session events, so the screen between the answer the user typed
+	 * and the next question showed no sign that anything was running.
+	 */
+	async #withGuidedGoalProgress<T>(label: string, work: () => Promise<T>): Promise<T> {
+		this.statusContainer.disposeChildren();
+		const loader = new Loader(
+			this.ui,
+			spinner => theme.fg("accent", spinner),
+			text => theme.fg("muted", text),
+			`${label} (esc to cancel)`,
+			getSymbolTheme().spinnerFrames,
+		);
+		this.statusContainer.addChild(loader);
+		this.ui.requestRender();
+		try {
+			return await work();
+		} finally {
+			loader.stop();
+			this.statusContainer.disposeChildren();
+			this.ui.requestRender();
+		}
 	}
 
 	#stopLoadingAnimation(clearStatusContainer: boolean): void {
@@ -5066,8 +5212,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#selectorController.showSettingsSelector(initialItemId);
 	}
 
-	showAdvisorConfigure(): void {
-		this.#selectorController.showAdvisorConfigure();
+	showAdvisorConfigure(): Promise<void> {
+		return this.#selectorController.showAdvisorConfigure();
 	}
 
 	showHistorySearch(): void {
@@ -5078,7 +5224,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		void this.#selectorController.showExtensionsDashboard();
 	}
 
-	showAgentsDashboard(options?: { requireContent?: boolean }): void {
+	showAgentsDashboard(options?: { requireContent?: boolean; processScope?: boolean }): void {
 		this.#selectorController.showAgentsDashboard(this.#observerRegistry, options);
 	}
 
@@ -5432,7 +5578,10 @@ export class InteractiveMode implements InteractiveModeContext {
 	 */
 	attachMainSession(next: AgentSession): KeptSession {
 		const previous = this.session;
-		if (next === previous) return BackgroundSessions.global().keep(previous);
+		// Re-attaching the displayed session hands nothing over, so it must not enter
+		// the background set: that set is what the status line counts, and a visible
+		// conversation counted there reports off-screen spend to someone watching it.
+		if (next === previous) return BackgroundSessions.global().describeAttached(previous);
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
 		this.#goalUnsubscribe?.();

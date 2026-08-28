@@ -399,7 +399,15 @@ function toAnthropicDiscoveryBaseUrl(baseUrl: string): string {
 	return baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
 }
 
-function normalizeOllamaBaseUrl(baseUrl?: string): string {
+/**
+ * The OpenAI-compatible base URL for an Ollama endpoint: the configured origin AND PATH, with
+ * exactly one `/v1` on the end.
+ *
+ * The path is the part worth stating. An Ollama reached through a reverse proxy is mounted at a
+ * subpath (`http://gateway:11434/ollama`), and a normalizer that keeps only the origin sends every
+ * request to the proxy's root, where nothing answers.
+ */
+export function normalizeOllamaBaseUrl(baseUrl?: string): string {
 	const value = baseUrl?.trim();
 	if (!value) {
 		return "http://127.0.0.1:11434/v1";
@@ -408,7 +416,8 @@ function normalizeOllamaBaseUrl(baseUrl?: string): string {
 	return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
 }
 
-function toOllamaNativeBaseUrl(baseUrl: string): string {
+/** The same endpoint addressed by Ollama's own API, which is the OpenAI-compatible one without `/v1`. */
+export function toOllamaNativeBaseUrl(baseUrl: string): string {
 	return baseUrl.endsWith("/v1") ? baseUrl.slice(0, -3) : baseUrl;
 }
 

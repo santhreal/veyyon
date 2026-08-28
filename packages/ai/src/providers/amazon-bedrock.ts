@@ -524,7 +524,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 						output.stopReason =
 							sentinelInjected && ev.stopReason === "tool_use" ? "stop" : mapStopReason(ev.stopReason);
 						if (output.stopReason === "error") {
-							output.errorMessage = `Generation failed with stop reason: ${ev.stopReason ?? "unknown"}`;
+							output.errorMessage = AIError.providerFinishErrorMessage(ev.stopReason);
 						}
 						break;
 					}

@@ -63,11 +63,18 @@ const CARDS_WITHOUT_A_TITLE_ROW: Record<string, string> = {
  * this set, drawing a box, a connector and a code frame inside the rail, and so
  * did the retired `grep` tool, whose line-number gutter now belongs to the
  * `search` tool's text mode — a mode the one fixture per tool does not reach.
+ *
+ * A third case reaches this set without being chrome at all: a renderer that
+ * echoes a remote command's stdout carries whatever glyphs that command printed,
+ * and no renderer can forbid a byte in content it did not author. The sweep
+ * cannot tell an echoed glyph from a drawn one, which is this suite's blind
+ * spot; an entry of that kind says so and names the command its fixture runs.
  */
 const RENDERERS_THAT_DRAW_A_TREE: Record<string, string> = {
 	eval: "a value tree: each row is a child of the expression above it",
 	job: "a job tree: an output row belongs to the job row above it",
 	lsp: "a reference tree: a line belongs to the file above it",
+	ssh: "not chrome: the fixture echoes `systemctl status`, which prints a CGroup tree",
 };
 
 /** Box-drawing and rounded-corner glyphs, the alphabet a second edge is drawn in. */

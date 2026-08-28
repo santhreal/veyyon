@@ -257,7 +257,7 @@ describe("Startpage 200 challenge refusal and zero-result distinction", () => {
 		expect(challengeVerdict).not.toEqual(zeroResultVerdict);
 	});
 
-	it("surfaces 429 challenge error through WebSearchTool and does NOT report 'no renderable search content' (204)", async () => {
+	it("surfaces 429 challenge error through WebSearchTool and does NOT report it as a zero-result search", async () => {
 		setPreferredSearchProvider("startpage");
 		const challengeFetch: FetchImpl = () =>
 			Promise.resolve(
@@ -283,11 +283,11 @@ describe("Startpage 200 challenge refusal and zero-result distinction", () => {
 		const text = block && "text" in block ? block.text : "";
 		expect(text).toContain("Error:");
 		expect(text).toContain("CAPTCHA challenge");
-		expect(text).not.toContain("returned no renderable search content");
+		expect(text).not.toContain("found no results");
 		expect(result.details?.error).toContain("CAPTCHA challenge");
 	});
 
-	it("reports 'no renderable search content' (204) for genuine zero-result search through WebSearchTool", async () => {
+	it("reports a zero-result search (204) for a genuine empty result page through WebSearchTool", async () => {
 		setPreferredSearchProvider("startpage");
 		const zeroResultFetch: FetchImpl = () =>
 			Promise.resolve(
@@ -311,7 +311,7 @@ describe("Startpage 200 challenge refusal and zero-result distinction", () => {
 		const block = result.content[0];
 		expect(block?.type).toBe("text");
 		const text = block && "text" in block ? block.text : "";
-		expect(text).toContain("Error: Startpage returned no renderable search content.");
+		expect(text).toContain("Error: Startpage found no results for this query.");
 	});
 });
 
@@ -469,7 +469,7 @@ describe("Public Web aggregate wait semantics, termination, and bounds", () => {
 		};
 
 		const startTime = Date.now();
-		const response = await searchPublicWeb(
+		const search = searchPublicWeb(
 			{
 				query: "hanging query",
 				systemPrompt: "",
@@ -478,11 +478,12 @@ describe("Public Web aggregate wait semantics, termination, and bounds", () => {
 			},
 			{ softMs: 10, hardMs: 40 },
 		);
-		const elapsed = Date.now() - startTime;
 
-		expect(response.provider).toBe("public");
-		expect(response.sources).toEqual([]);
-		// Hard deadline was 40ms; must terminate in bounded window without stalling
+		// Termination is the contract, and it still holds. The aggregate no longer terminates by
+		// handing back an empty result, which is indistinguishable from a web that had nothing: it
+		// names the deadline and the engines that never answered.
+		await expect(search).rejects.toThrow(/did not answer/);
+		const elapsed = Date.now() - startTime;
 		expect(elapsed).toBeGreaterThanOrEqual(30);
 		expect(elapsed).toBeLessThan(500);
 	});

@@ -208,22 +208,29 @@ describe("Public Web aggregate provider", () => {
 		expect(Date.now() - started).toBeLessThan(2_000);
 	});
 
-	it("returns whatever it has at the hard deadline even with zero successes", async () => {
+	it("says the deadline ran out, rather than reporting an empty web, when an engine never answers", async () => {
+		// duckduckgo serves a bot wall that parses to zero results; google never settles and ignores
+		// abort, so only the hard cap ends the wait. Returning empty sources here reported the
+		// deadline as a fact about the web, and the tool then told the model "no renderable search
+		// content" — a claim about the internet, made because one engine was slow and another was
+		// walled. The bound is still the contract; what changed is that the aggregate says why.
 		setExcludedSearchProviders(NON_TEST_ENGINES);
 		const fetchMock: FetchImpl = input => {
 			const url = typeof input === "string" ? input : input.toString();
 			if (url.includes("duckduckgo.com")) {
 				return Promise.resolve(new Response(DDG_CHALLENGE, { status: 200 }));
 			}
-			// google: never settles and ignores abort — only the hard cap can end the wait.
 			const { promise } = Promise.withResolvers<Response>();
 			return promise;
 		};
 
-		const response = await searchPublicWeb(makeParams("hard cap", fetchMock), { softMs: 10, hardMs: 40 });
+		const started = Date.now();
+		const search = searchPublicWeb(makeParams("hard cap", fetchMock), { softMs: 10, hardMs: 40 });
 
-		expect(response.provider).toBe("public");
-		expect(response.sources).toEqual([]);
+		await expect(search).rejects.toThrow(/did not answer/);
+		await expect(search).rejects.toThrow(/google/);
+		// The whole point of the hard cap: it still ends, and it ends on time.
+		expect(Date.now() - started).toBeLessThan(2_000);
 	});
 
 	/**

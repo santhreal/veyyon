@@ -18,9 +18,10 @@ import {
 	nearestNames,
 	truncate,
 } from "@veyyon/utils";
+import { advisorStatusNextStep, describeAdvisorToggle } from "../advisor/messages";
 import { runTrustSlashCommand } from "../cli/trust-cli";
-import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest";
-import { CollabHost } from "../collab/host";
+import { COLLAB_GUEST_ALLOWED_COMMANDS } from "../collab/guest-commands";
+import type { CollabHost } from "../collab/host";
 import { DEFAULT_EFFORT_POINTER } from "../config/effort-resolver";
 import { credentialRemedySentence, missingCredentialsMessage } from "../config/missing-credentials";
 import { modelResolutionFailureMessage } from "../config/model-resolution-failure";
@@ -1600,6 +1601,9 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			// Scheme-less relay args default to wss (ws:// must be spelled out for localhost).
 			const relayUrl = relayInput.includes("://") ? relayInput : `wss://${relayInput}`;
 			const webUrl = ctx.settings.get("collab.webUrl") || "";
+			// The host client (relay socket, room crypto, wire codecs) loads here
+			// rather than at startup: a session that never hosts never evaluates it.
+			const { CollabHost } = await import("../collab/host");
 			const host = new CollabHost(ctx);
 			try {
 				await host.start(relayUrl, webUrl);
@@ -1629,6 +1633,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				return;
 			}
 			try {
+				const { CollabGuestLink } = await import("../collab/guest");
 				await new CollabGuestLink(ctx).join(link);
 			} catch (err) {
 				ctx.showError(`Failed to join collab session: ${errorMessage(err)}`);
@@ -1894,6 +1899,64 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			runtime.ctx.editor.setText("");
 		},
 	},
+	advisor: {
+		getTuiAutocompleteDescription: runtime => {
+			const stats = runtime.ctx.session.getAdvisorStats();
+			if (!stats.configured) return "Advisor · off";
+			if (!stats.active) return "Advisor · on, but no model resolved";
+			if (stats.advisors.length > 1) return `Advisor · ${stats.advisors.length} running`;
+			return `Advisor · ${stats.advisors[0].model.id}`;
+		},
+		handle: async (command, runtime) => {
+			const { verb } = parseSubcommand(command.args);
+			if (!verb || verb === "status") {
+				const stats = runtime.session.getAdvisorStats();
+				await runtime.output(
+					`${runtime.session.formatAdvisorStatus()}\n${advisorStatusNextStep(stats.configured, stats.active)}`,
+				);
+				return commandConsumed();
+			}
+			if (verb === "on" || verb === "off") {
+				const running = runtime.session.setAdvisorEnabled(verb === "on");
+				await runtime.output(describeAdvisorToggle(verb === "on", running));
+				return commandConsumed();
+			}
+			if (verb === "dump") {
+				const dump = runtime.session.formatAdvisorHistoryAsText({ compact: true });
+				await runtime.output(dump ?? "No advisor is running, so there is no advisor transcript to show.");
+				return commandConsumed();
+			}
+			if (verb === "configure") {
+				await runtime.output(
+					"/advisor configure needs the interactive TUI. Edit WATCHDOG.yml to change the roster from here.",
+				);
+				return commandConsumed();
+			}
+			return usage("Usage: /advisor [status|configure|on|off|dump]", runtime);
+		},
+		handleTui: async (command, runtime) => {
+			const { verb } = parseSubcommand(command.args);
+			runtime.ctx.editor.setText("");
+			if (verb === "status") {
+				await runtime.ctx.handleAdvisorStatusCommand();
+				return;
+			}
+			if (verb === "configure") {
+				await runtime.ctx.showAdvisorConfigure();
+				return;
+			}
+			if (verb === "on" || verb === "off") {
+				const running = runtime.ctx.session.setAdvisorEnabled(verb === "on");
+				runtime.ctx.showStatus(describeAdvisorToggle(verb === "on", running));
+				return;
+			}
+			if (verb === "dump") {
+				runtime.ctx.handleAdvisorDumpCommand();
+				return;
+			}
+			runtime.ctx.showStatus("Usage: /advisor [status|configure|on|off|dump]");
+		},
+	},
 	changelog: {
 		handle: async (_command, runtime) => {
 			await runtime.output(`Release notes: ${CHANGELOG_URL}`);
@@ -1965,6 +2028,12 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 	agents: {
 		handleTui: (_command, runtime) => {
 			runtime.ctx.showAgentsDashboard();
+			runtime.ctx.editor.setText("");
+		},
+	},
+	"process-manager": {
+		handleTui: (_command, runtime) => {
+			runtime.ctx.showAgentsDashboard({ processScope: true });
 			runtime.ctx.editor.setText("");
 		},
 	},
@@ -2868,6 +2937,8 @@ export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> 
 	effort: "model",
 	force: "model",
 	retry: "model",
+	// Beside the model roles: the advisor IS a model role, and its knobs sit under the Model tab.
+	advisor: "model",
 	share: "share",
 	collab: "share",
 	join: "share",
@@ -2879,6 +2950,8 @@ export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> 
 	cwd: "workspace",
 	tools: "workspace",
 	agents: "workspace",
+	// Beside `/agents`: the same roster, opened across every conversation this process is running.
+	"process-manager": "workspace",
 	jobs: "workspace",
 	usage: "workspace",
 	// Beside `/usage`: both answer "what has this cost", one inline and one in a browser.

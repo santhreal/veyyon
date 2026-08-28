@@ -170,6 +170,20 @@ function ttsrInjections(agent: Agent): AgentMessage[] {
 }
 
 /**
+ * One entry per message, with the field that says which delivery path ran. A zero-injection
+ * failure that does not reproduce is only diagnosable from the transcript that produced it.
+ */
+function describeTranscript(agent: Agent): string {
+	return agent.state.messages
+		.map(message => {
+			if (message.role === "assistant") return `assistant(${message.stopReason})`;
+			if (message.role === "custom") return `custom(${message.customType})`;
+			return message.role;
+		})
+		.join(" | ");
+}
+
+/**
  * Every byte of the conversation a user could be shown. `display: false` is the one thing
  * that takes a message out of this set, which is exactly why it is the reminder's channel.
  */
@@ -420,9 +434,14 @@ describe("a TTSR rule that matches a tool call", () => {
 			});
 
 			it(`still reaches the model on a hidden channel in mode "${mode}"`, async () => {
-				const { agent } = await runTurn({ outcome: "throws", interruptMode: mode });
+				const { agent, streamCalls } = await runTurn({ outcome: "throws", interruptMode: mode });
 				const injections = ttsrInjections(agent);
 
+				if (injections.length === 0) {
+					throw new Error(
+						`no TTSR injection in mode "${mode}" after ${streamCalls()} stream call(s); transcript: ${describeTranscript(agent)}`,
+					);
+				}
 				expect(injections.length).toBeGreaterThanOrEqual(1);
 				for (const injection of injections) {
 					expect(injection.role === "custom" ? injection.display : undefined).toBe(false);

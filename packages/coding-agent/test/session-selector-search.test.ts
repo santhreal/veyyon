@@ -201,7 +201,7 @@ describe("session picker incremental search", () => {
 });
 
 describe("resume card height", () => {
-	it("a short session list renders a short card, not a full-terminal frame", async () => {
+	it("gives a short session list a short card, floated rather than pinned to the top", async () => {
 		await initTheme();
 		const sessions = [makeSession("a", { firstMessage: "hello" }), makeSession("b", { firstMessage: "world" })];
 		const selector = new SessionSelectorComponent(
@@ -212,10 +212,24 @@ describe("resume card height", () => {
 			{ getTerminalRows: () => 50, fillHeight: true },
 		);
 		const lines = selector.render(200);
-		// Chrome + 2 sessions is well under half a 50-row terminal; the old
-		// behavior stretched the card to the screen bottom with blank rows.
-		expect(lines.length).toBeGreaterThan(10);
-		expect(lines.length).toBeLessThan(35);
+
+		// The picker is mounted as a fullscreen overlay anchored top-left, so the
+		// rows it returns ARE the screen. Returning fewer than the terminal has is
+		// how the card ended up against the top edge with the slack below it: the
+		// pad the shell centres into has to be in the frame to be drawn.
+		expect(lines.length).toBe(50);
+
+		const first = lines.findIndex(line => line.trim() !== "");
+		const last = lines.findLastIndex(line => line.trim() !== "");
+		// Chrome + 2 sessions is well under half a 50-row terminal; the card must
+		// track its content rather than stretch to the screen with blank rows.
+		expect(last - first + 1).toBeGreaterThan(10);
+		expect(last - first + 1).toBeLessThan(35);
+
+		// Floated: pad above, and the two pads within a row of each other.
+		const below = lines.length - 1 - last;
+		expect(first).toBeGreaterThan(0);
+		expect(Math.abs(first - below)).toBeLessThanOrEqual(1);
 	});
 });
 

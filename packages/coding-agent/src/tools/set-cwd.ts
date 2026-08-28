@@ -20,6 +20,7 @@ import { toolsPrompts } from "../prompts/tools/rows";
 import { framedBlock, renderStatusLine } from "../tui";
 import type { ToolSession } from ".";
 import { resolveToCwd } from "./path-utils";
+import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "./render-utils";
 import { SET_CWD_TOOL_NAME } from "./reroot-hint";
 import { ToolError, toolFailure } from "./tool-errors";
 
@@ -238,7 +239,7 @@ export const setCwdToolRenderer = {
 	name: SET_CWD_TOOL_NAME,
 	renderCall(args: unknown, _options: RenderResultOptions, theme: Theme): Component {
 		const pathArg = (args as Partial<SetCwdToolInput>)?.path;
-		const label = typeof pathArg === "string" ? pathArg : "…";
+		const label = typeof pathArg === "string" ? truncateToWidth(shortenPath(pathArg), TRUNCATE_LENGTHS.TITLE) : "…";
 		return new Text(theme.fg("toolTitle", `set_cwd ${label}`));
 	},
 	renderArguments(args: unknown): string {

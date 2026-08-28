@@ -24,7 +24,7 @@ import type {
 	Usage,
 } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
-import { ProviderHttpError } from "@veyyon/ai/error";
+import { ProviderHttpError } from "@veyyon/ai/error/classes";
 import { createOpenAICodexCompactionRequestContext } from "@veyyon/ai/providers/openai-codex-responses";
 import { detectDegenerateRepetition } from "@veyyon/ai/utils/thinking-loop";
 import { Effort } from "@veyyon/catalog/effort";

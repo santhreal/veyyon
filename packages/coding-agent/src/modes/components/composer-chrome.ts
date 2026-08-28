@@ -9,7 +9,7 @@
 
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Component, MouseRoutable, SgrMouseEvent } from "@veyyon/tui";
-import { Spacer, TERMINAL, truncateToWidth } from "@veyyon/tui";
+import { Spacer, sliceByColumn, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { groundHairlineHex, groundTintFgAnsi } from "../theme/ground-tints";
 import { theme } from "../theme/theme";
 import { EMBER } from "./sun";
@@ -293,6 +293,26 @@ export const COMPOSER_PLACEHOLDER = "ask anything · / for commands";
  * nothing slides.
  */
 export class StaticComposerFrame implements Component {
+	#draft = "";
+
+	/**
+	 * Show text that was typed before the live composer exists.
+	 *
+	 * The card paints this frame and session startup then runs for the better
+	 * part of a second, so the composer looks ready for the whole window. The
+	 * first frame's gate keeps what is typed there and hands it over at mount,
+	 * but a keystroke that produces nothing on screen reads as a dropped one:
+	 * the draft has to be visible here or the card is a picture of a composer.
+	 *
+	 * One row, tail-anchored. The live editor wraps and this frame's row count
+	 * is a layout contract the mounted zone swaps into, so a draft wider than
+	 * the row keeps its END on screen — that is where the next character lands,
+	 * and it is what a typist is looking at.
+	 */
+	setDraft(text: string): void {
+		this.#draft = text;
+	}
+
 	render(width: number): string[] {
 		const w = Math.max(1, width);
 		const clip = (row: string): string => truncateToWidth(row, w);
@@ -303,12 +323,20 @@ export class StaticComposerFrame implements Component {
 			"",
 			clip(hairline),
 			"",
-			clip(`${inset}${gutter} ${theme.fg("dim", COMPOSER_PLACEHOLDER)}`),
+			clip(`${inset}${gutter} ${this.#body(w - COMPOSER_INSET_COLS - 2)}`),
 			"",
 			"",
 			"",
 			"",
 		];
+	}
+
+	/** The ghost prompt, or the tail of the draft when one has been typed. */
+	#body(avail: number): string {
+		if (!this.#draft) return theme.fg("dim", COMPOSER_PLACEHOLDER);
+		if (avail < 1) return "";
+		const drawn = visibleWidth(this.#draft);
+		return drawn > avail ? sliceByColumn(this.#draft, drawn - avail, avail) : this.#draft;
 	}
 
 	invalidate(): void {}

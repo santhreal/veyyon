@@ -1,5 +1,4 @@
-import { DEFAULT_SHARE_URL } from "@veyyon/wire";
-import { DEFAULT_RELAY_URL } from "../../collab/protocol";
+import { DEFAULT_RELAY_URL, DEFAULT_SHARE_URL } from "@veyyon/wire";
 import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS, STT_MODEL_VALUES } from "../../stt/models";
 import { STT_SUBMIT_TRIGGER_OPTIONS, STT_SUBMIT_TRIGGER_VALUES } from "../../stt/submit-trigger";
 
@@ -444,6 +443,35 @@ export const INTERACTION_SETTINGS = {
 			label: "Default Working Directory",
 			description:
 				"Per-profile default session working directory used when launching without an explicit --cwd. Precedence: an explicit --cwd wins, then this setting, then the directory you launched from. Use an absolute or ~-relative path; a relative path or a missing directory makes launch fail loudly. The agent can override the live session cwd for that session only via set_cwd / /cwd without writing this setting.",
+		},
+	},
+
+	/**
+	 * What `/new` does to a turn that is still streaming.
+	 *
+	 * Two outcomes, and the difference is money: keeping the old conversation
+	 * alive finishes work that would otherwise be thrown away mid-turn, and it
+	 * also keeps spending tokens on a screen nobody is reading. Both are
+	 * defensible, so this states which one happens rather than leaving it to
+	 * whether a turn happened to be in flight.
+	 *
+	 * Default is `false`: `/new` stops the old turn and closes its provider
+	 * stream. A conversation that leaves the screen stops costing money, which
+	 * is what an operator reaching for a clean prompt expects, and it is the
+	 * behavior `/new` had before a background conversation was possible at all.
+	 * Turning it on keeps the old turn running and is the deliberate choice:
+	 * the status line counts the background conversation and
+	 * `/process-manager` opens it.
+	 */
+	"session.newKeepsBackground": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "interaction",
+			group: "Session",
+			label: "/new Keeps The Old Session",
+			description:
+				"On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations and /process-manager opens them. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen.",
 		},
 	},
 

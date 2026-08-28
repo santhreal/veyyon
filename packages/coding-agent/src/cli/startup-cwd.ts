@@ -1,7 +1,6 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import { directoryExists, expandTilde, getProjectDir, normalizePathForComparison, setProjectDir } from "@veyyon/utils";
-import chalk from "chalk";
 import type { Settings } from "../config/settings";
 import type { Args } from "./args";
 
@@ -11,26 +10,23 @@ import type { Args } from "./args";
  * scan walk your whole home tree, so the launch relocates to a scratch directory
  * (`~/tmp`, then `/tmp`, then `/var/tmp`, then `os.tmpdir()`).
  *
- * This relocation MUST be surfaced, never silent (Law 10): a silent jump to `.`
- * is exactly what makes `--cwd` / `/cwd` / `session.workdir` feel broken, because a
- * user who launched "in their project" (home) lands somewhere else with no
- * explanation. The caller announces the returned target to the operator.
- *
  * The chain once held `.` between `~/tmp` and `/var/tmp`: it always exists, so
  * it shadowed every later fallback, and it rooted the session at the RELATIVE
  * path "." — $HOME with a broken base, the exact state this feature exists to
  * avoid (set_cwd resolved "." against ".", project discovery walked nothing).
  *
- * @returns the directory relocated to, or `undefined` when no relocation happened.
+ * The relocation is silent. `/cwd` and the status line both state the directory
+ * the session runs in, so a startup notice bought nothing and cost the composer
+ * three rows and a reflow on every launch from home.
  */
-async function maybeAutoChdir(parsed: Args): Promise<string | undefined> {
+async function maybeAutoChdir(parsed: Args): Promise<void> {
 	if (parsed.allowHome || parsed.cwd) {
-		return undefined;
+		return;
 	}
 
 	const home = os.homedir();
 	if (!home) {
-		return undefined;
+		return;
 	}
 
 	const normalizePath = normalizePathForComparison;
@@ -48,7 +44,7 @@ async function maybeAutoChdir(parsed: Args): Promise<string | undefined> {
 				continue;
 			}
 			setProjectDir(candidate);
-			return getProjectDir();
+			return;
 		} catch {
 			// Try next candidate.
 		}
@@ -58,35 +54,10 @@ async function maybeAutoChdir(parsed: Args): Promise<string | undefined> {
 		const fallback = os.tmpdir();
 		if (fallback && normalizePath(fallback) !== cwd && (await directoryExists(fallback))) {
 			setProjectDir(fallback);
-			return getProjectDir();
 		}
 	} catch {
 		// Ignore fallback errors.
 	}
-	return undefined;
-}
-
-/**
- * Tell the operator that the launch relocated away from `$HOME`, and how to opt
- * out or choose a directory. One line on stderr (safe in every output mode; JSON
- * and print keep stdout clean), so the relocation is loud instead of silent.
- *
- * The CALLER announces this, and only AFTER {@link applySessionWorkdir} has run:
- * a profile `session.workdir` re-roots the session away from the `/tmp` fallback,
- * so announcing at relocation time would print a false "Started in /tmp instead"
- * to a user who actually lands in their configured workdir (and tell them to set
- * a setting they already have). Announce only when the `/tmp` relocation is the
- * session's final resting place.
- */
-export function announceAutoChdir(home: string, target: string): void {
-	process.stderr.write(
-		`${chalk.yellow(`Not rooting the session at your home directory (${home}).`)}` +
-			`${chalk.dim(` Started in ${target} instead.`)}\n` +
-			`${chalk.dim(
-				"  Use --cwd <dir> to choose a directory, --allow-home to stay in home, " +
-					"or set session.workdir for a per-profile default.",
-			)}\n`,
-	);
 }
 
 /**
@@ -95,16 +66,9 @@ export function announceAutoChdir(home: string, target: string): void {
  * {@link applySessionWorkdir} after Settings.init — it outranks process cwd but
  * loses to an explicit `--cwd`.
  *
- * The relocation happens here (before Settings.init, because settings discovery
- * is cwd-relative) but is NOT announced here: the caller announces it via
- * {@link announceAutoChdir} only after `applySessionWorkdir`, and only if
- * `session.workdir` did not re-root elsewhere — otherwise the "Started in /tmp
- * instead" line is false for a user whose workdir takes over.
- *
- * @returns the auto-chdir target when the launch relocated away from home, else
- * `undefined`. The caller uses it to decide whether to announce.
+ * Runs before Settings.init, because settings discovery is cwd-relative.
  */
-export async function applyStartupCwd(parsed: Args): Promise<string | undefined> {
+export async function applyStartupCwd(parsed: Args): Promise<void> {
 	if (parsed.cwd) {
 		setProjectDir(parsed.cwd);
 		// setProjectDir resolves the (possibly relative) target against the launch
@@ -112,9 +76,9 @@ export async function applyStartupCwd(parsed: Args): Promise<string | undefined>
 		// so downstream consumers (buildSessionOptions, settings/discovery, session
 		// persistence) don't re-resolve a relative string against the new cwd.
 		parsed.cwd = getProjectDir();
-		return undefined;
+		return;
 	}
-	return maybeAutoChdir(parsed);
+	await maybeAutoChdir(parsed);
 }
 
 /**

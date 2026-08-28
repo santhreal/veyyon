@@ -31,9 +31,8 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { StaticComposerFrame } from "@veyyon/coding-agent/modes/components/composer-chrome";
 import { HomeAnchorLayout } from "@veyyon/coding-agent/modes/controllers/home-anchor-layout";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, CURSOR_MARKER, type Focusable, Spacer, TUI } from "@veyyon/tui";
-import { settleFrames } from "../../../../tui/test/helpers/settle-frames";
-import { VirtualTerminal } from "../../../../tui/test/virtual-terminal";
 
 const ROWS = 40;
 const COLUMNS = 80;

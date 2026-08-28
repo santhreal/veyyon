@@ -42,19 +42,6 @@ import {
 } from "./protocol";
 import { CollabSocket } from "./relay-client";
 
-/** Commands a guest may run locally; everything else is host-only. */
-export const COLLAB_GUEST_ALLOWED_COMMANDS: Record<string, true> = {
-	dump: true,
-	export: true,
-	copy: true,
-	welcome: true, // `/help` is an alias of `/welcome`; the gate keys on the canonical name
-	hotkeys: true,
-	settings: true,
-	leave: true,
-	collab: true,
-	exit: true,
-	quit: true,
-};
 // The three join budgets are protocol-level and shared with every other guest
 // implementation; see @veyyon/wire, which documents each one and owns its value.
 

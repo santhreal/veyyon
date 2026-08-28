@@ -41,7 +41,7 @@ import { WelcomeComponent } from "./components/welcome";
 import { HomeAnchorLayout } from "./controllers/home-anchor-layout";
 import { applyGroundPaint, setDetectedTerminalGround } from "./theme/ground-tints";
 import { theme } from "./theme/theme";
-import { flushPendingTtyInput } from "./tty-input-flush";
+import { consumeRelaunchMarker, flushPendingTtyInput } from "./tty-input-flush";
 
 /** Inputs used to decide whether the launch card may be painted this early. */
 export interface FirstFrameDecisionOptions {
@@ -79,8 +79,61 @@ export interface FirstFrame {
 	readonly hero: WelcomeComponent;
 	/** Drop the placeholder rows, leaving an empty root for the mode's own tree. Idempotent. */
 	release(): void;
-	/** Let input through to the composer, which is mounted by the time this runs. Idempotent. */
-	releaseInput(): void;
+	/**
+	 * Let input through to the composer, which is mounted by the time this runs,
+	 * and return the text typed at the card while the gate held it. The caller
+	 * places that text in the composer. Idempotent: a second call returns "".
+	 */
+	releaseInput(): string;
+}
+
+/**
+ * How much of what is typed at the launch card carries into the composer. A
+ * held key repeats, and no startup draft needs more than this; past the cap
+ * the remainder is dropped rather than grown without bound.
+ */
+const STARTUP_TYPEAHEAD_LIMIT = 4096;
+
+/**
+ * True when a chunk is ordinary typed text rather than a control sequence.
+ *
+ * The gate receives everything the terminal sends, and during startup that
+ * includes the terminal's own answers to the probes the screen just issued
+ * (OSC 11 for the ground, the DA query, the sixel query), as well as arrow
+ * keys, mouse reports and bracketed-paste wrappers. Each of those carries ESC
+ * or another C0 byte, so accepting only printable characters keeps a probe
+ * reply out of the draft without enumerating the sequences. It also excludes
+ * the carriage return the gate exists to stop, so a queued newline still
+ * cannot submit a turn.
+ *
+ * Backspace is the exception the printable rule cannot express. It is a C0
+ * byte, so a chunk carrying one used to be rejected whole: a character typed
+ * by mistake at the card could not be taken back, the correction did nothing
+ * on screen, and the typo was what the composer received on mount. It is
+ * accepted here and applied by {@link applyTypedEdit}, which is safe because
+ * a probe reply opens with ESC and is still refused by the printable rule.
+ *
+ * An empty chunk answers true and appends nothing, which is why there is no
+ * guard for it: the guard could not be observed failing.
+ */
+function isTypedText(data: string): boolean {
+	for (let i = 0; i < data.length; i++) {
+		const code = data.charCodeAt(i);
+		if (code === 0x7f || code === 0x08) continue;
+		if (code < 0x20) return false;
+	}
+	return true;
+}
+
+/** Apply one accepted chunk to the held draft: text appends, a backspace takes one character off. */
+function applyTypedEdit(draft: string, data: string): string {
+	let next = draft;
+	for (let i = 0; i < data.length; i++) {
+		const code = data.charCodeAt(i);
+		if (code === 0x7f || code === 0x08) next = next.slice(0, -1);
+		else next += data[i];
+	}
+	return next;
 }
 
 let painted: FirstFrame | undefined;
@@ -100,6 +153,7 @@ export function paintFirstFrame(version: string): FirstFrame {
 
 	const hero = new WelcomeComponent(version, "", "");
 	const layout = new HomeAnchorLayout({ ui, transcriptChildCount: () => 0, hasHero: () => true });
+	const composerFrame = new StaticComposerFrame();
 	const children = [
 		layout.topFill,
 		new Spacer(1),
@@ -111,24 +165,54 @@ export function paintFirstFrame(version: string): FirstFrame {
 		// screen before the zone exists: this paints the resting zone's exact
 		// row count with its real chrome, and the mounted zone swaps text into
 		// those rows rather than arriving under them.
-		new StaticComposerFrame(),
+		composerFrame,
 	];
 	for (const child of children) ui.addChild(child);
 	// No frame has been composed, so this measures the children directly.
 	layout.sync(true);
 
-	// The tty handover, which `InteractiveMode.init` used to own: a relaunch
-	// (`/profile <name>` respawns the CLI) leaves whatever arrived while no one
-	// was reading fd 0 queued in the kernel, and starting the terminal delivers
-	// that backlog as this session's first input -- a queued carriage return
-	// submits a turn nobody typed. Drop the queue outright, then swallow
-	// everything except ctrl+c (which must stay live to abort a launch) until
-	// the composer is mounted.
-	const flushed = flushPendingTtyInput();
-	let inputGate: (() => void) | undefined = ui.addInputListener(data =>
-		matchesKey(data, "ctrl+c") ? undefined : { consume: true },
-	);
-	if (!flushed) {
+	// The tty handover, which `InteractiveMode.init` used to own. Two different
+	// things can be sitting in the kernel's input queue by now, and the bytes do
+	// not say which:
+	//
+	//   A RELAUNCH (`/profile <name>` respawns the CLI) leaves whatever arrived
+	//   while nobody was reading fd 0. That backlog belongs to the session that
+	//   exited, and a queued carriage return in it submits a turn nobody typed,
+	//   so it is dropped outright.
+	//
+	//   AN ORDINARY LAUNCH queues what the operator typed at a terminal that is
+	//   not painting yet. Startup runs for most of a second before the card
+	//   appears, and flushing here destroyed every keystroke inside that window:
+	//   the characters were gone, not late, so the composer came up empty and
+	//   the session read as unresponsive.
+	//
+	// Only who started the process separates them, which is what the relaunch
+	// marker records. On an ordinary launch the queue is handed to the gate
+	// below, where `isTypedText` keeps the printable text and swallows control
+	// input — including the carriage return the flush existed to catch.
+	const relaunched = consumeRelaunchMarker();
+	const flushed = relaunched ? flushPendingTtyInput() : false;
+	// Hold what is typed and swallow the rest, except ctrl+c, which stays live
+	// so a launch can be aborted, until the composer is mounted.
+	let typeahead = "";
+	let inputGate: (() => void) | undefined = ui.addInputListener(data => {
+		if (matchesKey(data, "ctrl+c")) return undefined;
+		// A relaunch that could not flush (Windows has no termios) cannot tell
+		// the stale queue from typing, so it degrades to discarding both.
+		if ((flushed || !relaunched) && isTypedText(data)) {
+			typeahead = applyTypedEdit(typeahead, data).slice(0, STARTUP_TYPEAHEAD_LIMIT);
+			// Echo it. Holding the text is only half of the handover: the card
+			// paints a composer for the whole of startup, and one that shows
+			// nothing back reads as a composer that is not listening. Forced,
+			// because the ordinary path waits for the next throttle frame and a
+			// keystroke that appears a frame late is the lag this exists to
+			// remove; the card is a handful of rows, so the repaint is cheap.
+			composerFrame.setDraft(typeahead);
+			ui.requestRender(true);
+		}
+		return { consume: true };
+	});
+	if (relaunched && !flushed) {
 		logger.debug("No tty input flush available at startup; discarding buffered input until mount completes");
 	}
 	// The first paint always clears the viewport (ED 2) so the card never
@@ -155,9 +239,12 @@ export function paintFirstFrame(version: string): FirstFrame {
 			mounted = false;
 			for (const child of children) ui.removeChild(child);
 		},
-		releaseInput(): void {
+		releaseInput(): string {
 			inputGate?.();
 			inputGate = undefined;
+			const typed = typeahead;
+			typeahead = "";
+			return typed;
 		},
 	};
 	painted = frame;

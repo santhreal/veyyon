@@ -3,7 +3,7 @@ import { getLogsDir } from "@veyyon/utils/dirs";
 import { isBunTestRuntime } from "@veyyon/utils/env";
 import { asRecord, errorMessage, getNonBlankStringProperty, isRecord } from "@veyyon/utils/type-guards";
 import * as AIError from "../error/flags";
-import { isCredentialHeaderName } from "./request-debug.js";
+import { redactDiagnosticHeaders } from "./request-debug.js";
 import { formatErrorMessageWithRetryAfter } from "./retry-after.js";
 
 export type RawHttpRequestDump = {
@@ -176,16 +176,7 @@ function redactHeaders(headers: Record<string, string> | undefined): Record<stri
 	if (!headers) {
 		return undefined;
 	}
-
-	const redacted: Record<string, string> = {};
-	for (const [key, value] of Object.entries(headers)) {
-		if (isCredentialHeaderName(key)) {
-			redacted[key] = "[redacted]";
-			continue;
-		}
-		redacted[key] = value;
-	}
-	return redacted;
+	return redactDiagnosticHeaders(Object.entries(headers));
 }
 
 function formatCapturedHttpError(captured: CapturedHttpErrorResponse | undefined): string | undefined {

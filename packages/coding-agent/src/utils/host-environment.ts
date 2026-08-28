@@ -254,6 +254,8 @@ async function saveGpuCache(info: GpuCache): Promise<void> {
 let processGpu: { value: string | undefined } | undefined;
 /** The probe filling the cache for the NEXT launch, while it runs. */
 let gpuProbe: Promise<void> | undefined;
+/** The CPU line, read once. The hardware cannot change under a running process. */
+let processCpuModel: { value: string | undefined } | undefined;
 
 /**
  * The GPU name from the on-disk cache, or nothing while the cache is cold.
@@ -308,7 +310,25 @@ export function __resetGpuStateForTests(): void {
 }
 
 /**
+ * Forget this process's CPU answer, the way `__resetGpuStateForTests` forgets the GPU one.
+ *
+ * The cache below is keyed on nothing, because the hardware cannot change under a running process.
+ * A test that fakes `process.platform` changes the answer anyway, and without this it reads whatever
+ * the first `buildSystemPrompt` in the bucket cached — so the darwin branch was never entered when
+ * an earlier file in the same process had already resolved the real host.
+ */
+export function __resetCpuStateForTests(): void {
+	processCpuModel = undefined;
+}
+
+/**
  * The CPU line of the environment section, or nothing when it cannot be had.
+ *
+ * Answered from a process-level cache after the first call, the way the GPU
+ * lookup beside it already is. The prompt is rebuilt whenever the active tool
+ * set changes, and MCP tools land mid-startup, so this ran twice before the
+ * composer mounted and spent about 30ms of that window re-reading a file whose
+ * contents cannot change.
  *
  * A missing `/proc/cpuinfo` is not a failure: the file is Linux-only and absent in
  * some containers, and the prompt simply omits the CPU line. Anything else means the
@@ -318,11 +338,15 @@ export function __resetGpuStateForTests(): void {
  * silent for the CPU. One volume for one class of failure.
  */
 export async function getCpuModel(): Promise<string | undefined> {
-	if (process.platform !== "linux") return os.cpus()[0]?.model;
+	if (processCpuModel) return processCpuModel.value;
+	if (process.platform !== "linux") {
+		processCpuModel = { value: os.cpus()[0]?.model };
+		return processCpuModel.value;
+	}
 	try {
 		const cpuInfo = await Bun.file("/proc/cpuinfo").text();
 		const match = /^model name\s*:\s*(.+)$/m.exec(cpuInfo);
-		return match?.[1]?.trim() || undefined;
+		processCpuModel = { value: match?.[1]?.trim() || undefined };
 	} catch (error) {
 		if (!isEnoent(error)) {
 			logger.warn("CPU model could not be read; the prompt's environment section will omit it", {
@@ -330,8 +354,9 @@ export async function getCpuModel(): Promise<string | undefined> {
 				error: errorMessage(error),
 			});
 		}
-		return undefined;
+		processCpuModel = { value: undefined };
 	}
+	return processCpuModel.value;
 }
 
 /**

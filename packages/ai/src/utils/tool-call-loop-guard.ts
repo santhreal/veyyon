@@ -18,8 +18,12 @@ export interface ToolCallLoopGuardOptions {
 interface ReadTargetSpec {
 	readonly basePath: string;
 	readonly isRange: boolean;
-	readonly startLine?: number;
-	readonly endLine?: number;
+	/**
+	 * Every chunk of the selector, so `:5-16,960-973` is two ranges rather than
+	 * one. Carrying only the first chunk judged the whole target subsumed on the
+	 * strength of the first range alone, and recorded only that range in history.
+	 */
+	readonly ranges?: readonly { readonly start: number; readonly end: number }[];
 }
 
 interface FileReadHistory {
@@ -58,15 +62,16 @@ function parseRangeChunk(chunk: string): { startLine: number; endLine: number } 
 	return { startLine, endLine };
 }
 
-function parseRangeSelector(sel: string): { startLine: number; endLine: number } | null {
+function parseRangeSelector(sel: string): { start: number; end: number }[] | null {
 	const chunks = sel.split(",");
 	if (chunks.length === 0) return null;
-	const first = parseRangeChunk(chunks[0]!);
-	if (!first) return null;
-	for (let i = 1; i < chunks.length; i++) {
-		if (!parseRangeChunk(chunks[i]!)) return null;
+	const ranges: { start: number; end: number }[] = [];
+	for (const chunk of chunks) {
+		const parsed = parseRangeChunk(chunk);
+		if (!parsed) return null;
+		ranges.push({ start: parsed.startLine, end: parsed.endLine });
 	}
-	return first;
+	return ranges;
 }
 
 function parseReadTarget(target: string): ReadTargetSpec {
@@ -117,8 +122,7 @@ function parseReadTarget(target: string): ReadTargetSpec {
 			return {
 				basePath,
 				isRange: true,
-				startLine: outerRange.startLine,
-				endLine: outerRange.endLine,
+				ranges: outerRange,
 			};
 		}
 		if (innerRange && outerIsRaw) {
@@ -126,8 +130,7 @@ function parseReadTarget(target: string): ReadTargetSpec {
 			return {
 				basePath,
 				isRange: true,
-				startLine: innerRange.startLine,
-				endLine: innerRange.endLine,
+				ranges: innerRange,
 			};
 		}
 	}
@@ -136,8 +139,7 @@ function parseReadTarget(target: string): ReadTargetSpec {
 		return {
 			basePath,
 			isRange: true,
-			startLine: outerRange.startLine,
-			endLine: outerRange.endLine,
+			ranges: outerRange,
 		};
 	}
 
@@ -154,10 +156,10 @@ function parseReadTargets(pathArg: unknown): ReadTargetSpec[] {
 
 function isTargetSubsumed(target: ReadTargetSpec, history: FileReadHistory | undefined): boolean {
 	if (!history) return false;
-	if (target.isRange && target.startLine !== undefined && target.endLine !== undefined) {
-		const start = target.startLine;
-		const end = target.endLine;
-		return history.ranges.some(r => r.start <= start && r.end >= end);
+	if (target.isRange && target.ranges !== undefined && target.ranges.length > 0) {
+		// Every chunk has to be covered. One uncovered chunk is new content, so the
+		// read is not a repeat however well the rest of it was already read.
+		return target.ranges.every(tr => history.ranges.some(r => r.start <= tr.start && r.end >= tr.end));
 	}
 	return !target.isRange && history.hasSelectorFree;
 }
@@ -314,8 +316,8 @@ export class ToolCallLoopGuard {
 					this.#fileReadHistories.set(target.basePath, history);
 				}
 				if (currentTag) history.snapshotTag = currentTag;
-				if (target.isRange && target.startLine !== undefined && target.endLine !== undefined) {
-					history.ranges.push({ start: target.startLine, end: target.endLine });
+				if (target.isRange && target.ranges !== undefined) {
+					history.ranges.push(...target.ranges);
 				} else if (!target.isRange) {
 					history.hasSelectorFree = true;
 				}

@@ -150,7 +150,7 @@ describe("what the constant must not change", () => {
 		const source = read("tools/builtin-names.ts");
 		const imports = [...source.matchAll(/^import .* from "([^"]+)";$/gm)].map(match => match[1]);
 
-		expect(imports).toEqual(["argot"]);
+		expect(imports).toEqual(["argot/constants"]);
 	});
 
 	/**

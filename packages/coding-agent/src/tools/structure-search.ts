@@ -38,6 +38,7 @@ import {
 	formatMoreItems,
 	formatParseErrors,
 	formatParseErrorsCountLabel,
+	formatScopeMeta,
 	PREVIEW_LIMITS,
 	replaceTabs,
 } from "./render-utils";
@@ -585,7 +586,7 @@ export const structureSearchRenderer = {
 	renderCall(args: StructureSearchRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
 		const meta: string[] = [];
 		const scopePaths = toPathList(args.path);
-		if (scopePaths.length) meta.push(`in ${scopePaths.join(", ")}`);
+		if (scopePaths.length) meta.push(formatScopeMeta(scopePaths));
 		if (args.skip !== undefined && args.skip > 0) meta.push(`skip:${args.skip}`);
 
 		const description = args.input || "?";

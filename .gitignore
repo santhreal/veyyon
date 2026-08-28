@@ -228,3 +228,10 @@ scratch-settings-probes/
 # because git cannot carry the parts the tests need -- a symlink to a target that
 # must not exist, a loop, a 512-byte file whose exact size is asserted.
 /crates/vendor/uu-find/test_data/
+
+# Renderer defect oracle: the sweep writes a JSON case for every state whose oracles go red,
+# as a local artifact for the run that produced it. Nothing here is tracked. A case that
+# survives is a defect to fix or an oracle to correct, not a fixture to carry: the sweep in
+# packages/coding-agent/test/composer-defect-sweep.test.ts is the gate, and it covers every
+# state a replayed case would have covered.
+/packages/coding-agent/test/corpus/renderer-defect-oracle/

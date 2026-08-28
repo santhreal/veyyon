@@ -43,6 +43,7 @@
     "marked": "catalog:"
   },
   "devDependencies": {
+    "@veyyon/render-oracle": "catalog:",
     "chalk": "catalog:",
     "ghostty-web": "catalog:"
   },
@@ -58,6 +59,10 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"
+    },
+    "./test-support": {
+      "types": "./test/support.ts",
+      "import": "./test/support.ts"
     },
     "./*": {
       "types": "./src/*.ts",

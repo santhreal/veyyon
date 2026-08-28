@@ -7,7 +7,11 @@
  * byte cap only fires on alternate callers that bypass StdinBuffer.
  */
 import { describe, expect, it } from "bun:test";
-import { BracketedPasteHandler, decodeReencodedPasteControls } from "@veyyon/tui/bracketed-paste";
+import {
+	BracketedPasteHandler,
+	decodeReencodedPasteControls,
+	PASTE_INACTIVITY_TIMEOUT_MS,
+} from "@veyyon/tui/bracketed-paste";
 
 const PASTE_START = "\x1b[200~";
 const PASTE_END = "\x1b[201~";
@@ -65,6 +69,61 @@ describe("BracketedPasteHandler", () => {
 			expect(finish.handled).toBe(true);
 			// @ts-expect-error - handled=true carries pasteContent
 			expect(finish.pasteContent.length).toBe(100_000);
+		});
+	});
+
+	describe("Idle bound", () => {
+		// An end marker lost to an ssh or tmux truncation leaves paste mode active. The byte cap
+		// alone releases it only after 64 MiB, which at typing speed never arrives, so every
+		// keystroke is swallowed and the input surface reads as frozen. The idle bound releases
+		// the abandoned buffer on the next input instead. The clock is injected so elapsed time
+		// is stated rather than slept through.
+		const atClock = (readings: number[]) => {
+			let index = 0;
+			return new BracketedPasteHandler({
+				nowMs: () => readings[Math.min(index++, readings.length - 1)] as number,
+			});
+		};
+
+		it("keeps buffering while input keeps arriving inside the bound", () => {
+			// Readings are consumed one per buffered chunk: each arrival is inside the bound
+			// measured from the previous one, so a slow multi-chunk paste is never torn apart.
+			const handler = atClock([0, PASTE_INACTIVITY_TIMEOUT_MS, 2 * PASTE_INACTIVITY_TIMEOUT_MS]);
+			handler.process(PASTE_START);
+			expect(handler.process("hello ")).toEqual({ handled: true, prefix: undefined, remaining: "" });
+			expect(handler.process("world")).toEqual({ handled: true, prefix: undefined, remaining: "" });
+		});
+
+		it("releases the abandoned buffer once input arrives past the bound", () => {
+			const handler = atClock([0, PASTE_INACTIVITY_TIMEOUT_MS + 1]);
+			handler.process(`${PASTE_START}half a paste`);
+			expect(handler.process("x")).toEqual({
+				handled: true,
+				pasteContent: "half a paste",
+				remaining: "x",
+			});
+		});
+
+		it("hands the triggering chunk back so a paste starting in it is still a paste", () => {
+			// `remaining` is re-fed through the caller's full input gate, so the released bytes
+			// and a fresh paste in the same chunk both survive.
+			const handler = atClock([0, PASTE_INACTIVITY_TIMEOUT_MS + 1]);
+			handler.process(`${PASTE_START}abandoned`);
+			const released = handler.process(`${PASTE_START}fresh${PASTE_END}`);
+			if (!released.handled) throw new Error("a chunk arriving during a paste is handled by the gate");
+			expect(released.pasteContent).toBe("abandoned");
+			expect(released.remaining).toBe(`${PASTE_START}fresh${PASTE_END}`);
+			expect(handler.process(released.remaining)).toEqual({
+				handled: true,
+				prefix: undefined,
+				pasteContent: "fresh",
+				remaining: "",
+			});
+		});
+
+		it("leaves input that arrives outside paste mode untouched however long the gap", () => {
+			const handler = atClock([0, 10 * PASTE_INACTIVITY_TIMEOUT_MS]);
+			expect(handler.process("x")).toEqual({ handled: false });
 		});
 	});
 

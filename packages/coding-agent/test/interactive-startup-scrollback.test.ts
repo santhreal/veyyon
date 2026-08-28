@@ -17,9 +17,9 @@ import {
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 import { TUI, type TUIStartOptions } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal";
 
 /**
  * ED 3 (`\x1b[3J`) erases the terminal's *saved* lines. It is not scoped to

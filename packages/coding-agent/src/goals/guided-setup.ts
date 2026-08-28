@@ -55,21 +55,26 @@ export function newGuidedGoalSessionId(session: AgentSession): string {
 	return `${session.sessionId}:guided-goal:${Snowflake.next()}`;
 }
 
-function parseGuidedGoalPayload(value: unknown): GuidedGoalTurnResult {
+export function parseGuidedGoalPayload(value: unknown): GuidedGoalTurnResult {
 	if (!isRecord(value)) {
 		throw new Error("guided goal returned an invalid response");
 	}
 	const payload = value as Record<string, unknown>;
-	if (payload.kind === "question" && typeof payload.question === "string" && payload.question.trim()) {
-		const question = payload.question.trim();
-		if (typeof payload.objective === "string" && payload.objective.trim()) {
-			return { kind: "question", question, objective: payload.objective.trim() };
-		}
-		return { kind: "question", question };
+	const kind = typeof payload.kind === "string" ? payload.kind.trim().toLowerCase() : undefined;
+	const question = typeof payload.question === "string" ? payload.question.trim() : "";
+	const objective = typeof payload.objective === "string" ? payload.objective.trim() : "";
+
+	if (kind === "ready" && objective) return { kind: "ready", objective };
+	if (kind === "question" && question) {
+		return objective ? { kind: "question", question, objective } : { kind: "question", question };
 	}
-	if (payload.kind === "ready" && typeof payload.objective === "string" && payload.objective.trim()) {
-		return { kind: "ready", objective: payload.objective.trim() };
+	// A turn that answered the right shape under the wrong label still said
+	// something the interview can use. A question outranks a draft objective,
+	// because asking it is what carries the interview to a usable one.
+	if (question) {
+		return objective ? { kind: "question", question, objective } : { kind: "question", question };
 	}
+	if (kind !== "question" && objective) return { kind: "ready", objective };
 	throw new Error("guided goal returned an invalid response");
 }
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { performance } from "node:perf_hooks";
+import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import {
 	analyzeBgFillLine,
 	applyBackgroundToLine,
@@ -13,8 +14,6 @@ import {
 	TERMINAL,
 	TUI,
 } from "@veyyon/tui";
-import { settleFrames } from "./helpers/settle-frames";
-import { VirtualTerminal } from "./virtual-terminal";
 
 // Truecolor background open token used throughout the integration tests.
 const BG_OPEN = "\x1b[48;2;10;20;30m";

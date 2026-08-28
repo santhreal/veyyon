@@ -25,9 +25,8 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, CURSOR_MARKER, type Focusable, type ScrollTransport, TUI } from "@veyyon/tui";
-import { StressRenderScheduler } from "./render-stress-scheduler";
-import { VirtualTerminal } from "./virtual-terminal";
 
 /** Records every byte the engine writes, then feeds the real VT engine. */
 class RecordingTerminal extends VirtualTerminal {

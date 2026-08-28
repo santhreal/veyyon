@@ -8,9 +8,9 @@
  * does not exist.
  *
  * THE CLASS THIS CLOSES: a dry run that answers from the spec string instead of
- * from resolution. The choke point is `PluginManager.install(..., { dryRun: true })`,
- * which every CLI dry-run path funnels through, so the invariants are asserted
- * there once rather than per spec form:
+ * from resolution. `PluginManager.install(..., { dryRun: true })` is the choke
+ * point for the npm and git spec forms, so their invariants are asserted there
+ * once rather than per spec form:
  *
  *   1. the dry run asks bun to resolve, passing `--dry-run`;
  *   2. a resolution failure throws, for EVERY spec form;
@@ -27,12 +27,16 @@
  * is a veyyon plugin: a dry run never unpacks the package, so its manifest is
  * unreadable at that point and only the version is reported.
  */
-import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { stripVTControlCharacters } from "node:util";
+import { type ClassifiedInstallTarget, classifyInstallTarget } from "@veyyon/coding-agent/cli/classify-install-target";
+import { runPluginCommand } from "@veyyon/coding-agent/cli/plugin-cli";
 import { SHORTHAND_PREFIXES } from "@veyyon/coding-agent/extensibility/plugins/git-url";
 import { PluginManager } from "@veyyon/coding-agent/extensibility/plugins/manager";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import * as piUtils from "@veyyon/utils";
 import { removeWithRetries } from "@veyyon/utils";
 import type { Subprocess } from "bun";
@@ -214,5 +218,207 @@ describe("a dry-run install resolves the target", () => {
 		const mgr = new PluginManager(tmpRoot);
 		await expect(mgr.install("not a real spec!!", { dryRun: true })).rejects.toThrow(/not a valid npm package name/);
 		expect(spawned.length).toBe(0);
+	});
+});
+
+/**
+ * WHY (second defect, same class): the suite above pins its invariants at
+ * `PluginManager.install(..., { dryRun: true })`, and the CLI was documented as
+ * funnelling every dry run through it. It did not. `handleInstall` classifies a
+ * spec into three targets and only two reached that method: a `name@marketplace`
+ * spec went straight to `MarketplaceManager.installPlugin` with `flags.dryRun`
+ * never read, so `--dry-run` copied the plugin into the cache, wrote both
+ * registries and printed "Installed". The same lie as #911, one branch over.
+ *
+ * THE CLASS THIS CLOSES: a `--dry-run` branch that performs the real work. These
+ * cases drive the CLI, because the branch lives at the CLI, and they assert the
+ * plugins tree byte-for-byte rather than which method was called. The control
+ * case runs the same spec without `--dry-run` and requires the tree to change,
+ * so a snapshot that could never differ cannot pass by accident.
+ *
+ * `DRY_RUN_COVERAGE` is keyed by `ClassifiedInstallTarget["type"]`, so adding a
+ * fourth install target fails to type-check until someone records what its dry
+ * run does, and the sweep fails if the corpus can reach a type the record omits.
+ *
+ * WHAT IT DOES NOT CATCH: the npm branch's resolution is proven above against a
+ * mocked bun and is not re-driven here, so this says nothing about how a real
+ * registry answers. It also does not cover `plugin upgrade`, which has no dry
+ * run at all.
+ */
+describe("a marketplace dry run installs nothing", () => {
+	const MARKETPLACE = "test-marketplace";
+	const PLUGIN = "hello-plugin";
+
+	let tmpRoot: string;
+	let configRoot: string;
+	let pluginsDir: string;
+	let sourceDir: string;
+	let out: string[];
+	let err: string[];
+
+	beforeAll(async () => {
+		// The marketplace failure branch renders through the theme.
+		await initTheme();
+	});
+
+	/** Every path under the plugins tree, sorted — the whole disk surface an install writes to. */
+	async function pluginsTree(): Promise<string[]> {
+		const entries = await fs.readdir(pluginsDir, { recursive: true });
+		return entries.sort();
+	}
+
+	beforeEach(async () => {
+		tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-marketplace-dryrun-"));
+		configRoot = path.join(tmpRoot, "config");
+		pluginsDir = path.join(tmpRoot, "plugins");
+		sourceDir = path.join(tmpRoot, "marketplace-src");
+
+		const pluginSrc = path.join(sourceDir, "plugins", PLUGIN);
+		await fs.mkdir(path.join(pluginSrc, ".claude-plugin"), { recursive: true });
+		await fs.mkdir(path.join(pluginsDir, "node_modules"), { recursive: true });
+		await fs.mkdir(configRoot, { recursive: true });
+		await Bun.write(
+			path.join(pluginSrc, "package.json"),
+			JSON.stringify({ name: PLUGIN, version: "1.0.0", veyyon: { extensions: [] } }),
+		);
+		await Bun.write(
+			path.join(pluginSrc, ".claude-plugin", "plugin.json"),
+			JSON.stringify({ name: PLUGIN, version: "1.0.0" }),
+		);
+
+		const catalog = JSON.stringify({
+			name: MARKETPLACE,
+			owner: { name: "Test Author", email: "test@example.com" },
+			metadata: { description: "A catalog with one plugin", version: "1.0.0" },
+			plugins: [{ name: PLUGIN, source: `./plugins/${PLUGIN}`, description: "greets", version: "1.0.0" }],
+		});
+		await Bun.write(path.join(sourceDir, ".claude-plugin", "marketplace.json"), catalog);
+
+		// The registry points at the cached catalog copy, which is where a real
+		// `marketplace add` leaves it. Inside pluginsDir, so both snapshots see it.
+		const catalogPath = path.join(pluginsDir, "cache", "marketplaces", MARKETPLACE, "marketplace.json");
+		await Bun.write(catalogPath, catalog);
+		await Bun.write(
+			path.join(configRoot, "marketplaces.json"),
+			JSON.stringify({
+				version: 1,
+				marketplaces: [
+					{
+						name: MARKETPLACE,
+						sourceType: "local",
+						sourceUri: sourceDir,
+						catalogPath,
+						addedAt: "2026-01-01T00:00:00.000Z",
+						updatedAt: "2026-01-01T00:00:00.000Z",
+					},
+				],
+			}),
+		);
+
+		vi.spyOn(piUtils, "getConfigRootDir").mockReturnValue(configRoot);
+		vi.spyOn(piUtils, "getPluginsDir").mockReturnValue(pluginsDir);
+		vi.spyOn(piUtils, "getPluginsNodeModules").mockReturnValue(path.join(pluginsDir, "node_modules"));
+		vi.spyOn(piUtils, "getPluginsPackageJson").mockReturnValue(path.join(pluginsDir, "package.json"));
+		vi.spyOn(piUtils, "getPluginsLockfile").mockReturnValue(path.join(tmpRoot, "veyyon-plugins.lock.json"));
+		vi.spyOn(piUtils, "getProjectDir").mockReturnValue(tmpRoot);
+		vi.spyOn(piUtils, "getProjectPluginOverridesPath").mockReturnValue(path.join(tmpRoot, "plugin-overrides.json"));
+
+		out = [];
+		err = [];
+		vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+			out.push(stripVTControlCharacters(args.join(" ")));
+		});
+		vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+			err.push(stripVTControlCharacters(args.join(" ")));
+		});
+	});
+
+	afterEach(async () => {
+		vi.restoreAllMocks();
+		await removeWithRetries(tmpRoot);
+	});
+
+	test("reports the version the catalog resolves and leaves the plugins tree untouched", async () => {
+		const before = await pluginsTree();
+
+		await runPluginCommand({ action: "install", args: [`${PLUGIN}@${MARKETPLACE}`], flags: { dryRun: true } });
+
+		// The version can only come from the catalog, so echoing the spec back fails here.
+		expect(out).toEqual([`[dry-run] Would install ${PLUGIN}@1.0.0 from ${MARKETPLACE}`]);
+		expect(await pluginsTree()).toEqual(before);
+	});
+
+	test("--json names the resolved version and still writes nothing", async () => {
+		const before = await pluginsTree();
+
+		await runPluginCommand({
+			action: "install",
+			args: [`${PLUGIN}@${MARKETPLACE}`],
+			flags: { dryRun: true, json: true },
+		});
+
+		expect(JSON.parse(out.join("\n"))).toEqual({
+			dryRun: true,
+			action: "install",
+			name: PLUGIN,
+			marketplace: MARKETPLACE,
+			version: "1.0.0",
+		});
+		expect(await pluginsTree()).toEqual(before);
+	});
+
+	// Control: the same spec without --dry-run must change the tree. Without this
+	// the snapshot assertions above would pass even if an install could never write.
+	test("the same spec without --dry-run writes the cache and the registry", async () => {
+		const before = await pluginsTree();
+
+		await runPluginCommand({ action: "install", args: [`${PLUGIN}@${MARKETPLACE}`], flags: {} });
+
+		const after = await pluginsTree();
+		expect(after).not.toEqual(before);
+		expect(after).toContain("installed_plugins.json");
+		expect(after).toContain(path.join("cache", "plugins", `${MARKETPLACE}___${PLUGIN}___1.0.0`, "package.json"));
+		expect(after).toContain(path.join("node_modules", PLUGIN, "package.json"));
+	});
+
+	test("a plugin the catalog does not list fails loud instead of reporting a plan", async () => {
+		const before = await pluginsTree();
+		// The stub is what makes a process exit observable in-process; the assertions below read the
+		// exit code out of the thrown message, the operator-visible wording, and the untouched tree.
+		vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+			throw new Error(`process.exit(${code})`);
+		}) as (code?: number) => never);
+
+		await expect(
+			runPluginCommand({ action: "install", args: [`ghost@${MARKETPLACE}`], flags: { dryRun: true } }),
+		).rejects.toThrow("process.exit(1)");
+
+		expect(err.join("\n")).toContain(`${MARKETPLACE} lists no plugin named ghost`);
+		expect(out).toEqual([]);
+		expect(await pluginsTree()).toEqual(before);
+	});
+
+	// Fail-by-default: a fourth `ClassifiedInstallTarget` member breaks the type of
+	// this record until its dry-run behaviour is recorded, and the sweep breaks if a
+	// spec shape can classify into a type the record omits.
+	const DRY_RUN_COVERAGE: Record<ClassifiedInstallTarget["type"], string> = {
+		local: "prints [dry-run] Would link and calls neither link nor install (plugin-install-local.test.ts)",
+		marketplace: "resolves through the catalog and writes nothing (this describe)",
+		npm: "resolves through bun --dry-run and writes nothing (the describe above)",
+	};
+
+	test("every target a spec can classify into has a recorded dry-run behaviour", () => {
+		const corpus = [
+			"./local",
+			"/abs/local",
+			`${PLUGIN}@${MARKETPLACE}`,
+			"some-pkg",
+			"@scope/pkg",
+			"pkg@1.2.3",
+			"pkg@latest",
+		];
+		const reached = new Set<string>(corpus.map(spec => classifyInstallTarget(spec, new Set([MARKETPLACE])).type));
+
+		expect([...reached].sort()).toEqual(Object.keys(DRY_RUN_COVERAGE).sort());
 	});
 });

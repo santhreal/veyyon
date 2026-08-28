@@ -216,7 +216,7 @@ runs:
            tool: cargo-xwin
       - name: Cache cargo-xwin Windows SDK
         if: endsWith(steps.resolve.outputs.cross_target, '-msvc')
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
            path: ~/.cache/cargo-xwin
            key: cargo-xwin-${{ runner.os }}-v1

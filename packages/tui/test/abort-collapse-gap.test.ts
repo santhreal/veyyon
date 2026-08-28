@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, CURSOR_MARKER, type Focusable, type NativeScrollbackLiveRegion, TUI } from "@veyyon/tui";
-import { StressRenderScheduler } from "./render-stress-scheduler";
-import { VirtualTerminal } from "./virtual-terminal";
 
 // Regression for a streaming block whose committed sealed prefix collapses on
 // abort while the editor is below it. The editor must stay at the viewport

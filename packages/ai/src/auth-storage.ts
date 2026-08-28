@@ -3786,9 +3786,9 @@ export class AuthStorage {
 		// `storeCredentialsAs` applies to both shapes. A provider entry exists per
 		// login MECHANISM, so one product can offer OAuth and a pasted key from two
 		// entries; the credential still belongs to the product, and everything that
-		// reads it — the model manager, the account card, the model list — knows only
-		// the product's id. Honoring the redirection on the OAuth branch alone filed
-		// the pasted key under the mechanism's id, where nothing looks for it.
+		// reads it — the model manager, the account card, the model list — resolves it
+		// by the product's id alone. Honoring the redirection on the OAuth branch alone
+		// filed the pasted key under the mechanism's id, where nothing looks for it.
 		const target = def.storeCredentialsAs ?? provider;
 		if (typeof result === "string") {
 			// Some flows (e.g. ollama) return "" to signal that no key was entered.

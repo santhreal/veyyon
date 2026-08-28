@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 import { TUI } from "@veyyon/tui";
 import { LoopWatchdog } from "@veyyon/tui/loop-watchdog";
-import { VirtualTerminal } from "./virtual-terminal";
 
 /**
  * Contract: the user-visible loop-blocked diagnostic depends on `TUI.start()`

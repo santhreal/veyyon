@@ -1,4 +1,4 @@
-import * as stats from "@veyyon/stats";
+import type * as StatsNs from "@veyyon/stats";
 import * as openUtils from "../../utils/open";
 import type { ParsedSlashCommand, SlashCommandResult, SlashCommandRuntime } from "../types";
 import { commandConsumed, removedOptionMessage, usage } from "./parse";
@@ -20,6 +20,28 @@ export interface StatsDashboardLaunchResult {
 }
 
 let activeStatsServer: StatsDashboardServer | undefined;
+
+let statsMod: typeof StatsNs | undefined;
+
+/**
+ * Load `@veyyon/stats` (memoized) on the first `/stats`.
+ *
+ * The barrel pulls the aggregator, the parser, the SQLite layer and the
+ * embedded dashboard client — 16 MB of resident heap that a session which never
+ * opens the dashboard has no use for. This module itself stays in the eager
+ * graph (`builtin-registry` needs the parser and the handler), so the import has
+ * to be the lazy edge.
+ */
+async function loadStats(): Promise<typeof StatsNs> {
+	statsMod ??= await import("@veyyon/stats");
+	return statsMod;
+}
+
+/** Sync access below an await of {@link loadStats}; a live server proves it ran. */
+function requireStats(): typeof StatsNs {
+	if (!statsMod) throw new Error("@veyyon/stats not loaded; await loadStats() first.");
+	return statsMod;
+}
 
 const STATS_DASHBOARD_USAGE = "Usage: /stats [<port>]";
 
@@ -66,6 +88,7 @@ export function parseStatsDashboardArgs(args: string): StatsDashboardArgs | { er
 }
 
 export async function launchStatsDashboard(args: StatsDashboardArgs): Promise<StatsDashboardLaunchResult> {
+	const stats = await loadStats();
 	const { processed, files } = await stats.syncAllSessions();
 	const total = await stats.getTotalMessageCount();
 	let requestedPortIgnored = false;
@@ -93,7 +116,7 @@ export function stopStatsDashboard(): void {
 	if (!activeStatsServer) return;
 	activeStatsServer.stop();
 	activeStatsServer = undefined;
-	stats.closeDb();
+	requireStats().closeDb();
 }
 
 /**

@@ -61,6 +61,7 @@ import {
 	formatEmptyMessage,
 	formatErrorMessage,
 	formatMoreItems,
+	formatScopeMeta,
 	PREVIEW_LIMITS,
 	replaceTabs,
 } from "./render-utils";
@@ -247,7 +248,7 @@ async function resolveArchiveSearchPaths(
 				try {
 					archive = await openArchive(archiveAbs);
 				} catch (err) {
-					unreadable.push(`${entry} (cannot open archive: ${(err as Error).message})`);
+					unreadable.push(`${entry} (cannot open archive: ${errorMessage(err)})`);
 					continue;
 				}
 				archiveCache.set(archiveAbs, archive);
@@ -257,7 +258,7 @@ async function resolveArchiveSearchPaths(
 			try {
 				extracted = await archive.readFile(member.subPath);
 			} catch (err) {
-				unreadable.push(`${entry} (${(err as Error).message})`);
+				unreadable.push(`${entry} (${errorMessage(err)})`);
 				continue;
 			}
 			// UTF-8 only — binary members would just produce noise through ripgrep.
@@ -1838,7 +1839,7 @@ export const textSearchRenderer = {
 	renderCall(args: TextSearchRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
 		const paths = toPathList(args.path);
 		const meta: string[] = [];
-		if (paths.length) meta.push(`in ${paths.join(", ")}`);
+		if (paths.length) meta.push(formatScopeMeta(paths));
 		if (args.case === false) meta.push("case:insensitive");
 		if (args.gitignore === false) meta.push("gitignore:false");
 		if (args.skip !== undefined && args.skip > 0) meta.push(`skip:${args.skip}`);

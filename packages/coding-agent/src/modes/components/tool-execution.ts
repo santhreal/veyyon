@@ -65,6 +65,7 @@ import {
 	railStreamHeadAtRow,
 } from "../../tui/rail-motion";
 import { sanitizeWithOptionalSixelPassthrough } from "../../utils/sixel";
+import { asyncToolState } from "../utils/async-tool-state";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 import { renderDiff } from "./diff";
 import { reportRendererFailure } from "./renderer-failure";
@@ -824,8 +825,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		// static exceptions because their rows can be superseded or committed to
 		// scrollback while later updates continue elsewhere.
 		const isStreamingArgs = !this.#argsComplete && (isEditLikeToolName(this.#toolName) || this.#toolName === "write");
-		const isBackgroundAsyncRunning =
-			(this.#result?.details as { async?: { state?: string } } | undefined)?.async?.state === "running";
+		const isBackgroundAsyncRunning = asyncToolState(this.#result?.details) === "running";
 		const renderer = toolRenderers[this.#toolName] as
 			| {
 					animatedPendingPreview?: boolean | ((args: unknown) => boolean);
@@ -909,7 +909,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	#maybeFreezeBackgroundTask(): boolean {
 		if (this.#backgroundTaskFrozen) return true;
 		if (this.#toolName !== "task" || this.#liveRegion === undefined) return false;
-		const asyncState = (this.#result?.details as { async?: { state?: string } } | undefined)?.async?.state;
+		const asyncState = asyncToolState(this.#result?.details);
 		if (asyncState !== "running") return false;
 		if (this.#liveRegion.isBlockInLiveRegion(this)) return false;
 		this.#backgroundTaskFrozen = true;
@@ -1116,7 +1116,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		// Partial result: a background async tool is accepted to freeze (the agent
 		// continues while it runs and would otherwise pin an unbounded live region);
 		// a foreground tool streaming partial output stays live until it finishes.
-		return (this.#result.details as { async?: { state?: string } } | undefined)?.async?.state === "running";
+		return asyncToolState(this.#result.details) === "running";
 	}
 
 	/**

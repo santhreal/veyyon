@@ -31,6 +31,7 @@ import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { agentCorePrompts } from "@veyyon/agent-core/prompts/registry";
 import { aiPrompts } from "@veyyon/ai/prompts/registry";
+import * as registryModule from "@veyyon/coding-agent/prompts/registry";
 import { codingAgentPrompts, PROMPT_IDS } from "@veyyon/coding-agent/prompts/registry";
 import { renderBanner } from "@veyyon/coding-agent/system-prompt-builder/banner-grammar";
 import { hashlinePrompts } from "@veyyon/hashline/prompts/registry";
@@ -303,22 +304,35 @@ describe("a registry exports nothing the descriptor already carries", () => {
 		"agentPromptText",
 	];
 
+	/**
+	 * The one reader both halves below use. Written twice, the anti-vacuity half stopped
+	 * proving anything: mutating the absence pattern alone left the control matching on its
+	 * own copy, so every superseded name read as absent for the wrong reason and the suite
+	 * stayed green.
+	 */
+	const exportsName = (source: string, name: string): boolean =>
+		new RegExp(`^export (?:const|type|function) ${name}\\b`, "m").test(source);
+
 	it.each(SUPERSEDED)("does not export %s, which the descriptor already answers", async name => {
-		const pattern = new RegExp(`^export (?:const|type|function) ${name}\\b`, "m");
-		const found = (await packageSources()).filter(source => pattern.test(source.text)).map(source => source.file);
+		const found = (await packageSources())
+			.filter(source => exportsName(source.text, name))
+			.map(source => source.file);
 
 		expect(found).toEqual([]);
 	});
 
 	it("still finds the exports that are deliberately kept, so the pattern works", async () => {
-		// The anti-vacuity half. Written the same way as the check above, so a pattern that
-		// stopped matching `export const` would report every superseded name as absent for
-		// the wrong reason.
-		const registry = await Bun.file(path.join(REPO_ROOT, "packages/coding-agent/src/prompts/registry.ts")).text();
+		// The anti-vacuity half, anchored on what the module really exports rather than on a
+		// restated list. A reader that stopped matching `export const` would report every
+		// superseded name as absent for the wrong reason, so the same reader is run against
+		// the names a static import proves are exported.
+		const kept = Object.keys(registryModule);
+		expect(kept).toContain("codingAgentPrompts");
 
-		for (const kept of ["promptText", "requirePrompt", "PROMPT_IDS", "PROMPTS", "codingAgentPrompts"]) {
-			expect(new RegExp(`^export (?:const|type) ${kept}\\b`, "m").test(registry), kept).toBe(true);
-		}
+		const sources = await packageSources();
+		const missed = kept.filter(name => !sources.some(source => exportsName(source.text, name)));
+
+		expect(missed).toEqual([]);
 	});
 });
 
@@ -629,6 +643,11 @@ describe("the tree stays a taxonomy and not a drawer", () => {
 		// The doc comment is what tells the next author where a new prompt goes. A
 		// directory missing from it is a category nobody can be expected to use
 		// correctly, so the drawer re-forms one convenient placement at a time.
+		//
+		// This reads a comment on purpose, and is not the banned "the comment must say X":
+		// there is no behavior underneath to assert instead, because the taxonomy the header
+		// carries IS the contract. The match is a directory name and its slash, so a reflow
+		// or a reworded sentence moves nothing, and only dropping the directory fails.
 		const registry = await Bun.file(path.join(REPO_ROOT, "packages/coding-agent/src/prompts/registry.ts")).text();
 		const header = registry.slice(0, registry.indexOf("*/"));
 		const directories = [...new Set(PROMPT_IDS.map(id => id.split("/")[0] as string))];
