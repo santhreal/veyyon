@@ -324,7 +324,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/web/scrapers/sourcegraph.ts",
 	"packages/coding-agent/src/web/scrapers/spdx.ts",
 	"packages/coding-agent/src/web/scrapers/vscode-marketplace.ts",
-	"packages/coding-agent/src/web/search/providers/ecosia.ts",
 	"packages/coding-agent/src/web/search/providers/jina.ts",
 	"packages/coding-agent/src/web/search/providers/synthetic.ts",
 	"packages/collab-web/src/lib/use-guest.ts",
