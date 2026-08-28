@@ -59,6 +59,7 @@
 - Moved benchmark and trace reporting tools into `tools/`.
 - Harness adapters declare their supported execution backends in their backend map, refusing planning for unbound backend pairs and supporting multi-harness trial matrix generation.
 - The in-process backend loads a config overlay and a prompt-variant overlay per trial, applying settings to the agent session and the prompt text through `VEYYON_EVAL_PROMPTS`, and refuses a missing file, an unknown setting key or a prompt id no registry holds before any trial starts.
+- The vey harness stages an OAuth credential store (`auth-agent.db`) into the container when no API key is resolved, copying it to `~/.omp/agent/agent.db` in the setup step. Preflight accepts the auth DB as an alternative to `--omp-api-key` or `$PROVIDER_API_KEY`, probing it can serve the run's model.
 - `TUI.onBeforeCompose` runs at the top of every frame, before any root child renders, so a layout whose height is a function of its siblings' heights is sized against the children about to render rather than the previous frame's.
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
 - `MOTION.reflow` states the curve for a row that reflows its content sideways: 320ms, symmetric, where `expand` is 180ms and front-loaded.
