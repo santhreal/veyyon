@@ -921,6 +921,8 @@ export class StatusLineComponent implements Component {
 		capLeft: this.#quietCapLeft,
 		capRight: this.#quietCapRight,
 	};
+	#quietLocationContents: string[] = [];
+	#quietBadgeParts: string[] = [];
 
 	/**
 	 * The path expansion, as a value between the collapsed row and the expanded one, or
@@ -2052,7 +2054,8 @@ export class StatusLineComponent implements Component {
 		}
 		capRight.push(...contextFromLeft);
 		const runningBackgroundJobs = this.#backgroundJobBadgeCount();
-		const badgeParts: string[] = [];
+		const badgeParts = this.#quietBadgeParts;
+		badgeParts.length = 0;
 		if (runningBackgroundJobs > 0) {
 			badgeParts.push(theme.fg("statusLineSubagents", withIcon(theme.icon.job, `${runningBackgroundJobs}`)));
 		}
@@ -2226,7 +2229,8 @@ export class StatusLineComponent implements Component {
 			this.#quietLineBounds = [];
 			return badge === "" ? null : badge;
 		}
-		const locationContents = new Array<string>(location.length);
+		const locationContents = this.#quietLocationContents;
+		locationContents.length = location.length;
 		for (let i = 0; i < location.length; i++) locationContents[i] = location[i]!.content;
 		let left = this.#locationWithRunClock(locationContents, sep);
 		const rightParts = capLeft.concat(capRight);
