@@ -37,15 +37,15 @@ Sources: [`packages/stats/README.md`](../../packages/stats/README.md), [`package
 
 ### `packages/evals`: model and agent evaluation
 
-Sources: [`packages/evals/package.json`](../../packages/evals/package.json), [`packages/evals/src/core/types.ts`](../../packages/evals/src/core/types.ts), [`packages/evals/src/suites/typescript-edit/generate.ts`](../../packages/evals/src/suites/typescript-edit/generate.ts), [`packages/evals/src/suites/typescript-edit/verify.ts`](../../packages/evals/src/suites/typescript-edit/verify.ts), [`packages/evals/src/backends/in-process/client.ts`](../../packages/evals/src/backends/in-process/client.ts), [`packages/evals/docs/manager.md`](../../packages/evals/docs/manager.md).
+Sources: [`packages/evals/package.json`](../../packages/evals/package.json), [`packages/evals/engine/contracts.ts`](../../packages/evals/engine/contracts.ts), [`packages/evals/suites/typescript-edit/generate.ts`](../../packages/evals/suites/typescript-edit/generate.ts), [`packages/evals/suites/typescript-edit/verify.ts`](../../packages/evals/suites/typescript-edit/verify.ts), [`packages/evals/backends/in-process/client.ts`](../../packages/evals/backends/in-process/client.ts), [`packages/evals/EVALS.md`](../../packages/evals/EVALS.md).
 
 - Package: private `@veyyon/evals`; bins: `evals` (suite runner) and `evals-server` (run store API and dashboard).
 - Feature: one runner over five axes — eval suite, agent harness, configuration arm, prompt variant, and model — across three execution backends (`pier` for DeepSWE containers, `harbor` for Terminal-Bench 3.0, `in-process` for the TypeScript-edit suite).
-- Suites: `src/suites/deep-swe` (SWE tasks in Pier containers), `src/suites/terminal-bench` (Terminal-Bench 3.0 through Harbor), `src/suites/typescript-edit` (in-process TypeScript source mutations).
-- Modules: `src/core` holds the suite, harness and backend contracts plus the variant matrix; `src/manager` holds the SQLite run store and experiment grouping; `src/server` serves the REST/SSE API; `src/web` is the live dashboard; `src/report` renders aggregates and markdown tables.
-- TypeScript-edit CLI (`src/suites/typescript-edit/adapter/cli.ts`): `--model` and `--output` (required), `--tasks <ids>`, `--max-tasks` (default 80), `--task-concurrency` (default 32), `--runs`, `--list`.
+- Suites: `suites/deep-swe` (SWE tasks in Pier containers), `suites/terminal-bench` (Terminal-Bench 3.0 through Harbor), `suites/typescript-edit` (in-process TypeScript source mutations).
+- Modules: `engine` holds the suite, harness and backend contracts plus the variant matrix and the run engine; `store` holds the SQLite run store and experiment grouping; `api` serves the REST/SSE API; `dashboard` is the live dashboard; `tools` renders aggregates and markdown tables.
+- TypeScript-edit CLI (`suites/typescript-edit/cli.ts`): `--model` and `--output` (required), `--tasks <ids>`, `--max-tasks` (default 80), `--task-concurrency` (default 32), `--runs`, `--list`.
 - Fixtures: each TypeScript-edit task directory contains `prompt.md`, `input/`, `expected/` and `metadata.json`; the bundled distribution is `datasets/typescript-edit/fixtures.tar.gz`. DeepSWE task lists are `datasets/deep-swe/tasks/*.txt`; Terminal-Bench task lists are `datasets/terminal-bench/tasks/*.txt`.
 - Outputs: trial directories and JSON result snapshots under `packages/evals/runs/`, plus the run rows the dashboard reads.
 - Side effects/limits: extracts fixture archives, clones upstream task repositories into `datasets/repo-cache/`, vendors pinned datasets into `.cache/`, and runs Docker containers for the `pier` and `harbor` backends.
 
-*Verified against `f2e19d52` on 2026-08-25.*
+*Verified against `6f9dbe46` on 2026-08-28.*

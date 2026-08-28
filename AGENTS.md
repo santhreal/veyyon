@@ -387,7 +387,7 @@ argot. Never hand-roll handle logic here.
   in the pull request (off arm at the default, on arm with `SCENE_SETTINGS='argot.enabled: true'`) —
   off shows only the "Argot Shorthand" master toggle, on shows it plus Models, Dictionary Budget,
   Context Cutoff and Subagents — and the bench
-  `packages/evals/src/suites/typescript-edit/argot-bench.ts`, which runs the edit tasks with encoding on
+  `packages/evals/suites/typescript-edit/argot-bench.ts`, which runs the edit tasks with encoding on
   and off and certifies the token delta. `test/argot-settings-e2e.test.ts` asserts every Argot
   setting end to end, including that the knobs are hidden while off. Keep all of it current.
 
