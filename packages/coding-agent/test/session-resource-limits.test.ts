@@ -323,10 +323,22 @@ describe("every backend has a recorded enforceability verdict", () => {
 
 /**
  * The resources tab is the operator-visible contract: one place holding every
- * limit on what a session may consume. A row that reaches the screen without
- * reaching enforcement is the defect this closes.
+ * limit on what veyyon may consume, at both scopes. A row that reaches the
+ * screen without reaching enforcement is the defect this closes.
+ *
+ * The `machine.*` rows are held by the SAME kernel files as their session
+ * twins, one directory up: session groups are created inside the machine
+ * group, so `cpu.max` on the parent bounds the whole subtree. That is why each
+ * entry below names a control file rather than a separate mechanism — there
+ * is no second enforcement path to record, which is the property that makes
+ * the two tiers unable to disagree.
  */
 const RESOURCE_ROW_ENFORCEMENT: Record<string, string> = {
+	"machine.cpuLimitCores": "cpu.max on the machine group every session group is nested inside",
+	"machine.memoryLimitGb": "memory.max on the machine group, bounding the whole subtree",
+	"machine.writeBudgetGb":
+		"the machine group's io.stat plus a cross-process harness tally, refusing writes and spawns",
+	"machine.maxProcesses": "pids.max on the machine group, refusing the fork itself",
 	"session.cpuLimitCores": "cgroup cpu.max / Job Object CPU rate, plus a saturation refusal",
 	"session.cpuLimitKill": "SIGTERM to the saturated group, reported as a budget action",
 	"session.memoryLimitGb": "cgroup memory.max, refusing spawns where it cannot be written",
