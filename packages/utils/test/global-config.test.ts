@@ -245,9 +245,32 @@ describe("migrateLegacyDefaultProfileLayout", () => {
 		expect(fs.existsSync(path.join(result.targetDir, "install-id"))).toBe(false);
 	});
 
+	/**
+	 * THE INCIDENT: a launch refused to start because `~/.veyyon/agent` existed
+	 * and held nothing. An empty directory is not a second candidate profile —
+	 * there is no data to merge and no choice that resolves it — so the refusal
+	 * told the operator to move contents that did not exist, and every launch
+	 * failed until they deleted the directory by hand.
+	 */
+	it("drops an empty legacy dir beside a finished profile instead of refusing to start", () => {
+		const root = getGlobalConfigRootDir();
+		fs.mkdirSync(path.join(root, "agent"), { recursive: true });
+		fs.mkdirSync(path.join(root, "profiles", "default", "agent"), { recursive: true });
+		fs.writeFileSync(path.join(root, "profiles", "default", "agent", "agent.db"), "current");
+
+		const result = migrateLegacyDefaultProfileLayout();
+
+		expect(result.migrated).toBe(false);
+		expect(result.movedEntries).toEqual([]);
+		expect(fs.existsSync(path.join(root, "agent"))).toBe(false);
+		// The live profile is untouched: dropping the empty shell is not a merge.
+		expect(fs.readFileSync(path.join(root, "profiles", "default", "agent", "agent.db"), "utf8")).toBe("current");
+	});
+
 	it("fails closed when both layouts exist, naming both directories", () => {
 		const root = getGlobalConfigRootDir();
 		fs.mkdirSync(path.join(root, "agent"), { recursive: true });
+		fs.writeFileSync(path.join(root, "agent", "agent.db"), "legacy");
 		fs.mkdirSync(path.join(root, "profiles", "default"), { recursive: true });
 		let error: Error | undefined;
 		try {
@@ -257,6 +280,57 @@ describe("migrateLegacyDefaultProfileLayout", () => {
 		}
 		expect(error?.message).toContain(path.join(root, "agent"));
 		expect(error?.message).toContain(path.join(root, "profiles", "default"));
+		// A refusal never deletes: the legacy data is still where it was.
+		expect(fs.readFileSync(path.join(root, "agent", "agent.db"), "utf8")).toBe("legacy");
+	});
+
+	/**
+	 * THE CLASS: every cross-profile path the config root holds. Sweeping one
+	 * into `profiles/default` takes it away from every other profile, and the
+	 * vault key takes every sealed credential in every profile with it.
+	 *
+	 * NOT CAUGHT: a new global root path added by a package this suite cannot
+	 * import. The coding-agent side of the sweep lives beside its own accessors.
+	 */
+	it("never moves cross-profile state into the default profile", () => {
+		const root = getGlobalConfigRootDir();
+		fs.mkdirSync(path.join(root, "agent"), { recursive: true });
+		fs.writeFileSync(path.join(root, "agent", "agent.db"), "db");
+		fs.mkdirSync(getSharedAuthDir(), { recursive: true });
+		fs.writeFileSync(path.join(getSharedAuthDir(), "agent.db"), "shared token");
+		fs.writeFileSync(path.join(root, "AGENTS.md"), "# global rules\n");
+		fs.writeFileSync(path.join(root, "vault.json"), '{"sealed":true}');
+		fs.writeFileSync(path.join(root, "vault.key"), "keybytes");
+		fs.writeFileSync(path.join(root, "install-id"), "11111111-2222-3333-4444-555555555555\n");
+		fs.writeFileSync(path.join(root, "config.yml"), "defaultProfile: work\n");
+		fs.writeFileSync(path.join(root, "stats.db"), "stats");
+
+		const result = migrateLegacyDefaultProfileLayout();
+
+		// Exactly the legacy profile's own state moves, and nothing else.
+		expect(result.movedEntries).toEqual(["agent", "stats.db"]);
+		expect(fs.readFileSync(path.join(getSharedAuthDir(), "agent.db"), "utf8")).toBe("shared token");
+		expect(fs.readFileSync(path.join(root, "AGENTS.md"), "utf8")).toContain("global rules");
+		expect(fs.readFileSync(path.join(root, "vault.json"), "utf8")).toBe('{"sealed":true}');
+		expect(fs.readFileSync(path.join(root, "vault.key"), "utf8")).toBe("keybytes");
+		for (const name of ["shared-auth", "AGENTS.md", "vault.json", "vault.key", "install-id", "config.yml"]) {
+			expect(fs.existsSync(path.join(result.targetDir, name))).toBe(false);
+		}
+	});
+
+	/** The exemption follows the accessor, not a literal that can drift from it. */
+	it("exempts the directory getSharedAuthDir resolves to", () => {
+		const root = getGlobalConfigRootDir();
+		const shared = getSharedAuthDir();
+		expect(path.dirname(shared)).toBe(root);
+		fs.mkdirSync(path.join(root, "agent"), { recursive: true });
+		fs.writeFileSync(path.join(root, "agent", "agent.db"), "db");
+		fs.mkdirSync(shared, { recursive: true });
+
+		const result = migrateLegacyDefaultProfileLayout();
+
+		expect(fs.existsSync(shared)).toBe(true);
+		expect(result.movedEntries).not.toContain(path.basename(shared));
 	});
 
 	it("leaves named profiles untouched under profiles/", () => {

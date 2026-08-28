@@ -1810,8 +1810,23 @@ export function profileExists(profile: string | undefined): boolean {
  * Root entries that stay GLOBAL (cross-profile) under the new layout. Every
  * other entry in the config root belongs to the legacy default profile and is
  * moved into `profiles/default/` by {@link migrateLegacyDefaultProfileLayout}.
+ *
+ * The literals name state this module does not own but the config root holds:
+ * `shared-auth/` ({@link getSharedAuthDir}), the cross-profile `AGENTS.md` the
+ * native guidance provider reads, and the global vault pair the secrets runtime
+ * addresses through {@link getGlobalConfigRootDir}. Moving one of them into a
+ * single profile takes it away from every other profile, and the vault key
+ * takes every sealed credential with it, so the move never sees them.
  */
-const GLOBAL_ROOT_ENTRIES = new Set<string>([PROFILES_DIR_NAME, INSTALL_ID_FILE, ...MAIN_CONFIG_FILENAMES]);
+const GLOBAL_ROOT_ENTRIES: Record<string, true> = {
+	[PROFILES_DIR_NAME]: true,
+	[INSTALL_ID_FILE]: true,
+	"shared-auth": true,
+	"AGENTS.md": true,
+	"vault.json": true,
+	"vault.key": true,
+	...Object.fromEntries(MAIN_CONFIG_FILENAMES.map(name => [name, true])),
+};
 
 export interface LegacyLayoutMigrationResult {
 	migrated: boolean;
@@ -1860,8 +1875,17 @@ export function migrateLegacyDefaultProfileLayout(): LegacyLayoutMigrationResult
 		return { migrated: false, movedEntries: [], targetDir };
 	}
 	if (fs.existsSync(targetDir) && !resuming) {
-		// A completed new-layout dir (no marker) next to a legacy one: genuine
-		// conflict, never a mid-migration state. Refuse rather than guess.
+		// An EMPTY `agent/` is not a second candidate profile. It holds no data to
+		// merge, so the refusal below would hand the operator an instruction ("move
+		// the contents") with no contents, and no choice that resolves it — a
+		// directory recreated after a migration, or left behind by one, would stop
+		// every launch until they deleted it by hand. Drop it and carry on.
+		if (fs.readdirSync(legacyAgentDir).length === 0) {
+			fs.rmSync(legacyAgentDir, { recursive: true, force: true });
+			return { migrated: false, movedEntries: [], targetDir };
+		}
+		// A completed new-layout dir (no marker) next to a legacy one WITH data:
+		// genuine conflict, never a mid-migration state. Refuse rather than guess.
 		throw new Error(
 			`Both the legacy default-profile layout (${legacyAgentDir}) and the new one (${targetDir}) exist. ` +
 				`Veyyon cannot guess which is current. Merge or remove one — typically: move the contents of ` +
@@ -1875,7 +1899,7 @@ export function migrateLegacyDefaultProfileLayout(): LegacyLayoutMigrationResult
 	fs.writeFileSync(markerPath, "");
 	const movedEntries: string[] = [];
 	for (const entry of fs.readdirSync(root)) {
-		if (GLOBAL_ROOT_ENTRIES.has(entry)) continue;
+		if (GLOBAL_ROOT_ENTRIES[entry]) continue;
 		fs.renameSync(path.join(root, entry), path.join(targetDir, entry));
 		movedEntries.push(entry);
 	}
