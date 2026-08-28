@@ -179,9 +179,14 @@ describe("the split kept one set of commands", () => {
 	 *     answered "Advisor/watchdog was removed from Veyyon", which was inherited from upstream and
 	 *     had stopped being true the moment the subsystem was re-added. Declaring the command is what
 	 *     makes the editor reachable and those handlers report the running session.
+	 *   - UP to 75: `/rephrase` was added. Asking for the same answer in plainer prose is a whole
+	 *     turn a user retypes constantly, and typing it by hand varies the instruction each time,
+	 *     so the reply varies with it. The command sends one fixed instruction, and refuses unless
+	 *     the conversation is resting on a finished reply — there is nothing to rephrase mid-turn,
+	 *     or after a turn that produced only tool calls or an error.
 	 */
 	it("there are the 75 builtins the declarations hold", () => {
-		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(74);
+		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(75);
 	});
 
 	/**

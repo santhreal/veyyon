@@ -759,6 +759,11 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	},
 
 	{
+		name: "rephrase",
+		description: "Ask for the last reply again, in plainer prose",
+	},
+
+	{
 		name: "debug",
 		description: "Open debug tools selector",
 	},

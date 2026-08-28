@@ -21,6 +21,7 @@
 import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
 import requestsCiGreen from "./ci-green.md" with { type: "text" };
+import requestsRephrase from "./rephrase.md" with { type: "text" };
 import requestsReview from "./review.md" with { type: "text" };
 import requestsReviewCustom from "./review-custom.md" with { type: "text" };
 import requestsReviewHeadless from "./review-headless.md" with { type: "text" };
@@ -32,6 +33,10 @@ export const requestsPrompts = definePromptRows({
 	"requests/review-custom": {
 		text: requestsReviewCustom,
 		purpose: "a code review run under caller-supplied instructions",
+	},
+	"requests/rephrase": {
+		text: requestsRephrase,
+		purpose: "asks for the reply just given again, in plainer prose",
 	},
 	"requests/review-headless": {
 		text: requestsReviewHeadless,
