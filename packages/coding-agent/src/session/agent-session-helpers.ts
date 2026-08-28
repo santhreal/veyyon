@@ -1,21 +1,21 @@
 import type { Agent, AgentEvent, AgentMessage, AgentTool, StreamFn, ThinkingLevel } from "@veyyon/agent-core";
 import { type CompactionResult, type SessionMessageEntry, stripLegacyArchive } from "@veyyon/agent-core/compaction";
-import {
-	type AssistantMessage,
-	type AssistantRetryRecoveryKind,
-	type CodexCompactionContext,
-	type Context,
-	deriveClaudeDeviceId,
-	type ImageContent,
-	type Message,
-	type MessageAttribution,
-	type Model,
-	type ServiceTierByFamily,
-	type SimpleStreamOptions,
-	type TextContent,
-	type ToolChoice,
+import type {
+	AssistantMessage,
+	AssistantRetryRecoveryKind,
+	CodexCompactionContext,
+	Context,
+	ImageContent,
+	Message,
+	MessageAttribution,
+	Model,
+	ServiceTierByFamily,
+	SimpleStreamOptions,
+	TextContent,
+	ToolChoice,
 } from "@veyyon/ai";
 import type { SessionTelemetryDetail } from "@veyyon/ai/instrumentation";
+import { deriveClaudeDeviceId } from "@veyyon/ai/providers/anthropic-helpers";
 import type { Effort } from "@veyyon/catalog/effort";
 import { Patch } from "@veyyon/hashline";
 import { getInstallId, isRecord, type postmortem } from "@veyyon/utils";

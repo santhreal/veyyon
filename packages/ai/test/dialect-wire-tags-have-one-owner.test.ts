@@ -60,7 +60,7 @@ const FORMER_DECLARERS: readonly string[] = [
 	"dialect/owned-stream.ts",
 	"dialect/demotion.ts",
 	"utils/validation.ts",
-	"providers/anthropic.ts",
+	"providers/anthropic-helpers.ts",
 ];
 
 /** The names each of those modules used for a tag it no longer owns. */

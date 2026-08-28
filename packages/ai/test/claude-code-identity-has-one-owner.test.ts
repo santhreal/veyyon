@@ -145,7 +145,7 @@ const VERSION_INTERPOLATION = `$\{claudeCodeVersion}`;
 
 /** The three user-agent shapes, each built from the one version. Deliberately different from each other. */
 const USER_AGENT_SHAPES: ReadonlyArray<readonly [string, string]> = [
-	["ai/src/providers/anthropic.ts", `claude-cli/${VERSION_INTERPOLATION} (external, local-agent`],
+	["ai/src/providers/anthropic-helpers.ts", `claude-cli/${VERSION_INTERPOLATION} (external, local-agent`],
 	["ai/src/usage/claude.ts", `claude-cli/${VERSION_INTERPOLATION} (external, cli)`],
 	["ai/src/registry/oauth/anthropic.ts", `claude-code/${VERSION_INTERPOLATION}`],
 ];

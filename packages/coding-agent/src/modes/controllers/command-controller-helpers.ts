@@ -1,4 +1,5 @@
-import { getEnvApiKey, type ProviderDetails, type UsageLimit, type UsageReport } from "@veyyon/ai";
+import type { ProviderDetails, UsageLimit, UsageReport } from "@veyyon/ai";
+import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { resolveUsedFraction } from "@veyyon/ai/usage";
 import { padding, subCellBar, visibleWidth } from "@veyyon/tui";
 import { clamp01, formatDuration, sanitizeText } from "@veyyon/utils";

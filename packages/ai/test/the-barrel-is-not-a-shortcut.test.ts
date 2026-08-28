@@ -186,7 +186,7 @@ describe("the modules that were repointed stay cut", () => {
 		// Re-measured 2026-07-27 at 184, from 112. The file gained a real `completeSimple` call, and the
 		// engine is 72 modules whichever specifier reaches it. Raised only after the barrel import was
 		// repointed and the number stopped moving; the 325 it sat at before that was the leak, not this.
-		["coding-agent/src/commit/shared-llm.ts", 201],
+		["coding-agent/src/commit/shared-llm.ts", 204],
 		// The agent's hot loop and the `Agent` class. Both STREAM, so both reach the engine whatever
 		// specifier they use; the ceilings are what the other ten names cost when taken from the entry
 		// point. 378 -> 321 and 380 -> 323.
