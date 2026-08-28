@@ -22,7 +22,6 @@ export const PUBLIC_ENGINE_IDS = [
 	"startpage",
 	"google",
 	"duckduckgo",
-	"ecosia",
 	"mojeek",
 ] as const satisfies readonly SearchProviderId[];
 
@@ -33,7 +32,7 @@ const MAX_NUM_RESULTS = 30;
 /**
  * Soft deadline for the fan-out: past this point the aggregate returns as
  * soon as it has at least one engine's results. Fast HTML engines answer
- * well under this; browser-backed engines (google, ecosia, mojeek) routinely
+ * well under this; browser-backed engines (google, mojeek) routinely
  * exceed it and are treated as bonus coverage rather than latency floor.
  */
 const SOFT_DEADLINE_MS = 5_000;

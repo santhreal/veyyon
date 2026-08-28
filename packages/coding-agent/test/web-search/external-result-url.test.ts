@@ -1,11 +1,11 @@
 /**
  * One rule for turning a scraped result anchor into a target URL.
  *
- * WHY THIS SUITE EXISTS. Ecosia, Mojeek and Startpage each carried their own copy of the same
- * resolve-and-filter helper, and the three had already drifted in the part that matters: one rejected the
+ * WHY THIS SUITE EXISTS. The HTML engines each carried their own copy of the same
+ * resolve-and-filter helper, and they had already drifted in the part that matters: one rejected the
  * engine's host and its `www.` spelling, one rejected the host and every subdomain, one did both for a
- * single domain. A copy is not just duplication here, it is a silent behaviour difference -- Ecosia's
- * copy would have accepted `images.ecosia.org` as an outbound result, so an internal navigation row could
+ * single domain. A copy is not just duplication here, it is a silent behaviour difference -- one
+ * copy would have accepted `images.<engine>` as an outbound result, so an internal navigation row could
  * be handed back as a search result and then fetched.
  *
  * There is one owner now, `resolveExternalResultUrl`, and subdomain matching is the rule everywhere. This

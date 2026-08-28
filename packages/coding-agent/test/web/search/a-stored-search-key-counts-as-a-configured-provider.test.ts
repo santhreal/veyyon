@@ -40,7 +40,6 @@ const NOT_AVAILABLE_FROM_A_KEY_UNDER_ITS_OWN_ID: readonly SearchProviderId[] = [
 const AVAILABLE_WITHOUT_ANY_CREDENTIAL: readonly SearchProviderId[] = [
 	"codex",
 	"duckduckgo",
-	"ecosia",
 	"google",
 	"mojeek",
 	"startpage",

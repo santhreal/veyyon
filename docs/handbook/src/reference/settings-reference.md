@@ -91,7 +91,7 @@ veyyon config get compaction.threshold
 | `model.loopGuard.toolCallReminder` | Loop Guard Tool-Call Reminder | boolean | `true` | When a Gemini reasoning stream emits many consecutive planning headers without calling a tool, interrupt it and inject a reminder to issue a tool call (requires Loop Guard). |
 | `model.toolCallLoopGuard.enabled` | Tool-Call Loop Guard | boolean | `true` | Detect consecutive identical tool calls across turns and inject a corrective steer. |
 | `model.toolCallLoopGuard.threshold` | Tool-Call Loop Threshold | number | `5` | Consecutive identical tool calls required before the corrective steer is injected. |
-| `model.toolCallLoopGuard.readSubsumptionThreshold` | Read Subsumption Loop Threshold | number | `2` | Consecutive fully-subsumed or redundant read calls on unchanged files before the corrective steer is injected. |
+| `model.toolCallLoopGuard.readSubsumptionThreshold` | Read Subsumption Loop Threshold | number | `3` | Consecutive fully-subsumed or redundant read calls on unchanged files before the corrective steer is injected. |
 | `model.toolCallLoopGuard.exemptTools` | Tool-Call Loop Exempt Tools | array | `["job","irc"]` | Tool names that may repeat consecutively without triggering the cross-turn loop guard. |
 | `providers.autoThinkingModel` | Auto Thinking Model | enum | `online` | Difficulty classifier for the `auto` thinking level: online (the TINY role from /models, else smol) by default, or a local on-device model. Values: `online`, `qwen3-1.7b`, `llama3.2:3b`, `gemma-3-1b`, `qwen2.5-1.5b`, `lfm2-1.2b`. |
 
@@ -643,7 +643,7 @@ veyyon config get compaction.threshold
 |---|---|---|---|---|
 | `providers.maxInFlightRequests` | Max In-Flight Requests | record | `{}` | Maximum concurrent LLM requests per provider id (for example "openai" or "anthropic"), shared across local veyyon processes with this config root. Omitted providers are unlimited. |
 | `providers.ollama-cloud.maxConcurrency` | Ollama Cloud Max Concurrency | number | `3` | Maximum concurrent Ollama Cloud subagent runs per process; 0 disables the provider-specific limit. |
-| `providers.webSearch` | Web Search Provider | enum | `auto` | The provider web_search uses; auto tries each in turn. Values: `auto`, `perplexity`, `gemini`, `anthropic`, `codex`, `xai`, `zai`, `exa`, `tinyfish`, `jina`, `kagi`, `tavily`, `firecrawl`, `brave`, `kimi`, `parallel`, `synthetic`, `searxng`, `startpage`, `duckduckgo`, `ecosia`, `google`, `mojeek`, `public`. |
+| `providers.webSearch` | Web Search Provider | enum | `auto` | The provider web_search uses; auto tries each in turn. Values: `auto`, `perplexity`, `gemini`, `anthropic`, `codex`, `xai`, `zai`, `exa`, `tinyfish`, `jina`, `kagi`, `tavily`, `firecrawl`, `brave`, `kimi`, `parallel`, `synthetic`, `searxng`, `startpage`, `duckduckgo`, `google`, `mojeek`, `public`. |
 | `providers.webSearchExclude` | Excluded Web Search Providers | array | `[]` | Providers that web_search should never use, even as fallbacks. |
 | `providers.webSearchGeminiModel` | Gemini web_search model | string | _(unset)_ | Model ID for Gemini Google Search grounding. Defaults to gemini-2.5-flash. |
 | `providers.antigravityEndpoint` | Antigravity Endpoint Mode | enum | `auto` | Endpoint routing strategy for google-antigravity providers (chat, search, image, discovery). Values: `auto`, `production`, `sandbox`. |
