@@ -246,6 +246,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/catalog/src/provider-models/bundled-references.ts",
 	"packages/catalog/src/provider-models/openai-compat/overrides-helpers.ts",
 	"packages/catalog/src/provider-models/openai-compat/overrides.ts",
+	"packages/catalog/src/provider-models/openai-compat/providers-helpers-2.ts",
 	"packages/catalog/src/provider-models/openai-compat/providers-helpers.ts",
 	"packages/catalog/src/provider-models/openai-compat/resolvers.ts",
 	"packages/coding-agent/src/autoresearch/dashboard.ts",
