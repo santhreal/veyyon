@@ -19,10 +19,10 @@
  *    and reads a count through `parseInt`, so `--count-per-type abc` generated nothing.
  *
  * The class this closes is any entry point in this package that does not refuse an argument it
- * cannot act on. The sweep discovers every `import.meta.main` module under `src/` at run time and
- * spawns each one, so a new entry point is covered the moment it exists and turns this suite red
- * until it reads the grammar. `EXIT_NOTHING_RAN` is pinned by exact equality: nothing ran, so the
- * exit is 2, never 1.
+ * cannot act on. The sweep discovers every `import.meta.main` module under the package root at run
+ * time and spawns each one, so a new entry point is covered the moment it exists and turns this
+ * suite red until it reads the grammar. `EXIT_NOTHING_RAN` is pinned by exact equality: nothing
+ * ran, so the exit is 2, never 1.
  *
  * What it does not catch: whether a script's default for an absent flag is the right one, whether a
  * declared flag reaches the behavior it names (each entry point's own suite covers that), and a
@@ -52,21 +52,36 @@ const run = promisify(execFile);
 /** Nothing ran, so the invocation is the failure. A run that happened and failed exits 1. */
 const EXIT_NOTHING_RAN = 2;
 
-const SRC_DIR = path.join(import.meta.dirname, "..", "..", "src");
+const PACKAGE_ROOT = path.join(import.meta.dirname, "..", "..");
 
 /** A flag no entry point declares, and no shell would produce by accident. */
 const BOGUS_FLAG = "--veyyon-not-a-flag";
 
 /**
- * Entry points are discovered rather than listed: a new script under `src/` with an
+ * Entry points are discovered rather than listed: a new script under the package root with an
  * `import.meta.main` guard joins this sweep without anyone remembering to add it.
- * `src/web` is excluded because those modules load in a browser and have no argument list.
+ * `dashboard/` is excluded because those modules load in a browser and have no argument list.
+ * Non-source directories (`test`, `.cache`, `runs`, `.internal`, `node_modules`, `assets`,
+ * `agents`, `scripts`, `dashboard`) are skipped.
  */
+const SKIP_DIRS = new Set([
+	"test",
+	".cache",
+	"runs",
+	".internal",
+	"node_modules",
+	"assets",
+	"agents",
+	"scripts",
+	"dashboard",
+	".git",
+]);
+
 async function discoverEntryPoints(dir: string, acc: string[] = []): Promise<string[]> {
 	for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
-			if (entry.name === "web") continue;
+			if (SKIP_DIRS.has(entry.name)) continue;
 			await discoverEntryPoints(full, acc);
 			continue;
 		}
@@ -77,7 +92,7 @@ async function discoverEntryPoints(dir: string, acc: string[] = []): Promise<str
 	return acc;
 }
 
-const ENTRY_POINTS = (await discoverEntryPoints(SRC_DIR)).sort();
+const ENTRY_POINTS = (await discoverEntryPoints(PACKAGE_ROOT)).sort();
 
 interface Refusal {
 	code: number;
@@ -96,11 +111,11 @@ async function invoke(script: string, args: readonly string[]): Promise<Refusal>
 
 describe("an entry point that cannot act on a flag", () => {
 	it("discovers every entry point in the package, so the sweep cannot go stale", () => {
-		expect(ENTRY_POINTS.length).toBeGreaterThanOrEqual(17);
-		expect(ENTRY_POINTS.some(file => file.endsWith("cli.ts"))).toBe(true);
+		expect(ENTRY_POINTS.length).toBeGreaterThanOrEqual(15);
+		expect(ENTRY_POINTS.some(file => file.endsWith("evals.ts"))).toBe(true);
 	});
 
-	it.each(ENTRY_POINTS.map(file => [path.relative(SRC_DIR, file), file] as [string, string]))(
+	it.each(ENTRY_POINTS.map(file => [path.relative(PACKAGE_ROOT, file), file] as [string, string]))(
 		"%s refuses a flag it does not declare, and says nothing ran",
 		async (_name, script) => {
 			const refusal = await invoke(script, [BOGUS_FLAG]);
@@ -117,13 +132,13 @@ describe("an entry point that cannot act on a flag", () => {
 	// on as a directory path and reported "no transcript tree at true" after measuring nothing; one
 	// of them fell back to the default tree instead and reported those numbers as the requested ones.
 	it.each([
-		["suites/deep-swe/measure-channel-split.ts", "sessions"],
-		["suites/deep-swe/measure-retype-likelihood.ts", "sessions"],
-		["suites/deep-swe/measure-retype-likelihood.ts", "repo"],
+		["measurements/channel-split.ts", "sessions"],
+		["measurements/retype-likelihood.ts", "sessions"],
+		["measurements/retype-likelihood.ts", "repo"],
 	] as [string, string][])(
 		"%s refuses --%s given without its value",
 		async (script, flag) => {
-			const refusal = await invoke(path.join(SRC_DIR, script), [`--${flag}`]);
+			const refusal = await invoke(path.join(PACKAGE_ROOT, script), [`--${flag}`]);
 
 			expect(refusal.code).toBe(EXIT_NOTHING_RAN);
 			expect(refusal.output).toContain(`--${flag} expects a value`);
@@ -134,14 +149,14 @@ describe("an entry point that cannot act on a flag", () => {
 	// The grammar sweep proves `flagCount` refuses; these prove each entry point routes its count
 	// through it, rather than reading `Number(...)` and running with NaN.
 	it.each([
-		["report/trace-report.ts", "concurrency", ["--concurrency", "abc"]],
+		["tools/trace-report.ts", "concurrency", ["--concurrency", "abc"]],
 		["suites/typescript-edit/generate.ts", "count-per-type", ["--count-per-type", "abc"]],
-		["benches/edit-prompt-bench.ts", "limit", ["--model", "openai/gpt-5", "--limit", "0"]],
-		["suites/deep-swe/gen-dicts.ts", "jobs", ["--all", "--jobs", "-1"]],
+		["benches/edit-prompt.ts", "limit", ["--model", "openai/gpt-5", "--limit", "0"]],
+		["tools/generate-dicts.ts", "jobs", ["--all", "--jobs", "-1"]],
 	] as [string, string, string[]][])(
 		"%s refuses a --%s it cannot count",
 		async (script, flag, args) => {
-			const refusal = await invoke(path.join(SRC_DIR, script), args);
+			const refusal = await invoke(path.join(PACKAGE_ROOT, script), args);
 
 			expect(refusal.code).toBe(EXIT_NOTHING_RAN);
 			expect(refusal.output).toContain(`--${flag} expects`);
@@ -150,7 +165,7 @@ describe("an entry point that cannot act on a flag", () => {
 	);
 
 	it("refuses an argument past the count a positional entry point takes", async () => {
-		const refusal = await invoke(path.join(SRC_DIR, "suites/deep-swe/prefix-composition.ts"), [
+		const refusal = await invoke(path.join(PACKAGE_ROOT, "measurements/prefix-composition.ts"), [
 			"jobs",
 			"baseline__",
 			"extra",
