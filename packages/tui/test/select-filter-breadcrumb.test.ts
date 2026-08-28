@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type SelectItem, SelectList, type SelectListTheme } from "@veyyon/tui";
-import { currentLoopPhase, popLoopPhase, takeLoopPhaseProfile } from "@veyyon/utils"
+import { currentLoopPhase, popLoopPhase, takeLoopPhaseProfile } from "@veyyon/utils";
 
 /**
  * Contract: the SelectList fuzzy filter — a synchronous, potentially expensive

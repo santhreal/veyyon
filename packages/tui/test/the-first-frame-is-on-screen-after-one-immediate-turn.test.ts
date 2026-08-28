@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { VirtualTerminal } from "./virtual-terminal";
 import { TUI } from "@veyyon/tui";
+import { VirtualTerminal } from "./virtual-terminal";
 
 /**
  * WHY: `TUI.start()` ends in `requestRender(true, …)`, and even that forced
