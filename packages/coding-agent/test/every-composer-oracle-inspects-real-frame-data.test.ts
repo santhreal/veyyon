@@ -28,7 +28,7 @@ import {
 	COMPOSER_ORACLE_GUARANTEES,
 	type ComposerOracleFrameState,
 	type ComposerOracleGuarantee,
-} from "@veyyon/render-oracle";
+} from "../src/modes/components/composer-defect-oracle";
 import { initTheme } from "../src/modes/theme/theme";
 import {
 	corpusStateToRunnerOptions,

@@ -28,9 +28,10 @@
  * the repair contract differs.
  */
 import { describe, expect, test } from "bun:test";
-import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "../src/index";
 import { countDestructivePaints } from "./helpers/destructive-paints";
+import { settleFrames } from "./helpers/settle-frames";
+import { VirtualTerminal } from "./virtual-terminal";
 
 /** Marks a row as chrome. Finding any of these in scrollback is the defect. */
 const CHROME_MARKERS = ["[ ] task", "esc to interrupt", "ask anything"] as const;

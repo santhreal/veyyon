@@ -18,8 +18,9 @@
  * late the frame is scheduled), including the case the 40 ms sleep got wrong.
  */
 import { describe, expect, it } from "bun:test";
-import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, type RenderScheduler, type RenderTimer, TUI } from "@veyyon/tui";
+import { settleFrames } from "./helpers/settle-frames";
+import { VirtualTerminal } from "./virtual-terminal";
 
 /** A component whose rows the test rewrites between frames. */
 class Rows implements Component {

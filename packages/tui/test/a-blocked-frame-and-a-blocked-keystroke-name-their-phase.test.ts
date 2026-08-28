@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, type RenderTimer, TUI } from "@veyyon/tui";
 import { currentLoopPhase, popLoopPhase, takeRecentLoopPhase } from "@veyyon/utils";
+import { VirtualTerminal } from "./virtual-terminal";
 
 /**
  * Contract: the two synchronous spans an interactive session spends its time in

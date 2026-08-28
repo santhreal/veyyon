@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
+import { StressRenderScheduler } from "./render-stress-scheduler";
+import { VirtualTerminal } from "./virtual-terminal";
 
 /**
  * Reporting a drag the engine ate (`TUI#onSelectionAttempt`).

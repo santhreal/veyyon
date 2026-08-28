@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, TUI } from "@veyyon/tui";
+import { settleFrames } from "./helpers/settle-frames";
+import { VirtualTerminal } from "./virtual-terminal";
 
 // Regression test for https://github.com/can1357/oh-my-pi/issues/2088
 //

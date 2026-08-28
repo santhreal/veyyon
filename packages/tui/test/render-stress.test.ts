@@ -2,6 +2,7 @@ import { describe, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { Subprocess } from "bun";
 import {
 	buildScenarios,
 	formatSeed,
@@ -10,8 +11,7 @@ import {
 	type Scenario,
 	type StressScenarioFailure,
 	type StressScenarioResult,
-} from "@veyyon/render-oracle";
-import type { Subprocess } from "bun";
+} from "./render-stress-harness";
 
 const DEFAULT_STRESS_WORKERS = 8;
 const CORE_BATCH_TIMEOUT_MS = 60_000;

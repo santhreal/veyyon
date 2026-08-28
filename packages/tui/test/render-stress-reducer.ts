@@ -1,13 +1,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isRecord } from "@veyyon/utils/type-guards";
 import {
 	buildScenarios,
 	isOperationKind,
 	type OperationKind,
 	runStressScenario,
 	type Scenario,
-} from "@veyyon/render-oracle";
-import { isRecord } from "@veyyon/utils/type-guards";
+} from "./render-stress-harness";
 
 function extractReplayOperations(parsed: unknown): OperationKind[] {
 	const entries = Array.isArray(parsed)

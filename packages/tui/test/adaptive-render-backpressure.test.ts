@@ -26,8 +26,8 @@
  * change makes that frame cheaper — see `packages/tui/bench/frame.bench.ts`.
  */
 import { describe, expect, it } from "bun:test";
-import { VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, type RenderTimer, TUI } from "@veyyon/tui";
+import { VirtualTerminal } from "./virtual-terminal";
 
 const MIN_RENDER_INTERVAL_MS = 1000 / 30;
 const MAX_ADAPTIVE_RENDER_MS = 200;

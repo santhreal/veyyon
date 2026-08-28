@@ -102,8 +102,7 @@
   "devDependencies": {
     "@types/bun": "catalog:",
     "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
-    "@veyyon/render-oracle": "catalog:"
+    "@types/react-dom": "catalog:"
   },
   "engines": {
     "bun": ">=1.4.0"

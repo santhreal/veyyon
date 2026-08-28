@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { ManualRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
-import { type Component, TUI } from "@veyyon/tui";
+import { type Component, type RenderTimer, TUI } from "@veyyon/tui";
+import { VirtualTerminal } from "./virtual-terminal";
 
 class InputProbe implements Component {
 	constructor(private readonly events: string[]) {}
@@ -17,16 +17,39 @@ class InputProbe implements Component {
 	}
 }
 
-/** Run every armed frame, including a startup backstop this test does not care about. */
-function flushArmedFrames(scheduler: ManualRenderScheduler): void {
-	const armed = scheduler.armed.splice(0, scheduler.armed.length);
-	for (const frame of armed) if (!frame.cancelled) frame.run();
+class DeferredRenderScheduler {
+	nowMs = 0;
+	readonly immediates: Array<() => void> = [];
+	readonly timers: Array<{ callback: () => void; canceled: boolean }> = [];
+
+	now(): number {
+		return this.nowMs;
+	}
+
+	scheduleImmediate(callback: () => void): void {
+		this.immediates.push(callback);
+	}
+
+	scheduleRender(callback: () => void, _delayMs: number): RenderTimer {
+		const timer = { callback, canceled: false };
+		this.timers.push(timer);
+		return {
+			cancel: () => {
+				timer.canceled = true;
+			},
+		};
+	}
+}
+
+function flushTimers(scheduler: DeferredRenderScheduler): void {
+	const pending = scheduler.timers.splice(0, scheduler.timers.length);
+	for (const timer of pending) if (!timer.canceled) timer.callback();
 }
 
 describe("TUI input/render scheduling", () => {
 	it("can process terminal input before a deferred ordinary repaint", () => {
 		const term = new VirtualTerminal(20, 4);
-		const scheduler = new ManualRenderScheduler("queued");
+		const scheduler = new DeferredRenderScheduler();
 		const events: string[] = [];
 		const probe = new InputProbe(events);
 		const tui = new TUI(term, undefined, { renderScheduler: scheduler });
@@ -39,14 +62,14 @@ describe("TUI input/render scheduling", () => {
 			// Fire every queued timer, not just the first: the engine also arms a mouse-grab
 			// idle backstop at startup, and this test is about input-vs-repaint ORDER, not
 			// about how many timers the engine happens to keep.
-			flushArmedFrames(scheduler);
+			flushTimers(scheduler);
 			events.length = 0;
-			scheduler.time = 100;
+			scheduler.nowMs = 100;
 
 			tui.requestRender();
 			term.sendInput("x");
 			scheduler.immediates.shift()?.();
-			flushArmedFrames(scheduler);
+			flushTimers(scheduler);
 
 			expect(events[0]).toBe("input");
 			expect(events).toContain("render");
