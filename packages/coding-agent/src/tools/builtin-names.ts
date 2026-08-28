@@ -41,8 +41,6 @@ export type BuiltinToolName = (typeof BUILTIN_TOOL_NAMES)[number];
 
 export const WORKSPACE_WRITING_TOOL_NAMES = ["edit", "write", "ast_edit", "memory_edit", "manage_skill"] as const;
 
-export type WorkspaceWritingToolName = (typeof WORKSPACE_WRITING_TOOL_NAMES)[number];
-
 export const HIDDEN_TOOL_NAMES = ["yield", "report_finding", "report_tool_issue", "resolve", "goal"] as const;
 
 export type HiddenToolName = (typeof HIDDEN_TOOL_NAMES)[number];

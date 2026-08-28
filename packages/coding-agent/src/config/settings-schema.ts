@@ -32,8 +32,6 @@ export type SettingTab =
 	| "providers"
 	| "experimental";
 
-export type TabMetadata = { label: string; icon: `tab.${string}` };
-
 export const SETTING_TABS: SettingTab[] = [
 	"appearance",
 	"model",

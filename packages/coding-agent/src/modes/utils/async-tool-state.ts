@@ -1,8 +1,6 @@
 /** The one reader of the `async` block a long-running tool reports on its result. `task`, `bash` and the session's job reconciler all write `details.async`, and */
 
 /** The lifecycle a tool reports for work that outlives its call. */
-export type AsyncToolState = "running" | "completed" | "failed";
-
 /** The shape a tool writes under `details.async`. */
 export interface AsyncToolDetails {
 	async?: { state?: string; jobId?: string; type?: string };

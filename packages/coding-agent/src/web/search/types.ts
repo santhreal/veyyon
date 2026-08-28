@@ -269,8 +269,6 @@ export interface PerplexityMessageOutput {
 	tool_call_id?: string | null;
 }
 
-export type PerplexityMessage = PerplexityMessageInput;
-
 export interface PerplexityResponseFormatText {
 	type: "text";
 }

@@ -180,8 +180,6 @@ export interface MCPTransport {
 	onRequest?: (method: string, params: unknown) => Promise<unknown>;
 }
 
-export type TransportFactory = (config: MCPServerConfig) => Promise<MCPTransport>;
-
 export interface MCPServerConnection {
 	name: string;
 	config: MCPServerConfig;

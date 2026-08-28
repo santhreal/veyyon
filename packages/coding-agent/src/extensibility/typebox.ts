@@ -903,6 +903,4 @@ export const Type = {
 	Composite: tComposite,
 } as const;
 
-export type TypeBuilder = typeof Type;
-
 export default { Type };

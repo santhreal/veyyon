@@ -102,7 +102,6 @@ const taskSchemaBatchNoIsolation = type({
 const ALL_TASK_SCHEMAS = [taskSchema, taskSchemaNoIsolation, taskSchemaBatch, taskSchemaBatchNoIsolation] as const;
 
 type DynamicTaskSchema = (typeof ALL_TASK_SCHEMAS)[number];
-export type TaskSchema = typeof taskSchema;
 export type TaskToolSchemaInstance = DynamicTaskSchema | BaseType;
 
 const taskSchemaCache = new Map<string, BaseType>();

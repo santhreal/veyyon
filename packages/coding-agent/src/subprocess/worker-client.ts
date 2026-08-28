@@ -11,8 +11,6 @@ import { primarySessionCpuLimit } from "../session/cpu-limit";
 import { safeSend } from "../utils/ipc";
 import { logWorkerMessage, type WorkerLogPayload } from "./worker-log";
 
-export type WorkerInboundBase = { type: "ping"; id: string };
-
 export type WorkerLogMessage = { type: "log" } & WorkerLogPayload;
 
 export type WorkerOutboundBase =
