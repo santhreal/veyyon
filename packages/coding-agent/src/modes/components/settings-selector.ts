@@ -1,5 +1,5 @@
-import { AUTO_COMPACTION_THRESHOLD, parseCompactionThreshold, type ThinkingLevel } from "@veyyon/agent-core";
-import type { Api, Effort, Model } from "@veyyon/ai";
+import { AUTO_COMPACTION_THRESHOLD, type ThinkingLevel } from "@veyyon/agent-core";
+import type { Effort, Model } from "@veyyon/ai";
 import {
 	type Component,
 	Container,
@@ -12,7 +12,6 @@ import {
 	rankSettingItems,
 	routeSgrMouseInput,
 	type SelectItem,
-	SelectList,
 	type SettingItem,
 	SettingsList,
 	type SgrMouseEvent,
@@ -23,22 +22,11 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { clamp, collapseWhitespace, errorMessage, isRecord, VERSION } from "@veyyon/utils";
-import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../../capability/rule";
+import { isRecord, VERSION } from "@veyyon/utils";
 import { ANY_MODEL_EFFORT_KEY, withLegacyDefaultEffort } from "../../config/effort-resolver";
 import type { ModelRegistry } from "../../config/model-registry";
-import {
-	extractExplicitThinkingSelector,
-	normalizeModelPatternList,
-	resolveConfiguredModelPatterns,
-	resolveModelRoleValue,
-} from "../../config/model-resolver";
-import {
-	DEFAULT_MODEL_SLOT,
-	getRoleInfo,
-	ROLE_INHERIT_LABEL,
-	SELECTABLE_MODEL_ROLE_IDS,
-} from "../../config/model-roles";
+import { normalizeModelPatternList } from "../../config/model-resolver";
+import { DEFAULT_MODEL_SLOT, SELECTABLE_MODEL_ROLE_IDS } from "../../config/model-roles";
 import { UNSET_NUMBER, UNSET_NUMBER_OPTION_VALUE } from "../../config/optional-number";
 import {
 	getDefault,
@@ -49,43 +37,15 @@ import {
 	settings,
 	validateProviderMaxInFlightRequests,
 } from "../../config/settings";
-import type { SubagentAgentSettings, SubagentLaneSettings } from "../../config/settings-domains/subagents";
-import type { SettingTab, StatusLinePreset, StatusLineSegmentId, SubmenuOption } from "../../config/settings-schema";
+import type { SubagentAgentSettings } from "../../config/settings-domains/subagents";
+import type { SettingTab, StatusLinePreset, StatusLineSegmentId } from "../../config/settings-schema";
 import { getUi, isUnsetNumberPath, SETTING_TABS, TAB_METADATA } from "../../config/settings-schema";
-import { loadCapability } from "../../discovery";
-import { PROVIDER_ID as NATIVE_RULES_PROVIDER_ID } from "../../discovery/builtin";
-import { BUILTIN_RULE_SECTIONS, type BuiltinRuleSection } from "../../discovery/builtin-rules";
 import { withIcon } from "../../modes/theme/icon-label";
-import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } from "../../modes/theme/theme";
+import { getCurrentThemeName, getSettingsListTheme, theme } from "../../modes/theme/theme";
 import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
-import { discoverAgents } from "../../task/discovery";
-import {
-	clearSubagentModelByDepthRow,
-	delegationBlockedNotice,
-	isSubagentEnableDefaulted,
-	nextSubagentEnableValue,
-	nextSubagentModelByDepth,
-	resolveDelegation,
-	resolveSubagentMaxNestedSpawnDepth,
-	resolveSubagentModel,
-	resolveSubagentThinkingLevel,
-	SUBAGENT_ENABLE_STATE_LABEL,
-	SUBAGENT_MODEL_BY_DEPTH_PATH,
-	subagentEnableState,
-	subagentModelByDepthRowPath,
-	subagentModelByDepthRows,
-	subagentModelSourceLabel,
-	subagentSettingsFor,
-} from "../../task/subagent-settings";
-import { type AgentDefinition, canSpawnAtDepth } from "../../task/types";
-import {
-	configuredThinkingLevelOptions,
-	hasConfigurableThinkingEffort,
-	INHERIT_EFFORT_OPTION_VALUE,
-	noSelectableEffortNotice,
-} from "../../thinking";
+import { SUBAGENT_MODEL_BY_DEPTH_PATH, subagentModelByDepthRows } from "../../task/subagent-settings";
 import { getTabBarTheme } from "../shared";
-import { formatSelectorSummary, renderEffortStep } from "./effort-picker";
+import { formatSelectorSummary } from "./effort-picker";
 import {
 	BREADCRUMB_HOVER_ID,
 	computeModalDims,
@@ -102,10 +62,9 @@ import {
 	SETTINGS_SUBPANE_SHORTCUTS,
 	sizingForArea,
 } from "./modal-shell";
-import { ModelSelectorPanel } from "./model-selector";
 import { PluginSettingsComponent } from "./plugin-settings";
 import { RollbackPanelComponent } from "./rollback-panel";
-import { MouseRoutedSubmenu, routeSettingsListPointer } from "./select-list-mouse-routing";
+import { routeSettingsListPointer } from "./select-list-mouse-routing";
 import {
 	DEFAULT_MODEL_SETTING_ID,
 	formatLspSummary,
@@ -113,21 +72,39 @@ import {
 	getSettingsForTab,
 	isNestedLspKnob,
 	LSP_SETTING_PATHS,
-	lspPanelPaths,
 	type OptionList,
 	type SettingDef,
 	settingsSearchLandingPath,
 } from "./settings-defs";
 import { SelectSubmenu, TextInputSubmenu } from "./settings-submenus";
+import {
+	barePickerSelector,
+	CompactionThresholdSubmenu,
+	DefaultEffortSubmenu,
+	DefaultModelSubmenu,
+	EFFORT_SUBMENU_PATHS,
+	formatThresholdShort,
+	LspSubmenu,
+	type ModelChainSlot,
+	ModelChainSubmenu,
+	ModelRolesSubmenu,
+	ProviderLimitsSubmenu,
+	RulesSubmenu,
+	replaceModelChainEntry,
+	SubagentAgentsSubmenu,
+	SubagentModelByDepthSubmenu,
+	type SubagentRosterPath,
+	subagentEffortOptions,
+	subagentEffortScope,
+} from "./settings-submenus/index";
 import { getPreset } from "./status-line/presets";
 
-/** A decimal number and nothing else. Deliberately narrower than `Number()`, which accepts `0x10` as 16, `1e400` as Infinity, ` 5 ` after trimming and `""` as zero. */
+export { barePickerSelector, type ModelChainSlot, ModelChainSubmenu, replaceModelChainEntry };
+
 const DECIMAL_NUMBER = /^-?\d+(?:\.\d+)?$/;
 
-/** An empty box clears the setting, which for a number means the default comes back. */
 export const UNSET_NUMBER_INPUT = "unset";
 
-/** What a typed number does to the setting: store this value, clear it, or refuse. A text input hands back a string and these settings are numbers with meaning: retry */
 export function parseNumberSetting(path: SettingPath, text: string): number | typeof UNSET_NUMBER_INPUT {
 	if (text.trim() === "") return UNSET_NUMBER_INPUT;
 	if (!DECIMAL_NUMBER.test(text)) throw new Error(`"${text}" is not a number. Type digits only, for example 250.`);
@@ -139,2142 +116,6 @@ export function parseNumberSetting(path: SettingPath, text: string): number | ty
 	return parsed;
 }
 
-const LSP_PANEL_MAX_ROWS = 8;
-
-/** Nested LSP page. Files shows one row; Enter opens this list so each piece is its own on/off rather than a pile of similarly-named Files rows. */
-class LspSubmenu extends MouseRoutedSubmenu {
-	#selectList: SelectList | undefined;
-	#focused: string | undefined;
-
-	constructor(
-		private readonly onChange: (path: SettingPath, value: boolean) => void,
-		private readonly onCancel: () => void,
-		private readonly requestRender?: () => void,
-		initialFocus?: SettingPath,
-	) {
-		super();
-		this.#focused = initialFocus;
-		this.#show();
-	}
-
-	#show(): void {
-		this.clear();
-		this.addChild(new Text(theme.bold(theme.fg("accent", "LSP")), 0, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(theme.fg("muted", "Each row is its own switch. Enter toggles. Esc returns to Files."), 0, 0),
-		);
-		this.addChild(new Spacer(1));
-
-		const items: SelectItem[] = [];
-		for (const path of lspPanelPaths()) {
-			const ui = getUi(path);
-			if (!ui) continue;
-			const on = settings.get(path) === true;
-			const state = on ? theme.fg("success", "on") : theme.fg("dim", "off");
-			const label = path === "lsp.enabled" ? "Language Servers" : ui.label;
-			items.push({
-				value: path,
-				label,
-				description: `${state} · ${ui.description}`,
-			});
-		}
-
-		const visible = Math.min(items.length, LSP_PANEL_MAX_ROWS);
-		this.#selectList = new SelectList(items, visible, getSelectListTheme(), {
-			minPrimaryColumnWidth: 1,
-			maxPrimaryColumnWidth: 28,
-		});
-		const focusedIndex = this.#focused ? items.findIndex(item => item.value === this.#focused) : -1;
-		if (focusedIndex >= 0) this.#selectList.setSelectedIndex(focusedIndex);
-		this.#selectList.onSelect = item => {
-			const path = item.value as SettingPath;
-			const next = settings.get(path) !== true;
-			settings.set(path, next as never);
-			this.onChange(path, next);
-			this.#focused = path;
-			this.#show();
-			this.requestRender?.();
-		};
-		this.#selectList.onCancel = this.onCancel;
-		this.addChild(this.#selectList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to toggle · Esc to go back"), 0, 0));
-	}
-
-	mouseTarget(): SelectList | undefined {
-		return this.#selectList;
-	}
-
-	handleInput(data: string): void {
-		if (this.#selectList) {
-			this.#selectList.handleInput(data);
-			return;
-		}
-		this.children[0]?.handleInput?.(data);
-	}
-}
-
-/** Sentinel for the drill-down's free-text entries; never a stored value. */
-const THRESHOLD_CUSTOM_VALUE = "__custom__";
-
-type ThresholdMode = "auto" | "percent" | "tokens";
-
-/** The stored string's mode, decided by the same parser auto-compaction runs on, so the drill-down can never disagree with the session about which mode */
-function thresholdModeOf(raw: string): { mode: ThresholdMode; invalidRaw?: string } {
-	const spec = parseCompactionThreshold(raw);
-	if (spec.kind === "percent") return { mode: "percent" };
-	if (spec.kind === "tokens") return { mode: "tokens" };
-	return { mode: "auto", ...(spec.invalidRaw !== undefined ? { invalidRaw: spec.invalidRaw } : {}) };
-}
-
-/** Short display form for a stored threshold: `200000` renders `200k`, `1000000` renders `1M`, a percent normalizes to `<n>%` (`85 %` renders */
-function formatThresholdShort(raw: string): string {
-	const spec = parseCompactionThreshold(raw);
-	if (spec.kind === "tokens") {
-		if (spec.tokens % 1_000_000 === 0) return `${spec.tokens / 1_000_000}M`;
-		if (spec.tokens % 1_000 === 0) return `${spec.tokens / 1_000}k`;
-		return String(spec.tokens);
-	}
-	if (spec.kind === "percent") return `${spec.percent}%`;
-	return raw;
-}
-
-/** Two-level picker for `compaction.threshold`: mode first (Auto / Percent / Tokens), then the mode's values. The flat submenu listed all 19 presets in */
-class CompactionThresholdSubmenu extends MouseRoutedSubmenu {
-	#selectList: SelectList | undefined;
-
-	constructor(
-		private readonly options: ReadonlyArray<SubmenuOption>,
-		private readonly onPersist: () => void,
-		private readonly onClose: () => void,
-		private readonly requestRender?: () => void,
-	) {
-		super();
-		this.#showModes();
-	}
-
-	/** The raw stored value; read fresh so re-renders after a persist show the new pick. */
-	#currentRaw(): string {
-		return String(settings.get("compaction.threshold") ?? AUTO_COMPACTION_THRESHOLD);
-	}
-
-	/** Green check for the active row, blank padding for the rest, so labels align. */
-	#marker(active: boolean): string {
-		return active ? `${theme.fg("success", theme.status.enabled)} ` : "  ";
-	}
-
-	#showModes(): void {
-		this.clear();
-		this.#selectList = undefined;
-		this.addChild(new Text(theme.bold(theme.fg("accent", "Auto-Compaction Threshold")), 0, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(
-				theme.fg(
-					"muted",
-					"When auto-compaction triggers. Auto uses the model's window minus the reserve; a percent scales with each model's window; a token amount is the same trigger on every model.",
-				),
-				0,
-				0,
-			),
-		);
-		this.addChild(new Spacer(1));
-
-		const raw = this.#currentRaw();
-		const { mode, invalidRaw } = thresholdModeOf(raw);
-		if (invalidRaw !== undefined) {
-			this.addChild(
-				new Text(
-					theme.fg(
-						"warning",
-						`Stored value "${invalidRaw}" is not auto, a percent, or a token amount; Auto is in effect.`,
-					),
-					0,
-					0,
-				),
-			);
-			this.addChild(new Spacer(1));
-		}
-
-		// The current amount rides on the Percent/Tokens rows; Auto names itself.
-		const current = theme.fg("dim", `(current: ${formatThresholdShort(raw)})`);
-		const items: SelectItem[] = [
-			{
-				value: "auto",
-				label: `${this.#marker(mode === "auto")}Auto`,
-				description: "The model's context window minus the reserve",
-			},
-			{
-				value: "percent",
-				label: `${this.#marker(mode === "percent")}Percent${mode === "percent" ? ` ${current}` : ""}`,
-				description: "Scales with each model's window",
-			},
-			{
-				value: "tokens",
-				label: `${this.#marker(mode === "tokens")}Tokens${mode === "tokens" ? ` ${current}` : ""}`,
-				description: "The same trigger on every model",
-			},
-		];
-
-		this.#selectList = new SelectList(items, items.length, getSelectListTheme());
-		this.#selectList.setSelectedIndex(items.findIndex(item => item.value === mode));
-		this.#selectList.onSelect = item => {
-			if (item.value === "auto") {
-				this.#persist(AUTO_COMPACTION_THRESHOLD);
-				return;
-			}
-			if (item.value === "percent" || item.value === "tokens") {
-				this.#showValuePicker(item.value);
-				this.requestRender?.();
-			}
-		};
-		this.#selectList.onCancel = this.onClose;
-		this.addChild(this.#selectList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to choose · Esc to go back"), 0, 0));
-	}
-
-	#showValuePicker(mode: "percent" | "tokens"): void {
-		this.clear();
-		this.#selectList = undefined;
-		const title = mode === "percent" ? "Auto-Compaction Threshold — Percent" : "Auto-Compaction Threshold — Tokens";
-		this.addChild(new Text(theme.bold(theme.fg("accent", title)), 0, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(
-				theme.fg(
-					"muted",
-					mode === "percent"
-						? "Compact once the context passes this share of the model's window. Follows the window when you switch models."
-						: "Compact once the context passes this many tokens, on every model. Larger than the window compacts at the window's edge instead.",
-				),
-				0,
-				0,
-			),
-		);
-		this.addChild(new Spacer(1));
-
-		const raw = this.#currentRaw();
-		const presets = this.options.filter(option =>
-			mode === "percent" ? option.value.endsWith("%") : /^[0-9_]+$/.test(option.value),
-		);
-		const items: SelectItem[] = presets.map(option => ({
-			value: option.value,
-			label: `${this.#marker(option.value === raw)}${option.label}`,
-			...(option.description !== undefined ? { description: option.description } : {}),
-		}));
-		// A stored value no preset spells (hand-edited config, legacy fold-in)
-		// still gets a truthful row, checked, instead of vanishing behind Custom.
-		if (thresholdModeOf(raw).mode === mode && !presets.some(option => option.value === raw)) {
-			items.unshift({
-				value: raw,
-				label: `${this.#marker(true)}${formatThresholdShort(raw)} ${theme.fg("dim", "(custom)")}`,
-				description: "Set by hand; not one of the presets",
-			});
-		}
-		items.push({
-			value: THRESHOLD_CUSTOM_VALUE,
-			label: `  Custom…`,
-			description: mode === "percent" ? "Type any whole percent from 1 to 99" : "Type any token amount",
-		});
-
-		this.#selectList = new SelectList(items, Math.min(items.length, 10), getSelectListTheme());
-		const currentIndex = items.findIndex(item => item.value === raw);
-		if (currentIndex !== -1) this.#selectList.setSelectedIndex(currentIndex);
-		this.#selectList.onSelect = item => {
-			if (item.value === THRESHOLD_CUSTOM_VALUE) {
-				this.#showCustomInput(mode);
-			} else {
-				this.#persist(item.value);
-			}
-			this.requestRender?.();
-		};
-		this.#selectList.onCancel = () => {
-			this.#showModes();
-			this.requestRender?.();
-		};
-		this.addChild(this.#selectList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to select · Esc to go back"), 0, 0));
-	}
-
-	#showCustomInput(mode: "percent" | "tokens"): void {
-		this.clear();
-		this.#selectList = undefined;
-		const raw = this.#currentRaw();
-		const input = new TextInputSubmenu(
-			mode === "percent" ? "Custom Percent" : "Custom Token Amount",
-			mode === "percent"
-				? "A whole percent from 1 to 99 (the parser's clamp range); the % sign is optional."
-				: "A positive token amount, e.g. 170000. Underscores are fine (170_000).",
-			thresholdModeOf(raw).mode === mode ? raw : "",
-			value => {
-				this.#persist(this.#validateCustom(mode, value));
-				this.requestRender?.();
-			},
-			() => {
-				this.#showValuePicker(mode);
-				this.requestRender?.();
-			},
-		);
-		this.addChild(input);
-	}
-
-	/** Validate and normalize a typed value to its stored form. Throws with the fix in the message; TextInputSubmenu renders it in the error line. */
-	#validateCustom(mode: "percent" | "tokens", value: string): string {
-		const text = value.trim();
-		if (mode === "percent") {
-			const percent = Number(text.replace(/%$/, "").trim());
-			if (!Number.isInteger(percent) || percent < 1 || percent > 99) {
-				throw new Error(`"${value}" is not a whole percent from 1 to 99.`);
-			}
-			return `${percent}%`;
-		}
-		const tokens = Number(text.replace(/_/g, ""));
-		if (!Number.isInteger(tokens) || tokens <= 0) {
-			throw new Error(`"${value}" is not a positive token amount (e.g. 170000).`);
-		}
-		return String(tokens);
-	}
-
-	#persist(value: string): void {
-		settings.set("compaction.threshold", value);
-		this.onPersist();
-		this.#showModes();
-		this.requestRender?.();
-	}
-
-	/** The list is the only interactive child; undefined in the custom-input state, which consumes pointer events silently. */
-	mouseTarget(): SelectList | undefined {
-		return this.#selectList;
-	}
-
-	handleInput(data: string): void {
-		if (this.#selectList) {
-			this.#selectList.handleInput(data);
-			return;
-		}
-		this.children[0]?.handleInput?.(data);
-	}
-}
-
-class ProviderLimitsSubmenu extends MouseRoutedSubmenu {
-	#selectList: SelectList | undefined;
-
-	constructor(
-		private readonly providers: readonly string[],
-		private readonly onChange: (value: Record<string, number>) => void,
-		private readonly onCancel: () => void,
-		private readonly requestRender?: () => void,
-	) {
-		super();
-		this.#showProviderList();
-	}
-
-	#providerIds(): string[] {
-		const limits = normalizeProviderMaxInFlightRequests(settings.get("providers.maxInFlightRequests"));
-		return Array.from(new Set(this.providers.concat(Object.keys(limits)))).sort((a, b) => a.localeCompare(b));
-	}
-
-	#showProviderList(): void {
-		this.clear();
-		this.addChild(new Text(theme.bold(theme.fg("accent", "Max In-Flight Requests")), 0, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(
-				theme.fg(
-					"muted",
-					"Select a provider, enter a positive number to cap concurrent LLM requests, or clear it for unlimited.",
-				),
-				0,
-				0,
-			),
-		);
-		this.addChild(new Spacer(1));
-
-		const limits = normalizeProviderMaxInFlightRequests(settings.get("providers.maxInFlightRequests"));
-		const providerItems = this.#providerIds().map((provider): SelectItem => {
-			const limit = limits[provider];
-			return {
-				value: provider,
-				label: provider,
-				description: limit === undefined ? "Unlimited" : `Limit: ${limit}`,
-			};
-		});
-		const clearItem: SelectItem[] =
-			Object.keys(limits).length === 0
-				? []
-				: [{ value: "__clear_all", label: "Clear all limits", description: "Make every provider unlimited" }];
-		const items = providerItems.concat(clearItem);
-		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
-		this.#selectList.onSelect = item => {
-			if (item.value === "__clear_all") {
-				settings.set("providers.maxInFlightRequests", {});
-				this.onChange({});
-				this.#showProviderList();
-				this.requestRender?.();
-				return;
-			}
-			this.#showProviderEditor(item.value);
-		};
-		this.#selectList.onCancel = this.onCancel;
-		this.addChild(this.#selectList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to edit provider · Esc to go back"), 0, 0));
-	}
-
-	#showProviderEditor(provider: string): void {
-		const limits = normalizeProviderMaxInFlightRequests(settings.get("providers.maxInFlightRequests"));
-		this.clear();
-		this.#selectList = undefined;
-		this.addChild(
-			new TextInputSubmenu(
-				`Max In-Flight Requests: ${provider}`,
-				"Enter a positive number. Decimals round down. Clear the field to make this provider unlimited.",
-				limits[provider]?.toString() ?? "",
-				value => {
-					const next = { ...limits };
-					const trimmed = value.trim();
-					if (trimmed === "") {
-						delete next[provider];
-					} else {
-						const limit = Number(trimmed);
-						if (!Number.isFinite(limit) || limit <= 0) throw new Error("Limit must be a positive number.");
-						next[provider] = Math.max(1, Math.floor(limit));
-					}
-					const normalized = validateProviderMaxInFlightRequests(next);
-					settings.set("providers.maxInFlightRequests", normalized);
-					this.onChange(normalized);
-					this.#showProviderList();
-					this.requestRender?.();
-				},
-				() => {
-					this.#showProviderList();
-					this.requestRender?.();
-				},
-			),
-		);
-	}
-
-	/** The list is the only interactive child; undefined in the provider editor state, which consumes pointer events silently. */
-	mouseTarget(): SelectList | undefined {
-		return this.#selectList;
-	}
-
-	handleInput(data: string): void {
-		if (this.#selectList) {
-			this.#selectList.handleInput(data);
-			return;
-		}
-		this.children[0]?.handleInput?.(data);
-	}
-}
-
-/** Bare `provider/id` for picker preselection from a stored value that may carry a `:effort` suffix (`provider/id:high`) — the encoding */
-export function barePickerSelector(raw: string | undefined, models: ReadonlyArray<Model<Api>>): string | undefined {
-	if (!raw) return undefined;
-	const resolved = resolveModelRoleValue(raw, models).model;
-	return resolved ? `${resolved.provider}/${resolved.id}` : raw;
-}
-
-/** Append or replace one chain position without allowing the same logical model to occupy two fallback slots under different effort suffixes. */
-export function replaceModelChainEntry(
-	chain: readonly string[],
-	index: number | null,
-	value: string,
-	models: ReadonlyArray<Model<Api>>,
-): string[] | undefined {
-	const trimmed = value.trim();
-	if (trimmed === "") return undefined;
-	const bare = barePickerSelector(trimmed, models);
-	const duplicate = chain.some(
-		(candidate, candidateIndex) => candidateIndex !== index && barePickerSelector(candidate, models) === bare,
-	);
-	if (duplicate) return undefined;
-	const next = chain.slice();
-	if (index === null) {
-		next.push(trimmed);
-		return next;
-	}
-	if (!Number.isInteger(index) || index < 0 || index >= next.length) return undefined;
-	next[index] = trimmed;
-	return next;
-}
-
-/** Role list → reusable {@link ModelSelectorPanel} for each role. Assignments write through `settings.setModelRole` (profile-scoped). */
-class ModelRolesSubmenu extends MouseRoutedSubmenu {
-	#selectList: SelectList | undefined;
-	#models: ReadonlyArray<Model>;
-	#registry: ModelRegistry;
-
-	constructor(
-		models: ReadonlyArray<Model>,
-		registry: ModelRegistry,
-		private readonly onChange: () => void,
-		private readonly onCancel: () => void,
-		private readonly requestRender?: () => void,
-	) {
-		super();
-		this.#models = models;
-		this.#registry = registry;
-		this.#showRoleList();
-	}
-
-	#showRoleList(): void {
-		this.clear();
-		this.addChild(new Text(theme.bold(theme.fg("accent", "Role Models")), 0, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(
-				theme.fg(
-					"muted",
-					"Assign a model per role. Searchable picker · auth status on each row. Per active profile.",
-				),
-				0,
-				0,
-			),
-		);
-		this.addChild(new Spacer(1));
-
-		const items: SelectItem[] = SELECTABLE_MODEL_ROLE_IDS.map(role => {
-			const info = getRoleInfo(role, settings);
-			const assigned = settings.getModelRole(role)?.trim();
-			return {
-				value: role,
-				label: info.name,
-				description:
-					assigned && assigned.length > 0
-						? formatSelectorSummary(assigned)
-						: (info.unsetLabel ?? ROLE_INHERIT_LABEL),
-			};
-		});
-		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
-		this.#selectList.onSelect = item => {
-			this.#showModelPicker(item.value);
-		};
-		this.#selectList.onCancel = this.onCancel;
-		this.addChild(this.#selectList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to pick model · Esc to go back"), 0, 0));
-	}
-
-	#showModelPicker(role: string): void {
-		this.clear();
-		this.#selectList = undefined;
-		const info = getRoleInfo(role, settings);
-		const current = settings.getModelRole(role)?.trim();
-		const panel = new ModelSelectorPanel(
-			settings,
-			this.#registry,
-			this.#models,
-			{
-				title: `${info.name} model`,
-				description: `Role \`${role}\` — used when that work type runs. Del or the (inherit) row clears (${info.unsetLabel ?? "inherit main model"}).`,
-				currentSelector: barePickerSelector(current, this.#models as Model<Api>[]),
-				allowClear: true,
-			},
-			{
-				onPick: (model, selector) => {
-					if (!hasConfigurableThinkingEffort(model)) {
-						this.#persistRole(role, selector);
-						return;
-					}
-					this.#showEffortPicker(role, selector, model);
-					this.requestRender?.();
-				},
-				onClear: () => {
-					settings.setModelRole(role, undefined);
-					this.onChange();
-					this.#showRoleList();
-					this.requestRender?.();
-				},
-				onCancel: () => {
-					this.#showRoleList();
-					this.requestRender?.();
-				},
-			},
-		);
-		panel.setHoverMotion({ requestRender: () => this.requestRender?.(), enabled: pointerMotionEnabled() });
-		this.addChild(panel);
-	}
-
-	#showEffortPicker(role: string, selector: string, model: Model): void {
-		this.#selectList = renderEffortStep(
-			this,
-			selector,
-			model,
-			value => this.#persistRole(role, value),
-			() => {
-				this.#showModelPicker(role);
-				this.requestRender?.();
-			},
-		);
-	}
-
-	#persistRole(role: string, value: string): void {
-		settings.setModelRole(role, value);
-		this.onChange();
-		this.#showRoleList();
-		this.requestRender?.();
-	}
-
-	/** The role list or effort list; the model-picker state targets its panel. */
-	mouseTarget(): SelectList | ModelSelectorPanel | undefined {
-		return this.#selectList ?? this.#pickerPanel();
-	}
-
-	#pickerPanel(): ModelSelectorPanel | undefined {
-		return this.children.find((child): child is ModelSelectorPanel => child instanceof ModelSelectorPanel);
-	}
-
-	handleInput(data: string): void {
-		if (this.#selectList) {
-			this.#selectList.handleInput(data);
-			return;
-		}
-		this.children[0]?.handleInput?.(data);
-	}
-}
-
-/** Rows either rule screen shows before it scrolls, and the line above which `SelectList` starts accepting a typed filter query. */
-const RULE_LIST_MAX_ROWS = 12;
-
-/** Section order on the rule screen, and what each heading says. A rule the project itself supplies comes first: it is the one the reader */
-const BUNDLED_SECTION_ORDER: readonly BuiltinRuleSection[] = Object.keys(BUILTIN_RULE_SECTIONS) as BuiltinRuleSection[];
-
-function ruleSectionRank(rule: Rule): number {
-	// The operator's own rules lead the list: they are the ones this screen
-	// exists to manage, and every forged `/omfg` rule lands among them.
-	if (rule._source?.provider === NATIVE_RULES_PROVIDER_ID) return -2;
-	if (rule._source?.provider !== BUILTIN_DEFAULTS_PROVIDER_ID) return -1;
-	const index = BUNDLED_SECTION_ORDER.indexOf(rule.section as BuiltinRuleSection);
-	// A bundled rule whose section is not one we know sorts after every known
-	// one rather than silently joining the user group at the top.
-	return index < 0 ? BUNDLED_SECTION_ORDER.length : index;
-}
-
-/** The heading a rule renders under. */
-function ruleSectionLabel(rule: Rule): string {
-	if (rule._source?.provider === NATIVE_RULES_PROVIDER_ID) {
-		return "User created";
-	}
-	if (rule._source?.provider !== BUILTIN_DEFAULTS_PROVIDER_ID) {
-		return rule._source?.provider ? `From ${rule._source.provider}` : "From this project";
-	}
-	const meta = BUILTIN_RULE_SECTIONS[rule.section as BuiltinRuleSection];
-	return meta ? `Built-in · ${meta.label}` : "Built-in";
-}
-
-/** The rule list: every rule this project loads, each on or off. Backed by `ttsr.disabledRules`, which stores exceptions only. The list itself is */
-class RulesSubmenu extends MouseRoutedSubmenu {
-	#selectList: SelectList | undefined;
-	#rules: Rule[] = [];
-	#loadError: string | undefined;
-	#loaded = false;
-	/** Kept by NAME, not index: toggling re-sorts nothing but re-creates the list. */
-	#focused: string | undefined;
-	/** The section being browsed, or undefined at the index. Two levels, one field. */
-	#openSection: string | undefined;
-	/** Which section row to land back on when you leave one. */
-	#focusedSection: string | undefined;
-
-	constructor(
-		private readonly cwd: string,
-		private readonly onChange: () => void,
-		private readonly onCancel: () => void,
-		private readonly requestRender?: () => void,
-	) {
-		super();
-		this.#show();
-		void this.#load();
-	}
-
-	async #load(): Promise<void> {
-		try {
-			const result = await loadCapability<Rule>(ruleCapability.id, { cwd: this.cwd });
-			// First wins by name: providers arrive in priority order and a project rule
-			// overriding a bundled one of the same name is ONE rule, shown once, whose
-			// toggle governs whichever copy actually loads.
-			const byName = new Map<string, Rule>();
-			for (const rule of result.items) if (!byName.has(rule.name)) byName.set(rule.name, rule);
-			this.#rules = Array.from(byName.values()).sort(
-				(a, b) => ruleSectionRank(a) - ruleSectionRank(b) || a.name.localeCompare(b.name),
-			);
-		} catch (error) {
-			// Loud: a partial list reads as "these are all the rules there are", and the
-			// reader would turn one off believing the rest do not exist.
-			this.#loadError = errorMessage(error);
-		}
-		this.#loaded = true;
-		this.#show();
-		this.requestRender?.();
-	}
-
-	/** Names currently turned off, trimmed the same way `bucketRules` trims them. */
-	#disabled(): Set<string> {
-		return this.#nameSet("ttsr.disabledRules");
-	}
-
-	/** Experimental rules the operator turned on; empty on a stock install. */
-	#enabledExperiments(): Set<string> {
-		return this.#nameSet("ttsr.experimentalRules");
-	}
-
-	#nameSet(path: "ttsr.disabledRules" | "ttsr.experimentalRules"): Set<string> {
-		const stored = settings.get(path);
-		const names = Array.isArray(stored) ? stored : [];
-		return new Set(names.map(name => String(name).trim()).filter(name => name.length > 0));
-	}
-
-	/** Flip one rule, writing to whichever list expresses "off" for it. An experimental rule ships off, so its on-state lives in an opt-in list and */
-	#toggle(name: string): void {
-		const rule = this.#rules.find(candidate => candidate.name === name);
-		if (rule?.experimental === true) {
-			const enabled = this.#enabledExperiments();
-			if (enabled.has(name)) enabled.delete(name);
-			else enabled.add(name);
-			settings.set("ttsr.experimentalRules", Array.from(enabled).sort());
-		} else {
-			const disabled = this.#disabled();
-			if (disabled.has(name)) disabled.delete(name);
-			else disabled.add(name);
-			settings.set("ttsr.disabledRules", Array.from(disabled).sort());
-		}
-		this.onChange();
-		this.#focused = name;
-		this.#show();
-		this.requestRender?.();
-	}
-
-	/** How this rule reaches the model, which decides what turning it off costs. The three buckets are `bucketRules`', in its precedence order, so this cannot */
-	#kind(rule: Rule): string {
-		if ((rule.condition?.length ?? 0) > 0 || (rule.astCondition?.length ?? 0) > 0) return "on match";
-		if (rule.alwaysApply === true) return "always";
-		if (rule.description) return "on request";
-		return "inert";
-	}
-
-	/** Whether a rule is currently reaching the model, by the same three levers the funnel reads. */
-	#isOff(rule: Rule, disabled: ReadonlySet<string>, experiments: ReadonlySet<string>, builtinOff: boolean): boolean {
-		if (disabled.has(rule.name)) return true;
-		if (builtinOff && rule._source?.provider === BUILTIN_DEFAULTS_PROVIDER_ID) return true;
-		// Experimental inverts the question: it is off unless opted in, so its row
-		// must read the opt-in list or every one of them would claim "on".
-		return rule.experimental === true && !experiments.has(rule.name);
-	}
-
-	/** The sections, in render order, each with the rules under it. */
-	#sections(): { label: string; rules: Rule[] }[] {
-		const sections: { label: string; rules: Rule[] }[] = [];
-		for (const rule of this.#rules) {
-			const label = ruleSectionLabel(rule);
-			const existing = sections.find(section => section.label === label);
-			if (existing) existing.rules.push(rule);
-			else sections.push({ label, rules: [rule] });
-		}
-		return sections;
-	}
-
-	/** What a section row says about itself without being opened. A two-level list buys a short first screen and costs the at-a-glance answer, */
-	#sectionSummary(rules: readonly Rule[], off: number): string {
-		const total = `${rules.length} rule${rules.length === 1 ? "" : "s"}`;
-		if (off === 0) return `${total} · ${theme.fg("success", "all on")}`;
-		if (off === rules.length) return `${total} · ${theme.fg("dim", "all off")}`;
-		return `${total} · ${theme.fg("dim", `${off} off`)}`;
-	}
-
-	#header(subtitle: string): void {
-		this.clear();
-		this.addChild(new Text(theme.bold(theme.fg("accent", "Rules")), 0, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("muted", subtitle), 0, 0));
-		this.addChild(new Spacer(1));
-		this.#selectList = undefined;
-	}
-
-	/** Both warnings apply to every section, so they belong on the screen you always pass through. */
-	#warnings(builtinOff: boolean): void {
-		if (settings.get("ttsr.enabled") !== true) {
-			this.addChild(new Text(theme.fg("warning", "  Rule matching is off (Stream Interrupts → TTSR)."), 0, 0));
-			this.addChild(new Spacer(1));
-		}
-		if (builtinOff) {
-			this.addChild(new Text(theme.fg("warning", "  Built-in rules are off, so every bundled rule is."), 0, 0));
-			this.addChild(new Spacer(1));
-		}
-	}
-
-	/** Build the list plus the footer that describes it. The filter hint is conditional because the filter is: `SelectList` accepts a */
-	#finishList(items: SelectItem[], focused: string | undefined, action: string, back: string): void {
-		const visible = clamp(items.length, 1, RULE_LIST_MAX_ROWS);
-		// The name column shrinks to the longest name present rather than holding the default 32. A section summary is 17 characters and the fixed column left
-		this.#selectList = new SelectList(items, visible, getSelectListTheme(), {
-			minPrimaryColumnWidth: 1,
-			maxPrimaryColumnWidth: 32,
-		});
-		const focusedIndex = focused ? items.findIndex(item => item.value === focused) : -1;
-		if (focusedIndex >= 0) this.#selectList.setSelectedIndex(focusedIndex);
-		this.addChild(this.#selectList);
-		this.addChild(new Spacer(1));
-		const filterHint = items.length > visible ? " · type to filter" : "";
-		this.addChild(new Text(theme.fg("dim", `  ${action}${filterHint} · ${back}`), 0, 0));
-	}
-
-	#show(): void {
-		if (this.#loadError) {
-			this.#header("Every rule this project loads.");
-			this.addChild(new Text(theme.fg("error", `  Could not read the rule sources: ${this.#loadError}`), 0, 0));
-			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
-			return;
-		}
-		if (!this.#loaded) {
-			this.#header("Every rule this project loads.");
-			this.addChild(new Text(theme.fg("dim", "  Reading rules…"), 0, 0));
-			return;
-		}
-		if (this.#openSection === undefined) this.#showSections();
-		else this.#showSection(this.#openSection);
-	}
-
-	/** The index: one row per section, so the first screen is five rows rather than thirty-one. */
-	#showSections(): void {
-		const builtinOff = settings.get("ttsr.builtinRules") !== true;
-		this.#header("Rules by section. Enter opens one.");
-		this.#warnings(builtinOff);
-
-		const disabled = this.#disabled();
-		const experiments = this.#enabledExperiments();
-		const sections = this.#sections();
-		if (sections.length === 0) {
-			this.addChild(new Text(theme.fg("dim", "  No rules found."), 0, 0));
-			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
-			return;
-		}
-
-		const items: SelectItem[] = new Array(sections.length);
-		for (let si = 0; si < sections.length; si++) {
-			const section = sections[si]!;
-			let off = 0;
-			for (let ri = 0; ri < section.rules.length; ri++) {
-				if (this.#isOff(section.rules[ri]!, disabled, experiments, builtinOff)) off++;
-			}
-			items[si] = {
-				value: section.label,
-				label: section.label,
-				description: this.#sectionSummary(section.rules, off),
-			};
-		}
-		this.#finishList(items, this.#focusedSection, "Enter to open", "Esc to go back");
-		if (this.#selectList) {
-			this.#selectList.onSelect = item => {
-				this.#openSection = item.value;
-				this.#focusedSection = item.value;
-				this.#focused = undefined;
-				this.#show();
-				this.requestRender?.();
-			};
-			this.#selectList.onCancel = this.onCancel;
-		}
-	}
-
-	/** One section's rules. Esc returns to the index rather than leaving the list entirely. */
-	#showSection(label: string): void {
-		const builtinOff = settings.get("ttsr.builtinRules") !== true;
-		const section = this.#sections().find(candidate => candidate.label === label);
-		if (!section) {
-			// The section went away under us; the index is the only honest screen left.
-			this.#openSection = undefined;
-			this.#showSections();
-			return;
-		}
-		this.#header(`${label} — Enter turns a rule off, or back on.`);
-		this.#warnings(builtinOff);
-
-		const disabled = this.#disabled();
-		const experiments = this.#enabledExperiments();
-		const items: SelectItem[] = section.rules.map(rule => {
-			const state = this.#isOff(rule, disabled, experiments, builtinOff)
-				? theme.fg("dim", "off")
-				: theme.fg("success", "on");
-			const detail = rule.description ? ` · ${collapseWhitespace(rule.description)}` : "";
-			return {
-				value: rule.name,
-				label: rule.name,
-				description: `${state} · ${this.#kind(rule)}${detail}`,
-			};
-		});
-		this.#finishList(items, this.#focused, "Enter to toggle", "Esc for sections");
-		if (this.#selectList) {
-			this.#selectList.onSelect = item => this.#toggle(item.value);
-			this.#selectList.onCancel = () => {
-				this.#openSection = undefined;
-				this.#show();
-				this.requestRender?.();
-			};
-		}
-	}
-
-	/** The section/rule list is the only interactive child. */
-	mouseTarget(): SelectList | undefined {
-		return this.#selectList;
-	}
-
-	handleInput(data: string): void {
-		if (this.#selectList) {
-			this.#selectList.handleInput(data);
-			return;
-		}
-		this.children[0]?.handleInput?.(data);
-	}
-}
-
-/** Row ids inside the per-agent editor. NUL-prefixed for the same reason as {@link ADD_EFFORT_ROW}: an agent may legitimately be named `model`. */
-const AGENT_ROW_OFFERED = "\u0000agent-offered";
-const AGENT_ROW_NESTED = "\u0000agent-nested";
-const AGENT_ROW_RESET = "\u0000agent-reset";
-
-/** Row ids for the two settings the roster edits beside the agents themselves: the model and the effort every subagent runs. They appear at the top of the */
-const AGENT_ROW_MODEL = "\u0000subagent-model";
-const AGENT_ROW_EFFORT = "\u0000subagent-effort";
-
-/** The settings one pass through the roster can write. */
-type SubagentRosterPath = "subagent.agents" | "subagent.model" | "subagent.thinkingLevel";
-
-/** What `subagent.thinkingLevel` narrows against, as three distinct answers rather than one nullable model. */
-type SubagentEffortScope =
-	| { kind: "model"; model: Model }
-	| { kind: "unresolved"; pattern: string }
-	| { kind: "blanket" };
-
-/** The scope one resolved model pattern implies. Separate from the blanket-row reader below because a lane resolves its own head, and the narrowing rule */
-function effortScopeForPattern(
-	models: ReadonlyArray<Model> | undefined,
-	head: string | undefined,
-	sessionModel: Model | undefined,
-): SubagentEffortScope {
-	if (!head) return sessionModel ? { kind: "model", model: sessionModel } : { kind: "blanket" };
-	const bare = models ? barePickerSelector(head, models as Model<Api>[]) : head;
-	const found = models?.find(candidate => `${candidate.provider}/${candidate.id}` === bare);
-	return found ? { kind: "model", model: found } : { kind: "unresolved", pattern: head };
-}
-
-/** The blanket scope: what `subagent.model` resolves to for every lane with no override. */
-function subagentEffortScope(
-	models: ReadonlyArray<Model> | undefined,
-	sessionModel: Model | undefined,
-): SubagentEffortScope {
-	return effortScopeForPattern(
-		models,
-		resolveConfiguredModelPatterns(settings.get("subagent.model"), settings)[0],
-		sessionModel,
-	);
-}
-
-/** The picker rows and the sentence that explains a short list, from one scope. */
-function subagentEffortOptions(
-	scope: SubagentEffortScope,
-	catalog: ReadonlyArray<Model> | undefined,
-): { options: Array<{ value: string; label: string; description: string }>; notice: string | undefined } {
-	if (scope.kind === "unresolved") {
-		return {
-			options: configuredThinkingLevelOptions({
-				inheritLabel: "Inherit",
-				inheritDescription: "Follow the session's effort",
-			}).map(option => ({ ...option })),
-			notice: `No model in this session matches \`${scope.pattern}\`, so its effort levels are unknown. Inherit is the only choice that means anything until the chain resolves.`,
-		};
-	}
-	const options = configuredThinkingLevelOptions({
-		model: scope.kind === "model" ? scope.model : undefined,
-		scope: scope.kind === "blanket" ? catalog : undefined,
-		inheritLabel: "Inherit",
-		inheritDescription: "Follow the session's effort",
-	}).map(option => ({ ...option }));
-	if (options.length > 1) return { options, notice: undefined };
-	return {
-		options,
-		notice:
-			scope.kind === "model"
-				? noSelectableEffortNotice()
-				: "No model in this session declares a selectable effort, so only Inherit applies.",
-	};
-}
-
-/** Whether a lane at `depth` may run, with the default applied. `depth` is the lane's index in the chain, and lane index `i` is the process */
-function laneSpawnEnabled(lane: SubagentLaneSettings, depth: number, resolvedMax: number): boolean {
-	return lane.enabled ?? canSpawnAtDepth(resolvedMax, depth);
-}
-
-/** The settings path of one lane, which is what a page names when it clears itself. */
-function lanePath(name: string, depth: number): string {
-	return `subagent.agents.${name}${".subagents".repeat(depth)}`;
-}
-
-/** One lane with its empty fields dropped, or undefined when nothing is left. A lane that stores only `{}` — or only `{ subagents: {} }` — is a row that */
-function pruneLane(lane: SubagentLaneSettings): SubagentLaneSettings | undefined {
-	const cleaned: SubagentLaneSettings = {};
-	if (lane.enabled !== undefined) cleaned.enabled = lane.enabled;
-	if (lane.model !== undefined && (Array.isArray(lane.model) ? lane.model.length > 0 : lane.model.trim().length > 0)) {
-		cleaned.model = lane.model;
-	}
-	if (lane.thinkingLevel !== undefined && lane.thinkingLevel.trim().length > 0) {
-		cleaned.thinkingLevel = lane.thinkingLevel;
-	}
-	const child = lane.subagents === undefined ? undefined : pruneLane(lane.subagents);
-	if (child !== undefined) cleaned.subagents = child;
-	// The pre-tree number survives only while there is no chain. It still decides in that state, so dropping it on an unrelated toggle would silently change
-	if (lane.maxNestedSpawnDepth !== undefined && child === undefined) {
-		cleaned.maxNestedSpawnDepth = lane.maxNestedSpawnDepth;
-	}
-	return Object.keys(cleaned).length === 0 ? undefined : cleaned;
-}
-
-/** The `subagent.agents` table: the discovered agents, each with what it runs and what it may spawn. */
-class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
-	#selectList: SelectList | undefined;
-	#agents: AgentDefinition[] = [];
-	#loadError: string | undefined;
-	#loaded = false;
-	/** Where Esc goes while a message page (no list) is on screen. */
-	#escapeTo: (() => void) | undefined;
-
-	constructor(
-		private readonly cwd: string,
-		/** The session's live model, so an inheriting row shows what it will actually run. */
-		private readonly activeModelPattern: string | undefined,
-		/** The session's model, used to narrow the effort ladder when no chain is set. */
-		private readonly sessionModel: Model | undefined,
-		/** Every model this session knows. Narrowing an effort ladder needs only this; the chain picker below additionally needs a registry, and a host */
-		private readonly models: ReadonlyArray<Model> | undefined,
-		/** Catalog plus registry for the model chain picker; absent in hosts with no model list. */
-		private readonly picker: { registry: ModelRegistry; models: ReadonlyArray<Model> } | undefined,
-		private readonly onChange: (path: SubagentRosterPath) => void,
-		private readonly onCancel: () => void,
-		private readonly requestRender?: () => void,
-	) {
-		super();
-		this.#showAgentList();
-		void this.#load();
-	}
-
-	async #load(): Promise<void> {
-		try {
-			const { agents } = await discoverAgents(this.cwd);
-			this.#agents = agents.slice().sort((a, b) => a.name.localeCompare(b.name));
-		} catch (error) {
-			// Loud: a discovery failure means the list is incomplete, and quietly
-			// showing a short list reads as "these are all the agents there are".
-			this.#loadError = errorMessage(error);
-		}
-		this.#loaded = true;
-		this.#showAgentList();
-		this.requestRender?.();
-	}
-
-	/** The stored table, always an object so callers can spread it. */
-	#table(): Record<string, SubagentAgentSettings> {
-		const stored = settings.get("subagent.agents");
-		return stored && typeof stored === "object" ? ({ ...stored } as Record<string, SubagentAgentSettings>) : {};
-	}
-
-	#row(name: string): SubagentAgentSettings {
-		return { ...subagentSettingsFor(settings, name) };
-	}
-
-	/** The lane a page is showing: `[]` is the agent's own page, `["subagents"]` the page for what it may spawn, and one more step per level below that. */
-	#lane(name: string, depth: number): SubagentLaneSettings {
-		let lane: SubagentLaneSettings = this.#row(name);
-		for (let step = 0; step < depth; step++) lane = lane.subagents ?? {};
-		return { ...lane };
-	}
-
-	/** Write one lane back into its agent's row, rebuilding the chain above it. Empty fields and empty lanes are dropped on the way up, and a row left with */
-	#writeLane(name: string, depth: number, next: SubagentLaneSettings): void {
-		const chain: SubagentLaneSettings[] = [];
-		let lane: SubagentLaneSettings = this.#row(name);
-		for (let step = 0; step < depth; step++) {
-			chain.push(lane);
-			lane = lane.subagents ?? {};
-		}
-		let rebuilt = pruneLane(next);
-		for (let step = chain.length - 1; step >= 0; step--) {
-			rebuilt = pruneLane({ ...chain[step], subagents: rebuilt });
-		}
-
-		const table = this.#table();
-		if (rebuilt === undefined) delete table[name];
-		else table[name] = rebuilt;
-		settings.set("subagent.agents", table);
-		this.onChange("subagent.agents");
-	}
-
-	/** One agent's model column: the resolved pattern plus the layer that chose it. */
-	#modelSummary(agent: AgentDefinition, depth = 0): string {
-		// `taskDepth` is the depth a SPAWN runs at, and a lane page describes exactly one: the agent's own page is a direct child (depth 1), each level down is
-		const resolved = resolveSubagentModel({
-			settings,
-			agentName: agent.name,
-			agentModel: agent.model,
-			activeModelPattern: this.activeModelPattern,
-			taskDepth: depth + 1,
-		});
-		if (resolved.unresolved) return theme.fg("error", `${resolved.unresolved.value} matches no model`);
-		const pattern = resolved.patterns[0];
-		if (!pattern) return theme.fg("dim", "no model resolved");
-		// The column used to print `patterns[0]` and drop the rest, so an agent
-		// with three configured models looked identical to one with a single
-		// model and there was no way to tell a chain had been configured at all.
-		const fallbacks = resolved.patterns.length - 1;
-		const summary =
-			fallbacks > 0
-				? `${formatSelectorSummary(pattern)} ${theme.fg("dim", `+${fallbacks} fallback${fallbacks === 1 ? "" : "s"}`)}`
-				: formatSelectorSummary(pattern);
-		return resolved.source === "inherit"
-			? theme.fg("dim", `inherit · ${summary}`)
-			: `${summary} ${theme.fg("dim", `· ${subagentModelSourceLabel(resolved.source, agent.name, resolved.depth)}`)}`;
-	}
-
-	/** One lane's Model row: what it stores, or the level it inherits from. The stored value rather than the resolved one, because this row EDITS the */
-	#laneModelSummary(lane: SubagentLaneSettings, depth: number): string {
-		const chain = lane.model;
-		if (chain === undefined || (Array.isArray(chain) ? chain.length === 0 : chain.trim().length === 0)) {
-			return theme.fg("dim", depth === 0 ? "inherit · the session's model" : "inherit · the level above");
-		}
-		const entries = Array.isArray(chain) ? chain : [chain];
-		const head = entries[0] ?? "";
-		const fallbacks = entries.length - 1;
-		return fallbacks > 0
-			? `${formatSelectorSummary(head)} ${theme.fg("dim", `+${fallbacks} fallback${fallbacks === 1 ? "" : "s"}`)}`
-			: formatSelectorSummary(head);
-	}
-
-	/** One lane's Effort row, on the same stored-not-resolved rule as the model. */
-	#laneEffortSummary(lane: SubagentLaneSettings, depth: number): string {
-		const level = lane.thinkingLevel?.trim() ?? "";
-		return level.length > 0
-			? level
-			: theme.fg("dim", depth === 0 ? "inherit · the session's effort" : "inherit · the level above");
-	}
-
-	/** What this lane will actually run, as one read-only line: the resolved model with the layer that chose it, plus the effort resolved on its own axis. The */
-	#runsSummary(agent: AgentDefinition, depth = 0): string {
-		const model = this.#modelSummary(agent, depth);
-		const head = resolveSubagentModel({
-			settings,
-			agentName: agent.name,
-			agentModel: agent.model,
-			activeModelPattern: this.activeModelPattern,
-			taskDepth: depth + 1,
-		}).patterns[0];
-		// A `:level` suffix on the pattern already prints inside the model summary,
-		// and it outranks every effort layer, so printing a layer's answer beside it
-		// would show two efforts for one agent.
-		if (head && extractExplicitThinkingSelector(head, settings) !== undefined) return model;
-		const effort = resolveSubagentThinkingLevel({
-			settings,
-			agentName: agent.name,
-			agentThinkingLevel: agent.thinkingLevel,
-			taskDepth: depth + 1,
-		});
-		return `${model} ${theme.fg("dim", `· ${effort ?? "inherited"} effort`)}`;
-	}
-
-	#showAgentList(): void {
-		this.clear();
-		this.#escapeTo = undefined;
-		this.addChild(new Text(theme.bold(theme.fg("accent", "Subagents")), 0, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(
-				theme.fg(
-					"muted",
-					"Which subagent types this session offers, and what they all run. The first two rows are the model and the effort every subagent uses; the rest are the lanes.",
-				),
-				0,
-				0,
-			),
-		);
-		this.addChild(new Spacer(1));
-		this.#selectList = undefined;
-
-		if (this.#loadError) {
-			this.addChild(new Text(theme.fg("error", `  Could not read the agent directories: ${this.#loadError}`), 0, 0));
-			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
-			return;
-		}
-		if (!this.#loaded) {
-			this.addChild(new Text(theme.fg("dim", "  Reading subagents…"), 0, 0));
-			return;
-		}
-
-		// Whether this table has any effect is decided by `subagent.delegation` as well, and that setting is a row the reader is not looking at right now. So
-		const blocked = delegationBlockedNotice(
-			resolveDelegation(
-				settings,
-				this.#agents
-					.filter(agent => subagentEnableState(agent, this.#row(agent.name).enabled) === "on")
-					.map(agent => agent.name),
-			),
-		);
-		if (blocked) {
-			this.addChild(new Text(theme.fg("warning", `  ${blocked}`), 0, 0));
-			this.addChild(new Spacer(1));
-		}
-
-		// The two settings that decide what a lane RUNS come first, because that is
-		// the question the roster raises and it used to be answered on another
-		// screen. They are the blanket settings, not a per-agent copy.
-		const items: SelectItem[] = [
-			{
-				value: AGENT_ROW_MODEL,
-				label: "Model",
-				description: `every subagent · ${this.#blanketModelSummary()}`,
-			},
-			{
-				value: AGENT_ROW_EFFORT,
-				label: "Effort",
-				description: `every subagent · ${this.#blanketEffortSummary()}`,
-			},
-			...this.#agents.map(agent => ({
-				value: agent.name,
-				label: agent.name,
-				description: `${SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, this.#row(agent.name).enabled)]} · ${this.#modelSummary(agent)}`,
-			})),
-		];
-		// A session that discovered no lanes still has a model and an effort every
-		// spawn would use, so the note goes ABOVE the rows rather than replacing
-		// them: an early return here left the reader on a screen with nothing on it.
-		if (this.#agents.length === 0) {
-			this.addChild(new Text(theme.fg("dim", "  No subagent types found."), 0, 0));
-			this.addChild(new Spacer(1));
-		}
-
-		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
-		this.#selectList.onSelect = item => {
-			if (item.value === AGENT_ROW_MODEL) this.#showModelPicker(() => this.#showAgentList());
-			else if (item.value === AGENT_ROW_EFFORT) this.#showEffortPicker(() => this.#showAgentList());
-			else this.#showAgentEditor(item.value);
-			this.requestRender?.();
-		};
-		this.#selectList.onCancel = this.onCancel;
-		this.addChild(this.#selectList);
-
-		// The highlighted agent's own description, under the list rather than beside the name. This is the screen where you decide which lanes to offer, and it
-		const detail = new Text(this.#detailText(items[0]?.value), 0, 0);
-		this.#selectList.onSelectionChange = item => {
-			if (detail.setText(this.#detailText(item.value))) this.requestRender?.();
-		};
-		this.addChild(new Spacer(1));
-		this.addChild(detail);
-		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(theme.fg("dim", "  Enter to configure · /agents to write agent files · Esc to go back"), 0, 0),
-		);
-	}
-
-	#agent(name: string): AgentDefinition | undefined {
-		return this.#agents.find(candidate => candidate.name === name);
-	}
-
-	/** The highlighted row's own line: what that lane is for, or what a setting does. */
-	#detailText(name: string | undefined): string {
-		if (name === AGENT_ROW_MODEL) {
-			return theme.fg(
-				"muted",
-				"  The model chain every subagent runs. Unset means they follow this session's model.",
-			);
-		}
-		if (name === AGENT_ROW_EFFORT) {
-			return theme.fg(
-				"muted",
-				"  The thinking effort every subagent runs at. Inherit follows this session's effort.",
-			);
-		}
-		const description = name ? this.#agent(name)?.description?.trim() : undefined;
-		return description ? theme.fg("muted", `  ${description}`) : "";
-	}
-
-	/** The blanket model chain, as the roster's own row shows it. */
-	#blanketModelSummary(): string {
-		const chain = normalizeModelPatternList(settings.get("subagent.model"));
-		const head = chain[0];
-		if (!head) return theme.fg("dim", `inherit · ${this.activeModelPattern ?? "session model"}`);
-		const fallbacks = chain.length - 1;
-		return fallbacks > 0
-			? `${formatSelectorSummary(head)} ${theme.fg("dim", `+${fallbacks} fallback${fallbacks === 1 ? "" : "s"}`)}`
-			: formatSelectorSummary(head);
-	}
-
-	/** The blanket effort, or the word for having none. */
-	#blanketEffortSummary(): string {
-		const stored = settings.get("subagent.thinkingLevel");
-		const level = typeof stored === "string" ? stored.trim() : "";
-		return level.length > 0 ? level : theme.fg("dim", "inherit");
-	}
-
-	/** One lane's page. `depth` 0 is the agent itself; each step down is one `Subagents` row followed, and the page shape never changes. */
-	#showAgentEditor(name: string, depth = 0): void {
-		const agent = this.#agent(name);
-		if (!agent) {
-			this.#showAgentList();
-			return;
-		}
-		const lane = this.#lane(name, depth);
-		const child = lane.subagents ?? {};
-		// The cap this agent's whole tree runs under, asked once: every default on
-		// this page is read off it, so the page cannot claim a level the spawn gate
-		// would refuse.
-		const resolvedMax = resolveSubagentMaxNestedSpawnDepth(settings, name);
-		const spawnAllowed = laneSpawnEnabled(child, depth + 1, resolvedMax);
-
-		this.clear();
-		this.#escapeTo = undefined;
-		// The trail, not just the name: three levels down, "Subagent: deep" alone
-		// cannot say which of the three pages you are on.
-		const trail = depth === 0 ? `Subagent: ${name}` : `${name}${" › subagents".repeat(depth)}`;
-		this.addChild(new Text(theme.bold(theme.fg("accent", trail)), 0, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(
-				theme.fg(
-					"muted",
-					depth === 0
-						? agent.description || `${agent.source} subagent`
-						: `What ${depth === 1 ? name : "this lane"} may spawn. Unset follows the level above.`,
-				),
-				0,
-				0,
-			),
-		);
-		this.addChild(new Spacer(1));
-		// What this lane runs, resolved, above the rows that change it — and the
-		// rows below change THIS lane, so the reader is never sent elsewhere to
-		// edit the value they are looking at.
-		this.addChild(new Text(`  ${theme.fg("muted", "Runs")} ${this.#runsSummary(agent, depth)}`, 0, 0));
-		this.addChild(new Spacer(1));
-		const items: SelectItem[] = [
-			{
-				value: AGENT_ROW_OFFERED,
-				label: "Enabled",
-				// At depth 0 this is whether the model may choose the agent. Below it, whether this lane may run at all — which IS the depth limit, so no
-				description:
-					depth === 0
-						? `${SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, lane.enabled)]}${
-								isSubagentEnableDefaulted(lane.enabled) ? theme.fg("dim", " (default)") : ""
-							}`
-						: `${laneSpawnEnabled(lane, depth, resolvedMax) ? "on" : "off"}${
-								lane.enabled === undefined ? theme.fg("dim", " (default)") : ""
-							}`,
-			},
-			{
-				value: AGENT_ROW_MODEL,
-				label: "Model",
-				description: this.#laneModelSummary(lane, depth),
-			},
-			{
-				value: AGENT_ROW_EFFORT,
-				label: "Effort",
-				description: this.#laneEffortSummary(lane, depth),
-			},
-			{
-				value: AGENT_ROW_NESTED,
-				label: "Subagents",
-				description: spawnAllowed
-					? this.#laneModelSummary(child, depth + 1)
-					: theme.fg("dim", "off · this lane may not spawn"),
-			},
-		];
-		if (Object.keys(lane).length > 0) {
-			items.push({
-				value: AGENT_ROW_RESET,
-				label: "Reset to defaults",
-				description: theme.fg("dim", `clears ${lanePath(name, depth)}`),
-			});
-		}
-
-		this.#selectList = new SelectList(items, Math.max(1, items.length), getSelectListTheme());
-		this.#selectList.onSelect = item => {
-			switch (item.value) {
-				case AGENT_ROW_OFFERED:
-					this.#writeLane(
-						name,
-						depth,
-						depth === 0
-							? { ...lane, enabled: nextSubagentEnableValue(agent, lane.enabled) }
-							: { ...lane, enabled: !laneSpawnEnabled(lane, depth, resolvedMax) },
-					);
-					this.#showAgentEditor(name, depth);
-					break;
-				case AGENT_ROW_MODEL:
-					this.#showLaneModelPicker(name, depth);
-					break;
-				case AGENT_ROW_EFFORT:
-					this.#showLaneEffortPicker(name, depth);
-					break;
-				case AGENT_ROW_NESTED:
-					this.#showAgentEditor(name, depth + 1);
-					break;
-				case AGENT_ROW_RESET:
-					this.#writeLane(name, depth, {});
-					this.#showAgentEditor(name, depth);
-					break;
-			}
-			this.requestRender?.();
-		};
-		this.#selectList.onCancel = () => {
-			// Up one level, not out: three pages deep, Esc landing on the roster
-			// would throw away the trail the operator walked.
-			if (depth === 0) this.#showAgentList();
-			else this.#showAgentEditor(name, depth - 1);
-			this.requestRender?.();
-		};
-		this.addChild(this.#selectList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to change · Esc to go back"), 0, 0));
-	}
-
-	/** One lane's model chain, edited through the SAME chain editor every other model surface uses ({@link ModelChainSubmenu}) — handed a writer instead of */
-	#showLaneModelPicker(name: string, depth: number): void {
-		this.clear();
-		this.#selectList = undefined;
-		const back = () => this.#showAgentEditor(name, depth);
-		this.#escapeTo = back;
-		if (!this.picker) {
-			this.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
-			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
-			return;
-		}
-		const lane = this.#lane(name, depth);
-		this.addChild(
-			new ModelChainSubmenu(
-				{
-					write: chain => {
-						const next = { ...this.#lane(name, depth) };
-						if (chain === undefined) delete next.model;
-						else next.model = chain;
-						this.#writeLane(name, depth, next);
-					},
-				},
-				this.picker.registry,
-				this.picker.models,
-				depth === 0 ? `Model · ${name}` : `Model · what ${name} spawns${" (nested)".repeat(depth - 1)}`,
-				lane.model,
-				() => {
-					this.#escapeTo = undefined;
-					back();
-					this.requestRender?.();
-				},
-				() => this.onChange("subagent.agents"),
-				this.requestRender,
-			),
-		);
-	}
-
-	/** One lane's effort, narrowed to what the model THIS lane resolves to declares. Never the configuration vocabulary: a level no endpoint in scope */
-	#showLaneEffortPicker(name: string, depth: number): void {
-		this.clear();
-		this.#selectList = undefined;
-		const back = () => this.#showAgentEditor(name, depth);
-		this.#escapeTo = back;
-		const lane = this.#lane(name, depth);
-		const { options, notice } = subagentEffortOptions(this.#laneEffortScope(name, depth), this.models);
-		const description =
-			notice === undefined
-				? depth === 0
-					? `Effort ${name} runs at. Inherit follows the session's effort; a \`:level\` on the model chain still wins.`
-					: "Effort this lane runs at. Inherit follows the level above."
-				: `Effort this lane runs at. ${notice}`;
-		this.addChild(
-			new SelectSubmenu(
-				depth === 0 ? `Effort · ${name}` : `Effort · what ${name} spawns`,
-				description,
-				options,
-				lane.thinkingLevel?.trim() ?? "",
-				value => {
-					// Inherit is the ABSENCE of a value: storing the empty string would
-					// leave the lane configured and reading as a choice nobody made.
-					const next = { ...this.#lane(name, depth) };
-					if (value === INHERIT_EFFORT_OPTION_VALUE) delete next.thinkingLevel;
-					else next.thinkingLevel = value;
-					this.#writeLane(name, depth, next);
-					this.#escapeTo = undefined;
-					back();
-					this.requestRender?.();
-				},
-				() => {
-					this.#escapeTo = undefined;
-					back();
-					this.requestRender?.();
-				},
-			),
-		);
-	}
-
-	/** What this lane's effort narrows against: the model the lane RESOLVES to, found by asking the same resolver a spawn asks, so the page and the spawn */
-	#laneEffortScope(name: string, depth: number): SubagentEffortScope {
-		const head = resolveSubagentModel({
-			settings,
-			agentName: name,
-			activeModelPattern: this.activeModelPattern,
-			taskDepth: depth + 1,
-		}).patterns[0];
-		return effortScopeForPattern(this.models, head, this.sessionModel);
-	}
-
-	/** The blanket model chain, edited through the SAME picker the tab row opens ({@link ModelChainSubmenu} bound to `subagent.model`). A second chain editor */
-	#showModelPicker(back: () => void): void {
-		this.clear();
-		this.#selectList = undefined;
-		this.#escapeTo = back;
-		if (!this.picker) {
-			this.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
-			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
-			return;
-		}
-		const stored: unknown = settings.get("subagent.model");
-		let current: string | string[] | undefined;
-		if (typeof stored === "string") current = stored;
-		else if (Array.isArray(stored) && stored.every(entry => typeof entry === "string")) current = stored;
-		this.addChild(
-			new ModelChainSubmenu(
-				"subagent.model",
-				this.picker.registry,
-				this.picker.models,
-				"Subagent Model · every subagent",
-				current,
-				() => {
-					this.#escapeTo = undefined;
-					back();
-					this.requestRender?.();
-				},
-				() => this.onChange("subagent.model"),
-				this.requestRender,
-			),
-		);
-	}
-
-	/** The blanket effort, narrowed by the same scope helper the tab row uses, so the two lists cannot offer different levels — and neither offers a level */
-	#showEffortPicker(back: () => void): void {
-		this.clear();
-		this.#selectList = undefined;
-		this.#escapeTo = back;
-		const { options, notice } = subagentEffortOptions(
-			subagentEffortScope(this.models, this.sessionModel),
-			this.models,
-		);
-		const stored = settings.get("subagent.thinkingLevel");
-		const current = typeof stored === "string" ? stored.trim() : "";
-		const description =
-			notice === undefined
-				? "Effort for every subagent. Inherit follows the session's effort; a `:level` on the model chain still wins."
-				: `Effort for every subagent. ${notice}`;
-		this.addChild(
-			new SelectSubmenu(
-				"Subagent Effort · every subagent",
-				description,
-				options,
-				current,
-				value => {
-					// Inherit is the ABSENCE of a value: storing the empty string would
-					// leave the key configured and reading as a choice nobody made.
-					if (value === INHERIT_EFFORT_OPTION_VALUE) settings.unset("subagent.thinkingLevel");
-					else settings.set("subagent.thinkingLevel", value);
-					this.onChange("subagent.thinkingLevel");
-					this.#escapeTo = undefined;
-					back();
-					this.requestRender?.();
-				},
-				() => {
-					this.#escapeTo = undefined;
-					back();
-					this.requestRender?.();
-				},
-			),
-		);
-	}
-
-	/** The list on screen, or the picker that owns the frame while one is open. */
-	mouseTarget(): SelectList | ModelChainSubmenu | SelectSubmenu | undefined {
-		if (this.#selectList) return this.#selectList;
-		return this.children.find(
-			(child): child is ModelChainSubmenu | SelectSubmenu =>
-				child instanceof ModelChainSubmenu || child instanceof SelectSubmenu,
-		);
-	}
-
-	handleInput(data: string): void {
-		if (this.#selectList) {
-			this.#selectList.handleInput(data);
-			return;
-		}
-		// A message page (no catalog, a discovery failure) has no child that reads
-		// input, so Esc would strand the reader on it.
-		if (this.#escapeTo && (matchesKey(data, "escape") || data === "\x1b")) {
-			const back = this.#escapeTo;
-			this.#escapeTo = undefined;
-			back();
-			this.requestRender?.();
-			return;
-		}
-		this.children[0]?.handleInput?.(data);
-	}
-}
-
-/** Submenu rows whose options are efforts, filled from the model in scope rather than the schema. */
-const EFFORT_SUBMENU_PATHS: Readonly<Record<string, true>> = { "subagent.thinkingLevel": true };
-
-/** Synthetic list id for the "add a model" row: not a settings key, and never a
- *  model selector, so it cannot collide with a real row. */
-const ADD_EFFORT_ROW = "\u0000add-effort-row";
-
-/** Synthetic list ids for the model-chain picker, on the same NUL-prefixed rule as the row above: a model selector can never start with NUL, so an action row */
-const CHAIN_ENTRY_PREFIX = "\u0000chain-entry:";
-const CHAIN_ADD_ROW = "\u0000chain-add-row";
-const CHAIN_CLEAR_ROW = "\u0000chain-clear-row";
-
-/** The profile's Default Effort list: rows of model to effort, plus one "any model" row that covers every model without its own. */
-class DefaultEffortSubmenu extends MouseRoutedSubmenu {
-	#selectList: SelectList | undefined;
-
-	constructor(
-		private readonly models: ReadonlyArray<Model>,
-		private readonly registry: ModelRegistry,
-		private readonly onChange: () => void,
-		private readonly onCancel: () => void,
-		private readonly requestRender?: () => void,
-	) {
-		super();
-		this.#showRows();
-	}
-
-	/** The stored rows, with a legacy global default folded in as the `*` row. */
-	#rows(): Record<string, string> {
-		return withLegacyDefaultEffort(
-			settings.isConfigured("defaultEffort") ? settings.get("defaultEffort") : undefined,
-			settings.get("defaultThinkingLevel"),
-		);
-	}
-
-	#showRows(): void {
-		this.clear();
-		this.#selectList = undefined;
-		this.addChild(new Text(theme.bold(theme.fg("accent", "Default Effort")), 0, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(
-				theme.fg(
-					"muted",
-					"Effort applied when a run does not ask for one. A model's own row wins over the any-model row. Per active profile.",
-				),
-				0,
-				0,
-			),
-		);
-		this.addChild(new Spacer(1));
-
-		const rows = this.#rows();
-		// The any-model row sorts first: it is the one every model falls back to,
-		// so reading the list top-down reads as "generally this, except these".
-		const keys = Object.keys(rows).sort((a, b) =>
-			a === ANY_MODEL_EFFORT_KEY ? -1 : b === ANY_MODEL_EFFORT_KEY ? 1 : a.localeCompare(b),
-		);
-		const items: SelectItem[] = keys.map(key => ({
-			value: key,
-			label: key === ANY_MODEL_EFFORT_KEY ? "any model" : key,
-			description: rows[key] ?? "",
-		}));
-		items.push({ value: ADD_EFFORT_ROW, label: "Add a model…", description: "pick a model, then its effort" });
-		items.push({
-			value: ANY_MODEL_EFFORT_KEY,
-			label: rows[ANY_MODEL_EFFORT_KEY] === undefined ? "Set the any-model effort…" : "Change the any-model effort…",
-			description: "applies to every model without its own row",
-		});
-
-		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
-		this.#selectList.onSelect = item => {
-			if (item.value === ADD_EFFORT_ROW) {
-				this.#showModelPicker();
-			} else {
-				this.#showEffortPicker(item.value);
-			}
-			this.requestRender?.();
-		};
-		this.#selectList.onCancel = this.onCancel;
-		this.addChild(this.#selectList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to edit · Del removes a row · Esc to go back"), 0, 0));
-	}
-
-	#showModelPicker(): void {
-		this.clear();
-		this.#selectList = undefined;
-		const panel = new ModelSelectorPanel(
-			settings,
-			this.registry,
-			this.models,
-			{
-				title: "Default effort for which model",
-				description: "Pick the model, then its effort. Already-listed models are edited from the list itself.",
-				allowClear: false,
-			},
-			{
-				// The picker's `selector` argument is deliberately ignored: the bare `provider/id` is the row key, an effort belongs in the row's VALUE, and a
-				onPick: model => {
-					this.#showEffortPicker(`${model.provider}/${model.id}`, model);
-					this.requestRender?.();
-				},
-				onCancel: () => {
-					this.#showRows();
-					this.requestRender?.();
-				},
-			},
-		);
-		panel.setHoverMotion({ requestRender: () => this.requestRender?.(), enabled: pointerMotionEnabled() });
-		this.addChild(panel);
-	}
-
-	#showEffortPicker(key: string, picked?: Model): void {
-		const model = picked ?? this.models.find(m => `${m.provider}/${m.id}` === key);
-		this.#selectList = renderEffortStep(
-			this,
-			key === ANY_MODEL_EFFORT_KEY ? "any model" : key,
-			key === ANY_MODEL_EFFORT_KEY ? undefined : model,
-			value => this.#persist(key, value),
-			() => {
-				this.#showRows();
-				this.requestRender?.();
-			},
-			// The any-model row spans the catalog, so its rows are the union of what
-			// the catalog declares — never the vocabulary constant.
-			key === ANY_MODEL_EFFORT_KEY ? this.models : undefined,
-		);
-	}
-
-	/** Write a row. `renderEffortStep` hands back a model selector carrying the chosen effort as a `:level` suffix (its other callers store exactly that */
-	#persist(key: string, selectorWithEffort: string): void {
-		const level = extractExplicitThinkingSelector(selectorWithEffort, settings);
-		const rows = { ...this.#rows() };
-		if (level === undefined) delete rows[key];
-		else rows[key] = level;
-		settings.set("defaultEffort", rows);
-		this.onChange();
-		this.#showRows();
-		this.requestRender?.();
-	}
-
-	#removeSelectedRow(): void {
-		const selected = this.#selectList?.getSelectedItem?.();
-		const key = selected?.value;
-		if (!key || key === ADD_EFFORT_ROW) return;
-		const rows = { ...this.#rows() };
-		if (rows[key] === undefined) return;
-		delete rows[key];
-		settings.set("defaultEffort", rows);
-		this.onChange();
-		this.#showRows();
-		this.requestRender?.();
-	}
-
-	/** The effort rows list; the model-picker state targets its panel. */
-	mouseTarget(): SelectList | ModelSelectorPanel | undefined {
-		return (
-			this.#selectList ??
-			this.children.find((child): child is ModelSelectorPanel => child instanceof ModelSelectorPanel)
-		);
-	}
-
-	handleInput(data: string): void {
-		if (this.#selectList && (matchesKey(data, "delete") || matchesKey(data, "backspace"))) {
-			this.#removeSelectedRow();
-			return;
-		}
-		if (this.#selectList) {
-			this.#selectList.handleInput(data);
-			return;
-		}
-		this.children[0]?.handleInput?.(data);
-	}
-}
-
-/** Single-slot picker for the profile's DEFAULT model, the model each new session starts on. Opens straight to the model picker because there is only */
-class DefaultModelSubmenu extends MouseRoutedSubmenu {
-	constructor(
-		private readonly models: ReadonlyArray<Model>,
-		private readonly registry: ModelRegistry,
-		private readonly onChange: () => void,
-		private readonly onCancel: () => void,
-		private readonly requestRender?: () => void,
-	) {
-		super();
-		this.#showModelPicker();
-	}
-
-	#showModelPicker(): void {
-		this.clear();
-		const current = settings.getPersistedModelRole(DEFAULT_MODEL_SLOT)?.trim();
-		const panel = new ModelSelectorPanel(
-			settings,
-			this.registry,
-			this.models,
-			{
-				title: "Default model",
-				description: "The model each new session starts on. Clearing the pin auto-selects on launch.",
-				currentSelector: barePickerSelector(current, this.models as Model<Api>[]),
-				allowClear: true,
-				clearLabel: "(auto-select on launch)",
-			},
-			{
-				onPick: (_model, selector) => this.#persist(selector),
-				onClear: () => {
-					settings.setPersistedModelRole(DEFAULT_MODEL_SLOT, undefined);
-					this.onChange();
-					this.onCancel();
-				},
-				onCancel: () => this.onCancel(),
-			},
-		);
-		panel.setHoverMotion({ requestRender: () => this.requestRender?.(), enabled: pointerMotionEnabled() });
-		this.addChild(panel);
-	}
-
-	#persist(selector: string): void {
-		settings.setPersistedModelRole(DEFAULT_MODEL_SLOT, selector);
-		this.onChange();
-		this.onCancel();
-	}
-
-	/** The one picker panel is always the only child. */
-	mouseTarget(): ModelSelectorPanel | undefined {
-		return this.children.find((child): child is ModelSelectorPanel => child instanceof ModelSelectorPanel);
-	}
-
-	handleInput(data: string): void {
-		this.children[0]?.handleInput?.(data);
-	}
-}
-
-/** Where a chain the picker edits actually lives, when it is not a settings key. `subagent.model` and `compaction.model` are keys, and `settings.set` addresses */
-export interface ModelChainSlot {
-	write: (chain: string[] | undefined) => void;
-}
-
-/** Ordered-chain picker for a model settings slot (`compaction.model`, `subagent.model`). */
-export class ModelChainSubmenu extends MouseRoutedSubmenu {
-	#selectList: SelectList | undefined;
-	#chain: string[];
-
-	constructor(
-		private readonly slot: SettingPath | ModelChainSlot,
-		private readonly registry: ModelRegistry,
-		private readonly models: ReadonlyArray<Model>,
-		private readonly title: string,
-		current: string | string[] | undefined,
-		private readonly done: (value?: string) => void,
-		private readonly onChange: (value: string[] | undefined) => void,
-		private readonly requestRender?: () => void,
-	) {
-		super();
-		this.#chain = normalizeModelPatternList(current);
-		// An empty chain has no row to edit, so open directly on the picker.
-		if (this.#chain.length === 0) this.#showModelPicker(null);
-		else this.#showChain();
-	}
-
-	#showChain(): void {
-		this.clear();
-		this.#selectList = undefined;
-		this.addChild(new Text(theme.bold(theme.fg("accent", this.title)), 0, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(theme.fg("muted", "Tried in order. The rest are used when the one above cannot run."), 0, 0),
-		);
-		this.addChild(new Spacer(1));
-
-		const items: SelectItem[] = this.#chain.map((selector, index) => ({
-			value: `${CHAIN_ENTRY_PREFIX}${index}`,
-			label: `${index + 1}. ${formatSelectorSummary(selector)}`,
-			description: index === 0 ? "first choice" : "fallback",
-		}));
-		items.push({ value: CHAIN_ADD_ROW, label: "Add fallback…", description: "pick a model, then its effort" });
-		items.push({ value: CHAIN_CLEAR_ROW, label: "Clear (inherit)", description: "follow the main model" });
-
-		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
-		this.#selectList.onSelect = item => {
-			if (item.value === CHAIN_ADD_ROW) this.#showModelPicker(null);
-			else if (item.value === CHAIN_CLEAR_ROW) this.#clear();
-			else this.#showModelPicker(Number(item.value.slice(CHAIN_ENTRY_PREFIX.length)));
-			this.requestRender?.();
-		};
-		this.#selectList.onCancel = () => this.done(this.#chain.join(","));
-		this.addChild(this.#selectList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter edits · Del removes · Esc to go back"), 0, 0));
-	}
-
-	/** Remove the highlighted model without affecting the rest of the chain. */
-
-	#removeSelectedRow(): void {
-		const value = this.#selectList?.getSelectedItem?.()?.value;
-		if (!value?.startsWith(CHAIN_ENTRY_PREFIX)) return;
-		const index = Number(value.slice(CHAIN_ENTRY_PREFIX.length));
-		if (!Number.isInteger(index) || index < 0 || index >= this.#chain.length) return;
-		this.#chain.splice(index, 1);
-		this.#persistChain();
-	}
-
-	#showModelPicker(index: number | null): void {
-		this.clear();
-		this.#selectList = undefined;
-		const current = index === null ? undefined : this.#chain[index];
-		const position =
-			index === 0 ? "first choice" : index === null ? `fallback ${this.#chain.length + 1}` : `fallback ${index + 1}`;
-		const panel = new ModelSelectorPanel(
-			settings,
-			this.registry,
-			this.models,
-			{
-				title: this.#chain.length === 0 ? this.title : `${this.title} · ${position}`,
-				description:
-					index === null ? "Pick a model to append to the chain." : "Pick a replacement for this position.",
-				currentSelector: barePickerSelector(current, this.models as Model<Api>[]) || undefined,
-				allowClear: true,
-				clearLabel:
-					index !== null
-						? "(remove this position)"
-						: this.#chain.length === 0
-							? "(inherit main model)"
-							: "(cancel adding fallback)",
-			},
-			{
-				onPick: (model, selector) => {
-					if (!hasConfigurableThinkingEffort(model)) {
-						this.#store(selector, index);
-						return;
-					}
-					this.#showEffortPicker(selector, model, index);
-					this.requestRender?.();
-				},
-				onClear: () => this.#clearPicker(index),
-				onCancel: () => {
-					if (this.#chain.length === 0) this.done();
-					else this.#showChain();
-					this.requestRender?.();
-				},
-			},
-		);
-		panel.setHoverMotion({ requestRender: () => this.requestRender?.(), enabled: pointerMotionEnabled() });
-		this.addChild(panel);
-	}
-
-	#showEffortPicker(selector: string, model: Model, index: number | null): void {
-		this.#selectList = renderEffortStep(
-			this,
-			selector,
-			model,
-			value => this.#store(value, index),
-			() => {
-				this.#showModelPicker(index);
-				this.requestRender?.();
-			},
-		);
-	}
-
-	/** Append a new model or replace one position, never duplicating a logical model. */
-	#store(value: string, index: number | null): void {
-		const next = replaceModelChainEntry(this.#chain, index, value, this.models as Model<Api>[]);
-		if (!next) {
-			this.#showChain();
-			this.requestRender?.();
-			return;
-		}
-		this.#chain = next;
-		this.#persistChain();
-	}
-
-	#clearPicker(index: number | null): void {
-		if (index !== null && Number.isInteger(index) && index >= 0 && index < this.#chain.length) {
-			this.#chain.splice(index, 1);
-			this.#persistChain();
-		} else if (this.#chain.length === 0) {
-			this.#clear();
-		} else {
-			this.#showChain();
-			this.requestRender?.();
-		}
-	}
-
-	#clear(): void {
-		this.#chain = [];
-		this.#persist(undefined);
-		this.onChange(undefined);
-		this.done("inherit");
-	}
-
-	#persistChain(): void {
-		const value = this.#chain.slice();
-		this.#persist(value.length === 0 ? undefined : value);
-		this.onChange(value.length === 0 ? undefined : value);
-		this.#showChain();
-		this.requestRender?.();
-	}
-
-	/** Store the chain wherever this slot lives: a settings key, or its owner's writer. */
-	#persist(chain: string[] | undefined): void {
-		if (typeof this.slot !== "string") {
-			this.slot.write(chain);
-			return;
-		}
-		if (chain === undefined) settings.unset(this.slot);
-		else settings.set(this.slot, chain as never);
-	}
-
-	/** The chain list or effort list; the model-picker state targets its panel. */
-	mouseTarget(): SelectList | ModelSelectorPanel | undefined {
-		return (
-			this.#selectList ??
-			this.children.find((child): child is ModelSelectorPanel => child instanceof ModelSelectorPanel)
-		);
-	}
-
-	handleInput(data: string): void {
-		if (this.#selectList && (matchesKey(data, "delete") || matchesKey(data, "backspace"))) {
-			this.#removeSelectedRow();
-			return;
-		}
-		if (this.#selectList) {
-			this.#selectList.handleInput(data);
-			return;
-		}
-		this.children[0]?.handleInput?.(data);
-	}
-}
-
-/** Synthetic list id for the depth map's append row, on the same NUL-prefixed rule as the chain picker's. */
-const DEPTH_ADD_ROW = "\u0000depth-add-row";
-
-/** The `subagent.modelByDepth` map: one row per configured spawn depth, plus an "Add depth…" row for the next unused one. */
-class SubagentModelByDepthSubmenu extends MouseRoutedSubmenu {
-	#selectList: SelectList | undefined;
-
-	constructor(
-		private readonly registry: ModelRegistry,
-		private readonly models: ReadonlyArray<Model>,
-		private readonly onChange: () => void,
-		private readonly onCancel: () => void,
-		private readonly requestRender?: () => void,
-	) {
-		super();
-		this.#showRows();
-	}
-
-	#showRows(): void {
-		this.clear();
-		this.#selectList = undefined;
-		this.addChild(new Text(theme.bold(theme.fg("accent", "Models by Depth")), 0, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(
-				theme.fg(
-					"muted",
-					"A row outranks Subagent Model for a spawn at exactly that depth: 1 is a direct child, 2 a grandchild. Depths without a row follow Subagent Model.",
-				),
-				0,
-				0,
-			),
-		);
-		this.addChild(new Spacer(1));
-
-		const rows = subagentModelByDepthRows(settings);
-		const items: SelectItem[] = rows.map(row => {
-			const chain = normalizeModelPatternList(row.value);
-			const primary = chain[0] === undefined ? "" : formatSelectorSummary(chain[0]);
-			const fallbacks = chain.length - 1;
-			return {
-				value: String(row.depth),
-				label: `Depth ${row.depth}`,
-				description: fallbacks > 0 ? `${primary}, +${fallbacks}` : primary,
-			};
-		});
-		items.push({
-			value: DEPTH_ADD_ROW,
-			label: "Add depth…",
-			description: `bind a chain to depth ${nextSubagentModelByDepth(settings)}`,
-		});
-
-		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
-		this.#selectList.onSelect = item => {
-			this.#openDepth(item.value === DEPTH_ADD_ROW ? nextSubagentModelByDepth(settings) : Number(item.value));
-			this.requestRender?.();
-		};
-		this.#selectList.onCancel = this.onCancel;
-		this.addChild(this.#selectList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter edits · Del clears a depth · Esc to go back"), 0, 0));
-	}
-
-	#openDepth(depth: number): void {
-		this.clear();
-		this.#selectList = undefined;
-		const current = subagentModelByDepthRows(settings).find(row => row.depth === depth)?.value;
-		this.addChild(
-			new ModelChainSubmenu(
-				subagentModelByDepthRowPath(depth),
-				this.registry,
-				this.models,
-				`Depth ${depth}`,
-				current,
-				() => {
-					// The chain picker's own Clear row unsets the dotted row but
-					// leaves an empty map behind; dropping it keeps "no rows" and
-					// "unset" the same stored shape.
-					if (subagentModelByDepthRows(settings).length === 0) settings.unset(SUBAGENT_MODEL_BY_DEPTH_PATH);
-					this.onChange();
-					this.#showRows();
-					this.requestRender?.();
-				},
-				() => this.onChange(),
-				this.requestRender,
-			),
-		);
-	}
-
-	#removeSelectedRow(): void {
-		const value = this.#selectList?.getSelectedItem?.()?.value;
-		if (value === undefined || value === DEPTH_ADD_ROW) return;
-		clearSubagentModelByDepthRow(settings, Number(value));
-		this.onChange();
-		this.#showRows();
-		this.requestRender?.();
-	}
-
-	/** The depth rows list; an open depth targets its chain picker (which routes its own mouse). */
-	mouseTarget(): SelectList | ModelChainSubmenu | undefined {
-		return (
-			this.#selectList ??
-			this.children.find((child): child is ModelChainSubmenu => child instanceof ModelChainSubmenu)
-		);
-	}
-
-	handleInput(data: string): void {
-		if (this.#selectList && (matchesKey(data, "delete") || matchesKey(data, "backspace"))) {
-			this.#removeSelectedRow();
-			return;
-		}
-		if (this.#selectList) {
-			this.#selectList.handleInput(data);
-			return;
-		}
-		this.children[0]?.handleInput?.(data);
-	}
-}
-
-/** Synthetic item id prefix for the per-tab "Advanced" fold toggle row. */
 const ADVANCED_TOGGLE_ID_PREFIX = "__advanced:";
 
 function advancedToggleId(tab: SettingTab): string {
@@ -2285,8 +126,6 @@ function isAdvancedToggleId(id: string): boolean {
 	return id.startsWith(ADVANCED_TOGGLE_ID_PREFIX);
 }
 
-/** Columns between the sidebar and the settings pane: `│` hairline + two spaces. */
-/** Footer tip candidates. One array so the chrome plan is computed from the SAME tip the card renders: the tip and its gap are droppable rows, so a plan built */
 const SETTINGS_TIPS: readonly string[] = [
 	'Tip · Ask the agent: "change theme to titanium" or "what does compact do?"',
 	"Tip · Ask the agent to change a setting",
@@ -2303,7 +142,6 @@ const SETTING_SOURCE_LABELS: Record<SettingSource, string> = {
 	global: "global config",
 };
 
-/** Footer chips while keyboard focus rests on the category sidebar. */
 const SETTINGS_SIDEBAR_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "up/down category" },
 	{ label: "right/enter settings" },
@@ -2318,9 +156,6 @@ const SETTINGS_READ_ONLY_SHORTCUTS: readonly ModalShortcut[] = [
 ];
 
 function getSettingsTabs(): Tab[] {
-	// Icon-light presets define tab glyphs as "" — then the category name
-	// stands alone. A blank glyph must not leave a stray leading space, and
-	// `short` falls back to the name's initial so narrow tab strips stay legible.
 	const entry = (id: string, icon: string, label: string): Tab => ({
 		id,
 		label: icon ? `${icon} ${label}` : label,
@@ -2335,33 +170,20 @@ function getSettingsTabs(): Tab[] {
 	];
 }
 
-/** Dynamic context for settings that need runtime data. Some settings (like thinking level) are managed by the session, not Settings. */
 export interface SettingsRuntimeContext {
-	/** Available thinking levels (from session) */
 	availableThinkingLevels: Effort[];
-	/** Current thinking level (from session) */
 	thinkingLevel: ThinkingLevel | undefined;
-	/** Available themes */
 	availableThemes: string[];
-	/** Resolved personality catalog (built-ins + Tier-B data-file overrides), excluding `none`. */
 	availablePersonalities: string[];
-	/** Provider/source ids shown in /model. */
 	providers: string[];
-	/** Working directory for plugins tab */
 	cwd: string;
-	/** Active model (api + id) for settings previews that resolve model context. */
 	model?: Model;
-	/** Shared TUI image budget (graphics ids + transmit-once) for image previews. */
 	imageBudget?: ImageBudget;
-	/** Schedules a re-render after async preview work completes. */
 	requestRender?: () => void;
-	/** Model registry for auth badges + catalog (required for model pickers). */
 	modelRegistry?: ModelRegistry;
-	/** Models offered in settings model pickers (usually getAvailable()). */
 	availableModels?: ReadonlyArray<Model>;
 }
 
-/** Status line settings subset for preview */
 export interface StatusLinePreviewSettings {
 	preset?: StatusLinePreset;
 	leftSegments?: StatusLineSegmentId[];
@@ -2370,31 +192,20 @@ export interface StatusLinePreviewSettings {
 	compactThinkingLevel?: boolean;
 }
 
-/** Id of the actionable rollback row. Exported so tests address it by name. */
 export const ROLLBACK_ROW_ID = "__action:rollback";
 
 export interface SettingsCallbacks {
-	/** Called when any setting value changes */
 	onChange: (path: SettingPath, newValue: unknown) => void;
-	/** Called for theme preview while browsing */
 	onThemePreview?: (theme: string) => void | Promise<void>;
-	/** Called for status line preview while configuring */
 	onStatusLinePreview?: (settings: StatusLinePreviewSettings) => void;
-	/** Get current rendered status line for inline preview */
 	getStatusLinePreview?: () => string;
-	/** Called when plugins change */
 	onPluginsChanged?: () => void | Promise<void>;
-	/** Called when settings panel is closed */
 	onCancel: () => void;
-	/** Opens a URL in the operator's browser. Supplied by the host because a component has no business spawning a */
 	onOpenUrl?: (url: string) => void;
-	/** Moves the install to another published version. The ROW IS ONLY OFFERED WHEN THIS IS SUPPLIED. A "Roll back version" row */
 	onRollback?: (version: string) => Promise<void>;
-	/** Reports a failure that happens after the panel closes. */
 	onError?: (message: string) => void;
 }
 
-/** Main tabbed settings selector component. Uses declarative settings definitions from settings-defs.ts. */
 export class SettingsSelectorComponent implements Component {
 	#tabBar: TabBar;
 	#currentList: SettingsList | null = null;
@@ -2403,54 +214,33 @@ export class SettingsSelectorComponent implements Component {
 	#currentTabId: SettingTab | "plugins" = "appearance";
 	#preSearchTabId: SettingTab | "plugins" = "appearance";
 	#searchQuery = "";
-	/** Single-line editor backing the search banner (cursor, word ops, paste). */
 	#searchInput = new Input();
 	#searchMatchCount = 0;
-	/** First matching item id per tab id, for Tab-key jumps while searching. */
 	#searchFirstMatch = new Map<string, string>();
 	#textInputActive = false;
-	/** Per-tab collapsed state for the "Advanced" fold (session-only, defaults collapsed). */
 	#showAdvanced = new Map<SettingTab, boolean>();
-	/** Last selected setting per category; rendering derives the matching scroll window. */
 	#selectedSettingByTab = new Map<SettingTab, string>();
-	/** Search landed on a nested LSP knob: focus that row after the parent opens. */
 	#lspPanelFocusPath: SettingPath | undefined;
-	// Frame geometry from the last render, for mouse hit-testing (the
-	// fullscreen overlay paints from screen row 0, so mouse rows map 1:1).
 	#tabRowStart = 0;
 	#tabRowCount = 0;
 	#contentRowStart = 0;
 	#contentRowCount = 0;
-	/** Left pad when the modal is width-constrained and centered. */
 	#frameLeft = 0;
-	/** Width of the category sidebar column at the last render. */
 	#sidebarCols = 0;
 	#sidebarWidthCache: number | undefined;
-	/** Last ModalShell geometry for mouse hit-testing. */
 	#shellGeometry: ModalShellGeometry | null = null;
-	/** True when the terminal cannot show an actionable settings pane safely. */
 	#viewportTooSmall = false;
 	#hoveredShortcutId: string | null = null;
-	/** Setting ids whose descriptions are expanded (Right/l). */
 	#expandedIds = new Set<string>();
-	/** Keyboard focus rests on the category sidebar (Left from the pane). While focused, Up/Down change category without wrapping and Right/Enter */
 	#sidebarFocused = false;
-
-	/** @deprecated Prefer ModalShell sizing; kept for tests that assert width. */
-	static readonly MODAL_MAX_WIDTH = MODAL_SIZING_SETTINGS.maxWidth;
 
 	constructor(
 		private readonly context: SettingsRuntimeContext,
 		private readonly callbacks: SettingsCallbacks,
 		initialItemId?: string,
 	) {
-		// No label prefix (the frame title already says Settings) and no
-		// "(tab to cycle)" hint (folded into the footer hint line).
 		this.#tabBar = new TabBar("", getSettingsTabs(), getTabBarTheme());
 		this.#tabBar.showHint = false;
-		// The category sidebar is a pointer surface like the pane beside it, and
-		// the two are two columns apart in the same card: a band that fades in one
-		// and switches in the other reads as a rendering fault.
 		this.#tabBar.setHoverMotion({
 			requestRender: () => this.context.requestRender?.(),
 			enabled: pointerMotionEnabled(),
@@ -2458,7 +248,6 @@ export class SettingsSelectorComponent implements Component {
 		this.#tabBar.onTabChange = () => {
 			const tabId = this.#tabBar.getActiveTab().id as SettingTab | "plugins";
 			if (this.#searchList) {
-				// While searching, tabs act as jump targets into the result list.
 				const firstId = this.#searchFirstMatch.get(tabId);
 				if (firstId) this.#searchList.selectItem(firstId);
 				return;
@@ -2466,33 +255,26 @@ export class SettingsSelectorComponent implements Component {
 			this.#switchToTab(tabId);
 		};
 
-		// Initialize with first tab
 		this.#switchToTab("appearance");
 		if (initialItemId) this.#currentList?.selectItem(initialItemId);
 	}
 
-	/** Drop everything registered with the shared clock. The host calls this when the card is gone for good; a card nobody can see must not keep asking for */
 	dispose(): void {
 		this.#tabBar.disposeHoverMotion();
 		this.#currentList?.disposeHoverMotion();
 		this.#searchList?.disposeHoverMotion();
 	}
 
-	/** The currently selected setting's path, or undefined (e.g. on a heading or empty tab). Test/debug hook. */
 	getSelectedSettingId(): string | undefined {
 		return (this.#searchList ?? this.#currentList)?.getSelectedItem()?.id;
 	}
 
-	/** Select a setting by path in the active list. Test/debug + deep-link hook. */
 	selectSetting(path: string): boolean {
 		return (this.#searchList ?? this.#currentList)?.selectItem(path) ?? false;
 	}
 
-	/** Open a settings tab by id. Test/debug + deep-link hook. */
 	openTab(tabId: SettingTab | "plugins"): void {
 		this.#tabBar.setActiveById(tabId);
-		// TabBar normally invokes onTabChange. Keep the hook usable with a tab
-		// implementation that suppresses same-id notifications, without rebuilding twice.
 		if (this.#currentTabId !== tabId) this.#switchToTab(tabId);
 	}
 
@@ -2532,11 +314,7 @@ export class SettingsSelectorComponent implements Component {
 		this.#selectedSettingByTab.delete(tabId);
 	}
 
-	/** Swap the active content (per-tab list, search list, or plugins). */
 	#setContent(build: () => void): void {
-		// Whichever list is being thrown away takes its pointer fades with it: they
-		// are registered with the shared clock, and a list nobody can see must not
-		// keep asking for frames.
 		this.#currentList?.disposeHoverMotion();
 		this.#searchList?.disposeHoverMotion();
 		this.#currentList = null;
@@ -2562,14 +340,11 @@ export class SettingsSelectorComponent implements Component {
 		if (this.#searchList) return SETTINGS_FILTER_SHORTCUTS;
 		if (this.#currentList?.hasOpenSubmenu()) return SETTINGS_SUBPANE_SHORTCUTS;
 		if (this.#sidebarFocused) return SETTINGS_SIDEBAR_SHORTCUTS;
-		// The plugins tab is a stack of its own views (list, plugin detail, config
-		// sub-pane), so the view in front of the user names the keys.
 		if (this.#pluginComponent) return this.#pluginComponent.shortcuts();
 		if (this.#currentList?.getSelectedItem()?.readOnly) return SETTINGS_READ_ONLY_SHORTCUTS;
 		return SETTINGS_BROWSE_SHORTCUTS;
 	}
 
-	/** Single-line search banner: accent icon, editable query with live cursor, right-aligned match count. */
 	#renderSearchBanner(width: number): string {
 		const icon = theme.symbol("icon.search");
 		const countText = this.#searchMatchCount === 1 ? "1 match" : `${this.#searchMatchCount} matches`;
@@ -2587,7 +362,6 @@ export class SettingsSelectorComponent implements Component {
 		return truncateToWidth(` ${theme.fg("dim", icon)} ${theme.fg("dim", "/ search settings")}`, width);
 	}
 
-	/** Category sidebar width: widest base tab label plus the cursor column and headroom for search-mode " (99)" match counts, so the divider column */
 	#sidebarWidth(contentWidth: number): number {
 		if (this.#sidebarWidthCache === undefined) {
 			let labelWidth = 0;
@@ -2617,15 +391,13 @@ export class SettingsSelectorComponent implements Component {
 		return lines;
 	}
 
-	/** Floating ModalShell settings card: always-on search chrome, body list, tip, centered shortcut chips. Transcript visible around the card. */
 	render(width: number): readonly string[] {
 		const termHeight = Math.max(1, process.stdout.rows || 40);
 		const sizing = sizingForArea(MODAL_SIZING_SETTINGS, termHeight);
 		const dims = computeModalDims(width, termHeight, sizing);
 		if (!dims || dims.contentWidth < MIN_SETTINGS_CONTENT_WIDTH) return this.#renderTooSmall(width, termHeight);
 		this.#viewportTooSmall = false;
-		// Must match ModalShell's contentWidth — provisional maxWidth math
-		// over-sized the search banner and fit() chopped off the match count.
+
 		const contentWidth = dims.contentWidth;
 		const settingsShortcuts = this.#settingsShortcuts();
 		const maxBodyRows = planModalChrome({
@@ -2639,17 +411,12 @@ export class SettingsSelectorComponent implements Component {
 		}).maxBodyRows;
 		if (maxBodyRows < 1) return this.#renderTooSmall(width, termHeight);
 
-		// Vertical category sidebar on the left, settings pane on the right,
-		// separated by a silver hairline: `sidebar │  pane`.
 		const sidebarWidth = this.#sidebarWidth(contentWidth);
 		const paneWidth = Math.max(1, contentWidth - sidebarWidth - SIDEBAR_GAP_COLS);
-		// The cursor brightens while the sidebar itself holds keyboard focus.
 		const sidebarCursor = this.#sidebarFocused ? `${theme.fg("accent", theme.nav.cursor)} ` : `${theme.nav.cursor} `;
 		const sidebarLines = this.#tabBar.renderVertical(sidebarWidth, sidebarCursor);
 		const searching = this.#searchList !== null;
 		const showPreview = !searching && this.#currentTabId === "appearance" && paneWidth >= 40;
-		// The preview is a live status-line render: clamp every line to the
-		// pane so a wide preview can't punch through the modal's right border.
 		const requestedPreviewLines: string[] = [];
 		if (showPreview) {
 			requestedPreviewLines.push("", theme.fg("muted", "Preview:"));
@@ -2659,10 +426,7 @@ export class SettingsSelectorComponent implements Component {
 			}
 		}
 
-		// Ask the shell how many body rows it will give, rather than estimating. This read `dims.modalHeight - 10` under a comment admitting it "mirrors
 		const estimatedBody = maxBodyRows;
-		// Prefer visible, actionable setting rows in short terminals. The
-		// decorative status preview returns once the body has enough room.
 		const previewLines = estimatedBody >= 8 ? requestedPreviewLines : [];
 		const list = this.#searchList ?? this.#currentList;
 		let listLines: readonly string[] = [];
@@ -2681,15 +445,12 @@ export class SettingsSelectorComponent implements Component {
 		const paneLines: string[] = listLines.concat(previewLines);
 		const bar = theme.fg("borderAccent", theme.boxSharp.vertical);
 		const bodyRows = Math.max(sidebarLines.length, paneLines.length);
-		// The accented hairline is what makes the split read as a split; the category
-		// column carries no material of its own.
 		const body: string[] = [];
 		for (let r = 0; r < bodyRows; r++) {
 			const side = sidebarLines[r] ?? padding(sidebarWidth);
 			body.push(`${side}${bar}  ${paneLines[r] ?? ""}`);
 		}
 
-		// Breadcrumb: "Settings › Label" while a sub-pane (enum picker, text input, provider limits, model roles, …) owns the panel — mirrors
 		const openSubmenuLabel = list?.hasOpenSubmenu() ? list.getOpenSubmenuLabel() : undefined;
 		const breadcrumb = openSubmenuLabel ? ` ${theme.nav.cursor} ${openSubmenuLabel}` : undefined;
 
@@ -2711,7 +472,6 @@ export class SettingsSelectorComponent implements Component {
 
 		this.#shellGeometry = shell.geometry;
 		this.#frameLeft = shell.geometry?.leftPad ?? 0;
-		// Sidebar and pane share the same body rows (side-by-side columns).
 		this.#tabRowStart = shell.geometry?.bodyRowStart ?? 0;
 		this.#tabRowCount = Math.min(sidebarLines.length, shell.geometry?.bodyRowCount ?? 0);
 		this.#contentRowStart = this.#tabRowStart;
@@ -2720,24 +480,20 @@ export class SettingsSelectorComponent implements Component {
 		return shell.lines;
 	}
 
-	/** Route an SGR mouse report against the frame geometry of the last render. Wheel scrolls the focused list, motion drives the hover highlights (tabs */
 	#handleMouse(data: string): boolean {
 		return routeSgrMouseInput(data, event => this.#routeMouseEvent(event));
 	}
 
-	/** Cancel transient submenu state, such as an uncommitted theme preview. */
 	#cancelOpenSubmenu(): void {
 		const list = this.#searchList ?? this.#currentList;
 		if (list?.hasOpenSubmenu()) list.handleInput("\x1b");
 	}
 
-	/** Close the settings surface only after transient previews are restored. */
 	#close(): void {
 		this.#cancelOpenSubmenu();
 		this.callbacks.onCancel();
 	}
 
-	/** One level back: out of an open sub-pane, or one view up the plugins tab's own stack. Exactly what Esc does to whatever holds the keys, so the "esc */
 	#stepBack(): void {
 		if (this.#pluginComponent) {
 			this.#pluginComponent.handleInput("\x1b");
@@ -2764,8 +520,6 @@ export class SettingsSelectorComponent implements Component {
 			return true;
 		}
 		if (chrome.kind === "breadcrumb") {
-			// Peel one sub-pane level back to Browse — same as the "esc back"
-			// footer chip, just reachable from the title too.
 			this.#stepBack();
 			return true;
 		}
@@ -2785,12 +539,10 @@ export class SettingsSelectorComponent implements Component {
 		}
 
 		const list = this.#searchList ?? this.#currentList;
-		// row() insets content by the border column plus a space; frame may be centered.
 		const contentColInset = 2 + this.#frameLeft;
 		const innerCol = event.col - contentColInset;
 		const bodyLine = event.row - this.#contentRowStart;
 		const overBody = bodyLine >= 0 && bodyLine < this.#contentRowCount;
-		// Sidebar column on the left, settings pane right of the hairline gap.
 		const overSidebar = overBody && innerCol >= 0 && innerCol < this.#sidebarCols && bodyLine < this.#tabRowCount;
 		const paneCol = innerCol - (this.#sidebarCols + SIDEBAR_GAP_COLS);
 		const overPane = overBody && paneCol >= 0;
@@ -2798,7 +550,6 @@ export class SettingsSelectorComponent implements Component {
 		if (event.wheel !== null) {
 			if (overPane) {
 				this.#sidebarFocused = false;
-				// An open submenu owns the pane pointer (text inputs ignore it).
 				if (list) routeSettingsListPointer(list, event, bodyLine, paneCol);
 				else this.#pluginComponent?.routeMouse(event, bodyLine, paneCol);
 			}
@@ -2811,8 +562,6 @@ export class SettingsSelectorComponent implements Component {
 			if (!list) {
 				if (overPane) this.#pluginComponent?.routeMouse(event, bodyLine, paneCol);
 			} else if (list.hasOpenSubmenu()) {
-				// Only rows the pointer is actually on — never light up submenu
-				// rows while the pointer is over the sidebar.
 				if (overPane) routeSettingsListPointer(list, event, bodyLine, paneCol);
 			} else {
 				list.setHoverItem(overPane ? (list.hoverTest(bodyLine, paneCol) ?? null) : null);
@@ -2821,20 +570,15 @@ export class SettingsSelectorComponent implements Component {
 		}
 		if (!event.leftClick) return true;
 
-		// A sidebar click switches category even while a sub-pane is open (the
-		// rebuilt tab list discards the submenu, same as Esc + Tab).
 		if (overSidebar) {
 			this.#cancelOpenSubmenu();
 			const tab = this.#tabBar.tabAt(bodyLine, innerCol);
 			if (tab) {
 				this.#tabBar.selectTab(tab.id);
-				// A click activates the category and works the pane directly.
 				this.#sidebarFocused = false;
 			}
 			return true;
 		}
-		// The plugins tab is not a SettingsList: it owns a stack of views and
-		// carries the pointer into whichever one is mounted.
 		if (!list) {
 			if (overPane) this.#pluginComponent?.routeMouse(event, bodyLine, paneCol);
 			return true;
@@ -2849,10 +593,8 @@ export class SettingsSelectorComponent implements Component {
 		return true;
 	}
 
-	/** Swap the tab content for the global search result list. */
 	#startSearch(initialQuery: string): void {
 		this.#rememberCurrentSelection();
-		// Search results live in the pane; sidebar focus would be stale there.
 		this.#sidebarFocused = false;
 		this.#preSearchTabId = this.#currentTabId;
 		this.#searchInput = new Input();
@@ -2875,7 +617,6 @@ export class SettingsSelectorComponent implements Component {
 			requestRender: () => this.context.requestRender?.(),
 			enabled: pointerMotionEnabled(),
 		});
-		// Keep the footer tab highlight on the tab owning the selected result.
 		list.onSelectionChange = item => this.#syncTabBarToSelection(item);
 		this.#setContent(() => {
 			this.#searchList = list;
@@ -2883,7 +624,6 @@ export class SettingsSelectorComponent implements Component {
 		this.#setSearchQuery(initialQuery);
 	}
 
-	/** Recompute matches across every settings tab. Results render as one flat list with a heading row per tab; the footer tab bar reorders to show */
 	#setSearchQuery(query: string): void {
 		if (!this.#searchList) return;
 		if (query.length === 0) {
@@ -2940,15 +680,12 @@ export class SettingsSelectorComponent implements Component {
 		this.#syncTabBarToSelection(this.#searchList.getSelectedItem());
 	}
 
-	/** Leave search mode. With `jumpToSelection`, land on the tab containing the selected result and keep it selected there — search doubles as */
 	#endSearch(jumpToSelection: boolean): void {
 		if (!this.#searchList) return;
 		const selected = jumpToSelection ? this.#searchList.getSelectedItem() : undefined;
 		const selectedDef = selected ? getSettingDef(selected.id as SettingPath) : undefined;
 		const targetTab: SettingTab | "plugins" = selectedDef?.tab ?? this.#preSearchTabId;
 
-		// Landing on an advanced item from search: auto-expand its tab's fold
-		// so the selected row is actually visible once search closes.
 		if (selectedDef?.advanced && targetTab !== "plugins") {
 			this.#showAdvanced.set(targetTab, true);
 		}
@@ -2969,7 +706,6 @@ export class SettingsSelectorComponent implements Component {
 		}
 	}
 
-	/** Matching tabs first (counts attached), ordered by best result score; the rest stay muted at the end. */
 	#buildSearchTabs(counts: Map<SettingTab, number>, matchedTabOrder: readonly SettingTab[]): Tab[] {
 		const matched: Tab[] = [];
 		const empty: Tab[] = [];
@@ -2988,7 +724,6 @@ export class SettingsSelectorComponent implements Component {
 			const icon = theme.symbol(meta.icon as Parameters<typeof theme.symbol>[0]);
 			empty.push({ id, label: `${icon} ${meta.label}`, short: icon, muted: true });
 		}
-		// Plugins hosts its own UI; it is not part of the schema-backed search.
 		empty.push({
 			id: "plugins",
 			label: withIcon(theme.icon.package, "Plugins"),
@@ -3004,7 +739,6 @@ export class SettingsSelectorComponent implements Component {
 		if (def) this.#tabBar.setActiveById(def.tab);
 	}
 
-	/** Value-change dispatch for the search result list (any tab's setting). */
 	#onSearchSettingChange(path: SettingPath, newValue: string): void {
 		const def = getSettingDef(path);
 		if (!def) return;
@@ -3016,19 +750,12 @@ export class SettingsSelectorComponent implements Component {
 			settings.set(path, newValue as never);
 			this.callbacks.onChange(path, newValue);
 		}
-		// Submenu/text types already persisted inside their own done callbacks.
 		if (def.tab === "appearance") {
 			this.#triggerStatusLinePreview();
 		}
-		// Values feed the searchable text and condition gates may have flipped:
-		// recompute results in place (selection is preserved by item id).
 		this.#setSearchQuery(this.#searchQuery);
 	}
 
-	/**
-	 * Convert a setting definition to a SettingItem for the UI.
-	 */
-	/** Build a list item, then attach the fields search ranks on: the group and the schema's declared synonyms. Done once here rather than in each `case` below, */
 	#defToItem(def: SettingDef): SettingItem | null {
 		const item = this.#defToItemBase(def);
 		if (!item) return null;
@@ -3038,9 +765,6 @@ export class SettingsSelectorComponent implements Component {
 		const source = settings.getSource(def.path);
 		if (source !== "config-file" && source !== "runtime") return searchable;
 		const sourceLabel = SETTING_SOURCE_LABELS[source];
-		// The composite is built from the LABELLED value, and the labeller is dropped with
-		// it: once the value is wrapped in "<source> · ...", no option can match it, so a
-		// mapper carried along here would silently fall back and print the stored number.
 		const shownValue = searchable.labelForValue?.(searchable.currentValue) ?? searchable.currentValue;
 		return {
 			...searchable,
@@ -3054,7 +778,6 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	#defToItemBase(def: SettingDef): SettingItem | null {
-		// Check condition: applies to every variant — booleans, enums, submenus, text inputs.
 		if (def.condition && !def.condition()) {
 			return null;
 		}
@@ -3074,7 +797,6 @@ export class SettingsSelectorComponent implements Component {
 				};
 
 			case "enum":
-				// Bare enums (no option labels) open a chooser on activate — click and then choose — rather than cycling in place. Left/Right stay free
 				return {
 					id: def.path,
 					label: def.label,
@@ -3090,7 +812,6 @@ export class SettingsSelectorComponent implements Component {
 					label: def.label,
 					description: def.description,
 					currentValue: this.#getSubmenuCurrentValue(def.path, currentValue),
-					// The stored value is often not the readable one: a duration setting keeps milliseconds, and the option list is where the words for them live. The
 					labelForValue: value => this.#submenuOptions(def).find(option => option.value === value)?.label ?? value,
 					submenu: (cv, done) => this.#createSubmenu(def, cv, done),
 					changed,
@@ -3220,35 +941,24 @@ export class SettingsSelectorComponent implements Component {
 		}
 	}
 
-	/**
-	 * Get the current value for a setting.
-	 */
 	#getCurrentValue(def: SettingDef): unknown {
-		// The default-model entry is synthetic (no schema key): it deliberately
-		// reads the profile layer so a one-shot session override never masquerades
-		// as the model that will be restored on the next launch.
 		if (def.type === "defaultModel") return settings.getPersistedModelRole(DEFAULT_MODEL_SLOT);
 		return settings.get(def.path);
 	}
 
 	#isChanged(def: SettingDef, currentValue: unknown): boolean {
-		// Synthetic path: "changed" means a default model has been pinned (the
-		// unset default resolves live to the auto-selected model). getDefault would
-		// throw on the non-schema path.
 		if (def.type === "defaultModel") return typeof currentValue === "string" && currentValue.trim().length > 0;
 		return !Object.is(currentValue, getDefault(def.path));
 	}
 
 	#getSubmenuCurrentValue(path: SettingPath, value: unknown): string {
 		const rawValue = String(value ?? "");
-		// An optional numeric setting displays its unset state as the shared `Default` row, whichever way the stored value spells it. The set of such paths comes
 		if (isUnsetNumberPath(path) && (value === undefined || rawValue === String(UNSET_NUMBER) || rawValue === "")) {
 			return UNSET_NUMBER_OPTION_VALUE;
 		}
 		return rawValue;
 	}
 
-	/** Create a chooser submenu for a bare enum setting (one with no option labels). Options are the enum's allowed values, labelled by their own text. */
 	#createEnumSubmenu(
 		def: SettingDef & { type: "enum" },
 		currentValue: string,
@@ -3265,7 +975,6 @@ export class SettingsSelectorComponent implements Component {
 		);
 	}
 
-	/** The rows a submenu setting offers, including the ones only the runtime knows. ONE owner, because the picker and the row's own value label each used to */
 	#submenuOptions(def: SettingDef & { type: "submenu" }): OptionList {
 		if (def.path === "theme.dark" || def.path === "theme.light") {
 			return this.context.availableThemes.map(name => ({ value: name, label: name }));
@@ -3280,7 +989,6 @@ export class SettingsSelectorComponent implements Component {
 				{ value: NONE_PERSONALITY, label: "None", description: "Omit the personality block entirely" },
 			];
 		}
-		// Effort is narrowed to what the model these subagents run actually accepts, from the same helper `/effort` and every model picker use. A fixed ladder
 		if (Object.hasOwn(EFFORT_SUBMENU_PATHS, def.path)) {
 			return subagentEffortOptions(
 				subagentEffortScope(this.context.availableModels, this.context.model),
@@ -3290,9 +998,6 @@ export class SettingsSelectorComponent implements Component {
 		return def.options;
 	}
 
-	/**
-	 * Create a submenu for a submenu-type setting.
-	 */
 	#createSubmenu(
 		def: SettingDef & { type: "submenu" },
 		currentValue: string,
@@ -3305,10 +1010,8 @@ export class SettingsSelectorComponent implements Component {
 				)
 			: undefined;
 		const options = effort?.options ?? this.#submenuOptions(def);
-		// A row whose only choice is "inherit" has nothing to pick, and saying why beats a one-row list. WHICH sentence is true depends on the scope: a model
 		const description = effort?.notice ? `${def.description} ${effort.notice}` : def.description;
 
-		// Preview handlers
 		let onPreview: ((value: string) => void | Promise<void>) | undefined;
 		let onPreviewCancel: (() => void) | undefined;
 		const footer: Component | undefined = undefined;
@@ -3343,7 +1046,6 @@ export class SettingsSelectorComponent implements Component {
 			};
 		}
 
-		// Provide status line preview for theme selection
 		const isThemeSetting = def.path === "theme.dark" || def.path === "theme.light";
 		const getPreview = isThemeSetting ? this.callbacks.getStatusLinePreview : undefined;
 
@@ -3367,9 +1069,6 @@ export class SettingsSelectorComponent implements Component {
 		);
 	}
 
-	/**
-	 * Create a text input submenu for a plain string setting.
-	 */
 	#createTextInput(
 		def: SettingDef & { type: "text" },
 		_currentValue: string,
@@ -3385,8 +1084,6 @@ export class SettingsSelectorComponent implements Component {
 			def.description,
 			this.#formatTextInputEditValue(def.path, settings.get(def.path)),
 			value => {
-				// Empty string clears the setting; undefined-typed string settings
-				// store "" which the browser.ts expandPath ignores (no-op fallback).
 				this.#setSettingValue(def.path, value);
 				this.callbacks.onChange(def.path, settings.get(def.path));
 				wrappedDone(this.#formatTextInputValue(def.path, settings.get(def.path)));
@@ -3425,7 +1122,6 @@ export class SettingsSelectorComponent implements Component {
 			: formatSelectorSummary(primary);
 	}
 
-	/** Compact one selector for a row that must show both saved and active models. */
 	#formatCompactModelSelectorValue(value: unknown): string {
 		const summary = this.#formatModelSelectorValue(value);
 		const providerSlash = summary.indexOf("/");
@@ -3454,8 +1150,6 @@ export class SettingsSelectorComponent implements Component {
 			};
 			return fallback;
 		}
-		// `SettingValue<SettingPath>` collapses to never for the full path union;
-		// widen and narrow by runtime type instead.
 		const current: unknown = settings.get(path);
 		let rawCurrent: string | string[] | undefined;
 		if (typeof current === "string") {
@@ -3472,12 +1166,11 @@ export class SettingsSelectorComponent implements Component {
 			label,
 			rawCurrent,
 			done,
-			value => this.callbacks.onChange(path, value),
+			(value: string[] | undefined) => this.callbacks.onChange(path, value),
 			this.context.requestRender,
 		);
 	}
 
-	/** Row summary for the threshold: `Auto`, `85%`, `200k`, or the invalid raw text. */
 	#formatCompactionThresholdValue(): string {
 		return formatThresholdShort(String(settings.get("compaction.threshold") ?? AUTO_COMPACTION_THRESHOLD));
 	}
@@ -3496,7 +1189,6 @@ export class SettingsSelectorComponent implements Component {
 		);
 	}
 
-	/** Row-count summary for the settings row, e.g. `any model · high, 2 models`. */
 	#formatDefaultEffortValue(): string {
 		const rows = withLegacyDefaultEffort(
 			settings.isConfigured("defaultEffort") ? settings.get("defaultEffort") : undefined,
@@ -3533,7 +1225,6 @@ export class SettingsSelectorComponent implements Component {
 		);
 	}
 
-	/** Row summary for the Agents table: how many agents carry a row, and how many of those are blocked. Counting rows rather than discovered agents keeps this */
 	#formatSubagentAgentsValue(): string {
 		const stored = settings.get("subagent.agents");
 		const table = stored && typeof stored === "object" ? (stored as Record<string, SubagentAgentSettings>) : {};
@@ -3545,7 +1236,6 @@ export class SettingsSelectorComponent implements Component {
 		return parts.join(", ");
 	}
 
-	/** The roster opens with or without a model catalog: which lanes are offered and how deeply they may spawn need none, and the model it SHOWS is a resolved */
 	#createSubagentAgentsInput(done: (value?: string) => void): Container {
 		const active = this.context.model ? `${this.context.model.provider}/${this.context.model.id}` : undefined;
 		return new SubagentAgentsSubmenu(
@@ -3554,7 +1244,7 @@ export class SettingsSelectorComponent implements Component {
 			this.context.model,
 			this.context.availableModels,
 			this.#requireModelPickerContext(),
-			path => {
+			(path: SubagentRosterPath) => {
 				this.callbacks.onChange(path, settings.get(path));
 			},
 			() => done(this.#formatSubagentAgentsValue()),
@@ -3562,7 +1252,6 @@ export class SettingsSelectorComponent implements Component {
 		);
 	}
 
-	/** Row summary for Models by Depth: each configured depth with its chain's first model, e.g. `1: k3 +1, 2: opus`. */
 	#formatSubagentModelByDepthValue(): string {
 		const rows = subagentModelByDepthRows(settings);
 		if (rows.length === 0) return "off";
@@ -3592,7 +1281,6 @@ export class SettingsSelectorComponent implements Component {
 		);
 	}
 
-	/** Row summary: how many rules are turned off, since that is the whole of what this setting stores. It deliberately does NOT say how many rules exist — discovery is */
 	#formatRulesValue(): string {
 		const stored = settings.get("ttsr.disabledRules");
 		const off = Array.isArray(stored) ? stored.filter(name => String(name).trim().length > 0).length : 0;
@@ -3623,7 +1311,7 @@ export class SettingsSelectorComponent implements Component {
 		const focus = this.#lspPanelFocusPath;
 		this.#lspPanelFocusPath = undefined;
 		return new LspSubmenu(
-			(path, value) => this.callbacks.onChange(path, value),
+			(path: SettingPath, value: boolean) => this.callbacks.onChange(path, value),
 			() => done(formatLspSummary()),
 			this.context.requestRender,
 			focus,
@@ -3690,9 +1378,6 @@ export class SettingsSelectorComponent implements Component {
 
 	#formatTextInputEditValue(_path: SettingPath, value: unknown): string {
 		if (value === undefined || value === null) return "";
-		// A string array edits as a comma-separated list (friendly for model ids,
-		// segment names, and the like); a non-string array (objects) round-trips as
-		// JSON so it is not silently flattened. #setSettingValue parses both back.
 		if (Array.isArray(value)) {
 			return value.every(item => typeof item === "string") ? value.join(", ") : JSON.stringify(value);
 		}
@@ -3700,15 +1385,10 @@ export class SettingsSelectorComponent implements Component {
 		return String(value);
 	}
 
-	/**
-	 * Set a setting value, handling type conversion.
-	 */
 	#setSettingValue(path: SettingPath, value: string): void {
 		const currentValue = settings.get(path);
 		const schemaType = getType(path);
 		if (isUnsetNumberPath(path) && value === UNSET_NUMBER_OPTION_VALUE) {
-			// "Default" REMOVES the key rather than storing a sentinel, so the value
-			// the provider would accept is not stolen to mean "no value".
 			settings.unset(path);
 		} else if (schemaType === "record") {
 			let parsed: unknown;
@@ -3725,7 +1405,6 @@ export class SettingsSelectorComponent implements Component {
 			}
 			settings.set(path, parsed as never);
 		} else if (schemaType === "array") {
-			// A leading `[` is treated as explicit JSON (object arrays and edited JSON round-trips); anything else is a comma-separated list, trimmed with
 			const trimmed = value.trim();
 			let arr: unknown[];
 			if (trimmed === "") {
@@ -3747,7 +1426,6 @@ export class SettingsSelectorComponent implements Component {
 			}
 			settings.set(path, arr as never);
 		} else if (schemaType === "number") {
-			// Keyed off the SCHEMA, not off `typeof currentValue`: an unset number reads back `undefined`, so the old check fell through to the final `else` and
 			const next = parseNumberSetting(path, value);
 			if (next === UNSET_NUMBER_INPUT) settings.unset(path);
 			else settings.set(path, next as never);
@@ -3758,12 +1436,8 @@ export class SettingsSelectorComponent implements Component {
 		}
 	}
 
-	/**
-	 * Show a settings tab using definitions.
-	 */
 	#showSettingsTab(tabId: SettingTab): void {
 		const defs = getSettingsForTab(tabId);
-
 		const items = this.#buildItemsForDefs(defs, tabId);
 
 		this.#currentList = new SettingsList(
@@ -3794,12 +1468,9 @@ export class SettingsSelectorComponent implements Component {
 					settings.set(path, newValue as never);
 					this.callbacks.onChange(path, newValue);
 				}
-				// Submenu/text types already persisted the value inside their own done callbacks before SettingsList re-dispatches here. Re-run the
 				this.#refreshCurrentTabItems(defs);
 			},
 			() => this.#close(),
-			// The selector owns type-to-search and the footer hint; pin the
-			// split sidebar width so the divider never jumps between tabs.
 			{ typeToSearch: false, hint: "", layout: "flat", descriptionMode: "expand", expandedIds: this.#expandedIds },
 		);
 		this.#currentList.setHoverMotion({
@@ -3808,25 +1479,20 @@ export class SettingsSelectorComponent implements Component {
 		});
 	}
 
-	/** Whether the tab's "Advanced" fold is currently expanded (default: collapsed). */
 	#isAdvancedExpanded(tab: SettingTab): boolean {
 		return this.#showAdvanced.get(tab) === true;
 	}
 
-	/** Flip the tab's "Advanced" fold state. */
 	#toggleAdvanced(tab: SettingTab): void {
 		this.#showAdvanced.set(tab, !this.#isAdvancedExpanded(tab));
 	}
 
-	/** Map a definition list to UI items, dropping any whose condition is false. Inserts a heading row whenever the (group-sorted) definition list crosses */
 	#buildItemsForDefs(defs: SettingDef[], tabId: SettingTab): SettingItem[] {
 		const items: SettingItem[] = [];
 		const advancedItems: Array<{ group: string | undefined; item: SettingItem }> = [];
 		let lastGroup: string | undefined;
 		let advancedTotal = 0;
 		for (const def of defs) {
-			// Nested LSP knobs are a page behind the LSP row, not siblings on Files.
-			// Search still lists them (it does not go through this builder).
 			if (isNestedLspKnob(def.path)) continue;
 			const item = this.#defToItem(def);
 			if (!item) continue;
@@ -3840,7 +1506,6 @@ export class SettingsSelectorComponent implements Component {
 				lastGroup = def.group;
 			}
 			items.push(item);
-			// Rolling back is not a setting: it has no stored value and no default, it is an action you take once. But it belongs next to the update
 			const rollbackRow = this.#rollbackRow(def);
 			if (rollbackRow) items.push(rollbackRow);
 		}
@@ -3852,8 +1517,6 @@ export class SettingsSelectorComponent implements Component {
 				id: advancedToggleId(tabId),
 				label: `${arrow} Advanced (${advancedTotal})`,
 				currentValue: "",
-				// A single-value cycle keeps this row activatable (Enter/Space/click)
-				// like any other setting row, without pi-tui's inert `heading` rows.
 				values: ["toggle"],
 			});
 			let lastAdvancedGroup: string | undefined;
@@ -3875,7 +1538,6 @@ export class SettingsSelectorComponent implements Component {
 		return items;
 	}
 
-	/** The "Roll back version" row, when the host can actually perform one. Anchored after `startup.autoUpdate` rather than at a fixed index, so it */
 	#rollbackRow(def: SettingDef): SettingItem | null {
 		if (def.path !== "startup.autoUpdate") return null;
 		const rollback = this.callbacks.onRollback;
@@ -3899,16 +1561,12 @@ export class SettingsSelectorComponent implements Component {
 		};
 	}
 
-	/** Re-evaluate condition gates against the current settings and refresh the active list. */
 	#refreshCurrentTabItems(defs: SettingDef[]): void {
 		const tabId = this.#currentTabId;
 		if (tabId === "plugins" || !this.#currentList) return;
 		this.#currentList.setItems(this.#buildItemsForDefs(defs, tabId));
 	}
 
-	/**
-	 * Get the status line preview string.
-	 */
 	#getStatusPreviewString(): string {
 		if (this.callbacks.getStatusLinePreview) {
 			return this.callbacks.getStatusLinePreview();
@@ -3916,9 +1574,6 @@ export class SettingsSelectorComponent implements Component {
 		return theme.fg("dim", "(preview not available)");
 	}
 
-	/**
-	 * Trigger status line preview with current settings.
-	 */
 	#triggerStatusLinePreview(): void {
 		const statusLineSettings: StatusLinePreviewSettings = {
 			preset: settings.get("statusLine.preset"),
@@ -3936,7 +1591,6 @@ export class SettingsSelectorComponent implements Component {
 		});
 	}
 
-	/** Step the active category up/down, clamped at the ends (no wrap). */
 	#stepCategory(delta: -1 | 1): void {
 		const tabs = getSettingsTabs();
 		const index = tabs.findIndex(tab => tab.id === this.#tabBar.getActiveTab().id);
@@ -3947,7 +1601,6 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	handleInput(data: string): void {
-		// SGR mouse reports (the fullscreen overlay enables tracking).
 		if (data.startsWith("\x1b[<")) {
 			this.#handleMouse(data);
 			return;
@@ -3958,8 +1611,6 @@ export class SettingsSelectorComponent implements Component {
 			return;
 		}
 
-		// Text-input submenus take every byte: arrow keys must reach the
-		// cursor and Tab must not switch tabs.
 		if (this.#textInputActive) {
 			(this.#searchList ?? this.#currentList)?.handleInput(data);
 			return;
@@ -3967,7 +1618,6 @@ export class SettingsSelectorComponent implements Component {
 
 		const activeList = this.#searchList ?? this.#currentList;
 
-		// An open submenu owns input entirely — Tab/arrows/typing belong to it.
 		if (activeList?.hasOpenSubmenu()) {
 			activeList.handleInput(data);
 			return;
@@ -3978,9 +1628,6 @@ export class SettingsSelectorComponent implements Component {
 			return;
 		}
 
-		// Sidebar focus mode: Up/Down step categories without wrapping;
-		// Right/Enter (or Tab) hand focus back to the settings rows. Anything
-		// else (search, hotkeys) falls through to the shared handling below.
 		if (this.#sidebarFocused) {
 			if (matchesKey(data, "up") || data === "k") {
 				this.#stepCategory(-1);
@@ -4000,13 +1647,9 @@ export class SettingsSelectorComponent implements Component {
 				this.#sidebarFocused = false;
 				return;
 			}
-			// Already on the leftmost column — swallow so the tab bar never wraps.
 			if (matchesKey(data, "left") || data === "h") return;
 		}
 
-		// Left/Right never change a setting's value: value edits go through activation (Enter/Space/click), which toggles a boolean or opens a
-
-		// Right/l expands the selected setting description; Left/h collapses.
 		if (matchesKey(data, "right") || data === "l") {
 			const id = this.#currentList?.getSelectedItem()?.id;
 			if (id) {
@@ -4022,15 +1665,10 @@ export class SettingsSelectorComponent implements Component {
 				this.#currentList?.setOptions({ expandedIds: this.#expandedIds, descriptionMode: "expand" });
 				return;
 			}
-			// No expanded desc: Left focuses the category sidebar (it sits to
-			// the visual left). It must never wrap-cycle tabs — Left on the
-			// first category used to jump to the last one and lose the caret.
 			this.#sidebarFocused = true;
 			return;
 		}
 
-		// Tab toggles keyboard focus between section headings and setting rows
-		// (fast section hopping); tabs without sections keep Tab switching tabs.
 		if (matchesKey(data, "tab") || matchesKey(data, "shift+tab")) {
 			if (this.#currentList?.hasSectionFocusTargets()) {
 				this.#currentList.toggleSectionFocus();
@@ -4040,8 +1678,6 @@ export class SettingsSelectorComponent implements Component {
 			return;
 		}
 
-		// Printable characters start a search across every settings tab. The
-		// plugins tab keeps its own local filtering instead.
 		if (this.#currentTabId !== "plugins") {
 			const printable = extractPrintableText(data);
 			if (printable !== undefined && printable.trim().length > 0) {
@@ -4060,16 +1696,13 @@ export class SettingsSelectorComponent implements Component {
 	#handleSearchModeInput(data: string, list: SettingsList): void {
 		const kb = getKeybindings();
 		if (kb.matches(data, "tui.select.cancel")) {
-			// Exit search, landing on the tab of the selected result.
 			this.#endSearch(true);
 			return;
 		}
 		if (matchesKey(data, "tab") || matchesKey(data, "shift+tab")) {
-			// Jump between tabs that have matches (muted tabs are skipped).
 			this.#tabBar.handleInput(data);
 			return;
 		}
-		// Selection, paging, and activation stay with the result list.
 		if (
 			kb.matches(data, "tui.select.up") ||
 			kb.matches(data, "tui.select.down") ||
@@ -4081,8 +1714,6 @@ export class SettingsSelectorComponent implements Component {
 			list.handleInput(data);
 			return;
 		}
-		// Everything else edits the query like a regular single-line editor:
-		// cursor movement, word ops, kill ring, undo, paste.
 		this.#searchInput.handleInput(data);
 		const value = this.#searchInput.getValue();
 		if (value !== this.#searchQuery) this.#setSearchQuery(value);

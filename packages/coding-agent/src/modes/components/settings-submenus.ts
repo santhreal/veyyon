@@ -162,3 +162,4 @@ export class SelectSubmenu extends MouseRoutedSubmenu {
 		this.#selectList.handleInput(data);
 	}
 }
+export * from "./settings-submenus/index";
