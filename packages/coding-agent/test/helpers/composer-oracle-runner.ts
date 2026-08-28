@@ -20,13 +20,13 @@ import {
 	ComposerHairline,
 	mountComposerZone,
 	resolveComposerAccents,
-} from "../../src/modes/components/composer-chrome";
+} from "../../src/modes/components/composer/composer-chrome";
 import {
 	type ComposerOracleFrameState,
 	evaluateAllComposerOracles,
 	type FrameSegmentSnapshot,
 	type OracleEvaluationResult,
-} from "../../src/modes/components/composer-defect-oracle";
+} from "../../src/modes/components/composer/composer-defect-oracle";
 import { getEditorTheme } from "../../src/modes/theme/theme";
 import type { CorpusCaseState } from "./renderer-defect-corpus";
 

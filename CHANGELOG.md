@@ -6,6 +6,8 @@
 
 ### Added
 
+- `src/presentation/` builds the `@veyyon/wire/presentation` view-models from session state, and `PresentationEventBridge` turns session events into transcript updates, so a renderer draws a session without importing one.
+- `src/modes/terminal/driver.ts` implements `PresentationContext` on `@veyyon/tui`: it renders every transcript block kind, the status line, the composer and the dialogs from view-models alone, and reports operator input back as `UIEvent`s.
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
 - `session.newKeepsBackground` decides what `/new` does to a turn still streaming: off (the default) stops it and closes its provider stream before the new session starts, on keeps the old conversation running and says which one.
 - The status line carries a background chip counting conversations this process is still running that no screen is showing, present in every preset and silent at zero.
@@ -44,14 +46,21 @@
 - `ProviderWireCapabilities.anthropicMessages` declares how a provider serves the Anthropic Messages API — its endpoint, credential placement, rejected request features and retryable model errors — and `declaredProviders()` and `declaredCapabilityNames()` derive the declaring sets from the table.
 - Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
 - Added `supportsServerCompaction` capability data for ChatGPT Codex backend models on the Responses API.
+- `TUI.frameScrollable` states whether the last composed frame had content above the viewport, so a host can render a scroll affordance without re-deriving it from row counts it cannot see.
 - `TUI.onBeforeCompose` runs at the top of every frame, before any root child renders, so a layout whose height is a function of its siblings' heights is sized against the children about to render rather than the previous frame's.
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
 - `MOTION.reflow` states the curve for a row that reflows its content sideways: 320ms, symmetric, where `expand` is 180ms and front-loaded.
+- The string, escape, keyboard, mouse, motion and layout-math primitives that `@veyyon/tui` used to own are `@veyyon/utils` modules, reachable by subpath and not on the barrel, so a caller that needs the escape bytes or the fuzzy matcher no longer declares a dependency on the terminal renderer.
+- `@veyyon/utils/color-format` states whether escape sequences are written as 24-bit or 256-colour SGR; `@veyyon/tui` sets it once the terminal's capabilities resolve, which is how a utils module renders colour without reading terminal state.
 - `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
 - `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
+- `@veyyon/wire/presentation` states the renderer contract: `PresentationContext`, the transcript, status, composer and overlay view-models, the `UIEvent` union and an abstract hex-colour theme. A renderer implementing it draws a session without importing coding-agent. The subpath adds no dependencies.
 
 ### Changed
 
+- Imports of the string, escape, keyboard, mouse and motion primitives name `@veyyon/utils` instead of `@veyyon/tui`, which no longer re-exports them. No user-visible behavior changes.
+- Source directories are consolidated: memory (`memories`, `memory-backend`, `mnemopi`, `hindsight`), discovery (`tool-discovery`, `capability`), speech (`tts`, `stt`) and debugging (`dap`) each live under one directory, and seventeen single-module directories fold into the concern they belong to. Subpath imports of `@veyyon/coding-agent` follow the new layout. No user-visible behavior changes.
+- The terminal component tree is grouped by concern: the 94 modules that sat flat in `src/modes/components/` now live under `transcript/`, `composer/`, `selectors/`, `dialogs/`, `chrome/`, `dashboard/` and `account/`. Subpath imports of `@veyyon/coding-agent/modes/components/*` follow the new layout. No user-visible behavior changes.
 - Reading a file or fetching a URL no longer loads the document converters, and a web search no longer loads the browser fingerprint generator, because the constants those paths wanted are separated from the libraries that sat behind them, taking about 40ms off session startup.
 - The launch card is painted and flushed before the agent runtime graph is loaded, taking an interactive launch from a blank terminal for 760ms to a typable composer at 111ms.
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
@@ -90,6 +99,7 @@
 - `core/embeddings.ts` imports `ProviderHttpError` from `@veyyon/ai/error/classes` instead of the error barrel, cutting twelve modules off the import graph of every module that can remember something; behavior is unchanged.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
+- `sanitize-text.ts` imports the escape byte from `@veyyon/utils/ansi` rather than declaring a second copy of it.
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
 - `winston` and `winston-daily-rotate-file` are resolved on the first log write instead of at module load, taking 4.7ms off every process that imports the logger without logging, which is every entry point.
 
@@ -306,6 +316,14 @@
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
 - `relativePathWithinRoot` returns the candidate's own spelling instead of the case-folded copy the containment check used, so on Windows a path under `C:\Users\dev\Projects` no longer comes back lowercased, and a root configured in a different case than the directory on disk resolves to the tail rather than to a `..` walk.
+
+### Breaking Changes
+
+- `@veyyon/tui` exports rendering only. The string, escape, keyboard, mouse, motion and layout-math primitives it also carried are now `@veyyon/utils` modules, imported by subpath: `@veyyon/utils/{ansi,autocomplete,bar,bracketed-paste,deccara,fuzzy,keybindings,keys,kill-ring,kitty-graphics,latex-block,latex-unicode,loop-watchdog,motion,mouse,padding,paint-columns,paint-ground,paint-surface,sgr,symbols,text-sizing,tight-mode,tmux,width,word-nav,wrap}`. The barrel re-exports none of them.
+- `MOTION` and the grow, hover, paint and settle curve tables are one module, `@veyyon/utils/motion`.
+- `EditorComponent` is `@veyyon/tui/components/editor-component`.
+- The render engine is `@veyyon/tui/core/*`: `component-types`, `container`, `cursor`, `image-budget`, `mouse-routing`, `overlay`, `renderer`, `scroll`, `terminal-session` and `tui`. `@veyyon/tui/tui` re-exports all of it, so an existing import path keeps resolving.
+- `TUI.overlayStack` is private. The overlay stack's behavior is `OverlayStack` in `@veyyon/tui/core/overlay`.
 
 ## [1.2.0] - 2026-08-23
 

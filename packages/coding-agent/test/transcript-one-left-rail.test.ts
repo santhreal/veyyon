@@ -23,8 +23,11 @@
  * past a looser check.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
-import { BashExecutionComponent } from "@veyyon/coding-agent/modes/components/bash-execution";
-import { COMPOSER_INSET_COLS, resolveComposerAccents } from "@veyyon/coding-agent/modes/components/composer-chrome";
+import {
+	COMPOSER_INSET_COLS,
+	resolveComposerAccents,
+} from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
+import { BashExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/bash-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { Component, TUI } from "@veyyon/tui";
 import { createToolExecution } from "./helpers/tool-execution";

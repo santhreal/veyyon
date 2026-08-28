@@ -19,7 +19,7 @@
  */
 
 import { MotionClock } from "@veyyon/utils/motion";
-import { TinyTitleDownloadProgressComponent } from "../../packages/coding-agent/src/modes/components/tiny-title-download-progress";
+import { TinyTitleDownloadProgressComponent } from "../../packages/coding-agent/src/modes/components/chrome/tiny-title-download-progress";
 import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
 import { formatUsageWindowLine, renderAsciiBar } from "../../packages/coding-agent/src/slash-commands/helpers/format";
 import { flag, initRender, renderWidth } from "./render-args";

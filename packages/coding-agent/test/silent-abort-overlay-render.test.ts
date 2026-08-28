@@ -13,7 +13,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as AIError from "@veyyon/ai/error";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/components/agent-transcript-viewer";
+import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/components/dashboard/agent-transcript-viewer";
 import type { ObservableSession } from "@veyyon/coding-agent/modes/session-observer-registry";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";

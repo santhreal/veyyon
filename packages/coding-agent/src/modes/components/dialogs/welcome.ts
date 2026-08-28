@@ -1,0 +1,478 @@
+import { type Component, TERMINAL } from "@veyyon/tui";
+import { APP_NAME, clamp01, DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault } from "@veyyon/utils";
+// The slot leaf, not the 94-module store: this file reads values, it does not fill them.
+import { isSettingsInitialized, settings } from "../../../config/settings-instance";
+import { theme } from "../../theme/theme";
+
+// The forced-tip state and the post-update message live in `launch-tip.ts`, which `main.ts` can import
+// without pulling this component (and the whole TUI) into the static boot graph. Re-exported here so the
+// welcome card stays the one place a reader looks for anything about welcome tips.
+export { clearLaunchTip, setLaunchTip, updateInstalledTip } from "./launch-tip";
+
+import { Ellipsis } from "@veyyon/natives";
+import { SGR_RESET } from "@veyyon/utils/ansi";
+import { centerLine, padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
+import { sunMark } from "../chrome/sun";
+import tipsText from "../tips.txt" with { type: "text" };
+import { takeLaunchTip } from "./launch-tip";
+
+/** Optional gate prefix on a tips.txt line: `[gate:magicKeywords.enabled]`.
+ *  A gated tip is shown only while that boolean setting is true — a tip that
+ *  says "type `orchestratez` and watch it glow" is a lie when magic keywords
+ *  are disabled, and the hero must never advertise behavior the user turned
+ *  off. */
+const TIP_GATE = /^\[gate:([a-zA-Z0-9.]+)\]\s*/;
+
+/** A tip's display text plus the boolean setting that must be true to show it. */
+export interface TipEntry {
+	text: string;
+	gate?: string;
+}
+
+/** Tips embedded at build time, one per line; blanks dropped. Exported for the
+ *  schema-conformance test (every gate must name a real settings key). */
+export const TIP_ENTRIES: readonly TipEntry[] = tipsText
+	.split("\n")
+	.map(line => line.trim())
+	.filter(line => line.length > 0)
+	.map(line => {
+		const gate = TIP_GATE.exec(line);
+		return gate ? { text: line.slice(gate[0].length), gate: gate[1] } : { text: line };
+	});
+
+/** Resolve gated tips against live settings. `isEnabled` is injected so tests
+ *  need no settings singleton; unknown keys are the conformance test's job,
+ *  not a runtime branch. Exported for tests. */
+export function filterTipsByGates(tips: readonly TipEntry[], isEnabled: (key: string) => boolean): string[] {
+	return tips.filter(tip => tip.gate === undefined || isEnabled(tip.gate)).map(tip => tip.text);
+}
+
+const TIPS: readonly string[] = TIP_ENTRIES.map(tip => tip.text);
+
+/** Max recent-session rows shown under the action menu (only when present). */
+export const WELCOME_SESSION_SLOTS = 3;
+
+/**
+ * Retained for call-site API stability. LSP status no longer paints on the
+ * welcome hero (operational noise; it belongs in `/lsp` or the status line).
+ */
+export const WELCOME_LSP_SLOTS = 0;
+
+/** One-line value prop under the wordmark — shipped strengths only. */
+export const VEYYON_VALUE_LINE = "Hashline edits that land. Your keys.";
+
+/** Action rows: label left, shortcut right. The composer is the primary affordance. */
+const WELCOME_ACTIONS: ReadonlyArray<readonly [label: string, shortcut: string]> = [
+	["Resume session", "/resume"],
+	["Settings", "/settings"],
+	["Providers", "/providers"],
+	["Quit", "ctrl+d"],
+];
+
+/** Trailing marker that flags a tip as a "what's new" callout. Stripped before
+ *  wrapping (with any preceding whitespace) and replaced by {@link NEW_TAG_TEXT}
+ *  painted with a silver shimmer. Non-global so `.test` stays stateless. */
+const NEW_TIP_MARKER = /\s*\[NEW\]\s*$/;
+
+/** Visible text rendered in place of {@link NEW_TIP_MARKER}. Quiet, not shouty. */
+const NEW_TAG_TEXT = "new";
+
+/** Selection weight for "[NEW]" tips; ordinary tips weigh 1, so a freshly added
+ *  affordance surfaces this many times as often. */
+const NEW_TIP_WEIGHT = 4;
+
+/** Pick a tip from `tips`, biased toward "[NEW]" tips by {@link NEW_TIP_WEIGHT};
+ *  `r` is a uniform sample in [0, 1). Returns "" when `tips` is empty.
+ *  Exported for tests. */
+export function pickWeightedTip(tips: readonly string[], r: number): string {
+	if (tips.length === 0) return "";
+	const weights = tips.map(tip => (NEW_TIP_MARKER.test(tip) ? NEW_TIP_WEIGHT : 1));
+	const total = weights.reduce((sum, weight) => sum + weight, 0);
+	let acc = r * total;
+	for (let i = 0; i < tips.length; i++) {
+		acc -= weights[i] ?? 1;
+		if (acc < 0) return tips[i] ?? "";
+	}
+	return tips[tips.length - 1] ?? "";
+}
+
+/** Static silver-bright tag — no rainbow, no motion (brand: restrained chrome). */
+function renderNewTag(): string {
+	return `\x1b[1m${silverEscape(1)}${NEW_TAG_TEXT}\x1b[0m`;
+}
+
+export function renderWelcomeTip(tip: string, boxWidth: number, _phase = 0): string[] {
+	const label = "Tip: ";
+	const labelWidth = visibleWidth(label);
+	const bodyBudget = boxWidth - 1 - labelWidth; // 1 = leading indent
+	if (bodyBudget < 8) return [];
+
+	const isNew = NEW_TIP_MARKER.test(tip);
+	const body = isNew ? tip.replace(NEW_TIP_MARKER, "") : tip;
+
+	const wrappedBody = wrapTextWithAnsi(replaceTabs(body), bodyBudget);
+	if (wrappedBody.length === 0) return [];
+
+	const continuationIndent = padding(labelWidth);
+	// Daybreak cool arc: informational callouts carry the info accent (rose on
+	// titanium), keeping tips visually distinct from session/mode/share chrome.
+	const styledLabel = theme.fg("infoAccent", label);
+
+	const lines = wrappedBody.map((line, index) => {
+		const styledBody = theme.fg("muted", line);
+		const content = index === 0 ? `${styledLabel}${styledBody}` : `${continuationIndent}${styledBody}`;
+		return ` ${theme.italic(content)}`;
+	});
+
+	if (isNew) {
+		const tag = renderNewTag();
+		const tagWidth = 1 + visibleWidth(NEW_TAG_TEXT); // 1 = space separator
+		const lastLine = lines[lines.length - 1];
+		if (lastLine !== undefined && visibleWidth(lastLine) + tagWidth <= boxWidth) {
+			lines[lines.length - 1] = `${lastLine} ${tag}`;
+		} else {
+			lines.push(` ${continuationIndent}${tag}`);
+		}
+	}
+
+	return lines;
+}
+
+export interface RecentSession {
+	name: string;
+	timeAgo: string;
+}
+
+export interface LspServerInfo {
+	name: string;
+	status: "ready" | "error" | "connecting" | "available";
+	fileTypes: string[];
+}
+
+/**
+ * Welcome hero: one centred card. The living sun is the mark on the left; the
+ * identity (wordmark, value line, action menu, recent sessions) sits on the
+ * right. Grok card composition, Veyyon brand — silver on black, the sun the one
+ * ember. No dashboard panels, no interior dividers, no clutter.
+ */
+export class WelcomeComponent implements Component {
+	#selectedTip: string | undefined;
+	// Render cache: the welcome box is the first transcript-area component, so a
+	// stable array reference keeps the whole frame prefix stable.
+	#cachedWidth = -1;
+	#cachedLines: string[] | undefined;
+
+	constructor(
+		private readonly version: string,
+		private modelName: string,
+		private providerName: string,
+		private recentSessions: RecentSession[] = [],
+		// LSP status no longer paints on the welcome hero (see WELCOME_LSP_SLOTS);
+		// this positional slot is retained for call-site API stability and discarded.
+		_lspServers: LspServerInfo[] = [],
+		/** Sunrise header + centred menu column on `/welcome`; the default home is
+		 *  the header alone with one hint line. */
+		private readonly full: boolean = false,
+	) {}
+
+	get tip(): string | undefined {
+		if (this.#selectedTip === undefined) {
+			// Read once and clear, so the announcement belongs to this launch and
+			// not to every welcome the process renders afterwards.
+			this.#selectedTip = takeLaunchTip();
+		}
+		if (this.#selectedTip === undefined) {
+			if (theme.getSymbolPreset() === "unicode" && Math.random() < 0.1) {
+				this.#selectedTip = "Please use nerdfont for the best symbol rendering.";
+			} else {
+				// Gated tips resolve against live settings at pick time, so a tip
+				// never advertises a feature the user has disabled. Pre-init
+				// contexts (bare component tests) see the full corpus.
+				const visible = isSettingsInitialized()
+					? filterTipsByGates(TIP_ENTRIES, key => settings.get(key as Parameters<typeof settings.get>[0]) === true)
+					: TIPS;
+				this.#selectedTip = pickWeightedTip(visible, Math.random());
+			}
+		}
+		return this.#selectedTip || undefined;
+	}
+
+	invalidate(): void {
+		this.#cachedWidth = -1;
+		this.#cachedLines = undefined;
+	}
+
+	setModel(modelName: string, providerName: string): void {
+		this.modelName = modelName;
+		this.providerName = providerName;
+		this.invalidate();
+	}
+
+	setRecentSessions(sessions: RecentSession[]): void {
+		this.recentSessions = sessions;
+		this.invalidate();
+	}
+
+	/** No-op: LSP status no longer paints on the welcome hero (see WELCOME_LSP_SLOTS);
+	 *  retained for call-site API stability. */
+	setLspServers(_servers: LspServerInfo[]): void {
+		// Discarded — LSP status no longer paints on the welcome hero.
+	}
+
+	render(termWidth: number): readonly string[] {
+		if (this.#cachedLines && this.#cachedWidth === termWidth) {
+			return this.#cachedLines;
+		}
+		const lines = this.#renderLines(termWidth);
+		this.#cachedLines = lines;
+		this.#cachedWidth = termWidth;
+		return lines;
+	}
+
+	#renderLines(termWidth: number): string[] {
+		if (termWidth < 30) return [];
+		const lines = this.#sunriseHeader(termWidth);
+		if (!this.full) {
+			lines.push("");
+			// Continue where you left off: the most recent session, one quiet
+			// line. The data was always fetched for the hero; before this it was
+			// only ever shown behind /welcome — the single most useful thing at
+			// launch stayed hidden.
+			const recent = this.recentSessions[0];
+			if (recent) {
+				const nameBudget = Math.max(8, Math.min(40, termWidth - 30));
+				const name =
+					visibleWidth(recent.name) > nameBudget ? truncateToWidth(recent.name, nameBudget) : recent.name;
+				lines.push(
+					centerLine(
+						theme.fg("muted", name) + theme.fg("dim", ` · ${recent.timeAgo} — `) + theme.fg("accent", "/resume"),
+						termWidth,
+					),
+				);
+			}
+			// The /resume hint dedups against the continue line above.
+			const more = recent ? "  ·  /settings" : "  ·  /resume  ·  /settings";
+			lines.push(
+				centerLine(theme.fg("dim", "more: ") + theme.fg("accent", "/welcome") + theme.fg("dim", more), termWidth),
+			);
+			for (const tipLine of this.#centeredTipBlock(termWidth)) lines.push(tipLine);
+			return lines;
+		}
+		// /welcome: the sunrise header, then a centred menu column. Open space is
+		// the frame here too — no box on the brand's front porch.
+		const colW = Math.min(56, termWidth - 4);
+		const colPad = padding(Math.max(0, Math.floor((termWidth - colW) / 2)));
+		lines.push("");
+		for (const [label, shortcut] of WELCOME_ACTIONS) lines.push(colPad + this.#menuRow(label, shortcut, colW));
+		const sessions = this.recentSessions.slice(0, WELCOME_SESSION_SLOTS);
+		if (sessions.length > 0) {
+			lines.push("");
+			lines.push(colPad + theme.fg("dim", "Recent"));
+			for (const session of sessions) lines.push(colPad + this.#sessionRow(session, colW));
+		}
+		lines.push("");
+		// Drop only renderWelcomeTip's single indent space — trimStart here used
+		// to strip the continuation indent too, breaking the hanging alignment
+		// of wrapped tips.
+		for (const tipLine of this.#renderTip(colW)) {
+			lines.push(colPad + (tipLine.startsWith(" ") ? tipLine.slice(1) : tipLine));
+		}
+		return lines;
+	}
+
+	/**
+	 * The sunrise: a grand dithered sun over the silver wordmark, then one quiet
+	 * line of metadata. No box, no rails — open space is the frame, exactly like
+	 * the website's hero. Vertical centring is interactive-mode's topFill.
+	 */
+	#sunriseHeader(termWidth: number): string[] {
+		const lines: string[] = [];
+		// The sun scales with the viewport, never past it: reserve rows for the
+		// wordmark, metadata, hints, and the composer so the disc is never clipped.
+		// (Non-TTY / pre-start contexts report 0 or undefined rows — fall back to
+		// a generous viewport so the cap is inert there.)
+		const rawRows = process.stdout.rows;
+		const termRows = Number.isFinite(rawRows) && (rawRows ?? 0) > 0 ? (rawRows as number) : 60;
+		const sunRowBudget = Math.max(6, termRows - 24);
+		const sunW = Math.max(
+			26,
+			Math.min(60, Math.round(termWidth * 0.36), Math.round(((sunRowBudget - 2) * 2.1) / 0.6)),
+		);
+		// Disc diameter is 0.6·sunW (sunMark); rows restore roundness at the 2.1
+		// cell aspect, with one row of air under the disc.
+		// Cap-wins, NOT clamp/clampLow: on a short terminal (sunRowBudget < 7) the
+		// budget must win so the sun never overflows the rows we have. clamp/clampLow
+		// let the low bound (7) win in that degenerate case, which would draw the sun
+		// taller than the budget and break the layout.
+		const sunH = Math.min(Math.max(7, Math.round((sunW * 0.6) / 2.1) + 2), sunRowBudget);
+		const sun = this.#currentLogoFrame(sunW, sunH);
+		const sunPad = padding(Math.max(0, Math.floor((termWidth - sunW) / 2)));
+		for (const row of sun) lines.push(sunPad + row);
+		lines.push("");
+		// The wordmark is text, not glyph art — it renders in the terminal's own
+		// font (JetBrains Mono), letterspaced to hold its own under the sun.
+		for (const row of gradientLogo([APP_NAME.split("").join(" ")])) {
+			lines.push(centerLine(theme.bold(row), termWidth));
+		}
+		lines.push("");
+		const model =
+			this.modelName && this.providerName
+				? `${this.modelName} · ${this.providerName}`
+				: this.modelName || this.providerName;
+		const meta = model
+			? theme.fg("dim", `v${this.version} · ${model}`)
+			: theme.fg("dim", `v${this.version} · no model yet · `) + theme.fg("accent", "/login");
+		// A named profile leads the metadata so you know at launch which sandbox's
+		// config, sessions, and keys are live. The built-in "default" profile is the
+		// common case and stays silent, keeping the vanilla hero uncluttered.
+		const profile = getActiveProfileOrDefault();
+		const metaLine =
+			profile === DEFAULT_PROFILE_DIR_NAME ? meta : theme.fg("muted", profile) + theme.fg("dim", " · ") + meta;
+		lines.push(centerLine(metaLine, termWidth));
+		lines.push(centerLine(theme.fg("muted", VEYYON_VALUE_LINE), termWidth));
+		return lines;
+	}
+
+	/** Label flush left, shortcut flush right. */
+	#menuRow(label: string, shortcut: string, width: number): string {
+		const used = visibleWidth(label) + visibleWidth(shortcut);
+		const gap = Math.max(2, width - used);
+		return this.#fitToWidth(
+			`${theme.bold(theme.fg("accent", label))}${padding(gap)}${theme.fg("dim", shortcut)}`,
+			width,
+		);
+	}
+
+	/** Recent-session row: bullet + name, relative time flush right (name truncates first). */
+	#sessionRow(session: RecentSession, width: number): string {
+		const bullet = `${theme.md.bullet} `;
+		const time = ` ${session.timeAgo}`;
+		const budget = Math.max(1, width - visibleWidth(bullet) - visibleWidth(time));
+		const name = visibleWidth(session.name) > budget ? truncateToWidth(session.name, budget) : session.name;
+		return this.#fitToWidth(`${theme.fg("dim", bullet)}${theme.fg("muted", name)}${theme.fg("dim", time)}`, width);
+	}
+
+	#renderTip(boxWidth: number): string[] {
+		const tip = this.tip;
+		if (!tip) return [];
+		return renderWelcomeTip(tip, boxWidth);
+	}
+
+	/**
+	 * The tip centred as ONE BLOCK: a shared left offset from the widest line,
+	 * hanging indent intact. Centring each wrapped line individually shattered
+	 * the paragraph — the last fragment ("just images") floated alone mid-air
+	 * with no visual connection to its sentence. Returns a leading blank line
+	 * when there is a tip, nothing otherwise.
+	 */
+	#centeredTipBlock(termWidth: number): string[] {
+		// renderWelcomeTip prefixes every line with one indent space; drop that
+		// single space (keeping the continuation indent) before re-centring.
+		const tipLines = this.#renderTip(Math.min(64, termWidth - 4)).map(line =>
+			line.startsWith(" ") ? line.slice(1) : line,
+		);
+		if (tipLines.length === 0) return [];
+		const blockWidth = Math.max(...tipLines.map(line => visibleWidth(line)));
+		const pad = padding(Math.max(0, Math.floor((termWidth - blockWidth) / 2)));
+		return ["", ...tipLines.map(line => pad + line)];
+	}
+
+	/** Fit string to exact width with ANSI-aware truncation/padding. */
+	#fitToWidth(str: string, width: number): string {
+		return truncateToWidth(str, width, Ellipsis.Unicode, true);
+	}
+
+	/** The sun mark for the card: a steady ember disc at its resting size. */
+	#currentLogoFrame(sunW: number, sunH: number): readonly string[] {
+		return sunMark(sunW, sunH, { trueColor: TERMINAL.trueColor, time: 0.6 });
+	}
+}
+
+/** Retained for API/compat and tests — the old box-drawing wordmark. */
+export const VEYYON_LOGO = ["╦  ╦╔═╗╦ ╦╦ ╦╔═╗╔╗╔", "╚╗╔╝║╣ ╚═╣╚╦╝║ ║║║║", " ╚╝ ╚═╝  ╩ ╩ ╚═╝╝╚╝"];
+
+/**
+ * Veyyon silver luminance stops: dark → brand → bright. The middle/bright
+ * stops are the brand silvers (website --silver / --silver-hi); brand-conformance
+ * tests pin them to site.css so the wordmark shimmer cannot drift off-brand.
+ */
+export const SILVER_STOPS: ReadonlyArray<readonly [number, number, number]> = [
+	[116, 123, 134], // #747B86
+	[198, 203, 212], // #C6CBD4 — brand silver (website --silver / titanium `silver`)
+	[230, 233, 238], // #E6E9EE — silver bright (website --silver-hi / titanium `silverBright`)
+];
+
+/**
+ * The same three stops for a light ground, taken from the light theme's own
+ * silver vars (`silverDim`, `silver`, `silverStrong` in `light.json`).
+ *
+ * The dark stops above are the brand silvers, and on a white ground the middle
+ * one sits a few percent off the background: the wordmark, the largest and most
+ * prominent thing on the launch screen, was very nearly invisible on every light
+ * theme. Silver is a value, not a hue, so the light ground needs the family
+ * inverted rather than a different colour — dim, brand, strong, running from
+ * least to most contrast exactly as the dark ramp does.
+ *
+ * `wordmark-light-contrast.test.ts` pins these to `light.json` so the two cannot
+ * drift apart, the same way the brand-conformance tests pin the dark stops to
+ * `site.css`.
+ */
+export const LIGHT_SILVER_STOPS: ReadonlyArray<readonly [number, number, number]> = [
+	[124, 131, 142], // #7C838E — light `silverDim`
+	[92, 100, 112], // #5C6470 — light `silver`
+	[52, 59, 69], // #343B45 — light `silverStrong`
+];
+
+/** 256-color approx for the three silver stops. */
+const SILVER_RAMP_256 = [243, 250, 255];
+
+/** 256-color approx for the light-ground stops, running dark as intensity rises. */
+const LIGHT_SILVER_RAMP_256 = [246, 242, 238];
+
+/**
+ * Foreground SGR for a silver intensity in [0, 1] (0 = silver-dark, 0.5 = brand, 1 = bright).
+ * Brand contract: monochrome silver only — no hue sweep.
+ */
+export function silverEscape(intensity: number): string {
+	const t = clamp01(intensity);
+	// Which ground the wordmark is painted on decides which end of the silver
+	// family reads as "bright". Same ramp shape, opposite direction.
+	const stops = theme.isLight ? LIGHT_SILVER_STOPS : SILVER_STOPS;
+	const ramp256 = theme.isLight ? LIGHT_SILVER_RAMP_256 : SILVER_RAMP_256;
+	if (TERMINAL.trueColor) {
+		const seg = t * (stops.length - 1);
+		const i = Math.min(stops.length - 2, Math.floor(seg));
+		const f = seg - i;
+		const a = stops[i];
+		const b = stops[i + 1];
+		const r = Math.round(a[0] + (b[0] - a[0]) * f);
+		const g = Math.round(a[1] + (b[1] - a[1]) * f);
+		const bl = Math.round(a[2] + (b[2] - a[2]) * f);
+		return `\x1b[38;2;${r};${g};${bl}m`;
+	}
+	const idx = Math.min(ramp256.length - 1, Math.max(0, Math.round(t * (ramp256.length - 1))));
+	return `\x1b[38;5;${ramp256[idx]}m`;
+}
+
+/** Wordmark foreground: brand silver. */
+export function gradientEscape(): string {
+	return silverEscape(0.55);
+}
+
+/** Paint multi-line art in Veyyon silver. */
+export function gradientLogo(lines: readonly string[]): string[] {
+	const reset = SGR_RESET;
+	return lines.map(line => {
+		let result = "";
+		for (const char of line) {
+			if (char === " ") {
+				result += char;
+				continue;
+			}
+			result += silverEscape(0.55) + char + reset;
+		}
+		return result;
+	});
+}

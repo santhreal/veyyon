@@ -25,7 +25,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { GALLERY_STATES, renderGalleryState, resolveFixture } from "@veyyon/coding-agent/cli/gallery-cli";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer-chrome";
+import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import { Text } from "@veyyon/tui";

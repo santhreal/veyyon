@@ -19,7 +19,7 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import {
 	type AgentTranscriptRemote,
 	AgentTranscriptViewer,
-} from "@veyyon/coding-agent/modes/components/agent-transcript-viewer";
+} from "@veyyon/coding-agent/modes/components/dashboard/agent-transcript-viewer";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { CURRENT_SESSION_VERSION } from "@veyyon/coding-agent/session/session-entries";

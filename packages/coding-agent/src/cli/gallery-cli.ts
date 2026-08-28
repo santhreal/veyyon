@@ -12,7 +12,7 @@ import type { TUI } from "@veyyon/tui";
 import { clampLow, errorMessage, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import { Settings } from "../config/settings";
-import { ToolExecutionComponent } from "../modes/components/tool-execution";
+import { ToolExecutionComponent } from "../modes/components/transcript/tool-execution";
 import { getAvailableThemes, initTheme, setTheme, theme } from "../modes/theme/theme";
 import { toolRenderers } from "../tools/renderers";
 import { EXIT_USAGE } from "./exit-codes";

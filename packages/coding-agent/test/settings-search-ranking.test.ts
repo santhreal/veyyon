@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { SETTING_TABS } from "@veyyon/coding-agent/config/settings-schema";
-import { getSettingsForTab } from "@veyyon/coding-agent/modes/components/settings-defs";
+import { getSettingsForTab } from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
 import { getSettingItemFilterText, type SettingItem } from "@veyyon/tui";
 import { fuzzyRank } from "@veyyon/utils/fuzzy";
 

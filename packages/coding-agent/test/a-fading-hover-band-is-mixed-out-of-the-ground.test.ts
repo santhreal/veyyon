@@ -24,8 +24,8 @@
 // how the band looks to an eye — a render proof answers that, an assertion cannot.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { modalRevealGround } from "@veyyon/coding-agent/modes/components/modal-shell";
-import { selectionBand } from "@veyyon/coding-agent/modes/components/selector-helpers";
+import { modalRevealGround } from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
+import { selectionBand } from "@veyyon/coding-agent/modes/components/selectors/selector-helpers";
 import {
 	getSelectListTheme,
 	getSettingsListTheme,

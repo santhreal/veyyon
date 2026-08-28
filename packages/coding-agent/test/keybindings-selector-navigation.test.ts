@@ -1,12 +1,12 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
+import { HistorySearchComponent } from "@veyyon/coding-agent/modes/components/composer/history-search";
 import { ExtensionList } from "@veyyon/coding-agent/modes/components/extensions/extension-list";
 import type { ExtensionRow } from "@veyyon/coding-agent/modes/components/extensions/types";
-import { HistorySearchComponent } from "@veyyon/coding-agent/modes/components/history-search";
-import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
-import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/tree-selector";
-import { UserMessageSelectorComponent } from "@veyyon/coding-agent/modes/components/user-message-selector";
+import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/session-selector";
+import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/tree-selector";
+import { UserMessageSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/user-message-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
 import type { SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";

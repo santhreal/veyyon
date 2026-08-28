@@ -20,8 +20,11 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
-import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer-chrome";
-import { buildComposerShortcuts, ComposerShortcutsBar } from "@veyyon/coding-agent/modes/components/composer-shortcuts";
+import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
+import {
+	buildComposerShortcuts,
+	ComposerShortcutsBar,
+} from "@veyyon/coding-agent/modes/components/composer/composer-shortcuts";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 

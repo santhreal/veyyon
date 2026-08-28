@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { CountdownTimer } from "@veyyon/coding-agent/modes/components/countdown-timer";
+import { CountdownTimer } from "@veyyon/coding-agent/modes/components/chrome/countdown-timer";
 import type { Component, TUI } from "@veyyon/tui";
 
 describe("CountdownTimer", () => {

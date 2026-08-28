@@ -34,7 +34,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { ChatTranscriptBuilder } from "@veyyon/coding-agent/modes/components/chat-transcript-builder";
+import { ChatTranscriptBuilder } from "@veyyon/coding-agent/modes/components/transcript/chat-transcript-builder";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
 import type { TUI } from "@veyyon/tui";

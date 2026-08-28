@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { EMBER, sunMark } from "@veyyon/coding-agent/modes/components/sun";
+import { EMBER, sunMark } from "@veyyon/coding-agent/modes/components/chrome/sun";
 
 /**
  * The sun is drawn as eight stepped ember bands, never a smooth gradient, and

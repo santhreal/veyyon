@@ -100,7 +100,7 @@ const GRANDFATHERED: Readonly<Record<string, number>> = {
 	"packages/coding-agent/src/memory/hindsight/provider-boundary.test.ts": 2,
 	"packages/coding-agent/src/internal-urls/__tests__/ssh-protocol.test.ts": 4,
 	"packages/coding-agent/src/mcp/transports/stdio.test.ts": 1,
-	"packages/coding-agent/src/modes/components/custom-editor.test.ts": 1,
+	"packages/coding-agent/src/modes/components/composer/custom-editor.test.ts": 1,
 	"packages/coding-agent/src/modes/controllers/extension-ui-controller.test.ts": 4,
 	"packages/coding-agent/src/ssh/__tests__/file-transfer-posix-guard.test.ts": 2,
 	"packages/coding-agent/src/system-prompt.test.ts": 2,

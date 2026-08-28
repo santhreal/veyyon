@@ -31,7 +31,10 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { SubagentAgentSettings } from "@veyyon/coding-agent/config/settings-domains/subagents";
 import { isSettingPath } from "@veyyon/coding-agent/config/settings-schema";
-import { getSettingsForTab, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
+import {
+	getSettingsForTab,
+	invalidateSettingDefsCache,
+} from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
 import {
 	delegationBlockedNotice,
 	delegationEnabled,

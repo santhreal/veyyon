@@ -2,8 +2,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import { stripVTControlCharacters } from "node:util";
 import type { AssistantMessage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/assistant-message";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
 import { type Component, Text } from "@veyyon/tui";

@@ -4,7 +4,7 @@ import type { Component } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { Settings } from "../../../config/settings";
 import { getThemeByName, setThemeInstance } from "../../theme/theme";
-import { PauseScreenComponent, type PauseScreenHost, renderPauseScreen, runPauseScreen } from "../pause-screen";
+import { PauseScreenComponent, type PauseScreenHost, renderPauseScreen, runPauseScreen } from "../dialogs/pause-screen";
 
 // Strip SGR colors so assertions see visible text only.
 

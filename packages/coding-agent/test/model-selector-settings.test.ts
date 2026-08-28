@@ -4,12 +4,12 @@ import {
 	cachedAuthAwareBrowserItems,
 	formatModelAuthBadge,
 	resolveModelAuthStatus,
-} from "@veyyon/coding-agent/modes/components/model-selector";
+} from "@veyyon/coding-agent/modes/components/selectors/model-selector";
 import {
 	DEFAULT_MODEL_SETTING_ID,
 	getSettingsForTab,
 	invalidateSettingDefsCache,
-} from "@veyyon/coding-agent/modes/components/settings-defs";
+} from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
 
 describe("settings model pickers", () => {
 	it("exposes modelRoles as a searchable roles editor, not a JSON text field", () => {

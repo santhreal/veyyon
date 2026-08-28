@@ -25,7 +25,7 @@ import {
 	paintHotTail,
 	SHIMMER_PERIOD_MS,
 	shimmerPhase,
-} from "@veyyon/coding-agent/modes/components/follow";
+} from "@veyyon/coding-agent/modes/components/chrome/follow";
 import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
 import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import { createTheme } from "@veyyon/coding-agent/modes/theme/theme";

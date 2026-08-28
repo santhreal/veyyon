@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
-import { replaceModelChainEntry } from "@veyyon/coding-agent/modes/components/settings-selector";
+import { replaceModelChainEntry } from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
 
 const models: Model[] = ["alpha", "beta", "gamma"].map(id =>
 	buildModel({

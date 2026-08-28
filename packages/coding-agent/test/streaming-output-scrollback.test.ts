@@ -1,8 +1,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
-import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/assistant-message";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
 import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { evalToolRenderer } from "@veyyon/coding-agent/tools/eval-render";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";

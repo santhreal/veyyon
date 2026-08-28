@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/tool-execution";
 import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import type { TUI } from "@veyyon/tui";

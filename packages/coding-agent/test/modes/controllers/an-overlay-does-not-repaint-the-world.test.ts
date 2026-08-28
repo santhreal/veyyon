@@ -33,7 +33,7 @@ import * as path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { AccountManagerComponent } from "@veyyon/coding-agent/modes/components/account-manager";
+import { AccountManagerComponent } from "@veyyon/coding-agent/modes/components/account/account-manager";
 import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";

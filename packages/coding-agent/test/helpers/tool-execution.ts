@@ -17,7 +17,7 @@
  */
 
 import { afterEach } from "bun:test";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/tool-execution";
 
 const liveComponents: ToolExecutionComponent[] = [];
 

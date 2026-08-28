@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { AssistantMessage, ToolCall, Usage } from "@veyyon/ai";
 import { Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
 import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";

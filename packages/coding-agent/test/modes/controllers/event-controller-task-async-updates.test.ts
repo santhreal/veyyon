@@ -15,8 +15,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/tool-execution";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
 import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";

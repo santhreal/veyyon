@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
-import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/tree-selector";
+import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/tree-selector";
 import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
 

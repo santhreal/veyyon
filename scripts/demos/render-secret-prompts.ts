@@ -16,7 +16,7 @@
  * retyped here: a proof of copy that quotes its own copy proves nothing.
  */
 import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
-import { HookInputComponent } from "../../packages/coding-agent/src/modes/components/hook-input";
+import { HookInputComponent } from "../../packages/coding-agent/src/modes/components/dialogs/hook-input";
 import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
 import {
 	maskedPromptHint,

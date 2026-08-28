@@ -11,8 +11,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:
 import type { AssistantMessage } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
-import { ErrorBannerComponent } from "@veyyon/coding-agent/modes/components/error-banner";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/assistant-message";
+import { ErrorBannerComponent } from "@veyyon/coding-agent/modes/components/transcript/error-banner";
 import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";

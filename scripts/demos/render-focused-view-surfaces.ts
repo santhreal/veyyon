@@ -39,7 +39,7 @@ import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { ModelRegistry } from "../../packages/coding-agent/src/config/model-registry";
 import { Settings } from "../../packages/coding-agent/src/config/settings";
-import { buildComposerShortcuts } from "../../packages/coding-agent/src/modes/components/composer-shortcuts";
+import { buildComposerShortcuts } from "../../packages/coding-agent/src/modes/components/composer/composer-shortcuts";
 import { InteractiveMode } from "../../packages/coding-agent/src/modes/interactive-mode";
 import { initTheme, setTheme } from "../../packages/coding-agent/src/modes/theme/theme";
 import { AgentRegistry, MAIN_AGENT_ID } from "../../packages/coding-agent/src/registry/agent-registry";

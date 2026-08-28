@@ -19,7 +19,7 @@
  *       | bun scripts/demos/render-proof.ts --out /tmp/proof/band-history --width 110
  */
 
-import { HistorySearchComponent } from "../../packages/coding-agent/src/modes/components/history-search";
+import { HistorySearchComponent } from "../../packages/coding-agent/src/modes/components/composer/history-search";
 import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
 import type { HistoryEntry, HistoryStorage } from "../../packages/coding-agent/src/session/history-storage";
 import { setAnsiPolicy } from "../../packages/tui/src/index";

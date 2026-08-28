@@ -24,7 +24,7 @@ import {
 	ROLLBACK_ROW_ID,
 	type SettingsCallbacks,
 	SettingsSelectorComponent,
-} from "@veyyon/coding-agent/modes/components/settings-selector";
+} from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { VERSION } from "@veyyon/utils";
 import { stubStdoutGeometry } from "../../helpers/stdout-geometry";

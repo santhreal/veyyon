@@ -13,7 +13,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { OAuthSelectorComponent } from "@veyyon/coding-agent/modes/components/oauth-selector";
+import { OAuthSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/oauth-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 

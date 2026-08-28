@@ -28,7 +28,7 @@
  * wrong one would have been repaired.
  */
 import { beforeAll, describe, expect, test } from "bun:test";
-import { StaticComposerFrame } from "@veyyon/coding-agent/modes/components/composer-chrome";
+import { StaticComposerFrame } from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
 import { HomeAnchorLayout } from "@veyyon/coding-agent/modes/controllers/home-anchor-layout";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type Component, CURSOR_MARKER, type Focusable, Spacer, TUI } from "@veyyon/tui";

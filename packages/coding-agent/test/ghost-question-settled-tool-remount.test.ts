@@ -49,9 +49,9 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { ReadToolGroupComponent } from "@veyyon/coding-agent/modes/components/read-tool-group";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { ReadToolGroupComponent } from "@veyyon/coding-agent/modes/components/transcript/read-tool-group";
+import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/tool-execution";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
 import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";

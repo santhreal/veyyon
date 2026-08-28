@@ -18,7 +18,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/assistant-message";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 

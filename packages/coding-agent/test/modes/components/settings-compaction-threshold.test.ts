@@ -14,8 +14,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { getSettingDef } from "@veyyon/coding-agent/modes/components/settings-defs";
-import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
+import { getSettingDef } from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 function strip(s: string): string {

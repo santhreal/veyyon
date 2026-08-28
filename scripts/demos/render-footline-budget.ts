@@ -24,7 +24,7 @@
  * read this machine; a note goes to stderr so nobody reads a hostname difference as a
  * change to the layout.
  */
-import { COMPOSER_INSET_COLS } from "../../packages/coding-agent/src/modes/components/composer-chrome";
+import { COMPOSER_INSET_COLS } from "../../packages/coding-agent/src/modes/components/composer/composer-chrome";
 import { StatusLineComponent } from "../../packages/coding-agent/src/modes/components/status-line/component";
 import { STATUS_LINE_PRESETS } from "../../packages/coding-agent/src/modes/components/status-line/presets";
 import type { StatusLinePreset } from "../../packages/coding-agent/src/modes/components/status-line/types";

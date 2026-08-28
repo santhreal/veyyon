@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { ShowImagesSelectorComponent } from "@veyyon/coding-agent/modes/components/show-images-selector";
+import { ShowImagesSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/show-images-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 

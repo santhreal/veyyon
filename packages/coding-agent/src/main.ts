@@ -65,7 +65,7 @@ import type { ExtensionUIContext } from "./extensibility/extensions/types";
 import { scheduleMarketplaceAutoUpdate } from "./extensibility/plugins/marketplace-auto-update";
 import { registerDaemonProjectPresence } from "./launch/presence";
 import type { MCPManager } from "./mcp";
-import { setLaunchTip, updateInstalledTip } from "./modes/components/launch-tip";
+import { setLaunchTip, updateInstalledTip } from "./modes/components/dialogs/launch-tip";
 import type { InteractiveMode } from "./modes/interactive-mode";
 import type { PrintModeOptions } from "./modes/print-mode";
 import { CURRENT_SETUP_VERSION, resolveOnboardingGeneration } from "./modes/setup-version";

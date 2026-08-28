@@ -46,18 +46,18 @@ const ALLOWED = new Map<string, string>([
 	["modes/theme/highlight", "Syntax highlighting for code a tool prints."],
 	["modes/theme/shimmer", "The in-progress shimmer, a text effect."],
 	["modes/utils/key-hint", "Formats a keybinding as the hint text a block prints. No key handling."],
-	["modes/components/visual-truncate", "Truncates rendered output to a line budget. Pure text in, text out."],
-	["modes/components/follow", "The hot-tail painter for streaming output. Drawing only."],
+	["modes/components/transcript/visual-truncate", "Truncates rendered output to a line budget. Pure text in, text out."],
+	["modes/components/chrome/follow", "The hot-tail painter for streaming output. Drawing only."],
 	[
 		"modes/components/status-line/context-thresholds",
 		"Formats a context-usage figure the way the status line does, so a tool that prints one agrees with the gauge.",
 	],
 	[
-		"modes/components/hook-editor",
+		"modes/components/dialogs/hook-editor",
 		"One layout constant, `HOOK_EDITOR_TEXT_PAD_COLS`, so the ask tool's block lines up with the editor above it. The editor itself is never constructed here.",
 	],
 	[
-		"modes/components/modal-shell",
+		"modes/components/chrome/modal-shell",
 		"One width query, `mediumModalContentWidth`, so the ask tool pre-wraps its title to the width of the card the editor draws it in. Wrapping at the terminal width instead hands the card lines it wraps a second time. No card is constructed, rendered or hit-tested here.",
 	],
 ]);
@@ -70,8 +70,8 @@ const ALLOWED = new Map<string, string>([
  * crossing is a decision recorded here rather than an import added upstream.
  */
 const NARROW = new Map<string, readonly string[]>([
-	["modes/components/hook-editor", ["HOOK_EDITOR_TEXT_PAD_COLS"]],
-	["modes/components/modal-shell", ["mediumModalContentWidth"]],
+	["modes/components/dialogs/hook-editor", ["HOOK_EDITOR_TEXT_PAD_COLS"]],
+	["modes/components/chrome/modal-shell", ["mediumModalContentWidth"]],
 ]);
 
 /** Every `.ts` file under `tools/`, recursively. */

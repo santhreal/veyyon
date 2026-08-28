@@ -34,7 +34,7 @@ import {
 	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
-} from "../modal-shell";
+} from "../chrome/modal-shell";
 import { ExtensionList } from "./extension-list";
 import { InspectorPanel } from "./inspector-panel";
 import {

@@ -16,8 +16,8 @@ import {
 	COMPOSER_INSET_COLS,
 	ComposerHairline,
 	resolveComposerAccents,
-} from "../../packages/coding-agent/src/modes/components/composer-chrome";
-import { ErrorBannerComponent } from "../../packages/coding-agent/src/modes/components/error-banner";
+} from "../../packages/coding-agent/src/modes/components/composer/composer-chrome";
+import { ErrorBannerComponent } from "../../packages/coding-agent/src/modes/components/transcript/error-banner";
 import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
 import { flag, renderWidth } from "./render-args";
 

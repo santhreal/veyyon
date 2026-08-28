@@ -16,7 +16,10 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import type { CacheEnforcement } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { getAllSettingDefs, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
+import {
+	getAllSettingDefs,
+	invalidateSettingDefsCache,
+} from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
 
 const CACHE_SETTING_PATHS = ["cache.reportRejection", "cache.blockOnRejection"] as const;
 

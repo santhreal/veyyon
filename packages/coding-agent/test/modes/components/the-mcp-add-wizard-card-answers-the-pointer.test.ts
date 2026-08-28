@@ -28,7 +28,7 @@
  * a plain one and no assertion could tell them apart.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { MCPAddWizard } from "@veyyon/coding-agent/modes/components/mcp-add-wizard";
+import { MCPAddWizard } from "@veyyon/coding-agent/modes/components/dialogs/mcp-add-wizard";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";

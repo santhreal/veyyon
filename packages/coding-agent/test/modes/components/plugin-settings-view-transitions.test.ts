@@ -26,7 +26,7 @@ import {
 	MarketplaceManager,
 } from "@veyyon/coding-agent/extensibility/plugins/marketplace";
 import type { InstalledPlugin } from "@veyyon/coding-agent/extensibility/plugins/types";
-import { PluginSettingsComponent } from "@veyyon/coding-agent/modes/components/plugin-settings";
+import { PluginSettingsComponent } from "@veyyon/coding-agent/modes/components/dialogs/plugin-settings";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {

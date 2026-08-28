@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { TodoReminderComponent } from "@veyyon/coding-agent/modes/components/todo-reminder";
+import { TodoReminderComponent } from "@veyyon/coding-agent/modes/components/dashboard/todo-reminder";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { TodoItem } from "@veyyon/coding-agent/tools/todo";
 

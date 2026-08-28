@@ -22,7 +22,7 @@ import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { Container, Spacer, Text } from "@veyyon/tui";
 import type { ModelRegistry } from "../../packages/coding-agent/src/config/model-registry";
-import { ModelChainSubmenu } from "../../packages/coding-agent/src/modes/components/settings-selector";
+import { ModelChainSubmenu } from "../../packages/coding-agent/src/modes/components/selectors/settings-selector";
 import { initRender, renderWidth } from "./render-args";
 
 const width = renderWidth(process.argv.slice(2));

@@ -28,7 +28,7 @@ import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import type { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
+import type { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
 import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";

@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { SPINNER_GLYPH_ADVANCE_MS, sharedSpinnerFrame } from "@veyyon/coding-agent/modes/components/tool-execution";
+import {
+	SPINNER_GLYPH_ADVANCE_MS,
+	sharedSpinnerFrame,
+} from "@veyyon/coding-agent/modes/components/transcript/tool-execution";
 import { SPINNER_FRAMES } from "@veyyon/coding-agent/modes/theme/symbols";
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import { getCustomThemesDir, removeWithRetries, setAgentDir } from "@veyyon/utils";

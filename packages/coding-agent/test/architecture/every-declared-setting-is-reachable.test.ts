@@ -4,7 +4,7 @@
  * THE BUG THIS LOCKS OUT. `subagent.idleTtlMs` shipped with a complete `ui` block -- tab, group,
  * label, a two-sentence description -- and a docs entry, and it did not appear in `/settings` at all.
  * The adapter that turns a schema row into a UI row (`pathToSettingDef` in
- * `modes/components/settings-defs.ts`) returns `null` for a NUMBER with no `ui.options`, so stage one
+ * `modes/components/selectors/settings-defs.ts`) returns `null` for a NUMBER with no `ui.options`, so stage one
  * of the park/close lifecycle was documented, defaulted and honored while being unreachable. Nothing
  * failed. Every settings suite in this repository checks named paths one at a time
  * (`settings-layout`, `model-selector-settings`, `subagent-agents-surface`, `compaction-strategy-settings`),
@@ -33,7 +33,10 @@ import {
 	SETTINGS_SCHEMA,
 	type SettingPath,
 } from "@veyyon/coding-agent/config/settings-schema";
-import { getSettingsForTab, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
+import {
+	getSettingsForTab,
+	invalidateSettingDefsCache,
+} from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
 
 function declaredVisible(): SettingPath[] {
 	return (Object.keys(SETTINGS_SCHEMA) as SettingPath[]).filter(path => {

@@ -7,7 +7,7 @@ import {
 	type SettingTab,
 	TAB_GROUPS,
 } from "@veyyon/coding-agent/config/settings-schema";
-import { getSettingsForTab } from "@veyyon/coding-agent/modes/components/settings-defs";
+import { getSettingsForTab } from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
 
 interface UiShape {
 	tab: SettingTab;

@@ -17,7 +17,7 @@ import { settings } from "../config/settings-instance";
 import type { EvalCellResult, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "../eval/types";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { formatContextUsage } from "../modes/components/status-line/context-thresholds";
-import { truncateToVisualLines } from "../modes/components/visual-truncate";
+import { truncateToVisualLines } from "../modes/components/transcript/visual-truncate";
 import { getMarkdownTheme } from "../modes/theme/markdown-theme";
 import type { Theme } from "../modes/theme/theme";
 import { expandHintSuffix } from "../modes/utils/key-hint";

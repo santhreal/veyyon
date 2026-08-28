@@ -18,7 +18,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { CustomEditor } from "@veyyon/coding-agent/modes/components/custom-editor";
+import { CustomEditor } from "@veyyon/coding-agent/modes/components/composer/custom-editor";
 import { getEditorTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 const START = "\x1b[200~";

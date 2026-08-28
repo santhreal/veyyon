@@ -19,7 +19,7 @@
  * numbers copied out of a layout that will move.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
+import { AgentDashboard } from "@veyyon/coding-agent/modes/components/dashboard/agent-dashboard";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";

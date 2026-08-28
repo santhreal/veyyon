@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "bun:test";
-import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/assistant-message";
 import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 

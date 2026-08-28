@@ -14,9 +14,9 @@ import { Effort } from "@veyyon/catalog/effort";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { DEFAULT_MODEL_SLOT } from "@veyyon/coding-agent/config/model-roles";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { resolveRoleAssignments } from "@veyyon/coding-agent/modes/components/model-browser";
-import { DEFAULT_MODEL_SETTING_ID } from "@veyyon/coding-agent/modes/components/settings-defs";
-import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
+import { resolveRoleAssignments } from "@veyyon/coding-agent/modes/components/selectors/model-browser";
+import { DEFAULT_MODEL_SETTING_ID } from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 const model: Model = buildModel({

@@ -2,7 +2,7 @@ import type { AssistantMessage } from "@veyyon/ai";
 import { errorMessage, prompt } from "@veyyon/utils";
 import { sideChannelPrompts } from "../../prompts/side-channel/rows";
 import { copyToClipboard } from "../../utils/clipboard";
-import { BtwPanelComponent } from "../components/btw-panel";
+import { BtwPanelComponent } from "../components/dialogs/btw-panel";
 import type { InteractiveModeContext } from "../types";
 
 /**

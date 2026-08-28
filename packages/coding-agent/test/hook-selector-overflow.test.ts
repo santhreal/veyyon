@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { HookSelectorComponent } from "@veyyon/coding-agent/modes/components/hook-selector";
+import { HookSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/hook-selector";
 import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { visibleWidth } from "@veyyon/utils/width";
 import { useFullColor } from "../test/helpers/theme-assertions";

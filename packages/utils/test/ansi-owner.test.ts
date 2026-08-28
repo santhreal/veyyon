@@ -3,7 +3,7 @@
  *
  * Why this suite exists: five byte strings were declared sixteen times across `@veyyon/tui` and
  * `@veyyon/coding-agent` under eleven names. `\x1b[0m` was `SEGMENT_RESET` in `tui.ts` and `deccara.ts`,
- * `RESET` in `tools/terminal-output.ts` and `modes/components/sun.ts`, and `RESERVED_IMAGE_ROW` in
+ * `RESET` in `tools/terminal-output.ts` and `modes/components/chrome/sun.ts`, and `RESERVED_IMAGE_ROW` in
  * `components/image.ts`. `\x1b[39m` was `FG_RESET` three times and `ANSI_FG_RESET` once. `\x1b\\` was `ST`,
  * `OSC_TERMINATOR_ST` and `SIXEL_END_SEQUENCE`. `\x1b]` was `OSC` and `OSC_INTRODUCER`. `\x1b` was `ESC`
  * twice.
@@ -241,15 +241,15 @@ describe("primitive ownership", () => {
 		[path.join(UTILS_SRC, "width.ts"), "ESC"],
 		[path.join(TUI_SRC, "stdin-buffer.ts"), "ESC"],
 		[path.join(UTILS_SRC, "latex-unicode.ts"), "SGR_FG_RESET"],
-		[path.join(TUI_SRC, "tui.ts"), "SGR_RESET"],
+		[path.join(TUI_SRC, "core/renderer.ts"), "SGR_RESET"],
 		[path.join(UTILS_SRC, "deccara.ts"), "SGR_RESET"],
 		[path.join(TUI_SRC, "components/image.ts"), "SGR_RESET"],
 		[path.join(CODING_AGENT_SRC, "tui/hyperlink.ts"), "ST"],
 		[path.join(CODING_AGENT_SRC, "modes/gradient-highlight.ts"), "SGR_FG_RESET"],
-		[path.join(CODING_AGENT_SRC, "modes/components/segment-track.ts"), "SGR_FG_RESET"],
+		[path.join(CODING_AGENT_SRC, "modes/components/chrome/segment-track.ts"), "SGR_FG_RESET"],
 		[path.join(CODING_AGENT_SRC, "modes/theme/shimmer.ts"), "SGR_FG_RESET"],
 		[path.join(CODING_AGENT_SRC, "tools/terminal-output.ts"), "SGR_RESET"],
-		[path.join(CODING_AGENT_SRC, "modes/components/sun.ts"), "SGR_RESET"],
+		[path.join(CODING_AGENT_SRC, "modes/components/chrome/sun.ts"), "SGR_RESET"],
 		[path.join(CODING_AGENT_SRC, "utils/sixel.ts"), "ST"],
 		[path.join(CODING_AGENT_SRC, "utils/enhanced-paste.ts"), "ST"],
 	];

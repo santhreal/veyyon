@@ -25,8 +25,11 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { settings } from "@veyyon/coding-agent/config/settings";
 import { SETTING_TABS, TAB_GROUPS } from "@veyyon/coding-agent/config/settings-schema";
-import { getSettingsForTab, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
-import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
+import {
+	getSettingsForTab,
+	invalidateSettingDefsCache,
+} from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import {
 	nextSubagentEnableValue,

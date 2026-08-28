@@ -1,5 +1,5 @@
 import { type Container, Spacer, type TUI } from "@veyyon/tui";
-import { type RecentSession, WelcomeComponent } from "../components/welcome";
+import { type RecentSession, WelcomeComponent } from "../components/dialogs/welcome";
 
 /** Data the welcome hero renders. The controller never reaches into the
  * session itself; the host resolves model/recents and hands them over. */

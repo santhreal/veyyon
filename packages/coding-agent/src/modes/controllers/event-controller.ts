@@ -9,19 +9,6 @@ import { extractTextContent } from "../../commit/utils";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
 import { getFileSnapshotStore } from "../../edit/file-snapshot-store";
-import { AssistantMessageComponent } from "../../modes/components/assistant-message";
-import { detectCacheInvalidation, usesExplicitPromptCache } from "../../modes/components/cache-invalidation-marker";
-import { compactionActionLabel, willCompactRemotely } from "../../modes/components/compaction-summary-message";
-import {
-	ReadToolGroupComponent,
-	readArgsHaveTarget,
-	readArgsTargetInternalUrl,
-} from "../../modes/components/read-tool-group";
-import { TodoReminderComponent } from "../../modes/components/todo-reminder";
-import { ToolExecutionComponent } from "../../modes/components/tool-execution";
-import { TtsrNotificationComponent } from "../../modes/components/ttsr-notification";
-import { createUsageRowBlock } from "../../modes/components/usage-row";
-import { UserMessageComponent } from "../../modes/components/user-message";
 import { setShimmerActivity, shimmerText } from "../../modes/theme/shimmer";
 import { getSymbolTheme, theme } from "../../modes/theme/theme";
 import type { InteractiveModeContext, TodoPhase } from "../../modes/types";
@@ -36,6 +23,19 @@ import { previewLine, TRUNCATE_LENGTHS } from "../../tools/render-utils";
 import type { ResolveToolDetails } from "../../tools/resolve";
 import { nextActionableTask } from "../../tools/todo";
 import { canonicalizeMessage } from "../../utils/thinking-display";
+import { TodoReminderComponent } from "../components/dashboard/todo-reminder";
+import { AssistantMessageComponent } from "../components/transcript/assistant-message";
+import { detectCacheInvalidation, usesExplicitPromptCache } from "../components/transcript/cache-invalidation-marker";
+import { compactionActionLabel, willCompactRemotely } from "../components/transcript/compaction-summary-message";
+import {
+	ReadToolGroupComponent,
+	readArgsHaveTarget,
+	readArgsTargetInternalUrl,
+} from "../components/transcript/read-tool-group";
+import { ToolExecutionComponent } from "../components/transcript/tool-execution";
+import { TtsrNotificationComponent } from "../components/transcript/ttsr-notification";
+import { createUsageRowBlock } from "../components/transcript/usage-row";
+import { UserMessageComponent } from "../components/transcript/user-message";
 import { formatRetryLine, formatRetrySummary, type RetryTrace, retryReason } from "../retry-display";
 import { interruptHint } from "../shared";
 import { asyncToolState, isLiveBackgroundTask } from "../utils/async-tool-state";

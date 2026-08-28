@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "bun:test";
 import { Container } from "@veyyon/tui";
 import type { ExtensionUIContext } from "../../extensibility/extensions";
-import { CustomEditor } from "../components/custom-editor";
+import { CustomEditor } from "../components/composer/custom-editor";
 import { getEditorTheme } from "../theme/theme";
 import type { InteractiveModeContext } from "../types";
 import { ExtensionUiController } from "./extension-ui-controller";

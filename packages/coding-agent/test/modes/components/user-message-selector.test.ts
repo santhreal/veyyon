@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { UserMessageSelectorComponent } from "@veyyon/coding-agent/modes/components/user-message-selector";
+import { UserMessageSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/user-message-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {

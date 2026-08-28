@@ -7,33 +7,6 @@ import type { AdvisorMessageDetails } from "../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
 import { type SettingsSaveFailure, settings } from "../../config/settings";
 import { getFileSnapshotStore } from "../../edit/file-snapshot-store";
-import { createAdvisorMessageCard } from "../../modes/components/advisor-message";
-import { AssistantMessageComponent } from "../../modes/components/assistant-message";
-import { createBackgroundTanDispatchBlock } from "../../modes/components/background-tan-message";
-import { BashExecutionComponent } from "../../modes/components/bash-execution";
-import { detectCacheInvalidation, usesExplicitPromptCache } from "../../modes/components/cache-invalidation-marker";
-import { CollabPromptMessageComponent } from "../../modes/components/collab-prompt-message";
-import {
-	BranchSummaryMessageComponent,
-	CompactionSummaryMessageComponent,
-	createHandoffSummaryMessageComponent,
-} from "../../modes/components/compaction-summary-message";
-import { CustomMessageComponent } from "../../modes/components/custom-message";
-import { EvalExecutionComponent } from "../../modes/components/eval-execution";
-import {
-	type LateDiagnosticsFile,
-	LateDiagnosticsMessageComponent,
-} from "../../modes/components/late-diagnostics-message";
-import {
-	ReadToolGroupComponent,
-	readArgsHaveTarget,
-	readArgsTargetInternalUrl,
-} from "../../modes/components/read-tool-group";
-import { SkillMessageComponent } from "../../modes/components/skill-message";
-import { ToolExecutionComponent, turnFailedToolResult } from "../../modes/components/tool-execution";
-import { TranscriptBlock } from "../../modes/components/transcript-container";
-import { createUsageRowBlock } from "../../modes/components/usage-row";
-import { UserMessageComponent } from "../../modes/components/user-message";
 import { decodeStreamedToolArgs, streamingStringKeysForTool } from "../../modes/controllers/tool-args-reveal";
 import { materializeImageReferenceLinksSync } from "../../modes/image-references";
 import { theme } from "../../modes/theme/theme";
@@ -47,6 +20,33 @@ import {
 } from "../../session/messages";
 import type { SessionContext, StrippedToolCallsMarker } from "../../session/session-context";
 import { replaceTabs } from "../../tools/render-utils";
+import { createAdvisorMessageCard } from "../components/transcript/advisor-message";
+import { AssistantMessageComponent } from "../components/transcript/assistant-message";
+import { createBackgroundTanDispatchBlock } from "../components/transcript/background-tan-message";
+import { BashExecutionComponent } from "../components/transcript/bash-execution";
+import { detectCacheInvalidation, usesExplicitPromptCache } from "../components/transcript/cache-invalidation-marker";
+import { CollabPromptMessageComponent } from "../components/transcript/collab-prompt-message";
+import {
+	BranchSummaryMessageComponent,
+	CompactionSummaryMessageComponent,
+	createHandoffSummaryMessageComponent,
+} from "../components/transcript/compaction-summary-message";
+import { CustomMessageComponent } from "../components/transcript/custom-message";
+import { EvalExecutionComponent } from "../components/transcript/eval-execution";
+import {
+	type LateDiagnosticsFile,
+	LateDiagnosticsMessageComponent,
+} from "../components/transcript/late-diagnostics-message";
+import {
+	ReadToolGroupComponent,
+	readArgsHaveTarget,
+	readArgsTargetInternalUrl,
+} from "../components/transcript/read-tool-group";
+import { SkillMessageComponent } from "../components/transcript/skill-message";
+import { ToolExecutionComponent, turnFailedToolResult } from "../components/transcript/tool-execution";
+import { TranscriptBlock } from "../components/transcript/transcript-container";
+import { createUsageRowBlock } from "../components/transcript/usage-row";
+import { UserMessageComponent } from "../components/transcript/user-message";
 import { buildSkillCommandPrompt, invokeSkillCommandFromText, isKnownSkillCommand } from "../skill-command";
 import { isLiveBackgroundTask } from "./async-tool-state";
 import { createAssistantMessageComponent } from "./interactive-context-helpers";

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
+import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/session-selector";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionInfo, SessionStatus } from "@veyyon/coding-agent/session/session-listing";
 

@@ -17,7 +17,10 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import * as os from "node:os";
-import { rendererFailureNotice, reportRendererFailure } from "@veyyon/coding-agent/modes/components/renderer-failure";
+import {
+	rendererFailureNotice,
+	reportRendererFailure,
+} from "@veyyon/coding-agent/modes/components/transcript/renderer-failure";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/render-utils";
 

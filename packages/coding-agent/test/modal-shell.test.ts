@@ -12,7 +12,7 @@ import {
 	renderModalShortcuts,
 	SETTINGS_BROWSE_SHORTCUTS,
 	sizingForArea,
-} from "@veyyon/coding-agent/modes/components/modal-shell";
+} from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 await initTheme(false, "unicode", false, "titanium", "light");

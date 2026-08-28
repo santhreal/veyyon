@@ -11,12 +11,6 @@ import { isSettingsInitialized, settings } from "../../config/settings-instance"
 // The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
 // handler and reaches hundreds of modules.
 import { resolveLocalRoot } from "../../internal-urls/local-protocol";
-import { AGENT_VIEW_LEFT_TAP_WINDOW_MS } from "../../modes/components/agent-view-timings";
-import { AssistantMessageComponent } from "../../modes/components/assistant-message";
-import { extractImagePathFromText } from "../../modes/components/custom-editor";
-import { pointerMotionEnabled } from "../../modes/components/modal-shell";
-import { renderSegmentTrack } from "../../modes/components/segment-track";
-import { TinyTitleDownloadProgressComponent } from "../../modes/components/tiny-title-download-progress";
 import { expandEmoticons } from "../../modes/emoji-autocomplete";
 import { materializeImageReferenceLinks, shiftImageMarkers } from "../../modes/image-references";
 import { createPromptActionAutocompleteProvider } from "../../modes/prompt-action-autocomplete";
@@ -47,6 +41,12 @@ import { getEditorCommand, openInEditor } from "../../utils/external-editor";
 import { ensureSupportedImageInput, ImageInputTooLargeError, loadImageInput } from "../../utils/image-loading";
 import { resizeImage } from "../../utils/image-resize";
 import { autoTitleDisabled, generateSessionTitle } from "../../utils/title-generator";
+import { pointerMotionEnabled } from "../components/chrome/modal-shell";
+import { renderSegmentTrack } from "../components/chrome/segment-track";
+import { TinyTitleDownloadProgressComponent } from "../components/chrome/tiny-title-download-progress";
+import { extractImagePathFromText } from "../components/composer/custom-editor";
+import { AGENT_VIEW_LEFT_TAP_WINDOW_MS } from "../components/dashboard/agent-view-timings";
+import { AssistantMessageComponent } from "../components/transcript/assistant-message";
 import type { SkillCommandHost } from "../skill-command";
 
 /**

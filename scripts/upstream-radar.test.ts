@@ -87,7 +87,7 @@ describe("port candidate policy", () => {
 		expect(
 			isPortWorthy(
 				"feat(tui): replace plan review",
-				["packages/coding-agent/src/modes/components/plan-review-overlay.ts"],
+				["packages/coding-agent/src/modes/components/dialogs/plan-review-overlay.ts"],
 				policy,
 			),
 		).toBe(false);

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { AssistantMessage, Usage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
 import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
 import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import { getResolvedThemeColors, initTheme } from "@veyyon/coding-agent/modes/theme/theme";

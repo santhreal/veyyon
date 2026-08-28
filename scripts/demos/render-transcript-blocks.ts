@@ -21,14 +21,14 @@
  */
 
 import type { AgentMessage } from "../../packages/agent/src/index";
-import { BtwPanelComponent } from "../../packages/coding-agent/src/modes/components/btw-panel";
+import { TinyTitleDownloadProgressComponent } from "../../packages/coding-agent/src/modes/components/chrome/tiny-title-download-progress";
 import {
 	COMPOSER_INSET_COLS,
 	resolveComposerAccents,
-} from "../../packages/coding-agent/src/modes/components/composer-chrome";
-import { ErrorBannerComponent } from "../../packages/coding-agent/src/modes/components/error-banner";
-import { OmfgPanelComponent } from "../../packages/coding-agent/src/modes/components/omfg-panel";
-import { TinyTitleDownloadProgressComponent } from "../../packages/coding-agent/src/modes/components/tiny-title-download-progress";
+} from "../../packages/coding-agent/src/modes/components/composer/composer-chrome";
+import { BtwPanelComponent } from "../../packages/coding-agent/src/modes/components/dialogs/btw-panel";
+import { OmfgPanelComponent } from "../../packages/coding-agent/src/modes/components/dialogs/omfg-panel";
+import { ErrorBannerComponent } from "../../packages/coding-agent/src/modes/components/transcript/error-banner";
 import { showCommandMessage } from "../../packages/coding-agent/src/modes/controllers/command-controller-shared";
 import { initTheme, theme } from "../../packages/coding-agent/src/modes/theme/theme";
 import type { InteractiveModeContext } from "../../packages/coding-agent/src/modes/types";

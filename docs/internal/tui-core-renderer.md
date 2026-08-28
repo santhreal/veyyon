@@ -20,7 +20,7 @@ violate**. Scope is the core engine only:
 Application-layer renderers (transcript, tool calls, session tree, editor,
 widgets) are **out of scope**, they live in `packages/coding-agent`. The one
 app-layer file that is load-bearing for this contract is
-[`transcript-container.ts`](../../packages/coding-agent/src/modes/components/transcript-container.ts),
+[`transcript-container.ts`](../../packages/coding-agent/src/modes/components/transcript/transcript-container.ts),
 which implements the commit-boundary seam described below.
 
 ---

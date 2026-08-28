@@ -8,7 +8,7 @@ import {
 	ModelBrowser,
 	resolveRoleAssignments,
 	sortModelItems,
-} from "@veyyon/coding-agent/modes/components/model-browser";
+} from "@veyyon/coding-agent/modes/components/selectors/model-browser";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 function makeModel(provider: string, id: string): Model {

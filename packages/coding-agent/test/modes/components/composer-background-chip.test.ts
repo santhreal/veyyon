@@ -28,7 +28,10 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
-import { buildComposerShortcuts, ComposerShortcutsBar } from "@veyyon/coding-agent/modes/components/composer-shortcuts";
+import {
+	buildComposerShortcuts,
+	ComposerShortcutsBar,
+} from "@veyyon/coding-agent/modes/components/composer/composer-shortcuts";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import {
 	hasForegroundBashWait,

@@ -14,7 +14,13 @@ import { isProviderEnabled } from "../../../discovery";
 import { withIcon } from "../../../modes/theme/icon-label";
 import { theme } from "../../../modes/theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
-import { clampSelection, hoverBandAt, renderScrollableList, searchableChar, selectionBand } from "../selector-helpers";
+import {
+	clampSelection,
+	hoverBandAt,
+	renderScrollableList,
+	searchableChar,
+	selectionBand,
+} from "../selectors/selector-helpers";
 import { applyFilter } from "./state-manager";
 import type { ExtensionKind, ExtensionRow, ExtensionState } from "./types";
 

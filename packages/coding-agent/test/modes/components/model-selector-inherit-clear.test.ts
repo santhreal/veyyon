@@ -2,9 +2,9 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { INHERIT_ROW_SELECTOR } from "@veyyon/coding-agent/modes/components/model-browser";
-import { ModelSelectorPanel } from "@veyyon/coding-agent/modes/components/model-selector";
-import { barePickerSelector } from "@veyyon/coding-agent/modes/components/settings-selector";
+import { INHERIT_ROW_SELECTOR } from "@veyyon/coding-agent/modes/components/selectors/model-browser";
+import { ModelSelectorPanel } from "@veyyon/coding-agent/modes/components/selectors/model-selector";
+import { barePickerSelector } from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 /**

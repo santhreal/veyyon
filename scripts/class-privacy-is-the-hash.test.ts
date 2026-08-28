@@ -182,7 +182,9 @@ describe("class privacy is the hash", () => {
 		expect(packages.size).toBeGreaterThan(10);
 		expect(packages.has("coding-agent")).toBe(true);
 		expect(packages.has("mnemopi")).toBe(true);
-		expect(files.some(file => relativeKey(file) === "coding-agent/src/modes/components/chat-block.ts")).toBe(true);
+		expect(
+			files.some(file => relativeKey(file) === "coding-agent/src/modes/components/transcript/chat-block.ts"),
+		).toBe(true);
 	});
 
 	/**

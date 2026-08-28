@@ -4,7 +4,7 @@ Floating overlay chrome specification for Veyyon TUI surfaces.
 
 Idle sessions display transcript and bottom composer; overlays float above the active session surface.
 
-Source: `src/modes/components/modal-shell.ts`. Test: `packages/coding-agent/test/brand-conformance.test.ts`.
+Source: `src/modes/components/chrome/modal-shell.ts`. Test: `packages/coding-agent/test/brand-conformance.test.ts`.
 
 ## Sizing presets
 

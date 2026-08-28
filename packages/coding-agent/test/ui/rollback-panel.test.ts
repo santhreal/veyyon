@@ -20,7 +20,7 @@ import { buildRollbackRows, type RollbackRow } from "@veyyon/coding-agent/cli/ro
 import {
 	RollbackPanelComponent,
 	type RollbackPanelContext,
-} from "@veyyon/coding-agent/modes/components/rollback-panel";
+} from "@veyyon/coding-agent/modes/components/dialogs/rollback-panel";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {

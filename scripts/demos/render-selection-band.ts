@@ -19,7 +19,10 @@
 
 import { Ellipsis } from "@veyyon/natives";
 import { truncateToWidth } from "@veyyon/utils/width";
-import { hoverBandAt, selectionBand } from "../../packages/coding-agent/src/modes/components/selector-helpers";
+import {
+	hoverBandAt,
+	selectionBand,
+} from "../../packages/coding-agent/src/modes/components/selectors/selector-helpers";
 import { setDetectedTerminalGround } from "../../packages/coding-agent/src/modes/theme/ground-tints";
 import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
 import { flag, initRender, renderWidth } from "./render-args";

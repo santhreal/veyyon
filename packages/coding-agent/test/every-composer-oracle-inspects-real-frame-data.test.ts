@@ -28,7 +28,7 @@ import {
 	COMPOSER_ORACLE_GUARANTEES,
 	type ComposerOracleFrameState,
 	type ComposerOracleGuarantee,
-} from "../src/modes/components/composer-defect-oracle";
+} from "../src/modes/components/composer/composer-defect-oracle";
 import { initTheme } from "../src/modes/theme/theme";
 import {
 	corpusStateToRunnerOptions,

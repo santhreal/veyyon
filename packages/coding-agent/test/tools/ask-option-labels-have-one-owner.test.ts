@@ -5,7 +5,7 @@
  * declared in three modules under two sets of names. `tools/ask.ts` had `OTHER_OPTION`,
  * `CHAT_ABOUT_THIS_OPTION` and `NEXT_OPTION`; `modes/controllers/extension-ui-controller.ts` had
  * `ASK_OTHER_OPTION`, `ASK_CHAT_OPTION` and `ASK_NEXT_OPTION` with identical values;
- * `modes/components/ask-dialog.ts` held a third copy of the first one because it draws the row.
+ * `modes/components/dialogs/ask-dialog.ts` held a third copy of the first one because it draws the row.
  *
  * A drift between the module that RENDERS a label and the module that COMPARES it does not fail loudly. The
  * comparison returns false, the branch never runs, and the label itself is handed back to the model as though
@@ -36,7 +36,7 @@ const OWNER_REL = "tools/ask-option-labels.ts";
 /** The modules that used to declare a label and must now import it. */
 const FORMER_DECLARERS: readonly string[] = [
 	"tools/ask.ts",
-	"modes/components/ask-dialog.ts",
+	"modes/components/dialogs/ask-dialog.ts",
 	"modes/controllers/extension-ui-controller.ts",
 ];
 
@@ -176,7 +176,7 @@ describe("the ask option labels have one owner", () => {
 	it("has every former declarer importing from the owner", async () => {
 		for (const declarer of FORMER_DECLARERS) {
 			const text = await Bun.file(path.join(SRC, declarer)).text();
-			expect(text, declarer).toMatch(/from "(?:\.\.\/\.\.\/tools\/ask-option-labels|\.\/ask-option-labels)";/);
+			expect(text, declarer).toMatch(/from "(?:(?:\.\.\/)+tools\/ask-option-labels|\.\/ask-option-labels)";/);
 		}
 	});
 
@@ -219,7 +219,7 @@ describe("the ask option labels have one owner", () => {
  *
  * ` (Recommended)` is not a reserved label: the runtime does not add a row for it, it EDITS the label of a row
  * the caller supplied, and then compares the edited text back. That makes the writer/reader split worse than
- * the three above rather than milder. `tools/ask.ts` appended it and stripped it; `modes/components/ask-dialog.ts`
+ * the three above rather than milder. `tools/ask.ts` appended it and stripped it; `modes/components/dialogs/ask-dialog.ts`
  * appended it a SECOND time from a bare template literal (`${label} (Recommended)`) and stripped it with a
  * private copy of the string; `@veyyon/tool-render` stripped it with a third copy when rendering an answer for
  * HTML export and collab. Four spellings, two of them writers.
@@ -270,7 +270,7 @@ describe("the recommended-option marker has one owner", () => {
 	const HAND_APPEND = /`\$\{[^}]+\} \(Recommended\)`/;
 
 	/** The former declarers, one of them in another package. */
-	const MARKER_READERS: readonly string[] = ["tools/ask.ts", "modes/components/ask-dialog.ts"];
+	const MARKER_READERS: readonly string[] = ["tools/ask.ts", "modes/components/dialogs/ask-dialog.ts"];
 
 	it("declares the marker nowhere in coding-agent", async () => {
 		const offenders = (await sources()).filter(({ text }) => MARKER_DECL.test(text)).map(({ file }) => file);

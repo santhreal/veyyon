@@ -9,8 +9,8 @@
  */
 import type { SourceMeta } from "../../discovery/capability/types";
 import { shortenPath } from "../../tools/render-utils";
-import { mountTranscriptBlock, transcriptBlockText } from "../components/transcript-block-chrome";
-import { TranscriptBlock } from "../components/transcript-container";
+import { mountTranscriptBlock, transcriptBlockText } from "../components/transcript/transcript-block-chrome";
+import { TranscriptBlock } from "../components/transcript/transcript-container";
 import type { InteractiveModeContext } from "../types";
 
 /**

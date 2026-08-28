@@ -18,9 +18,9 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { CustomMessageComponent } from "@veyyon/coding-agent/modes/components/custom-message";
-import { HookMessageComponent } from "@veyyon/coding-agent/modes/components/hook-message";
-import { UserMessageComponent } from "@veyyon/coding-agent/modes/components/user-message";
+import { CustomMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/custom-message";
+import { HookMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/hook-message";
+import { UserMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/user-message";
 import { initTheme, setTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { CustomMessage, HookMessage } from "@veyyon/coding-agent/session/messages";
 

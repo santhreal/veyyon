@@ -23,7 +23,10 @@ import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { renderSubagentHudLines, SUBAGENT_HUD_VISIBLE_LIMIT } from "@veyyon/coding-agent/modes/components/subagent-hud";
+import {
+	renderSubagentHudLines,
+	SUBAGENT_HUD_VISIBLE_LIMIT,
+} from "@veyyon/coding-agent/modes/components/dashboard/subagent-hud";
 import { InteractiveMode, SUBAGENT_OBSERVER_UI_COALESCE_MS } from "@veyyon/coding-agent/modes/interactive-mode";
 import { type ObservableSession, SessionObserverRegistry } from "@veyyon/coding-agent/modes/session-observer-registry";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";

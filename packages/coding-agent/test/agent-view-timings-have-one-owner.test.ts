@@ -20,17 +20,18 @@ import {
 	AGENT_VIEW_AGE_TICK_MS,
 	AGENT_VIEW_DATA_CHANGE_COALESCE_MS,
 	AGENT_VIEW_LEFT_TAP_WINDOW_MS,
-} from "@veyyon/coding-agent/modes/components/agent-view-timings";
+} from "@veyyon/coding-agent/modes/components/dashboard/agent-view-timings";
 import { moduleSpecifiersIn, namedImportsFrom } from "@veyyon/utils/module-reach";
 
 const SRC_DIR = path.resolve(import.meta.dir, "../src");
 const COMPONENTS_DIR = path.join(SRC_DIR, "modes/components");
-const OWNER = path.join(COMPONENTS_DIR, "agent-view-timings.ts");
+const DASHBOARD_DIR = path.join(COMPONENTS_DIR, "dashboard");
+const OWNER = path.join(DASHBOARD_DIR, "agent-view-timings.ts");
 
 /** Every file that consumes a shared timing, and the names it must take from the owner. */
 const CONSUMERS = [
 	{
-		file: path.join(COMPONENTS_DIR, "agent-dashboard.ts"),
+		file: path.join(DASHBOARD_DIR, "agent-dashboard.ts"),
 		proves: "class AgentDashboard",
 		names: ["AGENT_VIEW_AGE_TICK_MS", "AGENT_VIEW_DATA_CHANGE_COALESCE_MS"],
 		specifier: "./agent-view-timings",
@@ -39,7 +40,7 @@ const CONSUMERS = [
 		file: path.join(SRC_DIR, "modes/controllers/input-controller.ts"),
 		proves: "class InputController",
 		names: ["AGENT_VIEW_LEFT_TAP_WINDOW_MS"],
-		specifier: "../../modes/components/agent-view-timings",
+		specifier: "../components/dashboard/agent-view-timings",
 	},
 ] as const;
 
@@ -178,7 +179,7 @@ describe("timing ownership", () => {
 		// The PARSED specifier list, not the characters: the scan this replaced also went red on a doc
 		// comment containing `from "..."`, and on a free `import type`, which costs nothing at runtime.
 		expect(moduleSpecifiersIn(owner)).toEqual([]);
-		const statusDisplay = await Bun.file(path.join(COMPONENTS_DIR, "agent-status-display.ts")).text();
+		const statusDisplay = await Bun.file(path.join(DASHBOARD_DIR, "agent-status-display.ts")).text();
 		expect(namedImportsFrom(statusDisplay, "./agent-view-timings")).toEqual([]);
 	});
 });

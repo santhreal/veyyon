@@ -36,8 +36,11 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { GENERAL_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/general";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 import { buildSessionOptions } from "@veyyon/coding-agent/main";
-import { getAllSettingDefs, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
-import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
+import {
+	getAllSettingDefs,
+	invalidateSettingDefsCache,
+} from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";

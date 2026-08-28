@@ -1,5 +1,8 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { HookSelectorComponent, type HookSelectorSlider } from "@veyyon/coding-agent/modes/components/hook-selector";
+import {
+	HookSelectorComponent,
+	type HookSelectorSlider,
+} from "@veyyon/coding-agent/modes/components/selectors/hook-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 const LEFT = "\x1b[D";

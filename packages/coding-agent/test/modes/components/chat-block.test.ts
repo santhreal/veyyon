@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import { ChatBlock, type ChatBlockHost } from "@veyyon/coding-agent/modes/components/chat-block";
+import { ChatBlock, type ChatBlockHost } from "@veyyon/coding-agent/modes/components/transcript/chat-block";
 import type { Component } from "@veyyon/tui";
 
 /** Concrete subclass exercising the lifecycle seams for assertions. */

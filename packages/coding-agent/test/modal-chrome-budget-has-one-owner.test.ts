@@ -43,9 +43,9 @@ import {
 	planModalChrome,
 	renderModalShell,
 	sizingForArea,
-} from "@veyyon/coding-agent/modes/components/modal-shell";
-import { ModelHubComponent } from "@veyyon/coding-agent/modes/components/model-hub";
-import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
+} from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
+import { ModelHubComponent } from "@veyyon/coding-agent/modes/components/selectors/model-hub";
+import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/session-selector";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
 import type { TUI } from "@veyyon/tui";
