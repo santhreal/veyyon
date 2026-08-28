@@ -44,8 +44,6 @@ const TIPS: readonly string[] = TIP_ENTRIES.map(tip => tip.text);
 
 export const WELCOME_SESSION_SLOTS = 3;
 
-export const WELCOME_LSP_SLOTS = 0;
-
 export const VEYYON_VALUE_LINE = "Hashline edits that land. Your keys.";
 
 const WELCOME_ACTIONS: ReadonlyArray<readonly [label: string, shortcut: string]> = [
@@ -317,8 +315,6 @@ export class WelcomeComponent implements Component {
 		return sunMark(sunW, sunH, { trueColor: TERMINAL.trueColor, time: 0.6 });
 	}
 }
-
-export const VEYYON_LOGO = ["╦  ╦╔═╗╦ ╦╦ ╦╔═╗╔╗╔", "╚╗╔╝║╣ ╚═╣╚╦╝║ ║║║║", " ╚╝ ╚═╝  ╩ ╩ ╚═╝╝╚╝"];
 
 export const SILVER_STOPS: ReadonlyArray<readonly [number, number, number]> = [
 	[116, 123, 134], // #747B86

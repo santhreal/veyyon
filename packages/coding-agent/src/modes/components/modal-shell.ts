@@ -5,10 +5,6 @@ import { actionKeyHint } from "../utils/key-hint";
 import { emberTick } from "./composer-chrome";
 import { bottomBorder, divider, fit, row, topBorder } from "./overlay-box";
 
-export const TITLE_LEADING_DECORATION_W = 2;
-
-export const FOLD_COLS = 2;
-
 export interface ModalSizing {
 	widthPct: number;
 	maxWidth: number;
