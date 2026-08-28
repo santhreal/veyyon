@@ -234,12 +234,6 @@ export interface ReviewFinding {
 	line_end: number;
 }
 
-export interface ReviewSummary {
-	overall_correctness: "correct" | "incorrect";
-	explanation: string;
-	confidence: number;
-}
-
 export interface AgentDefinition {
 	name: string;
 	description: string;

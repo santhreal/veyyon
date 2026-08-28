@@ -89,10 +89,6 @@ export interface TextDocumentIdentifier {
 	uri: string;
 }
 
-export interface VersionedTextDocumentIdentifier extends TextDocumentIdentifier {
-	version: number | null;
-}
-
 export interface OptionalVersionedTextDocumentIdentifier extends TextDocumentIdentifier {
 	version?: number | null;
 }

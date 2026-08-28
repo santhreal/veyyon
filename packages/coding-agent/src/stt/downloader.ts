@@ -10,12 +10,6 @@ export interface DownloadProgress {
 	percent?: number;
 }
 
-export interface EnsureOptions {
-	modelName?: string;
-	signal?: AbortSignal;
-	onProgress?: (progress: DownloadProgress) => void;
-}
-
 export interface SttDownloadProgress {
 	status: SttProgressStatus;
 	percent: number;

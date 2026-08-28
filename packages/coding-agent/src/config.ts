@@ -97,13 +97,6 @@ export function getConfigDirPaths(subpath: string, options: GetConfigDirsOptions
 	return getConfigDirs(subpath, options).map(e => e.path);
 }
 
-export interface ConfigFileResult<T> {
-	path: string;
-	source: string;
-	level: "user" | "project";
-	content: T;
-}
-
 export function findConfigFile(subpath: string, options: GetConfigDirsOptions = {}): string | undefined {
 	const dirs = getConfigDirs("", { ...options, existingOnly: false });
 

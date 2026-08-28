@@ -57,13 +57,6 @@ export interface KagiSearchResponse {
 	error?: KagiErrorEntry[];
 }
 
-export interface KagiErrorResponse {
-	meta?: Record<string, unknown>;
-	error?: string | KagiErrorEntry[];
-	message?: string;
-	detail?: string;
-}
-
 export class KagiApiError extends Error {
 	readonly statusCode?: number;
 	readonly body: string;

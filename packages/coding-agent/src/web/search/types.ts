@@ -434,17 +434,3 @@ export interface PerplexityChoice {
 	message: PerplexityMessageOutput;
 	delta: PerplexityMessageOutput;
 }
-
-export interface PerplexityResponse {
-	id: string;
-	model: string;
-	created: number;
-	usage?: PerplexityUsageInfo | null;
-	object?: string;
-	choices: PerplexityChoice[];
-	citations?: string[] | null;
-	search_results?: PerplexitySearchResult[] | null;
-	related_questions?: string[] | null;
-	type?: PerplexityCompletionResponseType | null;
-	status?: PerplexityCompletionResponseStatus | null;
-}
