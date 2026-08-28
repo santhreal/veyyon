@@ -9,3 +9,4 @@ export * from "./registry";
 export * from "./ToolView";
 export * from "./types";
 export * from "./util";
+export * from "./ThemeToggle";
