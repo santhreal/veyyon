@@ -1627,636 +1627,29 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 		callerSignal: AbortSignal | undefined,
 		timeoutSec: number,
 	): Promise<AgentToolResult<LspToolDetails>> {
-		const { action, file, line, symbol, query, new_name, apply } = params;
+		const { action, file } = params;
 		throwIfAborted(signal);
 
 		const config = getConfig(this.session.cwd);
 
-		// Status action doesn't need a file
 		if (action === "status") {
-			const configuredNames = Object.keys(config.servers);
-			const lspmuxState = await detectLspmux();
-			const lspmuxStatus = lspmuxState.available
-				? lspmuxState.running
-					? "lspmux: active (multiplexing enabled)"
-					: "lspmux: installed but server not running"
-				: "";
-
-			// `Object.keys(config.servers)` reflects what is *configured & resolvable
-			// on PATH* — it does NOT prove the server actually starts. A wrapper
-			// binary that exits immediately (e.g. rustup without the rust-analyzer
-			// component) still appears here. Distinguish "configured" from
-			// "started" (have a live in-process client) so callers cannot mistake
-			// presence-on-PATH for a working server.
-			const startedClients = getActiveClients();
-			const startedByConfigName = new Map<string, LspServerStatus>();
-			// getActiveClients() reports `name = client.config.command` (the
-			// unresolved binary name from defaults.json), so match against
-			// `serverConfig.command`, not the resolved path.
-			for (const [name, serverConfig] of Object.entries(config.servers)) {
-				const matched = startedClients.find(c => c.name === serverConfig.command);
-				if (matched) startedByConfigName.set(name, matched);
-			}
-
-			const lines: string[] = [];
-			if (configuredNames.length === 0) {
-				lines.push("No language servers configured for this project");
-			} else {
-				const labelled = configuredNames.map(name => {
-					const started = startedByConfigName.get(name);
-					if (!started) return `${name} (configured, not started)`;
-					return `${name} (${started.status})`;
-				});
-				lines.push(`Language servers: ${labelled.join(", ")}`);
-				lines.push(
-					"  note: 'configured, not started' means the binary resolves on PATH but no request has spawned it yet; 'ready' means a client process is live for this cwd.",
-				);
-			}
-			if (lspmuxStatus) lines.push(lspmuxStatus);
-
-			return {
-				content: [{ type: "text", text: lines.join("\n") }],
-				details: { action, success: true, request: params },
-			};
+			return this.#handleStatus(params, config, signal);
 		}
 
-		// Diagnostics can be batch or single-file - queries all applicable servers
 		if (action === "diagnostics") {
-			if (file === "*") {
-				// `*` => run workspace diagnostics across all configured servers
-				const result = await runWorkspaceDiagnostics(this.session.cwd, signal);
-				return {
-					content: [
-						{
-							type: "text",
-							text: `Workspace diagnostics (${result.projectType.description}):\n${result.output}`,
-						},
-					],
-					details: { action, success: true, request: params },
-				};
-			}
-
-			if (!file) {
-				return {
-					content: [
-						{
-							type: "text",
-							text: "Error: file parameter required. Use `*` for workspace-wide diagnostics or a path/glob for specific files.",
-						},
-					],
-					details: { action, success: false, request: params },
-				};
-			}
-
-			let targets: string[];
-			let truncatedGlobTargets = false;
-			const resolvedTargets = await resolveDiagnosticTargets(file, this.session.cwd, MAX_GLOB_DIAGNOSTIC_TARGETS);
-			targets = resolvedTargets.matches;
-			truncatedGlobTargets = resolvedTargets.truncated;
-
-			if (targets.length === 0) {
-				return {
-					content: [{ type: "text", text: `No files matched pattern: ${file}` }],
-					details: { action, success: true, request: params },
-				};
-			}
-
-			const detailed = targets.length > 1 || truncatedGlobTargets;
-			const diagnosticsWaitTimeoutMs = detailed
-				? Math.min(BATCH_DIAGNOSTICS_WAIT_TIMEOUT_MS, timeoutSec * 1000)
-				: Math.min(SINGLE_DIAGNOSTICS_WAIT_TIMEOUT_MS, timeoutSec * 1000);
-			const results: string[] = [];
-			const allServerNames = new Set<string>();
-			if (truncatedGlobTargets) {
-				results.push(
-					`${theme.status.warning} Pattern matched more than ${MAX_GLOB_DIAGNOSTIC_TARGETS} files; showing first ${MAX_GLOB_DIAGNOSTIC_TARGETS}. Narrow the glob or use workspace diagnostics.`,
-				);
-			}
-
-			for (const target of targets) {
-				throwIfAborted(signal);
-				const resolved = resolveToCwd(target, this.session.cwd);
-				const servers = getServersForFile(config, resolved);
-				if (servers.length === 0) {
-					results.push(`${theme.status.error} ${target}: No language server found`);
-					continue;
-				}
-
-				const uri = fileToUri(resolved);
-				const relPath = formatPathRelativeToCwd(resolved, this.session.cwd);
-				const allDiagnostics: Diagnostic[] = [];
-
-				// Query all applicable servers for this file
-				for (const [serverName, serverConfig] of servers) {
-					allServerNames.add(serverName);
-					try {
-						throwIfAborted(signal);
-						if (serverConfig.createClient) {
-							const linterClient = getLinterClient(serverName, serverConfig, this.session.cwd);
-							const diagnostics = await linterClient.lint(resolved);
-							for (let di = 0; di < diagnostics.length; di++) allDiagnostics.push(diagnostics[di]!);
-							continue;
-						}
-						const client = await getOrCreateClient(serverConfig, this.session.cwd, undefined, signal);
-						if (isProjectAwareLspServer(serverConfig)) {
-							await waitForProjectLoaded(client, signal);
-							throwIfAborted(signal);
-						}
-						const minVersion = client.diagnosticsVersion;
-						await refreshFile(client, resolved, signal);
-						const expectedDocumentVersion = client.openFiles.get(uri)?.version;
-						const diagnostics = await waitForDiagnostics(client, uri, {
-							timeoutMs: diagnosticsWaitTimeoutMs,
-							signal,
-							minVersion,
-							expectedDocumentVersion,
-						});
-						for (let di = 0; di < diagnostics.length; di++) allDiagnostics.push(diagnostics[di]!);
-					} catch (err) {
-						if (err instanceof ToolAbortError || signal?.aborted) {
-							throw err;
-						}
-						// Server failed, continue with others
-					}
-				}
-
-				// Deduplicate diagnostics
-				const seen = new Set<string>();
-				const uniqueDiagnostics: Diagnostic[] = [];
-				for (const d of allDiagnostics) {
-					const key = `${d.range.start.line}:${d.range.start.character}:${d.range.end.line}:${d.range.end.character}:${d.message}`;
-					if (!seen.has(key)) {
-						seen.add(key);
-						uniqueDiagnostics.push(d);
-					}
-				}
-
-				sortDiagnostics(uniqueDiagnostics);
-
-				if (!detailed && targets.length === 1) {
-					if (uniqueDiagnostics.length === 0) {
-						return {
-							content: [{ type: "text", text: "OK" }],
-							details: { action, serverName: Array.from(allServerNames).join(", "), success: true },
-						};
-					}
-
-					const summary = formatDiagnosticsSummary(uniqueDiagnostics);
-					const formatted = uniqueDiagnostics.map(d => formatDiagnostic(d, relPath));
-					const output = `${summary}:\n${formatGroupedDiagnosticMessages(formatted)}`;
-					return {
-						content: [{ type: "text", text: output }],
-						details: { action, serverName: Array.from(allServerNames).join(", "), success: true },
-					};
-				}
-
-				if (uniqueDiagnostics.length === 0) {
-					results.push(`${theme.status.success} ${relPath}: no issues`);
-				} else {
-					const summary = formatDiagnosticsSummary(uniqueDiagnostics);
-					results.push(`${theme.status.error} ${relPath}: ${summary}`);
-					const formatted = uniqueDiagnostics.map(d => formatDiagnostic(d, relPath));
-					results.push(formatGroupedDiagnosticMessages(formatted));
-				}
-			}
-
-			return {
-				content: [{ type: "text", text: results.join("\n") }],
-				details: { action, serverName: Array.from(allServerNames).join(", "), success: true },
-			};
+			return this.#handleDiagnostics(params, config, signal, timeoutSec);
 		}
 
 		if (action === "rename_file") {
-			if (!file || !new_name) {
-				return {
-					content: [
-						{
-							type: "text",
-							text: "Error: rename_file requires both `file` (source path) and `new_name` (destination path)",
-						},
-					],
-					details: { action, success: false, request: params },
-				};
-			}
-
-			const source = resolveToCwd(file, this.session.cwd);
-			const dest = resolveToCwd(new_name, this.session.cwd);
-
-			if (source === dest) {
-				return {
-					content: [{ type: "text", text: "Error: source and destination paths are identical" }],
-					details: { action, success: false, request: params },
-				};
-			}
-
-			let sourceStat: fs.Stats;
-			try {
-				sourceStat = await fs.promises.stat(source);
-			} catch {
-				return {
-					content: [
-						{
-							type: "text",
-							text: `Error: source path does not exist: ${formatPathRelativeToCwd(source, this.session.cwd)}`,
-						},
-					],
-					details: { action, success: false, request: params },
-				};
-			}
-
-			let destExists = false;
-			try {
-				await fs.promises.stat(dest);
-				destExists = true;
-			} catch {
-				// expected: destination must not exist
-			}
-			if (destExists) {
-				return {
-					content: [
-						{
-							type: "text",
-							text: `Error: destination already exists: ${formatPathRelativeToCwd(dest, this.session.cwd)}`,
-						},
-					],
-					details: { action, success: false, request: params },
-				};
-			}
-
-			const enumerated = await enumerateRenamePairs(source, dest);
-			if (enumerated.exceeded) {
-				return {
-					content: [
-						{
-							type: "text",
-							text: `Error: directory contains more than ${MAX_RENAME_PAIRS} files; rename in smaller batches to keep LSP edits accurate`,
-						},
-					],
-					details: { action, success: false, request: params },
-				};
-			}
-			const { pairs } = enumerated;
-			if (pairs.length === 0) {
-				return {
-					content: [{ type: "text", text: "Error: no files to rename" }],
-					details: { action, success: false, request: params },
-				};
-			}
-
-			const lspParams = { files: pairs };
-			// Filter to servers whose fileTypes match either the source or any
-			// destination path. Asking every configured server about a .md/.sql/.txt
-			// rename used to stack up willRenameFiles requests against irrelevant
-			// language servers and hit the wall-clock timeout. A server only has
-			// something useful to say about a rename if it understands one of the
-			// affected file extensions.
-			const allLspServers = getLspServers(config);
-			const relevantNames = new Set<string>();
-			const collectRelevant = (filePath: string) => {
-				for (const [name] of getLspServersForFile(config, filePath)) {
-					relevantNames.add(name);
-				}
-			};
-			collectRelevant(source);
-			collectRelevant(dest);
-			for (const pair of pairs) {
-				collectRelevant(uriToFile(pair.oldUri));
-				collectRelevant(uriToFile(pair.newUri));
-			}
-			const servers = allLspServers.filter(([name]) => relevantNames.has(name));
-			const respondingServers = new Set<string>();
-			const perServerEdits: Array<{ serverName: string; edit: WorkspaceEdit }> = [];
-			const serverNotes: string[] = [];
-
-			for (const [serverName, serverConfig] of servers) {
-				throwIfAborted(signal);
-				try {
-					const client = await getOrCreateClient(serverConfig, this.session.cwd, undefined, signal);
-					if (isProjectAwareLspServer(serverConfig)) {
-						await waitForProjectLoaded(client, signal);
-					}
-					const result = (await sendRequest(
-						client,
-						"workspace/willRenameFiles",
-						lspParams,
-						signal,
-					)) as WorkspaceEdit | null;
-					respondingServers.add(serverName);
-					if (result && (result.changes || result.documentChanges)) {
-						perServerEdits.push({ serverName, edit: result });
-					}
-				} catch (err) {
-					if (err instanceof ToolAbortError || signal?.aborted) {
-						throw err;
-					}
-					if (!isMethodNotFoundError(err)) {
-						const msg = errorMessage(err);
-						serverNotes.push(`  ${serverName}: ${msg}`);
-					}
-				}
-			}
-
-			const sourceLabel = formatPathRelativeToCwd(source, this.session.cwd);
-			const destLabel = formatPathRelativeToCwd(dest, this.session.cwd);
-			const fileCountLabel = sourceStat.isDirectory()
-				? `${pairs.length} file${pairs.length !== 1 ? "s" : ""} under ${sourceLabel}`
-				: sourceLabel;
-
-			const shouldApply = apply !== false;
-			if (!shouldApply) {
-				const lines: string[] = [];
-				lines.push(`Rename preview: ${fileCountLabel} → ${destLabel}`);
-				if (perServerEdits.length === 0) {
-					lines.push("  No LSP edits would be applied");
-				} else {
-					for (const { serverName, edit } of perServerEdits) {
-						const edits = formatWorkspaceEdit(edit, this.session.cwd);
-						if (edits.length === 0) continue;
-						lines.push(`  ${serverName}:`);
-						for (const e of edits) {
-							lines.push(`    ${e}`);
-						}
-					}
-				}
-				if (serverNotes.length > 0) {
-					lines.push("  Server notes:");
-					for (let ni = 0; ni < serverNotes.length; ni++) lines.push(serverNotes[ni]!);
-				}
-				return {
-					content: [{ type: "text", text: lines.join("\n") }],
-					details: {
-						action,
-						serverName: Array.from(respondingServers).join(", "),
-						success: true,
-						request: params,
-					},
-				};
-			}
-
-			const summary: string[] = [];
-
-			// Coalesce per-URI edits across servers before applying. Each server
-			// computed positions against the pre-edit file content, so applying
-			// server A then re-reading for server B yields stale positions and
-			// produces malformed imports. Group all text edits by URI, prefer the
-			// project-primary (project-aware) server on overlap, and apply once
-			// per URI from a single snapshot.
-			const serverConfigByName = new Map(servers);
-			interface AcceptedBucket {
-				primaryServer: string;
-				edits: TextEdit[];
-				discarded: number;
-				conflictServers: Set<string>;
-			}
-			const acceptedByUri = new Map<string, AcceptedBucket>();
-			for (const { serverName, edit } of perServerEdits) {
-				const cfg = serverConfigByName.get(serverName);
-				const incomingPrimary = cfg ? isProjectAwareLspServer(cfg) : false;
-				const flat = flattenWorkspaceTextEdits(edit);
-				for (const [uri, edits] of flat) {
-					const existing = acceptedByUri.get(uri);
-					if (!existing) {
-						acceptedByUri.set(uri, {
-							primaryServer: serverName,
-							edits: edits.slice(),
-							discarded: 0,
-							conflictServers: new Set(),
-						});
-						continue;
-					}
-					const existingCfg = serverConfigByName.get(existing.primaryServer);
-					const existingIsPrimary = existingCfg ? isProjectAwareLspServer(existingCfg) : false;
-					if (incomingPrimary && !existingIsPrimary) {
-						// Promote incoming to primary; keep existing edits that don't overlap.
-						const keptOld: TextEdit[] = [];
-						let discardedOld = 0;
-						for (const oe of existing.edits) {
-							if (edits.some(ne => rangesOverlap(ne.range, oe.range))) discardedOld++;
-							else keptOld.push(oe);
-						}
-						if (discardedOld > 0) existing.conflictServers.add(existing.primaryServer);
-						existing.discarded += discardedOld;
-						existing.primaryServer = serverName;
-						existing.edits = edits.concat(keptOld);
-					} else {
-						// Existing wins; discard incoming edits that overlap any accepted edit.
-						let discardedNew = 0;
-						for (const ne of edits) {
-							if (existing.edits.some(ae => rangesOverlap(ae.range, ne.range))) {
-								discardedNew++;
-							} else {
-								existing.edits.push(ne);
-							}
-						}
-						if (discardedNew > 0) {
-							existing.conflictServers.add(serverName);
-							existing.discarded += discardedNew;
-						}
-					}
-				}
-			}
-
-			for (const [uri, bucket] of acceptedByUri) {
-				const filePath = uriToFile(uri);
-				await applyTextEdits(filePath, bucket.edits);
-				const rel = formatPathRelativeToCwd(filePath, this.session.cwd);
-				summary.push(`  ${bucket.primaryServer}: applied ${bucket.edits.length} edit(s) to ${rel}`);
-				if (bucket.discarded > 0) {
-					const others = Array.from(bucket.conflictServers).join(", ");
-					summary.push(
-						`    note: discarded ${bucket.discarded} overlapping edit(s) from ${others} (kept ${bucket.primaryServer})`,
-					);
-					logger.warn(
-						`lsp rename_file: discarded ${bucket.discarded} overlapping edit(s) from ${others} on ${rel}; kept ${bucket.primaryServer}`,
-					);
-				}
-			}
-
-			await fs.promises.mkdir(path.dirname(dest), { recursive: true });
-			await fs.promises.rename(source, dest);
-			summary.push(`  Renamed ${sourceLabel} → ${destLabel}`);
-
-			for (const [serverName, serverConfig] of servers) {
-				try {
-					const client = await getOrCreateClient(serverConfig, this.session.cwd, undefined, signal);
-					for (const { oldUri } of pairs) {
-						if (client.openFiles.has(oldUri)) {
-							await sendNotification(client, "textDocument/didClose", { textDocument: { uri: oldUri } }, signal);
-							client.openFiles.delete(oldUri);
-						}
-					}
-					await sendNotification(client, "workspace/didRenameFiles", lspParams, signal);
-				} catch (err) {
-					if (err instanceof ToolAbortError || signal?.aborted) {
-						throw err;
-					}
-					const msg = errorMessage(err);
-					serverNotes.push(`  ${serverName}: ${msg}`);
-				}
-			}
-
-			if (serverNotes.length > 0) {
-				summary.push("  Server notes:");
-				for (let ni = 0; ni < serverNotes.length; ni++) summary.push(serverNotes[ni]!);
-			}
-
-			const header = `Renamed ${fileCountLabel} → ${destLabel}`;
-			return {
-				content: [{ type: "text", text: `${header}\n${summary.join("\n")}` }],
-				details: {
-					action,
-					serverName: Array.from(respondingServers).join(", "),
-					success: true,
-					request: params,
-				},
-			};
+			return this.#handleRenameFile(params, config, signal);
 		}
 
 		if (action === "capabilities") {
-			let serverList: Array<[string, ServerConfig]>;
-			if (file && file !== "*") {
-				const resolved = resolveToCwd(file, this.session.cwd);
-				serverList = getLspServersForFile(config, resolved);
-				if (serverList.length === 0) {
-					return {
-						content: [{ type: "text", text: "No language server found for this file" }],
-						details: { action, success: false, request: params },
-					};
-				}
-			} else {
-				serverList = getLspServers(config);
-			}
-
-			if (serverList.length === 0) {
-				return {
-					content: [{ type: "text", text: "No language servers configured" }],
-					details: { action, success: false, request: params },
-				};
-			}
-
-			const sections: string[] = [];
-			const respondingServers = new Set<string>();
-			for (const [serverName, serverConfig] of serverList) {
-				throwIfAborted(signal);
-				try {
-					const client = await getOrCreateClient(serverConfig, this.session.cwd, undefined, signal);
-					respondingServers.add(serverName);
-					const caps = client.serverCapabilities ?? {};
-					sections.push(`${serverName}:`);
-					sections.push(`  capabilities: ${JSON.stringify(caps, null, 2).split("\n").join("\n  ")}`);
-				} catch (err) {
-					if (err instanceof ToolAbortError || signal?.aborted) {
-						throw err;
-					}
-					const msg = errorMessage(err);
-					sections.push(`${serverName}: failed to start (${msg})`);
-				}
-			}
-
-			return {
-				content: [{ type: "text", text: sections.join("\n") }],
-				details: {
-					action,
-					serverName: Array.from(respondingServers).join(", "),
-					success: true,
-					request: params,
-				},
-			};
+			return this.#handleCapabilities(params, config, signal);
 		}
 
 		if (action === "request") {
-			const method = query?.trim();
-			if (!method) {
-				return {
-					content: [
-						{
-							type: "text",
-							text: "Error: action=request requires `query` to specify the LSP method name (e.g., 'rust-analyzer/expandMacro')",
-						},
-					],
-					details: { action, success: false, request: params },
-				};
-			}
-
-			let chosenServer: [string, ServerConfig] | null = null;
-			let resolvedTarget: string | null = null;
-			if (file && file !== "*") {
-				resolvedTarget = resolveToCwd(file, this.session.cwd);
-				chosenServer = getLspServerForFile(config, resolvedTarget);
-				if (!chosenServer) {
-					return {
-						content: [{ type: "text", text: "No language server found for this file" }],
-						details: { action, success: false, request: params },
-					};
-				}
-			} else {
-				const all = getLspServers(config);
-				if (all.length === 0) {
-					return {
-						content: [{ type: "text", text: "No language servers configured" }],
-						details: { action, success: false, request: params },
-					};
-				}
-				chosenServer = all[0];
-			}
-
-			const [chosenName, chosenConfig] = chosenServer;
-			let requestParams: unknown;
-			if (params.payload !== undefined) {
-				try {
-					requestParams = JSON.parse(params.payload);
-				} catch (err) {
-					const msg = errorMessage(err);
-					return {
-						content: [{ type: "text", text: `Error: invalid JSON in payload: ${msg}` }],
-						details: { action, serverName: chosenName, success: false, request: params },
-					};
-				}
-			} else if (resolvedTarget) {
-				const uri = fileToUri(resolvedTarget);
-				if (line !== undefined) {
-					const character = await resolveSymbolColumn(resolvedTarget, line, symbol);
-					requestParams = { textDocument: { uri }, position: { line: line - 1, character } };
-				} else {
-					requestParams = { textDocument: { uri } };
-				}
-			} else {
-				requestParams = {};
-			}
-
-			try {
-				const client = await getOrCreateClient(chosenConfig, this.session.cwd, undefined, signal);
-				if (resolvedTarget) {
-					await ensureFileOpen(client, resolvedTarget, signal);
-				}
-				const result = await sendRequest(client, method, requestParams, signal);
-				const formatted =
-					result === null || result === undefined
-						? "null"
-						: typeof result === "string"
-							? result
-							: JSON.stringify(result, null, 2);
-				return {
-					content: [{ type: "text", text: `${chosenName} ← ${method}:\n${formatted}` }],
-					details: { action, serverName: chosenName, success: true, request: params },
-				};
-			} catch (err) {
-				if (err instanceof ToolAbortError || signal?.aborted) {
-					throw new ToolAbortError();
-				}
-				const msg = errorMessage(err);
-				// Echo a (truncated) preview of the params we sent so the caller can
-				// tell parse / shape errors (e.g. nested args dropped, missing field)
-				// apart from genuine server errors without spinning up another debug call.
-				const previewRaw = JSON.stringify(requestParams ?? null);
-				const preview = truncate(previewRaw, 400, "...");
-				return {
-					content: [
-						{ type: "text", text: `LSP error from ${chosenName} on ${method}: ${msg}\n  params: ${preview}` },
-					],
-					details: { action, serverName: chosenName, success: false, request: params },
-				};
-			}
+			return this.#handleRequest(params, config, signal);
 		}
 
 		// `*` means workspace scope for symbols/reload; other actions need a concrete file.
@@ -2277,74 +1670,382 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 
 		const resolvedFile = file && !isWorkspace ? resolveToCwd(file, this.session.cwd) : null;
 		if (action === "symbols" && (isWorkspace || !resolvedFile)) {
-			const normalizedQuery = query?.trim();
-			if (!normalizedQuery) {
-				return {
-					content: [{ type: "text", text: "Error: query parameter required for workspace symbol search" }],
-					details: { action, success: false, request: params },
-				};
-			}
-			const servers = getLspServers(config);
-			if (servers.length === 0) {
-				return {
-					content: [{ type: "text", text: "No language server found for this action" }],
-					details: { action, success: false, request: params },
-				};
-			}
-			const aggregatedSymbols: SymbolInformation[] = [];
-			const respondingServers = new Set<string>();
-			for (const [workspaceServerName, workspaceServerConfig] of servers) {
-				throwIfAborted(signal);
-				try {
-					const workspaceClient = await getOrCreateClient(
-						workspaceServerConfig,
-						this.session.cwd,
-						undefined,
-						signal,
-					);
-					const workspaceResult = (await sendRequest(
-						workspaceClient,
-						"workspace/symbol",
-						{ query: normalizedQuery },
-						signal,
-					)) as SymbolInformation[] | null;
-					if (!workspaceResult || workspaceResult.length === 0) {
-						continue;
-					}
-					respondingServers.add(workspaceServerName);
-					const filtered = filterWorkspaceSymbols(workspaceResult, normalizedQuery);
-					for (let si = 0; si < filtered.length; si++) aggregatedSymbols.push(filtered[si]!);
-				} catch (err) {
-					if (err instanceof ToolAbortError || signal?.aborted) {
-						throw err;
-					}
-				}
-			}
-			const dedupedSymbols = dedupeWorkspaceSymbols(aggregatedSymbols);
-			if (dedupedSymbols.length === 0) {
-				return {
-					content: [{ type: "text", text: `No symbols matching "${normalizedQuery}"` }],
-					details: {
-						action,
-						serverName: Array.from(respondingServers).join(", "),
-						success: true,
-						request: params,
-					},
-				};
-			}
-			const limitedSymbols = dedupedSymbols.slice(0, WORKSPACE_SYMBOL_LIMIT);
-			const lines = limitedSymbols.map(s => formatSymbolInformation(s, this.session.cwd));
-			const truncationLine =
-				dedupedSymbols.length > WORKSPACE_SYMBOL_LIMIT
-					? `\n[…${dedupedSymbols.length - WORKSPACE_SYMBOL_LIMIT} symbols elided…]`
-					: "";
+			return this.#handleSymbols(params, config, signal);
+		}
+
+		if (action === "reload" && (isWorkspace || !resolvedFile)) {
+			return this.#handleReload(params, config, signal);
+		}
+
+		return this.#handleLspRequest(params, config, signal, callerSignal, timeoutSec);
+	}
+
+	async #handleStatus(
+		params: LspParams,
+		config: LspConfig,
+		_signal: AbortSignal,
+	): Promise<AgentToolResult<LspToolDetails>> {
+		const { action } = params;
+		const configuredNames = Object.keys(config.servers);
+		const lspmuxState = await detectLspmux();
+		const lspmuxStatus = lspmuxState.available
+			? lspmuxState.running
+				? "lspmux: active (multiplexing enabled)"
+				: "lspmux: installed but server not running"
+			: "";
+
+		// `Object.keys(config.servers)` reflects what is *configured & resolvable
+		// on PATH* — it does NOT prove the server actually starts. A wrapper
+		// binary that exits immediately (e.g. rustup without the rust-analyzer
+		// component) still appears here. Distinguish "configured" from
+		// "started" (have a live in-process client) so callers cannot mistake
+		// presence-on-PATH for a working server.
+		const startedClients = getActiveClients();
+		const startedByConfigName = new Map<string, LspServerStatus>();
+		// getActiveClients() reports `name = client.config.command` (the
+		// unresolved binary name from defaults.json), so match against
+		// `serverConfig.command`, not the resolved path.
+		for (const [name, serverConfig] of Object.entries(config.servers)) {
+			const matched = startedClients.find(c => c.name === serverConfig.command);
+			if (matched) startedByConfigName.set(name, matched);
+		}
+
+		const lines: string[] = [];
+		if (configuredNames.length === 0) {
+			lines.push("No language servers configured for this project");
+		} else {
+			const labelled = configuredNames.map(name => {
+				const started = startedByConfigName.get(name);
+				if (!started) return `${name} (configured, not started)`;
+				return `${name} (${started.status})`;
+			});
+			lines.push(`Language servers: ${labelled.join(", ")}`);
+			lines.push(
+				"  note: 'configured, not started' means the binary resolves on PATH but no request has spawned it yet; 'ready' means a client process is live for this cwd.",
+			);
+		}
+		if (lspmuxStatus) lines.push(lspmuxStatus);
+
+		return {
+			content: [{ type: "text", text: lines.join("\n") }],
+			details: { action, success: true, request: params },
+		};
+	}
+
+	async #handleDiagnostics(
+		params: LspParams,
+		config: LspConfig,
+		signal: AbortSignal,
+		timeoutSec: number,
+	): Promise<AgentToolResult<LspToolDetails>> {
+		const { action, file } = params;
+		if (file === "*") {
+			// `*` => run workspace diagnostics across all configured servers
+			const result = await runWorkspaceDiagnostics(this.session.cwd, signal);
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Found ${dedupedSymbols.length} symbol(s) matching "${normalizedQuery}":\n${lines.map(l => `  ${l}`).join("\n")}${truncationLine}`,
+						text: `Workspace diagnostics (${result.projectType.description}):\n${result.output}`,
 					},
 				],
+				details: { action, success: true, request: params },
+			};
+		}
+
+		if (!file) {
+			return {
+				content: [
+					{
+						type: "text",
+						text: "Error: file parameter required. Use `*` for workspace-wide diagnostics or a path/glob for specific files.",
+					},
+				],
+				details: { action, success: false, request: params },
+			};
+		}
+
+		let targets: string[];
+		let truncatedGlobTargets = false;
+		const resolvedTargets = await resolveDiagnosticTargets(file, this.session.cwd, MAX_GLOB_DIAGNOSTIC_TARGETS);
+		targets = resolvedTargets.matches;
+		truncatedGlobTargets = resolvedTargets.truncated;
+
+		if (targets.length === 0) {
+			return {
+				content: [{ type: "text", text: `No files matched pattern: ${file}` }],
+				details: { action, success: true, request: params },
+			};
+		}
+
+		const detailed = targets.length > 1 || truncatedGlobTargets;
+		const diagnosticsWaitTimeoutMs = detailed
+			? Math.min(BATCH_DIAGNOSTICS_WAIT_TIMEOUT_MS, timeoutSec * 1000)
+			: Math.min(SINGLE_DIAGNOSTICS_WAIT_TIMEOUT_MS, timeoutSec * 1000);
+		const results: string[] = [];
+		const allServerNames = new Set<string>();
+		if (truncatedGlobTargets) {
+			results.push(
+				`${theme.status.warning} Pattern matched more than ${MAX_GLOB_DIAGNOSTIC_TARGETS} files; showing first ${MAX_GLOB_DIAGNOSTIC_TARGETS}. Narrow the glob or use workspace diagnostics.`,
+			);
+		}
+
+		for (const target of targets) {
+			throwIfAborted(signal);
+			const resolved = resolveToCwd(target, this.session.cwd);
+			const servers = getServersForFile(config, resolved);
+			if (servers.length === 0) {
+				results.push(`${theme.status.error} ${target}: No language server found`);
+				continue;
+			}
+
+			const uri = fileToUri(resolved);
+			const relPath = formatPathRelativeToCwd(resolved, this.session.cwd);
+			const allDiagnostics: Diagnostic[] = [];
+
+			// Query all applicable servers for this file
+			for (const [serverName, serverConfig] of servers) {
+				allServerNames.add(serverName);
+				try {
+					throwIfAborted(signal);
+					if (serverConfig.createClient) {
+						const linterClient = getLinterClient(serverName, serverConfig, this.session.cwd);
+						const diagnostics = await linterClient.lint(resolved);
+						for (let di = 0; di < diagnostics.length; di++) allDiagnostics.push(diagnostics[di]!);
+						continue;
+					}
+					const client = await getOrCreateClient(serverConfig, this.session.cwd, undefined, signal);
+					if (isProjectAwareLspServer(serverConfig)) {
+						await waitForProjectLoaded(client, signal);
+						throwIfAborted(signal);
+					}
+					const minVersion = client.diagnosticsVersion;
+					await refreshFile(client, resolved, signal);
+					const expectedDocumentVersion = client.openFiles.get(uri)?.version;
+					const diagnostics = await waitForDiagnostics(client, uri, {
+						timeoutMs: diagnosticsWaitTimeoutMs,
+						signal,
+						minVersion,
+						expectedDocumentVersion,
+					});
+					for (let di = 0; di < diagnostics.length; di++) allDiagnostics.push(diagnostics[di]!);
+				} catch (err) {
+					if (err instanceof ToolAbortError || signal?.aborted) {
+						throw err;
+					}
+					// Server failed, continue with others
+				}
+			}
+
+			// Deduplicate diagnostics
+			const seen = new Set<string>();
+			const uniqueDiagnostics: Diagnostic[] = [];
+			for (const d of allDiagnostics) {
+				const key = `${d.range.start.line}:${d.range.start.character}:${d.range.end.line}:${d.range.end.character}:${d.message}`;
+				if (!seen.has(key)) {
+					seen.add(key);
+					uniqueDiagnostics.push(d);
+				}
+			}
+
+			sortDiagnostics(uniqueDiagnostics);
+
+			if (!detailed && targets.length === 1) {
+				if (uniqueDiagnostics.length === 0) {
+					return {
+						content: [{ type: "text", text: "OK" }],
+						details: { action, serverName: Array.from(allServerNames).join(", "), success: true },
+					};
+				}
+
+				const summary = formatDiagnosticsSummary(uniqueDiagnostics);
+				const formatted = uniqueDiagnostics.map(d => formatDiagnostic(d, relPath));
+				const output = `${summary}:\n${formatGroupedDiagnosticMessages(formatted)}`;
+				return {
+					content: [{ type: "text", text: output }],
+					details: { action, serverName: Array.from(allServerNames).join(", "), success: true },
+				};
+			}
+
+			if (uniqueDiagnostics.length === 0) {
+				results.push(`${theme.status.success} ${relPath}: no issues`);
+			} else {
+				const summary = formatDiagnosticsSummary(uniqueDiagnostics);
+				results.push(`${theme.status.error} ${relPath}: ${summary}`);
+				const formatted = uniqueDiagnostics.map(d => formatDiagnostic(d, relPath));
+				results.push(formatGroupedDiagnosticMessages(formatted));
+			}
+		}
+
+		return {
+			content: [{ type: "text", text: results.join("\n") }],
+			details: { action, serverName: Array.from(allServerNames).join(", "), success: true },
+		};
+	}
+
+	async #handleRenameFile(
+		params: LspParams,
+		config: LspConfig,
+		signal: AbortSignal,
+	): Promise<AgentToolResult<LspToolDetails>> {
+		const { action, file, new_name, apply } = params;
+		if (!file || !new_name) {
+			return {
+				content: [
+					{
+						type: "text",
+						text: "Error: rename_file requires both `file` (source path) and `new_name` (destination path)",
+					},
+				],
+				details: { action, success: false, request: params },
+			};
+		}
+
+		const source = resolveToCwd(file, this.session.cwd);
+		const dest = resolveToCwd(new_name, this.session.cwd);
+
+		if (source === dest) {
+			return {
+				content: [{ type: "text", text: "Error: source and destination paths are identical" }],
+				details: { action, success: false, request: params },
+			};
+		}
+
+		let sourceStat: fs.Stats;
+		try {
+			sourceStat = await fs.promises.stat(source);
+		} catch {
+			return {
+				content: [
+					{
+						type: "text",
+						text: `Error: source path does not exist: ${formatPathRelativeToCwd(source, this.session.cwd)}`,
+					},
+				],
+				details: { action, success: false, request: params },
+			};
+		}
+
+		let destExists = false;
+		try {
+			await fs.promises.stat(dest);
+			destExists = true;
+		} catch {
+			// expected: destination must not exist
+		}
+		if (destExists) {
+			return {
+				content: [
+					{
+						type: "text",
+						text: `Error: destination already exists: ${formatPathRelativeToCwd(dest, this.session.cwd)}`,
+					},
+				],
+				details: { action, success: false, request: params },
+			};
+		}
+
+		const enumerated = await enumerateRenamePairs(source, dest);
+		if (enumerated.exceeded) {
+			return {
+				content: [
+					{
+						type: "text",
+						text: `Error: directory contains more than ${MAX_RENAME_PAIRS} files; rename in smaller batches to keep LSP edits accurate`,
+					},
+				],
+				details: { action, success: false, request: params },
+			};
+		}
+		const { pairs } = enumerated;
+		if (pairs.length === 0) {
+			return {
+				content: [{ type: "text", text: "Error: no files to rename" }],
+				details: { action, success: false, request: params },
+			};
+		}
+
+		const lspParams = { files: pairs };
+		// Filter to servers whose fileTypes match either the source or any
+		// destination path. Asking every configured server about a .md/.sql/.txt
+		// rename used to stack up willRenameFiles requests against irrelevant
+		// language servers and hit the wall-clock timeout. A server only has
+		// something useful to say about a rename if it understands one of the
+		// affected file extensions.
+		const allLspServers = getLspServers(config);
+		const relevantNames = new Set<string>();
+		const collectRelevant = (filePath: string) => {
+			for (const [name] of getLspServersForFile(config, filePath)) {
+				relevantNames.add(name);
+			}
+		};
+		collectRelevant(source);
+		collectRelevant(dest);
+		for (const pair of pairs) {
+			collectRelevant(uriToFile(pair.oldUri));
+			collectRelevant(uriToFile(pair.newUri));
+		}
+		const servers = allLspServers.filter(([name]) => relevantNames.has(name));
+		const respondingServers = new Set<string>();
+		const perServerEdits: Array<{ serverName: string; edit: WorkspaceEdit }> = [];
+		const serverNotes: string[] = [];
+
+		for (const [serverName, serverConfig] of servers) {
+			throwIfAborted(signal);
+			try {
+				const client = await getOrCreateClient(serverConfig, this.session.cwd, undefined, signal);
+				if (isProjectAwareLspServer(serverConfig)) {
+					await waitForProjectLoaded(client, signal);
+				}
+				const result = (await sendRequest(
+					client,
+					"workspace/willRenameFiles",
+					lspParams,
+					signal,
+				)) as WorkspaceEdit | null;
+				respondingServers.add(serverName);
+				if (result && (result.changes || result.documentChanges)) {
+					perServerEdits.push({ serverName, edit: result });
+				}
+			} catch (err) {
+				if (err instanceof ToolAbortError || signal?.aborted) {
+					throw err;
+				}
+				if (!isMethodNotFoundError(err)) {
+					const msg = errorMessage(err);
+					serverNotes.push(`  ${serverName}: ${msg}`);
+				}
+			}
+		}
+
+		const sourceLabel = formatPathRelativeToCwd(source, this.session.cwd);
+		const destLabel = formatPathRelativeToCwd(dest, this.session.cwd);
+		const fileCountLabel = sourceStat.isDirectory()
+			? `${pairs.length} file${pairs.length !== 1 ? "s" : ""} under ${sourceLabel}`
+			: sourceLabel;
+
+		const shouldApply = apply !== false;
+		if (!shouldApply) {
+			const lines: string[] = [];
+			lines.push(`Rename preview: ${fileCountLabel} → ${destLabel}`);
+			if (perServerEdits.length === 0) {
+				lines.push("  No LSP edits would be applied");
+			} else {
+				for (const { serverName, edit } of perServerEdits) {
+					const edits = formatWorkspaceEdit(edit, this.session.cwd);
+					if (edits.length === 0) continue;
+					lines.push(`  ${serverName}:`);
+					for (const e of edits) {
+						lines.push(`    ${e}`);
+					}
+				}
+			}
+			if (serverNotes.length > 0) {
+				lines.push("  Server notes:");
+				for (let ni = 0; ni < serverNotes.length; ni++) lines.push(serverNotes[ni]!);
+			}
+			return {
+				content: [{ type: "text", text: lines.join("\n") }],
 				details: {
 					action,
 					serverName: Array.from(respondingServers).join(", "),
@@ -2354,46 +2055,410 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 			};
 		}
 
-		if (action === "reload" && (isWorkspace || !resolvedFile)) {
-			// `reload *` is the user's explicit request to re-read config from
-			// disk. Drop the per-cwd cache entry so `.veyyon/lsp.json`, root markers,
-			// and plugin configs added after the first LSP call become visible —
-			// otherwise `getConfig` returns the first observation for the rest of
-			// the process lifetime (#3546).
-			configCache.delete(this.session.cwd);
-			const refreshedConfig = getConfig(this.session.cwd);
-			const servers = getLspServers(refreshedConfig);
-			if (servers.length === 0) {
+		const summary: string[] = [];
+
+		// Coalesce per-URI edits across servers before applying. Each server
+		// computed positions against the pre-edit file content, so applying
+		// server A then re-reading for server B yields stale positions and
+		// produces malformed imports. Group all text edits by URI, prefer the
+		// project-primary (project-aware) server on overlap, and apply once
+		// per URI from a single snapshot.
+		const serverConfigByName = new Map(servers);
+		interface AcceptedBucket {
+			primaryServer: string;
+			edits: TextEdit[];
+			discarded: number;
+			conflictServers: Set<string>;
+		}
+		const acceptedByUri = new Map<string, AcceptedBucket>();
+		for (const { serverName, edit } of perServerEdits) {
+			const cfg = serverConfigByName.get(serverName);
+			const incomingPrimary = cfg ? isProjectAwareLspServer(cfg) : false;
+			const flat = flattenWorkspaceTextEdits(edit);
+			for (const [uri, edits] of flat) {
+				const existing = acceptedByUri.get(uri);
+				if (!existing) {
+					acceptedByUri.set(uri, {
+						primaryServer: serverName,
+						edits: edits.slice(),
+						discarded: 0,
+						conflictServers: new Set(),
+					});
+					continue;
+				}
+				const existingCfg = serverConfigByName.get(existing.primaryServer);
+				const existingIsPrimary = existingCfg ? isProjectAwareLspServer(existingCfg) : false;
+				if (incomingPrimary && !existingIsPrimary) {
+					// Promote incoming to primary; keep existing edits that don't overlap.
+					const keptOld: TextEdit[] = [];
+					let discardedOld = 0;
+					for (const oe of existing.edits) {
+						if (edits.some(ne => rangesOverlap(ne.range, oe.range))) discardedOld++;
+						else keptOld.push(oe);
+					}
+					if (discardedOld > 0) existing.conflictServers.add(existing.primaryServer);
+					existing.discarded += discardedOld;
+					existing.primaryServer = serverName;
+					existing.edits = edits.concat(keptOld);
+				} else {
+					// Existing wins; discard incoming edits that overlap any accepted edit.
+					let discardedNew = 0;
+					for (const ne of edits) {
+						if (existing.edits.some(ae => rangesOverlap(ae.range, ne.range))) {
+							discardedNew++;
+						} else {
+							existing.edits.push(ne);
+						}
+					}
+					if (discardedNew > 0) {
+						existing.conflictServers.add(serverName);
+						existing.discarded += discardedNew;
+					}
+				}
+			}
+		}
+
+		for (const [uri, bucket] of acceptedByUri) {
+			const filePath = uriToFile(uri);
+			await applyTextEdits(filePath, bucket.edits);
+			const rel = formatPathRelativeToCwd(filePath, this.session.cwd);
+			summary.push(`  ${bucket.primaryServer}: applied ${bucket.edits.length} edit(s) to ${rel}`);
+			if (bucket.discarded > 0) {
+				const others = Array.from(bucket.conflictServers).join(", ");
+				summary.push(
+					`    note: discarded ${bucket.discarded} overlapping edit(s) from ${others} (kept ${bucket.primaryServer})`,
+				);
+				logger.warn(
+					`lsp rename_file: discarded ${bucket.discarded} overlapping edit(s) from ${others} on ${rel}; kept ${bucket.primaryServer}`,
+				);
+			}
+		}
+
+		await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+		await fs.promises.rename(source, dest);
+		summary.push(`  Renamed ${sourceLabel} → ${destLabel}`);
+
+		for (const [serverName, serverConfig] of servers) {
+			try {
+				const client = await getOrCreateClient(serverConfig, this.session.cwd, undefined, signal);
+				for (const { oldUri } of pairs) {
+					if (client.openFiles.has(oldUri)) {
+						await sendNotification(client, "textDocument/didClose", { textDocument: { uri: oldUri } }, signal);
+						client.openFiles.delete(oldUri);
+					}
+				}
+				await sendNotification(client, "workspace/didRenameFiles", lspParams, signal);
+			} catch (err) {
+				if (err instanceof ToolAbortError || signal?.aborted) {
+					throw err;
+				}
+				const msg = errorMessage(err);
+				serverNotes.push(`  ${serverName}: ${msg}`);
+			}
+		}
+
+		if (serverNotes.length > 0) {
+			summary.push("  Server notes:");
+			for (let ni = 0; ni < serverNotes.length; ni++) summary.push(serverNotes[ni]!);
+		}
+
+		const header = `Renamed ${fileCountLabel} → ${destLabel}`;
+		return {
+			content: [{ type: "text", text: `${header}\n${summary.join("\n")}` }],
+			details: {
+				action,
+				serverName: Array.from(respondingServers).join(", "),
+				success: true,
+				request: params,
+			},
+		};
+	}
+
+	async #handleCapabilities(
+		params: LspParams,
+		config: LspConfig,
+		signal: AbortSignal,
+	): Promise<AgentToolResult<LspToolDetails>> {
+		const { action, file } = params;
+		let serverList: Array<[string, ServerConfig]>;
+		if (file && file !== "*") {
+			const resolved = resolveToCwd(file, this.session.cwd);
+			serverList = getLspServersForFile(config, resolved);
+			if (serverList.length === 0) {
 				return {
-					content: [{ type: "text", text: "No language server found for this action" }],
+					content: [{ type: "text", text: "No language server found for this file" }],
 					details: { action, success: false, request: params },
 				};
 			}
-			const outputs: string[] = [];
-			for (const [workspaceServerName, workspaceServerConfig] of servers) {
-				throwIfAborted(signal);
-				try {
-					const workspaceClient = await getOrCreateClient(
-						workspaceServerConfig,
-						this.session.cwd,
-						undefined,
-						signal,
-					);
-					outputs.push(await reloadServer(workspaceClient, workspaceServerName, signal));
-				} catch (err) {
-					if (err instanceof ToolAbortError || signal?.aborted) {
-						throw err;
-					}
-					const errorText = errorMessage(err);
-					outputs.push(`Failed to reload ${workspaceServerName}: ${errorText}`);
-				}
-			}
+		} else {
+			serverList = getLspServers(config);
+		}
+
+		if (serverList.length === 0) {
 			return {
-				content: [{ type: "text", text: outputs.join("\n") }],
-				details: { action, serverName: servers.map(([name]) => name).join(", "), success: true, request: params },
+				content: [{ type: "text", text: "No language servers configured" }],
+				details: { action, success: false, request: params },
 			};
 		}
 
+		const sections: string[] = [];
+		const respondingServers = new Set<string>();
+		for (const [serverName, serverConfig] of serverList) {
+			throwIfAborted(signal);
+			try {
+				const client = await getOrCreateClient(serverConfig, this.session.cwd, undefined, signal);
+				respondingServers.add(serverName);
+				const caps = client.serverCapabilities ?? {};
+				sections.push(`${serverName}:`);
+				sections.push(`  capabilities: ${JSON.stringify(caps, null, 2).split("\n").join("\n  ")}`);
+			} catch (err) {
+				if (err instanceof ToolAbortError || signal?.aborted) {
+					throw err;
+				}
+				const msg = errorMessage(err);
+				sections.push(`${serverName}: failed to start (${msg})`);
+			}
+		}
+
+		return {
+			content: [{ type: "text", text: sections.join("\n") }],
+			details: {
+				action,
+				serverName: Array.from(respondingServers).join(", "),
+				success: true,
+				request: params,
+			},
+		};
+	}
+
+	async #handleRequest(
+		params: LspParams,
+		config: LspConfig,
+		signal: AbortSignal,
+	): Promise<AgentToolResult<LspToolDetails>> {
+		const { action, file, line, symbol, query } = params;
+		const method = query?.trim();
+		if (!method) {
+			return {
+				content: [
+					{
+						type: "text",
+						text: "Error: action=request requires `query` to specify the LSP method name (e.g., 'rust-analyzer/expandMacro')",
+					},
+				],
+				details: { action, success: false, request: params },
+			};
+		}
+
+		let chosenServer: [string, ServerConfig] | null = null;
+		let resolvedTarget: string | null = null;
+		if (file && file !== "*") {
+			resolvedTarget = resolveToCwd(file, this.session.cwd);
+			chosenServer = getLspServerForFile(config, resolvedTarget);
+			if (!chosenServer) {
+				return {
+					content: [{ type: "text", text: "No language server found for this file" }],
+					details: { action, success: false, request: params },
+				};
+			}
+		} else {
+			const all = getLspServers(config);
+			if (all.length === 0) {
+				return {
+					content: [{ type: "text", text: "No language servers configured" }],
+					details: { action, success: false, request: params },
+				};
+			}
+			chosenServer = all[0];
+		}
+
+		const [chosenName, chosenConfig] = chosenServer;
+		let requestParams: unknown;
+		if (params.payload !== undefined) {
+			try {
+				requestParams = JSON.parse(params.payload);
+			} catch (err) {
+				const msg = errorMessage(err);
+				return {
+					content: [{ type: "text", text: `Error: invalid JSON in payload: ${msg}` }],
+					details: { action, serverName: chosenName, success: false, request: params },
+				};
+			}
+		} else if (resolvedTarget) {
+			const uri = fileToUri(resolvedTarget);
+			if (line !== undefined) {
+				const character = await resolveSymbolColumn(resolvedTarget, line, symbol);
+				requestParams = { textDocument: { uri }, position: { line: line - 1, character } };
+			} else {
+				requestParams = { textDocument: { uri } };
+			}
+		} else {
+			requestParams = {};
+		}
+
+		try {
+			const client = await getOrCreateClient(chosenConfig, this.session.cwd, undefined, signal);
+			if (resolvedTarget) {
+				await ensureFileOpen(client, resolvedTarget, signal);
+			}
+			const result = await sendRequest(client, method, requestParams, signal);
+			const formatted =
+				result === null || result === undefined
+					? "null"
+					: typeof result === "string"
+						? result
+						: JSON.stringify(result, null, 2);
+			return {
+				content: [{ type: "text", text: `${chosenName} ← ${method}:\n${formatted}` }],
+				details: { action, serverName: chosenName, success: true, request: params },
+			};
+		} catch (err) {
+			if (err instanceof ToolAbortError || signal?.aborted) {
+				throw new ToolAbortError();
+			}
+			const msg = errorMessage(err);
+			// Echo a (truncated) preview of the params we sent so the caller can
+			// tell parse / shape errors (e.g. nested args dropped, missing field)
+			// apart from genuine server errors without spinning up another debug call.
+			const previewRaw = JSON.stringify(requestParams ?? null);
+			const preview = truncate(previewRaw, 400, "...");
+			return {
+				content: [
+					{ type: "text", text: `LSP error from ${chosenName} on ${method}: ${msg}\n  params: ${preview}` },
+				],
+				details: { action, serverName: chosenName, success: false, request: params },
+			};
+		}
+	}
+
+	async #handleSymbols(
+		params: LspParams,
+		config: LspConfig,
+		signal: AbortSignal,
+	): Promise<AgentToolResult<LspToolDetails>> {
+		const { action, query } = params;
+		const normalizedQuery = query?.trim();
+		if (!normalizedQuery) {
+			return {
+				content: [{ type: "text", text: "Error: query parameter required for workspace symbol search" }],
+				details: { action, success: false, request: params },
+			};
+		}
+		const servers = getLspServers(config);
+		if (servers.length === 0) {
+			return {
+				content: [{ type: "text", text: "No language server found for this action" }],
+				details: { action, success: false, request: params },
+			};
+		}
+		const aggregatedSymbols: SymbolInformation[] = [];
+		const respondingServers = new Set<string>();
+		for (const [workspaceServerName, workspaceServerConfig] of servers) {
+			throwIfAborted(signal);
+			try {
+				const workspaceClient = await getOrCreateClient(workspaceServerConfig, this.session.cwd, undefined, signal);
+				const workspaceResult = (await sendRequest(
+					workspaceClient,
+					"workspace/symbol",
+					{ query: normalizedQuery },
+					signal,
+				)) as SymbolInformation[] | null;
+				if (!workspaceResult || workspaceResult.length === 0) {
+					continue;
+				}
+				respondingServers.add(workspaceServerName);
+				const filtered = filterWorkspaceSymbols(workspaceResult, normalizedQuery);
+				for (let si = 0; si < filtered.length; si++) aggregatedSymbols.push(filtered[si]!);
+			} catch (err) {
+				if (err instanceof ToolAbortError || signal?.aborted) {
+					throw err;
+				}
+			}
+		}
+		const dedupedSymbols = dedupeWorkspaceSymbols(aggregatedSymbols);
+		if (dedupedSymbols.length === 0) {
+			return {
+				content: [{ type: "text", text: `No symbols matching "${normalizedQuery}"` }],
+				details: {
+					action,
+					serverName: Array.from(respondingServers).join(", "),
+					success: true,
+					request: params,
+				},
+			};
+		}
+		const limitedSymbols = dedupedSymbols.slice(0, WORKSPACE_SYMBOL_LIMIT);
+		const lines = limitedSymbols.map(s => formatSymbolInformation(s, this.session.cwd));
+		const truncationLine =
+			dedupedSymbols.length > WORKSPACE_SYMBOL_LIMIT
+				? `\n[…${dedupedSymbols.length - WORKSPACE_SYMBOL_LIMIT} symbols elided…]`
+				: "";
+		return {
+			content: [
+				{
+					type: "text",
+					text: `Found ${dedupedSymbols.length} symbol(s) matching "${normalizedQuery}":\n${lines.map(l => `  ${l}`).join("\n")}${truncationLine}`,
+				},
+			],
+			details: {
+				action,
+				serverName: Array.from(respondingServers).join(", "),
+				success: true,
+				request: params,
+			},
+		};
+	}
+
+	async #handleReload(
+		params: LspParams,
+		_config: LspConfig,
+		signal: AbortSignal,
+	): Promise<AgentToolResult<LspToolDetails>> {
+		const { action } = params;
+		// `reload *` is the user's explicit request to re-read config from
+		// disk. Drop the per-cwd cache entry so `.veyyon/lsp.json`, root markers,
+		// and plugin configs added after the first LSP call become visible —
+		// otherwise `getConfig` returns the first observation for the rest of
+		// the process lifetime (#3546).
+		configCache.delete(this.session.cwd);
+		const refreshedConfig = getConfig(this.session.cwd);
+		const servers = getLspServers(refreshedConfig);
+		if (servers.length === 0) {
+			return {
+				content: [{ type: "text", text: "No language server found for this action" }],
+				details: { action, success: false, request: params },
+			};
+		}
+		const outputs: string[] = [];
+		for (const [workspaceServerName, workspaceServerConfig] of servers) {
+			throwIfAborted(signal);
+			try {
+				const workspaceClient = await getOrCreateClient(workspaceServerConfig, this.session.cwd, undefined, signal);
+				outputs.push(await reloadServer(workspaceClient, workspaceServerName, signal));
+			} catch (err) {
+				if (err instanceof ToolAbortError || signal?.aborted) {
+					throw err;
+				}
+				const errorText = errorMessage(err);
+				outputs.push(`Failed to reload ${workspaceServerName}: ${errorText}`);
+			}
+		}
+		return {
+			content: [{ type: "text", text: outputs.join("\n") }],
+			details: { action, serverName: servers.map(([name]) => name).join(", "), success: true, request: params },
+		};
+	}
+
+	async #handleLspRequest(
+		params: LspParams,
+		config: LspConfig,
+		signal: AbortSignal,
+		callerSignal: AbortSignal | undefined,
+		timeoutSec: number,
+	): Promise<AgentToolResult<LspToolDetails>> {
+		const { action, file, line, symbol, query, new_name, apply } = params;
+		const isWorkspace = file === "*";
+		const resolvedFile = file && !isWorkspace ? resolveToCwd(file, this.session.cwd) : null;
 		const serverInfo = resolvedFile ? getLspServerForFile(config, resolvedFile) : null;
 		if (!serverInfo) {
 			return {
