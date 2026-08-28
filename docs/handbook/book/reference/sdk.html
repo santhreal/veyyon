@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-475a07eb.js";
+            window.path_to_searchindex_js = "../searchindex-f41feb4d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -223,7 +223,11 @@ bun link @veyyon/coding-agent
 newer version, update the checkout (<code>git pull &amp;&amp; bun install</code>); the link keeps
 pointing at it.</p>
 <h2 id="entry-points"><a class="header" href="#entry-points">Entry points</a></h2>
-<p><code>@veyyon/coding-agent</code> exports the SDK APIs from the package root (and also via <code>@veyyon/coding-agent/sdk</code>).</p>
+<p><code>@veyyon/coding-agent</code> exports the SDK APIs from the package root. <code>createAgentSession</code> is also at
+<code>@veyyon/coding-agent/sdk</code>; the discovery helpers, the options and result records, the system-prompt
+builder, the custom-tool surface and the MCP helpers are also at
+<code>@veyyon/coding-agent/session/factory-extensions</code>, <code>.../factory-options</code>, <code>.../factory-prompt</code>,
+<code>.../factory-tools</code> and <code>.../factory-mcp</code>.</p>
 <p>Core exports for embedders:</p>
 <ul>
 <li><code>createAgentSession</code></li>
@@ -490,7 +494,9 @@ legacy spellings (<code>search</code> for <code>grep</code>, <code>find</code> f
 </ul>
 <p>System prompt is rebuilt to reflect active tool changes.</p>
 <h2 id="discovery-helpers"><a class="header" href="#discovery-helpers">Discovery helpers</a></h2>
-<p>Use these when you want partial control without recreating internal discovery logic:</p>
+<p>Use these when you want partial control without recreating internal discovery logic. They live in
+<code>packages/coding-agent/src/session/factory-extensions.ts</code>, and <code>buildSystemPrompt</code> in
+<code>factory-prompt.ts</code> beside it:</p>
 <ul>
 <li><code>discoverAuthStorage(agentDir?)</code></li>
 <li><code>discoverExtensions(cwd?)</code></li>

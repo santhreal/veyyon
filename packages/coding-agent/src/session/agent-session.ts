@@ -690,10 +690,6 @@ function hasNonWhitespace(value: string): boolean {
 
 export type { ShakeMode, ShakeResult };
 
-// ============================================================================
-// Types
-// ============================================================================
-
 const EPHEMERAL_REPLY_MAX_BYTES = 4096;
 
 /**
@@ -840,10 +836,6 @@ function createHandoffFileName(date = new Date()): string {
 	const fileTimestamp = date.toISOString().replace(/[:.]/g, "-");
 	return `handoff-${fileTimestamp}.md`;
 }
-
-// ============================================================================
-// ACP Permission Gate
-// ============================================================================
 
 // ============================================================================
 // AgentSession Class

@@ -19,9 +19,9 @@
 import { vi } from "bun:test";
 import type { Api, AssistantMessage, Model } from "@veyyon/ai";
 import type { Skill } from "@veyyon/coding-agent/extensibility/skills";
-import type { CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent, PromptOptions } from "@veyyon/coding-agent/session/agent-session-types";
+import type { CreateAgentSessionResult } from "@veyyon/coding-agent/session/factory-options";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 
 /** What the callback is handed on each `prompt` call. */

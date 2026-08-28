@@ -1,7 +1,8 @@
 import { getProjectDir } from "@veyyon/utils";
 import { ModelRegistry } from "../config/model-registry";
 import { Settings } from "../config/settings";
-import { discoverAuthStorage, loadCliExtensionProviders } from "../sdk";
+import { discoverAuthStorage } from "../sdk";
+import { loadCliExtensionProviders } from "../session/factory-extensions";
 
 /**
  * What a model-facing CLI subcommand needs before it can talk to a provider: the

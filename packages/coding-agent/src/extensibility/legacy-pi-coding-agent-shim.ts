@@ -28,14 +28,15 @@ import type { PromptTemplate } from "../config/prompt-templates";
 import { type SettingPath, Settings } from "../config/settings";
 import { EditTool } from "../edit";
 import { formatExitCodeNotice } from "../exec/exit-notice";
-import type { CreateAgentSessionOptions, CreateAgentSessionResult, LoadExtensionsResult } from "../sdk";
+import type { LoadExtensionsResult } from "../sdk";
+import { createAgentSession as ompCreateAgentSession } from "../sdk";
 import {
 	discoverContextFiles,
 	discoverPromptTemplates,
 	discoverSessionExtensionPaths,
 	discoverSkills,
-	createAgentSession as ompCreateAgentSession,
-} from "../sdk";
+} from "../session/factory-extensions";
+import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "../session/factory-options";
 import {
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,

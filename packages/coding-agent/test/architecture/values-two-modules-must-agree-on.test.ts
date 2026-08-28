@@ -246,8 +246,9 @@ describe("each value is declared once", () => {
 		const offenders: string[] = [];
 		for (const { file, text } of await sources()) {
 			for (const name of retired) {
-				// `sdk.ts` keeps `TOOL_DEFINITION_MARKER` for its symbol, which is a different key on purpose.
-				if (name === "TOOL_DEFINITION_MARKER" && file.endsWith("coding-agent/src/sdk.ts")) continue;
+				// `session/factory-tools.ts` keeps `TOOL_DEFINITION_MARKER` for its symbol, which is a different key on purpose.
+				if (name === "TOOL_DEFINITION_MARKER" && file.endsWith("coding-agent/src/session/factory-tools.ts"))
+					continue;
 				if (new RegExp(`^\\s*(?:export )?const ${name}\\b`, "m").test(text)) offenders.push(`${file}: ${name}`);
 			}
 		}

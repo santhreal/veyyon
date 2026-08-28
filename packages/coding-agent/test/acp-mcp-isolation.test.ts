@@ -16,9 +16,9 @@ import { describe, expect, it } from "bun:test";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAcpSessionFactory } from "@veyyon/coding-agent/main";
-import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "@veyyon/coding-agent/session/factory-options";
 import { TempDir } from "@veyyon/utils";
 import { CONFIG_DIR_NAME } from "@veyyon/utils/dirs";
 

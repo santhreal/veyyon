@@ -27,7 +27,11 @@ import * as path from "node:path";
 import { loadCapability } from "@veyyon/coding-agent/discovery";
 import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
 import { ruleCapability } from "@veyyon/coding-agent/discovery/capability/rule";
-import { discoverContextFiles, discoverPromptTemplates, discoverSkills } from "@veyyon/coding-agent/sdk";
+import {
+	discoverContextFiles,
+	discoverPromptTemplates,
+	discoverSkills,
+} from "@veyyon/coding-agent/session/factory-extensions";
 import { GLOBAL_BODY, PROFILE_BODY, useContextScopeFixture } from "../helpers/context-scope-fixture";
 
 const fixture = useContextScopeFixture("cwd-layers-");

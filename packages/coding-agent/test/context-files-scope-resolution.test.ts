@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { PROFILE_AGENTS_GUIDANCE } from "@veyyon/coding-agent/discovery/agents-guidance";
-import { discoverContextFiles } from "@veyyon/coding-agent/sdk";
+import { discoverContextFiles } from "@veyyon/coding-agent/session/factory-extensions";
 import { loadProjectContextFiles } from "@veyyon/coding-agent/system-prompt";
 import {
 	GLOBAL_BODY,

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { buildSystemPrompt as buildSdkSystemPrompt } from "@veyyon/coding-agent/sdk";
+import { buildSystemPrompt as buildSdkSystemPrompt } from "@veyyon/coding-agent/session/factory-prompt";
 import {
 	buildSystemPrompt,
 	buildSystemPromptToolMetadata,

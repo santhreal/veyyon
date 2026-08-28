@@ -50,7 +50,7 @@ import { discoverAndLoadHooks } from "@veyyon/coding-agent/extensibility/hooks";
 import { loadSkills } from "@veyyon/coding-agent/extensibility/skills";
 import { loadSlashCommands } from "@veyyon/coding-agent/extensibility/slash-commands";
 import { loadAllMCPConfigs } from "@veyyon/coding-agent/mcp/config";
-import { discoverContextFiles, discoverRules, discoverSkills } from "@veyyon/coding-agent/sdk";
+import { discoverContextFiles, discoverRules, discoverSkills } from "@veyyon/coding-agent/session/factory-extensions";
 import { buildSystemPrompt, loadProjectContextFiles } from "@veyyon/coding-agent/system-prompt";
 import { discoverCommands } from "@veyyon/coding-agent/task/commands";
 import { discoverAgents } from "@veyyon/coding-agent/task/discovery";

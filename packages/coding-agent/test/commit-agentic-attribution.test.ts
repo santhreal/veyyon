@@ -3,9 +3,9 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { runCommitAgentSession } from "@veyyon/coding-agent/commit/agentic/agent";
 import * as toolsModule from "@veyyon/coding-agent/commit/agentic/tools";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
 import type { PromptOptions } from "@veyyon/coding-agent/session/agent-session-types";
+import type { CreateAgentSessionResult } from "@veyyon/coding-agent/session/factory-options";
 
 describe("commit agent prompt attribution", () => {
 	afterEach(() => {

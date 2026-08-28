@@ -27,7 +27,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { clearCache as clearFsCache } from "@veyyon/coding-agent/discovery/capability/fs";
 import { loadSkills } from "@veyyon/coding-agent/extensibility/skills";
-import { discoverSkills } from "@veyyon/coding-agent/sdk";
+import { discoverSkills } from "@veyyon/coding-agent/session/factory-extensions";
 import { removeWithRetries, setAgentDir } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 

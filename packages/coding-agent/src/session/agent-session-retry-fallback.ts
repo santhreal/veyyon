@@ -8,14 +8,8 @@ import type { Model } from "@veyyon/ai";
 import { formatModelSelectorValue, formatModelStringWithRouting, parseModelString } from "../config/model-resolver";
 import { type ConfiguredThinkingLevel, concreteThinkingLevel } from "../thinking";
 
-/** Internal marker for hook messages queued through the agent loop */
-// ============================================================================
-// Constants
-// ============================================================================
-export /** Standard thinking levels */
-
 /** `retry.fallbackChains` config: chain key (role name or model selector) → ordered fallback selectors. */
-type RetryFallbackChains = Record<string, string[]>;
+export type RetryFallbackChains = Record<string, string[]>;
 
 export type RetryFallbackRevertPolicy = "never" | "cooldown-expiry";
 

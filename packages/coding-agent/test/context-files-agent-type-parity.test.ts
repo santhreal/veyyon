@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { discoverContextFiles } from "@veyyon/coding-agent/sdk";
+import { discoverContextFiles } from "@veyyon/coding-agent/session/factory-extensions";
 import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
 import { inheritContextFiles } from "@veyyon/coding-agent/task/context-inheritance";
 import { logger } from "@veyyon/utils";
