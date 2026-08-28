@@ -1,6 +1,0 @@
-# Unified runtime candidate arm: replace eval and launch with runtime
-# Sets tools.unifiedRuntime to true to activate the unified runtime tool ablation.
-argot:
-  enabled: false
-tools:
-  unifiedRuntime: true

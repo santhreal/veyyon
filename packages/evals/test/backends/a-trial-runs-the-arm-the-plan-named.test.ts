@@ -228,7 +228,7 @@ describe("a trial runs the arm the plan named", () => {
 			// name otherwise. Either way the value comes from the binding, never from the
 			// variant name: `veyyon+alpha@vendor/model-x` is not an agent.
 			if (binding.agentImportPath) {
-				const importIndex = argv.indexOf("--agent-import-path");
+				const importIndex = argv.indexOf("--agent");
 				expect(importIndex).toBeGreaterThan(-1);
 				expect(argv[importIndex + 1]).toBe(binding.agentImportPath);
 			} else {
