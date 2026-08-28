@@ -84,6 +84,15 @@ function joinContents(parts: readonly QuietPart[], sep: string): string {
 	return result;
 }
 
+/** Render a segment and push it into the output array if visible. Module-level to avoid
+ *  allocating a closure per frame in #gatherQuietSegments. */
+function pushQuietPart(id: StatusLineSegmentId, ctx: SegmentContext, out: QuietPart[]): void {
+	if (id === "subagents") return;
+	const rendered = renderSegment(id, ctx);
+	if (!rendered.visible || !rendered.content) return;
+	out.push({ id, content: rendered.content, pin: rendered.pin });
+}
+
 /**
  * Shed order for the right group, as a rank rather than a boolean. Higher survives longer;
  * everything unlisted ranks 0 and sheds first, right to left, which is the ordinary case.
@@ -1965,12 +1974,6 @@ export class StatusLineComponent implements Component {
 		const location: QuietPart[] = [];
 		const capLeft: QuietPart[] = [];
 		const capRight: QuietPart[] = [];
-		const push = (id: StatusLineSegmentId, out: QuietPart[]) => {
-			if (id === "subagents") return;
-			const rendered = renderSegment(id, ctx);
-			if (!rendered.visible || !rendered.content) return;
-			out.push({ id, content: rendered.content, pin: rendered.pin });
-		};
 		// The context gauge is the footline's one LIVE value; everything else on the
 		// right is standing state. A gauge configured on the left still belongs in the
 		// right group (it is a capability reading, not a location), but pushing it there
@@ -1982,13 +1985,13 @@ export class StatusLineComponent implements Component {
 		// configured on the RIGHT keeps the position they gave it.
 		const contextFromLeft: QuietPart[] = [];
 		for (const id of leftCfg) {
-			if (LOCATION_SEGMENT_IDS[id]) push(id, location);
-			else if (CONTEXT_SEGMENT_IDS[id]) push(id, contextFromLeft);
-			else push(id, capLeft);
+			if (LOCATION_SEGMENT_IDS[id]) pushQuietPart(id, ctx, location);
+			else if (CONTEXT_SEGMENT_IDS[id]) pushQuietPart(id, ctx, contextFromLeft);
+			else pushQuietPart(id, ctx, capLeft);
 		}
 		for (const id of rightCfg) {
-			if (LOCATION_SEGMENT_IDS[id]) push(id, location);
-			else push(id, capRight);
+			if (LOCATION_SEGMENT_IDS[id]) pushQuietPart(id, ctx, location);
+			else pushQuietPart(id, ctx, capRight);
 		}
 		capRight.push(...contextFromLeft);
 		const runningBackgroundJobs = this.#backgroundJobBadgeCount();
