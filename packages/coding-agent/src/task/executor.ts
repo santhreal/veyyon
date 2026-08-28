@@ -104,9 +104,9 @@ import type { WorkspaceTree } from "../workspace-tree";
 import { type AutoloadSkillPlan, settleAutoloadSkills } from "./inherited-collections";
 import { generateTaskLabel } from "./label";
 import {
-	resolveSubagentPruneBudget,
 	resolveSubagentIdleTtlMs,
 	resolveSubagentMaxNestedSpawnDepth,
+	resolveSubagentPruneBudget,
 	type SubagentPruneBudget,
 } from "./subagent-settings";
 import { subprocessToolRegistry, YIELD_TOOL_NAME } from "./subprocess-tool-registry";

@@ -178,7 +178,10 @@ export class AgentLifecycleManager {
 	setPersistedSubagentReviverFactory(
 		factory: PersistedSubagentReviverFactory,
 		idleTtl: number | PersistedSubagentIdleTtlResolver,
-		pruneBudget: PersistedSubagentPruneBudget | PersistedSubagentPruneBudgetResolver = { afterMs: 0, waitingAfterMs: 0 },
+		pruneBudget: PersistedSubagentPruneBudget | PersistedSubagentPruneBudgetResolver = {
+			afterMs: 0,
+			waitingAfterMs: 0,
+		},
 	): void {
 		this.#persistedReviverFactory = factory;
 		this.#persistedReviveTtl = idleTtl;

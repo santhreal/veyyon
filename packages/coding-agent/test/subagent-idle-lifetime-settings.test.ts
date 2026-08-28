@@ -5,7 +5,7 @@ import {
 	DEFAULT_SUBAGENT_PRUNE_MS,
 	DEFAULT_SUBAGENT_WAITING_PRUNE_MS,
 } from "@veyyon/coding-agent/config/settings-domains/subagents";
-import { resolveSubagentPruneBudget, resolveSubagentIdleTtlMs } from "@veyyon/coding-agent/task/subagent-settings";
+import { resolveSubagentIdleTtlMs, resolveSubagentPruneBudget } from "@veyyon/coding-agent/task/subagent-settings";
 
 describe("subagent idle lifetime settings", () => {
 	/**

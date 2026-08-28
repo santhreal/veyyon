@@ -91,7 +91,7 @@ import { takeStartupPrologue } from "./startup/prologue-handoff";
 import { shouldShowStartupSplash } from "./startup-splash";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";
 import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
-import { resolveSubagentPruneBudget, resolveSubagentIdleTtlMs } from "./task/subagent-settings";
+import { resolveSubagentIdleTtlMs, resolveSubagentPruneBudget } from "./task/subagent-settings";
 import { initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
 import type { LspStartupServerInfo } from "./tools";
 import { decideUpdateNotice, readLastChangelogVersion, writeLastChangelogVersion } from "./utils/changelog";
