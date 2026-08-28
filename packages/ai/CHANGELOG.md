@@ -14,6 +14,7 @@
 - 87 type definitions, constants, and utility functions extracted from `providers/openai-codex-responses.ts` (3,979→2,988 lines) into `providers/openai-codex-responses-helpers.ts`.
 - 23 header and beta utility functions extracted from `providers/anthropic.ts` (3,522→3,424 lines) into `providers/anthropic-helpers.ts`.
 - 130 type definitions, constants, and utility functions appended to `providers/anthropic-helpers.ts` from `providers/anthropic.ts` (3,424→1,879 lines).
+- 24 utility functions, constants, and types extracted from `stream.ts` (1,623→826 lines) into `stream-helpers.ts`.
 - 24 utility functions, constants, and the BoundedLruMap class extracted from `providers/cursor.ts` (3,064→2,846 lines) into `providers/cursor-helpers.ts`.
 - 112 type definitions, constants, and utility functions extracted from `auth-storage.ts` (5,263→4,693 lines) into `auth-storage-helpers.ts`.
 - 42 free helper functions, types, and constants extracted from `openai-completions.ts` (2,161→1,791 lines) into `openai-completions-helpers.ts`.
