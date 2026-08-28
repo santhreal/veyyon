@@ -142,11 +142,7 @@ const GITLAB_DUO_WORKFLOW_STALL_ERROR_MESSAGE =
 const GITLAB_DUO_WORKFLOW_GOAL_SOFT_OVERFLOW_BYTES = 1_048_576;
 const GITLAB_DUO_WORKFLOW_GOAL_HARD_OVERFLOW_BYTES = 2_000_000;
 
-// An overflow-pattern message for an oversized goal. The "prompt is too long" prefix
-// is one of the shared overflow classifier patterns, so
-// `isContextOverflow` recognizes it and the session triggers auto-compaction instead
-// of surfacing a hard failure. Byte counts (not tokens) are reported because the
-// budget is a byte budget.
+// Overflow-pattern message for oversized goal triggers auto-compaction.
 function buildGitLabDuoWorkflowGoalOverflowMessage(goalBytes: number): string {
 	return `prompt is too long: ${goalBytes} bytes exceeds the GitLab Duo Agent goal byte budget (soft ${GITLAB_DUO_WORKFLOW_GOAL_SOFT_OVERFLOW_BYTES}, hard ${GITLAB_DUO_WORKFLOW_GOAL_HARD_OVERFLOW_BYTES})`;
 }
@@ -169,9 +165,7 @@ export const GITLAB_DUO_WORKFLOW_CLIENT_CAPABILITIES = [
 
 const GITLAB_DUO_WORKFLOW_INLINE_AGENT_NAME = "veyyon_agent";
 const GITLAB_DUO_WORKFLOW_INLINE_PROMPT_ID = "veyyon_inline_prompt";
-// `on_agent_reasoning` is what makes the server tag an agent's pre-tool-call
-// commentary as `message_sub_type: "reasoning"` — the chain-of-thought the
-// official Duo CLI surfaces. An inline flow must opt in explicitly.
+// Opt in to agent reasoning / chain-of-thought on inline flows.
 const GITLAB_DUO_WORKFLOW_INLINE_UI_LOG_EVENTS = [
 	"on_agent_reasoning",
 	"on_agent_final_answer",
@@ -364,22 +358,14 @@ export interface GitLabDuoWorkflowActiveSession {
 	workflowId: string;
 	startPayload: GitLabDuoWorkflowStartRequest;
 	ws: GitLabDuoWorkflowWebSocketLike;
-	// Best-effort server-side stop for THIS workflow, captured with its own
-	// fetch/baseUrl/apiKey so `ProviderSessionState.close()` (session reset/dispose)
-	// can stop a workflow the server is still running, even though it holds none of
-	// that context itself. Fire-and-forget; never throws.
+	// Best-effort server-side stop for this workflow; never throws.
 	stop?: () => void;
 	pendingActions?: GitLabDuoWorkflowActionDescriptor[];
 	checkpointAgentContentByKey?: Record<string, string>;
 	checkpointAgentContentSignatures?: Record<string, true>;
 	paused?: boolean;
 	pauseBuffer?: unknown[];
-	// Byte length of the server's last checkpoint observed at this workflow's tool-call
-	// boundaries. The control experiment proved a healthy turn emits checkpoints whose
-	// byte size varies and progresses, while a stalled workflow re-emits a byte-identical
-	// checkpoint — so equal lengths across consecutive boundaries flag a stall (see
-	// GITLAB_DUO_WORKFLOW_MAX_STALL_RESTARTS). Persisted on the session so the comparison
-	// survives the resume that reuses this socket.
+	// Last checkpoint byte length; equal lengths across consecutive boundaries flag a stall.
 	lastToolBoundaryContentLength?: number;
 }
 
@@ -399,19 +385,13 @@ export interface GitLabDuoWorkflowStreamState {
 	pauseRequested?: boolean;
 	stepLimitRequested?: boolean;
 	retryableErrorRequested?: boolean;
-	// Byte length of the server's latest checkpoint seen this socket run; the action
-	// handler compares it against the previous tool-call boundary's length to detect a
-	// stall (a byte-identical checkpoint means the server-side turn did not advance).
+	// Latest checkpoint byte length to detect non-advancing stall.
 	lastCheckpointContentLength?: number;
-	// Set when a tool-call boundary's checkpoint byte length did not change from the
-	// previous boundary — the socket settles "stalled" so the run restarts fresh.
+	// Set when checkpoint byte length did not change across boundaries.
 	stalledRequested?: boolean;
 	providerSessionState?: GitLabDuoWorkflowProviderSessionState;
 	lastApprovalStatus?: string;
-	// When the rendered goal exceeds the byte budget, this carries an overflow-pattern
-	// message. A terminal/exhausted error then surfaces THIS instead of the raw server
-	// error so `isContextOverflow` recognizes it and the agent loop auto-compacts. Left
-	// undefined for a goal within budget, so ordinary errors surface verbatim.
+	// Carries overflow message when rendered goal exceeds byte budget.
 	goalOverflowMessage?: string;
 }
 
@@ -452,9 +432,7 @@ export const streamGitLabDuoWorkflow: StreamFunction<"gitlab-duo-agent"> = (
 		const errorText = gitLabDuoWorkflowErrorText(error);
 		if (!stream.done) {
 			output.stopReason = "error";
-			// A throw (socket reject, abnormal 1006 close, …) on a goal already past the
-			// byte budget is almost certainly the oversized request — surface it as a
-			// context-overflow so the session auto-compacts rather than hard-failing.
+			// Surface oversized goal errors as context-overflow to trigger compaction.
 			output.errorMessage = state.goalOverflowMessage ?? errorText;
 			stream.push({ type: "error", reason: "error", error: output });
 		}
@@ -507,8 +485,7 @@ export function buildGitLabDuoWorkflowWebSocketUrl(
 		serviceEndpoint?: boolean;
 	} = {},
 ): string {
-	// serviceEndpoint connects to the DWS runway host (root path); otherwise route to the
-	// GitLab instance, preserving any relative install base path (e.g. `https://host/gitlab`).
+	// Route to DWS runway host (root path) or GitLab instance with relative base path.
 	const wsUrl = options.serviceEndpoint
 		? new URL("/", normalizeGitLabBaseUrl(baseUrl))
 		: gitLabApiUrl(baseUrl, "/api/v4/ai/duo_workflows/ws");
@@ -572,13 +549,7 @@ export function buildGitLabDuoWorkflowStartRequest(
 	};
 }
 
-// Build the inline ambient flow sent over the wire (Path B / `flowConfig`). The
-// server constructs the whole flow from this struct: a single agent component
-// whose system slot carries veyyon's own authoritative system prompt (no GitLab jinja
-// wrapper / project metadata) and `on_agent_reasoning` so pre-tool-call commentary
-// streams back as reasoning. `toolset: []` because MCP tools auto-attach from
-// `startRequest.mcpTools` when the workflow's `mcp_enabled` is true. The user slot
-// is `{{goal}}`, which the provider fills with the flat conversation transcript.
+// Build inline ambient flow (Path B / flowConfig) with system prompt and {{goal}} slot.
 export function buildGitLabDuoWorkflowInlineFlowConfig(systemPrompt: string): GitLabDuoWorkflowInlineFlowConfig {
 	return {
 		version: "v1",
@@ -657,10 +628,7 @@ function findGitLabDuoWorkflowToolResultById(
 	return undefined;
 }
 
-// Resolve each pending action to its tool result. The serial inline flow yields a
-// single pending action per turn, but the helper stays general; it returns the
-// {requestID, result} pairs only when ALL are present, so a resume that fires
-// before the agent loop appended the tool result is held back rather than sent.
+// Resolve pending actions to tool results; returns pairs only when all are present.
 function resolveGitLabDuoWorkflowActionBatch(
 	messages: readonly Message[],
 	actions: readonly GitLabDuoWorkflowActionDescriptor[],
@@ -674,14 +642,7 @@ function resolveGitLabDuoWorkflowActionBatch(
 	return resolved;
 }
 
-// True when the user steered mid-tool-loop: a user/developer message sits AFTER the
-// last tool result the pending batch resolves to. The DWS wire has no in-flight
-// channel to inject a new user message into a running workflow (the only entry,
-// human_input, is gated behind a LangGraph interrupt that ends the run and forces
-// the broken same-id RESUME). So the steer would be dropped if we just returned the
-// tool results on the live socket. Instead the caller abandons this workflow and
-// re-seeds a fresh one, where the steer rides the goal transcript as the last turn —
-// matching the official CLI, which on interrupt restarts with the new instruction.
+// True when a user/developer message sits after the last resolved tool result (mid-loop steer).
 function hasGitLabDuoWorkflowSteerAfterBatch(
 	messages: readonly Message[],
 	batch: readonly { requestID: string; result: ToolResultMessage }[],
@@ -707,14 +668,7 @@ function buildGitLabDuoWorkflowResponseFromToolResult(toolResult: ToolResultMess
 	return buildGitLabPlainTextFromToolResult(toolResult);
 }
 
-// Stream one tool_call into the assistant message and finalize the turn. The DWS
-// inline ambient flow dispatches MCP tool calls serially: its ToolNode runs a
-// `for tool_call ...: await tool.ainvoke(...)` loop, and each MCP `ainvoke`
-// blocks in `put_action_and_wait_for_response` until this client returns the
-// matching actionResponse. So only ONE `runMCPTool` action is ever in flight per
-// model turn — the next is not dispatched until the previous is answered. There
-// is no burst to batch; each action is its own assistant message (one `done`,
-// one usage) and the single pending action is committed for the resume turn.
+// Stream one tool_call into the assistant message and finalize the turn.
 function emitGitLabDuoWorkflowActionToolCall(
 	state: GitLabDuoWorkflowStreamState,
 	action: GitLabDuoWorkflowActionDescriptor,
@@ -738,18 +692,7 @@ function emitGitLabDuoWorkflowActionToolCall(
 	}
 }
 
-// Decide whether THIS tool-call boundary signals a stalled workflow. The control
-// experiment proved the checkpoint `ui_chat_log` length (messageCount) is an
-// incremental-streaming slice window capped at ~2 even on a healthy FINISHED run,
-// so it cannot discriminate a loop. The raw server checkpoint BYTE size does: a
-// healthy turn emits checkpoints whose size varies and progresses, while a stalled
-// workflow re-emits a byte-identical checkpoint (the server replays the same
-// non-advancing state). So a fresh tool-call boundary whose checkpoint byte length
-// exactly equals the previous boundary's length of the same workflow means the
-// server-side turn did not progress. Persist the last length on the session so the
-// comparison survives the resume that reuses this socket. Returns false until a
-// comparable prior reading exists (first boundary of a workflow, or checkpoints that
-// never carried a length) so a single boundary is never falsely flagged.
+// Returns true when consecutive checkpoint byte lengths are identical (stalled workflow).
 function detectGitLabDuoWorkflowStall(state: GitLabDuoWorkflowStreamState): boolean {
 	const active = state.providerSessionState?.active;
 	const length = state.lastCheckpointContentLength;
@@ -803,8 +746,7 @@ function mapGitLabDuoWorkflowMcpToolCall(args: Record<string, unknown>): {
 
 function parseGitLabDuoWorkflowMcpArguments(value: unknown, tool?: string): Record<string, unknown> {
 	if (value === undefined) return {};
-	// Arguments arriving as text go through the same owner the streaming dialects use, so a payload that
-	// will not parse is reported instead of being flattened to "this call had no arguments".
+
 	if (typeof value === "string") return parseToolArgsText(value, { source: "gitlab-duo-workflow", tool });
 	if (isRecord(value)) return value as Record<string, unknown>;
 	logger.warn("Tool call arguments were not an object; the tool is being called with none", {
@@ -826,9 +768,7 @@ function gitLabDuoWorkflowProviderSessionStateKey(
 function createGitLabDuoWorkflowProviderSessionState(): GitLabDuoWorkflowProviderSessionState {
 	const state: GitLabDuoWorkflowProviderSessionState = {
 		close: () => {
-			// Stop the server-side workflow before tearing down the socket. The session
-			// is being reset/disposed, so no resume will return the result; without this
-			// PATCH a workflow the server is still running on veyyon would be stranded.
+			// Stop the server-side workflow before tearing down the socket.
 			try {
 				state.active?.stop?.();
 			} catch {
@@ -862,23 +802,11 @@ function getGitLabDuoWorkflowProviderSessionState(
 
 interface GitLabDuoWorkflowAccountState {
 	namespaceSelection?: GitLabDuoWorkflowNamespaceSelection;
-	// Once the namespace's Duo settings (agent platform + MCP + experiment flags)
-	// have been ensured for this ACCOUNT, later turns and side-requests should not
-	// re-send the best-effort enablement PUT. This is account-scoped, not session-
-	// scoped: compaction/handoff are independent side-requests that must benefit from
-	// the same prepared account state without reusing the main workflow session.
+	// Cache namespace Duo settings enablement per account.
 	settingsEnsured?: boolean;
 }
 
-// Per-(account, workspace) provider state. The discovered root namespace is a
-// function of the GitLab credential AND the current cwd's git remote (a token with
-// several top-level groups resolves a different namespace per repo), so caching it
-// account-only would reuse the first workspace's namespace in a second repo and skip
-// re-discovery (and skip per-namespace settings enablement). Key by credential +
-// baseUrl + cwd; reuse across turns/sessions in the SAME workspace, re-discover only
-// when a cached namespace later proves invalid. Explicit namespace/project config
-// bypasses this cache entirely. Keyed by a non-reversible credential fingerprint
-// (never the raw token).
+// Per-(account, workspace) provider state keyed by credential, baseUrl, and cwd.
 const gitLabDuoWorkflowAccountState = new Map<string, GitLabDuoWorkflowAccountState>();
 
 function gitLabDuoWorkflowAccountKey(apiKey: string, baseUrl: string, cwd: string | undefined): string {
@@ -927,9 +855,7 @@ function markGitLabDuoWorkflowSettingsEnsured(apiKey: string, baseUrl: string, c
 	getGitLabDuoWorkflowAccountState(apiKey, baseUrl, cwd).settingsEnsured = true;
 }
 
-// True when the user pinned a namespace/project explicitly (option or env). Explicit
-// configuration is authoritative and cheap to resolve, so it bypasses the account
-// cache entirely (neither read nor written).
+// True when namespace/project is pinned explicitly.
 function hasGitLabDuoWorkflowExplicitNamespace(options: GitLabDuoWorkflowOptions): boolean {
 	return Boolean(
 		nonEmptyString(options.rootNamespaceId) ??
@@ -946,16 +872,7 @@ export function gitLabDuoWorkflowErrorText(error: unknown): string {
 	return errorMessage(error);
 }
 
-// Scoped absolute deadline for one REST setup fetch (`fetch`, `direct_access`, etc.).
-// The caller's abort signal — when present — is folded in, so either the request
-// being cancelled OR the local timeout aborts the fetch. Minted per-fetch so each
-// REST call gets its OWN fresh budget; a shared timeout would race several fetches
-// on the same clock and starve the later ones after the first spent the whole
-// budget. The workflow's `start` event already streamed before any of these calls
-// run, so an unbounded fetch would leave the assistant stream with no terminal
-// event — see {@link GITLAB_DUO_WORKFLOW_REST_TIMEOUT_MS}. Callers hold the handle
-// across the fetch AND its body reads and cancel() in finally so the backing timer
-// is cleared on settle instead of staying armed (a bare AbortSignal.timeout leaks).
+// Scoped absolute deadline for one REST setup fetch folding in caller abort signal.
 function gitLabDuoWorkflowRestTimeout(callerSignal?: AbortSignal): { signal: AbortSignal; cancel(): void } {
 	return scopedTimeoutSignal(GITLAB_DUO_WORKFLOW_REST_TIMEOUT_MS, callerSignal);
 }
@@ -967,9 +884,6 @@ async function readGitLabDuoWorkflowResponseErrorMessage(response: Response): Pr
 			getGitLabDuoWorkflowErrorField(payload, "message") ?? getGitLabDuoWorkflowErrorField(payload, "error");
 		return message ? gitLabDuoWorkflowErrorText(message) : undefined;
 	} catch {
-		// This is reading a better message OUT OF an error response that is already being reported. Undefined
-		// means "no message in the body", so the caller falls back to the status line it already has; there
-		// is no loss to surface because the failure itself is what the caller is in the middle of raising.
 		return undefined;
 	}
 }
@@ -981,10 +895,7 @@ function getGitLabDuoWorkflowErrorField(payload: unknown, field: "message" | "er
 	return value;
 }
 
-// Everything `setupForNamespace` resolves for a chosen namespace: the REST/root ids,
-// the discovered project scoping, the prepared START payload, and the direct_access
-// connection. Named (not `ReturnType<...>`) per repo convention so the contract stays
-// explicit for the cached-namespace and re-discovery branches that consume it.
+// Resolved namespace state: IDs, project scoping, START payload, and direct_access connection.
 interface GitLabDuoWorkflowNamespaceSetup {
 	rootNamespaceId: string;
 	restNamespaceId: string;
@@ -1023,10 +934,7 @@ async function runGitLabDuoWorkflow(
 		pendingSession && pendingActions && pendingActions.length > 0
 			? resolveGitLabDuoWorkflowActionBatch(context.messages, pendingActions)
 			: undefined;
-	// Steer mid-tool-loop: the user added a new instruction after this batch's tool
-	// results. Returning the results on the live socket would silently drop the steer
-	// (no in-flight user-message channel). Abandon the workflow and re-seed a fresh one
-	// below — the steer rides the goal transcript as the last turn.
+	// Steer mid-tool-loop: abandon workflow and re-seed fresh with updated transcript.
 	const steeredMidBatch = Boolean(
 		resolvedBatch && hasGitLabDuoWorkflowSteerAfterBatch(context.messages, resolvedBatch),
 	);
@@ -1048,10 +956,7 @@ async function runGitLabDuoWorkflow(
 					model,
 				),
 		);
-		// A stall on the resumed socket means the server-side turn stopped advancing even
-		// after the tool result was returned. The helper already stopped that workflow and
-		// dropped `active`; fall through to seed a FRESH workflow whose rebuilt goal
-		// transcript includes the just-returned tool result, breaking the loop.
+		// Fall through to seed a fresh workflow on stall.
 		if (resumeResult !== "stalled") return;
 	}
 	if (providerSessionState?.active?.paused) {
@@ -1064,23 +969,10 @@ async function runGitLabDuoWorkflow(
 			{ fetchImpl, baseUrl, apiKey, workflowId: sessionWorkflowId, state, providerSessionState },
 			() => runGitLabDuoWorkflowSocket(session.ws, session.startPayload, state, options, undefined, replay, model),
 		);
-		// As with the action resume, a stall falls through to a fresh-workflow seed
-		// (the helper already stopped the stalled workflow and dropped `active`).
+
 		if (resumeResult !== "stalled") return;
 	}
-	// Two cases reach here with a live `pendingSession` that must be abandoned before
-	// seeding a fresh workflow:
-	//  1. A mid-batch steer (resolvedBatch present, user message after it).
-	//  2. Pending actions that did NOT resolve to tool results (resolvedBatch
-	//     undefined): the requestID↔toolResult.toolCallId pairing broke, so the live
-	//     socket can never be answered. Silently creating a fresh workflow while
-	//     leaving the old one running strands it server-side — its LangGraph still
-	//     treats the tool call as pending, so the model never sees the result and
-	//     re-issues the same tool call (the observed "repeats the same tool, ignores
-	//     the result" loop). Both cases need the same cleanup: close the socket, stop
-	//     the workflow server-side, and drop the resumable session so the fresh
-	//     workflow below owns `active`. The accumulated history (including the
-	//     unanswered tool's result) replays through the new goal transcript.
+	// Clean up abandoned pending session before seeding a fresh workflow.
 	const abandonStaleSession = Boolean(
 		pendingSession && (steeredMidBatch || (pendingActions && pendingActions.length > 0 && !resolvedBatch)),
 	);
@@ -1103,9 +995,6 @@ async function runGitLabDuoWorkflow(
 	const configuredProjectId = nonEmptyString(options.projectId) ?? nonEmptyString(Bun.env.GITLAB_DUO_PROJECT_ID);
 	const goal = extractLatestUserPrompt(context.messages);
 
-	// One deadline for the whole setup phase. Every REST helper below composes the
-	// signal it is handed with its own per-call deadline, so this bounds the chain
-	// without loosening any single call.
 	const setupBudget = openBoundedFirstEventBudget(
 		options.streamFirstEventTimeoutMs,
 		GITLAB_DUO_WORKFLOW_SETUP_TIMEOUT_MS,
@@ -1114,11 +1003,7 @@ async function runGitLabDuoWorkflow(
 	const setupSignal = setupFence.signal;
 	const setupOptions: GitLabDuoWorkflowOptions = { ...options, signal: setupSignal };
 
-	// Resolve the namespace and everything scoped to it (settings enable, project
-	// auto-discovery, direct_access, workflow create). With auto-discovery the
-	// namespace is cached per account and reused as the first choice; only if a
-	// cached namespace turns out stale (the dependent calls fail) do we invalidate
-	// it and re-discover once. Explicit namespace/project config bypasses the cache.
+	// Resolve namespace and scoped settings/project/direct_access/workflow.
 	const setupForNamespace = async (
 		namespaceSelection: GitLabDuoWorkflowNamespaceSelection,
 	): Promise<GitLabDuoWorkflowNamespaceSetup> => {
@@ -1133,28 +1018,16 @@ async function runGitLabDuoWorkflow(
 			namespaceSource: namespaceSelection.source,
 			toolCount: context.tools?.length ?? 0,
 		});
-		// Once per session, make sure the namespace has the Duo agent-platform + MCP +
-		// beta flags on. The inline ambient flow needs them; a fresh group ships with
-		// them off. Best-effort (PUT needs maintainer) and idempotent, never blocks.
+		// Best-effort ensure Duo agent-platform + MCP flags are enabled on the namespace.
 		if (
 			!isGitLabDuoWorkflowSettingsEnsured(apiKey, baseUrl, options.cwd) &&
 			isGitLabDuoWorkflowInlineFlow(workflowDefinition)
 		) {
-			// Mark the workspace ensured only after a definitive attempt (HTTP response,
-			// success or 4xx). A transient network error / 5xx returns false so a later
-			// turn retries instead of permanently skipping the PUT on a namespace whose
-			// flags are still off.
 			if (await ensureGitLabDuoWorkflowSettings(fetchImpl, baseUrl, apiKey, restNamespaceId, setupSignal)) {
 				markGitLabDuoWorkflowSettingsEnsured(apiKey, baseUrl, options.cwd);
 			}
 		}
-		// The inline `ambient` flow fails server-side without a project, and veyyon has
-		// no project of its own, so auto-discover one when nothing is configured. Prefer
-		// the project the namespace was resolved from (the workspace git remote or an
-		// explicit project), so a group with multiple projects scopes to the actual
-		// repository instead of a generic group-listing pick. Fall back to the generic
-		// membership lookup only when the namespace carries no project. `chat` runs
-		// namespace-only.
+		// Auto-discover project if not configured (required by inline ambient flow).
 		const discoveredProject =
 			!configuredProjectPath && !configuredProjectId && isGitLabDuoWorkflowInlineFlow(workflowDefinition)
 				? namespaceSelection.projectPath
@@ -1168,10 +1041,7 @@ async function runGitLabDuoWorkflow(
 				fromRemote: Boolean(namespaceSelection.projectPath),
 			});
 		}
-		// A configured `projectId` that carries a slash is really a full `group/project`
-		// path (namespace discovery accepts that form too): route it through the path flow
-		// so `webSocketProjectId` is resolved to a numeric id instead of sending the raw
-		// path string as `project_id` on the WebSocket, which fails project-scoped routing.
+		// Resolve slash-separated project path to numeric ID for WebSocket routing.
 		const configuredProjectIdIsPath = Boolean(configuredProjectId?.includes("/"));
 		const numericConfiguredProjectId = configuredProjectIdIsPath ? undefined : configuredProjectId;
 		const pathConfiguredProjectId = configuredProjectIdIsPath ? configuredProjectId : undefined;
@@ -1216,11 +1086,7 @@ async function runGitLabDuoWorkflow(
 			setupSignal,
 		);
 		const selectedModelIdentifier = selectGitLabDuoWorkflowModelRef(model.id, availableModels);
-		// A `toolChoice: "none"` side-request (e.g. handoff keeps live tool definitions
-		// in the cache prefix but disables tool use) must not advertise the tools to
-		// Duo: if the model picked one, the provider would emit a `toolUse` message and
-		// the text-only handoff consumer would yield an empty/partial document. Drop the
-		// advertised tools in that case; named/`auto`/`any` choices keep them.
+		// When toolChoice is "none", omit tool definitions from start request.
 		const advertisedTools = options.toolChoice === "none" ? [] : context.tools;
 		const startPayload = buildGitLabDuoWorkflowStartRequest(
 			workflowId,
@@ -1258,8 +1124,7 @@ async function runGitLabDuoWorkflow(
 			try {
 				return await setupForNamespace(cachedNamespace);
 			} catch (cachedError) {
-				// The cached account namespace no longer works (revoked access, deleted
-				// group, membership change). Drop it and re-discover once from scratch.
+				// Invalidate stale cached namespace and re-discover.
 				traceGitLabDuoWorkflow("namespace.cache_invalidate", {
 					rootNamespaceId: cachedNamespace.rootNamespaceId,
 					error: gitLabDuoWorkflowErrorText(cachedError),
@@ -1285,15 +1150,13 @@ async function runGitLabDuoWorkflow(
 			fetchImpl,
 		);
 		const freshSetup = await setupForNamespace(namespaceSelection);
-		// Cache the freshly discovered namespace per account so the next session/turn
-		// reuses it instead of re-discovering. Explicit config is never cached.
+
 		if (!explicitNamespace) {
 			setGitLabDuoWorkflowCachedNamespace(apiKey, baseUrl, options.cwd, namespaceSelection);
 		}
 		return freshSetup;
 	};
-	// `.finally` rather than try/finally: the deadline's backing timer must be
-	// cleared whether setup resolved or threw, and the phase is over either way.
+
 	const setup = await resolveSetup().finally(() => setupFence.cancel());
 	const restNamespaceId = setup.restNamespaceId;
 	const createNamespaceId = setup.createNamespaceId;
@@ -1303,14 +1166,7 @@ async function runGitLabDuoWorkflow(
 	const selectedModelIdentifier = setup.selectedModelIdentifier;
 	let workflowId = setup.workflowId;
 	let startPayload = setup.startPayload;
-	// Three byte zones (see GITLAB_DUO_WORKFLOW_GOAL_*_OVERFLOW_BYTES):
-	//  - [HARD, ∞): necessary-fail. Do NOT spend the request — emit the overflow error
-	//    now so the session compacts immediately. The fresh-workflow already created in
-	//    setup is stopped by the `finally` below.
-	//  - [SOFT, HARD): jitter. Attempt once (it can succeed); stash the overflow label so
-	//    that IF the run errors it is re-labeled as a context-overflow rather than a
-	//    transient fault.
-	//  - [0, SOFT): reliable. Leave the label undefined; ordinary errors surface verbatim.
+	// Proactively fail if goal exceeds hard overflow threshold.
 	const renderedGoalBytes = Buffer.byteLength(startPayload.goal, "utf8");
 	if (renderedGoalBytes >= GITLAB_DUO_WORKFLOW_GOAL_HARD_OVERFLOW_BYTES) {
 		traceGitLabDuoWorkflow("goal.over_budget", {
@@ -1324,8 +1180,7 @@ async function runGitLabDuoWorkflow(
 			state.output.errorMessage = buildGitLabDuoWorkflowGoalOverflowMessage(renderedGoalBytes);
 			state.stream.push({ type: "error", reason: "error", error: state.output });
 		}
-		// Stop the freshly created server-side workflow so it is not stranded, then
-		// return without opening the socket — the request is never spent.
+
 		if (providerSessionState) providerSessionState.active = undefined;
 		await stopGitLabDuoWorkflow(fetchImpl, baseUrl, apiKey, workflowId);
 		return;
@@ -1350,11 +1205,7 @@ async function runGitLabDuoWorkflow(
 			const ws = openGitLabDuoWorkflowSocket(workflowConnection.baseUrl ?? baseUrl, {
 				token: workflowConnection.token,
 				projectId: webSocketProjectId,
-				// Pass the resolved namespace/root even when no numeric project id is
-				// available (project path unresolved, or auto-discovery found none): the
-				// REST direct_access/create calls may be namespace- or path-scoped, but the
-				// socket must still route inside the selected namespace. Dropping them with
-				// the project left the socket scope-less and could route/fail outside it.
+
 				namespaceId: restNamespaceId,
 				rootNamespaceId: restNamespaceId,
 				selectedModelIdentifier,
@@ -1365,8 +1216,6 @@ async function runGitLabDuoWorkflow(
 				webSocketFactory: options.webSocketFactory,
 			});
 			if (providerSessionState) {
-				// Capture the CURRENT workflow id (it is reassigned across timeout/step-limit/
-				// retry restarts) so a later session-dispose stops the right workflow.
 				const stopWorkflowId = workflowId;
 				providerSessionState.active = {
 					workflowId,
@@ -1391,15 +1240,7 @@ async function runGitLabDuoWorkflow(
 				state.lastApprovalStatus = undefined;
 				continue;
 			}
-			// A silent half-open socket (no frame within the idle window) leaves the
-			// remote workflow stuck. Same-id reconnect is NOT recoverable on an inline
-			// flow: a second connection re-compiles the flow from the live `flowConfig`
-			// and the LangGraph checkpoint replay rejects the rebuilt graph topology
-			// (server-side FAILED, agent never runs — verified live). So recover the
-			// same way step_limit does: stop the dead workflow and create a FRESH one
-			// (status CREATED → START branch, no checkpoint replay), then reopen the
-			// socket. The accumulated conversation replays through the goal transcript.
-			// Bounded to a single retry so a persistently dead endpoint can't loop on quota.
+			// On idle timeout, stop dead workflow and restart fresh with replayed transcript.
 			if (lastSocketResult === "timeout" && !timeoutReconnected) {
 				timeoutReconnected = true;
 				traceGitLabDuoWorkflow("websocket.idle_restart", { workflowId });
@@ -1419,16 +1260,7 @@ async function runGitLabDuoWorkflow(
 				startPayload = { ...startPayload, workflowID: workflowId };
 				continue;
 			}
-			// The server caps each workflow at a fixed step (graph-recursion) limit.
-			// A long but healthy veyyon tool-call loop legitimately overruns it; that is
-			// not a real failure. Stop the exhausted run and create a FRESH workflow
-			// (a new id resets the step budget — unlike the timeout case, resending on
-			// the same id would not), then reopen the socket. The conversation so far
-			// (assistant text + tool results accumulated in `context`) replays through
-			// the goal envelope, so the new workflow continues where it left off; the
-			// checkpoint dedupe drops any re-sent ui_chat_log entries. Bounded so a
-			// task that perpetually overruns degrades to a graceful stop, not a quota
-			// sink.
+			// On step limit, restart fresh with conversation transcript to reset step budget.
 			if (lastSocketResult === "step_limit" && stepLimitRestarts < GITLAB_DUO_WORKFLOW_MAX_STEP_LIMIT_RESTARTS) {
 				stepLimitRestarts++;
 				state.stepLimitRequested = false;
@@ -1449,15 +1281,7 @@ async function runGitLabDuoWorkflow(
 				startPayload = { ...startPayload, workflowID: workflowId };
 				continue;
 			}
-			// The server emitted a fresh tool-call boundary whose `ui_chat_log` total did
-			// not advance past the previous boundary of this workflow — the server-side
-			// turn stopped progressing (captured live: total pinned while the model
-			// repeated one tool call). Recover exactly like step_limit: stop the stalled
-			// workflow and create a FRESH one (a new id with no checkpoint replay), then
-			// reopen the socket. The conversation replays through the goal transcript,
-			// rebuilt from the agent loop's intact `context.messages`, so no in-flight
-			// tool result is lost. Bounded so a persistently stalling endpoint degrades to
-			// a surfaced result instead of looping on quota.
+			// On stalled workflow, stop and restart fresh with rebuilt transcript.
 			if (lastSocketResult === "stalled" && stallRestarts < GITLAB_DUO_WORKFLOW_MAX_STALL_RESTARTS) {
 				stallRestarts++;
 				state.stalledRequested = false;
@@ -1478,11 +1302,7 @@ async function runGitLabDuoWorkflow(
 				startPayload = { ...startPayload, workflowID: workflowId };
 				continue;
 			}
-			// The server returned its de-identified catch-all FAILED — a wrapper over a
-			// transient upstream fault (model 5xx, AgentStuckError, …). Retry on a FRESH
-			// workflow exactly like step_limit (same-id reconnect is broken on inline
-			// flows): the conversation replays through the goal transcript. Bounded low
-			// so a deterministic failure surfaces instead of looping on quota.
+			// Retry on fresh workflow after transient upstream FAILED error.
 			if (
 				lastSocketResult === "retryable_error" &&
 				genericErrorRetries < GITLAB_DUO_WORKFLOW_MAX_GENERIC_ERROR_RETRIES
@@ -1508,19 +1328,14 @@ async function runGitLabDuoWorkflow(
 				startPayload = { ...startPayload, workflowID: workflowId };
 				continue;
 			}
-			// A retryable error that exhausted its retries must surface as a real error;
-			// the FAILED branch suppressed the error event expecting a retry, so emit it
-			// now before falling through to the terminal break.
+
 			if (lastSocketResult === "retryable_error" && !state.stream.done) {
 				state.output.stopReason = "error";
-				// An oversized goal that exhausted its retry is almost certainly failing on
-				// the byte size, not a transient fault — surface it as a context-overflow so
-				// the session auto-compacts instead of hard-failing.
+
 				if (state.goalOverflowMessage) state.output.errorMessage = state.goalOverflowMessage;
 				state.stream.push({ type: "error", reason: "error", error: state.output });
 			}
-			// A stall that exhausted its fresh-workflow restarts is a persistent failure to
-			// progress; surface it as a real error so the run does not stop silently.
+
 			if (lastSocketResult === "stalled" && !state.stream.done) {
 				state.output.stopReason = "error";
 				state.output.errorMessage =
@@ -1532,19 +1347,7 @@ async function runGitLabDuoWorkflow(
 		settledNormally = true;
 		finalizeGitLabDuoWorkflowResumeResult(state, providerSessionState, lastSocketResult);
 	} finally {
-		// The socket loop can exit several ways that leave the remote workflow running
-		// and `active` referencing a dead socket: a user abort; `runGitLabDuoWorkflowSocket`
-		// rejecting (e.g. `ws.onerror`) so the settle block never ran (`settledNormally`
-		// stays false); or the socket reached a half-open/stuck terminal state with no
-		// real completion — `lastSocketResult === "closed"` (proxy/server drop),
-		// `"timeout"` (idle deadline, retry already exhausted), or `"stalled"` (the
-		// workflow's visible history stopped advancing and the bounded restarts were
-		// exhausted). In all of these the local stream is finalized but the server
-		// workflow has no explicit stop, so drop the resumable session and stop it with a
-		// FRESH signal (the request's own signal may be aborted, which would cancel the
-		// PATCH before it is sent). The happy path that intentionally keeps `active` for
-		// an `action`/`pause` resume reaches a real terminal status, never
-		// "closed"/"timeout"/"stalled", so it is not affected.
+		// Stop remote workflow on abnormal termination or unresumable state.
 		const aborted = options.signal?.aborted ?? false;
 		if (
 			aborted ||
@@ -1587,8 +1390,6 @@ async function fetchGitLabDuoWorkflowAvailableModels(
 		const models = getRecord(getRecord(payload, "data"), "aiChatAvailableModels");
 		return parseGitLabAvailableModelsPayload(models);
 	} catch (error) {
-		// Its own timeout degrades to the default model list; the caller's setup
-		// deadline does not — see `discoverGitLabDuoWorkflowProject`.
 		if (signal?.aborted) throw error;
 		return undefined;
 	} finally {
@@ -1637,8 +1438,6 @@ async function resolveGitLabDuoWorkflowNumericProjectId(
 		const payload: unknown = await response.json();
 		return getRecordString(payload, "id");
 	} catch (error) {
-		// Its own timeout degrades (namespace-only routing still works); the
-		// caller's setup deadline does not — see `discoverGitLabDuoWorkflowProject`.
 		if (signal?.aborted) throw error;
 		return undefined;
 	} finally {
@@ -1647,19 +1446,11 @@ async function resolveGitLabDuoWorkflowNumericProjectId(
 }
 
 interface GitLabDuoWorkflowDiscoveredProject {
-	// Numeric id is known when discovered via the projects API; for a project carried
-	// from the resolved namespace (git remote / explicit path) only the full path is
-	// known and the numeric id is resolved later from the path for WebSocket routing.
 	id?: string;
 	path: string;
 }
 
-// veyyon has no GitLab project of its own, but the inline `ambient` flow fails
-// server-side without a project context. When the caller did not configure a
-// project, discover one the credential can access: prefer a project inside the
-// resolved namespace group, then fall back to any membership project. Returns
-// the numeric id (WebSocket routing) and full path (REST scoping) together so
-// no second lookup is needed.
+// Auto-discover GitLab namespace/project from git remote or user memberships.
 async function discoverGitLabDuoWorkflowProject(
 	fetchImpl: FetchImpl,
 	baseUrl: string,
@@ -1690,11 +1481,6 @@ async function discoverGitLabDuoWorkflowProject(
 			const path = getRecordString(first, "path_with_namespace");
 			if (id && path) return { id, path };
 		} catch (error) {
-			// One endpoint timing out on its OWN budget is a transient fault, and
-			// falling through to the next fallback is right. The setup deadline
-			// firing is not: the phase the caller paid for is over, and trying the
-			// next endpoint spends time nobody granted. Same rule at the two
-			// sibling helpers below and in the catalog reader behind them.
 			if (signal?.aborted) throw error;
 		} finally {
 			restTimeout.cancel();
@@ -1712,11 +1498,6 @@ async function requestGitLabDuoWorkflowDirectAccess(
 	workflowDefinition: GitLabDuoWorkflowDefinition = GITLAB_DUO_WORKFLOW_DEFINITION,
 	signal?: AbortSignal,
 ): Promise<GitLabDuoWorkflowDirectAccessConnection> {
-	// A timeout here throws `TimeoutError`, which surfaces through the outer
-	// `streamGitLabDuoWorkflow` catch as a real stream `error` event — matching the
-	// existing HTTP-error path rather than the swallowed best-effort helpers
-	// (settings ensure / project discovery / models). The fence spans the body
-	// reads below, not just the fetch.
 	const restTimeout = gitLabDuoWorkflowRestTimeout(signal);
 	try {
 		const response = await fetchImpl(gitLabApiUrl(baseUrl, "/api/v4/ai/duo_workflows/direct_access"), {
@@ -1736,12 +1517,7 @@ async function requestGitLabDuoWorkflowDirectAccess(
 		});
 		if (!response.ok) {
 			const message = await readGitLabDuoWorkflowResponseErrorMessage(response);
-			// Always embed the HTTP status, even when the body carries a message: the
-			// streaming auth-retry/rotation path (`extractStatusFromAssistantError` ->
-			// `extractHttpStatusFromError`) refreshes/rotates broker credentials only
-			// when the assistant error exposes `errorStatus` or the message embeds an
-			// `HTTP <status>` token. A 401 `{"message":"Unauthorized"}` or a 429 quota
-			// body would otherwise surface as a hard failure with no recoverable status.
+			// Include HTTP status in error message for auth-retry/rotation classification.
 			throw new AIError.GitLabDuoWorkflowApiError(
 				message
 					? `GitLab Duo Workflow direct_access failed with HTTP ${response.status}: ${message}`
@@ -1836,11 +1612,6 @@ async function stopGitLabDuoWorkflow(
 	apiKey: string,
 	workflowId: string,
 ): Promise<void> {
-	// Stop rides a FRESH timeout signal, deliberately decoupled from `options.signal`
-	// (see the `finally` block in `runGitLabDuoWorkflow`): a run cancelled by the
-	// caller must still fire the server-side stop, but a stalled PATCH here would
-	// otherwise leave the `runGitLabDuoWorkflow` promise unresolved forever — the
-	// bounded budget keeps cleanup best-effort in both directions.
 	const restTimeout = gitLabDuoWorkflowRestTimeout();
 	try {
 		await fetchImpl(gitLabApiUrl(baseUrl, `/api/v4/ai/duo_workflows/workflows/${encodeURIComponent(workflowId)}`), {
@@ -1853,9 +1624,7 @@ async function stopGitLabDuoWorkflow(
 			signal: restTimeout.signal,
 		});
 	} catch (error) {
-		// Server-side stop is best-effort: a timeout / network fault must not reject
-		// the caller (the local stream already emitted its terminal event). Trace and
-		// swallow so the enclosing `finally` never surfaces a spurious rejection.
+		// Best-effort stop; swallow errors.
 		traceGitLabDuoWorkflow("workflow.stop_error", {
 			workflowId,
 			error: gitLabDuoWorkflowErrorText(error),
@@ -1865,10 +1634,7 @@ async function stopGitLabDuoWorkflow(
 	}
 }
 
-// Body the group PUT carries to turn on exactly the three flags the inline MCP-only
-// ambient flow requires. Kept minimal on purpose: it never touches `duo_availability`,
-// foundational flows, tool-approval, usage-data, or any other setting the operator may
-// have configured. Idempotent — re-enabling an already-on flag is a server-side no-op.
+// Group PUT payload enabling required Duo agent platform flags.
 export function buildGitLabDuoWorkflowSettingsBody(): Record<string, unknown> {
 	return {
 		experiment_features_enabled: true,
@@ -1879,12 +1645,7 @@ export function buildGitLabDuoWorkflowSettingsBody(): Record<string, unknown> {
 	};
 }
 
-// Best-effort enable of the namespace Duo settings the agent flow needs. Without
-// `duo_agent_platform_enabled` / `duo_workflow_mcp_enabled` / `experiment_features_enabled`
-// the inline ambient flow is rejected server-side, so a fresh group must have them on.
-// PUT requires owner/maintainer; a 4xx (insufficient rights, no namespace) is logged via
-// trace and swallowed — the run proceeds and surfaces the real error if the flow is still
-// disabled, rather than blocking login/turns on a permission the user may not hold.
+// Best-effort enable of namespace Duo settings needed by inline ambient flow.
 async function ensureGitLabDuoWorkflowSettings(
 	fetchImpl: FetchImpl,
 	baseUrl: string,
@@ -1892,11 +1653,6 @@ async function ensureGitLabDuoWorkflowSettings(
 	restNamespaceId: string,
 	signal?: AbortSignal,
 ): Promise<boolean> {
-	// Returns whether the attempt was DEFINITIVE (so the caller may stop retrying):
-	// any HTTP response — 2xx (flags now on) or 4xx (insufficient rights / no such
-	// namespace, which retrying never fixes) — is definitive. A thrown network error
-	// or a 5xx is transient, so the caller should keep the guard retryable and try
-	// again on a later turn rather than permanently skipping the PUT.
 	const restTimeout = gitLabDuoWorkflowRestTimeout(signal);
 	try {
 		const response = await fetchImpl(gitLabApiUrl(baseUrl, `/api/v4/groups/${encodeURIComponent(restNamespaceId)}`), {
@@ -1912,9 +1668,7 @@ async function ensureGitLabDuoWorkflowSettings(
 		return response.status < 500;
 	} catch (error) {
 		traceGitLabDuoWorkflow("settings.ensure_error", { error: gitLabDuoWorkflowErrorText(error) });
-		// A transient fault leaves the guard retryable for a later turn. The
-		// caller's setup deadline is not transient — see
-		// `discoverGitLabDuoWorkflowProject`.
+
 		if (signal?.aborted) throw error;
 		return false;
 	} finally {
@@ -2029,10 +1783,6 @@ export function runGitLabDuoWorkflowSocket(
 			return false;
 		}
 		if (result === "action") {
-			// One MCP tool_call per turn: DWS ToolNode awaits each action's response
-			// before dispatching the next, so the turn is complete at this single
-			// action. Settle now (the agent loop runs the tool, then resumes by
-			// sending the actionResponse on this SAME socket — so do NOT close it).
 			settle("action");
 			return false;
 		}
@@ -2115,10 +1865,6 @@ export function runGitLabDuoWorkflowSocket(
 					return;
 				}
 				if (!handleSocketResult(result, data, pending)) {
-					// An `action` result stops the replay loop to hand the tool call back
-					// to veyyon. Clear the pause flag first: the live `onmessage` handler must
-					// process the resume continuation directly instead of buffering it
-					// (a buffered continuation would idle the turn until timeout).
 					if (active) active.paused = false;
 					return;
 				}
@@ -2131,10 +1877,7 @@ export function runGitLabDuoWorkflowSocket(
 		})();
 	} else if (resumeResponse && (!Array.isArray(resumeResponse) || resumeResponse.length > 0)) {
 		ws.onopen = null;
-		// Resume the live socket by returning the tool result for the single pending
-		// action of this turn. (Accepts an array for forward-compat, but the serial
-		// inline flow only ever has one.) DWS matches it by requestID to the awaiting
-		// outbox future and the workflow continues on the same connection.
+		// Resume live socket by returning tool result for pending action.
 		const responses = Array.isArray(resumeResponse) ? resumeResponse : [resumeResponse];
 		sendPayloads(responses.map(response => structuredClone(response)));
 	} else {
@@ -2236,34 +1979,23 @@ async function handleGitLabDuoWorkflowSocketMessage(
 		const message = gitLabDuoWorkflowErrorText(
 			getRecordString(event, "error") ?? getRecordString(event, "message") ?? status,
 		);
-		// The server caps each workflow at a fixed graph-recursion limit (DWS
-		// RECURSION_LIMIT). A long but healthy veyyon tool-call loop legitimately hits
-		// it and surfaces as FAILED with this message. That is not a real failure —
-		// resume by starting a fresh workflow that continues the same conversation
-		// (the accumulated context/tool results replay via the goal envelope).
+		// Settle "step_limit" when server step limit is reached.
 		if (status === "FAILED" && isGitLabDuoWorkflowStepLimitMessage(message)) {
 			traceGitLabDuoWorkflow("websocket.step_limit", { status });
 			state.stepLimitRequested = true;
 			return "step_limit";
 		}
-		// The DWS catch-all FAILED ("...error processing your request in the Duo Agent
-		// Platform...") is a de-identified wrapper over transient upstream faults
-		// (model 5xx that exhausted retries, AgentStuckError, etc.). Retry ONCE on a
-		// FRESH workflow (the broken same-id reconnect is never used): the accumulated
-		// conversation replays through the goal transcript. Bounded so a deterministic
-		// failure degrades to a surfaced error instead of a quota sink.
+		// Settle "retry" on transient upstream FAILED errors.
 		if (status === "FAILED" && isGitLabDuoWorkflowGenericProcessingError(message)) {
 			traceGitLabDuoWorkflow("websocket.generic_error", { status });
 			state.retryableErrorRequested = true;
-			// Stash the real message but do NOT push an error event yet: the loop retries
-			// on a fresh workflow and only surfaces this if retries are exhausted.
+
 			state.output.errorMessage = message;
 			return "retryable_error";
 		}
 		traceGitLabDuoWorkflow("websocket.failed", { status });
 		state.output.stopReason = "error";
-		// An oversized goal that fails terminally is almost certainly failing on the byte
-		// size — surface it as a context-overflow so the session auto-compacts.
+
 		state.output.errorMessage = state.goalOverflowMessage ?? message;
 		state.stream.push({ type: "error", reason: "error", error: state.output });
 		return "terminal";
@@ -2279,11 +2011,7 @@ async function handleGitLabDuoWorkflowSocketMessage(
 			getRecordString(action.args as Record<string, unknown>, "tool_name"),
 		argKeys: Object.keys(action.args as Record<string, unknown>).slice(0, 20),
 	});
-	// A fresh tool-call boundary whose `ui_chat_log` total did not advance past the
-	// previous boundary of this workflow means the server-side turn did not progress:
-	// emitting and answering this tool call would only feed the same non-advancing loop.
-	// Settle "stalled" so the socket loop restarts on a fresh workflow (resending the
-	// full goal transcript) instead of running the doomed tool call.
+	// Settle "stalled" if checkpoint log did not advance across tool-call boundaries.
 	if (detectGitLabDuoWorkflowStall(state)) {
 		traceGitLabDuoWorkflow("websocket.stalled", {
 			checkpointLength: state.lastCheckpointContentLength,
@@ -2292,9 +2020,7 @@ async function handleGitLabDuoWorkflowSocketMessage(
 		state.stalledRequested = true;
 		return "stalled";
 	}
-	// Finalize this tool_call as its own assistant message and commit it as the
-	// single pending action; the socket loop settles "action" so the agent loop
-	// runs the tool and resumes.
+	// Finalize tool_call assistant message and settle "action".
 	emitGitLabDuoWorkflowActionToolCall(state, action);
 	return "action";
 }
@@ -2305,17 +2031,11 @@ function isGitLabWorkflowApprovalStatus(status: string | undefined): boolean {
 function isGitLabWorkflowCompletionStatus(status: string | undefined): boolean {
 	return status === "INPUT_REQUIRED" || status === "FINISHED";
 }
-// Matches the DWS GraphRecursionError surface ("The workflow reached its maximum
-// step limit and could not complete."). The leading clause is stable across
-// flows; match on it case-insensitively so a fresh workflow can continue the run.
+// Matches DWS GraphRecursionError step limit message.
 function isGitLabDuoWorkflowStepLimitMessage(message: string): boolean {
 	return message.toLowerCase().includes("reached its maximum step limit");
 }
-// Matches the DWS de-identified catch-all FAILED ("There was an error processing
-// your request in the Duo Agent Platform, please contact support if the issue
-// persists.") — server-side wrapper over transient upstream faults. Match on the
-// stable middle clause case-insensitively (the surrounding text varies slightly
-// across server versions).
+// Matches DWS de-identified catch-all FAILED error message.
 function isGitLabDuoWorkflowGenericProcessingError(message: string): boolean {
 	return message.toLowerCase().includes("error processing your request in the duo agent platform");
 }
@@ -2343,13 +2063,7 @@ function gitLabToolResultToText(toolResult: ToolResultMessage): string {
 
 function buildGitLabMcpToolDefinition(tool: Tool): GitLabMcpToolDefinition {
 	const schema = toolWireSchema(tool);
-	// Register the tool under its BARE name (no `mcp__veyyon__` prefix). The server does
-	// not strip prefixes — it registers `_executable_tools` and binds the model schema
-	// under exactly the wire `name` (sanitize_llm_name only replaces illegal chars), so
-	// the name the model sees, the toolset key it is matched against, and veyyon's own
-	// tool docs must all be the same bare name. A prefixed wire name only forced the
-	// model to learn `mcp__veyyon__read` while veyyon docs say `read`, with no upside.
-	// `originalToolName`/`serverName` stay as MCP metadata; they are not the match key.
+	// Register tool under bare name matching model schema and tool docs.
 	return {
 		name: tool.name,
 		originalToolName: tool.name,
@@ -2397,25 +2111,11 @@ function emitGitLabDuoWorkflowCheckpoint(
 	if (checkpoint.contextUsage) {
 		applyGitLabDuoWorkflowContextUsage(state, checkpoint.contextUsage);
 	}
-	// Track the server's latest checkpoint byte length so the action handler can detect
-	// a workflow whose state stopped advancing (stall). The control experiment proved a
-	// healthy turn emits checkpoints whose byte size varies and grows, while a stalled
-	// workflow re-emits a byte-identical checkpoint.
+	// Track latest checkpoint byte length to detect non-advancing stall.
 	state.lastCheckpointContentLength = checkpoint.contentLength;
-	// GitLab checkpoints are full ui_chat_log snapshots, so a later frame replays
-	// earlier request/tool boundaries before the new agent delta. Pause only on a
-	// boundary that follows a delta emitted in THIS checkpoint (`deltaThisCheckpoint`),
-	// not any delta emitted earlier in the socket call — otherwise a stale replayed
-	// boundary would fire one pause_turn per snapshot and hit the loop's continuation cap.
+	// Pause only on boundaries following a delta emitted in this checkpoint.
 	let deltaThisCheckpoint = false;
-	// Turn position within this full-snapshot replay: a request/tool boundary
-	// starts a new turn. The content-signature fallback below is scoped to this
-	// index so it suppresses only a replayed message reappearing at the SAME turn
-	// position (e.g. GitLab renames a message_id across a shrunk snapshot, so the
-	// per-key lookup misses but the text was already emitted for that turn). A
-	// genuinely new later message with text equal to an earlier one lands at a
-	// LATER turn (after an extra boundary), so its signature differs and it still
-	// emits — repeated assistant output across turns is no longer swallowed.
+	// Turn position index within full-snapshot replay to dedupe across turns.
 	let turnIndex = 0;
 	for (const entry of checkpoint.entries) {
 		if (entry.kind === "boundary") {
@@ -2472,9 +2172,7 @@ function emitGitLabDuoWorkflowCheckpoint(
 	}
 }
 
-// Map the server's per-agent context occupancy onto the assistant usage so the per-message
-// usage row reflects the real prompt/context size. total_tokens is GitLab's full-history
-// estimate (the input/prompt side); there is no separate billing usage on this transport.
+// Map server per-agent context occupancy onto assistant usage.
 function applyGitLabDuoWorkflowContextUsage(
 	state: GitLabDuoWorkflowStreamState,
 	contextUsage: GitLabDuoWorkflowContextUsage,
@@ -2573,11 +2271,7 @@ function finishGitLabDuoWorkflowStream(
 	state.stream.push({ type: "done", reason, message: state.output });
 }
 
-// Finalize a resumed-socket turn. `action`/`pause` keep the session alive for the
-// next resume; every other result (`terminal`/`closed`/`approval`/`timeout`) drops
-// the resumable session, and — because only `terminal` carries a server `done` —
-// emits a terminal `done` for the rest so the assistant stream never hangs open
-// after a tool result the way the fresh-workflow loop already finalizes.
+// Finalize resumed-socket turn, emitting terminal done when session drops.
 function finalizeGitLabDuoWorkflowResumeResult(
 	state: GitLabDuoWorkflowStreamState,
 	providerSessionState: GitLabDuoWorkflowProviderSessionState | undefined,
@@ -2592,13 +2286,7 @@ function finalizeGitLabDuoWorkflowResumeResult(
 	}
 }
 
-// Run a resume on a preserved socket (action-result or pause replay) and finalize it
-// the same way the fresh-workflow loop does, returning the settled socket result so
-// the caller can react to a stall. If the resume rejects — the preserved WebSocket
-// errored, or `ws.send` threw because it closed while the local tool ran — the
-// preserved session would otherwise be left with `active` still set and the server
-// workflow still running. Drop `active` and fire a best-effort stop before rethrowing
-// so the next turn never resumes a dead socket or strands the workflow.
+// Run resume on preserved socket and finalize or clean up on failure.
 async function resumeGitLabDuoWorkflowSocket(
 	args: {
 		fetchImpl: FetchImpl;
@@ -2620,21 +2308,14 @@ async function resumeGitLabDuoWorkflowSocket(
 		await stopGitLabDuoWorkflow(args.fetchImpl, args.baseUrl, args.apiKey, args.workflowId);
 		throw error;
 	}
-	// A stall on the resumed socket must NOT finalize the stream: the caller re-seeds a
-	// fresh workflow (rebuilt goal includes the just-returned tool result) to break the
-	// non-advancing loop. Stop the stalled workflow and drop `active` here so the caller
-	// owns a clean slate, but leave the stream open for the fresh run.
+
 	if (socketResult === "stalled") {
 		if (args.providerSessionState) args.providerSessionState.active = undefined;
 		await stopGitLabDuoWorkflow(args.fetchImpl, args.baseUrl, args.apiKey, args.workflowId);
 		return socketResult;
 	}
 	finalizeGitLabDuoWorkflowResumeResult(args.state, args.providerSessionState, socketResult);
-	// `action`/`pause` keep the session alive for the next resume; `terminal` is a real
-	// server completion. But `closed`/`timeout` (and an exhausted `approval`) settle the
-	// local stream while the remote workflow may still be running — mirror the fresh-
-	// workflow `finally` and send the stop PATCH so a half-open/dropped socket after a
-	// tool result never strands the server-side workflow with no local handle left.
+
 	if (socketResult === "closed" || socketResult === "timeout") {
 		await stopGitLabDuoWorkflow(args.fetchImpl, args.baseUrl, args.apiKey, args.workflowId);
 	}
@@ -2663,38 +2344,20 @@ interface GitLabDuoWorkflowReplayMessage {
 	isError?: boolean;
 }
 
-// Trimmed once: the static note tells the model the goal transcript's ChatML/`<ran>`
-// markers are a historical record, not a syntax to emit.
 const GITLAB_DUO_WORKFLOW_CHATML_HISTORY_NOTE = AI_PROMPTS["provider/gitlab-duo-workflow-chatml-note"].text.trim();
 
-// The veyyon system prompt that rides the inline flow's `prompt_template.system` slot.
-// DWS wraps it in its own gateway boilerplate, but the slot content is delivered to
-// the model verbatim, so veyyon's authoritative rules go here directly — no redirect
-// preamble and no embedding inside the goal. When the goal is a multi-turn ChatML
-// transcript (not a lone bare-text prompt), append the history-note so the model does
-// not mimic the transcript's `<|im_start|>`/`<ran …>` markers as its own tool-call
-// output — markers it kept copying even after they were reframed to past tense.
+// Builds system prompt for inline flow's system slot.
 function buildGitLabDuoWorkflowSystemPrompt(context: Context): string {
 	const base = normalizeSystemPrompts(context.systemPrompt).join("\n\n");
 	if (!isGitLabDuoWorkflowChatMlGoal(context)) return base;
 	return base ? `${base}\n\n${GITLAB_DUO_WORKFLOW_CHATML_HISTORY_NOTE}` : GITLAB_DUO_WORKFLOW_CHATML_HISTORY_NOTE;
 }
 
-// A goal renders as a literal ChatML transcript only when more than one turn survives
-// the replay filter; a lone turn is sent as bare text (see buildGitLabDuoWorkflowGoal),
-// so the history-note would describe markers that are not present.
 function isGitLabDuoWorkflowChatMlGoal(context: Context): boolean {
 	return buildGitLabDuoWorkflowConversationHistory(context.messages).length > 1;
 }
 
-// The goal carries ONLY the conversation, rendered as a bare ChatML transcript. The
-// system prompt lives in the flow's system slot, so the goal needs no envelope, no
-// `<instructions>` section, and no preamble. A lone turn is sent verbatim; a real
-// multi-turn session becomes the flat ChatML transcript, every turn equal-weight,
-// ending naturally on the last turn. ChatML markers are literal text here (DWS does
-// not tokenize the goal as a chat template), chosen because `<|im_start|>`/`<|im_end|>`
-// effectively never collide with natural message content and are not Claude-reserved
-// conversation sequences the way `Human:`/`Assistant:` are.
+// Render conversation transcript for the {{goal}} slot in ChatML format.
 function buildGitLabDuoWorkflowGoal(context: Context): string {
 	const conversation = buildGitLabDuoWorkflowConversationHistory(context.messages);
 	if (conversation.length <= 1) {
@@ -2706,13 +2369,7 @@ function buildGitLabDuoWorkflowGoal(context: Context): string {
 const GITLAB_DUO_WORKFLOW_CHATML_START = "<|im_start|>";
 const GITLAB_DUO_WORKFLOW_CHATML_END = "<|im_end|>";
 
-// Render the flat transcript as literal ChatML. Each turn is
-// `<|im_start|>role\n<body><|im_end|>`. An assistant turn that issued tool calls
-// renders them after its text as `<ran NAME>{args}</ran>` records — a PAST-tense log
-// of a call that already executed, deliberately NOT the `{name,arguments}` shape the
-// live structured tool-use channel uses, so the model reads history as a record and
-// does not mimic it as emittable call grammar. The paired result rides the next
-// `tool` turn, linked by adjacency (1 call/turn), so the chain stays intact.
+// Render transcript turns as ChatML with past-tense <ran NAME> tool call records.
 function renderGitLabDuoWorkflowChatMl(conversation: readonly GitLabDuoWorkflowReplayMessage[]): string {
 	return conversation.map(renderGitLabDuoWorkflowChatMlTurn).join("\n");
 }
@@ -2740,30 +2397,17 @@ function gitLabDuoWorkflowChatMlBody(message: GitLabDuoWorkflowReplayMessage): s
 function gitLabDuoWorkflowChatMlToolResultHeader(message: GitLabDuoWorkflowReplayMessage): string | undefined {
 	if (!message.toolName && !message.toolCallId) return undefined;
 	const status = message.isError ? " status=error" : "";
-	// The tool name is omitted: the result rides the turn immediately after its call
-	// (1:1, adjacent), so the model pairs them by position; repeating the name is dead
-	// weight and makes the result read like an independent construct. `<ran:result>` is
-	// past-tense — the adjacent output of the prior historical run, not emittable grammar.
+	// Tool results render as past-tense <ran:result> immediately after the call.
 	return `<ran:result${status}>`;
 }
 
 function renderGitLabDuoWorkflowChatMlToolCall(toolCall: GitLabDuoWorkflowReplayToolCall): string {
-	// The goal is a plain text transcript fed to the model, not an HTML/script
-	// context, so `<`/`>` need no escaping. Render as a past-tense `<ran NAME>` record:
-	// the tag names the tool, the body is just the arguments JSON (the `{name,arguments}`
-	// wrapper is dropped — it was the exact shape the model copied as a would-be live
-	// call). The call id is veyyon-internal wiring the model never reads (call→result pair
-	// by adjacency), so it is omitted to save bytes. `arguments` carries the `i` (intent)
-	// key only at live dispatch; on replay it is stripped (see gitLabDuoWorkflowAssistantToolCalls).
+	// Render tool calls as <ran NAME>{args}</ran> past-tense records.
 	const args = JSON.stringify(toolCall.arguments) ?? "null";
 	return `<ran ${toolCall.name}>${args}</ran>`;
 }
 
-// The whole session as a flat, equal-weight transcript. Every turn — including the
-// latest user message — is one entry; nothing is elevated to a privileged
-// `<current_request>`. DWS' goal blob has no native turn priority, so elevating the
-// last turn (the old template) caused mid-task reminders / IRC wakes to outrank the
-// actual task. A flat transcript ending naturally on the last turn removes that skew.
+// Flattens session context messages into an ordered transcript.
 function buildGitLabDuoWorkflowConversationHistory(messages: readonly Message[]): GitLabDuoWorkflowReplayMessage[] {
 	const history: GitLabDuoWorkflowReplayMessage[] = [];
 	for (let index = 0; index < messages.length; index++) {
@@ -2810,11 +2454,7 @@ function gitLabDuoWorkflowAssistantToolCalls(message: AssistantMessage): GitLabD
 	return toolCalls;
 }
 
-// The `i` key is veyyon's per-call intent narration (e.g. "Reading kernel smoke body").
-// It is UI-time metadata describing the call as it is made; on replay the tool name
-// plus arguments already say what the call did, so the intent is dead transcript
-// weight. Drop it from the rendered history. (Live dispatch never reads the replayed
-// args, so this only affects the bytes the model sees, never tool execution.)
+// Strips UI-only `i` intent key from replayed tool call arguments to reduce payload size.
 function stripGitLabDuoWorkflowReplayIntent(args: Record<string, unknown>): Record<string, unknown> {
 	if (!("i" in args)) return args;
 	const { i: _intent, ...rest } = args;
@@ -2888,9 +2528,7 @@ export function traceGitLabDuoWorkflow(event: string, data: Record<string, unkno
 		event,
 		...truncateGitLabTraceData(data),
 	})}\n`;
-	// A TRACE write, enabled by an env var for debugging and read by nobody in normal operation. It must never
-	// affect the request it is tracing, and there is no channel to report it through that would not itself be
-	// noise on every line; a missing trace file is self-evident to whoever turned tracing on.
+
 	void fs
 		.mkdir(path.dirname(traceFile), { recursive: true })
 		.then(() => fs.appendFile(traceFile, line, "utf8"))
@@ -2917,9 +2555,7 @@ function normalizeGitLabBaseUrl(baseUrl: string): string {
 	return trimTrailingSlashes(baseUrl) || GITLAB_SAAS_URL;
 }
 
-// Join a GitLab API path onto a base URL while preserving any relative install path
-// (e.g. self-managed `https://host/gitlab`). `new URL("/api/...", base)` discards the
-// base path; concatenating onto the trailing-slash-trimmed base keeps it.
+// Join GitLab API path onto base URL preserving relative base paths.
 function gitLabApiUrl(baseUrl: string, path: string): URL {
 	const normalized = normalizeGitLabBaseUrl(baseUrl);
 	return new URL(`${normalized}${path.startsWith("/") ? path : `/${path}`}`);
@@ -2960,9 +2596,6 @@ export async function resolveGitLabDuoWorkflowNamespaceSelection(
 	baseUrl: string,
 	fetchImpl: FetchImpl,
 ): Promise<GitLabDuoWorkflowNamespaceSelection> {
-	// Re-discover the namespace from the current credentials/cwd each turn rather than
-	// trusting model.gitlabDuoWorkflowRootNamespaceId, which can be stale (the account's
-	// other top-level groups, or a cwd/env shift between model refresh and this turn).
 	void model;
 	const configured =
 		nonEmptyString(options.rootNamespaceId) ??
@@ -3017,8 +2650,6 @@ function resolveGitLabDuoWorkflowDefinition(
 	return configured;
 }
 
-// Every workflow definition veyyon ships is the inline ambient flow (Path B /
-// `flowConfig`); the predicate is kept as a seam for future server-side flows.
 function isGitLabDuoWorkflowInlineFlow(workflowDefinition: GitLabDuoWorkflowDefinition): boolean {
 	void workflowDefinition;
 	return true;
@@ -3075,11 +2706,7 @@ function extractGitLabDuoWorkflowCheckpoint(
 	return undefined;
 }
 
-// GitLab Duo Workflow Service attaches per-agent context occupancy to every checkpoint
-// (`checkpointer/notifier.py`): agent_context_usage[<agent>] = { total_tokens, max_tokens }.
-// total_tokens is the server-side token estimate of that agent's full history; max_tokens
-// is the model context window (claude_opus_4_8 observed at 1_000_000). The field rides on
-// the event root in practice but can also appear under `action`/`newCheckpoint`.
+// Reads per-agent context usage from checkpoint.
 function extractGitLabDuoWorkflowContextUsage(
 	...sources: (Record<string, unknown> | undefined)[]
 ): GitLabDuoWorkflowContextUsage | undefined {
@@ -3132,9 +2759,7 @@ function extractGitLabCheckpointEntries(checkpointJson: string): GitLabDuoWorkfl
 			const content = getRecordString(record, "content");
 			if (!content) continue;
 			const messageId = getRecordString(record, "message_id");
-			// `message_sub_type: "reasoning"` is the agent's pre-tool-call
-			// commentary the inline flow opts into via `on_agent_reasoning`; map it
-			// to a thinking block. Other agent text is the answer → text.
+			// Map reasoning sub_type to thinking block.
 			const isReasoning = getRecordString(record, "message_sub_type") === "reasoning";
 			const fallbackKey = isReasoning ? `reasoning:${index}` : `agent:${index}`;
 			entries.push({
@@ -3198,15 +2823,7 @@ function extractGitLabDuoWorkflowAction(event: Record<string, unknown>): GitLabD
 	return undefined;
 }
 
-// DWS assigns every executor Action a non-empty `requestID` (contract.proto Action
-// field 1; emitted verbatim by Workhorse's proto->JSON relay). The client MUST echo
-// that exact id back in `actionResponse.requestID` or the server's outbox silently
-// discards the response (outbox.set_action_response: a non-empty id that misses the
-// awaiting-futures map hits the "doesn't expect responses, discarding" branch) and
-// the tool call's future never resolves — the model then re-issues the same tool
-// call, looping. A synthesized id is therefore never correct: it is either redundant
-// (the real id was present) or actively harmful (guaranteed-discarded). Fail fast so
-// the socket loop surfaces a protocol drift instead of stalling.
+// Validates action requestID is present (required for DWS action response matching).
 function requireGitLabDuoWorkflowRequestID(
 	requestID: string | undefined,
 	actionName: string,

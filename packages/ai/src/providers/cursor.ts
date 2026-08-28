@@ -155,27 +155,13 @@ import { connectProxiedSocket, getProxyForProvider, shouldBypassProxy } from "..
 import { createRequestDebugSession, isRequestDebugEnabled, type RequestDebugResponseLog } from "../utils/request-debug";
 import { toolWireSchema } from "../utils/schema/wire";
 
-/**
- * Cursor's API host.
- *
- * Re-exported from `@veyyon/catalog/provider-endpoints`, which owns it, rather than declared here: this
- * package's usage reader and `catalog`'s discovery reader both need the same fallback, and this name is the
- * one callers already import.
- */
+/** Cursor API host. */
 export const CURSOR_API_URL = CURSOR_API_ENDPOINT;
 export const CURSOR_CLIENT_VERSION = "cli-2026.01.09-231024f";
 
 const CURSOR_PROXY_TUNNEL_TIMEOUT_MS = 30_000;
 
-/**
- * A bounded, least-recently-used map. The cursor provider keys per-conversation
- * state and blob stores by conversationId; a plain module-level Map grew without
- * limit, so a long-lived process (an autonomous run touching many conversations,
- * or many short sessions with random ids) leaked one entry per conversation for
- * the process lifetime. This evicts the least-recently-used entry past `#max`.
- * `get`/`set` both refresh recency, so an actively-streamed conversation is
- * never evicted out from under an in-flight round.
- */
+/** Bounded LRU cache for per-conversation state. */
 export class BoundedLruMap<K, V> {
 	readonly #max: number;
 	readonly #map = new Map<K, V>();
@@ -203,31 +189,10 @@ export class BoundedLruMap<K, V> {
 const CURSOR_CONVERSATION_CACHE_MAX = 128;
 const conversationStateCache = new BoundedLruMap<string, ConversationStateStructure>(CURSOR_CONVERSATION_CACHE_MAX);
 const conversationBlobStores = new BoundedLruMap<string, Map<string, Uint8Array>>(CURSOR_CONVERSATION_CACHE_MAX);
-/**
- * The rules this process has actually put on the wire for a conversation, by content.
- *
- * The rules channel is the ONLY way a Cursor turn carries the caller's system prompt and the
- * operator's instruction files, and it is driven by the SERVER: nothing leaves the client until a
- * `requestContextArgs` ask arrives. A turn where the ask never comes therefore runs on Cursor's
- * canned CLI prompt with none of the caller's instructions, which is exactly the failure the
- * kv-channel blob miss already fails closed on.
- *
- * The value is a FINGERPRINT rather than a flag, because "this conversation received something
- * once" is not the guarantee that matters. The operator can edit an instruction file, reload, or
- * move the session mid-conversation, and the caller composes the new bytes on the next turn; if
- * the server does not ask again, those bytes never arrive and a flag would call that delivered.
- * Comparing content is what makes a CHANGED instruction set an undelivered one.
- *
- * Bounded like the two caches above, and for the same reason.
- */
+/** Rules content fingerprint delivered per conversation. */
 const conversationRulesDelivered = new BoundedLruMap<string, string>(CURSOR_CONVERSATION_CACHE_MAX);
 
-/**
- * Identity of a composed rule set: every path and every byte, in order.
- *
- * Order matters as much as content. The caller hands the rules over in ascending authority, so a
- * reordering is a different instruction set even when the bytes are the same multiset.
- */
+/** Fingerprint of a composed rule set in order. */
 function cursorRulesFingerprint(rules: readonly CursorRule[]): string {
 	const hash = createHash("sha256");
 	for (const rule of rules) {
@@ -251,11 +216,7 @@ export interface CursorOptions extends StreamOptions {
 
 const CONNECT_END_STREAM_FLAG = 0b00000010;
 
-/**
- * Hard upper bound on a single Connect frame payload in Cursor streams. The 4-byte length prefix
- * is otherwise attacker-controlled (up to `2**32 - 1`), so a corrupt length prefix fails fast
- * instead of buffering indefinitely until memory exhaustion or watchdog timeout.
- */
+/** Max length (bytes) for a single Connect frame payload. */
 const MAX_CONNECT_FRAME_PAYLOAD = 16 * 1024 * 1024;
 
 interface CursorLogEntry {
@@ -315,9 +276,6 @@ export function parseConnectEndStream(data: Uint8Array): Error | null {
 		}
 		return null;
 	} catch {
-		// An unreadable end-stream frame means the terminal event never arrived in a
-		// form this can act on, which is an incomplete stream and not a protocol
-		// violation: the bytes were corrupted or truncated in transit.
 		return new AIError.ProviderResponseError("Failed to parse Connect end stream", {
 			provider: "cursor",
 			kind: "incomplete-stream",
@@ -332,10 +290,7 @@ function debugBytes(bytes: Uint8Array, asHex: boolean): string {
 	try {
 		const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 		if (/^[\x20-\x7E\s]*$/.test(text)) return text;
-	} catch {
-		// A strict UTF-8 decode is the probe: bytes that are not text fall through
-		// to the hex rendering below, which is the point of the function.
-	}
+	} catch {}
 	return Buffer.from(bytes).toString("hex");
 }
 
@@ -461,11 +416,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 		let h2Request: http2.ClientHttp2Stream | null = null;
 		let heartbeatTimer: NodeJS.Timeout | null = null;
 		let debugResponseLogPromise: Promise<RequestDebugResponseLog | undefined> | undefined;
-		// The run's AbortSignal is shared across every LLM round (agent-loop.ts
-		// passes the same object each round when harmony/owned-dialect are off), so
-		// an abort listener that is never removed accumulates one closure per round
-		// — each pinning that round's h2 stream/client. Hoist the handler so the
-		// finally can detach it the moment this round settles (leak fix).
 		const abortSignal = options?.signal;
 		let abortHandler: (() => void) | undefined;
 
@@ -490,8 +440,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			);
 			conversationStateCache.set(conversationId, conversationState);
 			const requestContextTools = buildMcpToolDefinitions(context.tools);
-			// Composed once per request: the system prompt plus the caller's operator-owned
-			// files, delivered when the server asks for the request context (see buildCursorRules).
+			// Composed once per request: system prompt plus operator instruction files.
 			const requestContextRules = buildCursorRules(context.systemPrompt, options?.cursorRules);
 
 			const baseUrl = model.baseUrl || CURSOR_API_URL;
@@ -538,14 +487,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 
 			let pendingBuffer = Buffer.alloc(0);
 			let endStreamError: Error | null = null;
-			/**
-			 * Fail this turn from inside a server-message handler.
-			 *
-			 * Reuses the `endStreamError` channel a Connect end-stream error already uses (the outer
-			 * promise rejects with it), rather than throwing: a throw out of `handleServerMessage` is
-			 * caught by the `.catch` below and cannot stop the turn. The first cause wins, so a later
-			 * end-stream error cannot overwrite the reason the turn was actually abandoned.
-			 */
+			// Fail turn via endStreamError channel.
 			const failTurn = (error: Error): void => {
 				if (endStreamError) return;
 				endStreamError = error;
@@ -589,26 +531,12 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			};
 
 			let streamTerminated = false;
-			// `turnEnded` is the only thing that says the server finished this turn.
-			// The h2 stream also ends when the connection simply stops, and those two
-			// are not the same event.
 			let turnCompleted = false;
-			// Whether THIS turn answered a `requestContextArgs` ask. Distinct from the
-			// conversation ledger: a turn that did not deliver is only a fault when the
-			// conversation has never delivered either.
 			let requestContextDelivered = false;
-			// A gateway that refuses answers with an HTTP status and a body, not
-			// with Connect frames. The status arrived at the handler below and was
-			// read only for the debug log, so a `401`, a `429` or a proxy's error
-			// page reached the operator as "stream ended without a turn_ended
-			// update": the one class of failure whose remedy belongs to the person
-			// at the keyboard, reported as a truncated stream. A refusal body is
-			// collected instead of frame-parsed — it carries no Connect framing —
-			// and the shared bound names it.
+			// Handle non-Connect HTTP gateway error responses.
 			let refusedStatus: number | undefined;
 			let refusalBody = "";
-			// Enough for any error envelope, and a bound against a proxy that
-			// answers a megabyte of HTML.
+
 			const REFUSAL_BODY_LIMIT = 8 * 1024;
 			const pendingMessagePromises = new Set<Promise<void>>();
 
@@ -630,10 +558,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 					}
 					await closeDebugLog();
 					if (refusedStatus !== undefined) {
-						// The status is the remedy: 401 is a credential, 429 is a
-						// wait, 404 is the route. `CursorApiError` carries it, so
-						// the shared classifier reads the same retry decision it
-						// reads for every other provider's HTTP refusal.
 						rejectH2(
 							new AIError.CursorApiError(
 								`Cursor API error ${refusedStatus}: ${AIError.boundProviderErrorDetail(refusalBody)}`,
@@ -753,16 +677,10 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 								pendingMessagePromises.delete(messagePromise);
 							});
 
-						// The one place the turn is declared over. Both the resolve and the
-						// completion check below read this, so there is no second opinion.
-						// Await all in-flight server message handlers before resolving so
-						// turnEnded arriving while an exec handler is pending cannot emit
-						// false success or orphan the handler.
+						// Terminal turn completion.
 						if (isTurnEnded) {
 							turnCompleted = true;
 							void Promise.allSettled(Array.from(pendingMessagePromises)).then(async () => {
-								// Give already-arrived protocol terminal events (e.g. HTTP/2 trailers)
-								// one event-loop turn to be dispatched and set endStreamError before resolving success.
 								await yieldToProtocolEvents();
 								terminateStream();
 							});
@@ -844,22 +762,14 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 					}
 					terminateStream(() => rejectH2(new AIError.RequestAbortError()));
 				};
-				// Already aborted before we attached: the event will never fire, so
-				// run the handler once synchronously instead of hanging the round.
+
 				if (abortSignal.aborted) abortHandler();
-				// { once: true } auto-detaches if it fires; the finally detaches it
-				// on every normal completion so it never outlives this one round.
 				else abortSignal.addEventListener("abort", abortHandler, { once: true });
 			}
 
 			await h2Promise;
 
-			// The stream is over. Whether the TURN is over is a different question,
-			// and only `turnEnded` answers it: a dropped connection that happens to
-			// close cleanly reaches here with a half-written reply. Reporting "stop"
-			// for that persisted a truncated turn as a finished one, and the compaction
-			// anchor then trusted its partial token counts. Same treatment the other
-			// providers give a stream that ends with no finish reason.
+			// Reject truncated turn if stream ended without turnEnded signal.
 			if (!turnCompleted) {
 				throw new AIError.ProviderResponseError(
 					"Cursor stream ended without a turn_ended update (connection dropped or response truncated)",
@@ -867,19 +777,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 				);
 			}
 
-			// The delivery invariant. `requestContextRules` carries the caller's system prompt
-			// and the operator's instruction files, and it is the ONLY channel Cursor honors for
-			// them: on a cursor-agent model the coding-agent deliberately inlines no context
-			// files in the prompt blobs, because the server discards those. But nothing here
-			// pushes the rules; the SERVER decides whether to ask, and a turn where the ask
-			// never arrives simply runs on Cursor's canned CLI prompt with none of the
-			// operator's instructions and reports success. That is the failure an operator hit
-			// twice, and it looked exactly like a normal turn both times.
-			//
-			// A later turn in a conversation the server already holds THESE rules for
-			// legitimately gets no ask, which is why the ledger is consulted rather than this
-			// turn alone. Anything else is a drop: never delivered at all, or delivered when the
-			// instructions were different, which is the same fault one edit later.
+			// Validate rules were delivered if required.
 			const rulesFingerprint = cursorRulesFingerprint(requestContextRules);
 			if (requestContextDelivered) {
 				conversationRulesDelivered.set(conversationId, rulesFingerprint);
@@ -946,8 +844,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			} catch {
 				// Ignore close errors
 			}
-			// Detach the abort listener so it cannot outlive this round on the
-			// shared run signal (removeEventListener is a no-op if it already fired).
+
 			if (abortSignal && abortHandler) abortSignal.removeEventListener("abort", abortHandler);
 		}
 	})();
@@ -963,23 +860,7 @@ export type ToolCallState = ToolCall & {
 	[kCursorExecResolved]?: true;
 };
 
-/**
- * Every token number Cursor puts on the wire, and the only place any of them
- * becomes `usage`.
- *
- * Cursor reports two quantities and neither one is a usage object.
- * `TokenDeltaUpdate.tokens` is an increment of THIS turn's completion.
- * `ConversationTokenDetails` is a gauge of the WHOLE conversation against the
- * model's window: `used_tokens` counts the system prompt, the tool schemas, the
- * rules, the skills, the subagent definitions and the conversation, and it is
- * sampled after this turn's reply was appended, so it already contains the
- * completion. Nothing on the wire reports a prompt-cache breakdown, which is
- * why `cacheRead` and `cacheWrite` stay zero: Cursor does not say.
- *
- * Three shipped defects came from folding those two quantities into `usage`
- * where each one happened to arrive. They are accumulated raw here instead, and
- * turned into a usage object by {@link CursorUsageAccount.fold} alone.
- */
+/** Tracks token deltas and conversation token details to compute turn usage. */
 export interface CursorUsageAccount {
 	/** Running sum of `TokenDeltaUpdate.tokens`: this turn's completion. */
 	completionTokens: number;
@@ -987,10 +868,7 @@ export interface CursorUsageAccount {
 	conversationTokens: number;
 	/** Latest populated `ConversationTokenDetails.max_tokens`. */
 	contextWindow: number;
-	/**
-	 * Latest populated `ConversationTokenDetails.detailed.entry`, mapped to the
-	 * provider-neutral shape. Undefined until a checkpoint carries one.
-	 */
+	/** Latest detailed token entries mapped to provider-neutral format. */
 	contextComposition: ProviderContextBucket[] | undefined;
 	/** Recompute the message's usage, cost and reported window from the above. */
 	fold: () => void;
@@ -1005,27 +883,14 @@ export function createCursorUsageAccount(model: Model<"cursor-agent">, output: A
 		contextComposition: undefined,
 		fold: () => {
 			output.usage.output = account.completionTokens;
-			// The conversation gauge is sampled with this turn's reply already in
-			// it, so the prompt side is whatever is left once the completion comes
-			// out. Reporting the gauge as `input` and then adding the completion on
-			// top counted the reply twice, which is how a 98k-token turn spent 38%
-			// of a 256k window on tokens that were never there.
+			// Prompt tokens = total used tokens minus completion tokens.
 			output.usage.input = Math.max(0, account.conversationTokens - account.completionTokens);
 			output.usage.totalTokens = output.usage.input + output.usage.output;
-			// A window the provider states beats a catalog default, which is a guess
-			// for every model the catalog predates. Only a populated gauge carries
-			// one: most checkpoints report an empty `token_details`.
 			if (account.contextWindow > 0) {
 				output.providerContextWindow = account.contextWindow;
 			}
-			// No guard, unlike the window above: `contextWindow: 0` is a sentinel
-			// that would be a wrong answer if written, where an undefined
-			// composition is exactly the right answer for a turn Cursor never
-			// described. The account is the one thing that refuses to forget a
-			// reading, and keeping that rule in one place is the point of the type.
 			output.providerContextComposition = account.contextComposition;
-			// Folded here rather than once at the end of a clean turn, so an aborted
-			// or failed turn still reports what it spent.
+
 			calculateCost(model, output.usage);
 		},
 	};
@@ -1036,15 +901,7 @@ export interface BlockState {
 	currentTextBlock: (TextContent & { [kStreamingBlockIndex]: number }) | null;
 	currentThinkingBlock: (ThinkingContent & { [kStreamingBlockIndex]: number }) | null;
 	currentToolCall: ToolCallState | null;
-	/**
-	 * Tool-call ids the exec channel has dispatched this turn.
-	 *
-	 * Cursor surfaces an MCP call on two channels at once: `mcpArgs` on the exec
-	 * channel, which this provider runs through the caller's handler and answers,
-	 * and an `mcpToolCall` block on the assistant stream. The two arrive in either
-	 * order, so the id is recorded here as well as stamped onto any block that
-	 * already exists, and a block that opens later reads this set.
-	 */
+	/** Tool-call IDs dispatched on the exec channel this turn. */
 	execDispatchedToolCalls: Set<string>;
 	firstTokenTime: number | undefined;
 	/** This turn's token account. See {@link CursorUsageAccount}. */
@@ -1075,17 +932,11 @@ export async function handleServerMessage(
 	log("serverMessage", msgCase, msg.message.value);
 
 	if (msgCase === "interactionUpdate") {
-		// InteractionUpdateView is a structural subset of the generated type; the
-		// weak-type rule (all-optional view vs. field-less updates like
-		// thinkingCompleted) blocks direct assignability, hence the assertion.
 		processInteractionUpdate(msg.message.value as InteractionUpdateView, output, stream, state);
 	} else if (msgCase === "kvServerMessage") {
 		handleKvServerMessage(msg.message.value as KvServerMessage, blobStore, h2Request, delivery);
 	} else if (msgCase === "execServerMessage") {
-		// The server is waiting on OUR local tool result during this window — no
-		// AssistantMessageEvent flows until the handler finishes. Mark the wait
-		// as local work so the lazy stream idle watchdog attributes the silence
-		// to the tool run instead of aborting a healthy stream (issue #4593).
+		// Mark stream busy while awaiting local tool execution.
 		await stream.trackLocalWork(
 			handleExecServerMessage(
 				msg.message.value as ExecServerMessage,
@@ -1105,18 +956,7 @@ export async function handleServerMessage(
 	}
 }
 
-/**
- * Turn-scoped hooks the message handlers need beyond the blob store itself.
- *
- * `systemPromptBlobIds` is the set of hex ids `buildGrpcRequest` minted for this request's system
- * prompt entries. The kv channel only ever sees an opaque id, so without it a miss on the system
- * prompt and a miss on some historical turn are the same event, and they are not: one is a
- * degraded transcript, the other is a model running with no instructions at all.
- *
- * `onRequestContextDelivered` is the other half of the same guarantee on the other channel. Both
- * channels can drop the caller's instructions without any error, so both report what they actually
- * did and let the turn decide.
- */
+/** Turn-scoped hooks for message handlers. */
 interface CursorTurnDelivery {
 	systemPromptBlobIds: ReadonlySet<string>;
 	/** Fails the turn. Wired to the same `endStreamError` channel a Connect end-stream error uses. */
@@ -1148,9 +988,7 @@ function handleKvServerMessage(
 					: "Cursor asked for a blob this process does not hold; that part of the conversation is missing from the prompt",
 				{ blobId: blobIdKey, systemPrompt: isSystemPrompt, knownBlobs: blobStore.size },
 			);
-			// A missing history entry degrades the transcript and the turn is still worth having. A
-			// missing SYSTEM PROMPT is not degradation: the model answers plausibly with none of the
-			// operator's instructions and nothing else in the run would ever say so.
+			// Fail closed if system prompt blob is missing.
 			if (isSystemPrompt) {
 				lookup?.onFatal(
 					new AIError.ProviderResponseError(
@@ -1347,8 +1185,6 @@ async function handleShellStreamArgs(
 		},
 	};
 
-	// Prefer the streaming handler — it forwards output chunks in real time.
-	// Falls back to the batch shell handler otherwise.
 	const streamHandler = execHandlers?.shellStream?.bind(execHandlers);
 	const batchHandler = execHandlers?.shell?.bind(execHandlers);
 	const handler = streamHandler ? (shellArgs: ShellArgs) => streamHandler(shellArgs, streamCallbacks) : batchHandler;
@@ -1362,8 +1198,6 @@ async function handleShellStreamArgs(
 		error => buildShellFailureResult(normalizedArgs.command, normalizedArgs.workingDirectory, error),
 	);
 
-	// When using the batch handler (no shellStream), send buffered stdout/stderr
-	// after execution completes. With shellStream these were already sent in real time.
 	const sendBufferedOutput = !streamHandler;
 	const sanitizedExecResult = sanitizeShellExecResult(execResult);
 
@@ -1374,8 +1208,7 @@ async function handleShellStreamArgs(
 	flushStderr();
 
 	sendShellStreamExitFromResult(h2Request, execMsg, sanitizedExecResult, sendBufferedOutput);
-	// Cursor can keep the turn pending when it receives only stream deltas.
-	// Send the final structured shellResult as completion acknowledgement.
+
 	sendExecClientMessage(h2Request, execMsg, "shellResult", sanitizedExecResult);
 	sendExecClientStreamClose(h2Request, execMsg);
 
@@ -1506,22 +1339,7 @@ async function handleExecServerMessage(
 	log("exec", "dispatch", { execCase, execId: execMsg.execId, hasHandlers: !!execHandlers });
 	if (execCase === "requestContextArgs") {
 		const requestContext = create(RequestContextSchema, {
-			// Populated, DELIBERATELY. `requestContext.rules` is the only channel Cursor's
-			// server honors for client instructions: the system-prompt blobs at the
-			// `rootPromptMessagesJson` head are requested and then replaced by the server's
-			// own canned prompt (wire capture, 2026-08: the checkpoint head rebuilt as
-			// [Cursor's system prompt, an empty bookkeeping blob, the user turn], our two
-			// blobs nowhere in it), so a veyyon turn ran with zero veyyon context. The
-			// system prompt therefore goes here as one `global` rule, followed by the
-			// operator-owned context files the caller composed (veyyon's global and profile
-			// AGENTS.md, one rule per file with its real path, the shape cursor-agent itself
-			// uses for AGENTS.md). What must NEVER appear here is repository content
-			// (`.cursor/rules/*.mdc`, a checked-in AGENTS.md): a repository may not configure
-			// the agent. That exclusion cannot be re-implemented at this layer, because the
-			// provider never reads the filesystem: rule content arrives pre-composed from
-			// the caller, which owns provenance. Emptying this field again reverts every
-			// Cursor model to Cursor's canned CLI prompt with none of the operator's
-			// instructions; do not.
+			// Populate requestContext.rules with system prompt and instruction files.
 			rules: requestContextRules,
 			repositoryInfo: [],
 			tools: requestContextTools,
@@ -1540,19 +1358,12 @@ async function handleExecServerMessage(
 		});
 
 		sendExecClientMessage(h2Request, execMsg, "requestContextResult", requestContextResult);
-		// The turn's only proof that the caller's instructions actually left this process.
-		// Recorded AFTER the write, so a throw above cannot report a delivery that never
-		// happened. `streamCursor` fails the turn when this never fires (see the delivery
-		// invariant at the end of the round).
 		delivery?.onRequestContextDelivered?.();
 		log("execClient", "requestContextResult", {
 			rules: requestContextRules.map(rule => ({
 				fullPath: rule.fullPath,
 				bytes: Buffer.byteLength(rule.content, "utf8"),
 			})),
-			// The content itself only at the verbose level: it is the operator's own
-			// instruction text, and the checkpoint echo already carries it, but a level-1
-			// log should stay a shape summary.
 			ruleText:
 				$env.DEBUG_CURSOR === "2"
 					? requestContextRules.map(rule => ({ fullPath: rule.fullPath, content: rule.content }))
@@ -1584,9 +1395,7 @@ async function handleExecServerMessage(
 		case "lsArgs": {
 			const args = execMsg.message.value;
 			if (!args.toolCallId) args.toolCallId = crypto.randomUUID();
-			// Bridge maps `ls` onto the coding-agent `read` tool (see
-			// `CursorExecHandlers.ls` in `pi-coding-agent/src/cursor.ts`); mirror
-			// that here so the synthesized block matches the toolResult's `toolName`.
+			// Map `ls` to `read` tool name.
 			synthesizeCursorExecToolCall(output, stream, state, args.toolCallId, "read", { path: args.path });
 			const { execResult } = await resolveExecHandler(
 				args,
@@ -1602,20 +1411,12 @@ async function handleExecServerMessage(
 		case "grepArgs": {
 			const args = execMsg.message.value;
 			if (!args.toolCallId) args.toolCallId = crypto.randomUUID();
-			// Cursor's model sometimes emits `grepArgs` with an empty `pattern` and a
-			// non-empty `glob`, expecting grep to list files matching the glob. Reject
-			// that up front with an actionable error so the model retries with a real
-			// regex or switches to `ls`/`read`, instead of the local grep tool
-			// surfacing a bare "Pattern must not be empty" (issue #4574) after the
-			// synthesized block has already been persisted with a placeholder pattern.
+			// Early reject for empty grep pattern with recovery hint.
 			const emptyPatternError = emptyGrepPatternRejection(args.pattern, args.glob);
 			if (emptyPatternError !== null) {
 				sendExecClientMessage(h2Request, execMsg, "grepResult", buildGrepErrorResult(emptyPatternError));
 				return;
 			}
-			// Mirror the coding-agent bridge's arg mapping so live UI (from
-			// `tool_execution_start`) and rebuilt transcript (from this block)
-			// display identical args.
 			const searchPath = args.glob ? `${args.path || "."}/${args.glob}` : args.path || ".";
 			synthesizeCursorExecToolCall(output, stream, state, args.toolCallId, "grep", {
 				pattern: args.pattern,
@@ -1681,8 +1482,7 @@ async function handleExecServerMessage(
 			const args = execMsg.message.value;
 			if (!args.toolCallId) args.toolCallId = crypto.randomUUID();
 			const normalizedArgs: ShellArgs = { ...args, workingDirectory: args.workingDirectory || process.cwd() };
-			// Match the bridge (`CursorExecHandlers.shell`): map `workingDirectory`
-			// → `cwd`, drop non-positive timeouts.
+
 			const shellTimeout = args.timeout && args.timeout > 0 ? args.timeout : undefined;
 			synthesizeCursorExecToolCall(output, stream, state, args.toolCallId, "bash", {
 				command: args.command,
@@ -1758,8 +1558,7 @@ async function handleExecServerMessage(
 		case "diagnosticsArgs": {
 			const args = execMsg.message.value;
 			if (!args.toolCallId) args.toolCallId = crypto.randomUUID();
-			// Bridge maps `diagnostics` onto the coding-agent `lsp` tool with
-			// `action: "diagnostics"` and `file: path`.
+
 			synthesizeCursorExecToolCall(output, stream, state, args.toolCallId, "lsp", {
 				action: "diagnostics",
 				file: args.path,
@@ -1778,15 +1577,7 @@ async function handleExecServerMessage(
 		case "mcpArgs": {
 			const args = execMsg.message.value;
 			const mcpCall = decodeMcpCall(args);
-			// This call is about to run HERE, through the caller's handler, and its
-			// result goes back on the exec channel. The same call also reaches the
-			// assistant stream as an `mcpToolCall` block, and an unmarked block is
-			// runnable, so `agent-loop.ts` executed every one of these a second time
-			// after the turn closed — a duplicate side effect when the arguments had
-			// streamed, and a validation failure against `{}` when they had not,
-			// either way a second `toolResult` under an id that already had one.
-			// Cursor's own exec tools never had this problem because
-			// `synthesizeCursorExecToolCall` builds their block already stamped.
+			// Synthesize toolCall block before invoking handler and stamp as exec-resolved.
 			markCursorExecDispatched(mcpCall.toolCallId, output, state);
 			const { execResult } = await resolveExecHandler(
 				mcpCall,
@@ -1821,8 +1612,7 @@ async function handleExecServerMessage(
 		}
 		default: {
 			log("warn", "unhandledExecMessage", { execCase });
-			// Send a bare ExecClientMessage (id + execId only, no typed result) so the
-			// server gets an acknowledgement and doesn't hang waiting forever.
+			// Send bare ExecClientMessage ack.
 			const ack = create(ExecClientMessageSchema, {
 				id: execMsg.id,
 				execId: execMsg.execId,
@@ -1844,8 +1634,7 @@ function sendExecClientMessage<C extends NonNullable<ExecClientMessage["message"
 	const execClientMessage = create(ExecClientMessageSchema, {
 		id: execMsg.id,
 		execId: execMsg.execId,
-		// The generic correlates case and value at every call site; the union
-		// member itself cannot be proven pairwise by TS, hence the assertion.
+
 		message: { case: messageCase, value } as ExecClientMessage["message"],
 	});
 
@@ -2291,12 +2080,7 @@ export function buildGrepResultFromToolResult(
 			if (!Number.isSafeInteger(parsedLine) || parsedLine < 1 || parsedLine > 0x7fffffff) {
 				continue;
 			}
-			// A line is context only when it did NOT parse as a real match. The two
-			// regexes overlap: a genuine match line whose content contains a
-			// `-<digits>-` run (an ISO date like 2024-01-15, an index like x-1-y)
-			// ALSO satisfies the context pattern, so `Boolean(contextLine)` would
-			// mislabel that match as context and drop it from totalMatchedLines.
-			// `match` already prefers matchLine, so derive the flag from matchLine.
+			// Prefer match interpretation over context line.
 			const isContextLine = matchLine === null;
 			const list = matchMap.get(file) ?? [];
 			list.push({ line: parsedLine, content, isContextLine });
@@ -2356,20 +2140,7 @@ function buildGrepErrorResult(error: string) {
 	});
 }
 
-/**
- * Reject a Cursor exec-channel `grepArgs` frame whose `pattern` is empty or
- * whitespace-only. Returns an actionable error message when the pattern is
- * unusable (with a `glob`-aware hint when the model likely meant to list
- * files), or `null` when the pattern is valid and grep should run.
- *
- * Exported for tests. Cursor's model sometimes sends `pattern=""` together
- * with a non-empty `glob`, expecting grep to enumerate matching files; the
- * downstream coding-agent `grep` tool rejects that with a bare "Pattern must
- * not be empty", which the TUI renders as `?` in the tool preview (issue
- * #4574). Handling it at the Cursor exec dispatch keeps the synthesized
- * `toolCall` block off the persisted assistant message and gives the model a
- * specific recovery hint.
- */
+/** Rejects empty grep pattern and returns recovery hint. */
 export function emptyGrepPatternRejection(pattern: string | undefined, glob: string | undefined): string | null {
 	if (pattern && pattern.trim().length > 0) return null;
 	if (glob && glob.length > 0) {
@@ -2436,24 +2207,12 @@ function decodeMcpArgValue(value: Uint8Array): unknown {
 			return parseToolArgsJson(jsonValue);
 		}
 		return jsonValue;
-	} catch {
-		// Probing whether the bytes are a protobuf Value. Servers also send plain
-		// text here, which is what the decode below handles.
-	}
+	} catch {}
 	const text = new TextDecoder().decode(value);
 	return parseToolArgsJson(text);
 }
 
-/**
- * Record that the exec channel has dispatched `toolCallId`, and stamp the
- * assistant-stream block that names it so the agent loop treats the call as
- * already run.
- *
- * Both halves are needed because the wire fixes no order between the exec
- * request and the `toolCallStarted` update: a block that already exists is
- * stamped now, and one that opens later reads
- * {@link BlockState.execDispatchedToolCalls}.
- */
+/** Records exec-channel tool dispatch and stamps assistant-stream block. */
 function markCursorExecDispatched(toolCallId: string, output: AssistantMessage, state: BlockState): void {
 	if (!toolCallId) return;
 	state.execDispatchedToolCalls.add(toolCallId);
@@ -2602,22 +2361,7 @@ function buildMcpErrorResult(error: string) {
 	});
 }
 
-/**
- * Merge the decoded completion-frame `McpArgs` map into the args assembled
- * from streamed `args_text_delta` snapshots.
- *
- * The completion frame is authoritative for the scalars it carries — but it
- * can omit oversized parameters entirely and can downgrade a structured value
- * to its raw string fallback when `decodeMcpArgValue` cannot parse it as
- * JSON. Overwriting the streamed args wholesale therefore loses data (e.g.
- * the task tool's `tasks` array on multi-subagent dispatches, issue #2615).
- *
- * Rules per key:
- * - completion key absent  → keep the streamed value.
- * - completion is a string while the streamed value is structured (object or
- *   array) → keep the streamed value (the completion frame downgraded it).
- * - otherwise               → completion wins.
- */
+/** Merges completion-frame McpArgs into streamed args preserving structured values. */
 export function mergeCursorMcpToolCallArgs(
 	streamed: Record<string, unknown> | undefined,
 	completion: Record<string, unknown> | undefined,
@@ -2664,35 +2408,7 @@ function endCurrentThinkingBlock(
 	state.setThinkingBlock(null);
 }
 
-/**
- * Synthesize a completed `toolCall` content block for a Cursor exec-channel
- * native tool (`shell`, `read`, `write`, `grep`, `ls`, `delete`, `diagnostics`).
- *
- * Args arrive complete on the exec message, so the block opens and closes in
- * one step — no partial-JSON streaming path. Without this the persisted
- * assistant message carries only text/thinking blocks, and on replay the
- * following `toolResult` messages have no matching `toolCall.id` in
- * `renderSessionContext`, so they render as header-less `⎿` lines beneath the
- * last text block instead of proper tool components (issue #4348).
- *
- * The block is stamped with {@link kCursorExecResolved} so the shared
- * `agent-loop.ts` execution pass skips it: the exec channel has already
- * dispatched this call, so treating the block as runnable would re-execute the
- * same side-effecting tool a second time.
- *
- * "Already dispatched" is not "already finished, elsewhere". The handler is a
- * caller-supplied `execHandler` and it runs IN THIS PROCESS, and this function
- * pushes the block BEFORE `resolveExecHandler` is awaited. So between this
- * block appearing and its `toolResult` arriving, the tool is running locally
- * and may be part-way through its side effects. A stream reset in that window
- * leaves a call that is neither safe to retry verbatim nor answered, which is
- * why `buildAbortedTurnLedger` in `agent-loop.ts` reports such a block as
- * "started, no result recorded" rather than as never run. Do not restate this
- * as server-side execution: that wording is what made the harness's
- * "nothing is in flight at abort time" claim look unconditional.
- *
- * Exported for tests to exercise ordering with adjacent text/thinking blocks.
- */
+/** Synthesizes completed toolCall block for Cursor exec-channel tool. */
 export function synthesizeCursorExecToolCall(
 	output: AssistantMessage,
 	stream: AssistantMessageEventStream,
@@ -2718,10 +2434,7 @@ export function synthesizeCursorExecToolCall(
 	stream.push({ type: "toolcall_end", contentIndex: idx, toolCall: block, partial: output });
 }
 
-/** Structural view of the generated `InteractionUpdate` oneof, limited to the
- *  fields the streaming state machine reads. Same idiom as
- *  {@link CursorToolCallView}: real protobuf messages satisfy it and
- *  test harnesses can fabricate updates without protobuf branding. */
+/** Structural view of InteractionUpdate oneof. */
 export interface InteractionUpdateView {
 	message?: {
 		case?: string;
@@ -2802,8 +2515,7 @@ export function processInteractionUpdate(
 					[kStreamingBlockIndex]: output.content.length,
 					[kStreamingPartialJson]: "",
 					[kStreamingBlockKind]: "mcp",
-					// The exec channel may have dispatched this call before its block
-					// opened, in which case the tool has already run and answered.
+					// Stamp block if already dispatched on exec channel.
 					...(state.execDispatchedToolCalls.has(toolCallId) ? { [kCursorExecResolved]: true } : {}),
 				};
 				output.content.push(block);
@@ -2830,10 +2542,7 @@ export function processInteractionUpdate(
 		}
 	} else if (updateCase === "toolCallDelta" || updateCase === "partialToolCall") {
 		if (state.currentToolCall?.[kStreamingBlockKind] === "mcp") {
-			// Cursor's `args_text_delta` is "aggregated args text so far" per agent.proto: each
-			// delta is a cumulative snapshot of the JSON-text args. Strip the prefix we already
-			// have to recover the new suffix; fall back to treating the value as an incremental
-			// fragment when it doesn't extend the buffer.
+			// Cumulative args JSON snapshot (not incremental delta).
 			const snapshot: string = value.argsTextDelta || "";
 			const current = state.currentToolCall[kStreamingPartialJson] ?? "";
 			const chunk = snapshot.startsWith(current) ? snapshot.slice(current.length) : snapshot;
@@ -2842,9 +2551,6 @@ export function processInteractionUpdate(
 			}
 			const nextBuffer = current + chunk;
 			state.currentToolCall[kStreamingPartialJson] = nextBuffer;
-			// Throttle mid-stream parses to keep total parse work O(N) instead of O(N²)
-			// in the argument-buffer length; the authoritative full parse runs in
-			// `toolCallCompleted` (mcp branch) and the fallback end-of-stream path.
 			const throttled = parseStreamingJsonThrottled(nextBuffer, state.currentToolCall[kStreamingLastParseLen] ?? 0);
 			if (throttled) {
 				state.currentToolCall.arguments = throttled.value;
@@ -2857,8 +2563,7 @@ export function processInteractionUpdate(
 		if (state.currentToolCall) {
 			const toolCall = value.toolCall;
 			if (state.currentToolCall[kStreamingBlockKind] === "mcp") {
-				// Authoritative full parse of the accumulated argument buffer; the delta
-				// path throttles mid-stream parses, so `arguments` may lag the buffer.
+				// Full parse of accumulated argument buffer on tool completion.
 				const partial = state.currentToolCall[kStreamingPartialJson];
 				if (partial !== undefined) {
 					state.currentToolCall.arguments = parseStreamingJson(partial);
@@ -2880,22 +2585,12 @@ export function processInteractionUpdate(
 			state.setToolCall(null);
 		}
 	} else if (updateCase === "tokenDelta") {
-		// `turnEnded` is deliberately not handled here. It is the turn's only
-		// completion signal and `streamCursor` owns it, because a turn that never
-		// receives one did not finish and must not report that it did.
 		state.usage.completionTokens += value.tokens || 0;
 		state.usage.fold();
 	}
 }
 
-/**
- * Map `ConversationTokenDetails.detailed` onto the provider-neutral buckets.
- *
- * The entries are the whole point of the field: `used_tokens` and `max_tokens`
- * are repeated inside it and are already read off the parent. An entry list
- * that is empty means the server sent the wrapper and measured nothing, which
- * is not a reading, so it maps to undefined and leaves the last one standing.
- */
+/** Maps ConversationTokenDetails.detailed to provider-neutral token breakdown. */
 function cursorContextComposition(details?: ConversationTokenDetails): ProviderContextBucket[] | undefined {
 	const entries = details?.detailed?.entry;
 	if (!entries?.length) return undefined;
@@ -2914,10 +2609,7 @@ export function handleConversationCheckpointUpdate(
 	onConversationCheckpoint?: (checkpoint: ConversationStateStructure) => void,
 ): void {
 	onConversationCheckpoint?.(checkpoint);
-	// Most checkpoints carry an empty `token_details`: the server only populates
-	// the gauge on some of them. Zero is "not reported", not "the conversation is
-	// empty", so an empty one must leave the last real reading standing rather
-	// than blank the window and the prompt.
+	// Only update when token_details are populated.
 	const maxTokens = checkpoint.tokenDetails?.maxTokens ?? 0;
 	if (maxTokens > 0) {
 		usage.contextWindow = maxTokens;
@@ -3052,11 +2744,7 @@ function extractAssistantMessageText(msg: Message): string {
 		.join("\n");
 }
 
-/**
- * Index of the last user/developer message in `messages`, or -1 if none.
- * Used to exclude the current user turn from history builders — it goes in
- * `ConversationActionSchema.userMessageAction`, not in history structures.
- */
+/** Index of last user/developer message in context messages, or -1. */
 function findLastUserMessageIndex(messages: Message[]): number {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const role = messages[i].role;
@@ -3067,26 +2755,8 @@ function findLastUserMessageIndex(messages: Message[]): number {
 	return -1;
 }
 
-/**
- * Build `ConversationStateStructure.rootPromptMessagesJson` blob IDs for the
- * system prompt plus prior conversation history, as JSON blobs matching
- * Cursor's internal Vercel-AI-SDK-shaped message format.
- *
- * Cursor's server uses `rootPromptMessagesJson` (not `turns[]`) to build the
- * actual model prompt. `turns[]` is UI/display metadata. Without populating
- * this field, multi-turn conversations lose prior context — the model sees
- * only an empty placeholder where historical user turns should be.
- * The active user message is excluded because it is sent in the action.
- */
-/**
- * Build one Cursor system-message JSON blob per ordered system prompt. Emitting separate blobs
- * (rather than a single `\n\n`-joined string) lets Cursor's blob cache hit independently per
- * entry: changing only the last prompt does not invalidate earlier blob ids, so the prefix
- * up to the changed prompt remains cached on the server side.
- *
- * When no system prompts are provided, returns a single default greeting so we never emit
- * an empty `rootPromptMessagesJson` head.
- */
+/** Builds rootPromptMessagesJson blob IDs for system prompt and prior conversation. */
+/** Builds separate system-message JSON blobs per system prompt entry. */
 export function buildCursorSystemPromptJsons(systemPrompt: readonly string[] | undefined): string[] {
 	const systemPrompts = normalizeSystemPrompts(systemPrompt);
 	if (systemPrompts.length === 0) {
@@ -3095,41 +2765,20 @@ export function buildCursorSystemPromptJsons(systemPrompt: readonly string[] | u
 	return systemPrompts.map(content => JSON.stringify({ role: "system", content }));
 }
 
-/**
- * `full_path` of the rule that carries the session system prompt. `CursorRule.full_path`
- * is documented as the absolute path of the rule's file, but the system prompt is
- * compiled, not file-backed, so it gets a stable scheme path instead: it cannot collide
- * with a real workspace file and reads as provenance wherever the server renders it.
- */
+/** Virtual path identifier for system prompt rule. */
 const CURSOR_SYSTEM_PROMPT_RULE_PATH = "veyyon://system-prompt.mdc";
 
 function createCursorRule(fullPath: string, content: string): CursorRule {
 	return create(CursorRuleSchema, {
 		fullPath,
 		content,
-		// `global` (always-apply) with the default source is what cursor-agent itself sends
-		// for AGENTS.md and .cursorrules: operator-level instructions, one rule per source.
-		// Verified against the cursor-agent bundle, whose AGENTS.md walk builds exactly
-		// this shape with the file's real absolute path.
+		// Global always-apply rule.
 		type: create(CursorRuleTypeSchema, { type: { case: "global", value: create(CursorRuleTypeGlobalSchema, {}) } }),
 		source: 0,
 	});
 }
 
-/**
- * Compose the `requestContext.rules` payload: the session system prompt as one rule,
- * followed by the caller-supplied file units in caller order (the coding-agent hands
- * them over in ascending authority, so the operator's global file keeps the last,
- * highest-recency slot, same as in the prompt).
- *
- * Rules are Cursor's only honored client-instruction channel: the system-prompt blobs
- * at the `rootPromptMessagesJson` head are fetched and then replaced by the server's
- * own prompt (wire capture, 2026-08), so without this the model runs with none of the
- * caller's instructions. One rule per unit, not one joined blob, so the server's
- * content-keyed rule cache stays warm for every file that did not change.
- *
- * Exported for tests.
- */
+/** Composes requestContext.rules payload from system prompt and rule files. */
 export function buildCursorRules(
 	systemPrompt: readonly string[] | undefined,
 	inputRules: readonly CursorRuleInput[] | undefined,
@@ -3184,14 +2833,7 @@ function buildRootPromptMessagesJson(
 	return entries;
 }
 
-/**
- * Convert context.messages to Cursor's ConversationTurnStructure blob IDs.
- * Groups messages into turns: each turn is a user message followed by the assistant's response.
- * Excludes the active user message (which goes in the action).
- *
- * Each `AgentConversationTurnStructure.user_message`, `steps[]`, and the outer
- * `ConversationStateStructure.turns[]` entry is a blob ID into `blobStore`.
- */
+/** Converts context.messages to ConversationTurnStructure blob IDs. */
 function buildConversationTurns(
 	messages: Message[],
 	blobStore: Map<string, Uint8Array>,
@@ -3210,9 +2852,7 @@ function buildConversationTurns(
 			continue;
 		}
 
-		// The active user message goes in the action, not turns. A prior user
-		// followed by assistant/tool-result messages is complete history and
-		// must remain serialized for resume actions.
+		// Group messages into turns (user + assistant response).
 		if (i === activeUserMessageIndex) {
 			break;
 		}
@@ -3268,8 +2908,6 @@ function buildConversationTurns(
 			i++;
 		}
 
-		// Create the serialized turn using Structure types. The bytes fields
-		// (user_message, steps) are blob IDs resolved through the KV store.
 		const agentTurn = create(AgentConversationTurnStructureSchema, {
 			userMessage: userMessageBlobId,
 			steps: stepBlobIds,
@@ -3364,11 +3002,7 @@ async function buildGrpcRequest(
 	requestBytes: Uint8Array;
 	blobStore: Map<string, Uint8Array>;
 	conversationState: ConversationStateStructure;
-	/**
-	 * Hex ids of this request's system-prompt blobs. The kv channel sees only opaque ids, so the
-	 * only way a blob miss can be classified as "the system prompt" rather than "some history
-	 * entry" is to carry the set the request just minted.
-	 */
+	/** Hex IDs of system-prompt blobs for miss detection. */
 	systemPromptBlobIds: ReadonlySet<string>;
 }> {
 	const blobStore = state.blobStore;
@@ -3408,14 +3042,9 @@ async function buildGrpcRequest(
 					},
 	});
 
-	// Build conversation turns from prior messages, excluding only the active user message
-	// when the request is sending one. Resume actions must preserve trailing tool results.
 	const turns = buildConversationTurns(context.messages, blobStore, activeUserMessage ? activeUserMessageIndex : -1);
 
-	// Build `rootPromptMessagesJson` from prior messages. Cursor's server uses this
-	// field (not `turns[]`) to construct the actual model prompt; if we only send the
-	// system prompt here, multi-turn conversations lose prior context and the model
-	// sees only the current user message.
+	// Build rootPromptMessagesJson from prior messages.
 	const rootPromptMessagesJson = buildRootPromptMessagesJson(
 		context.messages,
 		systemPromptIds,
@@ -3423,8 +3052,6 @@ async function buildGrpcRequest(
 		activeUserMessage ? activeUserMessageIndex : -1,
 	);
 
-	// Preserve cached non-history state fields (todos, file states, summaries, etc.)
-	// when the system prompt is unchanged; otherwise start fresh.
 	const cachedPromptHead = state.conversationState?.rootPromptMessagesJson?.slice(0, systemPromptIds.length) ?? [];
 	const hasMatchingPrompt =
 		cachedPromptHead.length === systemPromptIds.length &&
@@ -3447,20 +3074,12 @@ async function buildGrpcRequest(
 					readPaths: [],
 				});
 
-	// Always override `rootPromptMessagesJson` and `turns` with content freshly built from
-	// `context.messages`. The server-echoed checkpoint replaces historical user entries
-	// with empty placeholders, so we cannot rely on the cached `rootPromptMessagesJson`.
 	const conversationState = create(ConversationStateStructureSchema, {
 		...baseState,
 		rootPromptMessagesJson,
 		turns,
 	});
 
-	// Cursor selects reasoning effort by MODEL ID (tier siblings like
-	// `gpt-5.4-high`), not a wire param: mapOptionsForApi resolves the
-	// requested effort through `thinking.effortRouting` into `wireModelId` so
-	// a collapsed family actually changes what the server runs. Models without
-	// routing keep the plain requestModelId path.
 	const wireModelId = options?.wireModelId ?? model.requestModelId ?? model.id;
 	const cursorMaxMode = model.cursorMaxMode === true;
 	const modelDetails = create(ModelDetailsSchema, {
@@ -3490,13 +3109,6 @@ async function buildGrpcRequest(
 
 	const payloadHook = options?.onPayload;
 	if (payloadHook) {
-		// The hook is where a host runs its secret redactor, and a redactor WALKS the
-		// payload rewriting strings, so it can only be handed something JSON can
-		// express. A protobuf message is not: `rootPromptMessagesJson` and the turn
-		// entries are blob IDs (`Uint8Array`) and 64-bit fields decode to `bigint`,
-		// so the redactor refused the whole request and Cursor failed outright for
-		// anyone with secrets configured. Canonical proto3 JSON carries bytes as
-		// base64 and 64-bit values as strings; a no-op round-trip is byte-identical.
 		const replacementPayload = await payloadHook(toJson(AgentRunRequestSchema, runRequest), model);
 		if (replacementPayload !== undefined) {
 			runRequest = fromJson(AgentRunRequestSchema, replacementPayload as JsonValue);
@@ -3519,9 +3131,6 @@ async function buildGrpcRequest(
 		tools: toolNames.length,
 		toolNames: toolNames.slice(0, 20),
 		detail: detail || undefined,
-		// Payload breakdown: prefill is on the TTFS critical path, so the size of
-		// what we ship (system prompt blobs + advertised tool schemas) is the first
-		// thing to look at when first-token latency regresses. Debug-gated only.
 		payload: $env.DEBUG_CURSOR
 			? {
 					systemPromptBlobs: systemPromptJsons.map(json => Buffer.byteLength(json, "utf8")),

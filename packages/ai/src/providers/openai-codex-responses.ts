@@ -151,28 +151,11 @@ export interface OpenAICodexResponsesOptions extends StreamOptions {
 	toolChoice?: ToolChoice;
 	preferWebsockets?: boolean;
 	serviceTier?: ServiceTier;
-	/**
-	 * Responses Lite transport override; defaults to the model's catalog
-	 * `useResponsesLite` flag (codex-rs `use_responses_lite`). Sends
-	 * `x-openai-internal-codex-responses-lite: true` on HTTP requests and on the
-	 * WebSocket upgrade (the marker is connection-scoped there, so lite and
-	 * non-lite turns never share a pooled socket), moves instructions/tools
-	 * into input items, strips image detail, and disables parallel tool
-	 * calling — mirroring codex-rs.
-	 */
+	/** Responses Lite transport override. */
 	responsesLite?: boolean;
-	/**
-	 * Additional fields embedded in the canonical
-	 * `client_metadata["x-codex-turn-metadata"]` JSON blob. Reserved identity
-	 * keys are ignored; extras are never emitted as top-level metadata fields.
-	 */
+	/** Additional fields embedded in client_metadata turn metadata. */
 	clientMetadata?: Record<string, string>;
-	/**
-	 * Invoked when the server streams a `response.metadata` event carrying
-	 * ChatGPT moderation metadata (`metadata.openai_chatgpt_moderation_metadata`)
-	 * for first-party presentation parity. Diagnostic observer: failures are
-	 * swallowed and must not alter the stream.
-	 */
+	/** Diagnostic observer for ChatGPT moderation metadata. */
 	onModerationMetadata?: (metadata: unknown) => void;
 }
 
@@ -226,36 +209,11 @@ const CODEX_WEBSOCKET_CONNECT_TIMEOUT_MS = 10000;
 const CODEX_WEBSOCKET_PING_INTERVAL_MS = Number($env.VEYYON_CODEX_WEBSOCKET_PING_INTERVAL_MS || 10_000);
 const CODEX_WEBSOCKET_PONG_TIMEOUT_MS = Number($env.VEYYON_CODEX_WEBSOCKET_PONG_TIMEOUT_MS || 60_000);
 const CODEX_WEBSOCKET_MESSAGE_QUEUE_CAPACITY = Number($env.VEYYON_CODEX_WEBSOCKET_MESSAGE_QUEUE_CAPACITY || 4096);
-/**
- * Maximum quiet period (no inbound frames AND no observed pong) we'll trust a
- * reused WebSocket for before forcing a fresh handshake. Codex backends and
- * intermediaries occasionally evict idle sockets server-side without sending a
- * FIN, leaving the local `readyState` as OPEN while the next `send()` becomes a
- * write into a half-open buffer. Reusing such a socket parks the next request
- * at `#nextMessage` until the first-event/idle timeout fires (issue #1450). The
- * heartbeat below also catches dead sockets, but only after `pongTimeoutMs`
- * (default 60s) and only while a request is active — this gate closes the door
- * earlier and even when the gap between requests is purely client-side (tool
- * execution, user typing, etc.). Set `VEYYON_CODEX_WEBSOCKET_MAX_IDLE_REUSE_MS=0`
- * to disable.
- */
+/** Max quiet period (ms) before forcing a fresh WebSocket handshake. */
 const CODEX_WEBSOCKET_MAX_IDLE_REUSE_MS = Number($env.VEYYON_CODEX_WEBSOCKET_MAX_IDLE_REUSE_MS || 30_000);
-/**
- * Steady-state liveness ceiling for the Codex WebSocket transport. Distinct from
- * the Veyyon-wide stream watchdog removed in #1392: a WebSocket can stay TCP-open
- * indefinitely without exchanging frames (server crash after upgrade, half-open
- * network path), so we still need a transport-internal cap to detect those
- * states and trigger the WS→SSE fallback. Only applies AFTER the first event
- * has arrived — slow first-token paths wait as long as the caller permits.
- */
+/** Steady-state liveness ceiling (ms) for Codex WebSocket transport. */
 const CODEX_WEBSOCKET_IDLE_TIMEOUT_MS = Number($env.VEYYON_CODEX_WEBSOCKET_IDLE_TIMEOUT_MS || 300_000);
-/**
- * Maximum wait for the first WebSocket event before falling back to SSE.
- * Unlike a stream watchdog, this triggers a transport switch (not a request
- * failure) — the outer retry loop catches the timeout error and re-runs on
- * SSE. Generous default so legitimately slow first-token providers still get
- * a chance on the WS transport before falling through.
- */
+/** Max wait (ms) for first WebSocket event before falling back to SSE. */
 const CODEX_WEBSOCKET_FIRST_EVENT_TIMEOUT_MS = Number($env.VEYYON_CODEX_WEBSOCKET_FIRST_EVENT_TIMEOUT_MS || 60_000);
 const CODEX_WEBSOCKET_RETRY_BUDGET = Number($env.VEYYON_CODEX_WEBSOCKET_RETRY_BUDGET || CODEX_MAX_RETRIES);
 const CODEX_WEBSOCKET_RETRY_DELAY_MS = Number($env.VEYYON_CODEX_WEBSOCKET_RETRY_DELAY_MS || CODEX_RETRY_DELAY_MS);
@@ -273,10 +231,7 @@ const CODEX_WEBSOCKET_FATAL_PATTERNS = ["websocket error:", "websocket closed be
 /** Max total time to spend retrying 429s with server-provided delays (5 minutes). */
 const CODEX_RATE_LIMIT_BUDGET_MS = 5 * 60 * 1000;
 const CODEX_ADDITIONAL_PROGRESS_EVENT_TYPES = new Set(["response.done", "response.incomplete"]);
-// Provider/model failure mode: Codex can keep a response alive by streaming
-// whitespace-only function-call argument deltas forever. Those frames count as
-// transport activity, so idle timers never fire; cap the run before raw debug
-// buffers and partial JSON grow without semantic progress.
+// Breaker for whitespace-only function call argument loops.
 const CODEX_WHITESPACE_TOOL_CALL_ARGUMENT_DELTA_EVENT_LIMIT = 256;
 const CODEX_WHITESPACE_TOOL_CALL_ARGUMENT_DELTA_CHAR_LIMIT = 16 * 1024;
 const CODEX_WHITESPACE_LOOP_RETRY_LIMIT = 2;
@@ -382,10 +337,7 @@ export interface OpenAICodexTurnDiagnostics {
 	usage?: OpenAICodexTurnUsageDiagnostics;
 }
 
-/**
- * Per-session request-shape counters and latest turn diagnostics. Despite the
- * name, these cover both transports.
- */
+/** Per-session request counters and diagnostics. */
 export interface OpenAICodexWebSocketDebugStats {
 	fullContextRequests: number;
 	deltaRequests: number;
@@ -395,12 +347,7 @@ export interface OpenAICodexWebSocketDebugStats {
 	lastTurn?: OpenAICodexTurnDiagnostics;
 }
 
-/**
- * Per-session transport state shared by BOTH transports: websocket turn
- * chaining (`previous_response_id` baseline), turn-state/models-etag headers,
- * websocket connection pooling, and debug stats. The name is historical — SSE-only
- * sessions use it too.
- */
+/** Shared per-session transport state for WebSocket and SSE. */
 export type CodexWebSocketSessionState = {
 	disableWebsocket: boolean;
 	lastRequest?: RequestBody;
@@ -421,14 +368,7 @@ interface CodexProviderSessionState extends ProviderSessionState {
 	webSocketSessions: Map<string, CodexWebSocketSessionState>;
 	webSocketPublicToPrivate: Map<string, string>;
 	metadataSessions: Map<string, CodexMetadataSessionState>;
-	/**
-	 * Prompt-cache observations, per cache identity.
-	 *
-	 * Codex carries the bulk of this repo's recorded prompt-cache loss and had no
-	 * observer at all: the checker was wired into `providers/anthropic.ts` and
-	 * nowhere else, so on this surface the enforcement level resolved and then
-	 * governed nothing.
-	 */
+	/** Prompt-cache observations per cache identity. */
 	cacheTracker: CacheTrackerState;
 }
 
@@ -558,12 +498,7 @@ function createCodexRequestMetadata(
 	const callerMetadata = options.clientMetadata;
 	if (callerMetadata) {
 		for (const key in callerMetadata) {
-			// Own-property test, not `CODEX_RESERVED_METADATA_KEYS[key]`: a plain index
-			// read resolves Object.prototype members, so a caller metadata key literally
-			// named `toString`/`valueOf`/`constructor`/`hasOwnProperty` would read the
-			// inherited method (truthy), be treated as reserved, and be silently dropped
-			// from the outgoing turn metadata. Object.hasOwn only matches the real
-			// reserved names.
+			// Use Object.hasOwn to check reserved metadata keys.
 			if (!Object.hasOwn(CODEX_RESERVED_METADATA_KEYS, key)) extra[key] = callerMetadata[key];
 		}
 	}
@@ -615,10 +550,7 @@ function applyCodexCompatibilityHeaders(headers: Headers, metadata: CodexCompati
 	}
 }
 
-/**
- * Synthesize Codex request identity for raw provider routes such as remote
- * compaction while reusing the live session's thread, window, and turn.
- */
+/** Synthesizes Codex request identity for direct calls like compaction. */
 export function createOpenAICodexCompatibilityMetadata(
 	options: OpenAICodexCompatibilityMetadataOptions,
 ): OpenAICodexCompatibilityMetadata {
@@ -648,19 +580,7 @@ export function createOpenAICodexCompatibilityMetadata(
 	};
 }
 
-/**
- * URL, credential headers, and canonical client metadata for a direct
- * (non-streaming) Codex HTTP call made outside the turn path — today the
- * server-side compaction route `POST {base}/codex/responses/compact`, which
- * codex-rs drives with the same identity a turn carries.
- *
- * The turn path builds these inside `buildCodexRequestContext`, which also
- * opens websockets, resolves tools, and mutates transport state. A compaction
- * call needs the credential and identity halves only, so they are assembled
- * here rather than reached by faking a turn — and, being here, the codex wire
- * truth (host path, beta header, originator, client version, installation id)
- * stays owned by this module instead of copied into the compaction transport.
- */
+/** Request identity headers and metadata for direct Codex HTTP calls. */
 export function createOpenAICodexDirectRequest(options: {
 	model: Model<"openai-codex-responses">;
 	/** Resolved ChatGPT OAuth access token. */
@@ -703,10 +623,7 @@ export function createOpenAICodexDirectRequest(options: {
 	};
 }
 
-/**
- * Invalidate Codex history-dependent transport state after compaction while
- * retaining the session identity and live connection.
- */
+/** Invalidates history-dependent transport state after compaction. */
 export function resetOpenAICodexHistoryAfterCompaction(options: OpenAICodexCompactionResetOptions): void {
 	const providerState = options.providerSessionState?.get(CODEX_PROVIDER_SESSION_STATE_KEY);
 	if (!isCodexProviderSessionState(providerState)) return;
@@ -738,12 +655,7 @@ interface CodexRequestContext {
 	requestMetadata?: CodexRequestMetadata;
 	transformedBody: RequestBody;
 	rawRequestDump: RawHttpRequestDump;
-	/**
-	 * Exact bytes of the last sent request body. The dump retains these instead
-	 * of the parsed object, which pinned a full context-sized graph for the
-	 * whole stream; `materializeDumpBody` parses them back when a 400/413 dump
-	 * is actually being built.
-	 */
+	/** Raw bytes of the last sent request body. */
 	wireBodyJson?: string;
 }
 
@@ -752,12 +664,7 @@ interface CodexRequestSetup {
 	wrapCodexSseStream: (source: AsyncGenerator<Record<string, unknown>>) => AsyncGenerator<Record<string, unknown>>;
 	requestAbortController: AbortController;
 	firstEventTimeoutMs: number | undefined;
-	/**
-	 * The declared first-event budget for this whole turn, shared by every
-	 * transport attempt and every reopen. Per-attempt fences cannot see each
-	 * other, so without this the SSE retry ladder spent the caller's budget
-	 * once per attempt.
-	 */
+	/** First-event deadline shared across all transport attempts. */
 	firstEventBudget: FirstEventBudget;
 	websocketIdleTimeoutMs: number | undefined;
 	websocketFirstEventTimeoutMs: number | undefined;
@@ -777,23 +684,11 @@ class CodexStreamRuntime {
 	requestBodyForState: RequestBody;
 	transport: CodexTransport;
 	websocketState?: CodexWebSocketSessionState;
-	/**
-	 * Items open on the wire keyed by `item.id`. `response.output_item.added`
-	 * registers here; `output_item.done` removes. A keyed event whose `item_id`
-	 * is not present is dropped rather than appended to a sibling.
-	 */
+	/** Open output items keyed by item.id. */
 	openItems = new Map<string, CodexOpenItem>();
-	/**
-	 * Items open on the wire keyed by `output_index` for streams whose function
-	 * call items omit `id`; these still carry `output_index` on deltas/done.
-	 */
+	/** Open output items keyed by output_index for idless items. */
 	openItemsByOutputIndex = new Map<number, CodexOpenItem>();
-	/**
-	 * Most recently added open item for events that omit both `item_id` and
-	 * `output_index`. Always tracks the latest `output_item.added`, including
-	 * fully keyless items that never make it into the keyed maps; cleared when
-	 * its item closes.
-	 */
+	/** Most recently added open item fallback. */
 	currentEntry: CodexOpenItem | null = null;
 	/** Convenience mirrors of {@link currentEntry} for legacy singleton handlers. */
 	currentItem: CodexEventItem | null = null;
@@ -822,12 +717,7 @@ class CodexStreamRuntime {
 		this.websocketState = initial.websocketState;
 	}
 
-	/**
-	 * Wipe per-attempt accumulator state before a recovery path replays the turn.
-	 * Keeps {@link openItems} and the legacy singleton-current pointers in lockstep
-	 * with {@link nativeOutputItems} so a stale delta from the failed attempt can't
-	 * bind to a sibling on the retry.
-	 */
+	/** Wipes per-attempt accumulator state before replay. */
 	resetAccumulators(): void {
 		this.openItems.clear();
 		this.openItemsByOutputIndex.clear();
@@ -839,14 +729,7 @@ class CodexStreamRuntime {
 		this.cutoffSummaries = createSequentialCutoffSummaryState();
 	}
 
-	/**
-	 * Look up the open item a Codex stream event targets. `item_id` wins because it
-	 * uniquely identifies a response item; `output_index` covers idless function
-	 * call items. A keyed event whose target is already closed is dropped instead
-	 * of being routed to a sibling. Only streams that omit both keys fall back to
-	 * {@link currentEntry} — the most recently added item, including fully keyless
-	 * ones that never reached the keyed maps.
-	 */
+	/** Looks up open output item by item_id or output_index. */
 	openItemForEvent(rawEvent: Record<string, unknown>): CodexOpenItem | null {
 		const itemId = typeof rawEvent.item_id === "string" ? rawEvent.item_id : "";
 		if (itemId) return this.openItems.get(itemId) ?? null;
@@ -942,14 +825,9 @@ class CodexStreamRuntime {
 		shape?: ToolCallArgumentsDeltaShape,
 	): CodexWhitespaceToolCallArgumentsDeltaInterruption | undefined {
 		const delta = (rawEvent as { delta?: string }).delta || "";
-		// Observe BEFORE the item/block guard: degenerate whitespace frames can keep
-		// arriving after the item closed (entry detached) and still count as
-		// progress for the idle watchdogs — dropping them unobserved would reopen
-		// the infinite-loop hole the breaker exists for.
 		const interruption = this.observeWhitespaceToolCallArgumentsDelta(rawEvent, delta);
 		if (interruption) return interruption;
-		// Route to the entry the event keys to; a delta whose item already closed
-		// is dropped instead of leaking into a sibling tool call (#2619).
+		// Route to matching open item entry; drop if already closed.
 		const entry = this.openItemForEvent(rawEvent);
 		if (!entry) return undefined;
 		if (entry.item.type !== "function_call" || entry.block?.type !== "toolCall") return undefined;
@@ -1111,9 +989,6 @@ function toCodexHeaders(value: unknown): Headers | undefined {
 		try {
 			return new Headers(value as Array<[string, string]>);
 		} catch {
-			// Header pairs a Headers object refuses (an invalid name, a value with a newline) are not headers
-			// we may send, so undefined means "no headers from this value" and the request goes out with its
-			// defaults. Sending a partially-built set would be worse than sending none.
 			return undefined;
 		}
 	}
@@ -1155,16 +1030,7 @@ function extractCodexWebSocketHandshakeHeaders(socket: Bun.WebSocket, openEvent?
 	);
 }
 
-// Synthesizes a `RawSseEvent` for a Codex WebSocket frame so the same debug
-// pipeline used for HTTP SSE (`onSseEvent` → `RawSseDebugBuffer.recordEvent`)
-// also captures WebSocket traffic. The `raw` array mirrors SSE wire format
-// (one line per field) so the existing TUI viewer renders it identically:
-//   : ws ← <type>
-//   event: <type>
-//   data: <json>
-// Outbound (client → server) uses `: ws → <type>`. The viewer pretty-prints
-// `data:` JSON lines, so we keep the wire JSON single-line here and let the
-// renderer expand it.
+// Synthesizes RawSseEvent for a Codex WebSocket frame for debug logging.
 function notifyCodexWebSocketInbound(
 	observer: ((event: RawSseEvent) => void) | undefined,
 	parsed: Record<string, unknown>,
@@ -1379,8 +1245,7 @@ async function buildCodexRequestContext(
 		compaction ? undefined : !withinTurnContinuation,
 	);
 	if (websocketState && startNewTurn) {
-		// Codex scopes turn-state to one turn. Mid-turn compaction and tool-loop
-		// follow-ups preserve it; new user or compaction turns start without it.
+		// Scopes turn-state to current turn.
 		websocketState.turnState = undefined;
 	}
 	const requestMetadata = createCodexRequestMetadata(metadataSession, requestKind, {
@@ -1426,14 +1291,7 @@ export async function buildTransformedCodexRequestBody(
 		prompt_cache_key: promptCacheKey,
 	};
 
-	// `maxTokens` is intentionally not forwarded: transformRequestBody strips
-	// `max_output_tokens`/`max_completion_tokens` (the Codex backend rejects
-	// caller-supplied output caps). Sampling controls (`temperature`, `top_p`,
-	// `top_k`, `min_p`, `presence_penalty`, `repetition_penalty`,
-	// `frequency_penalty`, `stop`) are likewise refused with
-	// `{"detail":"Unsupported parameter: temperature"}` etc., so we drop
-	// everything from `StreamOptions` rather than forwarding any of them.
-	// (#3117 — codex-rs sends none of these either.)
+	// Drop sampling and maxTokens controls unsupported by Codex backend.
 	applyOpenAIServiceTier(params, options?.serviceTier, model);
 	if (context.tools && context.tools.length > 0) {
 		params.tools = convertOpenAICodexResponsesTools(context.tools, model);
@@ -1537,10 +1395,6 @@ async function openCodexWebSocketTransport(
 }> {
 	const canAppendBeforeRequest = websocketState.canAppend === true;
 	const chainedBody = buildCodexChainedRequestBody(requestContext.transformedBody, websocketState);
-	// WebSocket frames cannot carry per-request HTTP headers. Canonical Codex
-	// request identity is already in `client_metadata`; connection-scoped
-	// compatibility values that can change after the upgrade ride alongside it
-	// on every `response.create`.
 	const websocketClientMetadata = { ...(chainedBody.client_metadata ?? {}) };
 	if (requestContext.responsesLite) {
 		websocketClientMetadata[CODEX_WS_RESPONSES_LITE_CLIENT_METADATA_KEY] = "true";
@@ -1570,9 +1424,6 @@ async function openCodexWebSocketTransport(
 		requestContext.requestMetadata,
 	);
 	const requestBodyForState = structuredCloneJSON(requestContext.transformedBody);
-	// `onPayload` may rewrite the outgoing frame (e.g. drop `stream_options`);
-	// recorded state must reflect what was actually sent — the sequential-cutoff
-	// summary decoder keys off it.
 	if (websocketRequest.stream_options === undefined) {
 		delete requestBodyForState.stream_options;
 	} else {
@@ -1621,12 +1472,7 @@ function getCodexTurnStartedAtUnixMs(context: Context): number {
 	return Date.now();
 }
 
-/**
- * True when the request continues the current turn (everything after the
- * last assistant message is tool results), false when a new user turn starts.
- * Mirrors codex-rs, which scopes `x-codex-turn-state` to a single turn and
- * clears it when the next one begins.
- */
+/** True when request continues current turn with tool results. */
 function isCodexWithinTurnContinuation(context: Context): boolean {
 	for (let i = context.messages.length - 1; i >= 0; i--) {
 		const role = context.messages[i]?.role;
@@ -1651,11 +1497,7 @@ async function openCodexSseTransport(
 	const canAppendBeforeRequest = state?.canAppend === true;
 	let wireBody = body;
 	const prepareBody = async (): Promise<RequestBody> => {
-		// Serialize once. The hook, when present, gets an isolated parse of
-		// exactly those bytes; when no extension handles the event the wire
-		// object is the untouched original and the recorded bytes are reused.
-		// structuredCloneJSON + stringify measured 82ms on a 32MiB context where
-		// serialize-once costs 9ms — paid on every attempt before the first byte.
+		// Serialize payload once for logging and request dispatch.
 		const bodyJson = JSON.stringify(body);
 		let wireParams = body;
 		if (options?.onPayload) {
@@ -1671,8 +1513,6 @@ async function openCodexSseTransport(
 		requestContext.wireBodyJson = wireParams === body ? bodyJson : JSON.stringify(wireParams);
 		return wireParams;
 	};
-	// Preserve payload capture for callers that intentionally use an
-	// already-aborted signal without issuing a physical request.
 	if (requestSetup.requestSignal.aborted) await prepareBody();
 	const handle = await openCodexSseEventStream(
 		requestContext.url,
@@ -1730,9 +1570,6 @@ function createOutputBlockForItem(item: CodexEventItem): CodexOutputBlock | null
 		};
 	}
 	if (item.type === "custom_tool_call") {
-		// Wire name flows through unchanged; the agent-loop dispatcher also
-		// matches `Tool.customWireName`. Reuse `partialJson` as the
-		// accumulation buffer for the raw input string.
 		return {
 			type: "toolCall",
 			id: encodeResponsesToolCallId(item.call_id, item.id),
@@ -1754,8 +1591,7 @@ function getOutputBlockStartEventType(block: CodexOutputBlock): "thinking_start"
 const CODEX_STALE_PREVIOUS_RESPONSE_CODES: Record<string, true> = {
 	// OpenAI-standard code for an expired/missing `previous_response_id` chain.
 	previous_response_not_found: true,
-	// Proxy-specific: upstream response anchor expired. Same recovery class —
-	// retry the turn with full context and no `previous_response_id`.
+	// Replay turn with full context on expired response anchor.
 	codex_previous_response_stale: true,
 };
 
@@ -1768,12 +1604,7 @@ function isCodexStalePreviousResponseError(error: unknown): boolean {
 	) {
 		return true;
 	}
-	// Message-based fallback for providers/proxies that report the condition
-	// without a canonical code. Also covers "unsupported": the backend
-	// intermittently rejects the parameter outright with
-	// `{"detail":"Unsupported parameter: previous_response_id"}` (no
-	// `error.code`); treat it like a stale chain so the turn replays with full
-	// context instead of surfacing the 400.
+	// Stale chain fallback when previous_response_id is rejected.
 	return (
 		/previous[ _]?response/i.test(error.message) &&
 		/not[ _]?found|invalid|expired|stale|unsupported/i.test(error.message)
@@ -1803,14 +1634,7 @@ async function handleCodexStreamFailure(context: CodexStreamFailureContext, erro
 	return output;
 }
 
-/**
- * Owns one `streamOpenAICodexResponses` call: the request scaffolding
- * (model/output/stream/options/request context) plus the per-attempt
- * {@link CodexStreamRuntime}. Drives the event loop in {@link process}, applies
- * the transport-fallback / retry recovery ladder, and emits the final message
- * in {@link finalize}. The runtime object is mutated in place across retries
- * (event stream and accumulators are swapped/reset), never reassigned.
- */
+/** Coordinates streaming request execution, retries, and finalization. */
 class CodexStreamProcessor {
 	runtime: CodexStreamRuntime;
 	model: Model<"openai-codex-responses">;
@@ -1842,12 +1666,7 @@ class CodexStreamProcessor {
 		this.startTime = init.startTime;
 	}
 
-	/**
-	 * Whether the request actually sent (post-`onPayload`) opted into
-	 * sequential-cutoff summary delivery. Atomic `.done` events are preferred;
-	 * incremental deltas remain buffered as a compatibility fallback when a
-	 * transport emits them instead.
-	 */
+	/** Whether request opted into summary delivery. */
 	get #sequentialCutoffSummaries(): boolean {
 		return this.runtime.requestBodyForState.stream_options?.reasoning_summary_delivery === "sequential_cutoff";
 	}
@@ -1890,10 +1709,7 @@ class CodexStreamProcessor {
 				output.content.push(this.runtime.currentBlock);
 				contentIndex = output.content.length - 1;
 			}
-			// Track every open item by every stable key the wire gives us. `item.id`
-			// is best; `output_index` preserves idless function/custom tool calls and
-			// keeps their final args authoritative when only `output_item.done`
-			// carries the full payload.
+			// Track open output items by item.id or output_index.
 			const itemId = typeof (item as { id?: string }).id === "string" ? (item as { id: string }).id : undefined;
 			const outputIndex =
 				typeof rawEvent.output_index === "number" && Number.isFinite(rawEvent.output_index)
@@ -1926,10 +1742,7 @@ class CodexStreamProcessor {
 			const entry = this.runtime.openItemForEvent(rawEvent);
 			const delta = typeof rawEvent.delta === "string" ? rawEvent.delta : "";
 			if (this.#sequentialCutoffSummaries) {
-				// Some Codex transports still emit incremental summary deltas even
-				// after opting into sequential-cutoff delivery. Buffer them until
-				// output_item.done so atomic `.done` events can supersede them
-				// without duplicate UI output.
+				// Buffer incremental summary deltas until output_item.done.
 				this.runtime.queueSummaryDelta(entry, delta);
 				return firstTokenTime;
 			}
@@ -2104,11 +1917,7 @@ class CodexStreamProcessor {
 		const item = structuredCloneJSON(rawItem) as CodexEventItem;
 		runtime.nativeOutputItems.push(item as unknown as Record<string, unknown>);
 
-		// Match the finalization to the OPEN ITEM that started this block, not the
-		// singleton current — interleaved items can finish out of order, so the
-		// most-recently-added block may belong to a sibling (#2619). Some Codex
-		// function/custom tool items omit `id`; in that case `output_index` still
-		// routes `output_item.done` to the block that received `output_item.added`.
+		// Match finalization to open item by ID or output_index.
 		const itemId = "id" in item && typeof item.id === "string" ? item.id : "";
 		const entry = (itemId ? runtime.openItems.get(itemId) : null) ?? runtime.openItemForEvent(rawEvent);
 		const block = entry?.block ?? null;
@@ -2154,13 +1963,11 @@ class CodexStreamProcessor {
 				arguments: parseStreamingJson(item.arguments || "{}"),
 			};
 			if (block?.type === "toolCall") {
-				// Persist the authoritative final args on the stored block; the throttled
-				// delta parser may have left block.arguments stale (often `{}`).
+				// Persist authoritative final args on block.
 				block.arguments = toolCall.arguments;
 				clearStreamingPartialJson(block);
 			}
-			// Detach so a late/duplicate arguments.delta cannot append to the
-			// finished block or trip the whitespace-loop guard against it.
+			// Detach item entry on close.
 			runtime.closeOpenItem(entry);
 			runtime.canSafelyReplayWebsocketOverSse = false;
 			stream.push({ type: "toolcall_end", contentIndex, toolCall, partial: output });
@@ -2209,9 +2016,6 @@ class CodexStreamProcessor {
 		const state = runtime.websocketState;
 		if (state) {
 			if (runtime.transport !== "websocket") {
-				// SSE turns never chain (previous_response_id is websocket-only on this
-				// endpoint); a completed SSE turn also invalidates any websocket append
-				// baseline, which no longer matches the transcript.
 				resetCodexWebSocketAppendState(state);
 			} else {
 				state.lastRequest = structuredCloneJSON(runtime.requestBodyForState);
@@ -2253,24 +2057,11 @@ class CodexStreamProcessor {
 		return false;
 	}
 
-	/**
-	 * Recover from the degenerate whitespace-only tool-call argument loop
-	 * ({@link CodexWhitespaceToolCallLoopError}). The interrupted function call has
-	 * no usable arguments, so drop the partial turn and replay the request from
-	 * scratch — bounded by {@link CODEX_WHITESPACE_LOOP_RETRY_LIMIT}. Sampling
-	 * nondeterminism usually breaks the loop on a fresh attempt; once the budget is
-	 * exhausted the original error is surfaced (now without the junk tool call
-	 * polluting the message). Replay is refused once any visible content was already
-	 * delivered to the consumer — a finished tool call (`canSafelyReplayWebsocketOverSse`),
-	 * or any streamed text/commentary block still in `output.content` after the degenerate
-	 * tool call is dropped — because replaying re-emits already-streamed deltas.
-	 */
+	/** Recovers from whitespace-only tool-call loop by replaying request. */
 	async #tryRecoverWhitespaceToolCallLoop(error: unknown): Promise<boolean> {
 		if (!(error instanceof CodexWhitespaceToolCallLoopError)) {
 			return false;
 		}
-		// Drop the half-built degenerate tool call whether or not we retry, so it
-		// never reaches the caller's message.
 		this.#dropTrailingDegenerateToolCall();
 		if (
 			this.runtime.whitespaceLoopRetries >= CODEX_WHITESPACE_LOOP_RETRY_LIMIT ||
@@ -2314,11 +2105,7 @@ class CodexStreamProcessor {
 		return true;
 	}
 
-	/**
-	 * Pop the half-built degenerate tool-call block (the one whose arguments were
-	 * nothing but whitespace) off the output accumulator so it never surfaces in the
-	 * caller's message. Any legitimate content produced before it is preserved.
-	 */
+	/** Removes half-built degenerate tool-call block from output. */
 	#dropTrailingDegenerateToolCall(): void {
 		const { runtime, output } = this;
 		const block = runtime.currentBlock;
@@ -2328,14 +2115,7 @@ class CodexStreamProcessor {
 		runtime.closeOpenItem(runtime.currentEntry);
 	}
 
-	/**
-	 * Handles `websocket_connection_limit_reached` errors by closing the stale connection
-	 * and opening a fresh websocket. If content has already been emitted to the caller,
-	 * falls back to SSE replay (same as other WS failures) since we cannot safely
-	 * continue a partial response on a new connection. If a tool call was already
-	 * delivered (`canSafelyReplayWebsocketOverSse` is false), the error surfaces
-	 * instead — replaying would re-emit the same tool calls.
-	 */
+	/** Handles websocket_connection_limit_reached with reconnect or SSE replay. */
 	async #tryReconnectWebSocketOnConnectionLimit(error: unknown): Promise<boolean> {
 		if (!(error instanceof CodexProviderStreamError) || error.code !== "websocket_connection_limit_reached") {
 			return false;
@@ -2351,8 +2131,6 @@ class CodexStreamProcessor {
 		resetCodexWebSocketAppendState(websocketState);
 
 		if (this.output.content.length > 0 && !this.runtime.canSafelyReplayWebsocketOverSse) {
-			// A toolcall_end already reached the consumer; a full replay would emit
-			// the same tool calls a second time. Let the error surface instead.
 			return false;
 		}
 
@@ -2363,8 +2141,6 @@ class CodexStreamProcessor {
 			});
 
 		if (this.output.content.length > 0) {
-			// Content already emitted to the caller — cannot safely continue on a new WS.
-			// Reset and replay the full request over SSE.
 			this.runtime.resetAccumulators();
 			resetOutputState(this.model, this.output);
 			this.firstTokenTime = undefined;
@@ -2373,11 +2149,7 @@ class CodexStreamProcessor {
 			return true;
 		}
 
-		// No content emitted yet — clear accumulator state from the failed attempt
-		// (blockless native items can exist even with empty content) and reconnect
-		// over websocket, bounded by the shared retry budget: an account-scoped
-		// limit can reject every fresh connection, and an unbounded loop would
-		// hammer the endpoint with zero backoff.
+		// Reconnect over WebSocket when no content has been emitted yet.
 		this.runtime.resetAccumulators();
 		this.firstTokenTime = undefined;
 		if (this.runtime.websocketStreamRetries >= CODEX_WEBSOCKET_RETRY_BUDGET) {
@@ -2468,9 +2240,6 @@ class CodexStreamProcessor {
 
 		if (!activateFallback) {
 			this.runtime.websocketStreamRetries += 1;
-			// Full re-send on a fresh socket: clear accumulator state from the failed
-			// attempt. Content is empty here, but blockless native items (e.g.
-			// web_search_call) may already have accumulated.
 			this.runtime.resetAccumulators();
 			this.firstTokenTime = undefined;
 			await scheduler.wait(CODEX_WEBSOCKET_RETRY_DELAY_MS * Math.max(1, this.runtime.websocketStreamRetries), {
@@ -2489,9 +2258,6 @@ class CodexStreamProcessor {
 	}
 
 	async #tryRetryProviderError(error: unknown): Promise<boolean> {
-		// A stall that has already used the turn's declared first-event budget is
-		// not retried: nothing streamed, the endpoint said nothing, and another
-		// attempt can only push the caller further past the number it declared.
 		const stallOutlivedBudget = isPreResponseStall(error) && this.requestSetup.firstEventBudget.spent();
 		if (
 			!(error instanceof CodexProviderStreamError && error.retryable) ||
@@ -2553,9 +2319,7 @@ class CodexStreamProcessor {
 			state.lastTransport = next.transport;
 		} catch (error) {
 			if (!(error instanceof CodexWebSocketTransportError)) throw error;
-			// Reopen failed at the websocket layer (handshake refused, connect timeout, etc.).
-			// Activate fallback so subsequent turns use SSE, and replay this turn over SSE
-			// instead of surfacing a raw transport error to the caller.
+			// Activate SSE fallback on WebSocket handshake/connect failure.
 			recordCodexWebSocketFailure(state, true, { cause: "reopen-failed", error: error.message });
 			CODEX_DEBUG &&
 				logger.debug("[codex] codex websocket reopen failed, falling back to SSE", {
@@ -2644,24 +2408,13 @@ const streamOpenAICodexResponsesOnce = (
 
 		try {
 			requestContext = await buildCodexRequestContext(model, context, options, output);
-			// Anchors are read off the SERIALIZED body, not off the options, for the
-			// same reason the Anthropic path counts markers after placement: an intent
-			// to cache that never reached the wire is exactly the defect class this
-			// module exists to catch. On this surface the only anchor is
-			// `prompt_cache_key`; Codex rejects `prompt_cache_breakpoint` outright
-			// (see `resolveOpenAIPromptCachePolicy`), so one key means one anchor.
-			//
-			// The latched failure from a previous turn is raised here, after the body
-			// is built but before the request is opened, so nothing is paid for twice.
+			// Verify prompt cache key presence on serialized body.
 			if (cacheTracker) {
 				const pending = takePendingCacheFailure(cacheTracker, cacheKey);
 				if (pending) throw new CacheRejectedError(pending, model.provider, model.id);
 				cacheTracked = beginCacheTrackedRequest(cacheTracker, {
 					anchors: typeof requestContext.transformedBody.prompt_cache_key === "string" ? 1 : 0,
 					retention: resolveCacheRetention(options?.cacheRetention),
-					// The Responses family reports `cached_tokens` and nothing about
-					// writes, so a cold first turn is indistinguishable from an ignored
-					// key unless this identity has read before.
 					reportsCacheWrites: false,
 					...(cacheKey === undefined ? {} : { cacheKey }),
 				});
@@ -2689,9 +2442,6 @@ const streamOpenAICodexResponsesOnce = (
 			const completion = await processingContext.process();
 			processingContext.firstTokenTime = completion.firstTokenTime;
 			const message = processingContext.finalize(completion);
-			// Judged only on a completed, finalized turn: `finalize` is where usage
-			// becomes final, and judging a truncated stream would report a cache
-			// defect for a dropped connection.
 			if (cacheTracker && cacheTracked) {
 				const { verdict, decision } = recordCacheOutcome(
 					cacheTracker,
@@ -2742,8 +2492,6 @@ const streamOpenAICodexResponsesOnce = (
 				const failure = await handleCodexStreamFailure(failureContext, error);
 				stream.push({ type: "error", reason: failure.stopReason as "error" | "aborted", error: failure });
 			} catch (failureError) {
-				// Last resort — the failure handler itself threw (exotic error object or
-				// request-dump formatting). Never leave the stream un-ended.
 				logger.error("Codex stream failure handler threw", {
 					error: errorMessage(failureError),
 				});
@@ -2760,9 +2508,7 @@ const streamOpenAICodexResponsesOnce = (
 	return stream;
 };
 
-/**
- * Retries Codex terminal completions that contain no visible assistant output.
- */
+/** Retries empty terminal completions. */
 export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"> = (model, context, options) =>
 	withEmptyCompletionRetry(model, context, options, streamOpenAICodexResponsesOnce, { providerRetriesStalls: true });
 
@@ -2830,8 +2576,6 @@ function getCodexWebSocketSessionKey(
 ): string | undefined {
 	if (!normalizedSessionId) return undefined;
 	const credentialKey = accountId ? `account:${accountId}` : `token:${Bun.hash(apiKey).toString(36)}`;
-	// Responses Lite is connection-scoped on the WebSocket upgrade, so lite and
-	// non-lite turns must never share a pooled socket or append state.
 	const liteSuffix = responsesLite ? ":lite" : "";
 	return `${credentialKey}:${baseUrl}:${model.id}:${normalizedSessionId}${liteSuffix}`;
 }
@@ -2864,32 +2608,14 @@ function resetCodexWebSocketAppendState(state: CodexWebSocketSessionState): void
 	state.lastResponseItems = undefined;
 }
 
-/**
- * Record a codex websocket failure, and tear the socket down.
- *
- * `activateFallback` is the permanent decision: once it is taken, every
- * remaining turn in this session runs over SSE instead of the websocket
- * transport. That is a real degrade, not a neutral choice, and it used to
- * happen with no output at all: the three call sites logged it through
- * `CODEX_DEBUG && logger.debug(...)`, so on a default install the transport
- * changed underneath the user and nothing anywhere said so. Someone watching
- * their turns get slower had nothing to look at.
- *
- * The report lives here rather than at the call sites because this is the one
- * place the `disableWebsocket` flag flips, so it is announced exactly once per
- * session however the fallback was reached, and the retries that do NOT
- * activate it stay quiet.
- */
+/** Records WebSocket failure and switches session to SSE fallback. */
 export function recordCodexWebSocketFailure(
 	state: CodexWebSocketSessionState,
 	activateFallback: boolean,
 	reason?: { error?: string; cause?: string },
 ): void {
 	resetCodexWebSocketAppendState(state);
-	// Never tear down a CONNECTING socket: it belongs to a concurrent caller's
-	// in-flight handshake (prewarm/request race); closing it would reject that
-	// caller with a fatal "websocket closed before open" and disable websockets
-	// for the whole session.
+	// Do not tear down CONNECTING socket during concurrent handshake.
 	if (state.connection && !state.connection.isConnecting()) {
 		state.connection.close("fallback");
 		state.connection = undefined;
@@ -3241,15 +2967,7 @@ function recordCodexTurnUsageDiagnostics(
 	CODEX_DEBUG && logger.debug("[codex] codex turn diagnostics", { diagnostics: state.stats.lastTurn });
 }
 
-/**
- * Shape the next websocket turn's request body: when the session's append
- * baseline is intact (same options, strict history prefix), chain via
- * `previous_response_id` + delta-only `input`; otherwise break the chain and
- * replay the full transcript. SSE requests never chain — the HTTP endpoint's
- * request schema has no `previous_response_id` (codex-rs carries it only on
- * websocket `response.create` frames) and strict gateway validators 400 it
- * with `{"detail":"Unsupported parameter: previous_response_id"}`.
- */
+/** Builds chained or full request body for next WebSocket turn. */
 function buildCodexChainedRequestBody(
 	requestBody: RequestBody,
 	state: CodexWebSocketSessionState | undefined,
@@ -3262,8 +2980,6 @@ function buildCodexChainedRequestBody(
 		return { ...requestBody, previous_response_id: state.lastResponseId, input: appendInput };
 	}
 	if (chainable && state) {
-		// Chaining was eligible but the prefix/options check failed: history
-		// mutated or options changed — break the chain.
 		CODEX_DEBUG &&
 			logger.debug("[codex] codex append reset", {
 				hadTurnStateHeader: Boolean(state.turnState),
@@ -3317,20 +3033,11 @@ class CodexWebSocketConnection {
 	#removePongListener?: () => void;
 	#handshakeHeaders?: Headers;
 	#debugResponseLog?: RequestDebugResponseLog;
-	/**
-	 * Wall-clock of the most recent inbound activity on this socket — any
-	 * decoded message, any pong, or the moment the handshake completed. Used
-	 * by {@link isHealthyForReuse} so we don't write a continuation frame into
-	 * a TCP-open-but-server-evicted socket whose `readyState` still says OPEN.
-	 */
+	/** Timestamp of most recent inbound socket activity. */
 	#lastInboundAt = 0;
 	/** Wall-clock of the last heartbeat ping we issued; 0 if none yet. */
 	#lastPingAt = 0;
-	/**
-	 * Most recent `response.id` accepted on this socket, retained across
-	 * requests. Lets the next request drop a trailing/duplicate frame from the
-	 * previous (cleanly-completed) response that outlived the queue drain.
-	 */
+	/** Most recent response.id on this socket. */
 	#lastSeenResponseId?: string;
 
 	constructor(url: string, headers: Record<string, string>, options: CodexWebSocketConnectionOptions) {
@@ -3348,25 +3055,11 @@ class CodexWebSocketConnection {
 		return this.#connectPromise !== undefined;
 	}
 
-	/**
-	 * Stricter variant of {@link isOpen} for the connection-pool reuse gate.
-	 * Refuses sockets that have been silent past {@link CODEX_WEBSOCKET_MAX_IDLE_REUSE_MS}.
-	 *
-	 * Bun's `WebSocket` does not always surface server-side eviction (no
-	 * `onclose`, no `onerror`), so a socket can sit in readyState OPEN long
-	 * after the upstream has dropped it. Reusing such a socket sends the next
-	 * `response.create` into a half-open write buffer and parks the reader
-	 * until the first-event / idle timeout fires (issue #1450). Forcing a
-	 * reconnect on any suspect socket trades a sub-second handshake for a
-	 * 60–300 s stall.
-	 */
+	/** Checks socket is open and quiet period does not exceed reuse ceiling. */
 	isHealthyForReuse(): boolean {
 		if (!this.isOpen()) return false;
 		const maxIdleMs = CODEX_WEBSOCKET_MAX_IDLE_REUSE_MS;
 		if (maxIdleMs <= 0) return true;
-		// Initial connect sets #lastInboundAt; any later message or pong refreshes
-		// it. A zero value means the field was never initialized, which itself is
-		// a desync — treat as unhealthy.
 		if (this.#lastInboundAt === 0) return false;
 		return Date.now() - this.#lastInboundAt <= maxIdleMs;
 	}
@@ -3474,9 +3167,7 @@ class CodexWebSocketConnection {
 			this.#push(null);
 		};
 		socket.onmessage = event => {
-			// Stamp inbound activity before parsing so even malformed frames refresh
-			// the liveness clock — what matters for reuse health is that the upstream
-			// is still talking to us, not that every frame is well-formed.
+			// Record inbound activity timestamp before parsing.
 			this.#lastInboundAt = Date.now();
 			this.#writeDebugWebSocketFrame(event.data);
 			try {
@@ -3525,16 +3216,7 @@ class CodexWebSocketConnection {
 		}
 		this.#activeRequest = true;
 		this.#streamObserver = onSseEvent;
-		// Drain any non-error frames left over from a prior request before sending.
-		// `CodexStreamProcessor.process` breaks its `for-await` on the terminal event,
-		// which interrupts our generator at `yield next` (the post-yield `break`
-		// never runs). Any frame that landed between the consumer's break and the
-		// generator's `finally` lingers in `#queue` and would otherwise become the
-		// first frame of THIS request — a stale `response.completed` would end the
-		// turn immediately with empty output, and a stale non-progress frame would
-		// flip `sawFirstEvent` and silently downgrade the first-event timeout to
-		// the longer idle timeout. Transport errors are preserved so we surface
-		// the death signal instead of writing into a dead socket.
+		// Drain lingering data frames from previous request before sending.
 		this.#dropStaleFrames();
 		const onAbort = () => {
 			this.close("aborted");
@@ -3574,8 +3256,6 @@ class CodexWebSocketConnection {
 			let lastProgressEventType: string | undefined;
 			let lastEventAt = lastProgressAt;
 			let lastEventType: string | undefined;
-			// Cross-request frame guard: lock onto this response's id and reject
-			// frames belonging to another response interleaved on the reused socket.
 			let activeResponseId: string | undefined;
 			let lastSequence: number | undefined;
 			const priorResponseId = this.#lastSeenResponseId;
@@ -3621,33 +3301,17 @@ class CodexWebSocketConnection {
 					throw new CodexWebSocketTransportError(`websocket closed before response completion`);
 				}
 				const eventType = typeof next.type === "string" ? next.type : "";
-				// Cross-request frame guard. The socket is reused across turns. Upstream
-				// codex-rs leans on the protocol guarantee that nothing follows a
-				// response's terminal event, but our queue can still surface a trailing
-				// or duplicate frame from a cleanly-completed prior response after
-				// #dropStaleFrames() drained the queue at send time. Attaching such a
-				// frame to THIS turn misattributes an earlier turn's output (a stale
-				// `response.completed` ends the turn early; a stale item makes the model
-				// see an unrelated call). Only lifecycle events (created/completed/
-				// failed/incomplete) carry a `response.id` — exactly the harmful ones —
-				// so key the guard on it and let idless frames (deltas, the rate-limit/
-				// metadata preamble, created-less streams) pass through, matching
-				// upstream rather than gating on `response.created`.
+				// Cross-request frame guard matching response.id to active request.
 				const frameResponseId = extractCodexFrameResponseId(next);
 				const frameSequence = extractCodexFrameSequenceNumber(next);
 				if (frameResponseId !== undefined) {
 					if (activeResponseId === undefined) {
 						if (priorResponseId !== undefined && frameResponseId === priorResponseId) {
-							// Trailing/duplicate frame of the previous response that
-							// outlived the drain. Drop without locking or advancing the
-							// first-event clocks so our own response can still start.
 							continue;
 						}
 						activeResponseId = frameResponseId;
 					} else if (frameResponseId !== activeResponseId) {
-						// A different response is interleaving on the socket; the idless
-						// deltas that follow are indistinguishable, so fail closed
-						// (retryable) instead of risking misattribution.
+						// Fail closed if foreign response interleaves on socket.
 						this.close("stale-frame");
 						throw new CodexWebSocketTransportError(
 							`websocket frame for response ${frameResponseId} interleaved into active response ${activeResponseId}`,
@@ -3727,8 +3391,6 @@ class CodexWebSocketConnection {
 		this.#lastPingAt = 0;
 		const socketEventTarget = socket as EventTarget;
 		const onPong = () => {
-			// Pongs are inbound activity — refresh the reuse-health clock so a quiet
-			// but ping-responsive socket stays trustworthy across requests.
 			this.#lastInboundAt = Date.now();
 		};
 		if (
@@ -3744,14 +3406,7 @@ class CodexWebSocketConnection {
 				this.#stopHeartbeat();
 				return;
 			}
-			// Fail-closed on missing pongs even when no pong has ever been observed.
-			// The previous `#observedPong &&` guard disabled the timeout entirely on
-			// runtimes where Bun does not surface a `pong` event for our outgoing
-			// pings (issue #1450) — letting truly dead sockets sail through the
-			// pool until the per-request first-event / idle timeout (60–300 s)
-			// finally fired. Instead, trigger on inbound silence: if we sent a
-			// ping at least `pongTimeoutMs` ago and have received no traffic of
-			// any kind (data frame or pong) since, the socket is unhealthy.
+			// Trigger unhealthy on inbound silence past pong timeout.
 			const pongTimeoutMs = CODEX_WEBSOCKET_PONG_TIMEOUT_MS;
 			if (
 				pongTimeoutMs > 0 &&
@@ -3799,14 +3454,7 @@ class CodexWebSocketConnection {
 		this.#wakeWaiters();
 	}
 
-	/**
-	 * Discard data frames from a previous request that remained in `#queue`
-	 * after the consumer broke out on the terminal event. Preserves any queued
-	 * transport error (from `onerror` / `onclose` / `#failQueue`) so the next
-	 * `#nextMessage` surfaces the death signal instead of waiting it out.
-	 *
-	 * Returns the number of frames dropped (test/debug visibility only).
-	 */
+	/** Discards lingering data frames from previous request. */
 	#dropStaleFrames(): number {
 		if (this.#queue.length === 0) return 0;
 		const surviving = this.#queue.filter(item => item instanceof Error);
@@ -3828,11 +3476,7 @@ class CodexWebSocketConnection {
 
 	#push(item: Record<string, unknown> | Error | null): void {
 		if (item instanceof Error) {
-			// Append after frames already received instead of wiping them: a queued
-			// terminal event (e.g. `response.completed` followed by an eager server
-			// close) must still reach the consumer rather than morph into a spurious
-			// transport failure. `#dropStaleFrames` keeps errors across requests, so
-			// the death signal still surfaces if the data frames go unconsumed.
+			// Append error after already-queued frames.
 			this.#queue.push(item);
 			this.#wakeWaiters();
 			return;
@@ -3887,21 +3531,13 @@ async function getOrCreateCodexWebSocketConnection(
 	signal?: AbortSignal,
 ): Promise<CodexWebSocketConnection> {
 	const headerRecord = headersToRecord(headers);
-	// Join an in-flight handshake instead of tearing it down: closing a
-	// CONNECTING socket rejects the concurrent caller (prewarm racing the first
-	// request) with a fatal "websocket closed before open", which would disable
-	// websockets for the entire session.
-	// Bounded re-join: a fresh handshake may have been started by yet another
-	// caller while we awaited the previous one.
+	// Join in-flight handshake if connecting.
 	for (let joinAttempt = 0; joinAttempt < 3; joinAttempt += 1) {
 		const pending = state.connection;
 		if (!pending || pending.isOpen() || !pending.isConnecting()) break;
 		try {
 			await pending.connect(signal);
-		} catch {
-			// The handshake owner surfaces its own failure; re-evaluate below
-			// (state.connection may have been replaced or cleared).
-		}
+		} catch {}
 	}
 	if (state.connection?.isOpen()) {
 		if (!state.connection.matchesAuth(headerRecord)) {
@@ -3911,11 +3547,7 @@ async function getOrCreateCodexWebSocketConnection(
 			logger.time("codexWs:reuseOpenSocket");
 			return state.connection;
 		} else {
-			// Open in readyState but no inbound traffic recently — likely server-
-			// evicted (issue #1450). Force a fresh handshake instead of writing
-			// `response.create` into a half-open buffer and waiting out the
-			// first-event timeout. Drop append state because the new socket
-			// won't carry the prior `previous_response_id` context.
+			// Force fresh handshake if quiet period exceeds idle reuse ceiling.
 			CODEX_DEBUG && logger.debug("[codex] codex websocket reuse rejected by health check", {});
 			state.connection.close("stale-reuse");
 			resetCodexWebSocketAppendState(state);
@@ -3972,16 +3604,7 @@ async function openCodexSseEventStream(
 			sentTurnStateHeader: headers.has(X_CODEX_TURN_STATE_HEADER),
 			sentModelsEtagHeader: headers.has(X_MODELS_ETAG_HEADER),
 		});
-	// `wrapCodexSseStream` arms the iterator-level idle watchdog only after this
-	// fetch resolves. Each transport attempt needs its own pre-response timer:
-	// the retry loop's base signal remains reserved for caller cancellation, so
-	// an internal timeout stays retryable while an explicit abort fails fast.
-	//
-	// Retryable is not unbounded. A per-attempt fence knows nothing about the
-	// attempts before it, so a silent endpoint used to cost the caller's whole
-	// first-event budget once per attempt, plus the ladder's backoff between
-	// them. `firstEventBudget` is the turn's single clock: once it is spent, a
-	// stall stops being retryable and the failure surfaces.
+	// Shared first-event budget across retry attempts.
 	let clearPreResponseTimeout: (() => void) | undefined;
 	const fetchAttempt: FetchImpl = async (input, init) => {
 		try {
@@ -4006,12 +3629,6 @@ async function openCodexSseEventStream(
 			},
 			maxAttempts: CODEX_MAX_RETRIES + 1,
 			defaultDelayMs: attempt => CODEX_RETRY_DELAY_MS * (attempt + 1),
-			// The caller's declared cap wins. Codex's own five-minute budget is
-			// what a ChatGPT-plan rate limit needs when nobody said otherwise,
-			// but a caller that declares `maxRetryDelayMs` has named the longest
-			// wait it will tolerate, and a hardcoded ceiling above it turned a
-			// `retry-after: 120` into two minutes of silence the caller had
-			// forbidden.
 			maxDelayMs: maxRetryDelayMs ?? CODEX_RATE_LIMIT_BUDGET_MS,
 			shouldRetryError: error => !(isPreResponseStall(error) && firstEventBudget.spent()),
 			fetch: fetchAttempt,
@@ -4109,13 +3726,7 @@ function createCodexHeaders(
 	return headers;
 }
 
-/**
- * Codex diagnostics redact two disjoint things. `redactDiagnosticHeaders` owns the
- * credential half for every provider, so a spelling this file never heard of
- * (`x-api-key`, `proxy-authorization`, `x-goog-api-key`) is covered without an entry
- * here. What is left is the Codex identity set: an account, conversation or turn id
- * is not a credential, and no other provider sends one.
- */
+/** Redacts Codex request identity headers for logging. */
 function isCodexIdentityHeader(lower: string): boolean {
 	return (
 		lower.includes("account") ||
@@ -4161,9 +3772,7 @@ function convertMessages(model: Model<"openai-codex-responses">, context: Contex
 
 	const transformedMessages = transformMessages(context.messages, model, normalizeToolCallId);
 	let msgIndex = 0;
-	// Track call_ids that originated as custom tool calls so paired tool-result
-	// messages can be replayed as `custom_tool_call_output` rather than
-	// `function_call_output` (OpenAI rejects mismatched pairs).
+	// Track custom tool call IDs for output matching.
 	const customCallIds = new Set<string>();
 	const knownCallIds = new Set<string>();
 
@@ -4212,9 +3821,6 @@ function convertMessages(model: Model<"openai-codex-responses">, context: Contex
 
 		if (msg.role === "assistant") {
 			const assistantMsg = msg as AssistantMessage;
-			// Native items are model-bound (reasoning carries encrypted content
-			// minted by the producing model); after a mid-session model switch fall
-			// back to block re-encode, which strips foreign signatures.
 			const providerPayload =
 				assistantMsg.api === model.api && assistantMsg.model === model.id
 					? getOpenAIResponsesHistoryPayload(assistantMsg.providerPayload, model.provider, assistantMsg.provider)
@@ -4338,25 +3944,13 @@ export function convertOpenAICodexResponsesTools(
 			name: tool.name,
 			description: tool.description || "",
 			parameters,
-			// See openai-responses.ts::convertTools — explicit `strict: false` is
-			// preserved on the wire because some backends distinguish it from
-			// omitted (#4336). `strict: true` still requires enforcement success,
-			// and the `VEYYON_NO_STRICT` global bypass MUST suppress the flag entirely
-			// so Codex proxies that reject the `strict` key stay silent.
+			// Handle strict flag forwarding and VEYYON_NO_STRICT bypass.
 			...(effectiveStrict ? { strict: true } : !NO_STRICT && tool.strict === false ? { strict: false } : {}),
 		};
 	});
 }
 
-/**
- * The fields a Codex failure event carries, wherever it nests them.
- *
- * Read field by field. The five schemas this replaced typed every field `unknown` and piped it
- * through a `typeof` check, so the schema library contributed nothing but its 362ms of module
- * evaluation, paid by every launch that loads a provider. The outer schema also could not fail --
- * it fell back to an all-`undefined` event -- so the three `instanceof type.errors` branches
- * below it were unreachable.
- */
+/** Extracts error fields from Codex failure payload. */
 interface CodexErrorDetail {
 	code?: string | undefined;
 	type?: string | undefined;
@@ -4390,10 +3984,7 @@ function readCodexErrorDetail(value: unknown): CodexErrorDetail | undefined {
 	};
 }
 
-/**
- * Always answers: an event this reader understands nothing of reads as an event with no fields,
- * which is what the callers below already treated as "not retryable, no message of its own".
- */
+/** Extracts Codex error event fields. */
 function readCodexFailureEvent(rawEvent: Record<string, unknown>): CodexFailureEvent {
 	const response = toFields(rawEvent.response);
 	return {
