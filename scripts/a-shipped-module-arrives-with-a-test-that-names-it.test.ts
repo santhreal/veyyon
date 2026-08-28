@@ -421,6 +421,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/web/search/providers/jina.ts",
 	"packages/coding-agent/src/web/search/providers/synthetic.ts",
 	"packages/collab-web/src/lib/use-guest.ts",
+	"packages/hashline/src/apply-helpers.ts",
 	"packages/metaharness/src/bench-report.ts",
 	"packages/metaharness/src/launch-args.ts",
 	"packages/metaharness/src/runner-helpers.ts",
