@@ -9,6 +9,7 @@ import { untilAborted } from "@veyyon/utils";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
+import { artifactFooter, truncateHead } from "../session/streaming-output";
 import {
 	Ellipsis,
 	fileHyperlink,
@@ -24,6 +25,7 @@ import { materializeReadUrlToFile, parseReadUrlTarget } from "./fetch";
 import { createFileRecorder, formatResultPath } from "./file-recorder";
 import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
 import { formatMatchLine } from "./match-line-format";
+import { inlineBudgetFor, saveOutputArtifact } from "./output-artifact";
 import type { OutputMeta } from "./output-meta";
 import { toPathList } from "./path-utils";
 import {
@@ -40,6 +42,7 @@ import {
 	replaceTabs,
 } from "./render-utils";
 import { isImmutableSearchSourcePath, resolveToolSearchScope } from "./search-scope";
+import { BROAD_SEARCH_INLINE_MAX_BYTES } from "./text-search";
 import { ToolError, throwIfAborted } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
@@ -499,7 +502,21 @@ export async function executeStructureSearch(
 			outputLines.push("", ...formatParseErrors(cappedParseErrors, parseErrorsTotal));
 		}
 
-		return toolResult(details).text(outputLines.join("\n")).done();
+		const rawOutput = outputLines.join("\n");
+		const budget = inlineBudgetFor(session, BROAD_SEARCH_INLINE_MAX_BYTES);
+		const headTruncation = truncateHead(rawOutput, {
+			maxBytes: budget,
+			maxLines: Number.MAX_SAFE_INTEGER,
+		});
+		let output = headTruncation.content;
+		if (headTruncation.truncated) {
+			const spillArtifactId = await saveOutputArtifact(session, "search-structure", rawOutput);
+			if (spillArtifactId) {
+				const sep = output.endsWith("\n") ? "" : "\n";
+				output += `${sep}${artifactFooter(spillArtifactId)}`;
+			}
+		}
+		return toolResult(details).text(output).done();
 	});
 }
 
