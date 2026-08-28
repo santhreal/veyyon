@@ -34,16 +34,16 @@ import type { EditTask } from "./tasks";
 import { loadTasksFromDir } from "./tasks";
 import { verifyExpectedFileSubset } from "./verify";
 
-const reproBarrelTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("repro-barrel-reexport"), {
+const reproBarrelTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("repro-barrel-reexport").text, {
 	noEscape: true,
 });
-const reproFeatureTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("repro-new-feature"), {
+const reproFeatureTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("repro-new-feature").text, {
 	noEscape: true,
 });
-const sigilEmissionTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("argot-sigil-emission"), {
+const sigilEmissionTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("argot-sigil-emission").text, {
 	noEscape: true,
 });
-const forcedAdoptionTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("argot-forced-adoption"), {
+const forcedAdoptionTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("argot-forced-adoption").text, {
 	noEscape: true,
 });
 

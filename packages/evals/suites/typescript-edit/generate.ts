@@ -31,17 +31,17 @@ import { allMutations, type Mutation, type MutationInfo, mutationCategoryMap } f
 import { typescriptEditFixturesArchive } from "./paths";
 import { typescriptEditSuitePrompts } from "./prompts/registry";
 
-const generateTaskEasyTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("generate-task-easy"), {
+const generateTaskEasyTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("generate-task-easy").text, {
 	noEscape: true,
 });
-const generateTaskMediumTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("generate-task-medium"), {
+const generateTaskMediumTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("generate-task-medium").text, {
 	noEscape: true,
 });
-const generateTaskHardTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("generate-task-hard"), {
+const generateTaskHardTemplate = Handlebars.compile(typescriptEditSuitePrompts.require("generate-task-hard").text, {
 	noEscape: true,
 });
 const generateTaskNightmareTemplate = Handlebars.compile(
-	typescriptEditSuitePrompts.require("generate-task-nightmare"),
+	typescriptEditSuitePrompts.require("generate-task-nightmare").text,
 	{ noEscape: true },
 );
 const execFile = util.promisify(childProcess.execFile);

@@ -76,7 +76,6 @@ const GRAMMARS: Readonly<Record<string, FlagGrammar>> = {
  * red until someone records whether it counts something.
  */
 const COUNT_FLAGS: Readonly<Record<string, readonly string[]>> = {
-	"deep-swe runner": ["limit", "repeats", "jobs"],
 	"search bench": ["iterations"],
 	"search disclosure bench": [],
 	"edit-prompt bench": ["limit"],
@@ -96,27 +95,6 @@ const COUNT_FLAGS: Readonly<Record<string, readonly string[]>> = {
 
 /** Every flag each grammar declares, valued and valueless together, sorted. */
 const DECLARED_FLAGS: Readonly<Record<string, readonly string[]>> = {
-	"deep-swe runner": [
-		"arms",
-		"binary",
-		"dry-run",
-		"help",
-		"jobs",
-		"limit",
-		"list",
-		"merge",
-		"model",
-		"out",
-		"reaggregate",
-		"repeats",
-		"replay-root",
-		"run-dir",
-		"system-comparison",
-		"systems",
-		"tasks",
-		"tasks-root",
-		"trial-timeout",
-	],
 	"search bench": ["arms", "help", "iterations", "json", "list", "reference", "suite", "type"],
 	"search disclosure bench": ["help"],
 	"edit-prompt bench": ["json", "label", "limit", "model"],
