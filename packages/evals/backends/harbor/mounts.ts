@@ -29,7 +29,7 @@ export function writeComposeOverlay(benchDir: string, cfg: Config, source: Sourc
 		lines.push(`      - "${path.join(source.depsDir, "bin")}:${SOURCE_BIN_MOUNT}:ro"`);
 	}
 	if (lines.length === 0) return null;
-	const yaml = `services:\n  task:\n${lines.join("\n")}\n`;
+	const yaml = `services:\n  main:\n${lines.join("\n")}\n`;
 	const file = path.join(benchDir, "compose-overlay.yml");
 	fs.writeFileSync(file, yaml);
 	return file;
