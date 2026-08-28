@@ -100,6 +100,7 @@
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
 - `core/embeddings.ts` imports `ProviderHttpError` from `@veyyon/ai/error/classes` instead of the error barrel, cutting twelve modules off the import graph of every module that can remember something; behavior is unchanged.
+- `config.ts` and `core/extraction/client.ts` take `trimTrailingSlashes` and `withScopedTimeoutSignal` from `@veyyon/utils/url` and `@veyyon/utils/scoped-timeout` instead of the package entry point, cutting the extraction client's import graph from 127 modules to 66; behavior is unchanged.
 - Migrated dashboard theme toggle to shared `ThemeToggle` from `@veyyon/tool-render`.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
