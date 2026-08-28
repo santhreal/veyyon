@@ -57,6 +57,7 @@
 
 ### Fixed
 
+- A settings search box reduced to nothing but spaces leaves search and shows the settings list again, instead of holding an apparently empty box over zero matches until `esc`.
 - The collab host, guest client and relay socket load when `/collab` or `/join` runs instead of during every interactive startup, and a settings domain reads the relay default from `@veyyon/wire` rather than through the collab protocol module.
 - Argot's dictionary generator, corpus walker and project vocabulary load when a project dictionary is first read instead of during every startup, so a session with `argot.enabled` off no longer evaluates them.
 - The stats dashboard's aggregator, SQLite layer and embedded client load when `/stats` first runs instead of during every interactive startup, so a session that never opens the dashboard stops parsing them.
