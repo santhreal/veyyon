@@ -325,6 +325,34 @@ export class CustomEditor extends Editor {
 			buildMatchKeys(keys),
 		]),
 	);
+	#actionCallbacks = this.#buildActionCallbacks();
+
+	#buildActionCallbacks(): Map<string, () => unknown> {
+		const table = new Map<string, () => unknown>();
+		const register = (action: ConfigurableEditorAction, cb: () => unknown) => {
+			for (const key of this.#actionMatchKeys.get(action) ?? []) table.set(key, cb);
+		};
+		register("app.clipboard.pasteImage", () => this.onPasteImage && void this.onPasteImage());
+		register("app.clipboard.pasteTextRaw", () => this.onPasteTextRaw?.());
+		register("app.editor.external", () => this.onExternalEditor?.());
+		register("app.model.selectTemporary", () => this.onSelectModelTemporary?.());
+		register("app.display.reset", () => this.onDisplayReset?.());
+		register("app.bash.background", () => (this.onBashBackground ? this.onBashBackground() : undefined));
+		register("app.suspend", () => this.onSuspend?.());
+		register("app.thinking.toggle", () => this.onToggleThinking?.());
+		register("app.model.select", () => this.onSelectModel?.());
+		register("app.history.search", () => this.onHistorySearch?.());
+		register("app.tools.expand", () => this.onExpandTools?.());
+		register("app.model.cycleBackward", () => this.onCycleModelBackward?.());
+		register("app.model.cycleForward", () => this.onCycleModelForward?.());
+		register("app.thinking.cycle", () => this.onCycleThinkingLevel?.());
+		register("app.interrupt", () => (this.onEscape && !this.isShowingAutocomplete() ? this.onEscape() : undefined));
+		register("app.clear", () => this.onClear?.());
+		register("app.exit", () => this.onExit?.());
+		register("app.message.dequeue", () => this.onDequeue?.());
+		register("app.clipboard.copyPrompt", () => this.onCopyPrompt?.());
+		return table;
+	}
 
 	setActionKeys(action: ConfigurableEditorAction, keys: KeyId[]): void {
 		this.#actionKeys.set(action, keys.slice());
@@ -333,6 +361,7 @@ export class CustomEditor extends Editor {
 
 	#rebuildActionMatchKeys(action: ConfigurableEditorAction): void {
 		this.#actionMatchKeys.set(action, buildMatchKeys(this.#actionKeys.get(action) ?? []));
+		this.#actionCallbacks = this.#buildActionCallbacks();
 	}
 
 	#rebuildCustomMatchKeys(): void {
@@ -495,98 +524,10 @@ export class CustomEditor extends Editor {
 		if (this.#handleSpaceHold(data, canonical)) return;
 
 		if (canonical !== undefined) {
-			if (this.#matchesAction(canonical, "app.clipboard.pasteImage") && this.onPasteImage) {
-				void this.onPasteImage();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.clipboard.pasteTextRaw") && this.onPasteTextRaw) {
-				this.onPasteTextRaw();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.editor.external") && this.onExternalEditor) {
-				this.onExternalEditor();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.model.selectTemporary") && this.onSelectModelTemporary) {
-				this.onSelectModelTemporary();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.display.reset") && this.onDisplayReset) {
-				this.onDisplayReset();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.bash.background") && this.onBashBackground) {
-				if (this.onBashBackground()) return;
-			}
-
-			if (this.#matchesAction(canonical, "app.suspend") && this.onSuspend) {
-				this.onSuspend();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.thinking.toggle") && this.onToggleThinking) {
-				this.onToggleThinking();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.model.select") && this.onSelectModel) {
-				this.onSelectModel();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.history.search") && this.onHistorySearch) {
-				this.onHistorySearch();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.tools.expand") && this.onExpandTools) {
-				this.onExpandTools();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.model.cycleBackward") && this.onCycleModelBackward) {
-				this.onCycleModelBackward();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.model.cycleForward") && this.onCycleModelForward) {
-				this.onCycleModelForward();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.thinking.cycle") && this.onCycleThinkingLevel) {
-				this.onCycleThinkingLevel();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.interrupt") && this.onEscape && !this.isShowingAutocomplete()) {
-				this.onEscape();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.clear") && this.onClear) {
-				this.onClear();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.exit")) {
-				this.onExit?.();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.message.dequeue") && this.onDequeue) {
-				this.onDequeue();
-				return;
-			}
-
-			if (this.#matchesAction(canonical, "app.clipboard.copyPrompt") && this.onCopyPrompt) {
-				this.onCopyPrompt();
-				return;
+			const callback = this.#actionCallbacks.get(canonical);
+			if (callback !== undefined) {
+				const result = callback();
+				if (result !== false) return;
 			}
 
 			if (this.#matchesAction(canonical, "app.retry") && this.onRetry) {
