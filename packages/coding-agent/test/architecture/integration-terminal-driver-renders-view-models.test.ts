@@ -18,76 +18,15 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type {
-	ComposerState,
-	PresentationTheme,
-	StatusLineState,
-	TextStyle,
-	TranscriptBlock,
-	UIEvent,
-} from "@veyyon/wire/presentation";
+import type { ComposerState, StatusLineState, TranscriptBlock, UIEvent } from "@veyyon/wire/presentation";
 import { TRANSCRIPT_BLOCK_KINDS } from "@veyyon/wire/presentation";
 import { settleFrames } from "../../../tui/test/helpers/settle-frames";
 import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
 import { TerminalPresentationDriver } from "../../src/modes/terminal/driver";
+import { testTheme as theme } from "./helpers/presentation-theme";
 
 const WIDTH = 80;
 const HEIGHT = 24;
-
-/**
- * A theme with a distinct role per surface. `accentStyle` is what makes a theme
- * change observable through the VT: a colour arrives as a palette index whose
- * RGB the harness cannot read back, while underline is a cell flag it can.
- */
-function theme(overrides: { accent?: string; accentStyle?: TextStyle } = {}): PresentationTheme {
-	const role = (fg: string) => ({ fg });
-	return {
-		id: "test-theme",
-		name: "Test",
-		appearance: "dark",
-		chrome: {
-			background: "#000000",
-			foreground: "#ffffff",
-			border: role("#333333"),
-			statusLine: role("#8899aa"),
-			composer: role("#eeeeee"),
-			placeholder: role("#666666"),
-			selection: role("#ffff00"),
-			accent: {
-				fg: overrides.accent ?? "#00aaff",
-				...(overrides.accentStyle === undefined ? {} : { style: overrides.accentStyle }),
-			},
-			success: role("#00ff00"),
-			warning: role("#ffaa00"),
-			error: role("#ff0000"),
-			muted: role("#777777"),
-		},
-		transcript: {
-			userMessage: role("#ffffff"),
-			assistantMessage: role("#dddddd"),
-			thinking: role("#8888ff"),
-			toolName: role("#00ffff"),
-			toolInput: role("#aaaaaa"),
-			toolOutput: role("#bbbbbb"),
-			toolError: role("#ff5555"),
-			diffAdded: role("#00ff00"),
-			diffRemoved: role("#ff0000"),
-			diffContext: role("#888888"),
-			summary: role("#aa88ff"),
-		},
-		syntax: {
-			keyword: role("#ff88ff"),
-			string: role("#88ff88"),
-			number: role("#ffff88"),
-			comment: role("#666666"),
-			function: role("#88ffff"),
-			type: role("#ffaa88"),
-			variable: role("#ffffff"),
-			operator: role("#cccccc"),
-			punctuation: role("#999999"),
-		},
-	};
-}
 
 function status(overrides: Partial<StatusLineState> = {}): StatusLineState {
 	return {
