@@ -27,46 +27,46 @@ export type PersistedSubagentReviverFactory = (ref: AgentRef) => Promise<AgentRe
 export type PersistedSubagentIdleTtlResolver = (ref: AgentRef) => number;
 
 /**
- * Close budgets for a ref the manager adopts on demand rather than at hand-over.
+ * Prune budgets for a ref the manager adopts on demand rather than at hand-over.
  *
  * A cold-revived ref used to be adopted with both budgets at zero, so it parked on its
  * idle TTL and then stayed listed for the rest of the session whatever the operator had
  * set. Resume a session, message a few old agents, and the roster grew monotonically,
- * which is the one thing the close stage exists to prevent. The budgets travel through
+ * which is the one thing the prune stage exists to prevent. The budgets travel through
  * the same injected seam as the idle TTL because the reason they were missing was
  * plumbing rather than policy.
  */
-export interface PersistedSubagentCloseBudget {
-	parkedMs: number;
-	waitingMs: number;
+export interface PersistedSubagentPruneBudget {
+	afterMs: number;
+	waitingAfterMs: number;
 }
-export type PersistedSubagentCloseBudgetResolver = (ref: AgentRef) => PersistedSubagentCloseBudget;
+export type PersistedSubagentPruneBudgetResolver = (ref: AgentRef) => PersistedSubagentPruneBudget;
 
 export interface AdoptOptions {
 	/** TTL before an idle agent is parked. <= 0 disables parking. */
 	idleTtlMs: number;
 	/**
-	 * TTL before a PARKED agent is closed for good, counted from the park. <= 0
-	 * keeps it listed and revivable until exit, which is the operator's off switch.
+	 * TTL before a PARKED agent is pruned, counted from the park. <= 0 keeps it
+	 * listed and revivable until exit, which is the operator's off switch.
 	 */
-	closeParkedMs?: number;
+	pruneAfterMs?: number;
 	/**
 	 * The same budget for an agent whose last message said it was waiting on another
-	 * agent (see {@link AgentRef.waitingOnPeer}). Defaults to `closeParkedMs`.
+	 * agent (see {@link AgentRef.waitingOnPeer}). Defaults to `pruneAfterMs`.
 	 */
-	closeWaitingMs?: number;
+	pruneWaitingAfterMs?: number;
 	/** Recreates a live AgentSession from the ref's sessionFile. Absent => not resumable after park (e.g. isolated runs). */
 	revive?: AgentReviver;
 }
 
 interface AdoptedAgent {
 	idleTtlMs: number;
-	closeParkedMs: number;
-	closeWaitingMs: number;
+	pruneAfterMs: number;
+	pruneWaitingAfterMs: number;
 	revive?: AgentReviver;
 	deadline?: number;
 	/** Which stage `deadline` belongs to, so the timer knows what to do when it fires. */
-	stage?: "park" | "close";
+	stage?: "park" | "prune";
 }
 
 /**
@@ -76,7 +76,7 @@ interface AdoptedAgent {
  * with a zero delay and spins instead of failing once. Writing both through one
  * function is what keeps that pair from drifting.
  */
-function arm(adopted: AdoptedAgent, at: number, stage: "park" | "close"): void {
+function arm(adopted: AdoptedAgent, at: number, stage: "park" | "prune"): void {
 	adopted.deadline = at;
 	adopted.stage = stage;
 }
@@ -88,28 +88,28 @@ function disarm(adopted: AdoptedAgent): void {
 }
 
 /**
- * Normalize a pair of close budgets. Shared by {@link AgentLifecycleManager.adopt} and the
+ * Normalize a pair of prune budgets. Shared by {@link AgentLifecycleManager.adopt} and the
  * cold-adopt path so there is ONE place that decides what zero means.
  *
- * A zero quiet budget means "never close", and that has to include the waiting case:
- * honouring a waiting budget beside it would close exactly the agents most likely to be
+ * A zero quiet budget means "never prune", and that has to include the waiting case:
+ * honouring a waiting budget beside it would prune exactly the agents most likely to be
  * needed while leaving every ordinary one listed, which inverts the switch instead of
  * disabling it. The waiting budget is also never shorter than the quiet one, because an
  * agent that stopped to let a peer finish has not run out of things to do.
  */
-function normalizeCloseBudgets(
-	parkedMs: number | undefined,
-	waitingMs: number | undefined,
-): PersistedSubagentCloseBudget {
-	const parked = Math.max(0, parkedMs ?? 0);
-	return { parkedMs: parked, waitingMs: parked === 0 ? 0 : Math.max(parked, waitingMs ?? parked) };
+function normalizePruneBudgets(
+	afterMs: number | undefined,
+	waitingAfterMs: number | undefined,
+): PersistedSubagentPruneBudget {
+	const parked = Math.max(0, afterMs ?? 0);
+	return { afterMs: parked, waitingAfterMs: parked === 0 ? 0 : Math.max(parked, waitingAfterMs ?? parked) };
 }
 
 /**
- * How long {@link AgentLifecycleManager.close} waits before re-checking an agent
- * whose revive was still in flight when its close budget expired.
+ * How long {@link AgentLifecycleManager.prune} waits before re-checking an agent
+ * whose revive was still in flight when its prune budget expired.
  *
- * A fixed step, deliberately not derived from the close budget: the question it
+ * A fixed step, deliberately not derived from the prune budget: the question it
  * answers is "has the wake finished yet", which has nothing to do with how long
  * the agent was allowed to sit parked.
  */
@@ -153,15 +153,15 @@ export class AgentLifecycleManager {
 	/** TTL policy applied when a cold-revived ref is adopted on demand. */
 	#persistedReviveTtl: number | PersistedSubagentIdleTtlResolver = 0;
 	/**
-	 * Close budgets applied when a cold-revived ref is adopted on demand.
+	 * Prune budgets applied when a cold-revived ref is adopted on demand.
 	 *
 	 * Defaults to zero so a host that installs a factory without them keeps the old
-	 * never-close behaviour rather than silently acquiring a close stage it did not ask
+	 * never-prune behaviour rather than silently acquiring a prune stage it did not ask
 	 * for. The non-ACP bootstrap passes the operator's resolved budgets.
 	 */
-	#persistedReviveCloseBudget: PersistedSubagentCloseBudget | PersistedSubagentCloseBudgetResolver = {
-		parkedMs: 0,
-		waitingMs: 0,
+	#persistedRevivePruneBudget: PersistedSubagentPruneBudget | PersistedSubagentPruneBudgetResolver = {
+		afterMs: 0,
+		waitingAfterMs: 0,
 	};
 
 	constructor(registry: AgentRegistry = AgentRegistry.global()) {
@@ -178,11 +178,11 @@ export class AgentLifecycleManager {
 	setPersistedSubagentReviverFactory(
 		factory: PersistedSubagentReviverFactory,
 		idleTtl: number | PersistedSubagentIdleTtlResolver,
-		closeBudget: PersistedSubagentCloseBudget | PersistedSubagentCloseBudgetResolver = { parkedMs: 0, waitingMs: 0 },
+		pruneBudget: PersistedSubagentPruneBudget | PersistedSubagentPruneBudgetResolver = { afterMs: 0, waitingAfterMs: 0 },
 	): void {
 		this.#persistedReviverFactory = factory;
 		this.#persistedReviveTtl = idleTtl;
-		this.#persistedReviveCloseBudget = closeBudget;
+		this.#persistedRevivePruneBudget = pruneBudget;
 	}
 
 	/**
@@ -190,8 +190,8 @@ export class AgentLifecycleManager {
 	 * status to "idle". Arms the TTL timer (idleTtlMs <= 0 adopts without one).
 	 *
 	 * Two stages, one timer. An idle agent is parked when `idleTtlMs` elapses, which
-	 * releases its session and keeps its transcript; a parked agent is closed when
-	 * its close budget elapses, which drops the ref so a long session stops
+	 * releases its session and keeps its transcript; a parked agent is pruned when
+	 * its prune budget elapses, which drops the ref so a long session stops
 	 * accumulating finished agents in every roster. Either budget at or below zero
 	 * disables its stage.
 	 */
@@ -207,19 +207,19 @@ export class AgentLifecycleManager {
 		// Recognized by role rather than by name: a driving agent's id is derived
 		// from the conversation it drives, so there is no one id to compare with.
 		if (ref.kind === "main") return;
-		// A zero quiet budget means "never close", and that has to include the waiting
-		// case: honouring a waiting budget beside it would close exactly the agents most
+		// A zero quiet budget means "never prune", and that has to include the waiting
+		// case: honouring a waiting budget beside it would prune exactly the agents most
 		// likely to be needed while leaving every ordinary one listed, which inverts the
 		// switch instead of disabling it. Normalized here rather than trusted from the
 		// caller so the invariant holds for every adoption, not just the settings path.
-		const { parkedMs: closeParkedMs, waitingMs: closeWaitingMs } = normalizeCloseBudgets(
-			opts.closeParkedMs,
-			opts.closeWaitingMs,
+		const { afterMs: pruneAfterMs, waitingAfterMs: pruneWaitingAfterMs } = normalizePruneBudgets(
+			opts.pruneAfterMs,
+			opts.pruneWaitingAfterMs,
 		);
 		const adopted: AdoptedAgent = {
 			idleTtlMs: opts.idleTtlMs,
-			closeParkedMs,
-			closeWaitingMs,
+			pruneAfterMs,
+			pruneWaitingAfterMs,
 			revive: opts.revive,
 		};
 		this.#adopted.set(id, adopted);
@@ -349,19 +349,19 @@ export class AgentLifecycleManager {
 					typeof this.#persistedReviveTtl === "function"
 						? this.#persistedReviveTtl(ref)
 						: this.#persistedReviveTtl;
-				// A cold-revived ref carries the operator's CURRENT close budgets, injected
+				// A cold-revived ref carries the operator's CURRENT prune budgets, injected
 				// beside the idle TTL. It used to carry zeros, which meant a ref restored from
-				// disk and woken once was never closed again, so a resumed session accumulated
-				// every agent it ever revived. The close budget counts from `lastActivity`, and
+				// disk and woken once was never pruned again, so a resumed session accumulated
+				// every agent it ever revived. The prune budget counts from `lastActivity`, and
 				// the revive below bumps that through `setStatus(id, "idle")`, so a just-woken
 				// agent gets a FULL budget from the wake rather than being dropped for having
 				// been parked a long time.
 				const budget =
-					typeof this.#persistedReviveCloseBudget === "function"
-						? this.#persistedReviveCloseBudget(ref)
-						: this.#persistedReviveCloseBudget;
-				const { parkedMs, waitingMs } = normalizeCloseBudgets(budget.parkedMs, budget.waitingMs);
-				this.#adopted.set(id, { idleTtlMs, closeParkedMs: parkedMs, closeWaitingMs: waitingMs, revive });
+					typeof this.#persistedRevivePruneBudget === "function"
+						? this.#persistedRevivePruneBudget(ref)
+						: this.#persistedRevivePruneBudget;
+				const { afterMs, waitingAfterMs } = normalizePruneBudgets(budget.afterMs, budget.waitingAfterMs);
+				this.#adopted.set(id, { idleTtlMs, pruneAfterMs: afterMs, pruneWaitingAfterMs: waitingAfterMs, revive });
 				coldAdopted = true;
 			}
 		}
@@ -465,48 +465,50 @@ export class AgentLifecycleManager {
 	}
 
 	/**
-	 * Close a parked agent for good: drop the ref so it stops appearing in rosters
-	 * and can no longer be revived by messaging it.
+	 * Prune a parked agent: drop the ref so it stops appearing in rosters and can no
+	 * longer be revived by messaging it.
 	 *
-	 * Only a `parked` agent is closed. An agent that was revived, or that a
-	 * follow-up turn is driving, is `idle` or `running` by the time this runs and is
-	 * left alone. The close deadline was set when it parked and a status change
-	 * re-derives it, but this second check makes the ordering irrelevant.
+	 * Pruning is the SECOND stage and is not parking. Parking released the session and
+	 * kept the row; pruning drops the row. Only a `parked` agent is pruned. An agent
+	 * that was revived, or that a follow-up turn is driving, is `idle` or `running` by
+	 * the time this runs and is left alone. The prune deadline was set when it parked
+	 * and a status change re-derives it, but this second check makes the ordering
+	 * irrelevant.
 	 *
 	 * A revive already IN FLIGHT is the third case, and status alone cannot see it: a
 	 * reviving agent is still `parked` until its rebuilt session is attached, so
-	 * closing on that window would unregister the ref while someone is waking the
+	 * pruning on that window would unregister the ref while someone is waking the
 	 * agent. `ensureLive` records the revive in `#revivals` before it yields, so this
 	 * check observes every wake that could interleave with the timer.
 	 *
 	 * That third case is also the one `#refreshDeadline` cannot serve, and re-deriving
 	 * through it was a zero-delay spin. The ref is still `parked`, so the derivation
-	 * produces `lastActivity + closeBudget` again, and that instant is already in the
+	 * produces `lastActivity + pruneBudget` again, and that instant is already in the
 	 * past by definition: it is what fired this call. The scheduler then wakes on a
-	 * zero delay, close refuses again, and the pair runs flat out for as long as the
-	 * revive takes (transcript replay, MCP, auth: seconds), starving the event loop
+	 * zero delay, the prune refuses again, and the pair runs flat out for as long as
+	 * the revive takes (transcript replay, MCP, auth: seconds), starving the event loop
 	 * that the revive itself is waiting on. Counting the re-check from NOW keeps
 	 * exactly one pending wake. It is also the only thing that re-examines an agent
 	 * whose revive THREW: that leaves the ref `parked` with no status change, so
 	 * nothing else would ever derive a deadline for it again.
 	 *
 	 * Its transcript is untouched and stays readable through `history://`, which is
-	 * what makes closing safe: what is dropped is the live reference and the ability
+	 * what makes pruning safe: what is dropped is the live reference and the ability
 	 * to wake it, not the record of what it did.
 	 */
-	async close(id: string): Promise<void> {
+	async prune(id: string): Promise<void> {
 		const ref = this.#registry.get(id);
 		const reviving = this.#revivals.has(id);
 		if (ref?.status !== "parked" || reviving) {
 			const adopted = this.#adopted.get(id);
 			if (adopted) {
-				if (reviving) arm(adopted, Date.now() + REVIVE_RECHECK_MS, "close");
+				if (reviving) arm(adopted, Date.now() + REVIVE_RECHECK_MS, "prune");
 				else this.#refreshDeadline(id, adopted);
 				this.#scheduleNext();
 			}
 			return;
 		}
-		logger.debug("AgentLifecycleManager.close: dropping parked agent", {
+		logger.debug("AgentLifecycleManager.prune: dropping parked agent", {
 			id,
 			waitingOnPeer: ref.waitingOnPeer === true,
 			parkedForMs: Date.now() - ref.lastActivity,
@@ -537,7 +539,7 @@ export class AgentLifecycleManager {
 	 * and dispose it here instead.
 	 *
 	 * `aborted` is the second half of that check and it is refused for the same
-	 * reason, mirroring the in-flight-revive guard in {@link close}. A kill flips the
+	 * reason, mirroring the in-flight-revive guard in {@link prune}. A kill flips the
 	 * status and then disposes `ref.session`, which is already null for a `parked`
 	 * ref, so the abort disposes nothing; attaching here afterwards would resurrect a
 	 * terminal agent with a live session no teardown path will ever reach. Refusing
@@ -573,9 +575,9 @@ export class AgentLifecycleManager {
 	/**
 	 * Set the next deadline for whichever stage the agent is in.
 	 *
-	 * `idle` counts toward the park, `parked` toward the close. Both count from
+	 * `idle` counts toward the park, `parked` toward the prune. Both count from
 	 * `lastActivity`, which `setStatus` bumps on every transition, so a parked
-	 * agent's close budget starts at the park and a revived agent's park budget
+	 * agent's prune budget starts at the park and a revived agent's park budget
 	 * starts again from the revival. A waiting agent gets its own budget, because it
 	 * stopped to let a peer finish rather than because it ran out of things to do.
 	 * Every other status (`running`, `aborted`) carries no deadline at all.
@@ -587,9 +589,9 @@ export class AgentLifecycleManager {
 			return;
 		}
 		if (ref?.status === "parked") {
-			const budget = ref.waitingOnPeer === true ? adopted.closeWaitingMs : adopted.closeParkedMs;
+			const budget = ref.waitingOnPeer === true ? adopted.pruneWaitingAfterMs : adopted.pruneAfterMs;
 			if (budget > 0) {
-				arm(adopted, ref.lastActivity + budget, "close");
+				arm(adopted, ref.lastActivity + budget, "prune");
 				return;
 			}
 		}
@@ -616,7 +618,7 @@ export class AgentLifecycleManager {
 			const now = Date.now();
 			// Stage is captured with the id: the expiry decides what to do, and reading
 			// it later could see a stage rewritten by a status change in between.
-			const due: Array<{ id: string; stage: "park" | "close" }> = [];
+			const due: Array<{ id: string; stage: "park" | "prune" }> = [];
 			for (const [id, adopted] of this.#adopted) {
 				if (adopted.deadline === undefined || adopted.deadline > now) continue;
 				const stage = adopted.stage;
@@ -648,7 +650,7 @@ export class AgentLifecycleManager {
 					// newer one.
 					if (!adopted || adopted.deadline !== undefined) continue;
 					if (stage === "park") await this.park(id);
-					else await this.close(id);
+					else await this.prune(id);
 				}
 			})();
 		}, delay);
@@ -657,7 +659,10 @@ export class AgentLifecycleManager {
 
 	#onRegistryEvent(event: RegistryEvent): void {
 		const adopted = this.#adopted.get(event.ref.id);
-		if (!adopted) return;
+		if (!adopted) {
+			if (event.type === "registered") this.#adoptRestored(event.ref);
+			return;
+		}
 		if (event.type === "removed") {
 			this.#adopted.delete(event.ref.id);
 			this.#scheduleNext();
@@ -665,6 +670,45 @@ export class AgentLifecycleManager {
 		}
 		if (event.type !== "status_changed") return;
 		this.#refreshDeadline(event.ref.id, adopted);
+		this.#scheduleNext();
+	}
+
+	/**
+	 * Put a subagent restored from disk under the same prune budget as one this
+	 * process parked itself.
+	 *
+	 * Adoption used to happen only at hand-over, so a ref the persisted-subagent
+	 * scan registered was `parked` with no adoption and therefore no deadline of
+	 * any kind: nothing ever re-derived one, because `parked` is a stable state
+	 * and only a status change re-derives. Every subagent of every previous run
+	 * stayed in the roster for the whole session however long it had been quiet,
+	 * while the operator's "Prune After" governed only the agents this process
+	 * happened to spawn. One roster held eighty of them.
+	 *
+	 * No reviver is built here. Pruning needs none, and building one per restored
+	 * agent would replay a transcript for every row on a screen nobody has opened;
+	 * `ensureLive` still cold-revives through the factory, replacing this entry.
+	 *
+	 * A ref with no `sessionFile` is skipped, which is what keeps a collab guest's
+	 * mirrored rows out: they are registered from the host's snapshot, carry no
+	 * file, and are owned by the host that sent them.
+	 */
+	#adoptRestored(ref: AgentRef): void {
+		if (ref.kind !== "sub" || ref.status !== "parked" || !ref.sessionFile) return;
+		const budget =
+			typeof this.#persistedRevivePruneBudget === "function"
+				? this.#persistedRevivePruneBudget(ref)
+				: this.#persistedRevivePruneBudget;
+		// Zero is the operator's off switch and also what a host that installed no
+		// budget carries. It is NOT re-checked here: `#refreshDeadline` arms nothing
+		// for a zero budget, and a second copy of that rule is a second place for it
+		// to drift.
+		const { afterMs, waitingAfterMs } = normalizePruneBudgets(budget.afterMs, budget.waitingAfterMs);
+		const idleTtlMs =
+			typeof this.#persistedReviveTtl === "function" ? this.#persistedReviveTtl(ref) : this.#persistedReviveTtl;
+		const adopted: AdoptedAgent = { idleTtlMs, pruneAfterMs: afterMs, pruneWaitingAfterMs: waitingAfterMs };
+		this.#adopted.set(ref.id, adopted);
+		this.#refreshDeadline(ref.id, adopted);
 		this.#scheduleNext();
 	}
 }

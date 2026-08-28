@@ -2,10 +2,10 @@ import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	DEFAULT_SUBAGENT_IDLE_TTL_MS,
-	DEFAULT_SUBAGENT_PARKED_CLOSE_MS,
-	DEFAULT_SUBAGENT_WAITING_CLOSE_MS,
+	DEFAULT_SUBAGENT_PRUNE_MS,
+	DEFAULT_SUBAGENT_WAITING_PRUNE_MS,
 } from "@veyyon/coding-agent/config/settings-domains/subagents";
-import { resolveSubagentAutoCloseBudget, resolveSubagentIdleTtlMs } from "@veyyon/coding-agent/task/subagent-settings";
+import { resolveSubagentPruneBudget, resolveSubagentIdleTtlMs } from "@veyyon/coding-agent/task/subagent-settings";
 
 describe("subagent idle lifetime settings", () => {
 	/**
@@ -40,38 +40,38 @@ describe("subagent idle lifetime settings", () => {
 });
 
 /**
- * How the three auto-close settings become the two budgets the lifecycle manager
+ * How the three prune settings become the two budgets the lifecycle manager
  * reads.
  *
  * WHY THIS EXISTS. The resolver is where an operator's intent either survives or
  * quietly turns into something else, and the something else is expensive in both
  * directions: a budget that fails open leaves every finished agent in the roster,
- * and a budget that fails closed drops peers while they are still needed. So the off
+ * and a budget that fails pruned drops peers while they are still needed. So the off
  * switch, the defaults, and the relationship between the two budgets are each pinned
  * rather than assumed from the schema.
  */
-describe("subagent auto-close budget settings", () => {
-	/** A fresh install closes quiet agents after 5 minutes and waiting ones after 30. */
-	it("defaults to a five-minute quiet close and a thirty-minute waiting close", () => {
+describe("subagent prune budget settings", () => {
+	/** A fresh install prunes quiet agents after 5 minutes and waiting ones after 30. */
+	it("defaults to a five-minute quiet prune and a thirty-minute waiting prune", () => {
 		const settings = Settings.isolated();
 
-		expect(resolveSubagentAutoCloseBudget(settings)).toEqual({
-			parkedMs: DEFAULT_SUBAGENT_PARKED_CLOSE_MS,
-			waitingMs: DEFAULT_SUBAGENT_WAITING_CLOSE_MS,
+		expect(resolveSubagentPruneBudget(settings)).toEqual({
+			afterMs: DEFAULT_SUBAGENT_PRUNE_MS,
+			waitingAfterMs: DEFAULT_SUBAGENT_WAITING_PRUNE_MS,
 		});
-		expect(DEFAULT_SUBAGENT_PARKED_CLOSE_MS).toBe(5 * 60_000);
-		expect(DEFAULT_SUBAGENT_WAITING_CLOSE_MS).toBe(30 * 60_000);
+		expect(DEFAULT_SUBAGENT_PRUNE_MS).toBe(5 * 60_000);
+		expect(DEFAULT_SUBAGENT_WAITING_PRUNE_MS).toBe(30 * 60_000);
 	});
 
 	/**
-	 * The off switch must resolve to zero, which the manager reads as "never close".
+	 * The off switch must resolve to zero, which the manager reads as "never prune".
 	 * Resolving to a large number instead would still eventually drop refs, which is
 	 * exactly what an operator who turned the feature off did not ask for.
 	 */
 	it("resolves to zero budgets when disabled", () => {
-		const settings = Settings.isolated({ "subagent.autoClose.enabled": false });
+		const settings = Settings.isolated({ "subagent.prune.enabled": false });
 
-		expect(resolveSubagentAutoCloseBudget(settings)).toEqual({ parkedMs: 0, waitingMs: 0 });
+		expect(resolveSubagentPruneBudget(settings)).toEqual({ afterMs: 0, waitingAfterMs: 0 });
 	});
 
 	/**
@@ -81,24 +81,24 @@ describe("subagent auto-close budget settings", () => {
 	 */
 	it("ignores configured budgets while disabled", () => {
 		const settings = Settings.isolated({
-			"subagent.autoClose.enabled": false,
-			"subagent.autoClose.parkedMs": 60_000,
-			"subagent.autoClose.waitingMs": 120_000,
+			"subagent.prune.enabled": false,
+			"subagent.prune.afterMs": 60_000,
+			"subagent.prune.waitingAfterMs": 120_000,
 		});
 
-		expect(resolveSubagentAutoCloseBudget(settings)).toEqual({ parkedMs: 0, waitingMs: 0 });
+		expect(resolveSubagentPruneBudget(settings)).toEqual({ afterMs: 0, waitingAfterMs: 0 });
 	});
 
 	/** Explicit budgets pass through unchanged when they are ordered sensibly. */
 	it("preserves explicit budgets", () => {
 		const settings = Settings.isolated({
-			"subagent.autoClose.parkedMs": 15 * 60_000,
-			"subagent.autoClose.waitingMs": 60 * 60_000,
+			"subagent.prune.afterMs": 15 * 60_000,
+			"subagent.prune.waitingAfterMs": 60 * 60_000,
 		});
 
-		expect(resolveSubagentAutoCloseBudget(settings)).toEqual({
-			parkedMs: 15 * 60_000,
-			waitingMs: 60 * 60_000,
+		expect(resolveSubagentPruneBudget(settings)).toEqual({
+			afterMs: 15 * 60_000,
+			waitingAfterMs: 60 * 60_000,
 		});
 	});
 
@@ -110,50 +110,50 @@ describe("subagent auto-close budget settings", () => {
 	 */
 	it("floors the waiting budget at the quiet budget", () => {
 		const settings = Settings.isolated({
-			"subagent.autoClose.parkedMs": 30 * 60_000,
-			"subagent.autoClose.waitingMs": 60_000,
+			"subagent.prune.afterMs": 30 * 60_000,
+			"subagent.prune.waitingAfterMs": 60_000,
 		});
 
-		expect(resolveSubagentAutoCloseBudget(settings)).toEqual({
-			parkedMs: 30 * 60_000,
-			waitingMs: 30 * 60_000,
+		expect(resolveSubagentPruneBudget(settings)).toEqual({
+			afterMs: 30 * 60_000,
+			waitingAfterMs: 30 * 60_000,
 		});
 	});
 
 	/**
-	 * A zero quiet budget is the second spelling of "never close" (it arrives from
+	 * A zero quiet budget is the second spelling of "never prune" (it arrives from
 	 * the same schema the UI writes) and it must not leave the waiting budget armed,
-	 * which would close only waiting agents and nothing else.
+	 * which would prune only waiting agents and nothing else.
 	 */
-	it("treats a zero quiet budget as never closing, even with a waiting budget set", () => {
+	it("treats a zero quiet budget as never pruning, even with a waiting budget set", () => {
 		const settings = Settings.isolated({
-			"subagent.autoClose.parkedMs": 0,
-			"subagent.autoClose.waitingMs": 30 * 60_000,
+			"subagent.prune.afterMs": 0,
+			"subagent.prune.waitingAfterMs": 30 * 60_000,
 		});
 
-		expect(resolveSubagentAutoCloseBudget(settings)).toEqual({ parkedMs: 0, waitingMs: 0 });
+		expect(resolveSubagentPruneBudget(settings)).toEqual({ afterMs: 0, waitingAfterMs: 0 });
 	});
 
 	/**
 	 * Garbage on disk falls back to the defaults rather than to NaN deadlines, which
-	 * would make every comparison false and silently disable closing.
+	 * would make every comparison false and silently disable pruning.
 	 */
 	it("falls back to defaults for unusable values", () => {
 		const settings = Settings.isolated({
-			"subagent.autoClose.parkedMs": "soon" as unknown as number,
-			"subagent.autoClose.waitingMs": Number.NaN,
+			"subagent.prune.afterMs": "soon" as unknown as number,
+			"subagent.prune.waitingAfterMs": Number.NaN,
 		});
 
-		expect(resolveSubagentAutoCloseBudget(settings)).toEqual({
-			parkedMs: DEFAULT_SUBAGENT_PARKED_CLOSE_MS,
-			waitingMs: DEFAULT_SUBAGENT_WAITING_CLOSE_MS,
+		expect(resolveSubagentPruneBudget(settings)).toEqual({
+			afterMs: DEFAULT_SUBAGENT_PRUNE_MS,
+			waitingAfterMs: DEFAULT_SUBAGENT_WAITING_PRUNE_MS,
 		});
 	});
 
 	/** A negative budget is clamped, not passed through as an always-expired deadline. */
-	it("clamps a negative budget to never closing", () => {
-		const settings = Settings.isolated({ "subagent.autoClose.parkedMs": -60_000 });
+	it("clamps a negative budget to never pruning", () => {
+		const settings = Settings.isolated({ "subagent.prune.afterMs": -60_000 });
 
-		expect(resolveSubagentAutoCloseBudget(settings)).toEqual({ parkedMs: 0, waitingMs: 0 });
+		expect(resolveSubagentPruneBudget(settings)).toEqual({ afterMs: 0, waitingAfterMs: 0 });
 	});
 });
