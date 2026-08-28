@@ -33,7 +33,7 @@ import { applyExtensionFlags, type ExtensionFlagSink } from "./cli/extension-fla
 import { processFileArguments } from "./cli/file-processor";
 import { buildInitialMessage } from "./cli/initial-message";
 import { selectSession } from "./cli/session-picker";
-import { announceAutoChdir, applySessionWorkdir, applyStartupCwd } from "./cli/startup-cwd";
+import { applySessionWorkdir, applyStartupCwd } from "./cli/startup-cwd";
 import { getLatestRelease, type ReleaseInfo, runAutoUpdate } from "./cli/update-cli";
 import { missingCredentialsMessage } from "./config/missing-credentials";
 import { ModelRegistry } from "./config/model-registry";
@@ -1331,12 +1331,8 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 
 	const parsedArgs = parsed;
 	// Relocates away from a bare $HOME launch (before Settings.init, since
-	// discovery is cwd-relative). The announcement is deferred until after
-	// applySessionWorkdir below, so a profile session.workdir that re-roots
-	// elsewhere doesn't leave a false "Started in /tmp instead" line.
-	const autoChdirTarget = prologue
-		? prologue.autoChdirTarget
-		: await logger.time("applyStartupCwd", applyStartupCwd, parsedArgs);
+	// discovery is cwd-relative).
+	if (!prologue) await logger.time("applyStartupCwd", applyStartupCwd, parsedArgs);
 
 	const notifs: (InteractiveModeNotify | null)[] = [];
 
@@ -1408,13 +1404,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 	if (workdirApplied) {
 		cwd = getProjectDir();
 	}
-	// Now that session.workdir has had its say, announce the $HOME auto-chdir —
-	// but only when it is the session's final root. If session.workdir re-rooted
-	// the session, the /tmp fallback was superseded and announcing it would be a
-	// false message (the exact autochdir-announce-vs-workdir bug).
-	if (autoChdirTarget && !workdirApplied) {
-		announceAutoChdir(os.homedir(), autoChdirTarget);
-	}
+
 	if (parsedArgs.approvalMode) {
 		// Runtime override (not persisted): every settings.get("tools.approvalMode") downstream
 		// sees this value. The wrapper still honours --auto-approve / --yolo on top of it.
