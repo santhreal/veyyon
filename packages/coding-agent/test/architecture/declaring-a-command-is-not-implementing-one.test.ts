@@ -148,7 +148,7 @@ describe("the split kept one set of commands", () => {
 	 * the number is only useful if a change to it has to be justified:
 	 *
 	 *   - DOWN to 66: `/cockpit` (with its `/hub` alias) was folded into `/agents` as an alias when
-	 *     the Agent Hub overlay and the Agent Control Center stopped being two screens. A command
+	 *     the Agent Hub overlay and the subagent dashboard stopped being two screens. A command
 	 *     that becomes an alias of another leaves the set of NAMES unchanged and the set of
 	 *     DECLARATIONS one shorter, which is exactly what this number counts.
 	 *   - UP to 67: `/secret` was added, storing a credential the agent can reference by

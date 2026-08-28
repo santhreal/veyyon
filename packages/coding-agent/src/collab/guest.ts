@@ -7,7 +7,7 @@
  * EventController.handleEvent, state → status-line overrides plus real
  * model/thinking state applied to the replica agent. The host's subagent
  * ecosystem is mirrored too: agent snapshots populate a local AgentRegistry
- * (the Agent Control Center), EventBus traffic (observer HUD) is republished, and hub
+ * (the subagent dashboard), EventBus traffic (observer HUD) is republished, and hub
  * actions (chat/kill/revive/transcript reads) round-trip over the wire.
  * Host ask dialogs (`ui-request` select/editor) present through the same
  * hook selector/editor seam and answer with `ui-response`; `ui-request-end`
@@ -503,7 +503,7 @@ export class CollabGuestLink {
 			}
 			case "bus":
 				// Mirrored host EventBus traffic (task subagent lifecycle/progress)
-				// feeding the observer HUD and the Agent Control Center's activity column.
+				// feeding the observer HUD and the subagent dashboard's activity column.
 				this.#ctx.eventBus?.emit(frame.channel, frame.data);
 				break;
 			case "agents":

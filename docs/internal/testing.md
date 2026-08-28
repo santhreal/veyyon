@@ -1181,7 +1181,7 @@ Two things to get right, because both produce convincing lies:
   what you are proving, instead of reading the placeholder box as a rendering fault.
 
 This is how the `⟳` in the running-agent status was found. It is U+27F3, no plain
-monospace face carries it, and every busy row in the Agent Control Center drew a
+monospace face carries it, and every busy row in the subagent dashboard drew a
 tofu box on a machine without a Nerd Font. Three hundred passing assertions on
 that component said nothing, because the string was correct the whole time.
 

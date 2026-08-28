@@ -259,7 +259,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	//
 	// Six picks failed that bar and were replaced on 2026-07-27. `⟳` (U+27F3)
 	// was the RUNNING status, and DejaVu does not have it, so every busy agent
-	// row in the Agent Control Center rendered a tofu box; it is `◐` now, which
+	// row in the subagent dashboard rendered a tofu box; it is `◐` now, which
 	// joins the `●`/`◦` circle family the other status marks already use.
 	// `⤵`/`⤴` (U+2935/U+2934) were the token in/out icons in the status line and
 	// exist in none of the three fonts checked; they are `↓`/`↑`. `⧉` (U+29C9)

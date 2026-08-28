@@ -715,7 +715,7 @@ an agent running something you did not expect is a question you can answer.
 
 #### The two views in `/agents`
 
-`/agents` opens the Agent Control Center, which is about a run in progress and
+`/agents` opens the subagent dashboard, which is about a run in progress and
 configures nothing. Move between its two views with the left and right arrows, with
 `tab`, or by clicking a name in the strip at the top of the card:
 

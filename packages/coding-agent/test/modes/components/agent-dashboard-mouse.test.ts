@@ -1,5 +1,5 @@
 /**
- * Pointing at the Agent Control Center: clicking a roster row, and clicking a
+ * Pointing at the subagent dashboard: clicking a roster row, and clicking a
  * view tab.
  *
  * WHY. The card was keyboard-only inside its own borders: every gesture that did
@@ -149,7 +149,7 @@ describe("Clicking a roster row", () => {
 			focusAgent: async id => void opened.push(id),
 		});
 
-		dashboard.handleInput(leftClick(rowOf(dashboard, "Agent Control Center"), 30));
+		dashboard.handleInput(leftClick(rowOf(dashboard, "Subagent Dashboard"), 30));
 
 		expect(opened).toEqual([]);
 		dashboard.dispose();

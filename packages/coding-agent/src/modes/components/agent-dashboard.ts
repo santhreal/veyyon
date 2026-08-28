@@ -1,5 +1,5 @@
 /**
- * AgentDashboard - the Agent Control Center. THE agent surface.
+ * AgentDashboard - the subagent dashboard. THE subagent surface.
  *
  * Two views, one card, both about a run in progress:
  * - Live: every agent that exists right now, what TYPE of agent each one is,
@@ -1277,7 +1277,7 @@ export class AgentDashboard extends Container {
 
 		const body = super.render(dims.contentWidth);
 		const shell = renderModalShell({
-			title: "Agent Control Center",
+			title: "Subagent Dashboard",
 			sizing,
 			areaWidth: width,
 			areaHeight: area,
@@ -1539,7 +1539,7 @@ export class AgentDashboard extends Container {
 			try {
 				await this.#lifecycle().terminate(agent.id, USER_INTERRUPT_LABEL);
 			} catch (error) {
-				logger.warn("Agent Control Center: termination failed", { id: agent.id, error: String(error) });
+				logger.warn("Subagent dashboard: termination failed", { id: agent.id, error: String(error) });
 				this.#notice = actionFailedNotice("terminate", agent.callSign, error);
 			}
 			this.#refreshLiveAgents();

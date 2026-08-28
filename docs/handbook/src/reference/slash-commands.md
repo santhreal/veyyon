@@ -174,7 +174,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/mcp notifications` | Show notification capabilities and subscriptions |
 | `/plugins …` | Plugin browser |
 | `/extensions`, `/status` | Extension Control Center dashboard. `/status` is an alias for it, not a session-status view |
-| `/agents` (aliases `/cockpit`, `/hub`) | Open the Agent Control Center: live agent roster and the agent-to-agent comms stream |
+| `/agents` (aliases `/cockpit`, `/hub`) | Open the subagent dashboard: live agent roster and the agent-to-agent comms stream |
 | `/ssh …` | SSH host setup. `add` takes the name and host by position, then `user <user>`, a plain port, and `key <keyPath>` in any order: see [Every argument is a plain word](#every-argument-is-a-plain-word) |
 | `/hotkeys` | Active keybinding chords |
 | `/collab …`, `/join`, `/leave` | Live collab sessions |

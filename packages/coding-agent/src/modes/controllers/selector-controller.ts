@@ -571,7 +571,7 @@ export class SelectorController {
 	}
 
 	/**
-	 * Show the Agent Control Center: the ONE agent surface.
+	 * Show the subagent dashboard: the ONE agent surface.
 	 *
 	 * Every entry point lands here — `/agents`, `/cockpit` (alias `/hub`), the
 	 * `app.agents.hub` and `app.session.observe` keys, and the editor's `←←`

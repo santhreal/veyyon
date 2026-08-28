@@ -1,6 +1,6 @@
 # Multi-agent monitoring
 
-The interactive TUI is the main surface for one session. Status line, session tree, background jobs, the Agent Control Center, and optional swarm orchestration cover multi-agent work.
+The interactive TUI is the main surface for one session. Status line, session tree, background jobs, the subagent dashboard, and optional swarm orchestration cover multi-agent work.
 
 ## Status line
 
@@ -92,7 +92,7 @@ Two run clocks tick alongside the segments, both measuring model runtime, never 
 | `/branch` | Branch a new session file from an earlier user message |
 | `/fork` | Duplicate the current session into a new file |
 | `/session info` | Session metadata and stats |
-| `/agents` | Agent Control Center: the live roster (agent type, status, activity; Enter opens one agent's session) and the Comms stream of agent-to-agent messages |
+| `/agents` | Subagent dashboard: the live roster (agent type, status, activity; Enter opens one agent's session) and the Comms stream of agent-to-agent messages |
 | `/jobs` | List background async tool jobs |
 
 `/cockpit` and `/hub` are aliases of `/agents`, as is the `app.agents.hub` keybinding and a double-tap of the left arrow on an empty composer. They used to open a separate screen with its own roster and its own drill-in, which meant "which agents are running" had two answers that could disagree with each other. They all open the one card now.
