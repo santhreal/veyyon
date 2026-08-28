@@ -1,7 +1,6 @@
 import { type } from "arktype";
 import type {
 	ChatCompletionContentPart,
-	ChatCompletionCreateParams,
 	ChatCompletionMessageParam,
 	ChatCompletionMessageToolCall,
 	ChatCompletionTool,
@@ -169,7 +168,6 @@ export const openaiChatRequestSchema = type({
 	"web_search_options?": "unknown",
 });
 
-export type OpenAIChatRequest = ChatCompletionCreateParams;
 export type OpenAIChatMessage = ChatCompletionMessageParam;
 export type OpenAIChatToolCall = ChatCompletionMessageToolCall;
 export type OpenAIChatTool = ChatCompletionTool;

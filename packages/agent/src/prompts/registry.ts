@@ -70,8 +70,6 @@ export const agentCorePrompts = definePromptRegistry("packages/agent/src/prompts
 export const AGENT_PROMPTS = agentCorePrompts.prompts;
 
 /** The id of a registered agent-core prompt. A value outside this union is a compile error. */
-export type AgentPromptId = keyof typeof AGENT_PROMPTS;
-
 /** Every registered id, for enumeration. */
 export const AGENT_PROMPT_IDS = agentCorePrompts.ids;
 

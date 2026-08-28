@@ -1,6 +1,5 @@
 import { type } from "arktype";
 import type {
-	EasyInputMessage,
 	ResponseCreateParams,
 	ResponseFunctionToolCall,
 	ResponseInputContent,
@@ -130,18 +129,9 @@ export const inputItemSchema = userMessageItemSchema
 	.or(customToolCallOutputItemSchema)
 	.or(type({ type: "string" }));
 
-export type OpenAIResponsesUserItem = EasyInputMessage | ResponseInputItem.Message;
-export type OpenAIResponsesSystemItem = EasyInputMessage | ResponseInputItem.Message;
-export type OpenAIResponsesAssistantItem = EasyInputMessage | ResponseOutputMessage;
 export type OpenAIResponsesReasoningItem = ResponseReasoningItem;
 export type OpenAIResponsesFunctionCallItem = ResponseFunctionToolCall;
 export type OpenAIResponsesFunctionCallOutputItem = ResponseInputItem.FunctionCallOutput;
-
-export type OpenAIResponsesCustomToolCallItem = typeof customToolCallItemSchema.infer;
-export type OpenAIResponsesCustomToolCallOutputItem = typeof customToolCallOutputItemSchema.infer;
-export type OpenAIResponsesInputImageBlock = typeof inputImageBlockSchema.infer;
-export type OpenAIResponsesInputFileBlock = typeof inputFileBlockSchema.infer;
-export type OpenAIResponsesOutputRefusalBlock = typeof outputRefusalSchema.infer;
 
 export const toolSchema = type({
 	type: "'function'",
@@ -227,8 +217,6 @@ export const openaiResponsesRequestSchema = type({
 	"truncation?": "unknown",
 });
 
-export type OpenAIResponsesRequest = ResponseCreateParams;
-export type OpenAIResponsesInputItem = ResponseInputItem;
 export type OpenAIResponsesTool = ResponsesTool;
 export type OpenAIResponsesToolChoice = NonNullable<ResponseCreateParams["tool_choice"]>;
 export type OpenAIResponsesInputContent = ResponseInputContent;

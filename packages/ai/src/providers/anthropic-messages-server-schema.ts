@@ -196,7 +196,6 @@ export const anthropicMessagesRequestSchema = type({
 	"service_tier?": "unknown",
 });
 
-export type AnthropicMessagesRequest = MessageCreateParams;
 export type AnthropicSystem = MessageCreateParams["system"];
 export type AnthropicMessage = MessageParam;
 export type AnthropicUserContentBlock = ContentBlockParam;

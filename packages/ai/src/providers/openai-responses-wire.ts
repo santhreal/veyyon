@@ -860,14 +860,6 @@ export interface ResponseCustomToolCallInputDoneEvent {
 	type: "response.custom_tool_call_input.done";
 }
 
-export interface ResponseCustomToolCallItem extends ResponseCustomToolCall {
-	id: string;
-
-	status: "in_progress" | "completed" | "incomplete";
-
-	created_by?: string;
-}
-
 export interface ResponseCustomToolCallOutput {
 	call_id: string;
 
@@ -1136,13 +1128,6 @@ export interface ResponseFunctionToolCall {
 	status?: "in_progress" | "completed" | "incomplete";
 }
 
-export interface ResponseFunctionToolCallItem extends ResponseFunctionToolCall {
-	id: string;
-
-	status: "in_progress" | "completed" | "incomplete";
-
-	created_by?: string;
-}
 export interface ResponseFunctionToolCallOutputItem {
 	id: string;
 
@@ -1645,18 +1630,6 @@ export declare namespace ResponseInputItem {
 }
 
 export type ResponseInputMessageContentList = Array<ResponseInputContent>;
-export interface ResponseInputMessageItem {
-	id: string;
-
-	content: ResponseInputMessageContentList;
-
-	role: "user" | "system" | "developer";
-
-	type: "message";
-
-	status?: "in_progress" | "completed" | "incomplete";
-}
-
 export interface ResponseInputText {
 	text: string;
 
@@ -1755,14 +1728,6 @@ export interface ResponseMcpListToolsInProgressEvent {
 	sequence_number: number;
 
 	type: "response.mcp_list_tools.in_progress";
-}
-
-export interface ResponseOutputAudio {
-	data: string;
-
-	transcript: string;
-
-	type: "output_audio";
 }
 
 export type ResponseOutputItem =

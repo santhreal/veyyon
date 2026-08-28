@@ -71,8 +71,6 @@ export interface CredentialUploadResponse {
 	entries: AuthCredentialSnapshotEntry[];
 }
 
-export type SnapshotStreamEventKind = "snapshot" | "entry" | "removed";
-
 export interface SnapshotStreamSnapshotEvent extends SnapshotResponse {
 	kind: "snapshot";
 }
