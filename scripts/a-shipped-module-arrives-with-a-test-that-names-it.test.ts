@@ -164,6 +164,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/providers/amazon-bedrock-helpers.ts",
 	"packages/ai/src/providers/anthropic-messages-server-schema.ts",
 	"packages/ai/src/providers/anthropic-schema.ts",
+	"packages/ai/src/providers/cursor-helpers.ts",
 	"packages/ai/src/providers/devin-helpers.ts",
 	"packages/ai/src/providers/gitlab-duo-workflow-helpers.ts",
 	"packages/ai/src/providers/google-gemini-cli-helpers.ts",

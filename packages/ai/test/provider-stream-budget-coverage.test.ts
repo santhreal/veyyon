@@ -229,9 +229,6 @@ const UNREGISTERED_STREAM_MODULES: Record<string, UnregisteredStreamModule> = {
 	"openai-anthropic-shim": { reason: "delegates", token: "streamOpenAICompletions" },
 	kimi: { reason: "delegates", token: "streamOpenAIAnthropicShim" },
 	synthetic: { reason: "delegates", token: "streamOpenAIAnthropicShim" },
-	// A callee of the registered google/google-vertex modules, never reached on
-	// its own, so the caller's budget governs it.
-	"google-shared": { reason: "called-by-registered" },
 	// In-memory fake with no transport: there is no wait to bound.
 	mock: { reason: "no-transport" },
 };
@@ -354,6 +351,8 @@ describe("lazy provider stream budget coverage", () => {
 		const streamModules: string[] = [];
 		for (const entry of await fs.readdir(PROVIDERS_DIR, { withFileTypes: true })) {
 			if (!entry.isFile() || !entry.name.endsWith(".ts") || entry.name === "register-builtins.ts") continue;
+			// Helper files are extracted halves of registered modules, not separate providers.
+			if (entry.name.endsWith("-helpers.ts")) continue;
 			const moduleName = entry.name.slice(0, -3);
 			const text = await fs.readFile(path.join(PROVIDERS_DIR, entry.name), "utf8");
 			const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
@@ -376,7 +375,15 @@ describe("lazy provider stream budget coverage", () => {
 			const row = UNREGISTERED_STREAM_MODULES[moduleName];
 			const code = codeByModule.get(moduleName) ?? "";
 			if (row.reason === "own-watchdog" || row.reason === "delegates") {
-				if (row.token === undefined || !code.includes(row.token)) unproven.push(`${moduleName} (${row.reason})`);
+				if (row.token === undefined || !code.includes(row.token)) {
+					// The token may have been extracted to a *-helpers.ts file.
+					let found = false;
+					try {
+						const helpersCode = await fs.readFile(path.join(PROVIDERS_DIR, `${moduleName}-helpers.ts`), "utf8");
+						found = helpersCode.includes(row.token);
+					} catch {}
+					if (!found) unproven.push(`${moduleName} (${row.reason})`);
+				}
 				continue;
 			}
 			if (row.reason === "called-by-registered") {
