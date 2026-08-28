@@ -130,11 +130,11 @@ const REGISTRY_MODULES = new Set<string>([
 	// The coding agent's `.md` imports live in the row modules its registry aggregates, so the registry
 	// itself holds none and listing it here would fail the "listed but imports no markdown" check below.
 	...ROW_MODULES,
-	"packages/evals/src/suites/typescript-edit/adapter/prompts/registry.ts",
+	"packages/evals/suites/typescript-edit/prompts/benchmark-registry.ts",
 	// The same suite one directory up: the adapter's registry owns what a scored run is asked
 	// to do, and this one owns the suite's own text, the difficulty templates and the Argot
 	// arms. Two registries, two directories, neither reaching into the other's.
-	"packages/evals/src/suites/typescript-edit/prompts/registry.ts",
+	"packages/evals/suites/typescript-edit/prompts/registry.ts",
 	"packages/coding-agent/src/discovery/builtin-rules/index.ts",
 	// The system prompt's STATEMENT registry, which registers the fragments one prompt is
 	// assembled from rather than whole prompts. Same contract, so the same exemption: the import
@@ -358,7 +358,7 @@ describe("a registry's directory is written down once", () => {
 		const found = (await packageSources()).filter(
 			source =>
 				!source.file.endsWith(".test.ts") &&
-				source.text.includes('"packages/evals/src/suites/typescript-edit/adapter/prompts"'),
+			source.text.includes('"packages/evals/suites/typescript-edit/prompts"'),
 		).length;
 
 		expect(found).toBe(1);
