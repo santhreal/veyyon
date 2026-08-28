@@ -92,19 +92,20 @@ export function scopePaths(args: Record<string, unknown>): string[] {
 				// Not valid JSON — treat the whole string as one path.
 			}
 		}
+		if (trimmed.includes(";")) {
+			const parts = trimmed
+				.split(";")
+				.map(p => p.trim())
+				.filter(Boolean);
+			if (parts.length > 0) return parts;
+		}
 		return [raw];
 	}
 	if (Array.isArray(raw)) return raw.filter((p): p is string => typeof p === "string");
 	return [];
 }
 
-/**
- * Truncate to `maxLen` code points, appending an ellipsis when cut. Delegates
- * to the single owner in `@veyyon/utils/format`, which cuts by code point (so an
- * astral character — emoji, rare CJK — is never split into a lone surrogate)
- * and reserves the ellipsis width so the result never exceeds `maxLen`. This
- * wrapper only supplies the historical default of 100 that the owner omits.
- */
+/** Differs from `@veyyon/utils/format`: provides default maxLen = 100 for tool renderers. */
 export function truncate(s: string, maxLen = 100): string {
 	return truncateChars(s, maxLen);
 }

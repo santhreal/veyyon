@@ -14,12 +14,8 @@ import { formatAge, formatBytes, isProbablyBinary, pathExistsQuietly, readImageM
 import { canonicalSnapshotKey } from "../edit/file-snapshot-store";
 import { normalizeToLF } from "../edit/normalize";
 import type { FileMentionMessage } from "../session/messages";
-import {
-	DEFAULT_MAX_BYTES,
-	formatHeadTruncationNotice,
-	truncateHead,
-	truncateHeadBytes,
-} from "../session/streaming-output";
+import { formatHeadTruncationNotice, truncateHead, truncateHeadBytes } from "../session/streaming-output";
+import { type InlinePricingSource, inlineBudgetFor } from "../tools/output-artifact";
 import { resolveReadPath } from "../tools/path-utils";
 import { formatDimensionNote, resizeImage } from "./image-resize";
 
@@ -75,24 +71,24 @@ async function resolveMentionPath(filePath: string, cwd: string): Promise<string
 	return (await pathExistsQuietly(absolutePath, MENTION_PROBE_IS_A_GUESS)) ? filePath : null;
 }
 
-function buildTextOutput(textContent: string): { output: string; lineCount: number } {
+function buildTextOutput(textContent: string, maxBytes: number): { output: string; lineCount: number } {
 	const allLines = textContent.split("\n");
 	const totalFileLines = allLines.length;
-	const truncation = truncateHead(textContent);
+	const truncation = truncateHead(textContent, { maxBytes });
 
 	if (truncation.firstLineExceedsLimit) {
 		const firstLine = allLines[0] ?? "";
 		const firstLineBytes = Buffer.byteLength(firstLine, "utf-8");
-		const snippet = truncateHeadBytes(firstLine, DEFAULT_MAX_BYTES);
+		const snippet = truncateHeadBytes(firstLine, maxBytes);
 		let outputText = snippet.text;
 
 		if (outputText.length > 0) {
 			outputText += `\n\n[Line 1 is ${formatBytes(firstLineBytes)}, exceeds ${formatBytes(
-				DEFAULT_MAX_BYTES,
+				maxBytes,
 			)} limit. Showing first ${formatBytes(snippet.bytes)} of the line.]`;
 		} else {
 			outputText = `[Line 1 is ${formatBytes(firstLineBytes)}, exceeds ${formatBytes(
-				DEFAULT_MAX_BYTES,
+				maxBytes,
 			)} limit. Unable to display a valid UTF-8 snippet.]`;
 		}
 
@@ -108,7 +104,10 @@ function buildTextOutput(textContent: string): { output: string; lineCount: numb
 	return { output: outputText, lineCount: totalFileLines };
 }
 
-async function buildDirectoryListing(absolutePath: string): Promise<{ output: string; lineCount: number }> {
+async function buildDirectoryListing(
+	absolutePath: string,
+	maxBytes: number,
+): Promise<{ output: string; lineCount: number }> {
 	let entries: string[];
 	try {
 		entries = await Array.fromAsync(new Bun.Glob("*").scan({ cwd: absolutePath, dot: true, onlyFiles: false }));
@@ -151,7 +150,7 @@ async function buildDirectoryListing(absolutePath: string): Promise<{ output: st
 	}
 
 	const rawOutput = results.join("\n");
-	const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
+	const truncation = truncateHead(rawOutput, { maxBytes, maxLines: Number.MAX_SAFE_INTEGER });
 	let output = truncation.content;
 
 	const notices: string[] = [];
@@ -159,7 +158,7 @@ async function buildDirectoryListing(absolutePath: string): Promise<{ output: st
 		notices.push(`${DEFAULT_DIR_LIMIT} entries limit reached. Use limit=${DEFAULT_DIR_LIMIT * 2} for more`);
 	}
 	if (truncation.truncated) {
-		notices.push(`${formatBytes(DEFAULT_MAX_BYTES)} limit reached`);
+		notices.push(`${formatBytes(maxBytes)} limit reached`);
 	}
 	if (notices.length > 0) {
 		output += `\n\n[${notices.join(". ")}]`;
@@ -192,16 +191,24 @@ export function extractFileMentions(text: string): string[] {
 /**
  * Generate a FileMentionMessage containing the contents of mentioned files.
  * Returns empty array if no files could be read.
+ *
+ * `pricing` is REQUIRED, and positional rather than one more optional field on
+ * `options`, because a mention is billed on every later request exactly like a
+ * tool result: it rode the compiled 50KB constant while
+ * `tools.artifactSpillThreshold` moved every tool around it, and an optional
+ * field is one a caller forgets. A source carrying no settings resolves to the
+ * compiled default, which is the same answer as not configuring one.
  */
 export async function generateFileMentionMessages(
 	filePaths: string[],
 	cwd: string,
+	pricing: InlinePricingSource,
 	options?: { autoResizeImages?: boolean; useHashLines?: boolean; snapshotStore?: SnapshotStore },
 ): Promise<AgentMessage[]> {
 	if (filePaths.length === 0) return [];
 
 	const autoResizeImages = options?.autoResizeImages ?? true;
-
+	const maxBytes = inlineBudgetFor(pricing);
 	const files: FileMentionMessage["files"] = [];
 
 	for (const filePath of filePaths) {
@@ -213,7 +220,7 @@ export async function generateFileMentionMessages(
 		try {
 			const stat = await Bun.file(absolutePath).stat();
 			if (stat.isDirectory()) {
-				const { output, lineCount } = await buildDirectoryListing(absolutePath);
+				const { output, lineCount } = await buildDirectoryListing(absolutePath, maxBytes);
 				files.push({ path: resolvedPath, content: output, lineCount });
 				continue;
 			}
@@ -279,7 +286,7 @@ export async function generateFileMentionMessages(
 			const content = await Bun.file(absolutePath).text();
 			const snapshotStore = options?.useHashLines ? options.snapshotStore : undefined;
 			const normalized = snapshotStore ? normalizeToLF(content) : content;
-			let { output, lineCount } = buildTextOutput(normalized);
+			let { output, lineCount } = buildTextOutput(normalized, maxBytes);
 			if (snapshotStore) {
 				const tag = snapshotStore.record(canonicalSnapshotKey(absolutePath), normalized);
 				output = `${formatHashlineHeader(resolvedPath, tag)}\n${formatNumberedLines(output)}`;

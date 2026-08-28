@@ -146,6 +146,6 @@ describe("deriveAdvisorTelemetry", () => {
 
 describe("ADVISOR_DEFAULT_TOOL_NAMES", () => {
 	it("is exactly the read-only investigative set", () => {
-		expect([...ADVISOR_DEFAULT_TOOL_NAMES]).toEqual(["read", "grep", "glob"]);
+		expect([...ADVISOR_DEFAULT_TOOL_NAMES]).toEqual(["read", "search"]);
 	});
 });

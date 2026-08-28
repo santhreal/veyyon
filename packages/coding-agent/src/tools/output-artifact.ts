@@ -121,7 +121,7 @@ export function reportLostOutputArtifact(toolType: string, error: unknown): void
  * `undefined` when the session has no artifact store or the write fails.
  *
  * This is the ONE owner of the `allocateOutputArtifact(toolType) + write`
- * pattern. Every tool that offloads oversized output (bash, grep, browser, gh,
+ * pattern. Every tool that offloads oversized output (bash, search, browser, gh,
  * ...) routes its spill through here, so the `artifact://<id>` recovery
  * contract lives in exactly one place. Pair it with
  * {@link enforceInlineByteCap} as the `saveArtifact` callback.

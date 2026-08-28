@@ -127,20 +127,16 @@ function summarizeToolResult(
 				path: record.path,
 				chars: typeof record.content === "string" ? record.content.length : 0,
 			});
-		case "grep":
+		case "search": {
+			const searchDetails = isRecord(details.result) ? details.result : {};
 			return withError({
-				op: "grep",
-				pattern: record.pattern,
+				op: "search",
+				pattern: record.input,
 				path: record.path,
-				count: details.matchCount ?? undefined,
+				count: searchDetails.matchCount ?? searchDetails.fileCount,
+				matches: Array.isArray(searchDetails.files) ? searchDetails.files.slice(0, 20) : undefined,
 			});
-		case "glob":
-			return withError({
-				op: "glob",
-				pattern: record.pattern,
-				count: details.fileCount ?? undefined,
-				matches: Array.isArray(details.files) ? details.files.slice(0, 20) : undefined,
-			});
+		}
 		case "bash":
 			return withError({
 				op: "run",

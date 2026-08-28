@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, type Mock, vi } from "bun:test";
+import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { Skill } from "@veyyon/coding-agent/extensibility/skills";
 import * as skillsModule from "@veyyon/coding-agent/extensibility/skills";
@@ -38,7 +39,7 @@ describe("autoloadSkills in executor", () => {
 		settings: Settings.isolated(),
 		modelRegistry: {
 			refresh: async () => {},
-		} as unknown as import("@veyyon/coding-agent/config/model-registry").ModelRegistry,
+		} as unknown as ModelRegistry,
 		enableLsp: false,
 	};
 

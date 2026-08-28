@@ -63,13 +63,27 @@ describe("classifyCandidateFailure", () => {
 	});
 
 	/**
-	 * The load failures that mean a real binary is unusable: a truncated download, a build for the
-	 * wrong architecture, a missing `libstdc++`. The file is right there, so silence is wrong.
+	 * A GLIBCXX version mismatch is an environment incompatibility (the host's libstdc++ is too
+	 * old), not a corrupt or stale binary. Classifying it "incompatible" suppresses the "stale
+	 * binary" warning, which is misleading for an environment limitation. The error still
+	 * appears in the aggregate throw if every candidate fails.
 	 */
-	it("calls a dlopen failure broken, because the file exists and will not load", () => {
+	it("calls a GLIBCXX version mismatch incompatible, because the host is too old not the file corrupt", () => {
 		expect(classifyCandidateFailure(brokenError("libstdc++.so.6: version `GLIBCXX_3.4.32' not found"))).toBe(
-			"broken",
+			"incompatible",
 		);
+	});
+
+	/** A GLIBC version mismatch is the same class: the host's libc is too old. */
+	it("calls a GLIBC version mismatch incompatible", () => {
+		expect(
+			classifyCandidateFailure(brokenError("/lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.39' not found")),
+		).toBe("incompatible");
+	});
+
+	/** A dlopen failure that is NOT a version mismatch is still broken: the file itself is bad. */
+	it("calls a non-version dlopen failure broken, because the file exists and will not load", () => {
+		expect(classifyCandidateFailure(brokenError("invalid ELF header"))).toBe("broken");
 	});
 
 	it("calls an ELF-class mismatch broken", () => {
@@ -354,11 +368,14 @@ describe("loadFirstUsableAddon — a broken addon is announced", () => {
 		expect(result.bindings).toBeUndefined();
 	});
 
-	/** The reason carried to the warning is the loader's own message text, not a rephrasing. */
-	it("carries the require error's message through to the warning verbatim", () => {
+	/**
+	 * A GLIBCXX version mismatch is classified "incompatible", not "broken", so no warning is
+	 * emitted. The error is still collected in the errors list for the aggregate throw.
+	 */
+	it("does not warn for a GLIBCXX version mismatch, but still records the error", () => {
 		const { warnings, onBrokenAddon } = collectWarnings();
 
-		loadFirstUsableAddon({
+		const result = loadFirstUsableAddon({
 			candidates: ["./a.node"],
 			requireAddon: () => {
 				throw brokenError("libstdc++.so.6: version `GLIBCXX_3.4.32' not found");
@@ -367,7 +384,24 @@ describe("loadFirstUsableAddon — a broken addon is announced", () => {
 			onBrokenAddon,
 		});
 
-		expect(warnings[0]?.reason).toBe("libstdc++.so.6: version `GLIBCXX_3.4.32' not found");
+		expect(warnings).toEqual([]);
+		expect(result.errors).toEqual(["./a.node: libstdc++.so.6: version `GLIBCXX_3.4.32' not found"]);
+	});
+
+	/** The reason carried to the warning is the loader's own message text, not a rephrasing. */
+	it("carries the require error's message through to the warning verbatim", () => {
+		const { warnings, onBrokenAddon } = collectWarnings();
+
+		loadFirstUsableAddon({
+			candidates: ["./a.node"],
+			requireAddon: () => {
+				throw brokenError("truncated file: bad ELF header");
+			},
+			validate: () => {},
+			onBrokenAddon,
+		});
+
+		expect(warnings[0]?.reason).toBe("truncated file: bad ELF header");
 	});
 
 	/** A thrown non-Error still produces a usable reason rather than "[object Object]" noise. */

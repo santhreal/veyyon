@@ -11,7 +11,7 @@ contributor docs ([onboarding](docs/internal/onboarding.md), [testing](docs/inte
 [`review.md`](review.md) is the pull-request review guide; [`docs/handbook/`](docs/handbook/) is the
 operator manual.
 
-|Package|Description|
+|Member|Description|
 |---|---|
 |`packages/ai`|Multi-provider LLM client with streaming support|
 |`packages/catalog`|Model catalog: bundled models.json, provider descriptors, model identity/classification|
@@ -28,16 +28,29 @@ operator manual.
 |`packages/tool-render`|Shared React tool-call renderers for HTML export and collab-web|
 |`packages/collab-web`|Browser guest client and local relay for collab live sessions (private)|
 |`packages/swarm-extension`|Swarm orchestration extension|
-|`packages/metaharness`|Benchmark runners, Harbor run storage, REST/SSE API, live dashboard (private)|
-|`packages/deepswe-bench`|DeepSWE bench runner for performance-affecting changes (private)|
-|`packages/typescript-edit-benchmark`|Edit-tool benchmark from TypeScript source mutations (private)|
+|`packages/evals`|Every model and agent evaluation: the DeepSWE, Terminal-Bench 3.0 and TypeScript-edit suites, harness adapters, execution backends, run store, REST/SSE API and live dashboard (private)|
 |`packages/simulations`|Deterministic offline simulations driving real subsystems end to end (private)|
-|`crates/veyyon-natives`|Rust crate for performance-critical text/grep ops|
-|`crates/veyyon-conformance`|Whole-product conformance corpus and harness (issue #877)|
+|`crates/veyyon-ast`|Structural search, replace and code-block summaries over tree-sitter and ast-grep|
+|`crates/veyyon-conformance`|Whole-product conformance corpus and harness, on virtual clock, filesystem, terminal and network (test only, issue #877)|
+|`crates/veyyon-diff-kernel`|Line-comparison engine for unified diff, ported from GNU diff `compareseq` and `shift_boundaries`|
+|`crates/veyyon-glob`|Glob normalization, brace expansion, depth bounds and compilation|
+|`crates/veyyon-grep-kernel`|One compiled matcher over regex and PCRE2 for every search path|
+|`crates/veyyon-iso`|Copy-on-write filesystem isolation and change diffing (APFS clonefile, Linux overlayfs, Windows ProjFS)|
+|`crates/veyyon-keys`|Zero-copy parser for the Kitty keyboard protocol and legacy escape sequences|
+|`crates/veyyon-natives`|The napi addon: the only Rust surface TypeScript calls (grep, glob, text measurement, highlighting, clipboard, SIXEL)|
+|`crates/veyyon-shell`|In-process POSIX shell: interpreter, coreutils builtins, output minimizer, process supervision|
+|`crates/veyyon-test-scratch`|Scratch directories removed on drop, including on panic (test only)|
+|`crates/veyyon-text`|ANSI-aware width measurement, grapheme segmentation and truncation over UTF-16|
+|`crates/veyyon-uu-diff`|`diff` as an in-process shell builtin|
+|`crates/veyyon-uu-grep`|`grep` as an in-process shell builtin, ripgrep-backed|
+|`crates/veyyon-uutils-ctx`|Thread-local stdio and cwd the uutils builtins run against|
+|`crates/veyyon-walker`|Parallel directory traversal with entry caching, gitignore filtering and cancellation|
 
-`packages/tsconfig.workspace.json` is shared TypeScript config, not a package.
-`scripts/package-map-coverage.test.ts` fails when a directory under `packages/` carries a manifest
-and is missing from the table.
+Every `packages/*` member is TypeScript and every `crates/*` member is Rust.
+`packages/tsconfig.workspace.json` is shared TypeScript config, not a package; `crates/vendor` is
+vendored third-party code, not a first-party crate. `scripts/package-map-coverage.test.ts` fails
+when a workspace member under either directory is missing from the table, and when
+`ARCHITECTURE.md` grows a second copy of it.
 
 Import catalog values — bundled models, model-thinking helpers, identity, descriptors, model
 manager and cache — from `@veyyon/catalog/<module>`, never through `@veyyon/ai`. Type-only imports
@@ -201,8 +214,11 @@ model is actually told, and why enablement is inert". Read it before touching th
 
 - No `any` unless absolutely necessary.
 - Never `ReturnType<>`. Name the type.
-- Never inline imports: no `await import()`, no `import("pkg").Type` in a type position, no dynamic
-  type imports. Always top-level.
+- Imports are top-level, and a type is never imported dynamically: no `import("pkg").Type`. A
+  dynamic `await import()` is allowed only where a lazy boundary already exists, which is the tool
+  dispatch table (`packages/coding-agent/src/tools/index.ts`), CLI command dispatch, and the
+  barrels held out of TUI startup. `scripts/a-module-is-imported-at-the-top-of-its-file.test.ts`
+  pins that set, so a new site elsewhere fails.
 - Check `node_modules` for external API types instead of guessing.
 - A third-party version that two or more packages share lives in `workspaces.catalog` in the root
   `package.json`, and each of those packages writes `"react": "catalog:"`. A dependency already in
@@ -371,7 +387,7 @@ argot. Never hand-roll handle logic here.
   in the pull request (off arm at the default, on arm with `SCENE_SETTINGS='argot.enabled: true'`) —
   off shows only the "Argot Shorthand" master toggle, on shows it plus Models, Dictionary Budget,
   Context Cutoff and Subagents — and the bench
-  `packages/typescript-edit-benchmark/src/argot-bench.ts`, which runs the edit tasks with encoding on
+  `packages/evals/suites/typescript-edit/argot-bench.ts`, which runs the edit tasks with encoding on
   and off and certifies the token delta. `test/argot-settings-e2e.test.ts` asserts every Argot
   setting end to end, including that the knobs are hidden while off. Keep all of it current.
 

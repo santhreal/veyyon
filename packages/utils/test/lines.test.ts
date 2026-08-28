@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { splitTextLines } from "../src/lines";
 
 // `splitTextLines` is the ONE owner for "lines of a text, ignoring the trailing
-// newline". typescript-edit-benchmark and metaharness both re-point here; these
+// newline". The TypeScript-edit suite and the Harbor backend both re-point here; these
 // lock the exact semantics both diff-body consumers depend on.
 describe("splitTextLines", () => {
 	it("splits on newlines", () => {

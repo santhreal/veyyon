@@ -100,7 +100,7 @@ describe("read summary", () => {
 		expect(proseResult.details?.summary?.elidedSpans).toBe(1);
 	});
 
-	it("does not truncate summarized output", async () => {
+	it("does not truncate a summary that fits the line default", async () => {
 		const fixture = path.join(tmpDir, "many.ts");
 		const source = Array.from(
 			{ length: 20 },
@@ -109,7 +109,7 @@ describe("read summary", () => {
 		).join("\n\n");
 		await fs.writeFile(fixture, `${source}\n`);
 
-		const tool = new ReadTool(createSession(tmpDir, { "read.defaultLimit": 10 }));
+		const tool = new ReadTool(createSession(tmpDir));
 		const result = await tool.execute("read-summary-no-truncate", { path: fixture });
 		const text = textOutput(result);
 

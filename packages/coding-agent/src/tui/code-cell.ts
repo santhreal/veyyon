@@ -26,7 +26,7 @@ import type { State } from "./types";
  * collapsed defaults (`outputMaxLines = 6`, `codeMaxLines = 12`, `contentMaxLines = 12`) were bypassed
  * entirely and expanding meant NO ceiling at all. Every other renderer in this package pairs its
  * collapsed limit with a named expanded one -- `JSON_TREE_MAX_LINES_COLLAPSED/EXPANDED`,
- * `EXPANDED_TEXT_LIMIT` in `tools/grep.ts`, `INSPECT_OUTPUT_EXPANDED_LINES`, `TV_OUTPUT_EXPANDED`,
+ * `EXPANDED_TEXT_LIMIT` in `tools/text-search.ts`, `INSPECT_OUTPUT_EXPANDED_LINES`, `TV_OUTPUT_EXPANDED`,
  * `PREVIEW_LIMITS.OUTPUT_COLLAPSED/OUTPUT_EXPANDED` -- so expanded means a BIGGER ceiling, never no
  * ceiling. This cell is reached by `tools/read.ts`, which 54 test files import, so an expanded render
  * of a large file put its whole length into the transcript.

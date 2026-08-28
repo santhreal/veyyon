@@ -99,8 +99,10 @@ import statementExecutionImplement from "./statements/execution-workflow/impleme
 import statementExecutionImplementAskFirst from "./statements/execution-workflow/implement-ask-first.md" with {
 	type: "text",
 };
-import statementExecutionImplementGrep from "./statements/execution-workflow/implement-grep.md" with { type: "text" };
 import statementExecutionImplementNoDestructive from "./statements/execution-workflow/implement-no-destructive.md" with {
+	type: "text",
+};
+import statementExecutionImplementSearch from "./statements/execution-workflow/implement-search.md" with {
 	type: "text",
 };
 import statementExecutionReadRulesOnly from "./statements/execution-workflow/read-rules-only.md" with { type: "text" };
@@ -138,8 +140,7 @@ import statementRuntimeSkillsHeading from "./statements/runtime/skills-rules-hea
 import statementRuntimeInventoryText from "./statements/runtime/tool-inventory-text.md" with { type: "text" };
 import statementToolPolicyAst from "./statements/tool-policy/ast.md" with { type: "text" };
 import statementToolPolicyAstEdit from "./statements/tool-policy/ast-edit.md" with { type: "text" };
-import statementToolPolicyAstGrep from "./statements/tool-policy/ast-grep.md" with { type: "text" };
-import statementToolPolicyAstPlainText from "./statements/tool-policy/ast-plain-text.md" with { type: "text" };
+import statementToolPolicyAstSearch from "./statements/tool-policy/ast-search.md" with { type: "text" };
 import statementToolPolicyBashCwd from "./statements/tool-policy/bash-cwd.md" with { type: "text" };
 import statementToolPolicyDelegation from "./statements/tool-policy/delegation.md" with { type: "text" };
 import statementToolPolicyDelegationAllowed from "./statements/tool-policy/delegation-allowed.md" with { type: "text" };
@@ -166,9 +167,8 @@ import statementToolPolicyDelegationSubagentValue from "./statements/tool-policy
 	type: "text",
 };
 import statementToolPolicyExploration from "./statements/tool-policy/exploration.md" with { type: "text" };
-import statementToolPolicyExplorationGlob from "./statements/tool-policy/exploration-glob.md" with { type: "text" };
-import statementToolPolicyExplorationGrep from "./statements/tool-policy/exploration-grep.md" with { type: "text" };
 import statementToolPolicyExplorationRead from "./statements/tool-policy/exploration-read.md" with { type: "text" };
+import statementToolPolicyExplorationSearch from "./statements/tool-policy/exploration-search.md" with { type: "text" };
 import statementToolPolicyGeneral from "./statements/tool-policy/general.md" with { type: "text" };
 import statementToolPolicyInspectImage from "./statements/tool-policy/inspect-image.md" with { type: "text" };
 import statementToolPolicyIntentField from "./statements/tool-policy/intent-field.md" with { type: "text" };
@@ -178,14 +178,13 @@ import statementToolPolicyParallelMeansSubagents from "./statements/tool-policy/
 };
 import statementToolPolicyReportToolIssue from "./statements/tool-policy/report-tool-issue.md" with { type: "text" };
 import statementToolPolicyResultContract from "./statements/tool-policy/result-contract.md" with { type: "text" };
+import statementToolPolicySearch from "./statements/tool-policy/search.md" with { type: "text" };
 import statementToolPolicySecretsRedaction from "./statements/tool-policy/secrets-redaction.md" with { type: "text" };
 import statementToolPolicySpecializedBash from "./statements/tool-policy/specialized-bash.md" with { type: "text" };
 import statementToolPolicySpecializedBashLitmus from "./statements/tool-policy/specialized-bash-litmus.md" with {
 	type: "text",
 };
 import statementToolPolicySpecializedEdit from "./statements/tool-policy/specialized-edit.md" with { type: "text" };
-import statementToolPolicySpecializedGlob from "./statements/tool-policy/specialized-glob.md" with { type: "text" };
-import statementToolPolicySpecializedGrep from "./statements/tool-policy/specialized-grep.md" with { type: "text" };
 import statementToolPolicySpecializedLsp from "./statements/tool-policy/specialized-lsp.md" with { type: "text" };
 import statementToolPolicySpecializedRead from "./statements/tool-policy/specialized-read.md" with { type: "text" };
 import statementToolPolicySpecializedTools from "./statements/tool-policy/specialized-tools.md" with { type: "text" };
@@ -528,18 +527,11 @@ export const PROMPT_STATEMENTS = [
 		purpose: "routes code intelligence to the language server rather than to search",
 	},
 	{
-		id: "tool-policy/specialized-grep",
+		id: "tool-policy/search",
 		section: "tool-policy",
-		condition: contains("tools", "grep"),
-		text: statementToolPolicySpecializedGrep,
-		purpose: "routes regex search to the grep tool and names the shell commands it replaces",
-	},
-	{
-		id: "tool-policy/specialized-glob",
-		section: "tool-policy",
-		condition: contains("tools", "glob"),
-		text: statementToolPolicySpecializedGlob,
-		purpose: "routes globbing to the glob tool and names the shell commands it replaces",
+		condition: contains("tools", "search"),
+		text: statementToolPolicySearch,
+		purpose: "makes the unified search tool own workspace paths, text, and code structure",
 	},
 	{
 		id: "tool-policy/specialized-bash",
@@ -587,18 +579,11 @@ export const PROMPT_STATEMENTS = [
 		purpose: "the Exploration heading and the rule against opening files hopefully, true of every tool set",
 	},
 	{
-		id: "tool-policy/exploration-grep",
+		id: "tool-policy/exploration-search",
 		section: "tool-policy",
-		condition: contains("tools", "grep"),
-		text: statementToolPolicyExplorationGrep,
-		purpose: "names grep as the way to locate targets during exploration",
-	},
-	{
-		id: "tool-policy/exploration-glob",
-		section: "tool-policy",
-		condition: contains("tools", "glob"),
-		text: statementToolPolicyExplorationGlob,
-		purpose: "names glob as the way to map structure during exploration",
+		condition: contains("tools", "search"),
+		text: statementToolPolicyExplorationSearch,
+		purpose: "uses search to locate targets and map workspace structure during exploration",
 	},
 	{
 		id: "tool-policy/exploration-read",
@@ -618,17 +603,16 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "tool-policy/ast",
 		section: "tool-policy",
-		condition: anyOf(contains("tools", "ast_grep"), contains("tools", "ast_edit")),
+		condition: anyOf(contains("tools", "search"), contains("tools", "ast_edit")),
 		text: statementToolPolicyAst,
-		purpose: "the AST heading and the prefer-syntax-aware rule, present when either AST tool is built",
+		purpose: "the AST heading and syntax-aware rule for structural search or edits",
 	},
 	{
-		id: "tool-policy/ast-grep",
+		id: "tool-policy/ast-search",
 		section: "tool-policy",
-		condition: contains("tools", "ast_grep"),
-		text: statementToolPolicyAstGrep,
-		purpose:
-			"names the structural discovery tool, separate from the edit tool because either can be built without the other",
+		condition: contains("tools", "search"),
+		text: statementToolPolicyAstSearch,
+		purpose: "names structural search under the AST heading when unified search is active",
 	},
 	{
 		id: "tool-policy/ast-edit",
@@ -638,14 +622,7 @@ export const PROMPT_STATEMENTS = [
 		purpose:
 			"names the codemod tool, its own row because a session can have structural search without structural edit",
 	},
-	{
-		id: "tool-policy/ast-plain-text",
-		section: "tool-policy",
-		condition: anyOf(contains("tools", "ast_grep"), contains("tools", "ast_edit")),
-		text: statementToolPolicyAstPlainText,
-		purpose:
-			"confines plain grep to cases where structure is irrelevant, which only needs saying when a structural tool exists",
-	},
+
 	{
 		id: "tool-policy/delegation",
 		section: "tool-policy",
@@ -850,11 +827,11 @@ export const PROMPT_STATEMENTS = [
 		purpose: "the Implement heading and the fix-at-source, prefer-existing-files, review-as-the-user rules",
 	},
 	{
-		id: "execution-workflow/implement-grep",
+		id: "execution-workflow/implement-search",
 		section: "execution-workflow",
-		condition: contains("tools", "grep"),
-		text: statementExecutionImplementGrep,
-		purpose: "grep instead of guessing, which needs the tool that makes it possible",
+		condition: contains("tools", "search"),
+		text: statementExecutionImplementSearch,
+		purpose: "search instead of guessing when locating code or affected call sites",
 	},
 	{
 		id: "execution-workflow/implement-ask-first",

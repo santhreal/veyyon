@@ -58,7 +58,7 @@ runs:
         with:
            path: ~/.bun/install/cache
            # The workspace lockfile, by exact path. A `**/bun.lock` glob also walks
-           # `packages/deepswe-bench/repo-cache/`, where a checked-out fixture
+           # `packages/evals/datasets/repo-cache/`, where a checked-out fixture
            # repository carries its own lockfile that appears and disappears while a
            # job runs; the save phase of a native build then fails the whole job with
            # "hashFiles('**/bun.lock') failed. Fail to hash files under directory".

@@ -36,6 +36,7 @@ import { sessionPrompts } from "./prompts/session/rows";
 import {
 	assembleDefaultTemplate,
 	assembleStatementSections,
+	type DefaultTemplateSections,
 	parseSectionOverridesJson,
 } from "./system-prompt-builder/default-template";
 import { type GateInputs, OMITTED_GATE_DEFAULTS } from "./system-prompt-builder/gate-inputs";
@@ -624,7 +625,7 @@ export interface BuildSystemPromptResult {
  * `config.yml` — on a developer's machine or in production — could silently
  * swap a section of the system prompt, which is exactly the contamination this
  * must never allow. It is therefore reachable ONLY through
- * `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS`, an env var the deepswe-bench harness
+ * `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS`, an env var the eval harness
  * sets around a single arm and nothing else sets. There is no config key, no
  * CLI flag, and no `BuildSystemPromptOptions` field — so a normal run cannot
  * reach this path at all.
@@ -636,7 +637,7 @@ export interface BuildSystemPromptResult {
  * rather than silently reverting to production, which would invalidate the eval
  * while looking like it succeeded.
  */
-function resolveEvalSectionOverrides(): ReturnType<typeof parseSectionOverridesJson> {
+function resolveEvalSectionOverrides(): Partial<DefaultTemplateSections> {
 	const raw = $env.VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS;
 	const overrides = parseSectionOverridesJson(raw);
 	const keys = Object.keys(overrides);

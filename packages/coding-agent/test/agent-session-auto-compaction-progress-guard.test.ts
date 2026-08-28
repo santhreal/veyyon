@@ -1036,7 +1036,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 		const bigCallId = "call-big-useless";
 		sessionManager.appendMessage({
 			role: "assistant",
-			content: [{ type: "toolCall", id: bigCallId, name: "grep", arguments: { pattern: "TODO" } }],
+			content: [{ type: "toolCall", id: bigCallId, name: "search", arguments: { type: "text", input: "TODO" } }],
 			api: "anthropic-messages",
 			provider: "anthropic",
 			model: "claude-sonnet-4-5",
@@ -1054,7 +1054,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 		sessionManager.appendMessage({
 			role: "toolResult",
 			toolCallId: bigCallId,
-			toolName: "grep",
+			toolName: "search",
 			content: [{ type: "text", text: "match line\n".repeat(20000) }], // ~40k+ tokens
 			isError: false,
 			useless: true,

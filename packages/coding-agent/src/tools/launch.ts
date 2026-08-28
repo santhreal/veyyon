@@ -339,6 +339,10 @@ export function toolContent(result: DaemonRpcResult, params: LaunchParams): stri
 			return lines.join("\n");
 		}
 		case "logs": {
+			// Not bounded here. Every tool result except `read` passes the shared spill layer in
+			// `output-meta.ts`, which holds the inline window to `tools.artifactSpillThreshold` and
+			// keeps the elided bytes recoverable through an `artifact://` id. A second cap here
+			// would deliver the same bytes and lose that recovery.
 			const text = sanitizeText(result.text);
 			return `${text}${text && !text.endsWith("\n") ? "\n" : ""}[${result.name}: ${result.state}; cursor=${result.cursor}${result.timedOut ? "; follow timed out" : ""}]`;
 		}

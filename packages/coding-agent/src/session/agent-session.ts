@@ -535,7 +535,7 @@ const PLAN_DECISION_TOOLS = new Set<string>([TOOL.ask, TOOL.resolve]);
 /**
  * Mutating tool results (`bash`/`eval`/`edit`/`write`/`ast_edit`) without the
  * agent touching the `todo` tool that trip the mid-run reconciliation nudge.
- * Read-only exploration (grep/read/glob/lsp) never ticks this: an agent
+ * Read-only exploration (search/read/lsp) never ticks this: an agent
  * researching for a long stretch has nothing to flip. Picked so a normal
  * fix-verify loop (~3-6 mutations) never sees the nudge, but a sustained run
  * of landed work without flipping any todos does. Without this nudge, long
@@ -1260,7 +1260,7 @@ export interface AgentSessionConfig {
 	 * Full advisor toolset, pre-built in `createAgentSession` against a distinct,
 	 * advisor-scoped `ToolSession` (its own `-advisor` session/agent id) so the
 	 * advisor's tool state stays isolated from the primary. The advisor is a full
-	 * agent; its config `tools` selects a subset (default read/grep/glob). Undefined
+	 * agent; its config `tools` selects a subset (default read/search). Undefined
 	 * when the advisor is disabled.
 	 */
 	advisorTools?: AgentTool[];
@@ -10540,6 +10540,12 @@ export class AgentSession {
 		// sentence sent the model at an agent the spawn path then refused.
 		const subagentNames = enabledSubagentNames(this.#toolRegistry.get(TOOL.task));
 		const researchAgent = preferredSubagentName(subagentNames, "scout"); // not-a-tool-name: agent ids
+		const activeToolNames = new Set(this.agent.state.tools.map(tool => tool.name));
+		const workspaceDiscoveryTools =
+			[TOOL.search, TOOL.read]
+				.filter(name => activeToolNames.has(name))
+				.map(name => `\`${name}\``)
+				.join(", ") || "the available read-only tools";
 		const content = prompt.render(planModePrompts["plan-mode/active"].text, {
 			planFilePath: displayPlanPath,
 			planExists,
@@ -10547,6 +10553,7 @@ export class AgentSession {
 			// that survives is exactly the prose there is a name for.
 			canDelegate: researchAgent !== undefined,
 			researchAgent,
+			workspaceDiscoveryTools,
 			askToolName: TOOL.ask,
 			writeToolName: TOOL.write,
 			editToolName: TOOL.edit,
@@ -11166,11 +11173,16 @@ export class AgentSession {
 			// Auto-read @filepath mentions
 			const fileMentions = extractFileMentions(expandedText);
 			if (fileMentions.length > 0) {
-				const fileMentionMessages = await generateFileMentionMessages(fileMentions, this.sessionManager.getCwd(), {
-					autoResizeImages: this.settings.get("images.autoResize"),
-					useHashLines: resolveFileDisplayMode(this).hashLines,
-					snapshotStore: getFileSnapshotStore(this),
-				});
+				const fileMentionMessages = await generateFileMentionMessages(
+					fileMentions,
+					this.sessionManager.getCwd(),
+					this,
+					{
+						autoResizeImages: this.settings.get("images.autoResize"),
+						useHashLines: resolveFileDisplayMode(this).hashLines,
+						snapshotStore: getFileSnapshotStore(this),
+					},
+				);
 				for (const fileMentionMessage of fileMentionMessages) {
 					messages.push(await this.#normalizeAgentMessageImages(fileMentionMessage));
 				}

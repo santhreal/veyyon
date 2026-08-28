@@ -6,7 +6,6 @@ import { genericRenderer } from "./generic";
 import { argotLoadRenderer, argotUnloadRenderer } from "./tools/argot";
 import { askRenderer } from "./tools/ask";
 import { astEditRenderer } from "./tools/ast-edit";
-import { astGrepRenderer } from "./tools/ast-grep";
 import { bashRenderer } from "./tools/bash";
 import { browserRenderer } from "./tools/browser";
 import { checkpointRenderer, rewindRenderer } from "./tools/checkpoint";
@@ -16,9 +15,7 @@ import { evalRenderer } from "./tools/eval";
 import { fetchRenderer } from "./tools/fetch";
 import { generateImageRenderer } from "./tools/generate-image";
 import { githubRenderer } from "./tools/github";
-import { globRenderer } from "./tools/glob";
 import { goalRenderer } from "./tools/goal";
-import { grepRenderer } from "./tools/grep";
 import { inspectImageRenderer } from "./tools/inspect-image";
 import { ircRenderer } from "./tools/irc";
 import { jobRenderer } from "./tools/job";
@@ -34,6 +31,8 @@ import { readRenderer } from "./tools/read";
 import { reportFindingRenderer } from "./tools/report-finding";
 import { reportToolIssueRenderer } from "./tools/report-tool-issue";
 import { resolveRenderer } from "./tools/resolve";
+import { runtimeRenderer } from "./tools/runtime";
+import { searchRenderer } from "./tools/search";
 import { searchBm25Renderer } from "./tools/search-bm25";
 import { setCwdRenderer } from "./tools/set-cwd";
 import { sshRenderer } from "./tools/ssh";
@@ -49,7 +48,6 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	argot_unload: argotUnloadRenderer,
 	ask: askRenderer,
 	ast_edit: astEditRenderer,
-	ast_grep: astGrepRenderer,
 	bash: bashRenderer,
 	browser: browserRenderer,
 	puppeteer: browserRenderer,
@@ -63,8 +61,6 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	python: evalRenderer,
 	notebook: evalRenderer,
 	fetch: fetchRenderer,
-	glob: globRenderer,
-	find: globRenderer,
 	generate_image: generateImageRenderer,
 	github: githubRenderer,
 	goal: goalRenderer,
@@ -86,8 +82,8 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	report_finding: reportFindingRenderer,
 	report_tool_issue: reportToolIssueRenderer,
 	resolve: resolveRenderer,
-	grep: grepRenderer,
-	search: grepRenderer,
+	runtime: runtimeRenderer,
+	search: searchRenderer,
 	search_tool_bm25: searchBm25Renderer,
 	set_cwd: setCwdRenderer,
 	ssh: sshRenderer,

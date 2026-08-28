@@ -265,7 +265,7 @@ describe("the release changelog gate", () => {
 		expect(preparedReleaseChangelogFailures(NEXT, [notes(after)])).toEqual([]);
 	});
 
-	/** Most packages ship nothing in a given release, and packages like `metaharness` own no
+	/** Most packages ship nothing in a given release, and packages like `simulations` own no
 	 * changelog at all. Neither may block a cut: the gate is about the version being documented
 	 * somewhere a reader will find it, not about every package having something to say. */
 	it("passes a release where only the release-notes changelog has an entry", () => {

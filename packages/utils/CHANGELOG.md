@@ -11,6 +11,11 @@
 
 ### Changed
 
+- The prompt registry and the eval prompt-override loader read benchmark prompts from `packages/evals/src/suites/typescript-edit/adapter/prompts/`, the path the consolidated evals package holds them at. No behavior change.
+- `definePromptRows` and `definePromptRegistry` re-read `VEYYON_EVAL_PROMPTS` when it changes instead of applying it once at import, so a prompt variant set per arm reaches the model in a process that runs several arms. The evals harness's in-process backend builds a session without spawning, so every arm after the first was served the first arm's prompt text while the run reported a variant. A read while the variable is unchanged costs one string comparison and allocates nothing.
+- The `prompt-variables` documentation examples name the `search` tool, which is the workspace-search tool that now exists, instead of the retired `grep` tool. No behavior change.
+- `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`. The barrel does not re-export them, so a consumer reaching them through `@veyyon/utils` names the module instead.
+- `relativePathWithinRoot` returns the candidate's own spelling instead of the case-folded copy the containment check used, so on Windows a path under `C:\Users\dev\Projects` no longer comes back lowercased, and a root configured in a different case than the directory on disk resolves to the tail rather than to a `..` walk.
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
 - `winston` and `winston-daily-rotate-file` are resolved on the first log write instead of at module load, taking 4.7ms off every process that imports the logger without logging, which is every entry point.
 - A blocked event loop names the phase that spent the time rather than the phase that happened to be open: `takeLoopPhaseProfile` banks elapsed time per phase and reports the costliest one with its cost, replacing `takeRecentLoopPhase`, which returned the most recent label and blamed `ui.render` for a stall the render pass never took part in.
@@ -28,7 +33,7 @@
 - Ending a child process no longer throws on a host where the native addon cannot load, such as a container whose glibc predates the modern build; the direct child is terminated through the runtime and process liveness falls back to signal 0, so the tree walk is the only capability lost ([#917](https://github.com/santhreal/veyyon/issues/917)).
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
-- `relativePathWithinRoot` returns the candidate's own spelling instead of the case-folded copy the containment check used, so on Windows a path under `C:\Users\dev\Projects` no longer comes back lowercased, and a root configured in a different case than the directory on disk resolves to the tail rather than to a `..` walk.
+- `ChildProcess.kill()` falls back to Bun's built-in `proc.kill()` (SIGTERM) when the native `Process` class cannot load, instead of throwing an uncaught exception that crashes the host. This fixes a crash in containers with older glibc where the native addon fails to load ([#917](https://github.com/santhreal/veyyon/issues/917)).
 
 ## [1.2.0] - 2026-08-23
 
@@ -47,6 +52,10 @@
 - `PROMPT_ID_SHAPE_HINT` and `describeUnknownPromptIds` own the words a refusal uses for a prompt id no registry holds: every unknown id on its own line with the nearest registered ids, then one sentence saying what an id is. Two places refuse the same mistake — the bench runner before a container starts and the app at prompt assembly — and each had written its own explanation, so one operator error produced two differently worded answers to the same question.
 - `AnsiStripper` strips the `stripAnsi` grammar from a stream one chunk at a time, for a consumer that displays a live tail. Re-stripping the whole accumulated buffer on every arrival pays for bytes already stripped: 256 arrivals of 4KiB scanned 128MiB and the last arrival cost nine times the first. Each `push` scans what arrived plus whatever sequence had not closed, `pending` renders that unclosed remainder the way a whole-string strip renders an input ending mid-sequence, and `held` reports what is being held back. A fragment that stays open past 64KiB is settled as text rather than held, which is the one case the chunked and whole-string answers differ and is what keeps a stream from growing the buffer. It is built from the same regex source as `stripAnsi`, because a second copy of the grammar is what made two implementations disagree before.
 - `cancellationError(message?)` mints a cancellation carrying the `AbortError` name that `isAbortError` reads.
+
+### Changed
+
+- Prompt-variable documentation now uses canonical `toolRefs.search` examples instead of the retired `toolRefs.grep` name. No runtime behavior changed.
 
 ### Fixed
 

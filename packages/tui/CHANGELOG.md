@@ -12,7 +12,9 @@
 
 ### Changed
 
+- The ANSI owner check scans `packages/evals/src/backends/harbor` instead of the retired metaharness package path. No behavior change.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
+- The fuzzy-match benchmark fixture now names the canonical text-search source path instead of the retired grep-tool path. No benchmark behavior changed.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
 - The `ui.loop-blocked` warning reports `phase` with the `phaseMs` that earns it, and names the phase only when it held at least half the block; a phase that ran for a sliver of it is reported as `unknown` with the observed label carried as `topPhase`.
 

@@ -11,15 +11,15 @@
  * `expandDelimitedPathEntries`), however, additionally splits on commas and whitespace.
  *
  * Consequently, a call such as `read({ path: "package.json, /etc/passwd" })`,
- * `grep({ path: "src, /etc" })`, or `ast_edit({ paths: ["src, /etc"] })` was measured
- * by the boundary check as a single lexical string inside cwd, auto-approving in
+ * `search({ type: "text", path: "src, /etc" })`, or `ast_edit({ paths: ["src, /etc"] })` was
+ * measured by the boundary check as a single lexical string inside cwd, auto-approving in
  * `ask-command`, `plan`, or `auto-edit` modes. At execution time, the tool then split
  * on the comma and accessed the out-of-cwd path without prompt.
  *
  * This suite defends the invariants:
  * 1. In every non-yolo approval mode, ANY delimited argument (comma, comma with spaces,
  *    whitespace, or semicolon) that includes at least one target escaping cwd MUST require
- *    permission and be blocked by the cwd boundary across read, grep, and ast_edit.
+ *    permission and be blocked by the cwd boundary across read, search, and ast_edit.
  * 2. The boundary path (`expandDelimitedPathEntriesSync`) and execution path
  *    (`expandDelimitedPathEntries`) share identical expansion behavior across all delimiter
  *    types, brace groups, escaped separators, glob characters, selector suffixes, and internal URLs.
@@ -119,7 +119,7 @@ describe("a delimited path escaping cwd requires approval", () => {
 		} as unknown as AgentToolContext;
 	}
 
-	function tool(name: "read" | "grep" | "glob" | "ast_edit") {
+	function tool(name: "read" | "search" | "ast_edit") {
 		const t = session.getToolByName(name);
 		if (!t) throw new Error(`expected ${name} tool`);
 		return t;
@@ -247,12 +247,12 @@ describe("a delimited path escaping cwd requires approval", () => {
 		expect(textOf(result)).toContain("OUTSIDE_CONTENT");
 	});
 
-	it("blocks delimited search paths escaping cwd across comma, whitespace, and semicolon in grep", async () => {
+	it("blocks delimited search paths escaping cwd across comma, whitespace, and semicolon in search", async () => {
 		// Comma
 		await expect(
-			tool("grep").execute(
-				"grep-out-comma",
-				{ pattern: "CONTENT", path: `inside1.txt, ${outsideFile}` },
+			tool("search").execute(
+				"search-out-comma",
+				{ type: "text", input: "CONTENT", path: `inside1.txt, ${outsideFile}` },
 				undefined,
 				undefined,
 				ctx({ "tools.approvalMode": "ask-command" }),
@@ -261,9 +261,9 @@ describe("a delimited path escaping cwd requires approval", () => {
 
 		// Comma with spaces
 		await expect(
-			tool("grep").execute(
-				"grep-out-comma-spaces",
-				{ pattern: "CONTENT", path: `inside1.txt , ${outsideFile}` },
+			tool("search").execute(
+				"search-out-comma-spaces",
+				{ type: "text", input: "CONTENT", path: `inside1.txt , ${outsideFile}` },
 				undefined,
 				undefined,
 				ctx({ "tools.approvalMode": "ask-command" }),
@@ -272,9 +272,9 @@ describe("a delimited path escaping cwd requires approval", () => {
 
 		// Whitespace
 		await expect(
-			tool("grep").execute(
-				"grep-out-ws",
-				{ pattern: "CONTENT", path: `inside1.txt ${outsideFile}` },
+			tool("search").execute(
+				"search-out-ws",
+				{ type: "text", input: "CONTENT", path: `inside1.txt ${outsideFile}` },
 				undefined,
 				undefined,
 				ctx({ "tools.approvalMode": "ask-command" }),
@@ -283,9 +283,23 @@ describe("a delimited path escaping cwd requires approval", () => {
 
 		// Semicolon
 		await expect(
-			tool("grep").execute(
-				"grep-out-semi",
-				{ pattern: "CONTENT", path: `inside1.txt;${outsideFile}` },
+			tool("search").execute(
+				"search-out-semi",
+				{ type: "text", input: "CONTENT", path: `inside1.txt;${outsideFile}` },
+				undefined,
+				undefined,
+				ctx({ "tools.approvalMode": "ask-command" }),
+			),
+		).rejects.toThrow(/outside the session working directory/);
+	});
+
+	it("blocks a delimited file-search scope escaping cwd, where the scope is the input", async () => {
+		// The `files` type carries its scope in `input` rather than `path`, so the boundary
+		// has a second argument to measure and the comma split has a second place to hide.
+		await expect(
+			tool("search").execute(
+				"search-files-out-comma",
+				{ type: "files", input: `inside1.txt, ${outsideFile}` },
 				undefined,
 				undefined,
 				ctx({ "tools.approvalMode": "ask-command" }),

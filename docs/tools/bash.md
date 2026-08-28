@@ -137,7 +137,7 @@ model. `eval` keeps your copy raw.
    - Starts like a foreground managed job. Each output chunk resets an idle timer; if the command produces no new output for `stallMs`, it is backgrounded (reason `stall`) with a distinct "may be stuck" notice that names the job id and the `job` tool `cancel: ["<jobId>"]` path. It recommends cancellation; it never force-kills. A command that keeps printing never stalls.
 7. Intercepted command
    - No subprocess created.
-   - Returns a `ToolError` pointing the model at `read`, `grep`, `glob`, `edit`, or `write`.
+   - Returns a `ToolError` pointing the model at `read`, `search`, `edit`, or `write`.
 
 ## Side Effects
 - Filesystem
@@ -196,8 +196,8 @@ model. `eval` keeps your copy raw.
 - `checkBashInterception()` blocks only when the matching rule's `tool` name is present in `ctx.toolNames`; missing tools disable their corresponding rule.
 - Default interceptor rules come from `DEFAULT_BASH_INTERCEPTOR_RULES` in `packages/coding-agent/src/config/settings-schema.ts`:
   - `cat|head|tail|less|more` -> `read`
-  - `grep|rg|ripgrep|ag|ack` -> `grep`
-  - `find|fd|locate` with name/type/glob flags -> `glob`
+  - `grep|rg|ripgrep|ag|ack` -> `search` (`type: "text"`)
+  - `find|fd|locate` with name/type/glob flags -> `search` (`type: "files"`)
   - `sed -i`, `perl -i`, `awk -i inplace` -> `edit`
   - `echo|printf|cat <<` with redirection -> `write`
   - `nohup` / trailing `&` background syntax -> `launch`

@@ -8,15 +8,13 @@ export const BUILTIN_TOOL_NAMES = [
 	"bash",
 	"launch",
 	"edit",
-	"ast_grep",
+	"search",
 	"ast_edit",
 	"ask",
 	"debug",
 	"eval",
 	"ssh",
 	"github",
-	"glob",
-	"grep",
 	"lsp",
 	"inspect_image",
 	"browser",
@@ -45,12 +43,8 @@ export type BuiltinToolName = (typeof BUILTIN_TOOL_NAMES)[number];
 /**
  * Tools that EDIT THE WORKSPACE, which is what separates work from investigation.
  *
- * WHY THIS LIST AND NOT ANOTHER. An agent's tool grant is the honest statement of what kind of work it
- * is for: `scout` grants `read, grep, glob, web_search` and `reviewer` grants those plus `bash`, `lsp`
- * and `ast_grep`, and neither can change a file. `task`, `sonic` and `designer` restrict nothing and
- * are expected to edit. So "may this agent write to the tree" derives the investigative/executing
- * distinction from data the agent already declares, rather than from a hardcoded roster of names that
- * a user-authored agent could never join.
+ * This derives the distinction from data each agent already declares rather
+ * than from a hardcoded agent roster that user-authored agents cannot join.
  *
  * `bash` IS DELIBERATELY ABSENT, and it is the entry that decides whether this list is useful. `bash`
  * can obviously write, so a "can it possibly mutate" reading would put it in and then classify
@@ -109,8 +103,7 @@ const KNOWN_TOOL_NAME_SET: ReadonlySet<string> = new Set<string>([...BUILTIN_TOO
  * an agent can DO has to treat an unknown name as unknown rather than as harmless. `task/agent-role.ts`
  * uses it for exactly that.
  *
- * Alias-tolerant for the same reason as its neighbours: `search` and `find` are legacy spellings of
- * tools this build still ships, and reading them as unknown third-party tools would be wrong.
+ * Legacy workspace-search names normalize to `search`; other unknown names remain unknown third-party tools.
  */
 export function isKnownToolName(name: string): boolean {
 	return KNOWN_TOOL_NAME_SET.has(normalizeToolNames([name])[0] ?? name);
@@ -120,7 +113,7 @@ export function isKnownToolName(name: string): boolean {
  * Every tool name, as a named constant.
  *
  * WHY THIS EXISTS. Tool names were bare string literals at every site that selects, appends or
- * compares one: `requestedTools.includes("yield")`, `name === "retain"`, `["grep", "glob"]`. A
+ * compares one: `requestedTools.includes("yield")`, `name === "retain"`, `["search", "read"]`. A
  * rename kept compiling and quietly stopped matching, which is precisely how the `yield` handler
  * broke, and it is a class of failure no test catches by accident because the code still runs and
  * simply does less.
@@ -130,19 +123,21 @@ export function isKnownToolName(name: string): boolean {
  * which is the entire point: the compiler cannot notice a literal going stale, and it cannot miss a
  * property that is gone.
  *
- * `TOOL.grep` has the literal type `"grep"`, not `string`, so it still satisfies the places that
- * want a narrow union.
+ * `TOOL.search` has the literal type `"search"`, not `string`, so it still satisfies the places
+ * that want a narrow union.
  */
 export const TOOL = Object.fromEntries([...BUILTIN_TOOL_NAMES, ...HIDDEN_TOOL_NAMES].map(name => [name, name])) as {
 	[K in ToolNameLiteral]: K;
 };
 
 const LEGACY_BUILTIN_TOOL_NAME_ALIASES: ReadonlyMap<string, BuiltinToolName> = new Map([
-	["search", "grep"],
-	["find", "glob"],
+	["glob", "search"],
+	["grep", "search"],
+	["find", "search"],
+	["ast_grep", "search"],
 ]);
 
-/** Return the canonical tool name for current and legacy built-in tool IDs. */
+/** Return the canonical tool name for current and retired built-in tool IDs. */
 export function normalizeToolName(name: string): string {
 	const normalized = name.toLowerCase();
 	return LEGACY_BUILTIN_TOOL_NAME_ALIASES.get(normalized) ?? normalized;

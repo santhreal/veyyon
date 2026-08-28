@@ -69,9 +69,9 @@ describe("harness model profiles (A3 MVP)", () => {
 
 	it("filters initial tool names by allowlist", () => {
 		const settings = Settings.isolated({
-			"harness.profiles": { "openai/gpt-test": { tools: ["read", "grep"] } },
+			"harness.profiles": { "openai/gpt-test": { tools: ["read", "search"] } },
 		});
-		expect(filterToolsByHarnessProfile(["read", "edit", "bash"], settings, model)).toEqual(["read"]);
+		expect(filterToolsByHarnessProfile(["read", "edit", "search"], settings, model)).toEqual(["read", "search"]);
 	});
 
 	it("resolves promptSectionOrder, deduplicated", () => {

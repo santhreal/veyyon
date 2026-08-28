@@ -1,4 +1,5 @@
-import { HOUR_MS, isDateOnly } from "@veyyon/utils";
+import { isDateOnly } from "@veyyon/utils/regex";
+import { HOUR_MS } from "@veyyon/utils/time";
 import { LRUCache } from "lru-cache/raw";
 import { recencyHalflifeHours } from "../config";
 

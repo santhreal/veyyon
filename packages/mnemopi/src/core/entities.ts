@@ -1,4 +1,4 @@
-import { levenshteinDistance } from "@veyyon/utils";
+import { levenshteinDistance } from "@veyyon/utils/levenshtein";
 import { ENTITY_STOPWORDS } from "./stopwords";
 
 // Backed by the canonical entity/mention stopword set in stopwords.ts, which is

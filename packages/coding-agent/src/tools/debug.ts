@@ -715,8 +715,16 @@ export class DebugTool implements AgentTool<typeof debugSchema, DebugToolDetails
 		this.description = prompt.render(toolsPrompts["tools/debug"].text);
 	}
 
+	/**
+	 * A debugger the host cannot start is not worth its schema on every request. The description
+	 * and parameters cost about 1,000 tokens of every request, and every call would fail on the
+	 * missing adapter command, so the tool loads only where at least one configured adapter
+	 * resolves. `ssh` drops itself the same way when no host is configured.
+	 */
 	static createIf(session: ToolSession): DebugTool | null {
-		return session.settings.get("debug.enabled") ? new DebugTool(session) : null;
+		if (!session.settings.get("debug.enabled")) return null;
+		if (getAvailableAdapters(session.cwd).length === 0) return null;
+		return new DebugTool(session);
 	}
 
 	async execute(

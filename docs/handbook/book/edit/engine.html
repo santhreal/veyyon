@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d51f25b3.js";
+            window.path_to_searchindex_js = "../searchindex-8b9af2d6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -199,13 +199,13 @@
 <p>Default edit mode is <strong>hashline</strong> (<code>edit.mode: hashline</code> in <code>config.yml</code>), implemented in
 <code>@veyyon/hashline</code>.</p>
 <p>Veyyon applies file changes through the <strong><code>edit</code></strong> tool (hashline patch language by default). The
-model copies <code>[PATH#TAG]</code> anchors from <code>read</code> / <code>grep</code> / <code>write</code> output, then emits <code>SWAP</code>, <code>DEL</code>,
+model copies <code>[PATH#TAG]</code> anchors from <code>read</code> / <code>search</code> / <code>write</code> output, then emits <code>SWAP</code>, <code>DEL</code>,
 and <code>INS</code> operations against numbered lines. Snapshot tags detect stale anchors and drive recovery.</p>
 <p>Alternate modes (<code>apply_patch</code>, <code>patch</code>, <code>replace</code>) exist for compatibility; hashline is the
 default and the path Veyyon optimizes for.</p>
 <h2 id="how-a-hashline-edit-works"><a class="header" href="#how-a-hashline-edit-works">How a hashline edit works</a></h2>
 <ol>
-<li><strong><code>read</code> or <code>grep</code></strong> records a whole-file snapshot and prints <code>[relative/path#TAG]</code> plus
+<li><strong><code>read</code> or <code>search</code></strong> records a whole-file snapshot and prints <code>[relative/path#TAG]</code> plus
 <code>LINE:content</code> rows (<code>TAG</code> is a four-hex snapshot id).</li>
 <li>The model sends <strong><code>edit</code></strong> with an <code>input</code> string: one or more <code>[PATH#TAG]</code> sections and hashline
 ops (<code>SWAP N.=M:</code>, <code>DEL N.=M</code>, <code>INS.PRE N:</code> / <code>INS.POST N:</code> / <code>INS.HEAD</code> / <code>INS.TAIL</code>, block ops
@@ -234,7 +234,7 @@ headers for the next edit.</li>
 <ul>
 <li>User guide: <a href="../using/editing.html">Editing and repair</a></li>
 <li>Tool contract: <a href="../../../tools/edit.html"><code>docs/tools/edit.md</code></a></li>
-<li>Read/grep anchors: <a href="../../../tools/read.html"><code>docs/tools/read.md</code></a>, <a href="../../../tools/grep.html"><code>docs/tools/grep.md</code></a></li>
+<li>Read/search anchors: <a href="../../../tools/read.html"><code>docs/tools/read.md</code></a>, <a href="../../../tools/search.html"><code>docs/tools/search.md</code></a></li>
 <li>Settings: <code>edit.mode</code> in <a href="../reference/settings.html"><code>docs/handbook/src/reference/settings.md</code></a></li>
 </ul>
 <p>There is no <code>veyyon-edit</code> Rust crate, no V4A-only write path, and no <code>make_update_patch</code> envelope

@@ -436,7 +436,7 @@ export class LocalProtocolHandler implements ProtocolHandler {
 	 *
 	 * Resolution order:
 	 * 1. **Caller-supplied** `context.localProtocolOptions` (the actual session
-	 *    that initiated the `read`/`find`/`search`/`router.resolve` call). This
+	 *    that initiated the `read`/`search`/`router.resolve` call). This
 	 *    is what keeps `local://` reads pinned to the calling session in
 	 *    multi-session hosts (cmux/ACP, embedded SDK consumers) where every
 	 *    session registers as `kind: "main"` and "first one wins" would route

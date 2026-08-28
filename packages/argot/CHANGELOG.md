@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The dictionary generator and its constants name the `packages/evals/datasets/dicts/` corpus path instead of the retired deepswe-bench path. No behavior change.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes
