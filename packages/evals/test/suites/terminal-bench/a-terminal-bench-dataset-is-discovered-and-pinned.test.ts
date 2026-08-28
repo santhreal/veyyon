@@ -31,13 +31,13 @@ describe("dataset discovery and pinning", () => {
 		expect(instructionPath).toBe(join(FIXTURES_ROOT, "tasks", "gpu-task", "instruction.md"));
 	});
 
-	test("verifies existing cache when commit SHA matches", async () => {
+	test("verifies existing cache when repo identity and commit SHA match", async () => {
 		const calls: string[][] = [];
 		const mockGit = async (args: readonly string[], _cwd?: string): Promise<string> => {
 			calls.push([...args]);
-			if (args[0] === "rev-parse" && args[1] === "HEAD") {
-				return TERMINAL_BENCH_COMMIT_SHA;
-			}
+			if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return FIXTURES_ROOT;
+			if (args[0] === "rev-parse" && args[1] === "HEAD") return TERMINAL_BENCH_COMMIT_SHA;
+			if (args[0] === "remote" && args[1] === "get-url") return TERMINAL_BENCH_GIT_REMOTE;
 			return "";
 		};
 
@@ -47,15 +47,19 @@ describe("dataset discovery and pinning", () => {
 		});
 
 		expect(acquired).toBe(FIXTURES_ROOT);
-		expect(calls).toEqual([["rev-parse", "HEAD"]]);
+		expect(calls).toEqual([
+			["rev-parse", "--show-toplevel"],
+			["remote", "get-url", "origin"],
+			["rev-parse", "HEAD"],
+		]);
 	});
 
 	test("refuses loudly when existing cache commit SHA does not match pin", async () => {
 		const wrongSha = "1111111111111111111111111111111111111111";
 		const mockGit = async (args: readonly string[]): Promise<string> => {
-			if (args[0] === "rev-parse") {
-				return wrongSha;
-			}
+			if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return FIXTURES_ROOT;
+			if (args[0] === "rev-parse" && args[1] === "HEAD") return wrongSha;
+			if (args[0] === "remote" && args[1] === "get-url") return TERMINAL_BENCH_GIT_REMOTE;
 			return "";
 		};
 
@@ -65,6 +69,39 @@ describe("dataset discovery and pinning", () => {
 				git: mockGit,
 			}),
 		).rejects.toThrow(/resolved to commit "1111111111111111111111111111111111111111", expected pinned commit/);
+	});
+
+	test("refuses when cache dir is inside an enclosing repository", async () => {
+		const enclosingRoot = resolve(FIXTURES_ROOT, "..");
+		const mockGit = async (args: readonly string[]): Promise<string> => {
+			if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return enclosingRoot;
+			if (args[0] === "remote" && args[1] === "get-url") return TERMINAL_BENCH_GIT_REMOTE;
+			if (args[0] === "rev-parse" && args[1] === "HEAD") return TERMINAL_BENCH_COMMIT_SHA;
+			return "";
+		};
+
+		await expect(
+			acquireTerminalBenchDataset({
+				cacheDir: FIXTURES_ROOT,
+				git: mockGit,
+			}),
+		).rejects.toThrow(/is not its own repository root/);
+	});
+
+	test("refuses when origin remote does not match expected URL", async () => {
+		const mockGit = async (args: readonly string[]): Promise<string> => {
+			if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return FIXTURES_ROOT;
+			if (args[0] === "remote" && args[1] === "get-url") return "https://github.com/wrong/repo.git";
+			if (args[0] === "rev-parse" && args[1] === "HEAD") return TERMINAL_BENCH_COMMIT_SHA;
+			return "";
+		};
+
+		await expect(
+			acquireTerminalBenchDataset({
+				cacheDir: FIXTURES_ROOT,
+				git: mockGit,
+			}),
+		).rejects.toThrow(/has origin "https:\/\/github.com\/wrong\/repo.git"/);
 	});
 
 	test("clones and verifies pin when destination does not exist", async () => {

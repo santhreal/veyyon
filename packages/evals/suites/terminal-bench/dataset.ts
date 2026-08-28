@@ -63,14 +63,8 @@ export async function acquireTerminalBenchDataset(options: AcquireTerminalBenchO
 	}
 
 	if (alreadyExists && !options.force) {
-		let actualSha: string;
-		try {
-			actualSha = await git(["rev-parse", "HEAD"], cacheDir);
-		} catch (error) {
-			throw new Error(`Failed to verify existing Terminal-Bench dataset at "${cacheDir}": ${String(error)}`, {
-				cause: error,
-			});
-		}
+		await verifyRepoIdentity(git, cacheDir, remoteUrl);
+		const actualSha = await readHeadSha(git, cacheDir);
 
 		if (actualSha !== expectedSha) {
 			throw new Error(
@@ -93,15 +87,7 @@ export async function acquireTerminalBenchDataset(options: AcquireTerminalBenchO
 	}
 
 	// Verify the commit SHA immediately after clone
-	let resolvedSha: string;
-	try {
-		resolvedSha = await git(["rev-parse", "HEAD"], cacheDir);
-	} catch (error) {
-		throw new Error(
-			`Failed to inspect commit SHA of freshly cloned Terminal-Bench dataset at "${cacheDir}": ${String(error)}`,
-			{ cause: error },
-		);
-	}
+	const resolvedSha = await readHeadSha(git, cacheDir);
 
 	if (resolvedSha !== expectedSha) {
 		throw new Error(
@@ -111,6 +97,65 @@ export async function acquireTerminalBenchDataset(options: AcquireTerminalBenchO
 	}
 
 	return cacheDir;
+}
+
+/**
+ * Verifies that `cacheDir` is the root of its own git repository and that its
+ * `origin` remote matches `expectedRemoteUrl`. Without the toplevel check,
+ * `git rev-parse HEAD` silently walks up to an enclosing repository and returns
+ * its HEAD — a directory that is merely inside another repo (a worktree, a
+ * submodule parent) would pass the SHA check with the wrong commit.
+ */
+async function verifyRepoIdentity(
+	git: GitExecutor,
+	cacheDir: string,
+	expectedRemoteUrl: string,
+): Promise<void> {
+	let toplevel: string;
+	let remoteUrl: string;
+	try {
+		toplevel = (await git(["rev-parse", "--show-toplevel"], cacheDir)).trim();
+	} catch (error) {
+		throw new Error(
+			`"${cacheDir}" is not a git repository root. ` +
+				`It may be inside another repo or not a clone at all. ${String(error)}`,
+			{ cause: error },
+		);
+	}
+
+	if (toplevel !== cacheDir) {
+		throw new Error(
+			`Terminal-Bench dataset cache "${cacheDir}" is not its own repository root ` +
+				`(toplevel is "${toplevel}). It may be inside an enclosing repository. ` +
+				`Remove the directory and re-acquire the dataset.`,
+		);
+	}
+
+	try {
+		remoteUrl = (await git(["remote", "get-url", "origin"], cacheDir)).trim();
+	} catch (error) {
+		throw new Error(
+			`Terminal-Bench dataset at "${cacheDir}" has no origin remote. ${String(error)}`,
+			{ cause: error },
+		);
+	}
+
+	if (remoteUrl !== expectedRemoteUrl) {
+		throw new Error(
+			`Terminal-Bench dataset at "${cacheDir}" has origin "${remoteUrl}", ` +
+				`expected "${expectedRemoteUrl}". The directory may be a different repository.`,
+		);
+	}
+}
+
+async function readHeadSha(git: GitExecutor, cwd: string): Promise<string> {
+	try {
+		return await git(["rev-parse", "HEAD"], cwd);
+	} catch (error) {
+		throw new Error(`Failed to read HEAD commit SHA at "${cwd}": ${String(error)}`, {
+			cause: error,
+		});
+	}
 }
 
 /** Whether a filesystem error means the path is not there, as opposed to not readable. */
