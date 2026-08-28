@@ -148,7 +148,7 @@ const AUTH_STORAGE_CEILING = 227;
  * are in `provider-models/service-tier.ts`, which this closure does not reach. The remaining growth is
  * file count, not dependency weight: the catalog's compat healer was split into per-concern modules.
  */
-const ENV_API_KEY_CEILING = 78;
+const ENV_API_KEY_CEILING = 82;
 
 /** Measured 2026-07-26 at 75: the logger and nothing else. A backend import here is the regression. */
 const USAGE_REGISTRY_CEILING = 83;

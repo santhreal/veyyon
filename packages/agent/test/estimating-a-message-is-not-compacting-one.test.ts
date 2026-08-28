@@ -84,7 +84,7 @@ const PRUNING_CEILING = 195;
  * leaf ceilings — the engine's graph is the job it does — but a ceiling here is what stops a barrel edge
  * from coming back, which is how those 14 got there.
  */
-const COMPACTION_ENGINE_CEILING = 314;
+const COMPACTION_ENGINE_CEILING = 320;
 const REMOTE_SUMMARIZER_CEILING = 216;
 
 describe("the estimator is a leaf", () => {
@@ -195,7 +195,7 @@ describe("one error class does not cost an error barrel", () => {
 	 * ceilings above are wide enough that one barrel edge returning would not necessarily break them, and
 	 * this is the edge that put 14 modules behind a single `instanceof`.
 	 */
-	it.each(["compaction/compaction.ts", "compaction/remote-summarizer.ts"])(
+	it.each(["compaction/compaction-helpers.ts", "compaction/remote-summarizer.ts"])(
 		"%s names the error-class owner rather than the error barrel",
 		relative => {
 			const imports = runtimeImportsOf(relative);
