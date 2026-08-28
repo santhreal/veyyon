@@ -60,13 +60,7 @@ function workspacePackages(): string[] {
  * count alone cannot see a merge being undone one package at a time: dropping
  * `bench` and restoring `metaharness` keeps the count flat.
  */
-const MERGED_AWAY = [
-	"deepswe-bench",
-	"metaharness",
-	"simulations",
-	"tool-render",
-	"typescript-edit-benchmark",
-] as const;
+const MERGED_AWAY = ["deepswe-bench", "metaharness", "simulations", "tool-render", "typescript-edit-benchmark"];
 
 describe("the workspace package count", () => {
 	const packages = workspacePackages();
