@@ -29,11 +29,11 @@ import { parseInternalUrl } from "../internal-urls/parse";
 import { createLspWritethrough, type FileDiagnosticsResult, type WritethroughCallback, writethroughNoop } from "../lsp";
 import { DeferredDiagnostics } from "../lsp/deferred-diagnostics";
 import { getDiagnosticsLedger } from "../lsp/diagnostics-ledger";
-import { highlightCode } from "../modes/theme/highlight";
-import type { Theme } from "../modes/theme/theme-class";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from "../sdk";
 import { budgetedFileCommit, sessionBudgetLimits } from "../session/cpu-limit";
+import { highlightCode } from "../theme/highlight";
+import type { Theme } from "../theme/theme-class";
 // Owners, not the local `../tui` barrel: it re-exports `./file-list`, and that module took
 // `getLanguageFromPath` from the theme ENGINE, so three names cost 282 modules of presentation layer.
 import { fileHyperlink } from "../tui/hyperlink";

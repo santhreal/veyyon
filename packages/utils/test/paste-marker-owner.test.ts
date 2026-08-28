@@ -103,8 +103,8 @@ describe("marker ownership", () => {
 		const files = [
 			path.join(UTILS_SRC, "bracketed-paste.ts"),
 			path.join(TUI_SRC, "stdin-buffer.ts"),
-			path.join(CODING_AGENT_SRC, "modes/components/composer/custom-editor.ts"),
-			path.join(CODING_AGENT_SRC, "modes/components/composer/custom-editor.test.ts"),
+			path.join(CODING_AGENT_SRC, "modes/terminal/components/composer/custom-editor.ts"),
+			path.join(CODING_AGENT_SRC, "modes/terminal/components/composer/custom-editor.test.ts"),
 		];
 		const texts = await Promise.all(files.map(file => Bun.file(file).text()));
 		const joined = texts.join("\n");
@@ -125,7 +125,10 @@ describe("marker ownership", () => {
 		expect(stdinBuffer).not.toContain("const PASTE_START");
 		expect(stdinBuffer).not.toContain("BRACKETED_PASTE_START");
 
-		for (const file of ["modes/components/composer/custom-editor.ts", "modes/components/composer/custom-editor.test.ts"]) {
+		for (const file of [
+			"modes/terminal/components/composer/custom-editor.ts",
+			"modes/terminal/components/composer/custom-editor.test.ts",
+		]) {
 			const text = await Bun.file(path.join(CODING_AGENT_SRC, file)).text();
 			expect(text).toMatch(/import \{[^}]*PASTE_START[^}]*\} from "@veyyon\/utils\/bracketed-paste";/);
 			expect(text).not.toContain("BRACKETED_PASTE_START");
@@ -141,8 +144,11 @@ describe("marker ownership", () => {
 		const expected: Array<[string, string]> = [
 			[path.join(UTILS_SRC, "bracketed-paste.ts"), "class BracketedPasteHandler"],
 			[path.join(TUI_SRC, "stdin-buffer.ts"), "class StdinBuffer"],
-			[path.join(CODING_AGENT_SRC, "modes/components/composer/custom-editor.ts"), "extractExplicitPathSegments"],
-			[path.join(CODING_AGENT_SRC, "modes/components/composer/custom-editor.test.ts"), "describe("],
+			[
+				path.join(CODING_AGENT_SRC, "modes/terminal/components/composer/custom-editor.ts"),
+				"extractExplicitPathSegments",
+			],
+			[path.join(CODING_AGENT_SRC, "modes/terminal/components/composer/custom-editor.test.ts"), "describe("],
 		];
 		for (const [file, marker] of expected) {
 			expect(await Bun.file(file).text()).toContain(marker);

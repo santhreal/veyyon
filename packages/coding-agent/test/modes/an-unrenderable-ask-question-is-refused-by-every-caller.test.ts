@@ -43,10 +43,10 @@ import type {
 	ExtensionAskDialogQuestion,
 	ExtensionUIContext,
 } from "@veyyon/coding-agent/extensibility/extensions/types";
-import { AskDialogComponent } from "@veyyon/coding-agent/modes/components/dialogs/ask-dialog";
-import type { ExtensionUiControllerContext } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
-import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { AskDialogComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/ask-dialog";
+import type { ExtensionUiControllerContext } from "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
+import { ExtensionUiController } from "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { BUILTIN_TOOLS, HIDDEN_TOOLS, type ToolSession } from "@veyyon/coding-agent/tools";
 import { AskTool, type AskToolInput } from "@veyyon/coding-agent/tools/ask";
 import type { Component, OverlayHandle } from "@veyyon/tui";

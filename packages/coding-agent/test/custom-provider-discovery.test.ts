@@ -8,9 +8,9 @@ import { writeModelCache } from "@veyyon/catalog/model-cache";
 import type { ModelRegistry, ProviderDiscoveryState } from "@veyyon/coding-agent/config/model-registry";
 import { ModelRegistry as ModelRegistryImpl } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { ModelHubComponent } from "@veyyon/coding-agent/modes/components/selectors/model-hub";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { ModelHubComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/model-hub";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import type { TUI } from "@veyyon/tui";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 

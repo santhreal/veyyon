@@ -22,9 +22,9 @@ import type {
 	DaemonState,
 } from "../launch/protocol";
 import { renderTerminalOutput } from "../launch/terminal-output";
-import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { sessionBudgetLimits, sessionCpuAdoption, sessionCpuLimit } from "../session/cpu-limit";
+import type { Theme, ThemeColor } from "../theme/theme";
 import { framedBlock, outputBlockContentWidth, renderStatusLine } from "../tui";
 import type { ToolSession } from ".";
 import { releaseLaunchExitWatch, watchLaunchedProcessExit } from "./launch-exit-watch";

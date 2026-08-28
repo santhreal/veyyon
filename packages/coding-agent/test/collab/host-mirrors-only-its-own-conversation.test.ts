@@ -18,7 +18,7 @@ import { importRoomKey } from "@veyyon/coding-agent/collab/crypto";
 import { CollabHost } from "@veyyon/coding-agent/collab/host";
 import { COLLAB_PROTO, type CollabFrame, parseCollabLink } from "@veyyon/coding-agent/collab/protocol";
 import { CollabSocket } from "@veyyon/coding-agent/collab/relay-client";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";

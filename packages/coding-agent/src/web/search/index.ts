@@ -11,9 +11,9 @@ import { type } from "arktype";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
 import type { CustomTool, CustomToolContext, RenderResultOptions } from "../../extensibility/custom-tools/types";
-import type { Theme } from "../../modes/theme/theme";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ProviderTextTransformResolver } from "../../provider-boundary";
+import type { Theme } from "../../theme/theme";
 import type { ToolSession } from "../../tools";
 import { formatAge } from "../../tools/render-utils";
 import { throwIfAborted } from "../../tools/tool-errors";

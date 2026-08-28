@@ -23,13 +23,13 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import type { AgentDashboard } from "@veyyon/coding-agent/modes/components/dashboard/agent-dashboard";
-import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
-import { SessionObserverRegistry } from "@veyyon/coding-agent/modes/session-observer-registry";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { AgentDashboard } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-dashboard";
+import { SelectorController } from "@veyyon/coding-agent/modes/terminal/controllers/selector-controller";
+import { SessionObserverRegistry } from "@veyyon/coding-agent/modes/terminal/session-observer-registry";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { TempDir } from "@veyyon/utils";
 import { stubStdoutGeometry } from "../../helpers/stdout-geometry";
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "bun:test";
-import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { SelectorController } from "@veyyon/coding-agent/modes/terminal/controllers/selector-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 
 /**
  * `showModalSelector` must close the overlay exactly once when a component's

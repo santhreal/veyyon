@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import { sanitizeText } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
 import { grepToolRenderer } from "../../src/tools/grep";

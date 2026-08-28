@@ -14,10 +14,10 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
-import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
-import { SYMBOL_PRESETS } from "@veyyon/coding-agent/modes/theme/symbols";
-import { createTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { ThemeJson } from "@veyyon/coding-agent/theme/color";
+import { defaultThemes } from "@veyyon/coding-agent/theme/defaults";
+import { SYMBOL_PRESETS } from "@veyyon/coding-agent/theme/symbols";
+import { createTheme } from "@veyyon/coding-agent/theme/theme";
 
 const SRC = path.resolve(import.meta.dir, "../../../src");
 
@@ -65,9 +65,9 @@ describe("status.connecting / status.active symbols", () => {
 	 * (A render-site literal bypasses every preset — the exact TOUCH-2 bug.) */
 	it("keeps the routed callsites literal-free", () => {
 		for (const rel of [
-			"modes/controllers/mcp-command-controller.ts",
-			"modes/controllers/command-controller.ts",
-			"modes/components/dialogs/advisor-config.ts",
+			"modes/terminal/controllers/mcp-command-controller.ts",
+			"modes/terminal/controllers/command-controller.ts",
+			"modes/terminal/components/dialogs/advisor-config.ts",
 		]) {
 			const src = fs.readFileSync(path.join(SRC, rel), "utf8");
 			// Comments may mention the glyphs; code strings must not.

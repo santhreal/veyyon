@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/session-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/session-selector";
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { TUI } from "@veyyon/tui";
 import { StressRenderScheduler } from "../../../../tui/test/render-stress-scheduler";
 import { VirtualTerminal } from "../../../../tui/test/virtual-terminal";

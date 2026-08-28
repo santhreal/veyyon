@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { createSelectionAttemptNotice, SELECTION_HELD_HINT } from "@veyyon/coding-agent/modes/utils/selection-notice";
+import {
+	createSelectionAttemptNotice,
+	SELECTION_HELD_HINT,
+} from "@veyyon/coding-agent/modes/terminal/utils/selection-notice";
 
 /**
  * The answer given when a mouse drag selected nothing.

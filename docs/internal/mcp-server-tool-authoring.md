@@ -163,7 +163,7 @@ This avoids many collisions, but not all. Different raw names can still sanitize
 
 ## 5) Operator lifecycle: add/edit/remove and live updates
 
-Interactive mode exposes `/mcp` in `src/modes/controllers/mcp-command-controller.ts`.
+Interactive mode exposes `/mcp` in `src/modes/terminal/controllers/mcp-command-controller.ts`.
 
 Supported operations:
 
@@ -232,10 +232,10 @@ For robust MCP authoring in this codebase:
 - [`packages/coding-agent/src/mcp/config.ts`](../../packages/coding-agent/src/mcp/config.ts)
 - [`packages/coding-agent/src/mcp/config-writer.ts`](../../packages/coding-agent/src/mcp/config-writer.ts)
 - [`packages/coding-agent/src/mcp/tool-bridge.ts`](../../packages/coding-agent/src/mcp/tool-bridge.ts)
-- [`packages/coding-agent/src/modes/controllers/mcp-command-controller.ts`](../../packages/coding-agent/src/modes/controllers/mcp-command-controller.ts)
+- [`packages/coding-agent/src/modes/terminal/controllers/mcp-command-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/mcp-command-controller.ts)
 - [`packages/coding-agent/src/mcp/manager.ts`](../../packages/coding-agent/src/mcp/manager.ts)
 - [`packages/coding-agent/src/discovery/capability/index.ts`](../../packages/coding-agent/src/discovery/capability/index.ts)
 - [`packages/coding-agent/src/config/resolve-config-value.ts`](../../packages/coding-agent/src/config/resolve-config-value.ts)
 - [`packages/coding-agent/src/mcp/loader.ts`](../../packages/coding-agent/src/mcp/loader.ts)
 
-*Verified against `632fd91c3b4e` on 2026-08-28.*
+*Verified against `23e2a7938b9f` on 2026-08-28.*

@@ -39,7 +39,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { ASCII_SYMBOLS, NERD_SYMBOLS, UNICODE_SYMBOLS } from "@veyyon/coding-agent/modes/theme/symbols";
+import { ASCII_SYMBOLS, NERD_SYMBOLS, UNICODE_SYMBOLS } from "@veyyon/coding-agent/theme/symbols";
 
 /**
  * Codepoints verified present in DejaVu Sans Mono 2.37 and FreeMono 20120503 on

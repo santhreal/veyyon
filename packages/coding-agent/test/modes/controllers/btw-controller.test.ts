@@ -1,9 +1,9 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { AssistantMessage, Usage } from "@veyyon/ai";
-import { BtwPanelComponent } from "@veyyon/coding-agent/modes/components/dialogs/btw-panel";
-import { BtwController } from "@veyyon/coding-agent/modes/controllers/btw-controller";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { BtwPanelComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/btw-panel";
+import { BtwController } from "@veyyon/coding-agent/modes/terminal/controllers/btw-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import * as clipboard from "@veyyon/coding-agent/utils/clipboard";
 import { Container, type TUI } from "@veyyon/tui";
 import { replaceTabs } from "@veyyon/utils/wrap";

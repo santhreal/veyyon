@@ -10,9 +10,9 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { Settings } from "../src/config/settings";
-import { StatusLineComponent } from "../src/modes/components/status-line/component";
-import { getThemeByName, setThemeInstance } from "../src/modes/theme/theme";
+import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
 import type { AgentSession } from "../src/session/agent-session";
+import { getThemeByName, setThemeInstance } from "../src/theme/theme";
 
 interface FakeJob {
 	id: string;

@@ -10,7 +10,7 @@
  * Five separate families in this package already pair a collapsed limit with a NAMED expanded one:
  *
  *   - `JSON_TREE_MAX_LINES_COLLAPSED` / `JSON_TREE_MAX_LINES_EXPANDED` (6 / 200) in `tools/json-tree.ts`,
- *     used by `mcp/render.ts`, `modes/components/transcript/tool-execution.ts` and `tools/eval-render.ts`
+ *     used by `mcp/render.ts`, `modes/terminal/components/transcript/tool-execution.ts` and `tools/eval-render.ts`
  *   - `COLLAPSED_TEXT_LIMIT` / `EXPANDED_TEXT_LIMIT` in `tools/grep.ts`
  *   - `INSPECT_OUTPUT_COLLAPSED_LINES` / `INSPECT_OUTPUT_EXPANDED_LINES` (4 / 16)
  *   - `TV_OUTPUT_COLLAPSED` / `TV_OUTPUT_EXPANDED` (1 / 3) in `tools/vibe-render.ts`
@@ -32,8 +32,8 @@
  * remembered to duplicate it for.
  */
 import { describe, expect, it } from "bun:test";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { theme } from "@veyyon/coding-agent/modes/theme/theme-binding";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { theme } from "@veyyon/coding-agent/theme/theme-binding";
 import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/render-utils";
 import { renderCodeCell, renderMarkdownCell } from "@veyyon/coding-agent/tui/code-cell";
 

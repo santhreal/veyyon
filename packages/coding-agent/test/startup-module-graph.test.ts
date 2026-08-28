@@ -1,7 +1,7 @@
 /**
  * The interactive TUI must not be in the CLI's STATIC import graph.
  *
- * WHY THIS SUITE EXISTS. `main.ts` loads interactive mode with `import("./modes/interactive-mode")` and
+ * WHY THIS SUITE EXISTS. `main.ts` loads interactive mode with `import("./modes/terminal/interactive-mode")` and
  * says why in a comment: the `modes/components` subtree is the largest single chunk of the boot graph, so
  * kicking it off deliberately lets it overlap with session creation "and so print/rpc/acp runs never pay
  * for it at all". That was not true. Two static edges pulled the same subtree in anyway, and a
@@ -13,9 +13,9 @@
  *      re-exports `interactive-mode`. Three of those loaders run during startup, so every launch loaded
  *      the whole library surface -- with no extensions installed. They now go through
  *      `extensibility/coding-agent-api.ts`, which imports the barrel on demand.
- *   2. `main.ts` imported two tiny functions from `modes/components/dialogs/welcome.ts`, which put a component
+ *   2. `main.ts` imported two tiny functions from `modes/terminal/components/dialogs/welcome.ts`, which put a component
  *      module -- and `@veyyon/tui`, the theme and the shimmer machinery behind it -- in the static graph of
- *      every launch. Those two functions moved to `modes/components/dialogs/launch-tip.ts`, which imports nothing
+ *      every launch. Those two functions moved to `modes/terminal/components/dialogs/launch-tip.ts`, which imports nothing
  *      but `APP_NAME`.
  *
  * A comment cannot hold this. Both edges were written by people who had no reason to think about startup
@@ -119,10 +119,16 @@ const CLI_GRAPH = new Set([...staticGraph(path.join(SRC, "cli.ts")), ...staticGr
 
 /** Modules that must stay out of the static boot graph, with what each one drags in behind it. */
 const MUST_BE_LAZY: ReadonlyArray<{ file: string; why: string }> = [
-	{ file: "modes/interactive-mode.ts", why: "the whole interactive mode; print/rpc/acp runs never build it" },
-	{ file: "modes/components/dialogs/plugin-settings.ts", why: "the plugin settings panel and the marketplace types" },
-	{ file: "modes/components/selectors/settings-selector.ts", why: "every settings tab and its component tree" },
-	{ file: "modes/components/dialogs/welcome.ts", why: "the welcome card, the sun mark and the tips corpus" },
+	{ file: "modes/terminal/interactive-mode.ts", why: "the whole interactive mode; print/rpc/acp runs never build it" },
+	{
+		file: "modes/terminal/components/dialogs/plugin-settings.ts",
+		why: "the plugin settings panel and the marketplace types",
+	},
+	{
+		file: "modes/terminal/components/selectors/settings-selector.ts",
+		why: "every settings tab and its component tree",
+	},
+	{ file: "modes/terminal/components/dialogs/welcome.ts", why: "the welcome card, the sun mark and the tips corpus" },
 	{ file: "index.ts", why: "the package barrel, which re-exports every mode and every component" },
 	{ file: "modes/index.ts", why: "the modes barrel, which re-exports interactive-mode" },
 ];
@@ -192,7 +198,7 @@ describe("the CLI's static import graph", () => {
 		expect(staticSpecifiers(apiOwner)).toEqual(["@veyyon/utils"]);
 
 		const main = readFileSync(path.join(SRC, "main.ts"), "utf8");
-		expect(moduleSpecifiersIn(main)).toContain("./modes/components/dialogs/launch-tip");
-		expect(moduleSpecifiersIn(main)).not.toContain("./modes/components/dialogs/welcome");
+		expect(moduleSpecifiersIn(main)).toContain("./modes/terminal/components/dialogs/launch-tip");
+		expect(moduleSpecifiersIn(main)).not.toContain("./modes/terminal/components/dialogs/welcome");
 	});
 });

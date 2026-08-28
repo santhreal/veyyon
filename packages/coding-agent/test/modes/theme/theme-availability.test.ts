@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-import { getAvailableThemes } from "@veyyon/coding-agent/modes/theme/theme";
+import { getAvailableThemes } from "@veyyon/coding-agent/theme/theme";
 
 describe("theme availability after the alabaster-only revert", () => {
 	/** Every built-in theme is presented: dark, light, and neutral families all

@@ -21,7 +21,7 @@
  * code, so that class of failure previously rendered no marker of any kind.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { TUI } from "@veyyon/tui";
 import { createToolExecution } from "./helpers/tool-execution";
 

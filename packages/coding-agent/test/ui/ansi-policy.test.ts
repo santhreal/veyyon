@@ -26,7 +26,7 @@
  * render it.
  */
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { detectAnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 
 beforeAll(async () => {

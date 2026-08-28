@@ -72,7 +72,7 @@ const BOOT_FLOOR = 25;
  *
  * Every entry is a module a plausible edit would pull onto the boot path. `main.ts` is the obvious
  * one and the reason `cli.ts` ends with `await import("./main")` rather than a static import.
- * `config/settings.ts` and `modes/theme/theme.ts` are the two most-imported modules in the package,
+ * `config/settings.ts` and `theme/theme.ts` are the two most-imported modules in the package,
  * so any helper that touches a setting or a colour drags them along. The tool implementations are
  * the claim `tools/index.ts` makes in prose.
  */
@@ -82,7 +82,7 @@ const OFF_THE_BOOT_PATH = [
 	"coding-agent/src/index.ts",
 	"coding-agent/src/config/settings.ts",
 	"coding-agent/src/config/settings-schema.ts",
-	"coding-agent/src/modes/theme/theme.ts",
+	"coding-agent/src/theme/theme.ts",
 	"coding-agent/src/session/agent-session.ts",
 	"coding-agent/src/session/session-manager.ts",
 	"coding-agent/src/tools/index.ts",

@@ -1,6 +1,6 @@
 # TUI design language
 
-The terminal-UX conventions Veyyon follows. Implementation lives in `packages/tui` (rendering) and `packages/coding-agent/src/modes/theme/` (themes and tokens).
+The terminal-UX conventions Veyyon follows. Implementation lives in `packages/tui` (rendering) and `packages/coding-agent/src/theme/` (themes and tokens).
 
 ## Brand palette in the TUI
 
@@ -42,7 +42,7 @@ via clear-to-EOL.
 The rules:
 
 - In-terminal background tokens default to `""` (transparent, inherit the real ground). Titanium ships this way.
-- A raised surface or hairline must be a RELATIVE tint derived from the detected terminal background, never an absolute hex. The ONE owner is `modes/theme/ground-tints.ts`: it takes the OSC 11 hex (`terminal.backgroundColor` / `onBackgroundColorChange`) and offsets it a fixed contrast step toward the pole: 12% for hairlines and card outlines (`groundHairlineHex()`), 5% for raised grounds (`groundRaisedHex()`, which has no consumer today, because the raised composer ground was deleted). Two surfaces derive from it: the composer hairline (`ComposerHairline` in `composer-chrome.ts`) and `cardOutlineColor()` in `message-frame.ts`, which is what every `Box.setBorder` in `modes/components` passes (`message-frame.ts:91`, `skill-message.ts:48`). `BorderedLoader`'s full-width `DynamicBorder` rules are not outlines and still paint the static `border` token. Without detection, the static token is the exact fallback; do not paint what you cannot derive.
+- A raised surface or hairline must be a RELATIVE tint derived from the detected terminal background, never an absolute hex. The ONE owner is `theme/ground-tints.ts`: it takes the OSC 11 hex (`terminal.backgroundColor` / `onBackgroundColorChange`) and offsets it a fixed contrast step toward the pole: 12% for hairlines and card outlines (`groundHairlineHex()`), 5% for raised grounds (`groundRaisedHex()`, which has no consumer today, because the raised composer ground was deleted). Two surfaces derive from it: the composer hairline (`ComposerHairline` in `composer-chrome.ts`) and `cardOutlineColor()` in `message-frame.ts`, which is what every `Box.setBorder` in `modes/components` passes (`message-frame.ts:91`, `skill-message.ts:48`). `BorderedLoader`'s full-width `DynamicBorder` rules are not outlines and still paint the static `border` token. Without detection, the static token is the exact fallback; do not paint what you cannot derive.
 - A background fill must close before the row ends. A bg attribute left open at end-of-line paints the remainder of the row on clear-to-EOL: that is the "leaking everywhere" bug class.
 - Never validate a background change in tmux. tmux panes sit on a pure-black default ground, so an absolute dark fill is invisible there and a transparent regression looks identical to a fix. Evidence for any visual change is a capture taken through the official config in [verification.md](../handbook/src/foundations/verification.md) — the HD recorder driving a scene under `proof/scenes/`, which is the only capture path — plus exact-byte test assertions. There are no fallbacks: an off-screen raster of a component's ANSI (`scripts/demos/render-proof.ts`) is a debugging aid for looking at fills on a grey and a black ground while you work, never a proof. The user's own screenshots outrank everything.
 
@@ -125,7 +125,7 @@ own fixed `theme.fg("dim", "  ·  ")` (`status-line/component.ts:1455` and `:159
 before the run clock is `SESSION_CLOCK_GAP`, six spaces and no dot. The `statusLine.separator` enum still
 exists with its seven values, but nothing renders it: `status-line/separators.ts` was deleted along with
 the powerline top border it belonged to, the key has no settings row, and it survives only for two reads
-in `modes/controllers/selector-controller.ts` (the comment on `statusLine.separator` in
+in `modes/terminal/controllers/selector-controller.ts` (the comment on `statusLine.separator` in
 `config/settings-domains/appearance.ts` says to delete the key with those reads). Use the owner for the
 surface instead of pasting a separator literal into a widget.
 
@@ -149,7 +149,7 @@ A block's `state` is not a signal by itself. `renderOutputBlock` turns `state` i
 
 A modal never gets smaller when the terminal gets bigger. `computeModalDims` takes its vertical margin off both ends, and `sizingForArea` sheds padding on a card that has no room to spare, and those two rules used to meet in the middle of ordinary window sizes: a 24-row terminal gave a full-screen card, a 25-row terminal gave an 11-row one, and a list surface opened on a split pane showed an empty box. Card height is floored, the floor rises with the padding the card carries so switching the padding on cannot cost the body a row, and compact mode sheds padding only. A card that asks for `preferredBodyRows` still shrinks to its content, so the floor gives a LIST more room without inflating a short dialog into an empty box. If you add a sizing or a chrome band, re-run `modal-shell-height-is-monotonic.test.ts`: it scans every terminal height from 8 to 120 and fails on any step DOWN, which is the only way to catch a discontinuity that lives between the sizes anyone thinks to test.
 
-A selection band fills the ROW, not the text. `theme.bg("selectedBg", line)` wrapped around a row's content tints only as far as that row happens to reach, so the band stops mid-row and changes shape as the cursor moves; the eye reads that ragged edge as the end of something rather than as "you are here". Call `selectionBand(line, rowWidth)` from `modes/components/selectors/selector-helpers.ts`: it pads first and tints second, which is the whole rule, and it is the one place that rule lives. The Agent Control Center shipped the ragged version and it was caught by looking at a render proof, not by a test, because with color off the fill is not there either way. `test/modes/components/agent-dashboard-selection-fill.test.ts` shows the shape of the lock: force color on with `setAnsiPolicy("full")`, then assert the tinted span reaches the pane edge and that the scrollbar sits outside it.
+A selection band fills the ROW, not the text. `theme.bg("selectedBg", line)` wrapped around a row's content tints only as far as that row happens to reach, so the band stops mid-row and changes shape as the cursor moves; the eye reads that ragged edge as the end of something rather than as "you are here". Call `selectionBand(line, rowWidth)` from `modes/terminal/components/selectors/selector-helpers.ts`: it pads first and tints second, which is the whole rule, and it is the one place that rule lives. The Agent Control Center shipped the ragged version and it was caught by looking at a render proof, not by a test, because with color off the fill is not there either way. `test/modes/components/agent-dashboard-selection-fill.test.ts` shows the shape of the lock: force color on with `setAnsiPolicy("full")`, then assert the tinted span reaches the pane edge and that the scrollbar sits outside it.
 
 A row's width comes from the view that will render it. `renderScrollableList` takes a `buildRows(rowWidth)` callback rather than a finished array, and hands it `ScrollView.contentWidth(width)` from the very view it is about to render through. That shape exists because the alternative kept going wrong: the helper it replaced reserved ONE column for the scrollbar while `ScrollView` reserves TWO, a gutter plus the glyph, so every row was built one column too wide and silently truncated on the way out. A row that was merely padded lost a space and nobody noticed; a row that was FILLED lost the escape that closes the fill, and the bar and every cell after it came out painted. Do not recompute the reserve, and do not pass a width you measured yourself.
 
@@ -234,7 +234,7 @@ the `⧉` in the agent roster's unread badge survived.
 
 ### An empty icon is a normal icon
 
-A preset may leave an icon blank, and the `unicode` preset leaves thirty-one of them blank on purpose: no glyph is better than a wrong one. That makes "icon, then label" a join with a condition, not a template. Build it with `withIcon(icon, text)` from `modes/theme/icon-label.ts`, which emits the separating space only when there is an icon:
+A preset may leave an icon blank, and the `unicode` preset leaves thirty-one of them blank on purpose: no glyph is better than a wrong one. That makes "icon, then label" a join with a condition, not a template. Build it with `withIcon(icon, text)` from `theme/icon-label.ts`, which emits the separating space only when there is an icon:
 
 ```ts
 withIcon(theme.icon.job, `${runningJobs}`); // "⚙ 5", or "5" when icon.job is empty

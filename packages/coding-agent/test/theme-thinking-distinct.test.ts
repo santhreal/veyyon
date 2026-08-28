@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { AssistantMessage, Usage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
-import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
-import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
-import { getResolvedThemeColors, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
+import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { defaultThemes } from "@veyyon/coding-agent/theme/defaults";
+import { getResolvedThemeColors, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
 
 const THINKING_MARKER = "REASONING TRACE MARKER";

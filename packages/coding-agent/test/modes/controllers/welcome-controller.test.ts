@@ -11,8 +11,11 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { WelcomeController, type WelcomeLayoutPort } from "@veyyon/coding-agent/modes/controllers/welcome-controller";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import {
+	WelcomeController,
+	type WelcomeLayoutPort,
+} from "@veyyon/coding-agent/modes/terminal/controllers/welcome-controller";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { Component } from "@veyyon/tui";
 
 interface FakePort extends WelcomeLayoutPort {

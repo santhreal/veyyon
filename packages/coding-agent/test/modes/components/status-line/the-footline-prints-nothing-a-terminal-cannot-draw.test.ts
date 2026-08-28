@@ -65,18 +65,18 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
-import { fitLocation } from "@veyyon/coding-agent/modes/components/status-line/component";
-import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/components/status-line/presets";
-import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line";
+import { fitLocation } from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
+import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/terminal/components/status-line/presets";
+import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import type {
 	SegmentContext,
 	StatusLinePreset,
 	StatusLineSegmentId,
-} from "@veyyon/coding-agent/modes/components/status-line/types";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { stripAnsi } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
 import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";

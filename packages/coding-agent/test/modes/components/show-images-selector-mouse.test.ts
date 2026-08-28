@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { ShowImagesSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/show-images-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { ShowImagesSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/show-images-selector";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 
 beforeAll(async () => {

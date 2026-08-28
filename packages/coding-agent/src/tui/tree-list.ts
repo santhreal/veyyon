@@ -3,7 +3,7 @@
  */
 
 import { replaceTabs } from "@veyyon/utils/wrap";
-import type { Theme } from "../modes/theme/theme";
+import type { Theme } from "../theme/theme";
 import { formatMoreItems } from "../tools/render-utils";
 import type { TreeContext } from "./types";
 import { getTreeBranch, getTreeContinuePrefix } from "./utils";

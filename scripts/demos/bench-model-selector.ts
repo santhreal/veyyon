@@ -20,11 +20,11 @@
 import type { Model } from "@veyyon/ai";
 import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 import type { ModelRegistry } from "../../packages/coding-agent/src/config/model-registry";
-import { sortModelItems } from "../../packages/coding-agent/src/modes/components/selectors/model-browser";
+import { sortModelItems } from "../../packages/coding-agent/src/modes/terminal/components/selectors/model-browser";
 import {
 	buildAuthAwareBrowserItems,
 	cachedAuthAwareBrowserItems,
-} from "../../packages/coding-agent/src/modes/components/selectors/model-selector";
+} from "../../packages/coding-agent/src/modes/terminal/components/selectors/model-selector";
 
 const ITERATIONS = 25;
 const models: Model[] = getBundledProviders().flatMap(provider => getBundledModels(provider as GeneratedProvider));

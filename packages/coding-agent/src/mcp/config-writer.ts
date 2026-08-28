@@ -126,7 +126,7 @@ export async function addMCPServer(filePath: string, name: string, config: MCPSe
 		if (existing.mcpServers?.[name]) {
 			throw new Error(
 				// Keep the words "already exists": `#handleWizardComplete` in
-				// `modes/controllers/mcp-command-controller.ts` matches that phrase to
+				// `modes/terminal/controllers/mcp-command-controller.ts` matches that phrase to
 				// decide which tip to append, so rewording it silently drops the tip.
 				`MCP server "${name}" already exists in ${filePath}, and adding it again would silently replace a working entry. Fix: pick a different name, or run \`/mcp remove ${name}\` first, or edit ${filePath} directly to change the existing entry.`,
 			);

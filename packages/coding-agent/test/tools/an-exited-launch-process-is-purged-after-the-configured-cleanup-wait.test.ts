@@ -24,7 +24,7 @@ import { SETTINGS_SCHEMA } from "../../src/config/settings-schema";
 import { createDaemonBrokerClient, type DaemonBrokerClient } from "../../src/launch/client";
 import { managedDaemonDir, managedDaemonMetaPath } from "../../src/launch/paths";
 import type { DaemonSpec } from "../../src/launch/protocol";
-import { getSettingDef } from "../../src/modes/components/selectors/settings-defs";
+import { getSettingDef } from "../../src/modes/terminal/components/selectors/settings-defs";
 
 const cleanupDirs: string[] = [];
 let isolatedConfigRoot: IsolatedConfigRoot | undefined;

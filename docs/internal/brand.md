@@ -25,7 +25,7 @@ Exact, restrained, technical. Name the product **Veyyon**. Prefer short factual 
 
 ## Interface palette
 
-**Titanium** (`titanium.json`, under `src/modes/theme/defaults/`) is the shipped **default** dark theme (`theme.dark` defaults to `titanium`; `theme.light` defaults to `light`). **Veyyon Dark** (`src/modes/theme/dark.json`) is a pre-ember silver-accent alternative. **Light** (`src/modes/theme/light.json`) is now the brand light theme: white ground, silver text, ember accent. A large additional builtin catalog ships alongside them in `defaults/` (`dark-*`/`light-*` ports plus material names like `obsidian`, `basalt`, `pearl`); those are user options, not brand surfaces.
+**Titanium** (`titanium.json`, under `src/modes/theme/defaults/`) is the shipped **default** dark theme (`theme.dark` defaults to `titanium`; `theme.light` defaults to `light`). **Veyyon Dark** (`src/theme/dark.json`) is a pre-ember silver-accent alternative. **Light** (`src/theme/light.json`) is now the brand light theme: white ground, silver text, ember accent. A large additional builtin catalog ships alongside them in `defaults/` (`dark-*`/`light-*` ports plus material names like `obsidian`, `basalt`, `pearl`); those are user options, not brand surfaces.
 
 | Theme | Status | Ground | Primary text | Structure | Accent |
 | --- | --- | --- | --- | --- | --- |
@@ -58,4 +58,4 @@ Session welcome is a single hero card (not a dual-column dashboard): wordmark, o
 
 See also: [Themes and identity](../handbook/src/using/themes.md), [TUI design language](./tui-design-language.md).
 
-*Verified against `61c974a6c` on 2026-08-21.*
+*Verified against `23e2a7938b9f` on 2026-08-28.*

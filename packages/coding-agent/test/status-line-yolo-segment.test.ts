@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/approval";
 import { AUTONOMY_LABEL, DEFAULT_APPROVAL_MODE } from "@veyyon/coding-agent/tools/approval-modes";
 

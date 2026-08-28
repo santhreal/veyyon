@@ -25,7 +25,7 @@ import * as fs from "node:fs";
 import { basename } from "node:path";
 import { isDirectory, repoPath, subdirectories } from "./helpers/module-graph";
 
-const COMPONENTS = repoPath("packages/coding-agent/src/modes/components");
+const COMPONENTS = repoPath("packages/coding-agent/src/modes/terminal/components");
 
 /**
  * The concern groups, and what each one owns. Pinned by exact equality: a new

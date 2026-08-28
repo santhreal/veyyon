@@ -20,7 +20,7 @@ import {
 	buildSidebarEntries,
 	NO_ACCOUNTS_ANNOTATION,
 	providerDisabledNote,
-} from "@veyyon/coding-agent/modes/components/account/account-manager-rows";
+} from "@veyyon/coding-agent/modes/terminal/components/account/account-manager-rows";
 import { type AccountRow, accountIdentityDetail } from "@veyyon/coding-agent/session/account-inventory";
 
 const NOW = 1_760_000_000_000;

@@ -43,11 +43,11 @@ import {
 	planModalChrome,
 	renderModalShell,
 	sizingForArea,
-} from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
-import { ModelHubComponent } from "@veyyon/coding-agent/modes/components/selectors/model-hub";
-import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/session-selector";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
+import { ModelHubComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/model-hub";
+import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/session-selector";
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import type { TUI } from "@veyyon/tui";
 
 const UP = "\x1b[A";
@@ -154,7 +154,7 @@ describe("no component restates the chrome arithmetic", () => {
 	 * that a correct number was computed the wrong way, and the number is correct
 	 * right up until someone changes `vPad` or `footerLines`.
 	 */
-	const componentsDir = path.join(import.meta.dir, "..", "src", "modes", "components");
+	const componentsDir = path.join(import.meta.dir, "..", "src", "modes", "terminal", "components");
 	const OWNER = path.join(componentsDir, "modal-shell.ts");
 
 	function sourceFiles(dir: string): string[] {

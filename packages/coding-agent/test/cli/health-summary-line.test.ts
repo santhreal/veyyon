@@ -11,7 +11,7 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { formatDoctorResults } from "@veyyon/coding-agent/extensibility/plugins/doctor";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(() => {
 	initTheme();

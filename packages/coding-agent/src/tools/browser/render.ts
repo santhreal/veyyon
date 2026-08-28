@@ -8,7 +8,7 @@
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import type { Theme } from "../../modes/theme/theme";
+import type { Theme } from "../../theme/theme";
 import { Hasher, isFramedBlockComponent, markFramedBlockComponent, renderCodeCell, renderStatusLine } from "../../tui";
 import type { BrowserToolDetails } from "../browser";
 import { formatStyledTruncationWarning, stripOutputNotice } from "../output-meta";

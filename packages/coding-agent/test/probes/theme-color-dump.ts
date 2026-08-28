@@ -11,7 +11,7 @@
  * Needs: a truecolor terminal. It sets COLORTERM itself, so a capture to a pipe
  * shows the escapes rather than the colors.
  */
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 
 // Initialize with dark theme explicitly
 Bun.env.COLORTERM = "truecolor";

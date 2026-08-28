@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { EvalToolDetails } from "@veyyon/coding-agent/eval/types";
-import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/theme/theme";
 import { evalToolRenderer } from "@veyyon/coding-agent/tools/eval-render";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
 

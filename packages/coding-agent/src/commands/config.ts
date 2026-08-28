@@ -3,7 +3,7 @@
  */
 import { Args, Command, Flags } from "@veyyon/utils/cli";
 import { CONFIG_ACTIONS, type ConfigAction, type ConfigCommandArgs, runConfigCommand } from "../cli/config-cli";
-import { initTheme } from "../modes/theme/theme";
+import { initTheme } from "../theme/theme";
 
 export default class Config extends Command {
 	static description = "Manage configuration settings";

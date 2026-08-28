@@ -1,8 +1,8 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentProgress, SingleResult, TaskToolDetails } from "@veyyon/coding-agent/task/types";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { TUI } from "@veyyon/tui";
 import { createToolExecution } from "../../helpers/tool-execution";
 

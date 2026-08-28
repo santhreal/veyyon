@@ -42,7 +42,7 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import {
 	getAllSettingDefs,
 	invalidateSettingDefsCache,
-} from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 import { ArgotSession, DEFAULT_TOKEN_BUDGET, EMPTY_GATE, shouldEncode } from "argot";
 
 const MODEL = "google-antigravity/gemini-3.5-flash";

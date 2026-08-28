@@ -30,8 +30,8 @@ import {
 	minModalChromeRows,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
-} from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 await initTheme(false, "unicode", false, "titanium", "titanium");
 

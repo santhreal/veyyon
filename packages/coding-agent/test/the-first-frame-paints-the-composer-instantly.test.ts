@@ -8,12 +8,12 @@ import {
 	COMPOSER_RESTING_ROWS,
 	ComposerHairline,
 	StaticComposerFrame,
-} from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
-import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { Component } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";

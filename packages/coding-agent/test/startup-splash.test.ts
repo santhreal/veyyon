@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
-import { runStartupSplash } from "@veyyon/coding-agent/modes/setup-wizard/startup-splash";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { runStartupSplash } from "@veyyon/coding-agent/modes/terminal/setup-wizard/startup-splash";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { shouldShowStartupSplash } from "@veyyon/coding-agent/startup-splash";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { Component } from "@veyyon/tui";
 
 beforeAll(async () => {

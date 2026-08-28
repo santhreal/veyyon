@@ -7,7 +7,7 @@ import { resolveCompactionModelPatterns } from "@veyyon/coding-agent/config/mode
 import { getKnownRoleIds, MODEL_ROLE_IDS, SELECTABLE_MODEL_ROLE_IDS } from "@veyyon/coding-agent/config/model-roles";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-import { getSettingsForTab } from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+import { getSettingsForTab } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 import { resolveSubagentModel } from "@veyyon/coding-agent/task/subagent-settings";
 
 describe("compaction strategy settings", () => {

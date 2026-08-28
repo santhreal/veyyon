@@ -8,9 +8,9 @@
  *
  *   - `modes/acp/acp-event-mapper.ts` inspects an `unknown` value and asks only whether it
  *     has `role === "assistant"`. Structural, no other requirement.
- *   - `modes/components/status-line/token-rate.ts` additionally requires a numeric
+ *   - `modes/terminal/components/status-line/token-rate.ts` additionally requires a numeric
  *     `timestamp` and a `usage.output`, because it is about to compute a rate.
- *   - `modes/controllers/omfg-rule.ts` additionally requires `content` to be an ARRAY,
+ *   - `modes/terminal/controllers/omfg-rule.ts` additionally requires `content` to be an ARRAY,
  *     because it is about to walk the blocks looking for tool calls.
  *   - `stats/src/parser.ts` additionally requires a non-empty `id`, because a legacy entry
  *     without one violates the `messages.entry_id NOT NULL` constraint downstream.
@@ -30,7 +30,7 @@ import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 
-import { tokensPerSecond } from "../src/modes/components/status-line/token-rate";
+import { tokensPerSecond } from "../src/modes/terminal/components/status-line/token-rate";
 
 const PACKAGES_DIR = path.join(import.meta.dir, "..", "..");
 
@@ -98,11 +98,11 @@ describe("no two modules answer different questions under one name", () => {
 			path.join("coding-agent", "src", "modes", "acp", "acp-event-mapper.ts"),
 		]);
 		expect(await declarersOf("isAssistantMessageWithBlocks")).toEqual([
-			path.join("coding-agent", "src", "modes", "controllers", "omfg-rule.ts"),
+			path.join("coding-agent", "src", "modes", "terminal", "controllers", "omfg-rule.ts"),
 		]);
 		expect(await declarersOf("isLinkableAssistantEntry")).toEqual([path.join("stats", "src", "parser.ts")]);
 		expect(await declarersOf("isRateableAssistantTurn")).toEqual([
-			path.join("coding-agent", "src", "modes", "components", "status-line", "token-rate.ts"),
+			path.join("coding-agent", "src", "modes", "terminal", "components", "status-line", "token-rate.ts"),
 		]);
 	});
 });

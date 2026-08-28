@@ -8,7 +8,7 @@ import {
 	extractCodeBlocks,
 	extractLastCommand,
 	extractQuoteBlocks,
-} from "@veyyon/coding-agent/modes/utils/copy-targets";
+} from "@veyyon/coding-agent/modes/terminal/utils/copy-targets";
 
 function source(overrides: Partial<CopySource>): CopySource {
 	return {

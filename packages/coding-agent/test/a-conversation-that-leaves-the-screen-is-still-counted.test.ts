@@ -29,12 +29,12 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/components/status-line/presets";
-import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/terminal/components/status-line/presets";
+import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { BackgroundSessions } from "@veyyon/coding-agent/session/background-sessions";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();

@@ -25,8 +25,8 @@
  */
 
 import { beforeAll, describe, expect, it } from "bun:test";
-import { isComposerPromptLine, isHairlineLine } from "../src/modes/components/composer/composer-defect-oracle";
-import { initTheme } from "../src/modes/theme/theme";
+import { isComposerPromptLine, isHairlineLine } from "../src/modes/terminal/components/composer/composer-defect-oracle";
+import { initTheme } from "../src/theme/theme";
 import { type RunnerOptions, type RunnerResult, runComposerOracleScenario } from "./helpers/composer-oracle-runner";
 
 /** Prompt rows on the painted grid, counted through the oracle's own prompt predicate. */

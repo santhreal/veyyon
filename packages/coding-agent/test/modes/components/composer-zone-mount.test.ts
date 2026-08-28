@@ -15,7 +15,7 @@ import {
 	COMPOSER_BOTTOM_MARGIN_ROWS,
 	type ComposerZoneParts,
 	mountComposerZone,
-} from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
+} from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
 import type { Component } from "@veyyon/tui";
 import { Spacer } from "@veyyon/tui";
 

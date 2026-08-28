@@ -33,9 +33,9 @@
 
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { getBuiltinThemes } from "@veyyon/coding-agent/modes/theme/builtin-themes";
-import { resetGroundTintsForTest, setDetectedTerminalGround } from "@veyyon/coding-agent/modes/theme/ground-tints";
-import { createTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getBuiltinThemes } from "@veyyon/coding-agent/theme/builtin-themes";
+import { resetGroundTintsForTest, setDetectedTerminalGround } from "@veyyon/coding-agent/theme/ground-tints";
+import { createTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { renderOutputBlock } from "@veyyon/coding-agent/tui/output-block";
 import { useFullColor } from "../helpers/theme-assertions";
 

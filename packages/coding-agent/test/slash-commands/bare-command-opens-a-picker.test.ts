@@ -1,7 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
-import { SubcommandPickerComponent } from "@veyyon/coding-agent/modes/components/selectors/subcommand-picker";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { SubcommandPickerComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/subcommand-picker";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
 import {
 	BUILTIN_SLASH_COMMAND_DECLARATIONS,
@@ -13,6 +12,7 @@ import type {
 	SubcommandDef,
 	TuiSlashCommandRuntime,
 } from "@veyyon/coding-agent/slash-commands/types";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 /**
  * `docs/internal/slash-command-internals.md` section 9: a command that declares `subcommands` must

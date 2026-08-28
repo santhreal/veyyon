@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { MCPAuthorizationLinkPrompt } from "@veyyon/coding-agent/modes/controllers/mcp-command-controller";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { MCPAuthorizationLinkPrompt } from "@veyyon/coding-agent/modes/terminal/controllers/mcp-command-controller";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { visibleWidth } from "@veyyon/utils/width";
 
 const OSC = "\x1b]";

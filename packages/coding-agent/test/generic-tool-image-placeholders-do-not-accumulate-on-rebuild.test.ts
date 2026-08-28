@@ -17,7 +17,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import * as os from "node:os";
 import { stripVTControlCharacters } from "node:util";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { TUI } from "@veyyon/tui";
 import { createToolExecution } from "./helpers/tool-execution";
 

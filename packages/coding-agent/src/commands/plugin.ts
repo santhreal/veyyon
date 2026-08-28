@@ -3,7 +3,7 @@
  */
 import { Args, Command, Flags } from "@veyyon/utils/cli";
 import { PLUGIN_ACTIONS, type PluginAction, type PluginCommandArgs, runPluginCommand } from "../cli/plugin-cli";
-import { initTheme } from "../modes/theme/theme";
+import { initTheme } from "../theme/theme";
 
 export default class Plugin extends Command {
 	static description = "Manage plugins (install, uninstall, list, etc.)";

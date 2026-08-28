@@ -14,7 +14,7 @@
  * caller performs it against a normal terminal.
  */
 import { ProcessTerminal, TUI } from "@veyyon/tui";
-import { RollbackPickerComponent } from "../modes/components/selectors/rollback-picker";
+import { RollbackPickerComponent } from "../modes/terminal/components/selectors/rollback-picker";
 import type { RollbackRow, UrlOpener } from "./rollback-cli";
 
 /**

@@ -9,7 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { getSettingDef } from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+import { getSettingDef } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 
 beforeEach(async () => {

@@ -13,7 +13,7 @@ This document covers the current Time Traveling Stream Rules (TTSR) runtime path
 - [`../src/extensibility/extensions/types.ts`](../../packages/coding-agent/src/extensibility/extensions/types.ts)
 - [`../src/extensibility/hooks/types.ts`](../../packages/coding-agent/src/extensibility/hooks/types.ts)
 - [`../src/extensibility/custom-tools/types.ts`](../../packages/coding-agent/src/extensibility/custom-tools/types.ts)
-- [`../src/modes/controllers/event-controller.ts`](../../packages/coding-agent/src/modes/controllers/event-controller.ts)
+- [`../src/modes/terminal/controllers/event-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/event-controller.ts)
 
 ## 1. Discovery feed and rule registration
 
@@ -266,4 +266,4 @@ During the timer window, state can change (user interruption, mode actions, addi
 - `warmupMatches` (default 1) keeps a rule silent until it has matched in that many distinct streams; a released claim restores the count, a delivered one starts it over.
 - An experimental rule (one shipping in `builtin-rules/experimental/`) is dropped before registration unless named in `ttsr.experimentalRules`, and naming it in `ttsr.disabledRules` as well keeps it off.
 
-*Verified against `632fd91c3b4e` on 2026-08-28.*
+*Verified against `23e2a7938b9f` on 2026-08-28.*

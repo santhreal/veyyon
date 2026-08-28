@@ -125,13 +125,10 @@
       "types": "./src/*.ts",
       "import": "./src/*.ts"
     },
+    "./*.js": "./src/*.ts",
     "./async": {
       "types": "./src/async/index.ts",
       "import": "./src/async/index.ts"
-    },
-    "./extensibility/plugins/marketplace": {
-      "types": "./src/extensibility/plugins/marketplace/index.ts",
-      "import": "./src/extensibility/plugins/marketplace/index.ts"
     },
     "./async/*": {
       "types": "./src/async/*.ts",
@@ -265,6 +262,18 @@
       "types": "./src/edit/modes/*.ts",
       "import": "./src/edit/modes/*.ts"
     },
+    "./eval": {
+      "types": "./src/eval/index.ts",
+      "import": "./src/eval/index.ts"
+    },
+    "./eval/js/*": {
+      "types": "./src/eval/js/*.ts",
+      "import": "./src/eval/js/*.ts"
+    },
+    "./eval/py/*": {
+      "types": "./src/eval/py/*.ts",
+      "import": "./src/eval/py/*.ts"
+    },
     "./exa/*": {
       "types": "./src/exa/*.ts",
       "import": "./src/exa/*.ts"
@@ -277,10 +286,6 @@
       "types": "./src/export/*.ts",
       "import": "./src/export/*.ts"
     },
-    "./export/markit": {
-      "types": "./src/export/markit/index.ts",
-      "import": "./src/export/markit/index.ts"
-    },
     "./export/html": {
       "types": "./src/export/html/index.ts",
       "import": "./src/export/html/index.ts"
@@ -288,6 +293,10 @@
     "./export/html/*": {
       "types": "./src/export/html/*.ts",
       "import": "./src/export/html/*.ts"
+    },
+    "./export/markit": {
+      "types": "./src/export/markit/index.ts",
+      "import": "./src/export/markit/index.ts"
     },
     "./extensibility/*": {
       "types": "./src/extensibility/*.ts",
@@ -341,6 +350,10 @@
       "types": "./src/extensibility/plugins/*.ts",
       "import": "./src/extensibility/plugins/*.ts"
     },
+    "./extensibility/plugins/marketplace": {
+      "types": "./src/extensibility/plugins/marketplace/index.ts",
+      "import": "./src/extensibility/plugins/marketplace/index.ts"
+    },
     "./internal-urls": {
       "types": "./src/internal-urls/index.ts",
       "import": "./src/internal-urls/index.ts"
@@ -348,18 +361,6 @@
     "./internal-urls/*": {
       "types": "./src/internal-urls/*.ts",
       "import": "./src/internal-urls/*.ts"
-    },
-    "./eval": {
-      "types": "./src/eval/index.ts",
-      "import": "./src/eval/index.ts"
-    },
-    "./eval/js/*": {
-      "types": "./src/eval/js/*.ts",
-      "import": "./src/eval/js/*.ts"
-    },
-    "./eval/py/*": {
-      "types": "./src/eval/py/*.ts",
-      "import": "./src/eval/py/*.ts"
     },
     "./lsp": {
       "types": "./src/lsp/index.ts",
@@ -385,6 +386,10 @@
       "types": "./src/mcp/*.ts",
       "import": "./src/mcp/*.ts"
     },
+    "./mcp/transports/*": {
+      "types": "./src/mcp/transports/*.ts",
+      "import": "./src/mcp/transports/*.ts"
+    },
     "./memory/*": {
       "types": "./src/memory/*.ts",
       "import": "./src/memory/*.ts"
@@ -401,10 +406,6 @@
       "types": "./src/memory/mnemopi/*.ts",
       "import": "./src/memory/mnemopi/*.ts"
     },
-    "./mcp/transports/*": {
-      "types": "./src/mcp/transports/*.ts",
-      "import": "./src/mcp/transports/*.ts"
-    },
     "./modes": {
       "types": "./src/modes/index.ts",
       "import": "./src/modes/index.ts"
@@ -417,57 +418,25 @@
       "types": "./src/modes/acp/*.ts",
       "import": "./src/modes/acp/*.ts"
     },
-    "./modes/components": {
-      "types": "./src/modes/components/index.ts",
-      "import": "./src/modes/components/index.ts"
-    },
-    "./modes/components/*": {
-      "types": "./src/modes/components/*.ts",
-      "import": "./src/modes/components/*.ts"
-    },
-    "./modes/components/extensions": {
-      "types": "./src/modes/components/extensions/index.ts",
-      "import": "./src/modes/components/extensions/index.ts"
-    },
-    "./modes/components/extensions/*": {
-      "types": "./src/modes/components/extensions/*.ts",
-      "import": "./src/modes/components/extensions/*.ts"
-    },
-    "./modes/components/status-line": {
-      "types": "./src/modes/components/status-line/index.ts",
-      "import": "./src/modes/components/status-line/index.ts"
-    },
-    "./modes/components/status-line/*": {
-      "types": "./src/modes/components/status-line/*.ts",
-      "import": "./src/modes/components/status-line/*.ts"
-    },
-    "./modes/controllers/*": {
-      "types": "./src/modes/controllers/*.ts",
-      "import": "./src/modes/controllers/*.ts"
-    },
-    "./modes/setup-wizard": {
-      "types": "./src/modes/setup-wizard/index.ts",
-      "import": "./src/modes/setup-wizard/index.ts"
-    },
-    "./modes/setup-wizard/*": {
-      "types": "./src/modes/setup-wizard/*.ts",
-      "import": "./src/modes/setup-wizard/*.ts"
-    },
     "./modes/rpc/*": {
       "types": "./src/modes/rpc/*.ts",
       "import": "./src/modes/rpc/*.ts"
     },
-    "./modes/theme/*": {
-      "types": "./src/modes/theme/*.ts",
-      "import": "./src/modes/theme/*.ts"
+    "./modes/terminal/components": {
+      "types": "./src/modes/terminal/components/index.ts",
+      "import": "./src/modes/terminal/components/index.ts"
     },
-    "./modes/theme/defaults": {
-      "types": "./src/modes/theme/defaults/index.ts",
-      "import": "./src/modes/theme/defaults/index.ts"
+    "./modes/terminal/components/extensions": {
+      "types": "./src/modes/terminal/components/extensions/index.ts",
+      "import": "./src/modes/terminal/components/extensions/index.ts"
     },
-    "./modes/utils/*": {
-      "types": "./src/modes/utils/*.ts",
-      "import": "./src/modes/utils/*.ts"
+    "./modes/terminal/components/status-line": {
+      "types": "./src/modes/terminal/components/status-line/index.ts",
+      "import": "./src/modes/terminal/components/status-line/index.ts"
+    },
+    "./modes/terminal/setup-wizard": {
+      "types": "./src/modes/terminal/setup-wizard/index.ts",
+      "import": "./src/modes/terminal/setup-wizard/index.ts"
     },
     "./plan-mode/*": {
       "types": "./src/plan-mode/*.ts",
@@ -521,6 +490,14 @@
       "types": "./src/task/*.ts",
       "import": "./src/task/*.ts"
     },
+    "./theme/*": {
+      "types": "./src/theme/*.ts",
+      "import": "./src/theme/*.ts"
+    },
+    "./theme/defaults": {
+      "types": "./src/theme/defaults/index.ts",
+      "import": "./src/theme/defaults/index.ts"
+    },
     "./thinking": {
       "types": "./src/thinking/index.ts",
       "import": "./src/thinking/index.ts"
@@ -568,7 +545,6 @@
     "./web/search/providers/*": {
       "types": "./src/web/search/providers/*.ts",
       "import": "./src/web/search/providers/*.ts"
-    },
-    "./*.js": "./src/*.ts"
+    }
   }
 }

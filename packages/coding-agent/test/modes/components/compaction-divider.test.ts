@@ -10,8 +10,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import { createCompactionSummaryMessage } from "@veyyon/agent-core/compaction";
 import type { ImageContent } from "@veyyon/ai";
 import { KEYBINDINGS } from "@veyyon/coding-agent/config/keybindings";
-import { CompactionSummaryMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/compaction-summary-message";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { CompactionSummaryMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/compaction-summary-message";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { getKeybindings, KeybindingsManager, setKeybindings } from "@veyyon/utils/keybindings";
 
 beforeAll(() => {

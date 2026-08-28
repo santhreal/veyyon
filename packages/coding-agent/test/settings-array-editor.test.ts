@@ -29,7 +29,7 @@ import { describe, expect, it } from "bun:test";
 import {
 	getSettingDef,
 	invalidateSettingDefsCache,
-} from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 
 // The exact display rule #formatTextInputEditValue uses for an array value: a
 // string array joins with ", "; a non-string (object) array is JSON.

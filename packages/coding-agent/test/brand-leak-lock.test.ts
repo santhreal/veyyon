@@ -182,7 +182,7 @@ describe("brand leak lock (SPEC-BRAND-LEAK-CODE)", () => {
 	});
 
 	it("theme JSONs carry no upstream schema URLs", async () => {
-		const themeRoot = `${ROOT}/packages/coding-agent/src/modes/theme`;
+		const themeRoot = `${ROOT}/packages/coding-agent/src/theme`;
 		const glob = new Glob("**/*.json");
 		const hits: string[] = [];
 		let scanned = 0;

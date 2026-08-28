@@ -13,10 +13,10 @@ This document describes how slash commands are discovered, deduplicated, surface
 - [`src/discovery/capability/index.ts`](../../packages/coding-agent/src/discovery/capability/index.ts)
 - [`src/discovery/helpers.ts`](../../packages/coding-agent/src/discovery/helpers.ts)
 - [`src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts)
-- [`src/modes/interactive-mode.ts`](../../packages/coding-agent/src/modes/interactive-mode.ts)
-- [`src/modes/controllers/input-controller.ts`](../../packages/coding-agent/src/modes/controllers/input-controller.ts)
-- [`src/modes/utils/ui-helpers.ts`](../../packages/coding-agent/src/modes/utils/ui-helpers.ts)
-- [`src/modes/controllers/command-controller.ts`](../../packages/coding-agent/src/modes/controllers/command-controller.ts)
+- [`src/modes/terminal/interactive-mode.ts`](../../packages/coding-agent/src/modes/terminal/interactive-mode.ts)
+- [`src/modes/terminal/controllers/input-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/input-controller.ts)
+- [`src/modes/terminal/utils/ui-helpers.ts`](../../packages/coding-agent/src/modes/terminal/utils/ui-helpers.ts)
+- [`src/modes/terminal/controllers/command-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/command-controller.ts)
 - [`src/slash-commands/builtin-registry.ts`](../../packages/coding-agent/src/slash-commands/builtin-registry.ts)
 - [`src/slash-commands/builtin-declarations.ts`](../../packages/coding-agent/src/slash-commands/builtin-declarations.ts)
 - [`src/slash-commands/text-mode-builtins.ts`](../../packages/coding-agent/src/slash-commands/text-mode-builtins.ts)
@@ -329,4 +329,4 @@ hidden default dressed as one.
   - non-native commands: warning + fallback key/value parse
 - Extension/custom command handler exceptions are caught and reported via extension error channel (or logger fallback for custom commands without extension runner), and treated as handled (no unintended fallback execution).
 
-*Verified against `632fd91c3b4e` on 2026-08-28.*
+*Verified against `23e2a7938b9f` on 2026-08-28.*

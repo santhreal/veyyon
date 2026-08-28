@@ -18,10 +18,10 @@
  */
 import { stripVTControlCharacters } from "node:util";
 import { Settings } from "../../packages/coding-agent/src/config/settings";
-import { AgentsSceneController } from "../../packages/coding-agent/src/modes/setup-wizard/scenes/agents";
-import type { SetupSceneHost } from "../../packages/coding-agent/src/modes/setup-wizard/scenes/types";
-import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
+import { AgentsSceneController } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/agents";
+import type { SetupSceneHost } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/types";
 import { loadBundledAgents } from "../../packages/coding-agent/src/task/agents";
+import { initTheme } from "../../packages/coding-agent/src/theme/theme";
 import { setAnsiPolicy } from "../../packages/tui/src/index";
 
 const ITERATIONS = 500;

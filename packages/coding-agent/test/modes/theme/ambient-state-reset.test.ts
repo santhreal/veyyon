@@ -1,7 +1,7 @@
 /**
  * The theme engine's module-scope state goes back to its process-start values on a settings reset.
  *
- * WHY THIS SUITE EXISTS. `modes/theme/theme` keeps three pieces of ambient state outside the
+ * WHY THIS SUITE EXISTS. `theme/theme` keeps three pieces of ambient state outside the
  * Settings singleton: `currentSymbolPresetOverride`, `currentColorBlindMode` and
  * `markdownMermaidRendering`. `resetSettingsForTest` clears the singleton, so a suite that flipped
  * one of these through the normal product path looked clean and still changed what every later
@@ -23,15 +23,15 @@
  */
 import { beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { getMarkdownTheme, setMarkdownMermaidRendering } from "@veyyon/coding-agent/modes/theme/markdown-theme";
-import { clearMermaidCache } from "@veyyon/coding-agent/modes/theme/mermaid-cache";
+import { getMarkdownTheme, setMarkdownMermaidRendering } from "@veyyon/coding-agent/theme/markdown-theme";
+import { clearMermaidCache } from "@veyyon/coding-agent/theme/mermaid-cache";
 import {
 	getColorBlindMode,
 	getSymbolPresetOverride,
 	initTheme,
 	setColorBlindMode,
 	setSymbolPreset,
-} from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/theme/theme";
 import { Markdown } from "@veyyon/tui";
 
 const DIAGRAM = "```mermaid\nflowchart TD\n  Start-->Stop\n```";

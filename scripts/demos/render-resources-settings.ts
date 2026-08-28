@@ -24,7 +24,7 @@
  *     bun scripts/demos/render-resources-settings.ts --budget on --width 100 --height 24
  */
 import { Settings } from "../../packages/coding-agent/src/config/settings";
-import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/components/selectors/settings-selector";
+import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/settings-selector";
 import { flag, initRender, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

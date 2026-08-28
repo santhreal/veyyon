@@ -45,6 +45,7 @@ import { clampLow, getBlobsDir, isEnoent, logger, VERSION } from "@veyyon/utils"
 import { Settings } from "../../config/settings";
 import { disableProvider, enableProvider, reset as resetCapabilities } from "../../discovery/capability";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
+import { loadAllExtensions } from "../../extensibility/extension-state/state-manager";
 import {
 	type ExtensionUIContext,
 	type ExtensionUIDialogOptions,
@@ -59,8 +60,6 @@ import { loadSlashCommands } from "../../extensibility/slash-commands";
 import { listLocalPlanFileUrls } from "../../internal-urls/local-protocol";
 import { MCPManager } from "../../mcp/manager";
 import type { MCPServerConfig } from "../../mcp/types";
-import { loadAllExtensions } from "../../modes/components/extensions/state-manager";
-import { theme } from "../../modes/theme/theme";
 import { type PlanApprovalDetails, resolveApprovedPlan } from "../../plan-mode/approved-plan";
 import { DEFAULT_PLAN_FILE_URL } from "../../plan-mode/plan-file-url";
 import { resolvePlanFilePath } from "../../plan-mode/plan-path";
@@ -80,6 +79,7 @@ import {
 	TTS_LOCAL_MODELS,
 	TTS_LOCAL_VOICE_OPTIONS,
 } from "../../speech/tts/models";
+import { theme } from "../../theme/theme";
 import {
 	configuredThinkingLevelsForModel,
 	getConfiguredThinkingLevelMetadata,

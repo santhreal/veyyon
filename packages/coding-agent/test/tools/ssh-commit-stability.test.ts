@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/tool-execution";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { TUI } from "@veyyon/tui";
 import { createToolExecution } from "../helpers/tool-execution";
 

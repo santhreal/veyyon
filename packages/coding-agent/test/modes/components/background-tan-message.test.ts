@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { createBackgroundTanDispatchBlock } from "@veyyon/coding-agent/modes/components/transcript/background-tan-message";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { createBackgroundTanDispatchBlock } from "@veyyon/coding-agent/modes/terminal/components/transcript/background-tan-message";
 import { BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE, type CustomMessage } from "@veyyon/coding-agent/session/messages";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 function dispatchMessage(details: { jobId: string; work: string; sessionFile: string }): CustomMessage<unknown> {
 	return {

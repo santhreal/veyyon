@@ -34,8 +34,8 @@ import {
 	renderTodoBoardLines,
 	type TodoBoardOptions,
 	todoBoardIsLive,
-} from "@veyyon/coding-agent/modes/components/dashboard/todo-board";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/dashboard/todo-board";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/todo";
 import { todoStrikeReveal } from "@veyyon/coding-agent/tools/todo";
 import { paintRailMotion, railIdleHeadAt } from "@veyyon/coding-agent/tui/rail-motion";

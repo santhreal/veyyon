@@ -34,7 +34,7 @@
 import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getDefault, getType, getUi } from "@veyyon/coding-agent/config/settings-schema";
-import { getSettingsForTab } from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+import { getSettingsForTab } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 import { resolveSubagentModel, subagentModelSourceLabel } from "@veyyon/coding-agent/task/subagent-settings";
 
 const AGENT = "reviewer";

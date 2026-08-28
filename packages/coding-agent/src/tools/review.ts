@@ -14,9 +14,9 @@ import type { Component } from "@veyyon/tui";
 import { Container, Text } from "@veyyon/tui";
 import { isRecord } from "@veyyon/utils";
 import { type } from "arktype";
-import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { subprocessToolRegistry } from "../task/subprocess-tool-registry";
 import type { ReviewFinding } from "../task/types";
+import type { Theme, ThemeColor } from "../theme/theme";
 export type FindingPriority = "P0" | "P1" | "P2" | "P3";
 
 export interface FindingPriorityInfo {

@@ -30,8 +30,8 @@ import {
 	COMPOSER_PLACEHOLDER,
 	COMPOSER_RESTING_ROWS,
 	StaticComposerFrame,
-} from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();

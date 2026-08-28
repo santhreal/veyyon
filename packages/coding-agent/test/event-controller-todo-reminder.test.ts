@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
-import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(async () => {
 	await initTheme(false);

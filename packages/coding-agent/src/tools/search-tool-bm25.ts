@@ -14,8 +14,8 @@ import {
 	summarizeDiscoverableTools,
 } from "../discovery/tool-index";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import type { Theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
+import type { Theme } from "../theme/theme";
 import { framedBlock, renderStatusLine, truncateToWidth } from "../tui";
 import type { ToolSession } from ".";
 import { formatCount, formatExpandHint, formatMoreItems, replaceTabs, TRUNCATE_LENGTHS } from "./render-utils";

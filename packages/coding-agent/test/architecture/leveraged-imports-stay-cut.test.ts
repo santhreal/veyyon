@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { getActiveSkills } from "@veyyon/coding-agent/extensibility/skills";
 import { MCPManager } from "@veyyon/coding-agent/mcp/manager";
 import { getMemoryRoot } from "@veyyon/coding-agent/memory/local";
-import * as themeEngine from "@veyyon/coding-agent/modes/theme/theme";
+import * as themeEngine from "@veyyon/coding-agent/theme/theme";
 import { formatStatusIcon } from "@veyyon/coding-agent/tools/render-utils";
 import {
 	dynamicImportBindings,
@@ -42,7 +42,7 @@ import { PACKAGES, RESOLUTION, reach, reachedNames, SRC } from "../helpers/modul
  * 2026-07-26:
  *
  *     200,640   528 files x 380   config/settings.ts
- *     152,484   291 files x 524   modes/theme/theme.ts
+ *     152,484   291 files x 524   theme/theme.ts
  *     118,038   206 files x 573   session/session-manager.ts
  *     114,777   117 files x 981   session/agent-session.ts
  *      66,674    53 files x 1258  sdk.ts
@@ -73,7 +73,7 @@ import { PACKAGES, RESOLUTION, reach, reachedNames, SRC } from "../helpers/modul
  * the number left over is the next task rather than the floor.
  *
  * THE SECOND ENTRY IN THE RANKING WAS NOT A BARREL IMPORT AT ALL, which is why it is worth recording
- * separately. `modes/theme/theme.ts` (291 test files) reached 524, and after the settings cut it still
+ * separately. `theme/theme.ts` (291 test files) reached 524, and after the settings cut it still
  * read 307. Nothing in it named a barrel: `getMarkdownTheme` simply LIVED there, and that function binds
  * an ASCII diagram renderer to the palette, so `./mermaid-cache` and its 36 modules sat on the graph of
  * every module that wanted a colour. The fix is the same rule with a different first step: the function
@@ -112,7 +112,7 @@ import { PACKAGES, RESOLUTION, reach, reachedNames, SRC } from "../helpers/modul
  * THEN THE RULE WAS WRITTEN DOWN AND IT FOUND TWENTY-ONE MORE, which is the argument for the table
  * below rather than for a twenty-first ceiling. Nine of them were the cheapest kind: `assistantText`,
  * `assistantTextBlocks` and `instrumentationRank` are each defined in a module that reaches exactly ONE,
- * against the barrel's 346, and `modes/utils/copy-targets.ts`, `hindsight/transcript.ts` and
+ * against the barrel's 346, and `modes/terminal/utils/copy-targets.ts`, `hindsight/transcript.ts` and
  * `cli/session-stats.ts` each fell from about 347 to 76 on one line. The other twelve did NOT move their
  * own file's number at all, because those files also import `completeSimple` or `streamSimple` and
  * genuinely want the streaming engine. They were fixed anyway, and the reason is worth stating plainly:
@@ -426,9 +426,9 @@ describe("the theme engine, second in the same ranking", () => {
 	 * absent. Neither is reachable by any path now.
 	 */
 	it("does not reach the mermaid renderer by any path", () => {
-		const reached = reachedNames("modes/theme/theme.ts");
+		const reached = reachedNames("theme/theme.ts");
 
-		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/mermaid-cache.ts")));
+		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "theme/mermaid-cache.ts")));
 		expect(reached).not.toContain(path.join("utils", "src", "mermaid-ascii.ts"));
 	});
 
@@ -439,11 +439,11 @@ describe("the theme engine, second in the same ranking", () => {
 	 * function moved to `./symbol-theme`. See the group below.
 	 */
 	it("does not reach the markdown adapter, and the adapter no longer reaches back", () => {
-		expect(reachedNames("modes/theme/theme.ts")).not.toContain(
-			path.relative(PACKAGES, path.join(SRC, "modes/theme/markdown-theme.ts")),
+		expect(reachedNames("theme/theme.ts")).not.toContain(
+			path.relative(PACKAGES, path.join(SRC, "theme/markdown-theme.ts")),
 		);
-		expect(reachedNames("modes/theme/markdown-theme.ts")).not.toContain(
-			path.relative(PACKAGES, path.join(SRC, "modes/theme/theme.ts")),
+		expect(reachedNames("theme/markdown-theme.ts")).not.toContain(
+			path.relative(PACKAGES, path.join(SRC, "theme/theme.ts")),
 		);
 	});
 
@@ -459,13 +459,13 @@ describe("the theme engine, second in the same ranking", () => {
 	 * and mermaid rendering into every rendered markdown cell, and through `tui/code-cell.ts` into
 	 * `tools/read.ts`, which 54 test files import.
 	 *
-	 * `modes/theme/symbol-theme.ts` is that function beside the binding. MEASURED: `markdown-theme`
-	 * 319 -> 175, `tui/code-cell.ts` 327 -> 220, `tools/read.ts` 648 -> 542, `modes/components/transcript/diff.ts`
+	 * `theme/symbol-theme.ts` is that function beside the binding. MEASURED: `markdown-theme`
+	 * 319 -> 175, `tui/code-cell.ts` 327 -> 220, `tools/read.ts` 648 -> 542, `modes/terminal/components/transcript/diff.ts`
 	 * 288 -> 181.
 	 */
 	it("keeps the symbol reader a leaf, so reading the active symbols costs the binding and nothing else", () => {
-		expect(reach("modes/theme/symbol-theme.ts")).toBe(2);
-		expect(runtimeImportsOf(path.join(SRC, "modes/theme/symbol-theme.ts"))).toEqual(["./theme-binding"]);
+		expect(reach("theme/symbol-theme.ts")).toBe(2);
+		expect(runtimeImportsOf(path.join(SRC, "theme/symbol-theme.ts"))).toEqual(["./theme-binding"]);
 	});
 
 	/**
@@ -474,16 +474,16 @@ describe("the theme engine, second in the same ranking", () => {
 	 * the engine by ANY path, which is the assertion that fails if a later import re-opens the edge four
 	 * hops away, the way this one was opened.
 	 */
-	it.each(["modes/theme/markdown-theme.ts", "tui/code-cell.ts"])(
+	it.each(["theme/markdown-theme.ts", "tui/code-cell.ts"])(
 		"%s reads symbols from the leaf and never reaches the engine",
 		relative => {
 			const reached = reachedNames(relative);
 
-			expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/symbol-theme.ts")));
-			expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/theme-binding.ts")));
-			expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/theme.ts")));
+			expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "theme/symbol-theme.ts")));
+			expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "theme/theme-binding.ts")));
+			expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "theme/theme.ts")));
 			// The engine's own heaviest subtree, named directly: the hundred embedded theme JSON modules.
-			expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/builtin-themes.ts")));
+			expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "theme/builtin-themes.ts")));
 		},
 	);
 
@@ -498,8 +498,8 @@ describe("the theme engine, second in the same ranking", () => {
 	 * green on the same line inside a comment.
 	 */
 	it("still forwards the symbol reader from the engine, so no existing caller changed", () => {
-		expect(reachedNames("modes/theme/theme.ts")).toContain(
-			path.relative(PACKAGES, path.join(SRC, "modes/theme/symbol-theme.ts")),
+		expect(reachedNames("theme/theme.ts")).toContain(
+			path.relative(PACKAGES, path.join(SRC, "theme/symbol-theme.ts")),
 		);
 		expect(typeof themeEngine.getSymbolTheme).toBe("function");
 	});
@@ -514,11 +514,11 @@ describe("the theme engine, second in the same ranking", () => {
 	it.each([
 		"tui/code-cell.ts",
 		"tui/file-list.ts",
-		"modes/components/transcript/diff.ts",
-		"modes/components/dialogs/ask-dialog.ts",
-		"modes/components/selectors/copy-selector.ts",
-		"modes/components/transcript/eval-execution.ts",
-		"modes/components/transcript/execution-shared.ts",
+		"modes/terminal/components/transcript/diff.ts",
+		"modes/terminal/components/dialogs/ask-dialog.ts",
+		"modes/terminal/components/selectors/copy-selector.ts",
+		"modes/terminal/components/transcript/eval-execution.ts",
+		"modes/terminal/components/transcript/execution-shared.ts",
 		"tools/bash.ts",
 		"tools/write.ts",
 		"lsp/render.ts",
@@ -536,11 +536,11 @@ describe("the theme engine, second in the same ranking", () => {
 	 *   - `tools/bash.ts` and `tools/write.ts` took three names from the local `../tui` barrel, which
 	 *     `export *`s `./file-list`, and THAT module took `getLanguageFromPath` from the engine. So a
 	 *     status line cost 282 modules of presentation layer, four hops away.
-	 *   - `modes/components/transcript/eval-execution.ts` took `getSymbolTheme` and `theme` from
+	 *   - `modes/terminal/components/transcript/eval-execution.ts` took `getSymbolTheme` and `theme` from
 	 *     `./execution-shared`, which took them from the engine.
 	 *
 	 * MEASURED: `tui/file-list.ts` 289 -> 180, the local `tui/index.ts` barrel 352 -> 246,
-	 * `tools/bash.ts` 504 -> 353, `tools/write.ts` 536 -> 386, `modes/components/transcript/eval-execution.ts`
+	 * `tools/bash.ts` 504 -> 353, `tools/write.ts` 536 -> 386, `modes/terminal/components/transcript/eval-execution.ts`
 	 * 299 -> 193, and the whole suite 857,632 -> 832,035 module instantiations.
 	 *
 	 * Asserted by REACHABILITY rather than by the import list, because that is the difference between the
@@ -553,16 +553,16 @@ describe("the theme engine, second in the same ranking", () => {
 		// language table, so it has no runtime theme dependency at all and asserting the binding here failed
 		// for the right reason. That is the shape of a vacuous absence, caught by writing the control down.
 		["tui/file-list.ts", "utils/lang-from-path.ts"],
-		["tui/index.ts", "modes/theme/theme-binding.ts"],
-		["tools/bash.ts", "modes/theme/theme-binding.ts"],
-		["tools/write.ts", "modes/theme/theme-binding.ts"],
-		["modes/components/transcript/eval-execution.ts", "modes/theme/symbol-theme.ts"],
-		["modes/components/transcript/execution-shared.ts", "modes/theme/symbol-theme.ts"],
+		["tui/index.ts", "theme/theme-binding.ts"],
+		["tools/bash.ts", "theme/theme-binding.ts"],
+		["tools/write.ts", "theme/theme-binding.ts"],
+		["modes/terminal/components/transcript/eval-execution.ts", "theme/symbol-theme.ts"],
+		["modes/terminal/components/transcript/execution-shared.ts", "theme/symbol-theme.ts"],
 	])("%s reaches the theme engine by no path at all", (relative, control) => {
 		const reached = reachedNames(relative);
 
-		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/theme.ts")));
-		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/builtin-themes.ts")));
+		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "theme/theme.ts")));
+		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "theme/builtin-themes.ts")));
 		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, control)));
 	});
 
@@ -573,9 +573,9 @@ describe("the theme engine, second in the same ranking", () => {
 	 * "does not reach" cases and this one would fail.
 	 */
 	it("keeps the mermaid renderer on the markdown adapter, which is what wants it", () => {
-		const reached = reachedNames("modes/theme/markdown-theme.ts");
+		const reached = reachedNames("theme/markdown-theme.ts");
 
-		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/mermaid-cache.ts")));
+		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "theme/mermaid-cache.ts")));
 		expect(reached).toContain(path.join("utils", "src", "mermaid-ascii.ts"));
 	});
 
@@ -586,12 +586,12 @@ describe("the theme engine, second in the same ranking", () => {
 	 * file cost 51 MB per realm (see the note on the settings subscription in `theme.ts`).
 	 */
 	it("reads the active theme through the binding, not through the engine", () => {
-		const imports = runtimeImportsOf(path.join(SRC, "modes/theme/highlight.ts"));
+		const imports = runtimeImportsOf(path.join(SRC, "theme/highlight.ts"));
 
 		expect(imports).toContain("./theme-binding");
 		expect(imports).not.toContain("./theme");
-		expect(reachedNames("modes/theme/highlight.ts")).not.toContain(
-			path.relative(PACKAGES, path.join(SRC, "modes/theme/theme.ts")),
+		expect(reachedNames("theme/highlight.ts")).not.toContain(
+			path.relative(PACKAGES, path.join(SRC, "theme/theme.ts")),
 		);
 	});
 
@@ -601,9 +601,9 @@ describe("the theme engine, second in the same ranking", () => {
 	 * floor above.
 	 */
 	it("actually walks the theme graph", () => {
-		expect(reach("modes/theme/theme.ts")).toBeGreaterThan(120);
-		expect(reachedNames("modes/theme/theme.ts")).toContain(
-			path.relative(PACKAGES, path.join(SRC, "modes/theme/builtin-themes.ts")),
+		expect(reach("theme/theme.ts")).toBeGreaterThan(120);
+		expect(reachedNames("theme/theme.ts")).toContain(
+			path.relative(PACKAGES, path.join(SRC, "theme/builtin-themes.ts")),
 		);
 	});
 });
@@ -660,7 +660,7 @@ describe("session/messages, which the session layer is mostly made of", () => {
 
 		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "config/settings.ts")));
 		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "tools/output-meta.ts")));
-		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/theme.ts")));
+		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "theme/theme.ts")));
 	});
 
 	/**
@@ -947,7 +947,7 @@ const LEAF_OWNERS: ReadonlyArray<
 	["formatStatusIcon", "tools/tool-ui-status.ts", "tools/render-utils.ts", 168],
 	// A THIRD SHAPE: a presentation LIST that sat with the thing it presents. The browse order is eight
 	// strings, and `builtin-registry.ts` declares every builtin command, so it imports every command
-	// implementation. `modes/prompt-action-autocomplete.ts` wanted the order and nothing else and paid 1,149
+	// implementation. `modes/terminal/autocomplete/prompt-action-autocomplete.ts` wanted the order and nothing else and paid 1,149
 	// marginal modules for it: 1,386 -> 238.
 	[
 		"BUILTIN_SLASH_COMMAND_CATEGORY_ORDER",
@@ -1038,19 +1038,25 @@ describe("a cheap value is owned by a leaf, and a file that wants only it names 
 	 * API: it is about nobody importing a 702-module class in order to ask whether a manager was installed.
 	 */
 	/**
-	 * THE TASK BARREL, named as an edge rather than as a count. `modes/session-observer-registry.ts`
-	 * subscribes to two event channels BY NAME, and it took those two strings from `../task`, the barrel over
+	 * THE TASK BARREL, named as an edge rather than as a count. `modes/terminal/session-observer-registry.ts`
+	 * subscribes to two event channels BY NAME, and it took those two strings from the `task` barrel over
 	 * the whole task subsystem: 1,407 modules to know what a channel is called. `task/types.ts` declares them
 	 * and reaches 23, so the fix was one specifier and the file went to 24.
 	 *
-	 * Asserted as the SPECIFIER rather than as reachability, because `../task` and `../task/types` differ by
-	 * one path segment, compile identically, and differ by 1,383 modules.
+	 * Asserted as the EDGE rather than as reachability, because `task` and `task/types` differ by one path
+	 * segment, compile identically, and differ by 1,383 modules.
 	 */
 	it("subscribes to task channels through the module that declares them", () => {
-		const imports = runtimeImportsOf(path.join(SRC, "modes/session-observer-registry.ts"));
+		const imports = runtimeImportsOf(path.join(SRC, "modes/terminal/session-observer-registry.ts"));
+		// Compared after resolution, so the assertion survives the file moving a
+		// directory deeper: the barrel and the declaring module differ by one path
+		// segment and by 1,383 modules, and that is the difference being pinned.
+		const resolved = imports
+			.filter(specifier => specifier.startsWith("."))
+			.map(specifier => path.relative(SRC, path.resolve(SRC, "modes/terminal", specifier)));
 
-		expect(imports).not.toContain("../task");
-		expect(imports).toContain("../task/types");
+		expect(resolved).not.toContain("task");
+		expect(resolved).toContain("task/types");
 	});
 
 	it("nobody calls MCPManager.instance() to read the slot", () => {

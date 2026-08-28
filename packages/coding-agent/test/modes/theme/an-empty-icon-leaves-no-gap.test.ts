@@ -23,8 +23,8 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { withIcon } from "@veyyon/coding-agent/modes/theme/icon-label";
-import { UNICODE_SYMBOLS } from "@veyyon/coding-agent/modes/theme/symbols";
+import { withIcon } from "@veyyon/coding-agent/theme/icon-label";
+import { UNICODE_SYMBOLS } from "@veyyon/coding-agent/theme/symbols";
 
 describe("withIcon", () => {
 	/**

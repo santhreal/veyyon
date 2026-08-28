@@ -31,13 +31,13 @@ import * as path from "node:path";
 import type { CredentialHealthResult } from "../../packages/ai/src/auth-storage";
 import { AuthStorage, SqliteAuthCredentialStore } from "../../packages/ai/src/auth-storage";
 import type { UsageReport } from "../../packages/ai/src/usage";
-import { AccountManagerComponent } from "../../packages/coding-agent/src/modes/components/account/account-manager";
-import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
+import { AccountManagerComponent } from "../../packages/coding-agent/src/modes/terminal/components/account/account-manager";
 import {
 	applyCredentialHealth,
 	applyUsageReports,
 	buildAccountInventory,
 } from "../../packages/coding-agent/src/session/account-inventory";
+import { theme } from "../../packages/coding-agent/src/theme/theme";
 import { flag, initRender, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

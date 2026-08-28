@@ -4,8 +4,8 @@ import * as fs from "node:fs/promises";
 import path from "node:path";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { isEnoent } from "@veyyon/utils/fs-error";
-import { theme } from "../modes/theme/theme-binding";
-import type { Theme } from "../modes/theme/theme-class";
+import { theme } from "../theme/theme-binding";
+import type { Theme } from "../theme/theme-class";
 import { formatGroupedFiles } from "../tools/grouped-file-output";
 import { formatPathRelativeToCwd, resolveToCwd } from "../tools/path-utils";
 import type {

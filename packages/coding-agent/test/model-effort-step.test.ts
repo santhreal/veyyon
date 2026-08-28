@@ -6,8 +6,8 @@ import {
 	effortStepItems,
 	formatSelectorSummary,
 	renderEffortStep,
-} from "@veyyon/coding-agent/modes/components/selectors/effort-picker";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/effort-picker";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { Container } from "@veyyon/tui";
 
 const twoTierModel = buildModel({

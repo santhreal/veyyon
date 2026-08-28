@@ -26,12 +26,12 @@ import { stripRecommendedSuffix, withRecommendedSuffix } from "@veyyon/wire";
 import { type as arkType } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { ExtensionUISelectItem } from "../extensibility/extensions";
-import { mediumModalContentWidth } from "../modes/components/chrome/modal-shell";
-import { HOOK_EDITOR_TEXT_PAD_COLS } from "../modes/components/dialogs/hook-editor";
-import { getMarkdownTheme } from "../modes/theme/markdown-theme";
-import { type Theme, theme } from "../modes/theme/theme";
+import { mediumModalContentWidth } from "../modes/terminal/components/chrome/modal-shell";
+import { HOOK_EDITOR_TEXT_PAD_COLS } from "../modes/terminal/components/dialogs/hook-editor";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { vocalizer } from "../speech/tts/vocalizer";
+import { getMarkdownTheme } from "../theme/markdown-theme";
+import { type Theme, theme } from "../theme/theme";
 import { framedBlock, renderStatusLine } from "../tui";
 import type { ToolSession } from ".";
 // Only the free-text label and the reserved-label predicate: the other two labels were declared here purely to

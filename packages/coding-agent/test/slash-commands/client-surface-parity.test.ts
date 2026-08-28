@@ -15,7 +15,7 @@
 
 import { describe, expect, it, vi } from "bun:test";
 import { getBundledModel } from "@veyyon/catalog/models";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
 import {
 	BUILTIN_SLASH_COMMAND_DECLARATIONS,

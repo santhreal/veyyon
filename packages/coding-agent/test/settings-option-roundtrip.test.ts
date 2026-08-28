@@ -7,7 +7,7 @@ import {
 	isUnsetNumberPath,
 	type SettingPath,
 } from "@veyyon/coding-agent/config/settings-schema";
-import { getAllSettingDefs } from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+import { getAllSettingDefs } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 
 /**
  * HSL-2: every `ui.options[].value` string a user can pick in `/settings` must

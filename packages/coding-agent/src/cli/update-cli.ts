@@ -33,7 +33,7 @@ import {
 } from "@veyyon/utils";
 import { $ } from "bun";
 import chalk from "chalk";
-import { theme } from "../modes/theme/theme";
+import { theme } from "../theme/theme";
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
 import {
 	AUTO_UPDATE_FAILURE_COOLDOWN_MS,

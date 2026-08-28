@@ -1,6 +1,6 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: sample source-code strings (read fixtures) intentionally contain literal ${...}.
 // Gallery fixtures for the filesystem tools (read, write, glob).
-import { ReadToolGroupComponent } from "../../modes/components/transcript/read-tool-group";
+import { ReadToolGroupComponent } from "../../modes/terminal/components/transcript/read-tool-group";
 import type { GalleryFixture, GalleryFixtureState, GalleryResult } from "./types";
 
 const readSnippet = [

@@ -14,7 +14,7 @@ The render-stress harness evaluates synthetic root components against viewport a
 
 ## Composer-zone oracles
 
-`mountComposerZone` in `packages/coding-agent/src/modes/components/composer/composer-chrome.ts` mounts the production pinned footer components: `statusContainer`, `statusLine`, `hookWidgetsAbove`, `hairline`, `editorContainer`, `capabilityLine`, `shortcuts`, `hookWidgetsBelow`, and the bottom margin spacer.
+`mountComposerZone` in `packages/coding-agent/src/modes/terminal/components/composer/composer-chrome.ts` mounts the production pinned footer components: `statusContainer`, `statusLine`, `hookWidgetsAbove`, `hairline`, `editorContainer`, `capabilityLine`, `shortcuts`, `hookWidgetsBelow`, and the bottom margin spacer.
 
 Composer defect oracles evaluate the rendered terminal grid:
 

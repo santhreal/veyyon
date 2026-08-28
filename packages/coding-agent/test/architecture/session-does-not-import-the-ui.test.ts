@@ -15,7 +15,7 @@ const SESSION = path.join(SRC, "session");
  * convenient import of something small and true: "does this message mention
  * ultrathink", "what colour is the active theme". Each pulled in a module that
  * also owned a piece of terminal rendering, and through it
- * `modes/gradient-highlight` and the 108-module theme engine. Three keyword
+ * `modes/keywords/gradient-highlight` and the 108-module theme engine. Three keyword
  * modules did this, each mixing a text predicate with an editor gradient, and
  * `session/agent-session` imported all three. Nothing failed, so nothing objected.
  *
@@ -27,27 +27,27 @@ const SESSION = path.join(SRC, "session");
  */
 const ALLOWED = new Map<string, string>([
 	[
-		"modes/theme/theme-binding",
+		"theme/theme-binding",
 		"The live `theme` binding and nothing else. Imports one type and no values, which `test/theme/theme-binding-stays-live.test.ts` asserts, so it cannot bring the engine back.",
 	],
 	[
-		"modes/orchestrate-keyword",
-		"Detection half of the `orchestrate` keyword. The gradient that paints it stays in `modes/orchestrate`.",
+		"modes/keywords/orchestrate-keyword",
+		"Detection half of the `orchestrate` keyword. The gradient that paints it stays in `modes/keywords/orchestrate`.",
 	],
 	[
-		"modes/ultrathink-keyword",
-		"Detection half of the `ultrathink` keyword. The gradient stays in `modes/ultrathink`.",
+		"modes/keywords/ultrathink-keyword",
+		"Detection half of the `ultrathink` keyword. The gradient stays in `modes/keywords/ultrathink`.",
 	],
 	[
-		"modes/workflow-keyword",
-		"Detection half of the `workflowz` keyword, plus the notice renderer. The gradient stays in `modes/workflow`.",
+		"modes/keywords/workflow-keyword",
+		"Detection half of the `workflowz` keyword, plus the notice renderer. The gradient stays in `modes/keywords/workflow`.",
 	],
-	// `modes/turn-budget` and `modes/utils/context-usage` used to be here. Neither
+	// `modes/turn-budget` and `modes/terminal/utils/context-usage` used to be here. Neither
 	// was a leaf of anything: the first is a directive parser and the second is token
 	// accounting, and both were in `modes/` only because the surfaces that DISPLAY
 	// them are. They live in `session/` now, which is what an entry on this list is
 	// supposed to become. The `/context` panel that draws the numbers stayed behind
-	// in `modes/utils/context-usage.ts` and imports them from `session/`, so the
+	// in `modes/terminal/utils/context-usage.ts` and imports them from `session/`, so the
 	// dependency points the way this suite says it should.
 ]);
 
@@ -71,14 +71,19 @@ function sessionFiles(dir: string): string[] {
 	return out;
 }
 
-/** Specifiers a file imports at runtime, resolved to `src`-relative module paths. */
+/**
+ * Specifiers a file imports at runtime, resolved to `src`-relative module paths
+ * inside the terminal UI: `modes/` and `theme/`. The palette is filed beside
+ * the modes because the HTML export and the headless modes read it too, and a
+ * session file reaching it is the same crossing wherever it sits.
+ */
 function uiImportsIn(file: string): string[] {
 	const found: string[] = [];
 	for (const specifier of specifiersIn(file)) {
 		if (!specifier.startsWith(".")) continue;
 		const resolved = path.resolve(path.dirname(file), specifier);
 		const rel = path.relative(SRC, resolved).replace(/\\/g, "/");
-		if (rel.startsWith("modes/")) found.push(rel);
+		if (rel.startsWith("modes/") || rel.startsWith("theme/")) found.push(rel);
 	}
 	return found;
 }
@@ -138,12 +143,13 @@ describe("session does not import the terminal UI", () => {
 	 * a comment why it does not import the highlighter, and naming it there is
 	 * correct. A substring check over the whole source fails on the explanation.
 	 */
-	it.each(["modes/orchestrate-keyword", "modes/ultrathink-keyword", "modes/workflow-keyword"])(
-		"%s does not import the gradient highlighter",
-		relative => {
-			const file = path.join(SRC, `${relative}.ts`);
+	it.each([
+		"modes/keywords/orchestrate-keyword",
+		"modes/keywords/ultrathink-keyword",
+		"modes/keywords/workflow-keyword",
+	])("%s does not import the gradient highlighter", relative => {
+		const file = path.join(SRC, `${relative}.ts`);
 
-			expect(uiImportsIn(file).concat(specifiersIn(file))).not.toContain("./gradient-highlight");
-		},
-	);
+		expect(uiImportsIn(file).concat(specifiersIn(file))).not.toContain("./gradient-highlight");
+	});
 });

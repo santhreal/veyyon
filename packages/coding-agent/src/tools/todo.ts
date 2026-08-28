@@ -11,10 +11,10 @@ import { isTerminalTodoStatus, isTodoListDone, TODO_DONE_SUMMARY, type TodoStatu
 import { type } from "arktype";
 import chalk from "chalk";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import type { Theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from "../sdk";
 import type { SessionEntry } from "../session/session-entries";
+import type { Theme } from "../theme/theme";
 import { framedBlock, renderStatusLine, renderTreeList } from "../tui";
 import { normalizePathLikeInput, resolveToCwd } from "./path-utils";
 import { formatErrorDetail } from "./render-utils";

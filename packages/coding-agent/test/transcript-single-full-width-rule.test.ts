@@ -19,9 +19,9 @@
  * than as a divider between regions.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
-import { ComposerHairline } from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
-import { BashExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/bash-execution";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { ComposerHairline } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import { BashExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/bash-execution";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { Component, TUI } from "@veyyon/tui";
 import { createToolExecution } from "./helpers/tool-execution";
 

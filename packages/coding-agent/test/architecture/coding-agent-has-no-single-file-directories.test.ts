@@ -34,8 +34,12 @@ const SRC = repoPath("packages/coding-agent/src");
  * Directory count measured after the consolidation. A ceiling rather than an
  * exact set: the point is that the count does not grow back, and a lane adding
  * a genuinely new concern should not have to edit this file to do it.
+ *
+ * It went from 42 to 43 when the palette came out of the terminal tree: the
+ * HTML export, the headless modes and the tool renderers all read it, so
+ * `theme/` is a concern of the package rather than a part of the terminal.
  */
-const TOP_LEVEL_DIRECTORY_CEILING = 42;
+const TOP_LEVEL_DIRECTORY_CEILING = 43;
 
 /** Concerns that were merged, and the directories they were merged out of. */
 const MERGED: ReadonlyArray<{ readonly into: string; readonly from: readonly string[] }> = [

@@ -8,7 +8,7 @@ Extension runtime modules:
 - `src/extensibility/extensions/runner.ts`
 - `src/extensibility/extensions/wrapper.ts`
 - `src/extensibility/extensions/index.ts`
-- `src/modes/controllers/extension-ui-controller.ts`
+- `src/modes/terminal/controllers/extension-ui-controller.ts`
 
 For discovery paths and filesystem loading rules, see [`extension-loading.md`](../../../internal/extension-loading.md).
 

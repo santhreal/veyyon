@@ -5,10 +5,10 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();

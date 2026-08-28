@@ -45,11 +45,11 @@ import type { ExecOptions, ExecResult } from "../../exec/exec";
 import type * as PiCodingAgent from "../../index";
 import type { LocalProtocolOptions } from "../../internal-urls/local-protocol";
 import type { MemoryRuntimeContext } from "../../memory/backend";
-import type { CustomEditor } from "../../modes/components/composer/custom-editor";
-import type { Theme } from "../../modes/theme/theme";
+import type { CustomEditor } from "../../modes/terminal/components/composer/custom-editor";
 import type { CompactMode } from "../../session/compact-modes";
 import type { CustomMessage, CustomMessagePayload } from "../../session/messages";
 import type { ReadonlySessionManager, SessionManager } from "../../session/session-manager";
+import type { Theme } from "../../theme/theme";
 import type {
 	BashToolDetails,
 	BashToolInput,
@@ -1491,7 +1491,7 @@ export interface ExtensionRuntime extends ExtensionRuntimeState, ExtensionAction
  * LOADED is the distinguishing word. `ManifestExtension`
  * (`capability/extension.ts`) is a Gemini-style extension directory found on disk
  * and never executed, and `ExtensionRow`
- * (`modes/components/extensions/types.ts`) is a dashboard row that normalizes every
+ * (`extensibility/extension-state/types.ts`) is a dashboard row that normalizes every
  * capability kind. All three were called `Extension`, so an editor auto-import
  * picked whichever it offered and nothing compared them.
  */

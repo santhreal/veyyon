@@ -31,7 +31,7 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import {
 	markdownToPhases,

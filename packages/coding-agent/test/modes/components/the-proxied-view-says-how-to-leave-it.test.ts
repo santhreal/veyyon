@@ -27,10 +27,10 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
-import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/components/status-line/presets";
-import type { StatusLinePreset } from "@veyyon/coding-agent/modes/components/status-line/types";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line";
+import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/terminal/components/status-line/presets";
+import type { StatusLinePreset } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { visibleWidth } from "@veyyon/utils/width";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../../helpers/settings-test-state";
 

@@ -150,7 +150,7 @@ Both return structured tool output and convert remaining transport/tool errors i
 
 ### Interactive reload path
 
-`/mcp reload` path (`src/modes/controllers/mcp-command-controller.ts`) does:
+`/mcp reload` path (`src/modes/terminal/controllers/mcp-command-controller.ts`) does:
 
 1. `mcpManager.disconnectAll()`,
 2. `mcpManager.discoverAndConnect()`,
@@ -223,7 +223,7 @@ In current wiring, explicit teardown is used in MCP command flows (for reload/re
 - [`src/mcp/config.ts`](../../packages/coding-agent/src/mcp/config.ts): config discovery/filtering/validation used by manager.
 - [`src/mcp/tool-bridge.ts`](../../packages/coding-agent/src/mcp/tool-bridge.ts): `MCPTool` and `DeferredMCPTool` runtime behavior.
 - [`src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts): `refreshMCPTools` live rebinding.
-- [`src/modes/controllers/mcp-command-controller.ts`](../../packages/coding-agent/src/modes/controllers/mcp-command-controller.ts): interactive reload/reconnect flows.
+- [`src/modes/terminal/controllers/mcp-command-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/mcp-command-controller.ts): interactive reload/reconnect flows.
 - [`src/task/executor.ts`](../../packages/coding-agent/src/task/executor.ts): subagent MCP proxying via parent manager connections.
 
-*Verified against `19234e94d39e` on 2026-08-07.*
+*Verified against `23e2a7938b9f` on 2026-08-28.*

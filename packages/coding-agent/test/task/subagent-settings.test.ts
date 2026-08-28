@@ -34,7 +34,7 @@ import { isSettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import {
 	getSettingsForTab,
 	invalidateSettingDefsCache,
-} from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 import {
 	delegationBlockedNotice,
 	delegationEnabled,

@@ -3,9 +3,9 @@ import * as path from "node:path";
 import type { AssistantMessage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { AssistantThinkingRenderer } from "@veyyon/coding-agent/extensibility/extensions";
-import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/assistant-message";
-import { clearMermaidCache } from "@veyyon/coding-agent/modes/theme/mermaid-cache";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
+import { clearMermaidCache } from "@veyyon/coding-agent/theme/mermaid-cache";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { ImageProtocol, setTerminalImageProtocol, TERMINAL, Text } from "@veyyon/tui";
 
 const originalImageProtocol = TERMINAL.imageProtocol;

@@ -28,8 +28,11 @@ import type {
 	ExtensionUIDialogOptions,
 	ExtensionUISelectItem,
 } from "@veyyon/coding-agent/extensibility/extensions/types";
-import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
-import type { InteractiveModeContext, InteractiveSelectorDialogOptions } from "@veyyon/coding-agent/modes/types";
+import { ExtensionUiController } from "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
+import type {
+	InteractiveModeContext,
+	InteractiveSelectorDialogOptions,
+} from "@veyyon/coding-agent/modes/terminal/types";
 import { installInMemoryRelay, uninstallInMemoryRelay } from "./helpers/in-memory-relay";
 
 // In-memory transport: shared FakeWebSocket + InMemoryRelay harness (see

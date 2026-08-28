@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
 import type { UsageReport } from "@veyyon/ai";
-import { CommandController } from "@veyyon/coding-agent/modes/controllers/command-controller";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { CommandController } from "@veyyon/coding-agent/modes/terminal/controllers/command-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 
 interface RenderableBlock {
 	render(width: number): string[];

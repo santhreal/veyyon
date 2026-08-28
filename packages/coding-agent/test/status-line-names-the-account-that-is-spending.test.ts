@@ -40,12 +40,15 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { APPEARANCE_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/appearance";
 import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import type { StatusLineSegmentId } from "@veyyon/coding-agent/config/settings-schema";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
-import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/components/status-line/presets";
-import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import type { SegmentContext, StatusLinePreset } from "@veyyon/coding-agent/modes/components/status-line/types";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line";
+import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/terminal/components/status-line/presets";
+import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import type {
+	SegmentContext,
+	StatusLinePreset,
+} from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 const SESSION_ID = "session-serving-account";
 

@@ -10,8 +10,8 @@ import { sliceWithWidth, visibleWidth } from "@veyyon/utils/width";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { FileDiagnosticsResult } from "../lsp";
-import { renderDiff as renderDiffColored } from "../modes/components/transcript/diff";
-import type { Theme } from "../modes/theme/theme-class";
+import { renderDiff as renderDiffColored } from "../modes/terminal/components/transcript/diff";
+import type { Theme } from "../theme/theme-class";
 import type { OutputMeta } from "../tools/output-meta";
 import {
 	cachedRenderedString,

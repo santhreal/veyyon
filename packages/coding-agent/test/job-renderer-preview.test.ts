@@ -6,8 +6,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { jobToolRenderer } from "@veyyon/coding-agent/tools/job";
 import { prompt } from "@veyyon/utils";
 

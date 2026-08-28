@@ -1,15 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { AdvisorConfigOverlayComponent } from "@veyyon/coding-agent/modes/components/dialogs/advisor-config";
+import { AdvisorConfigOverlayComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/advisor-config";
 import {
 	CommandController,
 	type CommandControllerContext,
-} from "@veyyon/coding-agent/modes/controllers/command-controller";
+} from "@veyyon/coding-agent/modes/terminal/controllers/command-controller";
 import {
 	SelectorController,
 	type SelectorControllerContext,
-} from "@veyyon/coding-agent/modes/controllers/selector-controller";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+} from "@veyyon/coding-agent/modes/terminal/controllers/selector-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import {
 	BUILTIN_SLASH_COMMAND_DECLARATIONS,
 	type BuiltinSlashCommandDeclaration,

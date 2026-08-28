@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "bun:test";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 
 function createRuntimeHarness(options?: {

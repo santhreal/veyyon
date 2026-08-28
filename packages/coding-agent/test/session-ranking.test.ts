@@ -6,7 +6,7 @@ import { runGcCommand } from "@veyyon/coding-agent/cli/gc-cli";
 import {
 	mergeSessionRanking,
 	rankSessionSearchMatches,
-} from "@veyyon/coding-agent/modes/components/selectors/session-selector";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/session-selector";
 import { listSessions, type SessionInfo } from "@veyyon/coding-agent/session/session-listing";
 import { MemorySessionStorage } from "@veyyon/coding-agent/session/session-storage";
 import { getHistoryDbPath, getSessionsDir, TempDir } from "@veyyon/utils";

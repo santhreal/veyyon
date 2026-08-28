@@ -11,7 +11,7 @@
  *   - no color references a var that does not exist (integrity)
  */
 import { describe, expect, it } from "bun:test";
-import darkThemeJson from "../../../src/modes/theme/dark.json" with { type: "json" };
+import darkThemeJson from "../../../src/theme/dark.json" with { type: "json" };
 
 const dark = darkThemeJson as {
 	vars: Record<string, string>;

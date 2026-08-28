@@ -10,8 +10,8 @@ import { prompt, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import type { Theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
+import type { Theme } from "../theme/theme";
 import {
 	Ellipsis,
 	fileHyperlink,

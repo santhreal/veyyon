@@ -5,7 +5,7 @@
  * way: "no prompts", with one exception, "only blatantly destructive commands
  * (rm -rf / and its expansions) and an explicit deny policy still stop a call"
  * (`config/settings-domains/tools.ts`), "Only destructive commands ask"
- * (`modes/setup-wizard/scenes/approvals.ts`), "No prompts except blatantly
+ * (`modes/terminal/setup-wizard/scenes/approvals.ts`), "No prompts except blatantly
  * destructive commands" (`/autonomy`). The code was broader than all three. The
  * floor was every entry in the flagged-pattern table, so on the yolo rung, in
  * the operator's own repository, this stopped and asked:

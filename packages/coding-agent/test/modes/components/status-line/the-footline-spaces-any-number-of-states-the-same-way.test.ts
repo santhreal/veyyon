@@ -32,14 +32,15 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { BASE_MODE_STATES, SEGMENTS } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import { BASE_MODE_STATES, SEGMENTS } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import {
 	joinStates,
 	segmentSeparator,
 	stateSeparator,
-} from "@veyyon/coding-agent/modes/components/status-line/state-grammar";
-import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/types";
-import { SYMBOL_PRESETS } from "@veyyon/coding-agent/modes/theme/symbols";
+} from "@veyyon/coding-agent/modes/terminal/components/status-line/state-grammar";
+import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { SYMBOL_PRESETS } from "@veyyon/coding-agent/theme/symbols";
 import {
 	createTheme,
 	getBuiltinThemes,
@@ -47,8 +48,7 @@ import {
 	setThemeInstance,
 	type Theme,
 	theme,
-} from "@veyyon/coding-agent/modes/theme/theme";
-import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+} from "@veyyon/coding-agent/theme/theme";
 import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/approval-modes";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { visibleWidth } from "@veyyon/utils/width";

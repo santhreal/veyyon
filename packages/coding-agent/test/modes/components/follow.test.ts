@@ -25,10 +25,10 @@ import {
 	paintHotTail,
 	SHIMMER_PERIOD_MS,
 	shimmerPhase,
-} from "@veyyon/coding-agent/modes/components/chrome/follow";
-import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
-import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
-import { createTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/chrome/follow";
+import type { ThemeJson } from "@veyyon/coding-agent/theme/color";
+import { defaultThemes } from "@veyyon/coding-agent/theme/defaults";
+import { createTheme } from "@veyyon/coding-agent/theme/theme";
 
 const theme = createTheme(defaultThemes.titanium as ThemeJson, { mode: "truecolor" });
 

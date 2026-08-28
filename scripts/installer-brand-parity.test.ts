@@ -9,7 +9,7 @@
  * and two shipped suns that disagree about the brand color are worse than one
  * plain line of text. This reads both files and fails when they stop matching.
  *
- * `packages/coding-agent/src/modes/components/chrome/sun.ts` is the owner. Nothing here
+ * `packages/coding-agent/src/modes/terminal/components/chrome/sun.ts` is the owner. Nothing here
  * asserts what the color SHOULD be — only that the installer says what the owner
  * says.
  */
@@ -17,7 +17,7 @@
 import { describe, expect, it } from "bun:test";
 import fs from "node:fs";
 import path from "node:path";
-import { EMBER, GLYPH } from "@veyyon/coding-agent/modes/components/chrome/sun";
+import { EMBER, GLYPH } from "@veyyon/coding-agent/modes/terminal/components/chrome/sun";
 
 const repoRoot = path.join(import.meta.dir, "..");
 const installSh = fs.readFileSync(path.join(repoRoot, "scripts", "install.sh"), "utf8");

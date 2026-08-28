@@ -31,10 +31,10 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/tool-execution";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
 import { forgetImageDisplays } from "@veyyon/coding-agent/session/image-visibility";
 import { convertToLlm, replaceLlmImagesWithText } from "@veyyon/coding-agent/session/messages";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import { ImageBudget, ImageProtocol, setTerminalImageProtocol, TERMINAL, type TUI } from "@veyyon/tui";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";

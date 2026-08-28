@@ -26,9 +26,9 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import {
 	COMPOSER_INSET_COLS,
 	resolveComposerAccents,
-} from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
-import { BashExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/bash-execution";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import { BashExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/bash-execution";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { Component, TUI } from "@veyyon/tui";
 import { createToolExecution } from "./helpers/tool-execution";
 

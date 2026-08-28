@@ -29,7 +29,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
-import { expandHintSuffix, keyHint } from "@veyyon/coding-agent/modes/utils/key-hint";
+import { expandHintSuffix, keyHint } from "@veyyon/coding-agent/modes/terminal/utils/key-hint";
 import { getKeybindings, setKeybindings } from "@veyyon/utils/keybindings";
 
 const SRC = path.resolve(import.meta.dir, "../../../src");
@@ -74,7 +74,7 @@ describe("no surface writes the expand chord out by hand", () => {
 		const files = sources(SRC);
 
 		expect(files.length).toBeGreaterThan(500);
-		expect(files.some(file => file.endsWith(path.join("modes", "utils", "key-hint.ts")))).toBe(true);
+		expect(files.some(file => file.endsWith(path.join("modes", "terminal", "utils", "key-hint.ts")))).toBe(true);
 	});
 
 	/**
@@ -89,7 +89,7 @@ describe("no surface writes the expand chord out by hand", () => {
 
 		expect(
 			offenders.sort(),
-			"this hint writes a remappable chord out. Use actionKeyHint/keyHint from modes/utils/key-hint, or it lies to anyone who rebinds it",
+			"this hint writes a remappable chord out. Use actionKeyHint/keyHint from modes/terminal/utils/key-hint, or it lies to anyone who rebinds it",
 		).toEqual([]);
 	});
 });

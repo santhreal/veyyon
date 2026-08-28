@@ -24,15 +24,15 @@
 // how the band looks to an eye — a render proof answers that, an assertion cannot.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { modalRevealGround } from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
-import { selectionBand } from "@veyyon/coding-agent/modes/components/selectors/selector-helpers";
+import { modalRevealGround } from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
+import { selectionBand } from "@veyyon/coding-agent/modes/terminal/components/selectors/selector-helpers";
 import {
 	getSelectListTheme,
 	getSettingsListTheme,
 	getThemeByName,
 	setThemeInstance,
 	theme,
-} from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/theme/theme";
 import { getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/utils/width";
 

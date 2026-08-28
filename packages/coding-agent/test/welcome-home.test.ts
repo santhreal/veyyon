@@ -17,8 +17,8 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { WelcomeComponent } from "@veyyon/coding-agent/modes/components/dialogs/welcome";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { WelcomeComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/welcome";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 function home(sessions: { name: string; timeAgo: string }[]): string {
 	const welcome = new WelcomeComponent("1.2.3", "Sonnet 4.5", "anthropic", sessions);

@@ -51,14 +51,14 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/components/status-line/component";
+import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
 import {
 	FLOOR_SPENDABLE,
 	MIN_LOCATION_PART,
 	StatusLineComponent,
-} from "@veyyon/coding-agent/modes/components/status-line/component";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { stripAnsi } from "@veyyon/utils";
 import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";
 

@@ -16,7 +16,7 @@ Model Context Protocol (MCP) connects Veyyon to external tools and data as an MC
 | --- | --- |
 | `packages/coding-agent/src/mcp/` | Config load, manager, OAuth, tool wiring |
 | `packages/coding-agent/src/discovery/builtin.ts` | Profile-scoped `mcp.json` / `.mcp.json` discovery |
-| `packages/coding-agent/src/modes/controllers/mcp-command-controller.ts` | `/mcp` TUI commands |
+| `packages/coding-agent/src/modes/terminal/controllers/mcp-command-controller.ts` | `/mcp` TUI commands |
 
 Primary config files:
 

@@ -7,9 +7,9 @@
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/todo.md`
 - Key collaborators:
   - `packages/coding-agent/src/tools/index.ts`: registers tool, exposes session hooks, gates availability.
-  - `packages/coding-agent/src/modes/controllers/event-controller.ts`: updates the visible todo UI on tool completion.
+  - `packages/coding-agent/src/modes/terminal/controllers/event-controller.ts`: updates the visible todo UI on tool completion.
   - `packages/coding-agent/src/session/agent-session.ts`: stores cached phases, strips done/dropped tasks on session resume, emits failure reminders.
-  - `packages/coding-agent/src/modes/controllers/todo-command-controller.ts`: `/todo` command path, custom-entry persistence, transcript reminder injection.
+  - `packages/coding-agent/src/modes/terminal/controllers/todo-command-controller.ts`: `/todo` command path, custom-entry persistence, transcript reminder injection.
   - `packages/coding-agent/src/tools/render-utils.ts`: collapsed-preview cap for renderer trees.
 
 ## Inputs
@@ -71,7 +71,7 @@ The TUI renderer (`todoToolRenderer`) merges call and result into one transcript
 6. `execute(...)` stores the updated phases with `session.setTodoPhases?.(...)` only when the op produced no errors and was not a `view`; a failed op is discarded (persisting a half-applied mutation would make the natural retry hit "already exists"). `storage` is `"session"` when `session.getSessionFile()` exists, else `"memory"`.
 7. `getCompletionTransitions(...)` compares the previous and updated phases (skipped for failed or `view` calls); newly completed tasks are returned in `details.completedTasks`.
 8. The agent runtime also watches `todo` tool results in `packages/coding-agent/src/session/agent-session.ts`; successful results refresh cached todos, failed results inject a hidden next-turn reminder telling the model that todo progress is not visible until it retries.
-9. The event controller updates the visible todo UI from `result.details.phases` on success, or shows a warning on error (`packages/coding-agent/src/modes/controllers/event-controller.ts`).
+9. The event controller updates the visible todo UI from `result.details.phases` on success, or shows a warning on error (`packages/coding-agent/src/modes/terminal/controllers/event-controller.ts`).
 
 ## Modes / Variants
 ### State transitions
@@ -111,14 +111,14 @@ The same file also exposes non-tool helpers used by `/todo`:
   - `event-controller` updates the visible todo panel from successful results.
   - On error, `event-controller` shows `Todo update failed...`; the visible panel may stay stale until a later successful call.
 - Background work / cancellation
-  - Session-level auto-clear of `completed`/`abandoned` tasks was removed (the timer mutated canonical phases between tool calls). The TUI todo widget can still clear closed entries after `tasks.todoClearDelay` (display-only, `packages/coding-agent/src/modes/interactive-mode.ts`), but that timer is off by default and only runs when the setting is given a non-negative value.
+  - Session-level auto-clear of `completed`/`abandoned` tasks was removed (the timer mutated canonical phases between tool calls). The TUI todo widget can still clear closed entries after `tasks.todoClearDelay` (display-only, `packages/coding-agent/src/modes/terminal/interactive-mode.ts`), but that timer is off by default and only runs when the setting is given a non-negative value.
 
 ## Limits & Caps
 - `init.list`: applies to a single op (`todoSchema`). The params object carries exactly one op.
 - `init.list[*].items`: `minItems: 1`.
 - `append.items`: non-empty enforced per op at runtime (`Missing items for append operation`); the schema carries no `minItems` on the flat `items` field.
 - Renderer collapsed preview: `PREVIEW_LIMITS.COLLAPSED_ITEMS = 8` (`packages/coding-agent/src/tools/render-utils.ts`).
-- Auto-clear delay: `tasks.todoClearDelay` default `-1`, which never clears; `0` clears immediately and any positive value is a delay in seconds. At the default no timer is armed at all. Display-only: applied by the TUI widget (`packages/coding-agent/src/modes/interactive-mode.ts`); the setting is inert at the session level.
+- Auto-clear delay: `tasks.todoClearDelay` default `-1`, which never clears; `0` clears immediately and any positive value is a delay in seconds. At the default no timer is armed at all. Display-only: applied by the TUI widget (`packages/coding-agent/src/modes/terminal/interactive-mode.ts`); the setting is inert at the session level.
 - Tool execution mode: `concurrency = "exclusive"`, `strict = true`, `loadMode = "discoverable"`.
 
 ## Errors

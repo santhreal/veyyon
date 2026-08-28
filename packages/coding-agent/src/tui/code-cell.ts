@@ -5,9 +5,9 @@
 import { Markdown } from "@veyyon/tui";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { formatCount } from "@veyyon/utils/format";
-import { highlightCode } from "../modes/theme/highlight";
-import { getMarkdownTheme } from "../modes/theme/markdown-theme";
-import type { Theme } from "../modes/theme/theme-class";
+import { highlightCode } from "../theme/highlight";
+import { getMarkdownTheme } from "../theme/markdown-theme";
+import type { Theme } from "../theme/theme-class";
 import {
 	formatDuration,
 	formatExpandHint,

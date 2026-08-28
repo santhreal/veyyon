@@ -15,13 +15,13 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/tool-execution";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
-import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
-import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";
+import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
+import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { UiHelpers } from "@veyyon/coding-agent/modes/terminal/utils/ui-helpers";
 import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 const usage = {
 	input: 1,

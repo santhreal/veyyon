@@ -124,7 +124,7 @@ describe("settings test-reset hooks", () => {
 	 * state gets cleared without settings having to know about the theme.
 	 *
 	 * WHY THE INDIRECTION IS THE POINT. The state a settings change lands in does not live in the
-	 * settings module: writing `symbolPreset` runs a hook in `modes/theme/theme.ts`, which stores
+	 * settings module: writing `symbolPreset` runs a hook in `theme/theme.ts`, which stores
 	 * the result in its OWN module scope. Resetting settings alone left the process holding whatever
 	 * preset the last suite chose, so a later suite drew ASCII box characters where it expected
 	 * Unicode ones and reported that the renderer had produced nothing at all. Settings sits below
@@ -169,7 +169,7 @@ describe("settings test-reset hooks", () => {
 	/**
 	 * The counterpart to the clear-on-reset rule, and the reason the two listener sets exist.
 	 *
-	 * `modes/theme/theme` subscribes at ITS OWN IMPORT and has no owner to release it. Clearing that
+	 * `theme/theme` subscribes at ITS OWN IMPORT and has no owner to release it. Clearing that
 	 * subscription on the first reset in a process permanently disconnected the theme engine from
 	 * settings, so `symbolPreset` and `colourBlindMode` silently stopped applying for every later
 	 * file -- a leak fix that broke the thing it was protecting. An import-time subscriber says so

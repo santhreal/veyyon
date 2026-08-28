@@ -4,7 +4,7 @@ import { Text } from "@veyyon/tui";
 import { errorMessage, formatCount, truncate } from "@veyyon/utils";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
-import type { Theme } from "../../modes/theme/theme";
+import type { Theme } from "../../theme/theme";
 import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
 import * as git from "../../utils/git";
 import { computeRunModifiedPaths, getCurrentAutoresearchBranch, parseWorkDirDirtyPaths, tryReadHeadSha } from "../git";

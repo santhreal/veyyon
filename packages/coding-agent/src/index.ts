@@ -1,4 +1,4 @@
-import { HookEditorComponent, HookInputComponent, HookSelectorComponent } from "./modes/components";
+import { HookEditorComponent, HookInputComponent, HookSelectorComponent } from "./modes/terminal/components";
 
 // Core session management
 
@@ -46,9 +46,7 @@ export * from "./lsp";
 export * from "./main";
 // Run modes for programmatic SDK usage
 export * from "./modes";
-export * from "./modes/components";
-// Theme utilities for custom tools
-export * from "./modes/theme/theme";
+export * from "./modes/terminal/components";
 // SDK for programmatic usage
 export * from "./sdk";
 export {
@@ -83,6 +81,8 @@ export * from "./session/streaming-output";
 export * from "./task";
 export * from "./task/executor";
 export type * from "./task/types";
+// Theme utilities for custom tools
+export * from "./theme/theme";
 // Tools (detail types and utilities)
 export * from "./tools";
 export * from "./tools/ask";

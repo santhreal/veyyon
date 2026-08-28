@@ -31,10 +31,10 @@
  */
 import { beforeAll, describe, expect, it, vi } from "bun:test";
 import * as mcpConfigWriter from "@veyyon/coding-agent/mcp/config-writer";
-import { MCPCommandController } from "@veyyon/coding-agent/modes/controllers/mcp-command-controller";
-import { SSHCommandController } from "@veyyon/coding-agent/modes/controllers/ssh-command-controller";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { MCPCommandController } from "@veyyon/coding-agent/modes/terminal/controllers/mcp-command-controller";
+import { SSHCommandController } from "@veyyon/coding-agent/modes/terminal/controllers/ssh-command-controller";
 import * as sshConfigWriter from "@veyyon/coding-agent/ssh/config-writer";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 /** Every `/mcp` grammar that was converted, and a dash token it must now refuse. */
 const MCP_DASH_INVOCATIONS = [

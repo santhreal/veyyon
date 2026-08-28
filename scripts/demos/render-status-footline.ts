@@ -22,11 +22,11 @@
  * cached at import. A note goes to stderr so nobody reads a hostname or profile
  * difference as a change to the footline itself.
  */
-import { StatusLineComponent } from "../../packages/coding-agent/src/modes/components/status-line/component";
-import { STATUS_LINE_PRESETS } from "../../packages/coding-agent/src/modes/components/status-line/presets";
-import type { StatusLinePreset } from "../../packages/coding-agent/src/modes/components/status-line/types";
-import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
+import { StatusLineComponent } from "../../packages/coding-agent/src/modes/terminal/components/status-line/component";
+import { STATUS_LINE_PRESETS } from "../../packages/coding-agent/src/modes/terminal/components/status-line/presets";
+import type { StatusLinePreset } from "../../packages/coding-agent/src/modes/terminal/components/status-line/types";
 import type { AgentSession } from "../../packages/coding-agent/src/session/agent-session";
+import { theme } from "../../packages/coding-agent/src/theme/theme";
 import { flag, initRender, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

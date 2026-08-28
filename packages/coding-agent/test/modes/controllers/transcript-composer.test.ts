@@ -17,8 +17,8 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import {
 	TranscriptComposer,
 	type TranscriptComposerPort,
-} from "@veyyon/coding-agent/modes/controllers/transcript-composer";
-import type { SubmittedUserInput } from "@veyyon/coding-agent/modes/types";
+} from "@veyyon/coding-agent/modes/terminal/controllers/transcript-composer";
+import type { SubmittedUserInput } from "@veyyon/coding-agent/modes/terminal/types";
 import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
 import type { Component } from "@veyyon/tui";
 

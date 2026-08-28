@@ -15,7 +15,7 @@
  * `--hover <n>` points at the nth option row (0-based) the way a pointer would,
  * so the hover band is proved rather than described.
  */
-import { HookSelectorComponent } from "../../packages/coding-agent/src/modes/components/selectors/hook-selector";
+import { HookSelectorComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/hook-selector";
 import { flag, initRender, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

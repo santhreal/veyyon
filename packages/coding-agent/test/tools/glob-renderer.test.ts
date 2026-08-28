@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { sanitizeText } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
 import { globToolRenderer } from "../../src/tools/glob";

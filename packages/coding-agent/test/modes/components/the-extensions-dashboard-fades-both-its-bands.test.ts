@@ -28,12 +28,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { ExtensionDashboard } from "@veyyon/coding-agent/modes/components/extensions/extension-dashboard";
-import { ExtensionList } from "@veyyon/coding-agent/modes/components/extensions/extension-list";
-import type { ExtensionRow } from "@veyyon/coding-agent/modes/components/extensions/types";
-import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
-import { getThemeByName, initTheme, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { ExtensionRow } from "@veyyon/coding-agent/extensibility/extension-state/types";
+import { ExtensionDashboard } from "@veyyon/coding-agent/modes/terminal/components/extensions/extension-dashboard";
+import { ExtensionList } from "@veyyon/coding-agent/modes/terminal/components/extensions/extension-list";
+import { SelectorController } from "@veyyon/coding-agent/modes/terminal/controllers/selector-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { getThemeByName, initTheme, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TERMINAL } from "@veyyon/tui";
 import { motionClock } from "@veyyon/utils/motion";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";

@@ -27,11 +27,11 @@ import {
 	createCustomMessage,
 } from "@veyyon/agent-core/compaction/messages";
 import { KEYBINDINGS } from "@veyyon/coding-agent/config/keybindings";
-import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
-import * as cacheMarkerModule from "@veyyon/coding-agent/modes/components/transcript/cache-invalidation-marker";
-import * as compactionModule from "@veyyon/coding-agent/modes/components/transcript/compaction-summary-message";
-import { TRANSCRIPT_DIVIDER_RULE_WIDTH } from "@veyyon/coding-agent/modes/components/transcript/transcript-divider";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import * as cacheMarkerModule from "@veyyon/coding-agent/modes/terminal/components/transcript/cache-invalidation-marker";
+import * as compactionModule from "@veyyon/coding-agent/modes/terminal/components/transcript/compaction-summary-message";
+import { TRANSCRIPT_DIVIDER_RULE_WIDTH } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-divider";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { Component } from "@veyyon/tui";
 import { KeybindingsManager, setKeybindings } from "@veyyon/utils/keybindings";
 

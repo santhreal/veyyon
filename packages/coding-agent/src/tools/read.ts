@@ -45,7 +45,6 @@ import { InternalUrlRouter, resolveLocalUrlToFile } from "../internal-urls";
 import { type ResolvedArtifactFile, resolveArtifactFile } from "../internal-urls/artifact-protocol";
 import { parseInternalUrl } from "../internal-urls/parse";
 import type { InternalUrl } from "../internal-urls/types";
-import type { Theme } from "../modes/theme/theme-class";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from "../sdk";
 import {
@@ -57,6 +56,7 @@ import {
 	truncateHeadBytes,
 	truncateLine,
 } from "../session/streaming-output";
+import type { Theme } from "../theme/theme-class";
 // Each from its owner rather than the `../tui` barrel, which re-exports every component in the
 // directory. 54 test files import this module.
 import { renderCodeCell, renderMarkdownCell } from "../tui/code-cell";

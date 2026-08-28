@@ -12,10 +12,10 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { SEGMENTS } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/types";
-import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { SEGMENTS } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/theme/theme";
 import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/approval-modes";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 

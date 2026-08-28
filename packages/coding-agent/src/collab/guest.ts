@@ -23,8 +23,8 @@ import { SNAPSHOT_PROGRESS_TIMEOUT_MS, TRANSCRIPT_TIMEOUT_MS, WELCOME_TIMEOUT_MS
 import type {
 	AgentTranscriptRemote,
 	AgentTranscriptRemoteRead,
-} from "../modes/components/dashboard/agent-transcript-viewer";
-import type { InteractiveModeContext } from "../modes/types";
+} from "../modes/terminal/components/dashboard/agent-transcript-viewer";
+import type { InteractiveModeContext } from "../modes/terminal/types";
 import { AgentRegistry } from "../registry/agent-registry";
 import type { AgentSessionEvent } from "../session/agent-session";
 import type { SessionEntry } from "../session/session-entries";

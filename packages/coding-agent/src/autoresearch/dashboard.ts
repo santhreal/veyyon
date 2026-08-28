@@ -2,7 +2,7 @@ import { ScrollView, Text } from "@veyyon/tui";
 import { matchesKey } from "@veyyon/utils/keys";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
-import type { Theme } from "../modes/theme/theme";
+import type { Theme } from "../theme/theme";
 import { formatElapsed, formatNum, formatPercentChange, isBetter } from "./helpers";
 import { AUTORESEARCH_OVERLAY_KEY, AUTORESEARCH_TOGGLE_KEY } from "./shortcuts";
 import { currentResults, findBaselineMetric, findBaselineRunNumber, findBaselineSecondary } from "./state";

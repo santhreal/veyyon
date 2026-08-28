@@ -19,10 +19,10 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import {
 	type AgentTranscriptRemote,
 	AgentTranscriptViewer,
-} from "@veyyon/coding-agent/modes/components/dashboard/agent-transcript-viewer";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-transcript-viewer";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { CURRENT_SESSION_VERSION } from "@veyyon/coding-agent/session/session-entries";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { ImageBudget, ImageProtocol, setTerminalImageProtocol, TERMINAL, type TUI } from "@veyyon/tui";
 import { removeSyncWithRetries } from "@veyyon/utils";
 import { getKittyGraphics, setKittyGraphics } from "@veyyon/utils/kitty-graphics";

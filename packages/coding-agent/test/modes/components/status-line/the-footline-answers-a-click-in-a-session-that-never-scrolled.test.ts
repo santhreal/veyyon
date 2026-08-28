@@ -23,7 +23,7 @@
  * arrives.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { QuietZoneLine } from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
+import { QuietZoneLine } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
 import type { Component } from "@veyyon/tui";
 import { TUI } from "@veyyon/tui/tui";
 import { VirtualTerminal } from "../../../../../tui/test/virtual-terminal";

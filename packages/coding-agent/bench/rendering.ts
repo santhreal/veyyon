@@ -5,17 +5,17 @@ import type { AssistantMessage } from "@veyyon/ai";
 import { Editor } from "@veyyon/tui";
 import { makeBench } from "@veyyon/utils/bench-harness";
 import { Settings } from "../src/config/settings";
-import { WelcomeComponent } from "../src/modes/components/dialogs/welcome";
-import { AssistantMessageComponent } from "../src/modes/components/transcript/assistant-message";
-import { TranscriptContainer } from "../src/modes/components/transcript/transcript-container";
-import { truncateToVisualLines } from "../src/modes/components/transcript/visual-truncate";
+import { WelcomeComponent } from "../src/modes/terminal/components/dialogs/welcome";
+import { AssistantMessageComponent } from "../src/modes/terminal/components/transcript/assistant-message";
+import { TranscriptContainer } from "../src/modes/terminal/components/transcript/transcript-container";
+import { truncateToVisualLines } from "../src/modes/terminal/components/transcript/visual-truncate";
 import {
 	BlockUnitCounter,
 	buildDisplayMessage,
 	nextStep,
 	visibleUnits,
-} from "../src/modes/controllers/streaming-reveal";
-import { getEditorTheme, initTheme } from "../src/modes/theme/theme";
+} from "../src/modes/terminal/controllers/streaming-reveal";
+import { getEditorTheme, initTheme } from "../src/theme/theme";
 import type { ToolSession } from "../src/tools";
 import { ReadTool } from "../src/tools/read";
 

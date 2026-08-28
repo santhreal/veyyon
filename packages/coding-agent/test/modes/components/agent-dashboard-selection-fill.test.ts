@@ -22,9 +22,9 @@
  * instead of assuming the full width.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { AgentDashboard } from "@veyyon/coding-agent/modes/components/dashboard/agent-dashboard";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentDashboard } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-dashboard";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
@@ -141,7 +141,7 @@ describe("The selected row's fill", () => {
 		registerSub("1-Sub", "scout");
 		AgentRegistry.global().setActivity(
 			"1-Sub",
-			"reading packages/coding-agent/src/modes/components/dashboard/agent-dashboard.ts",
+			"reading packages/coding-agent/src/modes/terminal/components/dashboard/agent-dashboard.ts",
 		);
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
 		const first = highlightOf(dashboard, "reviewer")?.span.length;

@@ -24,12 +24,15 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MODAL_SIZING_LARGE, minModalChromeRows } from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
+import {
+	MODAL_SIZING_LARGE,
+	minModalChromeRows,
+} from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
 
-const COMPONENTS = fileURLToPath(new URL("../../src/modes/components/", import.meta.url));
+const COMPONENTS = fileURLToPath(new URL("../../src/modes/terminal/components/", import.meta.url));
 
 /** The overlays that subtract modal chrome before laying out their own content. */
-const OVERLAYS = ["plan-review-overlay.ts", "ask-dialog.ts"] as const;
+const OVERLAYS = ["dialogs/plan-review-overlay.ts", "dialogs/ask-dialog.ts"] as const;
 
 const sourceOf = (file: string) => readFileSync(join(COMPONENTS, file), "utf8");
 

@@ -33,8 +33,8 @@
  * different path with its own repair-below contract.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
 import { countDestructivePaints } from "../../../../tui/test/helpers/destructive-paints";
 import { settleFrames } from "../../../../tui/test/helpers/settle-frames";

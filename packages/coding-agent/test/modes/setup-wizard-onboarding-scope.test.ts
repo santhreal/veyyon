@@ -10,9 +10,9 @@ import {
 	runSetupWizard,
 	type SetupScene,
 	selectSetupScenes,
-} from "@veyyon/coding-agent/modes/setup-wizard";
-import { SetupWizardComponent } from "@veyyon/coding-agent/modes/setup-wizard/wizard-overlay";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+} from "@veyyon/coding-agent/modes/terminal/setup-wizard";
+import { SetupWizardComponent } from "@veyyon/coding-agent/modes/terminal/setup-wizard/wizard-overlay";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { getAgentDir, getGlobalConfigRootDir, setProfile, TempDir } from "@veyyon/utils";
 import { isRecord } from "@veyyon/utils/type-guards";
 import { YAML } from "bun";

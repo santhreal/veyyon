@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
+import * as themeModule from "@veyyon/coding-agent/theme/theme";
 import * as nativesModule from "@veyyon/natives";
 import { MacOSAppearance } from "@veyyon/natives";
 

@@ -187,7 +187,7 @@ and the model it resolved to.
 ```text
 Subagents
  ▏ DockerSecretHarness    bash cargo test --workspace --all-targets         claude-opus-5 high
- ▏ SecretModeFlowUX       read modes/interactive-mode.ts                    claude-opus-5 high
+ ▏ SecretModeFlowUX       read modes/terminal/interactive-mode.ts                    claude-opus-5 high
  ▏ SecretModularityAudit  Audit secrets subsystem modularity, wiring, and…  claude-opus-5 med
  ▏ RateLimitedWorker      Retrying (2/5) in 38s · 429 rate limit exceeded   claude-opus-5 high
 ```

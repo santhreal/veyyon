@@ -7,14 +7,17 @@ import { validateToolArguments } from "@veyyon/ai/utils/validation";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { canonicalSnapshotKey } from "@veyyon/coding-agent/edit/file-snapshot-store";
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
-import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/components/dashboard/agent-transcript-viewer";
-import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/tree-selector";
-import type { ObservableSession, SessionObserverRegistry } from "@veyyon/coding-agent/modes/session-observer-registry";
-import type { Theme } from "@veyyon/coding-agent/modes/theme/theme";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-transcript-viewer";
+import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/tree-selector";
+import type {
+	ObservableSession,
+	SessionObserverRegistry,
+} from "@veyyon/coding-agent/modes/terminal/session-observer-registry";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
 import { ToolChoiceQueue } from "@veyyon/coding-agent/session/tool-choice-queue";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
 import { Text } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "bun:test";
-import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { InputController } from "@veyyon/coding-agent/modes/terminal/controllers/input-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 
 /** The controller stub, plus handles on the mocks a test wants to assert against. */
 function makeContext(toolOutputExpanded = false) {

@@ -18,10 +18,10 @@ Key files:
 - `src/session/session-manager.ts`: tree data model, traversal, leaf movement, branch/session extraction
 - `src/session/session-context.ts`: `buildSessionContext` context reconstruction (resolved root→leaf LLM context, compaction/branch-summary replay)
 - `src/session/agent-session.ts`: `/tree` navigation flow, summarization, hook/event emission
-- `src/modes/components/selectors/tree-selector.ts`: interactive tree UI behavior and filtering
-- `src/modes/controllers/selector-controller.ts`: selector orchestration for `/tree` and `/branch`
+- `src/modes/terminal/components/selectors/tree-selector.ts`: interactive tree UI behavior and filtering
+- `src/modes/terminal/controllers/selector-controller.ts`: selector orchestration for `/tree` and `/branch`
 - `src/slash-commands/builtin-registry.ts`: command routing (`/tree`, `/branch`)
-- `src/modes/controllers/input-controller.ts`: double-escape behavior and `app.session.tree`/`app.session.fork` keybinding wiring
+- `src/modes/terminal/controllers/input-controller.ts`: double-escape behavior and `app.session.tree`/`app.session.fork` keybinding wiring
 - `src/session/messages.ts`: conversion of `branch_summary`, `compaction`, and `custom_message` entries into LLM context messages
 
 ## Tree data model in `SessionManager`
@@ -222,4 +222,4 @@ Session migrations still run on load:
 
 Current runtime behavior is version-3 tree semantics after migration.
 
-*Verified against `632fd91c3b4e` on 2026-08-28.*
+*Verified against `23e2a7938b9f` on 2026-08-28.*

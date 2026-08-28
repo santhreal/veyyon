@@ -17,10 +17,10 @@ Boundary rule: the TUI engine is message-agnostic. It only knows `Component.rend
 
 ## Implementation files
 
-- [`packages/coding-agent/src/modes/interactive-mode.ts`](../../packages/coding-agent/src/modes/interactive-mode.ts)
-- [`packages/coding-agent/src/modes/controllers/event-controller.ts`](../../packages/coding-agent/src/modes/controllers/event-controller.ts)
-- [`packages/coding-agent/src/modes/controllers/input-controller.ts`](../../packages/coding-agent/src/modes/controllers/input-controller.ts)
-- [`packages/coding-agent/src/modes/components/composer/custom-editor.ts`](../../packages/coding-agent/src/modes/components/composer/custom-editor.ts)
+- [`packages/coding-agent/src/modes/terminal/interactive-mode.ts`](../../packages/coding-agent/src/modes/terminal/interactive-mode.ts)
+- [`packages/coding-agent/src/modes/terminal/controllers/event-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/event-controller.ts)
+- [`packages/coding-agent/src/modes/terminal/controllers/input-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/input-controller.ts)
+- [`packages/coding-agent/src/modes/terminal/components/composer/custom-editor.ts`](../../packages/coding-agent/src/modes/terminal/components/composer/custom-editor.ts)
 - [`packages/tui/src/tui.ts`](../../packages/tui/src/tui.ts)
 - [`packages/tui/src/terminal.ts`](../../packages/tui/src/terminal.ts)
 - [`packages/tui/src/components/editor-component.ts`](../../packages/tui/src/components/editor-component.ts)
@@ -230,4 +230,4 @@ Throttled/debounced paths:
 
 The runtime therefore mixes event-driven state transitions with bounded render cadence to keep interactivity responsive without repaint storms.
 
-*Verified against `632fd91c3b4e` on 2026-08-28.*
+*Verified against `23e2a7938b9f` on 2026-08-28.*

@@ -10,7 +10,7 @@ import { padding } from "@veyyon/utils/padding";
 import { reopenBackgroundAfterResets } from "@veyyon/utils/sgr";
 import { visibleWidth } from "@veyyon/utils/width";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
-import type { Theme, ThemeColor } from "../modes/theme/theme";
+import type { Theme, ThemeColor } from "../theme/theme";
 import { getSixelLineMask } from "../utils/sixel";
 import type { State } from "./types";
 import type { RenderCache } from "./utils";

@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-abf3f424.js";
+            window.path_to_searchindex_js = "searchindex-475a07eb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -2971,7 +2971,7 @@ lane per agent. A lane reads left to right: a rail, the agent’s id, what it is
 and the model it resolved to.</p>
 <pre><code class="language-text">Subagents
  ▏ DockerSecretHarness    bash cargo test --workspace --all-targets         claude-opus-5 high
- ▏ SecretModeFlowUX       read modes/interactive-mode.ts                    claude-opus-5 high
+ ▏ SecretModeFlowUX       read modes/terminal/interactive-mode.ts                    claude-opus-5 high
  ▏ SecretModularityAudit  Audit secrets subsystem modularity, wiring, and…  claude-opus-5 med
  ▏ RateLimitedWorker      Retrying (2/5) in 38s · 429 rate limit exceeded   claude-opus-5 high
 </code></pre>
@@ -4361,7 +4361,7 @@ skills, see <a href="#task-guides">Task guides</a>.</p>
 <li><code>src/extensibility/extensions/runner.ts</code></li>
 <li><code>src/extensibility/extensions/wrapper.ts</code></li>
 <li><code>src/extensibility/extensions/index.ts</code></li>
-<li><code>src/modes/controllers/extension-ui-controller.ts</code></li>
+<li><code>src/modes/terminal/controllers/extension-ui-controller.ts</code></li>
 </ul>
 <p>For discovery paths and filesystem loading rules, see <a href="../../internal/extension-loading.html"><code>extension-loading.md</code></a>.</p>
 <p>For packaged user-facing extension CLIs/features such as <code>packages/swarm-extension</code>, see <a href="../../internal/user-facing-packages.html"><code>user-facing-packages.md</code></a>.</p>
@@ -6339,7 +6339,7 @@ operational failure modes.</p>
 <li>Prelude helpers loaded into every kernel: <code>src/eval/py/prelude.py</code></li>
 <li>Host-side subagent helper bridge: <code>src/eval/agent-bridge.ts</code></li>
 <li>MIME bundle renderer (text + structured outputs): <code>src/eval/py/display.ts</code></li>
-<li>Interactive-mode renderer for user-triggered Python runs: <code>src/modes/components/transcript/eval-execution.ts</code></li>
+<li>Interactive-mode renderer for user-triggered Python runs: <code>src/modes/terminal/components/transcript/eval-execution.ts</code></li>
 <li>Runtime/env filtering and Python resolution: <code>src/eval/py/runtime.ts</code></li>
 </ul>
 <h2 id="what-evals-python-backend-is"><a class="header" href="#what-evals-python-backend-is">What eval’s Python backend is</a></h2>
@@ -6530,7 +6530,7 @@ kv.delete("cursor_handle")
 </ul>
 </li>
 </ul>
-<p>The bash execution block (<code>bash-execution.ts</code>) shares all three of those limits, along with the clamp itself, through <code>modes/components/transcript/execution-shared.ts</code>.</p>
+<p>The bash execution block (<code>bash-execution.ts</code>) shares all three of those limits, along with the clamp itself, through <code>modes/terminal/components/transcript/execution-shared.ts</code>.</p>
 <h2 id="operational-troubleshooting"><a class="header" href="#operational-troubleshooting">Operational troubleshooting</a></h2>
 <ul>
 <li><strong>Python backend not available</strong>: Check <code>eval.py</code>, <code>VEYYON_PY</code>, and that <code>python</code>/<code>python3</code> is on PATH. If preflight fails and <code>eval.js</code> is enabled, use a <code>js</code> cell.</li>
@@ -13398,9 +13398,9 @@ loads nothing rather than defaulting to yes.</p>
 <li>syntax highlighting colors used by native highlighter (<code>@veyyon/natives</code>)</li>
 <li>status line segment colors</li>
 </ul>
-<p>Primary implementation: <code>src/modes/theme/theme.ts</code>.</p>
+<p>Primary implementation: <code>src/theme/theme.ts</code>.</p>
 <h2 id="theme-json-shape"><a class="header" href="#theme-json-shape">Theme JSON shape</a></h2>
-<p>Theme files are JSON objects validated against the runtime schema in <code>theme.ts</code> (<code>themeJsonSchema</code>) and mirrored by <code>src/modes/theme/theme-schema.json</code>.</p>
+<p>Theme files are JSON objects validated against the runtime schema in <code>theme.ts</code> (<code>themeJsonSchema</code>) and mirrored by <code>src/theme/theme-schema.json</code>.</p>
 <p>Top-level fields:</p>
 <ul>
 <li><code>name</code> (required)</li>
@@ -14138,7 +14138,7 @@ the active profile. An imported skill becomes a profile-native <code>native</cod
 </li>
 <li>appends metadata (<code>[Skill directory: &lt;baseDir&gt;]</code>, optional <code>User: &lt;args&gt;</code>)</li>
 </ul>
-<p>There is no flag, mode-selector, or frontmatter knob to override this, the keybinding <em>is</em> the choice, identical to how free text is routed during streaming (Enter steers, Ctrl+Enter queues a follow-up; both dispatch through <code>#invokeSkillCommand</code> in <code>packages/coding-agent/src/modes/controllers/input-controller.ts</code>).</p>
+<p>There is no flag, mode-selector, or frontmatter knob to override this, the keybinding <em>is</em> the choice, identical to how free text is routed during streaming (Enter steers, Ctrl+Enter queues a follow-up; both dispatch through <code>#invokeSkillCommand</code> in <code>packages/coding-agent/src/modes/terminal/controllers/input-controller.ts</code>).</p>
 <h2 id="skill-url-behavior"><a class="header" href="#skill-url-behavior"><code>skill://</code> URL behavior</a></h2>
 <p><code>src/internal-urls/skill-protocol.ts</code> supports:</p>
 <ul>
@@ -14220,9 +14220,9 @@ Guards:
 <p>Primary implementation:</p>
 <ul>
 <li><code>src/slash-commands/builtin-registry.ts</code> (<code>/tree</code>, <code>/branch</code> command routing)</li>
-<li><code>src/modes/controllers/input-controller.ts</code> (keybinding wiring, double-escape behavior)</li>
-<li><code>src/modes/controllers/selector-controller.ts</code> (tree UI launch + summary prompt flow)</li>
-<li><code>src/modes/components/selectors/tree-selector.ts</code> (navigation, filters, search, labels, rendering)</li>
+<li><code>src/modes/terminal/controllers/input-controller.ts</code> (keybinding wiring, double-escape behavior)</li>
+<li><code>src/modes/terminal/controllers/selector-controller.ts</code> (tree UI launch + summary prompt flow)</li>
+<li><code>src/modes/terminal/components/selectors/tree-selector.ts</code> (navigation, filters, search, labels, rendering)</li>
 <li><code>src/session/agent-session.ts</code> (<code>navigateTree</code> leaf switching + optional summary)</li>
 <li><code>src/session/session-manager.ts</code> (<code>getTree</code>, <code>branch</code>, <code>branchWithSummary</code>, <code>resetLeaf</code>, label persistence)</li>
 </ul>
@@ -15908,7 +15908,7 @@ Generate a session name using lowercase `&lt;type&gt;:&lt;primary-objective&gt;`
 <tbody>
 <tr><td><code>packages/coding-agent/src/mcp/</code></td><td>Config load, manager, OAuth, tool wiring</td></tr>
 <tr><td><code>packages/coding-agent/src/discovery/builtin.ts</code></td><td>Profile-scoped <code>mcp.json</code> / <code>.mcp.json</code> discovery</td></tr>
-<tr><td><code>packages/coding-agent/src/modes/controllers/mcp-command-controller.ts</code></td><td><code>/mcp</code> TUI commands</td></tr>
+<tr><td><code>packages/coding-agent/src/modes/terminal/controllers/mcp-command-controller.ts</code></td><td><code>/mcp</code> TUI commands</td></tr>
 </tbody>
 </table>
 </div>
@@ -17322,11 +17322,11 @@ export default function extension(pi: ExtensionAPI): void {
 <li><code>packages/tui/src/tui.ts</code>: <code>Component</code>, <code>Focusable</code>, cursor marker, focus, overlay, input dispatch.</li>
 <li><code>packages/utils/src/width.ts</code>: width/truncation/sanitization primitives.</li>
 <li><code>packages/utils/src/keys.ts</code> / <code>keybindings.ts</code>: key parsing and configurable action mapping.</li>
-<li><code>packages/coding-agent/src/modes/controllers/extension-ui-controller.ts</code>: interactive mounting/unmounting for extension/hook/custom-tool UI.</li>
+<li><code>packages/coding-agent/src/modes/terminal/controllers/extension-ui-controller.ts</code>: interactive mounting/unmounting for extension/hook/custom-tool UI.</li>
 <li><code>packages/coding-agent/src/extensibility/extensions/types.ts</code>: extension UI and renderer contracts.</li>
 <li><code>packages/coding-agent/src/extensibility/hooks/types.ts</code>: hook UI contract (legacy custom signature).</li>
 <li><code>packages/coding-agent/src/extensibility/custom-tools/types.ts</code>: custom tool execute/render contracts.</li>
-<li><code>packages/coding-agent/src/modes/components/transcript/tool-execution.ts</code>: mounting <code>renderCall</code>/<code>renderResult</code> components and partial-state options.</li>
+<li><code>packages/coding-agent/src/modes/terminal/components/transcript/tool-execution.ts</code>: mounting <code>renderCall</code>/<code>renderResult</code> components and partial-state options.</li>
 <li><code>packages/coding-agent/src/tools/context.ts</code>: tool UI context propagation (<code>hasUI</code>, <code>ui</code>).</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>

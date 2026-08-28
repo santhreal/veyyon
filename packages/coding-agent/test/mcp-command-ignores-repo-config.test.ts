@@ -34,12 +34,12 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { MCPServerConfig } from "@veyyon/coding-agent/mcp/types";
-import { MCPCommandController } from "@veyyon/coding-agent/modes/controllers/mcp-command-controller";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { MCPCommandController } from "@veyyon/coding-agent/modes/terminal/controllers/mcp-command-controller";
 import { BUILTIN_SLASH_COMMAND_DEFS } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import { handleMcpAcp } from "@veyyon/coding-agent/slash-commands/helpers/mcp";
 import { MCP_SCOPE_REMOVED_REPLACEMENT, parseSlashCommand } from "@veyyon/coding-agent/slash-commands/helpers/parse";
 import type { SlashCommandRuntime } from "@veyyon/coding-agent/slash-commands/types";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import {
 	getMCPConfigPath,
 	getProjectDir,

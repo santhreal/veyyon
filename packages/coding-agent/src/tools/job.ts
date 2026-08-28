@@ -6,11 +6,11 @@ import { stripTaskResultEnvelope } from "@veyyon/wire/task-result";
 import { type } from "arktype";
 import type { AsyncJob, AsyncJobManager, AsyncJobType } from "../async";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { shimmerEnabled, shimmerText } from "../modes/theme/shimmer";
-import type { Theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import type { AgentRegistry } from "../registry/agent-registry";
+import { shimmerEnabled, shimmerText } from "../theme/shimmer";
+import type { Theme } from "../theme/theme";
 import { Ellipsis, Hasher, type RenderCache, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
 import type { ToolSession } from "./index";
 import {

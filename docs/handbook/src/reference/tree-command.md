@@ -15,9 +15,9 @@ This is an in-file leaf move, not a new session export.
 Primary implementation:
 
 - `src/slash-commands/builtin-registry.ts` (`/tree`, `/branch` command routing)
-- `src/modes/controllers/input-controller.ts` (keybinding wiring, double-escape behavior)
-- `src/modes/controllers/selector-controller.ts` (tree UI launch + summary prompt flow)
-- `src/modes/components/selectors/tree-selector.ts` (navigation, filters, search, labels, rendering)
+- `src/modes/terminal/controllers/input-controller.ts` (keybinding wiring, double-escape behavior)
+- `src/modes/terminal/controllers/selector-controller.ts` (tree UI launch + summary prompt flow)
+- `src/modes/terminal/components/selectors/tree-selector.ts` (navigation, filters, search, labels, rendering)
 - `src/session/agent-session.ts` (`navigateTree` leaf switching + optional summary)
 - `src/session/session-manager.ts` (`getTree`, `branch`, `branchWithSummary`, `resetLeaf`, label persistence)
 

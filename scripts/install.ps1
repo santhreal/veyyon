@@ -1899,7 +1899,7 @@ function Uninstall-Veyyon {
 # The sun, once, at the top of an install.
 #
 # Same mark install.sh prints, from the same owner: four bands of the ember ramp
-# in packages/coding-agent/src/modes/components/chrome/sun.ts, drawn as lower blocks of
+# in packages/coding-agent/src/modes/terminal/components/chrome/sun.ts, drawn as lower blocks of
 # rising height so the silhouette is a dome rather than a rectangle. A rectangle
 # of solid blocks reads as a progress bar, and shading with the TUI's `.:-=` ramp
 # averages to grey over seven cells. See scripts/installer-brand-parity.test.ts,

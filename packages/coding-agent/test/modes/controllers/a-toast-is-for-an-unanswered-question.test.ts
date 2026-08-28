@@ -24,9 +24,9 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:
 import type { AssistantMessage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { TERMINAL } from "@veyyon/tui";
 import { useTrackedTempDirs } from "../../helpers/tracked-temp-dir";
 

@@ -3,7 +3,7 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import {
 	getAllSettingDefs,
 	invalidateSettingDefsCache,
-} from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 
 const AUTO_QA_SETTING_PATHS = ["dev.autoqa", "dev.autoqaPush.enabled", "dev.autoqaPush.endpoint"] as const;
 

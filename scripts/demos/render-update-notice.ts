@@ -20,8 +20,8 @@ import {
 	setLaunchTip,
 	updateInstalledTip,
 	WelcomeComponent,
-} from "../../packages/coding-agent/src/modes/components/dialogs/welcome";
-import { initTheme, theme } from "../../packages/coding-agent/src/modes/theme/theme";
+} from "../../packages/coding-agent/src/modes/terminal/components/dialogs/welcome";
+import { initTheme, theme } from "../../packages/coding-agent/src/theme/theme";
 import { flag, renderWidth } from "./render-args";
 
 const variant = flag("variant", "after");

@@ -194,7 +194,7 @@ describe("formatProviderName", () => {
 		const surfaces: ReadonlyArray<readonly [string, string]> = [
 			["slash-commands/helpers/usage-report.ts", "./format"],
 			["cli/usage-cli.ts", "../slash-commands/helpers/format"],
-			["modes/controllers/command-controller.ts", "../../slash-commands/helpers/format"],
+			["modes/terminal/controllers/command-controller.ts", "../../slash-commands/helpers/format"],
 		];
 		for (const [file, owner] of surfaces) {
 			expect(importsOf(file), file).toContain(owner);

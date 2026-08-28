@@ -16,8 +16,8 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import type { AnyAgentTool } from "@veyyon/agent-core";
-import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/tool-execution";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { Component, TUI } from "@veyyon/tui";
 import { createToolExecution } from "./helpers/tool-execution";
 

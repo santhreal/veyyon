@@ -13,7 +13,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
+import { SelectorController } from "@veyyon/coding-agent/modes/terminal/controllers/selector-controller";
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
 import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";

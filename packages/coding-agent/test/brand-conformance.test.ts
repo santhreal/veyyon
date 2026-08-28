@@ -21,9 +21,9 @@ import {
 	EMBER as SUN_EMBER_RAMP,
 	FALLOFF as SUN_FALLOFF,
 	GLYPH as SUN_GLYPH,
-} from "@veyyon/coding-agent/modes/components/chrome/sun";
-import { SILVER_STOPS } from "@veyyon/coding-agent/modes/components/dialogs/welcome";
-import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/chrome/sun";
+import { SILVER_STOPS } from "@veyyon/coding-agent/modes/terminal/components/dialogs/welcome";
+import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 
 const BRAND_SILVER = "#C6CBD4";
 const EMBER = "#F0862E";
@@ -150,9 +150,7 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 		expect(theme.getColorHex("toolDiffAdded")).toBe(theme.getColorHex("success"));
 		expect(theme.getColorHex("toolDiffRemoved")).toBe(theme.getColorHex("error"));
 		expect(theme.getColorHex("toolDiffContext")).toBe(theme.getColorHex("muted"));
-		const schema = JSON.parse(
-			fs.readFileSync(path.join(import.meta.dir, "../src/modes/theme/theme-schema.json"), "utf-8"),
-		);
+		const schema = JSON.parse(fs.readFileSync(path.join(import.meta.dir, "../src/theme/theme-schema.json"), "utf-8"));
 		const schemaKeys = JSON.stringify(schema);
 		expect(schemaKeys).not.toContain("toolDiffAddedBg");
 		expect(schemaKeys).not.toContain("toolDiffRemovedBg");
@@ -229,7 +227,7 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 	// written, including the terminal owner, so a fifth copy cannot appear
 	// unnoticed and the four existing ones cannot drift.
 	const FALLOFF_SOURCES = [
-		{ label: "sun.ts", rel: "../src/modes/components/chrome/sun.ts" },
+		{ label: "sun.ts", rel: "../src/modes/terminal/components/chrome/sun.ts" },
 		{ label: "website/sun.js", rel: "../../../website/sun.js" },
 		{ label: "website/sunmark.js", rel: "../../../website/sunmark.js" },
 		{ label: "packages/ai oauth.html", rel: "../../ai/src/registry/oauth/oauth.html" },

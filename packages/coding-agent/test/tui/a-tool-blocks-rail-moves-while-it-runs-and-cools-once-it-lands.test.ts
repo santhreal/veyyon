@@ -42,8 +42,8 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { interactionFixtures } from "@veyyon/coding-agent/cli/gallery-fixtures/interaction";
-import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/tool-execution";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { bashToolRenderer } from "@veyyon/coding-agent/tools/bash";
 import {
 	findRailCell,

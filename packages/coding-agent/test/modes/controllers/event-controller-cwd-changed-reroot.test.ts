@@ -16,8 +16,8 @@
  * status line, the first test goes red.
  */
 import { describe, expect, it, vi } from "bun:test";
-import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 
 function createFixture() {

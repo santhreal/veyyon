@@ -15,11 +15,11 @@
  * on the card and `anthropic/sonnet-4-6:high` in the transcript.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { AgentDashboard } from "@veyyon/coding-agent/modes/components/dashboard/agent-dashboard";
-import { SessionObserverRegistry } from "@veyyon/coding-agent/modes/session-observer-registry";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentDashboard } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-dashboard";
+import { SessionObserverRegistry } from "@veyyon/coding-agent/modes/terminal/session-observer-registry";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentProgress } from "@veyyon/coding-agent/task/types";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;

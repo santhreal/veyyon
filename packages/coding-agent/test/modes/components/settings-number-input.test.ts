@@ -20,7 +20,7 @@ import { getUi } from "@veyyon/coding-agent/config/settings-schema";
 import {
 	parseNumberSetting,
 	UNSET_NUMBER_INPUT,
-} from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
 
 /** Declares `min: 0`: a wait cannot be negative. */
 const DELAY = "retry.maxDelayMs";

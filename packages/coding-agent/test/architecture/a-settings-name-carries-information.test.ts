@@ -37,7 +37,7 @@ import { SETTING_TABS, TAB_GROUPS } from "@veyyon/coding-agent/config/settings-s
 import {
 	getAllSettingDefs,
 	invalidateSettingDefsCache,
-} from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 
 invalidateSettingDefsCache();
 const DEFS = getAllSettingDefs();

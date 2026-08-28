@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { BashTool, bashToolRenderer } from "@veyyon/coding-agent/tools/bash";
 import { sanitizeText } from "@veyyon/utils";

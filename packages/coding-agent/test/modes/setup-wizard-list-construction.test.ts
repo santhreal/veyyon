@@ -29,20 +29,20 @@ import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ImportCandidate } from "@veyyon/coding-agent/discovery/import-scan";
-import { AgentsSceneController } from "@veyyon/coding-agent/modes/setup-wizard/scenes/agents";
-import { approvalsSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/approvals";
-import { glyphSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/glyph";
-import { ImportSceneController } from "@veyyon/coding-agent/modes/setup-wizard/scenes/import";
-import { providersSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/providers";
-import { themeSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/theme";
+import { AgentsSceneController } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/agents";
+import { approvalsSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/approvals";
+import { glyphSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/glyph";
+import { ImportSceneController } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/import";
+import { providersSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/providers";
+import { themeSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/theme";
 import type {
 	SetupSceneController,
 	SetupSceneHost,
 	SetupWizardContext,
-} from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";
-import { WebSearchTab } from "@veyyon/coding-agent/modes/setup-wizard/scenes/web-search";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/types";
+import { WebSearchTab } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/web-search";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(async () => {
 	await Settings.init({ inMemory: true });
@@ -244,7 +244,7 @@ describe("scenes build their lists through the wizard factory", () => {
 	 * `statusLegend` at all, so going through it makes the mistake unavailable.
 	 */
 	it("no scene constructs SelectList directly", () => {
-		const sceneDir = path.join(import.meta.dir, "../../src/modes/setup-wizard/scenes");
+		const sceneDir = path.join(import.meta.dir, "../../src/modes/terminal/setup-wizard/scenes");
 		const offenders = fs
 			.readdirSync(sceneDir)
 			.filter(name => name.endsWith(".ts") && name !== "wizard-list.ts")

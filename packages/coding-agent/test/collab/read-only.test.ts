@@ -13,7 +13,7 @@ import { importRoomKey } from "@veyyon/coding-agent/collab/crypto";
 import { CollabHost } from "@veyyon/coding-agent/collab/host";
 import { COLLAB_PROTO, type CollabFrame, parseCollabLink } from "@veyyon/coding-agent/collab/protocol";
 import { CollabSocket } from "@veyyon/coding-agent/collab/relay-client";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { installInMemoryRelay, uninstallInMemoryRelay } from "./helpers/in-memory-relay";
 
 // In-memory transport: FakeWebSocket + InMemoryRelay (see ./helpers/in-memory-relay)

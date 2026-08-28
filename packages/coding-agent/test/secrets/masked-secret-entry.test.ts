@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets";
 import {
 	NONINTERACTIVE_SECRET_COMMAND_USAGE,

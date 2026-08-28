@@ -5,7 +5,7 @@ import { classifyGithubCheckRun, githubIssueRefNumber } from "@veyyon/utils/gith
 import { padding } from "@veyyon/utils/padding";
 import { visibleWidth } from "@veyyon/utils/width";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import type { Theme, ThemeColor } from "../modes/theme/theme";
+import type { Theme, ThemeColor } from "../theme/theme";
 import { framedBlock, renderStatusLine } from "../tui";
 import type {
 	GhRunWatchFailedLogDetails,

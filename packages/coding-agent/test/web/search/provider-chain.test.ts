@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import type { AuthStorage } from "@veyyon/ai";
-import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
+import { SelectorController } from "@veyyon/coding-agent/modes/terminal/controllers/selector-controller";
 import {
 	resolveProviderCandidates,
 	resolveProviderChain,

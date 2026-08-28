@@ -17,7 +17,7 @@
  *
  * The class this closes: one concept decided independently on the live path and
  * the rebuild path. Both now read `isLiveBackgroundTask` from
- * `modes/utils/async-tool-state.ts`, which is also the only reader of the
+ * `modes/terminal/utils/async-tool-state.ts`, which is also the only reader of the
  * `details.async` shape that six call sites used to cast inline.
  *
  * What this suite does NOT catch: it drives `renderSessionContext` directly
@@ -33,14 +33,14 @@ import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
-import { initTheme, setTheme, stopThemeWatcher } from "@veyyon/coding-agent/modes/theme/theme";
-import { isLiveBackgroundTask } from "@veyyon/coding-agent/modes/utils/async-tool-state";
+import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
+import { isLiveBackgroundTask } from "@veyyon/coding-agent/modes/terminal/utils/async-tool-state";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { initTheme, setTheme, stopThemeWatcher } from "@veyyon/coding-agent/theme/theme";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { TUI } from "@veyyon/tui";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal";

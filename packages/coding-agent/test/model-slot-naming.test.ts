@@ -8,7 +8,7 @@ import {
 	resolveModelSlot,
 } from "@veyyon/coding-agent/config/model-roles";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { DEFAULT_MODEL_SETTING_ID } from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+import { DEFAULT_MODEL_SETTING_ID } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 
 /**
  * The slot holding "the model you are working with" has ONE name.

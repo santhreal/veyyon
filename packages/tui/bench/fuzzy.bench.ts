@@ -78,7 +78,7 @@ const FILES = [
 	"src/tools/read.ts",
 	"src/tools/grep.ts",
 	"src/utils/git.ts",
-	"src/modes/theme/theme.ts",
+	"src/theme/theme.ts",
 	"src/system-prompt.ts",
 	"src/workspace-tree.ts",
 	"packages/tui/src/fuzzy.ts",

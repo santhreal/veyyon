@@ -7,7 +7,7 @@
 import type { Component } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import type { Theme } from "../modes/theme/theme";
+import type { Theme } from "../theme/theme";
 import {
 	formatArgsInline,
 	JSON_TREE_MAX_DEPTH_COLLAPSED,

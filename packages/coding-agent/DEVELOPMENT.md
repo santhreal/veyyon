@@ -43,7 +43,7 @@ src/main.ts (runRootCommand)  ── theme / settings / model registry / session
    ▼
 createAgentSession(...)        ── src/sdk.ts → AgentSession
    │
-   ├── InteractiveMode   (src/modes/, TUI event loop)
+   ├── InteractiveMode   (src/modes/terminal/, TUI event loop)
    ├── runPrintMode      (one-shot text/json)
    └── runRpcMode        (JSONL stdin/stdout server)
 ```
@@ -86,7 +86,8 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 | Directory | Responsibility | Reference |
 |---|---|---|
 | `cli/`, `commands/`, `commit/`, `export/` | Command-line adapters and concrete subcommands | — |
-| `modes/` | Interactive TUI, print, and RPC runtimes | [rpc.md](../../docs/handbook/src/reference/rpc.md), [sdk.md](../../docs/handbook/src/reference/sdk.md) |
+| `modes/` | Mode runtimes: `terminal/` is the interactive TUI, `print-mode.ts` the one-shot runtime, `rpc/` and `acp/` the client-driven servers, `keywords/` the magic-keyword parsing | [rpc.md](../../docs/handbook/src/reference/rpc.md), [sdk.md](../../docs/handbook/src/reference/sdk.md) |
+| `presentation/`, `theme/` | View-model builders over `@veyyon/wire/presentation`, and the palette every output surface reads | [tui-design-language.md](../../docs/internal/tui-design-language.md) |
 | `session/` | `AgentSession`, JSONL session tree, storage, history | [session.md](../../docs/internal/session.md), [session-tree-architecture.md](../../docs/internal/session-tree-architecture.md) |
 | `config/`, `registry/`, `secrets/` | Settings, model/provider registry, secret obfuscation | [settings.md](../../docs/handbook/src/reference/settings.md), [config-usage.md](../../docs/handbook/src/architecture/config.md), [models.md](../../docs/handbook/src/reference/models-yml.md), [secrets.md](../../docs/handbook/src/architecture/secrets.md) |
 | `tools/` | Built-in tool implementations + render/meta helpers | [custom-tools.md](../../docs/handbook/src/using/custom-tools.md), [`tools/`](../../docs/tools/) |

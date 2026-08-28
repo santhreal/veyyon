@@ -19,12 +19,16 @@
  *     ground by breaking the other.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { LIGHT_SILVER_STOPS, SILVER_STOPS, silverEscape } from "@veyyon/coding-agent/modes/components/dialogs/welcome";
-import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
-import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
-import { createTheme, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import {
+	LIGHT_SILVER_STOPS,
+	SILVER_STOPS,
+	silverEscape,
+} from "@veyyon/coding-agent/modes/terminal/components/dialogs/welcome";
+import type { ThemeJson } from "@veyyon/coding-agent/theme/color";
+import { defaultThemes } from "@veyyon/coding-agent/theme/defaults";
+import { createTheme, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { TERMINAL } from "@veyyon/tui";
-import lightThemeJson from "../../src/modes/theme/light.json" with { type: "json" };
+import lightThemeJson from "../../src/theme/light.json" with { type: "json" };
 
 /** `#RRGGBB` to the triple the stops are written as. */
 function hexToRgb(hex: string): [number, number, number] {

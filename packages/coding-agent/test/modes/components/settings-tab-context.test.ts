@@ -7,9 +7,9 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import type { SettingTab } from "@veyyon/coding-agent/config/settings-schema";
-import { getSettingsForTab } from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
-import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getSettingsForTab } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const DOWN = "\x1b[B";

@@ -30,10 +30,10 @@
 
 import { $env, getProjectDir, VERSION } from "@veyyon/utils";
 import { Settings } from "../config/settings";
-import { paintFirstFrame, shouldPaintFirstFrame } from "../modes/first-frame";
 import { CURRENT_SETUP_VERSION, resolveOnboardingGeneration } from "../modes/setup-version";
-import { initTheme } from "../modes/theme/theme";
+import { paintFirstFrame, shouldPaintFirstFrame } from "../modes/terminal/first-frame";
 import { shouldShowStartupSplash } from "../startup-splash";
+import { initTheme } from "../theme/theme";
 import type { Args } from "./args";
 import { type StartupPrologue, setStartupPrologue } from "./prologue-handoff";
 import { applySessionWorkdir, applyStartupCwd } from "./startup-cwd";

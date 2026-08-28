@@ -26,9 +26,9 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
-import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/tree-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/tree-selector";
 import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 

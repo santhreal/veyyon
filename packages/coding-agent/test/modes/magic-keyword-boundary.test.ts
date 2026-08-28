@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { magicKeywordRegex } from "@veyyon/coding-agent/modes/magic-keyword-boundary";
+import { magicKeywordRegex } from "@veyyon/coding-agent/modes/keywords/magic-keyword-boundary";
 
 /**
  * magicKeywordRegex builds the matcher that decides whether a magic keyword (like

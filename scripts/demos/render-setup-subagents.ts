@@ -1,8 +1,8 @@
 import { stripVTControlCharacters } from "node:util";
 import { Settings } from "../../packages/coding-agent/src/config/settings";
-import { AgentsSceneController } from "../../packages/coding-agent/src/modes/setup-wizard/scenes/agents";
-import { initTheme, theme } from "../../packages/coding-agent/src/modes/theme/theme";
+import { AgentsSceneController } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/agents";
 import { loadBundledAgents } from "../../packages/coding-agent/src/task/agents";
+import { initTheme, theme } from "../../packages/coding-agent/src/theme/theme";
 import { setAnsiPolicy } from "../../packages/tui/src/index";
 import { flag, renderWidth } from "./render-args";
 

@@ -1,0 +1,5605 @@
+/**
+ * Interactive mode for the coding agent.
+ * Handles TUI rendering and user interaction, delegating business logic to AgentSession.
+ */
+
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import {
+	type Agent,
+	AgentBusyError,
+	type AgentMessage,
+	type AgentToolResult,
+	EventLoopKeepalive,
+	ThinkingLevel,
+} from "@veyyon/agent-core";
+import type { CompactionOutcome } from "@veyyon/agent-core/compaction";
+import type { AssistantMessage, ImageContent, Message, Model, Usage, UsageReport } from "@veyyon/ai";
+import { modelsAreEqual } from "@veyyon/catalog/models";
+import type {
+	Component,
+	EditorTheme,
+	LoaderMessageColorFn,
+	NativeScrollbackLiveRegion,
+	OverlayHandle,
+} from "@veyyon/tui";
+import {
+	Container,
+	clearRenderCache,
+	Loader,
+	ProcessTerminal,
+	Spacer,
+	setTerminalTextSizing,
+	TERMINAL,
+	Text,
+	TUI,
+} from "@veyyon/tui";
+import { isInsideTerminalMultiplexer } from "@veyyon/tui/terminal-capabilities";
+import {
+	APP_NAME,
+	adjustHsv,
+	clampLow,
+	errorMessage,
+	estimateTokensFromText,
+	formatClock,
+	formatCount,
+	formatNumber,
+	getProjectDir,
+	hsvToRgb,
+	isEnoent,
+	logger,
+	postmortem,
+	prompt,
+} from "@veyyon/utils";
+import type { AutocompleteProvider, SlashCommand } from "@veyyon/utils/autocomplete";
+import { matchesKey } from "@veyyon/utils/keys";
+import { planPaintGround } from "@veyyon/utils/paint-ground";
+import { getPaddingX, setTuiTight } from "@veyyon/utils/tight-mode";
+import { visibleWidth } from "@veyyon/utils/width";
+import { isTerminalTodoStatus, isTodoListDone } from "@veyyon/wire";
+import chalk from "chalk";
+import type { CollabGuestLink } from "../../collab/guest";
+import type { CollabHost } from "../../collab/host";
+import { KeybindingsManager } from "../../config/keybindings";
+import {
+	isSettingsInitialized,
+	onStatusLineSessionAccentChanged,
+	type QuarantinedSettingsFile,
+	Settings,
+	type SettingsSaveFailure,
+	settings,
+} from "../../config/settings";
+import type {
+	AutocompleteProviderFactory,
+	ContextUsage,
+	ExtensionAskDialogQuestion,
+	ExtensionAskDialogResult,
+	ExtensionUIContext,
+	ExtensionUIDialogOptions,
+	ExtensionUISelectItem,
+	ExtensionWidgetContent,
+	ExtensionWidgetOptions,
+} from "../../extensibility/extensions";
+import type { CompactOptions } from "../../extensibility/extensions/types";
+import type { Skill } from "../../extensibility/skills";
+import { loadSlashCommands } from "../../extensibility/slash-commands";
+import { type GuidedGoalMessage, newGuidedGoalSessionId, runGuidedGoalTurn } from "../../goals/guided-setup";
+import type { Goal, GoalModeState } from "../../goals/state";
+// The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
+// handler and reaches hundreds of modules.
+import { listLocalPlanFileUrls, resolveLocalUrlToPath } from "../../internal-urls/local-protocol";
+import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "../../lsp/startup-events";
+import type { MCPManager } from "../../mcp";
+import {
+	isMcpConnectionStatusEvent,
+	MCP_CONNECTION_STATUS_EVENT_CHANNEL,
+	type McpConnectionStatusEvent,
+} from "../../mcp/startup-events";
+import {
+	humanizePlanTitle,
+	type PlanApprovalDetails,
+	resolveApprovedPlan,
+	resolvePlanTitle,
+} from "../../plan-mode/approved-plan";
+import { DEFAULT_PLAN_FILE_URL } from "../../plan-mode/plan-file-url";
+import { resolvePlanFilePath } from "../../plan-mode/plan-path";
+import { planModePrompts } from "../../prompts/plan-mode/rows";
+import { type AgentRegistry, MAIN_AGENT_ID } from "../../registry/agent-registry";
+import {
+	type AgentSession,
+	type AgentSessionEvent,
+	type ResolvedRoleModel,
+	SHUTDOWN_CONSOLIDATE_BUDGET_MS,
+} from "../../session/agent-session";
+import {
+	BackgroundSessions,
+	type InteractiveSessionFactory,
+	type KeptSession,
+} from "../../session/background-sessions";
+import type { CompactMode } from "../../session/compact-modes";
+import { HistoryStorage } from "../../session/history-storage";
+import type { SessionContext } from "../../session/session-context";
+import { getRecentSessions } from "../../session/session-listing";
+import type { SessionManager } from "../../session/session-manager";
+import type { ShakeMode } from "../../session/shake-types";
+import { VibeSessionRegistry } from "../../session/vibe-runtime";
+import {
+	BUILTIN_SLASH_COMMAND_RESERVED_NAMES,
+	buildTuiBuiltinSlashCommands,
+} from "../../slash-commands/builtin-registry";
+import { formatDurationCoarse, formatProviderName } from "../../slash-commands/helpers/format";
+import type { SubcommandDef } from "../../slash-commands/types";
+import { STTController, type SttState } from "../../speech/stt";
+import { vocalizer } from "../../speech/tts/vocalizer";
+import { discoverTitleSystemPromptFile, resolvePromptInput } from "../../system-prompt";
+import { applyGroundPaint, setDetectedTerminalGround } from "../../theme/ground-tints";
+import { setMarkdownMermaidRendering } from "../../theme/markdown-theme";
+import { clearMermaidCache } from "../../theme/mermaid-cache";
+import {
+	lavaText,
+	livingSpinnerColor,
+	type ShimmerPalette,
+	shimmerEnabled,
+	shimmerSegments,
+	shimmerText,
+	transitionsEnabled,
+} from "../../theme/shimmer";
+import type { Theme } from "../../theme/theme";
+import {
+	getCurrentThemeName,
+	getEditorTheme,
+	getSymbolTheme,
+	onTerminalAppearanceChange,
+	onThemeChange,
+	theme,
+} from "../../theme/theme";
+import type { ConfiguredThinkingLevel } from "../../thinking";
+import type { LspStartupServerInfo } from "../../tools";
+import { hasForegroundBashWait, onForegroundBashWaitChange } from "../../tools/bash-foreground-registry";
+import { type ResolveToolDetails, runResolveInvocation } from "../../tools/resolve";
+import { todoMatchesAnyDescription } from "../../tools/todo";
+import { ToolError } from "../../tools/tool-errors";
+import {
+	paintRailMotion,
+	RAIL_IDLE_STEP_MS,
+	RAIL_SETTLE_FRAMES,
+	type RailMotion,
+	railClockMs,
+	railIdleHeadAtMs,
+} from "../../tui/rail-motion";
+import { copyToClipboard } from "../../utils/clipboard";
+import type { EventBus } from "../../utils/event-bus";
+import { getEditorCommand, openInEditor } from "../../utils/external-editor";
+import { getSessionAccentAnsi, getSessionAccentHex } from "../../utils/session-color";
+import { messageHasDisplayableThinking } from "../../utils/thinking-display";
+import { popTerminalTitle, pushTerminalTitle, setSessionTerminalTitle } from "../../utils/title-generator";
+import {
+	consumeLoopLimitIteration,
+	createLoopLimitRuntime,
+	describeLoopLimit,
+	describeLoopLimitRuntime,
+	isLoopDurationExpired,
+	type LoopLimitRuntime,
+	parseLoopLimitArgs,
+} from "../loop-limit";
+import { modalRevealGround, pointerMotionEnabled } from "./components/chrome/modal-shell";
+import { renderSunsetField } from "./components/chrome/sun";
+import {
+	COMPOSER_INSET_COLS,
+	COMPOSER_PLACEHOLDER,
+	ComposerHairline,
+	mountComposerZone,
+	QuietZoneLine,
+	resolveComposerAccents,
+} from "./components/composer/composer-chrome";
+import { buildComposerShortcuts, ComposerShortcutsBar } from "./components/composer/composer-shortcuts";
+import { CustomEditor } from "./components/composer/custom-editor";
+import { renderSubagentHudLines } from "./components/dashboard/subagent-hud";
+import {
+	renderTodoBoardLines,
+	TODO_BOARD_FRAME_DIVISOR,
+	type TodoBoardMotion,
+	todoBoardIsLive,
+	todoBoardMarkerAnimates,
+	todoBoardRailTravels,
+} from "./components/dashboard/todo-board";
+import type { HookEditorComponent } from "./components/dialogs/hook-editor";
+import type { HookInputComponent } from "./components/dialogs/hook-input";
+import { PlanReviewOverlay } from "./components/dialogs/plan-review-overlay";
+import type { HookSelectorComponent, HookSelectorSlider } from "./components/selectors/hook-selector";
+import { StatusLineComponent } from "./components/status-line";
+import type { AssistantMessageComponent } from "./components/transcript/assistant-message";
+import type { BashExecutionComponent } from "./components/transcript/bash-execution";
+import { ChatBlock, type ChatBlockHost } from "./components/transcript/chat-block";
+import { ErrorBannerComponent } from "./components/transcript/error-banner";
+import type { EvalExecutionComponent } from "./components/transcript/eval-execution";
+import type { ToolExecutionHandle } from "./components/transcript/tool-execution";
+import { TranscriptContainer } from "./components/transcript/transcript-container";
+import { BtwController } from "./controllers/btw-controller";
+import { CommandController } from "./controllers/command-controller";
+import { EventController } from "./controllers/event-controller";
+import { ExtensionUiController } from "./controllers/extension-ui-controller";
+import { HomeAnchorLayout } from "./controllers/home-anchor-layout";
+import { InputController } from "./controllers/input-controller";
+import { MCPCommandController } from "./controllers/mcp-command-controller";
+import { OmfgController } from "./controllers/omfg-controller";
+import { SelectorController } from "./controllers/selector-controller";
+import { SessionFocusController } from "./controllers/session-focus-controller";
+import { SSHCommandController } from "./controllers/ssh-command-controller";
+import { TanCommandController } from "./controllers/tan-command-controller";
+import { TodoCommandController } from "./controllers/todo-command-controller";
+import { TranscriptComposer } from "./controllers/transcript-composer";
+import { WelcomeController } from "./controllers/welcome-controller";
+import { type FirstFrame, takeFirstFrame } from "./first-frame";
+import { OAuthManualInputManager } from "./oauth-manual-input";
+import { countRunningSubagentBadgeAgents, getRunningSubagentBadgeRegistry } from "./running-subagent-badge";
+import { type SessionObserverChangeKind, SessionObserverRegistry } from "./session-observer-registry";
+import { createSessionTeardown, type SessionTeardown } from "./session-teardown";
+import { runProviderSetupWizard } from "./setup-wizard/lazy";
+import { interruptHint } from "./shared";
+import { consumeRelaunchMarker, flushPendingTtyInput, RELAUNCH_MARKER } from "./tty-input-flush";
+import type {
+	CompactionQueuedMessage,
+	InteractiveModeContext,
+	InteractiveSelectorDialogOptions,
+	SubmittedUserInput,
+	TodoItem,
+	TodoPhase,
+} from "./types";
+import { createSelectionAttemptNotice } from "./utils/selection-notice";
+import { UiHelpers } from "./utils/ui-helpers";
+
+const HINT_SHIMMER_PALETTE: ShimmerPalette = {
+	low: "dim",
+	mid: "muted",
+	high: "borderAccent",
+};
+
+interface WorkingMessageAccent {
+	main: string;
+	dim: string;
+}
+
+interface WorkingMessageAccentCacheKey {
+	sessionName: string | undefined;
+	accentSurfaceLuminance: number | undefined;
+	sessionAccentEnabled: boolean;
+}
+
+/**
+ * Intern the shimmer palettes for each `WorkingMessageAccent` so `compile()`
+ * inside `shimmerSegments` sees a stable palette object between animation
+ * ticks. Allocating fresh palette literals every frame guaranteed a cache miss
+ * on the Symbol-keyed compiled-ANSI slot and forced `resolveTierAnsi` to walk
+ * every tier open/close for the ~30fps loader redraw (issue #4377).
+ */
+const workingMessagePaletteCache = new WeakMap<WorkingMessageAccent, { main: ShimmerPalette; hint: ShimmerPalette }>();
+
+function workingMessagePalettes(accent: WorkingMessageAccent): { main: ShimmerPalette; hint: ShimmerPalette } {
+	let entry = workingMessagePaletteCache.get(accent);
+	if (!entry) {
+		entry = {
+			main: { low: "dim", mid: { ansi: accent.main }, high: { ansi: accent.main }, bold: true },
+			hint: { low: "dim", mid: { ansi: accent.dim }, high: { ansi: accent.dim } },
+		};
+		workingMessagePaletteCache.set(accent, entry);
+	}
+	return entry;
+}
+
+function renderWorkingMessage(message: string, accent?: WorkingMessageAccent, clockText?: string): string {
+	const palettes = accent ? workingMessagePalettes(accent) : undefined;
+	const palette = palettes?.main;
+	const hintPalette = palettes?.hint ?? HINT_SHIMMER_PALETTE;
+	const hint = interruptHint();
+	let body = message;
+	let hasHint = false;
+	if (body.endsWith(hint)) {
+		body = body.slice(0, -hint.length);
+		hasHint = true;
+	}
+	// The per-task elapsed clock (` · 0:42`) sits between the label and the esc
+	// hint. It is whisper chrome, not part of the task label, so it takes the
+	// hint's dim palette instead of shimmering with the message body.
+	let clock = "";
+	if (clockText && body.endsWith(clockText)) {
+		body = body.slice(0, -clockText.length);
+		clock = clockText;
+	}
+	if (!hasHint && !clock) return shimmerText(message, theme, palette);
+	const segments = [{ text: body, palette }];
+	if (clock) segments.push({ text: clock, palette: hintPalette });
+	if (hasHint) segments.push({ text: hint, palette: hintPalette });
+	return shimmerSegments(segments, theme);
+}
+
+const EDITOR_MAX_HEIGHT_MIN = 6;
+const EDITOR_MAX_HEIGHT_MAX = 18;
+const EDITOR_RESERVED_ROWS = 12;
+const EDITOR_FALLBACK_ROWS = 24;
+const EDITOR_MIN_CHROME_ROWS = 4; // rows reserved for transcript + status on small terms
+const EDITOR_MIN_RENDERED_ROWS = 3; // bordered editor floor: top+bottom border + 1 content row
+
+/**
+ * Consecutive provider-killed goal turns tolerated before goal mode stops
+ * driving on its own. A transport fault is routinely retried and recovered, so
+ * one is not a reason to stand down; a provider that is genuinely gone must not
+ * let the goal spin forever.
+ */
+const GOAL_FAILED_TURN_LIMIT = 3;
+
+/** How long the composer stays idle before goal mode opens a continuation turn. */
+const GOAL_CONTINUATION_DELAY_MS = 800;
+
+/**
+ * How long goal mode keeps waiting for a busy session to go idle before it gives up on the
+ * continuation it owes. Post-turn maintenance — a compaction of a large context, a queued
+ * hook — routinely outlasts one delay window, and the goal must still be driving afterwards.
+ */
+const GOAL_CONTINUATION_BUSY_WAIT_MS = 300_000;
+
+/** Why goal mode is not opening a continuation turn right now. */
+type GoalContinuationBlock =
+	| "loop-mode"
+	| "no-input-callback"
+	| "continuation-mode-off"
+	| "plan-mode"
+	| "goal-mode-off"
+	| "suppressed"
+	| "busy"
+	| "submission-pending"
+	| "draft-in-composer"
+	| "images-attached"
+	| "goal-not-active"
+	| "no-prompt";
+
+/**
+ * Blocks that are an ordinary handoff rather than a goal declining to drive. `no-input-callback`
+ * is the common one: every `agent_end` arms the continuation before the loop has returned to
+ * `getUserInput`, and that call is expected to do nothing.
+ */
+const GOAL_CONTINUATION_QUIET_BLOCKS: ReadonlySet<GoalContinuationBlock> = new Set([
+	"loop-mode",
+	"no-input-callback",
+	"continuation-mode-off",
+	"goal-mode-off",
+]);
+
+/**
+ * Whether the turn that just ended died rather than finished. An aborted turn is
+ * the user's own interrupt and is handled by the goal runtime's pause path, so
+ * only a provider/transport error counts here.
+ */
+function goalTurnEndedInError(event: Extract<AgentSessionEvent, { type: "agent_end" }>): boolean {
+	const lastAssistant = [...event.messages]
+		.reverse()
+		.find((message): message is AssistantMessage => message.role === "assistant");
+	return lastAssistant?.stopReason === "error";
+}
+
+/**
+ * Editor max-height cap for a terminal of `terminalRows` rows.
+ *
+ * Roomy terminals get the comfortable [6, 18] band. Small terminals shrink the
+ * cap so the editor leaves at least EDITOR_MIN_CHROME_ROWS rows for the
+ * transcript + status line. The editor is bordered, so it never renders fewer
+ * than EDITOR_MIN_RENDERED_ROWS rows; once the terminal is too small for both
+ * (terminalRows < EDITOR_MIN_RENDERED_ROWS + EDITOR_MIN_CHROME_ROWS) the cap is
+ * pinned to that floor — returning a smaller number would not shrink the editor
+ * any further, it would only misreport the rows it actually occupies.
+ */
+export function computeEditorMaxHeight(terminalRows: number): number {
+	const rows = Number.isFinite(terminalRows) && terminalRows > 0 ? terminalRows : EDITOR_FALLBACK_ROWS;
+	const comfortable = clampLow(rows - EDITOR_RESERVED_ROWS, EDITOR_MAX_HEIGHT_MIN, EDITOR_MAX_HEIGHT_MAX);
+	return clampLow(comfortable, EDITOR_MIN_RENDERED_ROWS, rows - EDITOR_MIN_CHROME_ROWS);
+}
+
+type GoalSubcommand = "set" | "show" | "pause" | "resume" | "drop";
+
+const GOAL_SUBCOMMANDS: Record<GoalSubcommand, true> = {
+	set: true,
+	show: true,
+	pause: true,
+	resume: true,
+	drop: true,
+};
+const PLAN_KEEP_CONTEXT_OPTION_INDEX = 2;
+const PLAN_KEEP_CONTEXT_DISABLE_THRESHOLD_PERCENT = 95;
+
+function parseGoalSubcommand(args: string): { sub: GoalSubcommand | undefined; rest: string } {
+	const trimmed = args.trim();
+	if (!trimmed) return { sub: undefined, rest: "" };
+	const match = /^(\S+)(?:\s+([\s\S]*))?$/.exec(trimmed);
+	if (!match) return { sub: undefined, rest: trimmed };
+	const first = match[1].toLowerCase();
+	if (first in GOAL_SUBCOMMANDS) {
+		return { sub: first as GoalSubcommand, rest: match[2]?.trim() ?? "" };
+	}
+	return { sub: undefined, rest: trimmed };
+}
+
+function formatContextTokenCount(value: number): string {
+	return formatNumber(Math.max(0, Math.round(value))).toLowerCase();
+}
+
+/** Options for creating an InteractiveMode instance (for future API use) */
+export interface InteractiveModeOptions {
+	/** Providers that were migrated during startup */
+	migratedProviders?: string[];
+	/** Warning message if model fallback occurred */
+	modelFallbackMessage?: string;
+	/** Initial message to send */
+	initialMessage?: string;
+	/** Initial images to include with the message */
+	initialImages?: ImageContent[];
+	/** Additional initial messages to queue */
+	initialMessages?: string[];
+}
+
+/**
+ * Anchored live-region container for the HUD/status rows between the transcript
+ * and the editor (working loader, todo + subagent HUDs, transient notification
+ * panels). While it has content every row is live: it reports a seam at 0 so the
+ * engine never commits these anchored, rebuilt-in-place rows to native
+ * scrollback — otherwise stale duplicates pile up above the live copy on short
+ * terminals once the loader sits below a tall HUD. The transcript's own seam,
+ * when present, sits higher and wins (topmost-seam merge in TUI.render).
+ */
+class AnchoredLiveContainer extends Container implements NativeScrollbackLiveRegion {
+	getNativeScrollbackLiveRegionStart(): number | undefined {
+		return this.children.length > 0 ? 0 : undefined;
+	}
+}
+
+/** How long the ctrl+p model-role cycle chip track lingers above the editor
+ *  before it auto-clears, mirroring the todo HUD's auto-clear timer. */
+const MODEL_CYCLE_TRACK_CLEAR_MS = 4000;
+
+/** How long a burst of subagent observer changes is coalesced before the block
+ *  is rebuilt once. Exported because a test that drives the burst has to
+ *  advance exactly this window: the block arms a repeating rail-motion interval
+ *  as soon as it has lanes, so draining every pending timer never returns. */
+export const SUBAGENT_OBSERVER_UI_COALESCE_MS = 100;
+
+/**
+ * Horizontal margin the two anchored blocks are mounted with, and the number
+ * their width budget is derived from. One constant because a mount and a budget
+ * that disagree is a soft wrap, and a soft wrap in an anchored region is a row
+ * outside the block's own rail.
+ *
+ * `COMPOSER_INSET_COLS`, because a tool block's rail sits there and the prose
+ * above it starts there. At one cell the board's rail was a column left of every
+ * other left edge on screen, which is the distance that reads as broken rather
+ * than as a margin.
+ */
+export const ANCHORED_BLOCK_PADDING_X = COMPOSER_INSET_COLS;
+
+export class InteractiveMode implements InteractiveModeContext {
+	session: AgentSession;
+	sessionManager: SessionManager;
+	settings: Settings;
+	keybindings: KeybindingsManager;
+	agent: Agent;
+	historyStorage?: HistoryStorage;
+	/**
+	 * Set by the interactive host at startup. Its absence is what makes `/new`
+	 * reset the current session in place instead of handing it off.
+	 */
+	createNextSession?: InteractiveSessionFactory;
+
+	ui: TUI;
+	chatContainer: TranscriptContainer;
+	pendingMessagesContainer: Container;
+	statusContainer: Container;
+	todoContainer: Container;
+	subagentContainer: Container;
+	btwContainer: Container;
+	omfgContainer: Container;
+	errorBannerContainer: Container;
+	modelCycleContainer: Container;
+	editor: CustomEditor;
+	editorContainer: Container;
+	composerShortcuts: ComposerShortcutsBar;
+	hookWidgetContainerAbove: Container;
+	hookWidgetContainerBelow: Container;
+	statusLine: StatusLineComponent;
+	composerHairline: ComposerHairline;
+	capabilityLine: QuietZoneLine;
+
+	isInitialized = false;
+	initialChatRendered = false;
+	isBashMode = false;
+	toolOutputExpanded = false;
+	todoExpanded = false;
+	planModeEnabled = false;
+	planModePaused = false;
+	goalModeEnabled = false;
+	goalModePaused = false;
+	vibeModeEnabled = false;
+	planModePlanFilePath: string | undefined = undefined;
+	loopModeEnabled = false;
+	loopPrompt: string | undefined = undefined;
+	loopLimit: LoopLimitRuntime | undefined = undefined;
+	#loopAutoSubmitTimer: NodeJS.Timeout | undefined;
+	#todoAutoClearTimer: NodeJS.Timeout | undefined;
+	#modelCycleClearTimer: NodeJS.Timeout | undefined;
+	/**
+	 * Frame counter for everything animated in the anchored region: the lane
+	 * sweep, the board's rail sweep, and the mark on the task in flight. One
+	 * counter, so the two blocks cannot drift out of step.
+	 */
+	#anchoredStep = 0;
+	#anchoredMotionInterval: NodeJS.Timeout | undefined;
+	/** Settle frame while a closed board is going out, `undefined` otherwise. */
+	#todoSettleFrame: number | undefined;
+	/** The board being drawn for the length of that exit, held nowhere else. */
+	#todoSettlePhases: TodoPhase[] | undefined;
+	/** What the last board render measured: whether anything on it is in flight. */
+	#todoBoardLive = false;
+	todoPhases: TodoPhase[] = [];
+	hideThinkingBlock = false;
+	#sessionsWithDisplayableThinkingContent = new WeakSet<AgentSession>();
+	/** Whether the visible session has produced thinking content the user can reveal. */
+	get hasDisplayableThinkingContent(): boolean {
+		return this.#sessionsWithDisplayableThinkingContent.has(this.viewSession);
+	}
+	/** Record received reasoning content so Ctrl+T can reveal it even when model metadata says thinking is off. */
+	noteDisplayableThinkingContent(message: AgentMessage): boolean {
+		if (this.hasDisplayableThinkingContent || !messageHasDisplayableThinking(message, this.proseOnlyThinking)) {
+			return false;
+		}
+		this.#sessionsWithDisplayableThinkingContent.add(this.viewSession);
+		return true;
+	}
+	/**
+	 * Effective thinking-block visibility: hidden when the user's setting is on,
+	 * or while thinking is "off" before the session has actually produced
+	 * displayable thinking content. Some providers return thinking blocks without
+	 * advertising reasoning support, so observed content unlocks the visibility
+	 * toggle.
+	 */
+	get effectiveHideThinkingBlock(): boolean {
+		const thinkingOff = (this.viewSession?.thinkingLevel ?? ThinkingLevel.Off) === ThinkingLevel.Off;
+		return this.hideThinkingBlock || (thinkingOff && !this.hasDisplayableThinkingContent);
+	}
+	proseOnlyThinking = true;
+	compactionQueuedMessages: CompactionQueuedMessage[] = [];
+	pendingTools = new Map<string, ToolExecutionHandle>();
+	settledToolCalls = new Set<string>();
+	pendingBashComponents: BashExecutionComponent[] = [];
+	bashComponent: BashExecutionComponent | undefined = undefined;
+	pendingPythonComponents: EvalExecutionComponent[] = [];
+	pythonComponent: EvalExecutionComponent | undefined = undefined;
+	isPythonMode = false;
+	streamingComponent: AssistantMessageComponent | undefined = undefined;
+	streamingMessage: AssistantMessage | undefined = undefined;
+	lastAssistantUsage: Usage | undefined = undefined;
+	loadingAnimation: Loader | undefined = undefined;
+	autoCompactionLoader: Loader | undefined = undefined;
+	retryLoader: Loader | undefined = undefined;
+	#pendingWorkingMessage: string | undefined;
+	// Per-task elapsed clock on the working line: the label is the task, the
+	// clock is how long that exact label has been showing. Reset whenever the
+	// label changes (each tool call / working phase sets a new one).
+	#taskLabel: string | undefined;
+	#taskHasHint = false;
+	#taskStartedAt = 0;
+	#workingClockText: string | undefined;
+	#clockTimer: NodeJS.Timeout | undefined;
+	#workingMessageAccentCacheKey?: WorkingMessageAccentCacheKey;
+	#workingMessageAccentCacheValue?: WorkingMessageAccent;
+	#workingMessageAccentCacheHasValue = false;
+	get #defaultWorkingMessage(): string {
+		return `Working…${interruptHint()}`;
+	}
+	unsubscribe?: () => void;
+	onInputCallback?: (input: SubmittedUserInput) => void;
+	// Optimistic-message + local-echo + rebuild state lives in the composer
+	// (ARCH-2); these accessors keep the InteractiveModeContext contract.
+	get optimisticUserMessageSignature(): string | undefined {
+		return this.#transcriptComposer.optimisticSignature;
+	}
+	get locallySubmittedUserSignatures(): Set<string> {
+		return this.#transcriptComposer.localEchoSignatures;
+	}
+	#pendingSubmittedInput: SubmittedUserInput | undefined;
+	lastSigintTime = 0;
+	lastEscapeTime = 0;
+	lastLeftTapTime = 0;
+	shutdownRequested = false;
+	#isShuttingDown = false;
+	#relaunchSpec: { argv: string[]; env?: Record<string, string | undefined> } | undefined;
+	/** Unsubscribe for the swallow-everything input gate shutdown() installs. */
+	#shutdownInputGateRelease: (() => void) | undefined;
+	/** Unsubscribe for the swallow-everything input gate `init()` installs
+	 *  across the tty handover. Released once startup completes. */
+	#startupInputGateRelease: (() => void) | undefined;
+	/** True once `shutdown()` has begun teardown. Surfaced to the input
+	 *  controller so a Ctrl+C arriving while teardown is in flight can hard-
+	 *  abort the remaining work instead of stacking another no-op call. */
+	get isShuttingDown(): boolean {
+		return this.#isShuttingDown;
+	}
+	hookSelector: HookSelectorComponent | undefined = undefined;
+	hookInput: HookInputComponent | undefined = undefined;
+	hookEditor: HookEditorComponent | undefined = undefined;
+	lastStatusSpacer: Spacer | undefined = undefined;
+	lastStatusText: Text | undefined = undefined;
+	fileSlashCommands: Set<string> = new Set();
+	skillCommands: Map<string, Skill> = new Map();
+	oauthManualInput: OAuthManualInputManager = new OAuthManualInputManager();
+	collabHost?: CollabHost;
+	collabGuest?: CollabGuestLink;
+
+	#pendingSlashCommands: SlashCommand[] = [];
+	/** Built-in editor autocomplete provider, before extension wrapping. */
+	#baseAutocompleteProvider: AutocompleteProvider | undefined;
+	/** Extension-registered provider factories, applied in registration order (#4919). */
+	#autocompleteProviderFactories: AutocompleteProviderFactory[] = [];
+	#cleanupUnsubscribe?: () => void;
+	#signalTeardown?: SessionTeardown;
+	readonly #version: string;
+	#planModePreviousTools: string[] | undefined;
+	#goalModePreviousTools: string[] | undefined;
+	#vibeModePreviousTools: string[] | undefined;
+	#goalContinuationTimer: NodeJS.Timeout | undefined;
+	#goalTurnHadToolCalls = false;
+	/** Consecutive goal turns that ended in a provider error, reset by any turn that did not. */
+	#goalFailedTurns = 0;
+	/** Set between a retry's `auto_retry_start` and the `agent_start` that resumes the same turn. */
+	#goalTurnRetrying = false;
+	#goalContinuationTurnInFlight = false;
+	#goalSuppressNextContinuation = false;
+	#goalUserContinuationSuppressed = false;
+	#goalUserTurnInFlight = false;
+	/**
+	 * Deadline for the continuation goal mode owes a busy session, set when the first tick finds
+	 * the session busy and cleared by the tick that gets through. Undefined while nothing is owed.
+	 */
+	#goalContinuationBusyUntil: number | undefined;
+	#planModePreviousModelState: { model: Model; thinkingLevel?: ConfiguredThinkingLevel } | undefined;
+	#pendingModelSwitch: { model: Model; thinkingLevel?: ConfiguredThinkingLevel } | undefined;
+	#planModeHasEntered = false;
+	#planReviewOverlay: PlanReviewOverlay | undefined;
+	#planReviewOverlayHandle: OverlayHandle | undefined;
+	#planReviewCancel: (() => void) | undefined;
+	readonly lspServers: LspStartupServerInfo[] | undefined = undefined;
+	mcpManager?: MCPManager;
+	readonly #toolUiContextSetter: (uiContext: ExtensionUIContext, hasUI: boolean) => void;
+
+	readonly #btwController: BtwController;
+	readonly #tanCommandController: TanCommandController;
+	readonly #omfgController: OmfgController;
+	readonly #commandController: CommandController;
+	readonly #todoCommandController: TodoCommandController;
+	readonly #eventController: EventController;
+	get eventController(): EventController {
+		return this.#eventController;
+	}
+	get eventBus(): EventBus | undefined {
+		return this.#eventBus;
+	}
+	readonly #extensionUiController: ExtensionUiController;
+	readonly #inputController: InputController;
+	readonly #selectorController: SelectorController;
+	readonly #focusController: SessionFocusController;
+	get viewSession(): AgentSession {
+		return this.#focusController.target ?? this.session;
+	}
+	get focusedAgentId(): string | undefined {
+		return this.#focusController.focusedAgentId;
+	}
+	get sessionName(): string | undefined {
+		return this.session.sessionName;
+	}
+	focusAgentSession(id: string): Promise<void> {
+		return this.#focusController.focusAgent(id);
+	}
+	focusParentSession(): Promise<void> {
+		return this.#focusController.focusParent();
+	}
+	unfocusSession(): Promise<void> {
+		return this.#focusController.unfocus();
+	}
+	clearTransientSessionUi(): void {
+		if (this.loadingAnimation) {
+			this.loadingAnimation.stop();
+			this.loadingAnimation = undefined;
+			this.#resetTaskClock();
+		}
+		if (this.autoCompactionLoader) {
+			this.autoCompactionLoader.stop();
+			this.autoCompactionLoader = undefined;
+		}
+		if (this.retryLoader) {
+			this.retryLoader.stop();
+			this.retryLoader = undefined;
+		}
+		this.statusContainer.disposeChildren();
+		this.pendingMessagesContainer.disposeChildren();
+		this.#cancelModelCycleClearTimer();
+		this.modelCycleContainer.disposeChildren();
+		this.compactionQueuedMessages = [];
+		this.streamingComponent = undefined;
+		this.streamingMessage = undefined;
+		this.lastAssistantUsage = undefined;
+		this.pendingTools.clear();
+		this.settledToolCalls.clear();
+		// A pinned error banner belongs to the turn that failed, in ONE session.
+		// `resetTranscriptAnchors` already drops the transcript component the
+		// banner mirrors, so leaving the container alone left a banner on screen
+		// with nothing behind it: the main session's failure stayed pinned above
+		// the composer for the whole time the view was inside an agent, and an
+		// agent's failure stayed pinned after Esc returned to main.
+		this.clearPinnedError();
+		// The subagent HUD is scoped to the VIEWED session, and every focus
+		// attach/detach (both directions, including the registry-driven
+		// auto-unfocus when the viewed agent dies) runs through here after the
+		// focus controller has already swapped the target. Re-derive the block
+		// against the new view, or the focused view keeps the parent's rows and
+		// the restored main view keeps the cleared ones until the next spawn
+		// event happens to land.
+		if (this.subagentContainer) this.#renderSubagentList();
+		// Todos are per-session state (`AgentSession#todoPhases`), and the todo
+		// HUD is the loudest block above the composer. Every OTHER session switch
+		// (new, resume, branch, handoff, collab welcome) reloads it explicitly;
+		// the focus transitions never did, so the focused view kept painting the
+		// driving session's board as if the agent owned it. Same choke point, so
+		// the surface cannot drift out of step with the HUD beside it.
+		if (this.todoContainer) this.#syncTodoSurfaceToView();
+		// The running-agent badge counts the same set the HUD lists, one number
+		// wide, so it re-scopes here too.
+		this.syncRunningSubagentBadge({ requestRender: false });
+		// The composer chip band advertises keys whose meaning changes with the
+		// view: `esc` interrupts in the main session and leaves the view inside an
+		// agent, and the dequeue key always drains the DRIVING session's queue.
+		// Rebuilt here so a focus transition cannot leave the wrong pair on screen.
+		if (this.composerShortcuts) this.#refreshComposerShortcuts();
+	}
+	readonly #uiHelpers: UiHelpers;
+	#sttController: STTController | undefined;
+	#voiceAnimationInterval: NodeJS.Timeout | undefined;
+	#voiceHue = 0;
+	#voicePreviousShowHardwareCursor: boolean | null = null;
+	#voicePreviousUseTerminalCursor: boolean | null = null;
+	#resizeHandler?: () => void;
+	/** Owns the home-screen anchor fills and their sizing (ARCH-2 extraction);
+	 *  every fill row on screen is sized in the layout controller, never here.
+	 *  Constructed in the constructor (the port closes over `this`). */
+	#layout!: HomeAnchorLayout;
+	#transcriptComposer!: TranscriptComposer;
+	#observerRegistry: SessionObserverRegistry;
+	#eventBus?: EventBus;
+	#eventBusUnsubscribers: Array<() => void> = [];
+	#observerUiSyncTimer?: NodeJS.Timeout;
+	#observerUiSyncNeedsTodoReconcile = false;
+	#agentRegistryUnsubscribe?: () => void;
+	/**
+	 * Unsubscribe for the foreground-bash registry. The `ctrl+b background` chip
+	 * has to appear the moment a command starts waiting and vanish the moment it
+	 * settles, and neither edge coincides with a draft/busy/queue transition, so
+	 * the bar cannot be refreshed off those alone.
+	 */
+	#bashForegroundUnsubscribe?: () => void;
+	#backgroundSessionsUnsubscribe?: () => void;
+	#agentRegistrySubscriptionTarget?: AgentRegistry;
+	#mcpPendingServers = new Set<string>();
+	#mcpConnectedServers = new Set<string>();
+	#mcpFailedServers = new Map<string, { error: string; foreign: boolean }>();
+	/** Owns the startup hero and the full `/welcome` card (ARCH-2 extraction);
+	 *  the fill/anchor math stays here, reached through the layout port.
+	 *  Constructed in the constructor (the port closes over `this`). */
+	#welcomeController!: WelcomeController;
+	// Component-scoped: a ChatBlock (e.g. the MCP "Connecting..." spinner) ticks
+	// its own animation on a fixed cadence inside a possibly large transcript; a
+	// full requestRender() would re-walk that whole tree per tick purely to
+	// advance the block's own glyph.
+	readonly #chatHost: ChatBlockHost = {
+		requestComponentRender: component => this.ui.requestComponentRender(component),
+	};
+
+	/**
+	 * The screen the launch card was already painted on, when this process
+	 * painted one (`first-frame.ts`). Held so `init` can drop the placeholder
+	 * rows, remount that same card, and release the input gate the frame
+	 * installed. Undefined in every other case, and the mode then builds its
+	 * own screen and owns the tty handover itself.
+	 */
+	readonly #firstFrame: FirstFrame | undefined = takeFirstFrame();
+
+	constructor(
+		session: AgentSession,
+		version: string,
+		setToolUIContext: (uiContext: ExtensionUIContext, hasUI: boolean) => void = () => {},
+		lspServers: LspStartupServerInfo[] | undefined = undefined,
+		mcpManager?: MCPManager,
+		eventBus?: EventBus,
+	) {
+		this.session = session;
+		this.sessionManager = session.sessionManager;
+		this.settings = session.settings;
+		this.keybindings = KeybindingsManager.inMemory();
+		this.agent = session.agent;
+		this.#version = version;
+		this.#toolUiContextSetter = setToolUIContext;
+		this.lspServers = lspServers;
+		this.mcpManager = mcpManager;
+		this.#eventBus = eventBus;
+		if (eventBus) {
+			this.#eventBusUnsubscribers.push(
+				eventBus.on(LSP_STARTUP_EVENT_CHANNEL, data => {
+					if (this.settings.get("startup.quiet")) return;
+					this.#handleLspStartupEvent(data as LspStartupEvent);
+				}),
+			);
+			this.#eventBusUnsubscribers.push(
+				eventBus.on(MCP_CONNECTION_STATUS_EVENT_CHANNEL, data => {
+					if (!isMcpConnectionStatusEvent(data)) {
+						logger.warn("Ignoring malformed mcp:connection-status event", { data });
+						return;
+					}
+					this.#handleMcpConnectionStatusEvent(data);
+				}),
+			);
+		}
+
+		setTuiTight(settings.get("tui.tight"));
+		setMarkdownMermaidRendering(settings.get("tui.renderMermaid"));
+		// One TUI per process: `terminal.start` puts stdin in raw mode and installs
+		// the reader, so the screen the launch card is already on is the screen
+		// this mode drives.
+		this.ui = this.#firstFrame?.ui ?? new TUI(new ProcessTerminal(), settings.get("showHardwareCursor"));
+		this.ui.setMaxInlineImages(settings.get("tui.maxInlineImages"));
+		this.ui.setScrollbackRebuild(settings.get("tui.scrollbackRebuild"));
+		this.ui.setScrollIsolation(settings.get("tui.scrollIsolation"));
+		// Holding the mouse is what lets the wheel scroll the transcript with the
+		// prompt pinned, and it takes plain drag-select away from the terminal. Say
+		// so the first time a drag comes back empty, rather than leaving the
+		// operator to conclude copy is broken ("i cant copy and paste from the
+		// terminal", 2026-07-24). The wording and the once-only policy belong to
+		// `selection-notice`.
+		this.ui.onSelectionAttempt = createSelectionAttemptNotice(message => this.showStatus(message));
+		// OSC 66 text-sizing is Kitty-only; resolve the setting against the terminal's
+		// capability (`TERMINAL.textSizing` defaults on for Kitty) so it stays off
+		// unless the user opts in, and never emits raw escapes on other terminals.
+		setTerminalTextSizing(settings.get("tui.textSizing") && TERMINAL.textSizing);
+		this.chatContainer = new TranscriptContainer();
+		this.#transcriptComposer = new TranscriptComposer({
+			chatContainer: this.chatContainer,
+			addMessageToChat: (message, options) => void this.addMessageToChat(message, options),
+			renderSessionContext: context => this.renderSessionContext(context),
+			buildTranscriptContext: () =>
+				// Live display collapses to the compacted transcript tail unless the
+				// user opted into the full inline history; export/resume callers
+				// choose their own mode.
+				this.viewSession.buildTranscriptSessionContext({
+					collapseCompactedHistory: settings.get("display.collapseCompacted"),
+				}),
+			isViewStreaming: () => this.viewSession?.isStreaming === true,
+			streamingComponent: () => this.streamingComponent,
+			pendingTools: this.pendingTools,
+			isKnownSlashCommand: text => this.isKnownSlashCommand(text),
+			pendingSubmission: () => this.#pendingSubmittedInput,
+		});
+		this.#layout = new HomeAnchorLayout({
+			ui: this.ui,
+			transcriptChildCount: () => this.chatContainer.children.length,
+			// Resolved lazily: the welcome controller is constructed just below.
+			hasHero: () => this.#welcomeController.hasHero,
+		});
+		this.#welcomeController = new WelcomeController({
+			ui: this.ui,
+			chatContainer: this.chatContainer,
+			topFillRows: width => this.#layout.topFillRows(width),
+			onHeroDismissed: removedRows => this.#layout.onHeroDismissed(removedRows),
+			remeasureAnchor: () => this.#layout.sync(true),
+		});
+		this.pendingMessagesContainer = new AnchoredLiveContainer();
+		this.statusContainer = new AnchoredLiveContainer();
+		this.todoContainer = new AnchoredLiveContainer();
+		this.subagentContainer = new AnchoredLiveContainer();
+		this.btwContainer = new AnchoredLiveContainer();
+		this.omfgContainer = new AnchoredLiveContainer();
+		this.errorBannerContainer = new AnchoredLiveContainer();
+		this.modelCycleContainer = new AnchoredLiveContainer();
+		this.editor = new CustomEditor(getEditorTheme());
+		this.editor.setUseTerminalCursor(this.ui.getShowHardwareCursor());
+		this.editor.setAutocompleteMaxVisible(settings.get("autocompleteMaxVisible"));
+		this.editor.onAutocompleteCancel = () => {
+			this.ui.requestRender(true);
+		};
+		this.editor.onAutocompleteUpdate = () => {
+			this.ui.requestRender();
+		};
+		this.#lendPopupMotion(this.editor);
+		this.editor.setShimmerRepaintHandler(() => this.ui.requestComponentRender(this.editor));
+		this.#syncEditorMaxHeight();
+		this.#resizeHandler = () => {
+			this.#syncEditorMaxHeight();
+			this.#layout.sync();
+			this.ui.requestRender();
+		};
+		process.stdout.on("resize", this.#resizeHandler);
+		// Home-screen anchor self-correction: content mounted or resized after the
+		// fill was seeded (e.g. the async MCP status line) would otherwise leave
+		// the composer drifting off the viewport bottom until the next resize.
+		this.ui.onFrameComposed = () => this.#layout.onFrameComposed();
+		// Size the anchor from the children of the frame about to compose. A turn
+		// that grows in place between one frame and the next has no other moment
+		// to be measured in: the post-commit correction below reads a frame that
+		// already composed too tall, so on its own it moves the window to fit and
+		// back on every chunk of a streaming answer.
+		this.ui.onBeforeCompose = () => this.#layout.sync();
+		try {
+			this.historyStorage = HistoryStorage.open();
+			this.editor.setHistoryStorage(this.historyStorage);
+			this.historyStorage.setSessionResolver(() => this.sessionManager.getSessionId());
+		} catch (error) {
+			logger.warn("History storage unavailable", { error: String(error) });
+		}
+		this.hookWidgetContainerAbove = new Container();
+		this.hookWidgetContainerAbove.addChild(new Spacer(1));
+		this.hookWidgetContainerBelow = new Container();
+		this.editorContainer = new Container();
+		this.editorContainer.addChild(this.editor);
+		// Before the composer chip band: the band's contents depend on whether the
+		// view is proxied onto an agent, and `focusedAgentId` reads through this
+		// controller. Everything else it needs from the host is read lazily.
+		this.#focusController = new SessionFocusController(this);
+		this.composerShortcuts = new ComposerShortcutsBar();
+		// A chip click runs the same action its keybinding runs; the editor owns
+		// those callbacks (input-controller assigns them with the full panel,
+		// maintenance, and focus logic), so the click just invokes them.
+		this.composerShortcuts.onChipClick = id => {
+			if (id === "interrupt") this.editor.onEscape?.();
+			else if (id === "background") this.editor.onBashBackground?.();
+			else if (id === "dequeue") this.editor.onDequeue?.();
+		};
+		this.#refreshComposerShortcuts();
+		this.#bashForegroundUnsubscribe = onForegroundBashWaitChange(() => this.#refreshComposerShortcuts());
+		// The repaint hook is what makes the path expansion a travel rather than a jump: the
+		// component owns the progress, the shared motion clock owns the frames, and this asks
+		// for each one. A caller that only renders (the two-line selector, tests) passes none
+		// and gets the hard cut.
+		this.statusLine = new StatusLineComponent(session, { requestRender: () => this.ui.requestRender() });
+		this.statusLine.setAutoCompactEnabled(session.autoCompactionEnabled);
+		// The count has to arrive on the keeper's own events, not on the next
+		// repaint that happens for another reason: a handed-off conversation
+		// produces no UI activity at all, so a chip refreshed by ambient redraws
+		// reads zero for as long as the operator sits still — which is exactly the
+		// stretch where an unwatched turn is spending.
+		this.statusLine.setBackgroundSessionCount(BackgroundSessions.global().size);
+		this.#backgroundSessionsUnsubscribe = BackgroundSessions.global().subscribe(() => {
+			this.statusLine.setBackgroundSessionCount(BackgroundSessions.global().size);
+			this.ui.requestRender();
+		});
+		// The borderless composer, per the agreed design mockups: a static
+		// near-invisible hairline, the content inset off the terminal edge, and
+		// ONE quiet metadata footline below the input — location (path · git)
+		// left, capability (model · mode · context · MCP health) right. The
+		// chrome is silent; motion belongs to content.
+		this.editor.setBorderVisible(false);
+		this.editor.setPlaceholder(COMPOSER_PLACEHOLDER);
+		this.composerHairline = new ComposerHairline();
+		this.capabilityLine = new QuietZoneLine(width => this.#composerFootline(width), COMPOSER_INSET_COLS);
+		// GMI-2b: the goal readout in the footline (the `mode` segment while goal
+		// mode is active) is clickable — it opens the same goal detail view as
+		// the keyboard path. Hit-testing comes from the footline's own recorded
+		// layout, so the target is exactly the pixels the segment occupies.
+		// The context gauge is clickable too, and opens the same breakdown panel as
+		// `/context`. The footline can only afford one number, and the question
+		// behind it ("what is filling my window?") needs the per-category split, so
+		// the gauge is the handle for it. It has to be a click rather than a hover:
+		// the main screen arms `\x1b[?1000h\x1b[?1006h` (button events) without
+		// 1003h motion reporting, so no mouse position arrives until a press.
+		this.capabilityLine.onClick = col => {
+			const segmentId = this.statusLine.quietSegmentAt(col);
+			if (segmentId === "mode" && (this.goalModeEnabled || this.goalModePaused)) {
+				void this.openGoalDetail();
+				return;
+			}
+			// The chip says a credential is live here, and clicking it answers WHICH: the same list
+			// `/secret list` prints, without leaving the screen the reader is already looking at. A
+			// reader who notices the chip should not have to remember a command name to act on it.
+			if (segmentId === "secrets") {
+				this.showSecretList();
+				return;
+			}
+			// A click on either half of the location widens the row and spends the readouts on the
+			// right for the room; the next click on the same half puts every one of them back. A
+			// long path or branch is the one thing on this line that cannot be read any other way
+			// without leaving the screen, and the footline is where the reader already is. The
+			// half that was clicked is the one shown whole, so a click on the branch reads the
+			// branch rather than re-reading the directory.
+			if (segmentId === "path" || segmentId === "git" || segmentId === "pr") {
+				this.statusLine.togglePathExpanded(segmentId);
+				this.ui.requestRender();
+				return;
+			}
+			if (segmentId === "context_pct" || segmentId === "context_total") {
+				this.handleContextCommand();
+			}
+		};
+
+		this.hideThinkingBlock = settings.get("hideThinkingBlock");
+		this.proseOnlyThinking = settings.get("proseOnlyThinking");
+		// Seeded from the remembered preference, so a session opens showing tool
+		// input and output the way the last one was left rather than resetting to
+		// collapsed and making the reader press the toggle again.
+		this.toolOutputExpanded = settings.get("display.toolOutputExpanded");
+
+		const hookCommands: SlashCommand[] = (
+			this.session.extensionRunner?.getRegisteredCommands(BUILTIN_SLASH_COMMAND_RESERVED_NAMES) ?? []
+		).map(cmd => ({
+			name: cmd.name,
+			description: cmd.description ?? "(hook command)",
+			getArgumentCompletions: cmd.getArgumentCompletions,
+			category: "extensions",
+		}));
+
+		// Convert custom commands (TypeScript) to SlashCommand format
+		const customCommands: SlashCommand[] = this.session.customCommands.map(loaded => ({
+			name: loaded.command.name,
+			description: `${loaded.command.description} (${loaded.source})`,
+			category: "custom",
+		}));
+
+		// Build skill commands from session.skills (if enabled)
+		const skillCommandList: SlashCommand[] = [];
+		if (settings.get("skills.enableSkillCommands")) {
+			for (const skill of this.session.skills) {
+				const commandName = `skill:${skill.name}`;
+				this.skillCommands.set(commandName, skill);
+				skillCommandList.push({ name: commandName, description: skill.description, category: "skills" });
+			}
+		}
+
+		const builtinCommands = buildTuiBuiltinSlashCommands({ ctx: this });
+		// Store pending commands for init() where file commands are loaded async
+		this.#pendingSlashCommands = [...builtinCommands, ...hookCommands, ...customCommands, ...skillCommandList];
+
+		this.#uiHelpers = new UiHelpers(this);
+		this.#btwController = new BtwController(this);
+		this.#tanCommandController = new TanCommandController(this);
+		this.#omfgController = new OmfgController(this);
+		this.#extensionUiController = new ExtensionUiController(this);
+		this.#eventController = new EventController(this);
+		this.#commandController = new CommandController(this);
+		this.#todoCommandController = new TodoCommandController(this);
+		this.#selectorController = new SelectorController(this);
+		this.#inputController = new InputController(this);
+		this.#observerRegistry = new SessionObserverRegistry();
+	}
+
+	#handleMcpConnectionStatusEvent(event: McpConnectionStatusEvent): void {
+		if (this.settings.get("startup.quiet")) return;
+		if (event.type === "connecting") {
+			this.#mcpPendingServers.clear();
+			this.#mcpConnectedServers.clear();
+			this.#mcpFailedServers.clear();
+			for (const serverName of event.serverNames) {
+				this.#mcpPendingServers.add(serverName);
+			}
+		} else if (event.type === "connected") {
+			this.#mcpPendingServers.delete(event.serverName);
+			this.#mcpFailedServers.delete(event.serverName);
+			this.#mcpConnectedServers.add(event.serverName);
+		} else {
+			this.#mcpPendingServers.delete(event.serverName);
+			this.#mcpConnectedServers.delete(event.serverName);
+			this.#mcpFailedServers.set(event.serverName, { error: event.error, foreign: event.foreign === true });
+		}
+
+		// Boot health lives on the location line's right side (a fixed quiet
+		// home), not as a floating transcript status.
+		this.ui.requestRender();
+	}
+
+	/**
+	 * The composer's footline row: standing session state, or just the focus badge when the operator
+	 * has turned the row off.
+	 *
+	 * `statusLine.enabled` ships ON (see its entry in `config/settings-domains/appearance.ts`). Read
+	 * per render rather than captured at construction: settings live in memory, so toggling the row
+	 * in `/settings` lands on the next frame with no re-mount, and the reads behind the row (git
+	 * state, usage, account inventory) never happen at all while it is off.
+	 *
+	 * The one part that is not configurable is the focus badge. While the view is proxied onto an
+	 * agent, Esc means "go back" instead of "clear the line", and the badge is the only persistent
+	 * thing that says so; a footline preference must not be able to hide the exit from a view whose
+	 * edge is otherwise invisible. So off means "no segments", not "no row ever".
+	 */
+	#composerFootline(width: number): string | null {
+		if (!settings.get("statusLine.enabled")) return this.statusLine.renderFocusBadge(width);
+		return this.statusLine.renderQuietLine(width, { locationRight: this.#locationRightZone() });
+	}
+
+	/**
+	 * The location line's right zone: MCP boot health when it has something to
+	 * say, otherwise nothing. The resting sun dome that used to sit here read as
+	 * an artificial ornament; the composer's life now lives in the horizon rule
+	 * itself (see {@link ComposerHairline}), not a glyph parked at the edge.
+	 */
+	#locationRightZone(): string | null {
+		const zones = [this.#draftTokenZone(), this.#mcpZoneText()].filter((z): z is string => z !== null);
+		return zones.length > 0 ? zones.join(theme.fg("dim", " · ")) : null;
+	}
+
+	/**
+	 * DS-6 dock: live draft size in the footline's right zone, gold
+	 * (matchHighlight) so the growing draft reads as "the found thing you are
+	 * about to send". Shown only while a non-blank draft exists; uses the one
+	 * shared byte-aware estimator, so the number matches budget math elsewhere.
+	 */
+	#draftTokenZone(): string | null {
+		const draft = this.editor.getText();
+		const trimmed = draft.trim();
+		if (trimmed.length === 0) return null;
+		// A bare slash-command token ("/se…") is menu navigation, not a draft —
+		// counting its characters is noise. The counter returns the moment the
+		// command takes arguments or the text is prose.
+		if (trimmed.startsWith("/") && !/\s/.test(trimmed)) return null;
+		return theme.fg("matchHighlight", `~${estimateTokensFromText(draft)} tok`);
+	}
+
+	/**
+	 * MCP boot health for the location line's right side: progress while
+	 * servers connect, a failure count once settled. Null when fully healthy —
+	 * a healthy system says nothing.
+	 */
+	#mcpZoneText(): string | null {
+		const pending = this.#mcpPendingServers.size;
+		const failed = this.#mcpFailedServers.size;
+		if (pending > 0) {
+			const total = pending + this.#mcpConnectedServers.size + failed;
+			return theme.fg("dim", `mcp ${this.#mcpConnectedServers.size}/${total}`);
+		}
+		if (failed > 0) {
+			// Failures of servers veyyon merely borrowed from another tool's
+			// config (Claude Code, Codex, …) stay visible but don't alarm —
+			// red at first paint is reserved for veyyon's own configuration.
+			const allForeign = [...this.#mcpFailedServers.values()].every(f => f.foreign);
+			// Route the cross through the theme symbol, not a raw `✗` literal, so it
+			// degrades with the symbol preset (nerd ``, ascii `[!!]`) instead of
+			// emitting a glyph an ascii terminal cannot render.
+			return theme.fg(allForeign ? "dim" : "statusLineDirty", `mcp ${theme.status.error}${failed} · /mcp list`);
+		}
+		return null;
+	}
+
+	async init(): Promise<void> {
+		if (this.isInitialized) return;
+
+		this.keybindings = logger.time("InteractiveMode.init:keybindings", () => KeybindingsManager.create());
+		this.#refreshComposerShortcuts();
+
+		// Clock heartbeat: once per second WHILE THE MODEL WORKS, refresh the
+		// working line's per-task elapsed and repaint the quiet chrome so the
+		// location line's run clock ticks between agent events. At rest every
+		// on-screen time readout is frozen by design (run clock shows the
+		// completed "Worked for …", the context bar tip is static), so an idle
+		// tick would repaint a byte-identical frame — it does nothing.
+		this.#clockTimer = setInterval(() => {
+			if (!this.loadingAnimation && !this.session.isStreaming) return;
+			this.#refreshTaskClock();
+			this.ui.requestRender();
+		}, 1000);
+
+		// Route SIGINT/SIGTERM/SIGHUP/uncaughtException through the same teardown
+		// the TUI Ctrl+C keypress path performs: persist the in-progress editor
+		// draft for `--resume`, then dispose the session (which emits the extension
+		// `session_shutdown` event, cancels the owned async job manager, disposes
+		// eval kernels, releases owned browser tabs, and closes the session
+		// manager). Without this callback a real kernel signal would drop the
+		// draft, skip the `session_shutdown` contract from `shared-events.ts`,
+		// and orphan background bash/task processes (issue #4080). The registered
+		// callback and `shutdown()` share one promise-memoized teardown, so a
+		// signal arriving mid-Ctrl+C no-ops instead of racing a second dispose.
+		this.#signalTeardown = createSessionTeardown({
+			getDraftText: () => this.editor.getText(),
+			beginDispose: () => this.session.beginDispose(),
+			saveDraft: text => this.sessionManager.saveDraft(text),
+			// Flush pending debounced settings on every exit path (keypress `/exit`,
+			// Ctrl+C/Ctrl+D, and the postmortem SIGINT/SIGTERM/SIGHUP/uncaughtException
+			// signals all funnel here). Without this a `/settings` change made just
+			// before quitting is lost inside the 100ms save debounce.
+			flushSettings: () => Settings.instance.flush(),
+			disposeSession: reason =>
+				this.session.dispose({ mnemopiConsolidateTimeoutMs: SHUTDOWN_CONSOLIDATE_BUDGET_MS, reason }),
+		});
+		// Forward the postmortem reason (SIGTERM/SIGHUP/uncaughtException/…) so the
+		// persisted `session_exit` diagnostic carries the real trigger. Postmortem
+		// runs callbacks in REVERSE registration order — this callback (registered
+		// after the AgentSession constructor's `agent-session:<id>` recorder) runs
+		// FIRST and its dispose() would otherwise persist the generic "dispose".
+		this.#cleanupUnsubscribe = postmortem.register("session-teardown", reason => this.#signalTeardown!(reason));
+
+		await logger.time(
+			"InteractiveMode.init:slashCommands",
+			this.refreshSlashCommandState.bind(this),
+			getProjectDir(),
+		);
+
+		// Get current model info for welcome screen. Empty (not "Unknown") when no
+		// model is configured, so the welcome renders a "/login" call to action
+		// instead of a dead "Unknown · Unknown".
+		const modelName = this.session.model?.name ?? "";
+		const providerName = this.session.model?.provider ?? "";
+
+		// Get recent sessions
+		const recentSessions = await logger.time("InteractiveMode.init:recentSessions", () =>
+			getRecentSessions(this.sessionManager.getSessionDir()).then(sessions =>
+				sessions.map(s => ({
+					name: s.name,
+					timeAgo: s.timeAgo,
+				})),
+			),
+		);
+
+		const startupQuiet = settings.get("startup.quiet");
+
+		// The launch card is on screen already when the first frame painted one;
+		// its placeholder rows come off here, and the card itself is remounted
+		// below in the mode's own order.
+		this.#firstFrame?.release();
+
+		for (const warning of this.session.configWarnings) {
+			this.ui.addChild(new Text(theme.fg("warning", `Warning: ${warning}`), 1, 0));
+			this.ui.addChild(new Spacer(1));
+		}
+
+		// The flexible top margin mounts above the hero AND the transcript: it
+		// centres the hero on the home screen, then (once a conversation starts)
+		// takes ALL the anchor slack so the conversation hugs the composer at
+		// the viewport bottom. Mounted unconditionally — quiet startups skip the
+		// hero, not the anchor.
+		this.ui.addChild(this.#layout.topFill);
+		if (!startupQuiet) {
+			this.#welcomeController.mountHero(
+				{ version: this.#version, modelName, providerName, recentSessions },
+				this.#firstFrame?.hero,
+			);
+		}
+
+		this.ui.addChild(this.chatContainer);
+		this.ui.addChild(this.pendingMessagesContainer);
+		this.ui.addChild(this.todoContainer);
+		this.ui.addChild(this.subagentContainer);
+		this.ui.addChild(this.btwContainer);
+		this.ui.addChild(this.omfgContainer);
+		this.ui.addChild(this.errorBannerContainer);
+		this.ui.addChild(this.modelCycleContainer);
+		// Bottom-anchor fill: on the home screen this expands to sink the whole
+		// status + composer block to the viewport bottom (grok placement); it sits
+		// above the status loader so they travel down together.
+		this.ui.addChild(this.#layout.bottomFill);
+		// The whole composer zone (status, hairline, padded card, footline,
+		// margin) mounts in its one canonical order via mountComposerZone —
+		// the order is a design contract owned and tested in composer-chrome.
+		const composerZoneChildren = mountComposerZone(this.ui, {
+			statusContainer: this.statusContainer,
+			statusLine: this.statusLine,
+			hookWidgetsAbove: this.hookWidgetContainerAbove,
+			hairline: this.composerHairline,
+			editorContainer: this.editorContainer,
+			capabilityLine: this.capabilityLine,
+			shortcuts: this.composerShortcuts,
+			hookWidgetsBelow: this.hookWidgetContainerBelow,
+		});
+		// Scroll isolation pins the composer zone as the live footer; the
+		// engine derives its row span from the compose ledger every frame.
+		this.ui.setPinnedFooterChildCount(composerZoneChildren);
+		this.ui.setFocus(this.editor);
+		// Anchor the composer to the viewport bottom on the launch/home screen.
+		// Seeded, not synced: a launch card already on screen leaves a composed
+		// frame this layout did not produce.
+		this.#layout.seedAfterMount();
+
+		this.#inputController.setupKeyHandlers();
+		this.#inputController.setupEditorSubmitHandler();
+
+		// Wire observer registry to EventBus
+		if (this.#eventBus) {
+			this.#observerRegistry.subscribeToEventBus(this.#eventBus);
+		}
+		this.#observerRegistry.setMainSession(this.sessionManager.getSessionFile() ?? undefined);
+		this.syncRunningSubagentBadge();
+		this.#observerRegistry.onChange(kind => {
+			this.#scheduleObserverUiSync(kind);
+		});
+
+		// Load initial todos
+		this.#syncTodoSurfaceToView();
+
+		// The tty handover. Owned by whoever started the screen: when the launch
+		// card was painted before this mode existed, `first-frame.ts` already
+		// flushed the queue, installed the gate and started the UI, and the gate
+		// has been holding input for the whole of session startup. It releases
+		// here, where the composer exists to receive the next keystroke.
+		//
+		// Startup takes over a second, and the card shows a composer frame for
+		// all of it, so an operator who starts typing straight away is typing at
+		// something that looks live. The gate kept that text instead of dropping
+		// it; it goes into the composer now, unsubmitted, so the draft reads as
+		// though the composer had been listening the whole time.
+		if (this.#firstFrame) {
+			const typedAtCard = this.#firstFrame.releaseInput();
+			if (typedAtCard) this.editor.insertText(typedAtCard);
+		} else {
+			// This process may be a relaunch (`/profile <name>` respawns the CLI),
+			// and between the parent restoring the terminal and the line below
+			// resuming stdin nothing is reading fd 0, so the kernel queues
+			// everything that arrives in that window. `ui.start()` resumes stdin,
+			// and the kernel then delivers that backlog as this session's first
+			// input event: it reaches the composer, and a queued carriage return
+			// submits a turn the operator never typed.
+			//
+			// Drop the queue outright first. `tcflush` is the real fix because it
+			// is source-agnostic: keystrokes, a terminal's replies to the dying
+			// parent's probes, or anything a multiplexer injected all go the same
+			// way, and no timing window is involved.
+			// This branch discards the queue either way, so the marker only has to
+			// be cleared: left set it would reach every child this session spawns,
+			// and a veyyon launched from one would read its operator's typing as a
+			// dead session's backlog.
+			consumeRelaunchMarker();
+			const flushed = flushPendingTtyInput();
+			// Windows consoles have no termios and an unusual libc may not resolve,
+			// so `tcflush` can be unavailable. The documented degrade is to discard
+			// whatever gets READ before startup finishes: swallow every input event
+			// until the release below runs. Ctrl+C stays live for the same reason
+			// the shutdown gate lets it through (issue #2600) — an operator must be
+			// able to abort a session that is still coming up.
+			this.#startupInputGateRelease ??= this.ui.addInputListener(data =>
+				matchesKey(data, "ctrl+c") ? undefined : { consume: true },
+			);
+			// Start the UI. The first paint always clears the viewport (ED 2), so the
+			// welcome frame never appends over the previous run's frame. Erasing the
+			// terminal's saved scrollback (ED 3) is a separate, unrecoverable act that
+			// also takes whatever the operator had on screen before launch, so it
+			// happens only when they asked for it.
+			this.ui.start({ clearScrollback: this.settings.get("startup.clearScrollback") });
+			// Release on the first check phase after `ui.start()`. The kernel's
+			// queued backlog is delivered in the poll phase of that same event-loop
+			// iteration, so it is always inside the gate; a keystroke the operator
+			// actually meant cannot be, because it requires them to have seen a
+			// frame that has not reached the terminal yet. That is the boundary,
+			// and it is a loop turn rather than a duration: no sleep to tune, and
+			// nothing typed at a live prompt is ever refused.
+			setImmediate(() => {
+				this.#startupInputGateRelease?.();
+				this.#startupInputGateRelease = undefined;
+			});
+			if (!flushed) {
+				logger.debug("No tty input flush available at startup; discarding buffered input until mount completes");
+			}
+		}
+		// The first paint used an estimated fill (no composed frame existed yet);
+		// now the exact composed height is known, so re-anchor precisely. It only
+		// re-renders if the estimate was off, so there is usually no visible reflow.
+		this.#layout.sync();
+		if (this.#layout.bottomFill.render(this.ui.terminal.columns).length > 0) this.ui.requestRender();
+		pushTerminalTitle();
+		setSessionTerminalTitle(this.sessionManager.getSessionName(), this.sessionManager.getCwd());
+		this.updateEditorBorderColor();
+		// Single side-effect point for title changes: every setSessionName caller
+		// (first-input titling, /rename, extension renames, plan seeding, replan
+		// refresh) gets the terminal title + accent updates from here. Registered
+		// before initHooksAndCustomTools/#reconcileModeFromSession/#enterPlanMode —
+		// all of which can reach setSessionName during init.
+		this.#eventBusUnsubscribers.push(
+			this.sessionManager.onSessionNameChanged(() => {
+				setSessionTerminalTitle(this.sessionManager.getSessionName(), this.sessionManager.getCwd());
+				this.#handleSessionAccentInputsChanged();
+			}),
+		);
+		this.#syncEditorMaxHeight();
+		this.isInitialized = true;
+		this.ui.requestRender(true);
+
+		// Initialize hooks with TUI-based UI context
+		await this.initHooksAndCustomTools();
+
+		// Restore mode from session (e.g. plan mode on resume)
+		this.session.setSessionSwitchReconciler?.(() => this.#reconcileModeFromSession({ preserveActiveGoal: true }));
+		await this.#reconcileModeFromSession();
+
+		// Brand-new sessions optionally start in plan mode when the user has made it
+		// the startup default. "Brand-new" means the resolved branch carries no
+		// conversation context (buildSessionContext().messages — covers messages,
+		// custom messages, branch summaries, and compaction summaries) and the user
+		// set no explicit `mode_change` (which #reconcileModeFromSession just
+		// restored). SDK startup metadata and extension `custom` state entries are
+		// ignored. This way `veyyon --continue` (or auto-resume) that finds no recent
+		// session and creates a fresh one still honors the default, while a session
+		// with restored context or an explicit mode keeps its reconciled mode. Scoped
+		// to launch (not the switch reconciler above) so /new and the plan-approval →
+		// execution handoff clear never get dragged back into plan mode. #enterPlanMode
+		// is idempotent and self-guards against an already-active plan/goal mode; it
+		// does not check plan.enabled itself.
+		const hasConversationContext = this.sessionManager.buildSessionContext().messages.length > 0;
+		const hasExplicitMode = this.sessionManager.getEntries().some(entry => entry.type === "mode_change");
+		const isFreshSession = !hasConversationContext && !hasExplicitMode;
+		if (
+			isFreshSession &&
+			this.session.settings.get("plan.defaultOnStartup") &&
+			this.session.settings.get("plan.enabled")
+		) {
+			await this.#enterPlanMode();
+		}
+
+		// Restore unsent editor draft from previous session shutdown (Ctrl+D).
+		// One-shot: consumeDraft removes the sidecar after read so the next
+		// resume does not re-restore the same text.
+		try {
+			const draft = await this.sessionManager.consumeDraft();
+			if (draft && !this.editor.getText()) {
+				this.editor.setText(draft);
+				this.updateEditorBorderColor();
+				this.ui.requestRender();
+			}
+		} catch (err) {
+			logger.warn("Failed to restore session draft", { error: String(err) });
+		}
+
+		// Subscribe to agent events
+		this.#subscribeToAgent();
+
+		this.#subscribeToGoalSessionEvents();
+
+		this.#eventBusUnsubscribers.push(
+			// The goal subscription is re-pointed on a session handoff, so dispose
+			// whichever one is current rather than capturing today's unsubscriber.
+			() => {
+				this.#goalUnsubscribe?.();
+				this.#goalUnsubscribe = undefined;
+			},
+			onStatusLineSessionAccentChanged(() => {
+				this.#syncStatusLineSettings();
+				this.#handleSessionAccentInputsChanged();
+			}),
+			// Auth death moved a provider to a different account. Not gated by
+			// `accounts.loadBalancing` — a revoked credential cannot serve the request at all — so
+			// it is the one account move that can happen without the operator asking, and it says
+			// so, naming both accounts. Silently spending a second subscription is exactly the
+			// surprise this notice exists to prevent.
+			this.session.modelRegistry.authStorage.onCredentialFailover(event => {
+				this.showWarning(
+					`${formatProviderName(event.provider)}: ${event.from.label} could not authenticate (${event.cause}), now using ${event.to.label}`,
+				);
+			}),
+			// The move that did NOT happen: quota is out, other accounts are idle, and
+			// `accounts.loadBalancing` is off. The turn is already waiting out a window that can be
+			// hours long, so the notice names what is spent, when it returns, how many accounts are
+			// sitting unused, and the one toggle that would use them. AuthStorage emits this once per
+			// exhausted window, so a retrying turn does not repeat it.
+			this.session.modelRegistry.authStorage.onUsageLimitWithheld(event => {
+				const returnsAt = new Date(event.retryAtMs).toLocaleTimeString();
+				const idle = event.idleSiblings === 1 ? "1 other account is" : `${event.idleSiblings} other accounts are`;
+				this.showWarning(
+					`${formatProviderName(event.provider)}: ${event.account.label} is out of quota until ${returnsAt}. ${idle} idle; turn on Account Load Balancing in /settings (Providers) to use them.`,
+				);
+			}),
+		);
+		// Set up theme file watcher
+		this.#eventBusUnsubscribers.push(
+			onThemeChange(event => {
+				this.#clearWorkingMessageAccentCache();
+				clearRenderCache();
+				clearMermaidCache();
+				this.ui.invalidate();
+				this.updateEditorBorderColor();
+				if (event.ephemeral || isInsideTerminalMultiplexer()) {
+					// Theme previews and multiplexer panes cannot safely replace native
+					// scrollback: previews must stay non-destructive, and multiplexers
+					// suppress ED3 so a forced replay would duplicate transcript history.
+					this.ui.requestRender();
+					return;
+				}
+				// Rows already committed to native scrollback are immutable, so a swap
+				// cannot recolor them without ED 3. ED 3 is not selective: it erases the
+				// terminal's whole saved history, including everything the operator had
+				// on screen before veyyon started, which veyyon never wrote and cannot
+				// replay. Recoloring our own transcript is not worth deleting theirs, so
+				// the wipe needs the same consent the startup one does. At startup it is
+				// worse than a bad trade: the appearance probe resolves a variant before
+				// anything is committed, so it recolors nothing and destroys everything.
+				// Without consent, force the repaint and leave scrolled-back rows on the
+				// old palette.
+				this.ui.requestRender(true, { clearScrollback: this.settings.get("startup.clearScrollback") });
+				// A committed theme swap changes the ground the terminal should show;
+				// preview (ephemeral) swaps returned above so a hover does not flicker
+				// the terminal background.
+				this.#applyPaintGround();
+			}),
+		);
+
+		// Subscribe to terminal dark/light appearance changes.
+		// The terminal queries background color via OSC 11 at startup and on
+		// Mode 2031 notifications, computing luminance to detect dark/light.
+		this.ui.terminal.onAppearanceChange(mode => {
+			onTerminalAppearanceChange(mode);
+		});
+
+		// Re-apply the painted ground when the terminal reports an external
+		// background change (a terminal theme switch that clobbered our paint).
+		// The terminal suppresses the self-echo of our own paint, so this fires
+		// only on genuine external changes. Subscribing also replays the current
+		// background to us, applying the initial paint once it is known; the
+		// explicit call below covers `always`/`never`, which do not need a report.
+		// The background-color capability is optional on the Terminal interface
+		// (older custom terminals may lack it); when absent, painting is simply
+		// unavailable and both the subscription and the paint calls no-op.
+		this.ui.terminal.onBackgroundColorChange?.(hex => {
+			this.#applyPaintGround();
+			// Feed the ground-relative tint owner (hairline, composer card, card
+			// outlines): every derived chrome color re-resolves against the REAL
+			// terminal ground the moment it is known or changes.
+			setDetectedTerminalGround(hex);
+			this.updateEditorBorderColor();
+			this.ui.requestRender();
+		});
+		setDetectedTerminalGround(this.ui.terminal.backgroundColor);
+		this.#applyPaintGround();
+
+		// A branch change (checkout, worktree switch, `git switch`) invalidates
+		// the status-line git segments; the lazy top-border provider picks up
+		// the fresh branch on the next painted frame.
+		this.statusLine.watchBranch(() => {
+			this.ui.requestRender();
+		});
+	}
+
+	/** Themes already warned about an unhonored `always`, so the log is not repeated. */
+	#paintGroundWarnedThemes = new Set<string>();
+
+	/**
+	 * Apply the painted-ground policy (`tui.paintGround`): set the terminal
+	 * background to the theme's ground color, or inherit the terminal's own,
+	 * per the setting and the auto-seam rule ({@link planPaintGround}). Called at
+	 * startup, on a committed theme change, and when the terminal reports an
+	 * external background change. The paint is reset on exit by the terminal layer
+	 * (OSC 111), including after a crash, so this never has to undo it here.
+	 */
+	#applyPaintGround(): void {
+		const plan = planPaintGround(
+			this.settings.get("tui.paintGround"),
+			theme.getGroundHex(),
+			this.ui.terminal.backgroundColor,
+		);
+		if (plan.unhonoredAlways) {
+			// `always` is the one setting the user explicitly asked to paint that a
+			// groundless theme cannot honor; say so once per theme rather than
+			// silently do nothing (Law 10) or spam the log on every re-apply.
+			const name = getCurrentThemeName();
+			if (name !== undefined && !this.#paintGroundWarnedThemes.has(name)) {
+				this.#paintGroundWarnedThemes.add(name);
+				logger.warn(
+					'tui.paintGround is "always" but the active theme declares no ground color, so the terminal background is left unpainted',
+					{
+						theme: name,
+						fix: 'Pick a theme that declares a page background, or set tui.paintGround to "auto" or "never". A custom theme can declare one via its "export.pageBg".',
+					},
+				);
+			}
+		}
+		// Paint and record together: what the policy leaves on screen is the ground
+		// every animation resolves a color out of.
+		applyGroundPaint(plan, this.ui.terminal);
+	}
+
+	/** Reload the title-generation system prompt override for the provided working
+	 *  directory and stash it on the session so first-input titling
+	 *  ({@link input-controller}) and replan-driven refresh
+	 *  ({@link AgentSession.#refreshTitleAfterReplan}) share one source
+	 *  ({@link discoverTitleSystemPromptFile}; issue #3734). */
+	async refreshTitleSystemPrompt(cwd?: string): Promise<void> {
+		const basePath = cwd ?? this.sessionManager.getCwd();
+		const titleSystemPromptSource = discoverTitleSystemPromptFile(basePath);
+		const resolved = await resolvePromptInput(titleSystemPromptSource, "title system prompt");
+		this.session.setTitleSystemPrompt(resolved);
+	}
+
+	/** Reload slash commands and autocomplete for the provided working directory. */
+	async refreshSlashCommandState(cwd?: string): Promise<void> {
+		const basePath = cwd ?? this.sessionManager.getCwd();
+		const fileCommands = await loadSlashCommands({ cwd: basePath });
+		this.fileSlashCommands = new Set(fileCommands.map(cmd => cmd.name));
+		const fileSlashCommands: SlashCommand[] = fileCommands.map(cmd => ({
+			name: cmd.name,
+			description: cmd.description,
+			category: "custom",
+		}));
+		// Surface discovered prompt templates in the picker. AgentSession.prompt() expands
+		// `expandSlashCommand` before `expandPromptTemplate`, and builtin command
+		// execution resolves aliases before template expansion. Mirror that command
+		// resolution order by skipping templates whose names already appear in any
+		// builtin/hook/custom/skill/file command token.
+		const reservedNames = new Set<string>();
+		for (const command of this.#pendingSlashCommands) {
+			reservedNames.add(command.name);
+			for (const alias of command.aliases ?? []) reservedNames.add(alias);
+		}
+		for (const command of fileSlashCommands) {
+			reservedNames.add(command.name);
+			for (const alias of command.aliases ?? []) reservedNames.add(alias);
+		}
+		const promptTemplateCommands: SlashCommand[] = this.session.promptTemplates
+			.filter(template => !reservedNames.has(template.name))
+			.map(template => ({
+				name: template.name,
+				// `PromptTemplate.description` from `loadTemplatesFromDir` already includes the
+				// source suffix (e.g. "Review code (project)"), so pass it through verbatim.
+				description: template.description,
+				category: "custom",
+			}));
+		this.#baseAutocompleteProvider = this.#inputController.createAutocompleteProvider(
+			[...this.#pendingSlashCommands, ...fileSlashCommands, ...promptTemplateCommands],
+			basePath,
+		);
+		this.#applyAutocompleteProvider();
+		this.session.setSlashCommands(fileCommands);
+	}
+
+	/**
+	 * Rebuild the editor's autocomplete provider: the built-in provider wrapped
+	 * by every extension-registered factory, in registration order. A factory
+	 * that throws or returns a malformed provider is skipped so one broken
+	 * extension cannot take down core autocomplete.
+	 */
+	#applyAutocompleteProvider(): void {
+		const base = this.#baseAutocompleteProvider;
+		if (!base) return;
+		let provider = base;
+		for (const factory of this.#autocompleteProviderFactories) {
+			try {
+				const wrapped = factory(provider);
+				if (
+					wrapped &&
+					typeof wrapped.getSuggestions === "function" &&
+					typeof wrapped.applyCompletion === "function"
+				) {
+					provider = wrapped;
+				} else {
+					logger.warn("Extension autocomplete provider factory returned an invalid provider; skipping it");
+				}
+			} catch (error) {
+				logger.warn("Extension autocomplete provider factory threw; skipping it", { error: String(error) });
+			}
+		}
+		this.editor.setAutocompleteProvider(provider);
+	}
+
+	/** Stack extension autocomplete behavior on top of the built-in editor provider (#4919). */
+	addAutocompleteProvider(factory: AutocompleteProviderFactory): void {
+		this.#autocompleteProviderFactories.push(factory);
+		this.#applyAutocompleteProvider();
+	}
+
+	/**
+	 * Re-point the process and every cwd-derived cache at `newCwd` after the
+	 * active session's working directory changed (`/move` relocation or resuming
+	 * a session from another project). The SessionManager's cwd MUST already
+	 * reflect `newCwd` before this is called.
+	 */
+	async applyCwdChange(newCwd: string): Promise<void> {
+		// The mode-independent half lives on the session, because this is not the
+		// only way a session moves. Three paths reach here: `/move`, which calls
+		// `sessionManager.moveTo` directly; resuming a session that belongs to
+		// another project; and the `cwd_changed` event, which the `set_cwd` tool
+		// raises through `AgentSession.setCwd`. Only the third goes through
+		// `setCwd`, so this cannot simply be dropped in favour of it, and `setCwd`
+		// cannot be left as the sole owner either. Both call the one owner, which
+		// skips a repeat of the same destination so the third path does the work
+		// once rather than twice.
+		//
+		// It reloads project settings, reapplies provider globals, clears the plugin
+		// root cache, resets capabilities, refreshes the ssh tool, and rebuilds the
+		// base system prompt for the destination. The prompt matters most: it carries
+		// the discovered context files and the workspace tree, so before this was
+		// rebuilt a `/cd` left the model reading the previous project's AGENTS.md
+		// while resolving relative paths against the new directory. The path itself
+		// is no longer in there — it rides a turn message, so a move inside one
+		// project rebuilds to identical bytes and costs no prompt-cache invalidation.
+		await this.session.rescopeToCwd(newCwd);
+		// What stays here is what only a terminal session has: the title prompt read
+		// from the destination, the slash-command picker, and the rendered chrome.
+		await this.refreshTitleSystemPrompt(newCwd);
+		await this.refreshSlashCommandState(newCwd);
+		setSessionTerminalTitle(this.sessionManager.getSessionName(), this.sessionManager.getCwd());
+		this.statusLine.invalidate();
+		this.ui.requestRender();
+	}
+
+	async getUserInput(): Promise<SubmittedUserInput> {
+		if (this.session.getGoalModeState()?.mode === "exiting") {
+			await this.#exitGoalMode({ reason: "completed", silent: true });
+		}
+		const { promise, resolve } = Promise.withResolvers<SubmittedUserInput>();
+		this.onInputCallback = input => {
+			this.onInputCallback = undefined;
+			resolve(input);
+		};
+		this.#scheduleLoopAutoSubmit();
+		this.#scheduleGoalContinuation();
+
+		using _ = new EventLoopKeepalive();
+		return await promise;
+	}
+
+	#scheduleLoopAutoSubmit(): void {
+		this.#cancelLoopAutoSubmit();
+		if (!this.loopModeEnabled || !this.loopPrompt) return;
+		const prompt = this.loopPrompt;
+		const loopAction = settings.get("loop.mode");
+		this.#deferLoopAutoSubmit(() => {
+			void this.#runLoopIteration(loopAction, prompt);
+		});
+	}
+
+	#deferLoopAutoSubmit(callback: () => void): void {
+		// Brief delay so the user has a chance to press Esc between iterations.
+		this.#loopAutoSubmitTimer = setTimeout(() => {
+			this.#loopAutoSubmitTimer = undefined;
+			if (!this.loopModeEnabled || !this.onInputCallback) return;
+			callback();
+		}, 800);
+	}
+
+	#cancelLoopAutoSubmit(): void {
+		if (this.#loopAutoSubmitTimer) {
+			clearTimeout(this.#loopAutoSubmitTimer);
+			this.#loopAutoSubmitTimer = undefined;
+		}
+	}
+
+	/**
+	 * Why goal mode must not open a continuation turn at this instant, or `undefined` when it may.
+	 *
+	 * ONE owner for the question, asked when the timer is armed and again when it fires. The two
+	 * lists used to be separate copies that disagreed on one entry, and that entry was the defect:
+	 * `busy` existed only at fire time, where it discarded the tick and left a comment saying the
+	 * next `agent_end` would reschedule. For a goal whose post-turn maintenance outlives the delay
+	 * window there is no next `agent_end` — the turn that armed this tick was the last one — so the
+	 * goal sat `active` with every re-arm edge already behind it.
+	 */
+	#goalContinuationBlock(phase: "arm" | "fire"): GoalContinuationBlock | undefined {
+		if (this.loopModeEnabled) return "loop-mode";
+		if (!this.onInputCallback) return "no-input-callback";
+		if (!this.session.settings.get("goal.continuationModes").includes("interactive")) {
+			return "continuation-mode-off";
+		}
+		if (this.planModeEnabled || this.planModePaused) return "plan-mode";
+		if (!this.goalModeEnabled || this.goalModePaused) return "goal-mode-off";
+		if (this.#goalSuppressNextContinuation || this.#goalUserContinuationSuppressed) return "suppressed";
+		// The one transient block: mid-turn, compacting, or draining post-turn maintenance, each of
+		// which ends on its own. Asked at fire time only — at arm time the turn that scheduled this
+		// tick is still settling, which is what the delay is for.
+		if (phase === "fire" && this.#isAutoSubmitBlocked()) return "busy";
+		if (this.#pendingSubmittedInput) return "submission-pending";
+		if (this.editor.getText().trim().length > 0) return "draft-in-composer";
+		if ((this.editor.pendingImages?.length ?? 0) > 0) return "images-attached";
+		const state = this.session.getGoalModeState();
+		if (!state?.enabled || state.goal.status !== "active") return "goal-not-active";
+		return undefined;
+	}
+
+	#reportGoalContinuationBlock(reason: GoalContinuationBlock, phase: "arm" | "fire"): void {
+		if (GOAL_CONTINUATION_QUIET_BLOCKS.has(reason)) return;
+		logger.debug("Goal mode is not opening a continuation turn", {
+			reason,
+			phase,
+			goalId: this.session.getGoalModeState()?.goal.id,
+		});
+	}
+
+	#scheduleGoalContinuation(): void {
+		this.#cancelGoalContinuation();
+		this.#goalContinuationBusyUntil = undefined;
+		this.#armGoalContinuation();
+	}
+
+	#armGoalContinuation(): void {
+		this.#cancelGoalContinuation();
+		const blocked = this.#goalContinuationBlock("arm");
+		if (blocked) {
+			this.#reportGoalContinuationBlock(blocked, "arm");
+			return;
+		}
+		const prompt = this.session.goalRuntime.buildContinuationPrompt();
+		if (!prompt) {
+			this.#reportGoalContinuationBlock("no-prompt", "arm");
+			return;
+		}
+		this.#goalContinuationTimer = setTimeout(() => {
+			this.#goalContinuationTimer = undefined;
+			const blockedNow = this.#goalContinuationBlock("fire");
+			if (blockedNow === "busy") {
+				this.#goalContinuationBusyUntil ??= Date.now() + GOAL_CONTINUATION_BUSY_WAIT_MS;
+				if (Date.now() < this.#goalContinuationBusyUntil) {
+					this.#armGoalContinuation();
+					return;
+				}
+				this.#goalContinuationBusyUntil = undefined;
+				this.#reportGoalContinuationBlock("busy", "fire");
+				this.showWarning("Goal mode stopped waiting for the session to go idle. Send a message to resume it.");
+				return;
+			}
+			this.#goalContinuationBusyUntil = undefined;
+			if (blockedNow) {
+				this.#reportGoalContinuationBlock(blockedNow, "fire");
+				return;
+			}
+			const submit = this.onInputCallback;
+			if (!submit) return;
+			this.#goalContinuationTurnInFlight = true;
+			submit(
+				this.startPendingSubmission({
+					text: prompt,
+					customType: "goal-continuation",
+					display: false,
+				}),
+			);
+		}, GOAL_CONTINUATION_DELAY_MS);
+	}
+
+	#cancelGoalContinuation(): void {
+		if (this.#goalContinuationTimer) {
+			clearTimeout(this.#goalContinuationTimer);
+			this.#goalContinuationTimer = undefined;
+		}
+	}
+
+	#isAutoSubmitBlocked(): boolean {
+		return this.session.isStreaming || this.session.isCompacting || this.session.hasPostPromptWork;
+	}
+
+	#refreshComposerShortcuts(): void {
+		this.composerShortcuts.setShortcuts(
+			buildComposerShortcuts(this.keybindings, {
+				busy: this.#isAutoSubmitBlocked(),
+				hasDraft: this.editor.getText().trim().length > 0,
+				hasQueue: this.session.queuedMessageCount > 0,
+				focused: this.focusedAgentId !== undefined,
+				canBackgroundBash: hasForegroundBashWait(),
+			}),
+		);
+		// Live refresh: draft/busy/queue transitions call this after init, so the
+		// bar needs its own repaint request rather than relying on the initial mount.
+		this.ui.requestComponentRender(this.composerShortcuts);
+	}
+
+	#submitLoopPromptWhenReady(prompt: string): void {
+		if (!this.loopModeEnabled || this.loopPrompt !== prompt || !this.onInputCallback) return;
+		if (isLoopDurationExpired(this.loopLimit)) {
+			this.disableLoopMode("Loop time limit reached. Loop mode disabled.");
+			return;
+		}
+		if (this.#isAutoSubmitBlocked()) {
+			this.#deferLoopAutoSubmit(() => this.#submitLoopPromptWhenReady(prompt));
+			return;
+		}
+		this.onInputCallback(this.startPendingSubmission({ text: prompt }));
+	}
+
+	async #runLoopIteration(action: "prompt" | "compact" | "reset", prompt: string): Promise<void> {
+		if (!this.loopModeEnabled || this.loopPrompt !== prompt || !this.onInputCallback) return;
+		if (this.#isAutoSubmitBlocked()) {
+			this.#deferLoopAutoSubmit(() => {
+				void this.#runLoopIteration(action, prompt);
+			});
+			return;
+		}
+
+		if (!consumeLoopLimitIteration(this.loopLimit)) {
+			this.disableLoopMode("Loop limit reached. Loop mode disabled.");
+			return;
+		}
+
+		if (action === "compact") {
+			await this.handleCompactCommand();
+		} else if (action === "reset") {
+			await this.handleClearCommand();
+		}
+		this.#submitLoopPromptWhenReady(prompt);
+	}
+
+	disableLoopMode(message = "Loop mode disabled."): void {
+		const wasEnabled = this.loopModeEnabled;
+		this.loopModeEnabled = false;
+		this.loopPrompt = undefined;
+		this.loopLimit = undefined;
+		this.#cancelLoopAutoSubmit();
+		this.statusLine.setLoopModeStatus(undefined);
+		this.ui.requestRender();
+		if (wasEnabled) {
+			this.showStatus(message);
+		}
+	}
+
+	/**
+	 * Pause the loop without exiting it: drops the captured prompt and any
+	 * pending auto-resubmit. Loop mode stays enabled — the next prompt the
+	 * user submits becomes the new loop prompt and resumes iteration.
+	 */
+	pauseLoop(): void {
+		this.loopPrompt = undefined;
+		this.#cancelLoopAutoSubmit();
+	}
+
+	async handleLoopCommand(args = ""): Promise<string | undefined> {
+		if (this.loopModeEnabled) {
+			this.disableLoopMode();
+			return undefined;
+		}
+		const parsed = parseLoopLimitArgs(args);
+		if (typeof parsed === "string") {
+			this.showError(parsed);
+			return undefined;
+		}
+		this.loopModeEnabled = true;
+		this.loopPrompt = undefined;
+		this.loopLimit = createLoopLimitRuntime(parsed.limit);
+		this.statusLine.setLoopModeStatus({ enabled: true });
+		this.ui.requestRender();
+		const limitSuffix = parsed.limit ? ` Limited to ${describeLoopLimit(parsed.limit)}.` : "";
+		const remainingSuffix = this.loopLimit ? ` ${describeLoopLimitRuntime(this.loopLimit)}.` : "";
+		const tail = parsed.prompt ? "Repeating it after each turn." : "Your next prompt will repeat after each turn.";
+		this.showStatus(
+			`Loop mode enabled.${limitSuffix}${remainingSuffix} ${tail} Esc cancels the current iteration; /loop again to disable.`,
+		);
+		// Hand any inline prompt back to the dispatcher so the normal submit flow
+		// runs the first iteration — it records the text as the loop prompt and
+		// auto-resubmits it after each yield, identical to typing the prompt right
+		// after enabling loop mode.
+		return parsed.prompt;
+	}
+
+	recordLocalSubmission(text: string, imageCount = 0): () => void {
+		return this.#transcriptComposer.recordLocalSubmission(text, imageCount);
+	}
+
+	async withLocalSubmission<T>(text: string, fn: () => Promise<T>, options?: { imageCount?: number }): Promise<T> {
+		const dispose = this.recordLocalSubmission(text, options?.imageCount ?? 0);
+		try {
+			return await fn();
+		} catch (err) {
+			dispose();
+			throw err;
+		}
+	}
+	clearOptimisticUserMessage(): void {
+		this.#transcriptComposer.clearOptimistic();
+	}
+
+	replaceOptimisticUserMessage(
+		message: AgentMessage,
+		options?: { imageLinks?: readonly (string | undefined)[] },
+	): void {
+		this.#transcriptComposer.replaceOptimistic(message, options);
+	}
+
+	startPendingSubmission(input: {
+		text: string;
+		images?: ImageContent[];
+		imageLinks?: (string | undefined)[];
+		customType?: string;
+		display?: boolean;
+		streamingBehavior?: "steer" | "followUp";
+	}): SubmittedUserInput {
+		const submission: SubmittedUserInput = {
+			text: input.text,
+			images: input.images,
+			imageLinks: input.imageLinks,
+			customType: input.customType,
+			display: input.display,
+			streamingBehavior: input.streamingBehavior,
+			cancelled: false,
+			started: false,
+		};
+		this.#pendingSubmittedInput = submission;
+		if (!submission.customType) {
+			this.#goalUserTurnInFlight = true;
+			this.#goalUserContinuationSuppressed = true;
+			this.#cancelGoalContinuation();
+			this.#transcriptComposer.showOptimistic(submission);
+		} else {
+			this.#transcriptComposer.clearOptimistic();
+		}
+		this.editor.setText("");
+		this.editor.imageLinks = undefined;
+		this.ensureLoadingAnimation();
+		// As the conversation begins the anchor slack moves ABOVE the transcript
+		// (see HomeAnchorLayout.sync): the first message renders directly above
+		// the composer at the viewport bottom and climbs as replies land, until
+		// content fills the screen and the anchor latches off. Remeasure directly
+		// — the just-added user message and the working indicator are not in the
+		// committed frame yet, so trusting the stale composed height would reserve
+		// empty-home slack on top of them and overflow, jumping the message above
+		// the fold (the old first-message jerk).
+		this.#layout.sync(true);
+		this.ui.requestRender();
+		return submission;
+	}
+
+	cancelPendingSubmission(): boolean {
+		const submission = this.#pendingSubmittedInput;
+		if (!submission || submission.started) {
+			return false;
+		}
+
+		submission.cancelled = true;
+		this.#pendingSubmittedInput = undefined;
+		this.clearOptimisticUserMessage();
+		this.#pendingWorkingMessage = undefined;
+		if (submission.customType === "goal-continuation") {
+			this.#goalContinuationTurnInFlight = false;
+		}
+		if (this.loadingAnimation) {
+			this.#stopLoadingAnimation(true);
+		}
+		if (!submission.customType) {
+			this.editor.pendingImages = submission.images ? [...submission.images] : [];
+			this.editor.pendingImageLinks = submission.imageLinks ? [...submission.imageLinks] : [];
+			this.editor.imageLinks = this.editor.pendingImageLinks;
+			this.rebuildChatFromMessages();
+			this.#resetGoalContinuationSuppression();
+			this.#goalUserTurnInFlight = false;
+			this.#scheduleGoalContinuation();
+			this.editor.setText(submission.text);
+		}
+		this.updateEditorBorderColor();
+		this.ui.requestRender();
+		return true;
+	}
+
+	markPendingSubmissionStarted(input: SubmittedUserInput): boolean {
+		if (this.#pendingSubmittedInput !== input || input.cancelled) {
+			return false;
+		}
+		input.started = true;
+		return true;
+	}
+
+	finishPendingSubmission(input: SubmittedUserInput): void {
+		const wasPendingSubmission = this.#pendingSubmittedInput === input;
+		if (wasPendingSubmission) {
+			this.#pendingSubmittedInput = undefined;
+		}
+		if (input.customType === "goal-continuation") {
+			this.#goalContinuationTurnInFlight = false;
+		}
+
+		const quiesced = !this.session.isStreaming && !this.streamingComponent;
+		this.#transcriptComposer.onSubmissionFinished({ owned: wasPendingSubmission, quiesced });
+		if (wasPendingSubmission && quiesced) {
+			this.#pendingWorkingMessage = undefined;
+			if (this.loadingAnimation) {
+				this.#stopLoadingAnimation(true);
+			}
+		}
+	}
+
+	#computeEditorMaxHeight(): number {
+		return computeEditorMaxHeight(this.ui.terminal.rows);
+	}
+
+	#syncEditorMaxHeight(): void {
+		this.editor.setMaxHeight(this.#computeEditorMaxHeight());
+	}
+
+	#syncStatusLineSettings(): void {
+		this.statusLine.updateSettings({
+			preset: settings.get("statusLine.preset"),
+			leftSegments: settings.get("statusLine.leftSegments"),
+			rightSegments: settings.get("statusLine.rightSegments"),
+			separator: settings.get("statusLine.separator"),
+			showHookStatus: settings.get("statusLine.showHookStatus"),
+			sessionAccent: settings.get("statusLine.sessionAccent"),
+			transparent: settings.get("statusLine.transparent"),
+			segmentOptions: settings.get("statusLine.segmentOptions"),
+			compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
+		});
+	}
+
+	#handleSessionAccentInputsChanged(): void {
+		this.#clearWorkingMessageAccentCache();
+		this.statusLine.invalidate();
+		this.updateEditorBorderColor();
+	}
+
+	updateEditorBorderColor(): void {
+		// The accent decision (border color, DS-6 glyph morph, continuation
+		// spine) is a pure function in composer-chrome.ts; this method only
+		// snapshots the mode/session state and applies the result. The session
+		// identity accent needs settings + the session name, so it resolves here.
+		const accentEnabled = !isSettingsInitialized() || settings.get("statusLine.sessionAccent") !== false;
+		const sessionName = accentEnabled ? this.sessionManager.getSessionName() : undefined;
+		const hex = sessionName
+			? getSessionAccentHex(sessionName, theme.getMajorThemeColorHexes(), theme.accentSurfaceLuminance)
+			: undefined;
+		const accents = resolveComposerAccents({
+			bypass: this.session.isApprovalBypassed(),
+			bashMode: this.isBashMode,
+			pythonMode: this.isPythonMode,
+			planMode: this.planModeEnabled && !this.planModePaused,
+			focusedSubagent: this.focusedAgentId !== undefined,
+			sessionAccentAnsi: getSessionAccentAnsi(hex),
+			thinkingLevel: this.session.thinkingLevel ?? ThinkingLevel.Off,
+		});
+		this.editor.borderColor = accents.borderColor;
+		this.editor.setPromptGutter(accents.promptGutter);
+		this.editor.setPromptGutterContinuation(accents.promptGutterContinuation);
+		// No composer card: the input renders on the terminal's own ground.
+		// (the tinted box is gone entirely; the composer
+		// is hairline + text + footline, nothing painted behind it.)
+		this.editor.setRowBackground(undefined);
+		this.ui.requestRender();
+	}
+
+	/** Refresh the running-subagents status badge from the active local or collab registry. */
+	syncRunningSubagentBadge(options: { requestRender?: boolean } = {}): void {
+		const registry = getRunningSubagentBadgeRegistry(this.collabGuest);
+		if (this.#agentRegistrySubscriptionTarget !== registry) {
+			this.#agentRegistryUnsubscribe?.();
+			this.#agentRegistrySubscriptionTarget = registry;
+			this.#agentRegistryUnsubscribe = registry.onChange(() => {
+				this.syncRunningSubagentBadge();
+			});
+		}
+		// The collab guest's mirrored registry has no local scope; the local one is
+		// this driving session's conversation and must not count another's spawns.
+		//
+		// `focusedAgentId` narrows it again while the view is proxied onto an
+		// agent. The badge is the one-number summary of the block the HUD lists,
+		// and the HUD already shows only the viewed agent's spawns; a badge still
+		// counting the whole conversation reported running agents that had no row
+		// anywhere in that view, which is the HUD's own defect one number wide.
+		const count = countRunningSubagentBadgeAgents(
+			registry,
+			this.collabGuest ? undefined : this.sessionManager.getSessionId(),
+			this.focusedAgentId,
+		);
+		this.statusLine.setSubagentCount(count);
+		if (options.requestRender !== false) this.ui.requestRender();
+	}
+
+	rebuildChatFromMessages(): void {
+		// The composer owns the rebuild's live-component preservation (#3656)
+		// and the pre-streaming optimistic replay (#2372).
+		this.#transcriptComposer.rebuild();
+	}
+
+	/**
+	 * Auto-complete any pending/in_progress todo whose content matches a
+	 * subagent that has finished successfully. Fires on every observer
+	 * `onChange` so the visual state stays in sync with subagent lifecycle
+	 * without requiring the agent to issue a follow-up `todo`. Failed
+	 * and aborted subagents are intentionally NOT auto-completed — those
+	 * stay open so the user (or the next agent turn) can decide what to do.
+	 *
+	 * Idempotent: only flips open tasks, never re-touches completed ones.
+	 *
+	 * Every side of this is the VIEWED session's: the spawns consulted, the
+	 * board read, and the session written back to. `this.todoPhases` is the
+	 * viewed board, so persisting it into `session` while the view sat inside an
+	 * agent copied that agent's board onto the driving session and persisted it
+	 * there — a write-side version of the same leak.
+	 */
+	#reconcileTodosWithSubagents(): void {
+		const completedDescs: string[] = [];
+		for (const session of this.#observerRegistry.getSessionsSpawnedBy(this.focusedAgentId)) {
+			if (session.status !== "completed") continue;
+			const candidate =
+				session.description?.trim() || session.progress?.description?.trim() || session.label?.trim();
+			if (candidate) completedDescs.push(candidate);
+		}
+		if (completedDescs.length === 0) return;
+
+		let mutated = false;
+		const next: TodoPhase[] = this.todoPhases.map(phase => ({
+			name: phase.name,
+			tasks: phase.tasks.map(task => {
+				if (task.status !== "pending" && task.status !== "in_progress") return task;
+				if (!todoMatchesAnyDescription(task.content, completedDescs)) return task;
+				mutated = true;
+				return { ...task, status: "completed" as const };
+			}),
+		}));
+		if (!mutated) return;
+		this.viewSession.setTodoPhases(next);
+		this.setTodos(next);
+	}
+
+	#cancelTodoAutoClearTimer(): void {
+		if (!this.#todoAutoClearTimer) return;
+		clearTimeout(this.#todoAutoClearTimer);
+		this.#todoAutoClearTimer = undefined;
+	}
+
+	#isClosedTodo(task: TodoItem): boolean {
+		return isTerminalTodoStatus(task.status);
+	}
+
+	#hasClosedTodos(phases: TodoPhase[]): boolean {
+		return phases.some(phase => phase.tasks.some(task => this.#isClosedTodo(task)));
+	}
+
+	#removeClosedTodos(phases: TodoPhase[]): TodoPhase[] {
+		const next: TodoPhase[] = [];
+		for (const phase of phases) {
+			const tasks = phase.tasks.filter(task => !this.#isClosedTodo(task));
+			if (tasks.length > 0) next.push({ name: phase.name, tasks });
+		}
+		return next;
+	}
+
+	#syncTodoAutoClearTimer(): void {
+		this.#cancelTodoAutoClearTimer();
+		const delaySeconds = this.settings.get("tasks.todoClearDelay");
+		if (!Number.isFinite(delaySeconds) || delaySeconds < 0 || !this.#hasClosedTodos(this.todoPhases)) return;
+		if (delaySeconds === 0) {
+			this.todoPhases = this.#removeClosedTodos(this.todoPhases);
+			return;
+		}
+
+		this.#todoAutoClearTimer = setTimeout(() => {
+			this.#todoAutoClearTimer = undefined;
+			this.todoPhases = this.#removeClosedTodos(this.todoPhases);
+			this.#renderTodoList();
+			this.ui.requestRender();
+		}, delaySeconds * 1000);
+		this.#todoAutoClearTimer.unref?.();
+	}
+
+	/**
+	 * Render the ctrl+p model-role cycle chip track into its own anchored
+	 * container (just above the editor), mirroring the todo HUD: the container is
+	 * cleared and rebuilt in place on every cycle, so rapid presses or concurrent
+	 * chat activity can never stack duplicate tracks into the scrollback.
+	 */
+	showModelCycleTrack(track: string): void {
+		this.#renderModelCycleTrack(track);
+		this.#syncModelCycleClearTimer();
+		this.ui.requestRender();
+	}
+
+	#renderModelCycleTrack(track: string | null): void {
+		this.modelCycleContainer.clear();
+		if (!track) return;
+		this.modelCycleContainer.addChild(new Spacer(1));
+		this.modelCycleContainer.addChild(new Text(track, 1, 0));
+	}
+
+	#cancelModelCycleClearTimer(): void {
+		if (!this.#modelCycleClearTimer) return;
+		clearTimeout(this.#modelCycleClearTimer);
+		this.#modelCycleClearTimer = undefined;
+	}
+
+	#syncModelCycleClearTimer(): void {
+		this.#cancelModelCycleClearTimer();
+		this.#modelCycleClearTimer = setTimeout(() => {
+			this.#modelCycleClearTimer = undefined;
+			this.#renderModelCycleTrack(null);
+			this.ui.requestRender();
+		}, MODEL_CYCLE_TRACK_CLEAR_MS);
+		this.#modelCycleClearTimer.unref?.();
+	}
+
+	#scheduleObserverUiSync(kind: SessionObserverChangeKind): void {
+		if (kind !== "progress") {
+			this.#observerUiSyncNeedsTodoReconcile = true;
+		}
+		if (this.#observerUiSyncTimer) return;
+		this.#observerUiSyncTimer = setTimeout(() => {
+			this.#observerUiSyncTimer = undefined;
+			this.#flushObserverUiSync();
+		}, SUBAGENT_OBSERVER_UI_COALESCE_MS);
+		this.#observerUiSyncTimer.unref?.();
+	}
+
+	#flushObserverUiSync(): void {
+		this.syncRunningSubagentBadge({ requestRender: false });
+		if (this.#observerUiSyncNeedsTodoReconcile) {
+			this.#observerUiSyncNeedsTodoReconcile = false;
+			this.#reconcileTodosWithSubagents();
+		}
+		this.#syncTodoAutoClearTimer();
+		this.#renderTodoList();
+		this.#renderSubagentList();
+		this.ui.requestRender();
+	}
+
+	#cancelObserverUiSyncTimer(): void {
+		if (this.#observerUiSyncTimer) {
+			clearTimeout(this.#observerUiSyncTimer);
+			this.#observerUiSyncTimer = undefined;
+		}
+		this.#observerUiSyncNeedsTodoReconcile = false;
+	}
+
+	/**
+	 * The anchored todo board.
+	 *
+	 * A board with work on it and nothing left open draws NOTHING here — after it
+	 * has finished going out.
+	 *
+	 * It used to collapse to one line, and that line was `▪ Todo list done ·
+	 * 6 tasks` — the same sentence, from the same owner, that the transcript
+	 * card for the write that closed the list had just printed. Both were on
+	 * screen at once, one of them anchored above the composer for the rest of
+	 * the session. This region is for work in flight; a finished plan is
+	 * history, the card is where history lives, and the region being gone is
+	 * how an anchored HUD says there is nothing open.
+	 *
+	 * What is new is that it stops being drawn through the same settle pass a
+	 * tool block cools through, instead of vanishing between two frames. The
+	 * region is the tallest thing above the composer and it used to disappear on
+	 * one frame with no gesture at all, which reads as a rendering fault rather
+	 * than as a plan closing. {@link #todoSettlePhases} holds the last drawn board
+	 * for the length of the envelope and nothing else reads it, so `append` still
+	 * puts a pending task back and the live board returns on the next frame.
+	 */
+	#renderTodoList(): void {
+		this.#buildTodoBoard();
+		// The board can be the only reason a frame is owed — a task in progress with
+		// no subagent running at all — so every path that redraws it re-decides
+		// whether the clock should be ticking.
+		this.#syncAnchoredMotionTimer();
+	}
+
+	#buildTodoBoard(): void {
+		this.todoContainer.clear();
+		const settling = this.#todoSettleFrame !== undefined ? this.#todoSettlePhases : undefined;
+		const phases = (settling ?? this.todoPhases).filter(phase => phase.tasks.length > 0);
+		this.#todoBoardLive = false;
+		if (phases.length === 0) return;
+		if (settling === undefined && isTodoListDone(phases)) return;
+
+		const owned = this.#todoOwnedTasks();
+		this.#todoBoardLive = todoBoardIsLive(phases, owned);
+		const lines = renderTodoBoardLines(phases, {
+			columns: this.#anchoredColumns(),
+			// The two anchored blocks share one budget rather than each capping
+			// itself: collapsed, the board ran to fourteen rows and the lane block to
+			// ten, and on a short terminal the pair owned the screen. A third of the
+			// viewport, and the board is what yields — the plan is static and the
+			// agents are live.
+			maxRows: this.#anchoredRowBudget(),
+			expanded: this.todoExpanded,
+			owned,
+			// The board steps on its own divisor. The shared clock is the tool
+			// rail's, fast enough for a highlight travelling down a block; a mark on
+			// that clock changes several times a second next to text nobody is
+			// reading that fast.
+			frame: Math.floor(this.#anchoredStep / TODO_BOARD_FRAME_DIVISOR),
+			// Motion states that the agent is working, so it is owed only while the
+			// agent IS working: an interrupted or idle session gets a still board.
+			animate: todoBoardMarkerAnimates(this.#todoMotion()),
+			live: this.#todoBoardLive,
+		});
+		if (lines.length === 0) return;
+		const motion = this.#todoRailMotion();
+		const painted = motion ? paintRailMotion(lines, motion, theme) : lines;
+		this.todoContainer.addChild(new Text(painted.join("\n"), ANCHORED_BLOCK_PADDING_X, 0));
+	}
+
+	/**
+	 * Cells an anchored block actually gets to draw in.
+	 *
+	 * NOT the terminal width. Both blocks are mounted in a `Text` carrying
+	 * `ANCHORED_BLOCK_PADDING_X` on each side, and `Text` SOFT-WRAPS its content
+	 * to `width - paddingX * 2` before it ever reaches the terminal. A row built
+	 * against the raw column count is therefore two cells too wide and the tail
+	 * of it lands on a row of its own, at the margin, outside the block's rail —
+	 * which is what a real capture of two live lanes showed: every lane's model
+	 * badge on its own line at column zero. The width sweep in
+	 * `test/subagent-hud-render.test.ts` could not see it, because the blocks were
+	 * obeying the bound they were given and the bound was wrong.
+	 *
+	 * `getPaddingX` is the same function the mount resolves its padding through,
+	 * so tight layout (which spends the margin) is followed rather than guessed.
+	 */
+	#anchoredColumns(): number {
+		return Math.max(1, (this.ui.terminal.columns || 80) - getPaddingX(ANCHORED_BLOCK_PADDING_X) * 2);
+	}
+
+	/**
+	 * Rows the two anchored blocks may spend between them, board included.
+	 *
+	 * A third of the viewport, floored at enough for a header and three rows so a
+	 * very short terminal still gets a board rather than chrome, and capped so a
+	 * tall terminal does not turn the region into a page.
+	 */
+	#anchoredRowBudget(): number {
+		const rows = this.ui.terminal.rows || 24;
+		return Math.max(4, Math.min(14, Math.floor(rows / 3)));
+	}
+
+	/**
+	 * Pending tasks a detached subagent is working on right now.
+	 *
+	 * A pending task that an active spawn's description matches takes the accent
+	 * and the in-flight mark, which is the only thing on the board stating that
+	 * someone other than the main agent is on it.
+	 */
+	#todoOwnedTasks(): Set<string> {
+		const owned = new Set<string>();
+		const active = this.#observerRegistry
+			.getSessionsSpawnedBy(this.focusedAgentId)
+			.filter(session => session.status === "active");
+		if (active.length === 0) return owned;
+		const descriptions: string[] = [];
+		for (const session of active) {
+			const description =
+				session.description?.trim() || session.progress?.description?.trim() || session.label?.trim();
+			if (description) descriptions.push(description);
+		}
+		if (descriptions.length === 0) return owned;
+		for (const phase of this.todoPhases) {
+			for (const task of phase.tasks) {
+				if (task.status !== "pending" || owned.has(task.content)) continue;
+				if (todoMatchesAnyDescription(task.content, descriptions)) owned.add(task.content);
+			}
+		}
+		return owned;
+	}
+
+	/**
+	 * The board's rail motion for this frame: the exit pass while the plan is
+	 * going out, the idle sweep while anything is in flight, and nothing at all
+	 * when the board is open but the agent is not working.
+	 *
+	 * That last state is the one the block could not previously express. A board
+	 * being worked and a board waiting for the operator rendered byte-identically,
+	 * so the loudest region on the screen could not state whose turn it was.
+	 */
+	#todoRailMotion(): RailMotion | undefined {
+		if (this.#todoSettleFrame !== undefined) return { kind: "settle", frame: this.#todoSettleFrame };
+		if (!todoBoardRailTravels(this.#todoMotion())) return undefined;
+		return { kind: "idle", head: railIdleHeadAtMs(railClockMs()) };
+	}
+
+	/**
+	 * What the board is allowed to move on this frame.
+	 *
+	 * A task marked in progress is not motion. The model marks one, the turn
+	 * ends, and the mark stays until the next turn changes it — so a board keyed
+	 * on task state alone moved for as long as the operator sat and read it,
+	 * stating that the agent is working while it waits for input.
+	 * `session.isStreaming || isCompacting || hasPostPromptWork` is the same
+	 * predicate the composer treats as busy, so the board moves exactly while the
+	 * thing it draws moves, and an interrupt stops it on the frame the turn ends.
+	 */
+	#todoMotion(): TodoBoardMotion {
+		return {
+			transitions: transitionsEnabled(),
+			agentInMotion: this.session.isStreaming || this.session.isCompacting || this.session.hasPostPromptWork,
+			live: this.#todoBoardLive,
+		};
+	}
+
+	/**
+	 * Anchored HUD of in-flight subagents, mirroring the Todos block above the
+	 * editor. Driven entirely by observer-registry change events, so rows appear
+	 * on spawn and the whole block clears itself once the last subagent leaves
+	 * the "active" state.
+	 *
+	 * The block belongs to the VIEWED session, not the driving one: focused into
+	 * an agent from `/agents`, the rows are that agent's own spawns
+	 * (`getSessionsSpawnedBy`), which for a leaf agent is empty and the block
+	 * clears through the existing empty-array path. Rendering the driving
+	 * session's list inside the agent's view named agents the viewed session
+	 * never spawned, and made the two views indistinguishable.
+	 *
+	 * The rail carries the block's motion, so the block needs a repaint it does not
+	 * otherwise get: the observer registry only fires when an agent's STATE
+	 * changes, and an agent that has been running one bash command for four
+	 * seconds produces no events at all, which is exactly the stretch the motion
+	 * exists to cover.
+	 *
+	 * One sweep for the whole block, the same one every tool block runs. Gating it
+	 * per row lit only the rows whose agent was inside a tool, so a roster where
+	 * one agent kept starting and finishing calls flashed a chunk of the rail on
+	 * and off while the rest of it stood still — motion an operator reads as a
+	 * fault rather than as progress.
+	 */
+	#renderSubagentList(): void {
+		this.subagentContainer.clear();
+		const sessions = this.#observerRegistry.getSessionsSpawnedBy(this.#focusController.focusedAgentId);
+		const lines = renderSubagentHudLines(sessions, {
+			columns: this.#anchoredColumns(),
+			showModelBadge: settings.get("subagent.showResolvedModelBadge"),
+		});
+		this.#syncAnchoredMotionTimer();
+		if (lines.length === 0) return;
+		const painted = transitionsEnabled()
+			? paintRailMotion(lines, { kind: "idle", head: railIdleHeadAtMs(railClockMs()) }, theme)
+			: lines;
+		this.subagentContainer.addChild(new Text(painted.join("\n"), ANCHORED_BLOCK_PADDING_X, 0));
+	}
+
+	/**
+	 * One clock for both anchored blocks, armed while either has motion owed and
+	 * disarmed the moment neither does.
+	 *
+	 * One timer and not two: the board and the lane block sit one row apart and
+	 * their rails are the same rail, so two intervals at the same period would
+	 * beat against each other and the two sweeps would drift out of step for no
+	 * reason a reader could account for. The completion sweep, the breathing
+	 * glyph, the lane scan and the board's exit all count in the same frames.
+	 *
+	 * Bounded on both ends by construction: it exists only while something is
+	 * live, a running agent is what makes the lane block non-empty, and the
+	 * board's settle disarms itself when its frame passes the envelope.
+	 * `display.transitions: off` is the reduced-motion switch for chrome, so with
+	 * it the timer is never armed and every row draws the same bytes at every
+	 * clock.
+	 */
+	#syncAnchoredMotionTimer(): void {
+		// `unref()` keeps the interval from holding the process open, which is not the same as
+		// being gone: a frozen mode that still owns one goes on stepping, rendering, and reading
+		// the settings singleton, and inside one test process that outlives the mode entirely.
+		const wanted =
+			!this.#frameProductionFrozen &&
+			transitionsEnabled() &&
+			(this.#anchoredMotionOwed() || this.#todoSettleFrame !== undefined);
+		if (!wanted) {
+			this.#cancelAnchoredMotionTimer();
+			return;
+		}
+		if (this.#anchoredMotionInterval) return;
+		this.#anchoredMotionInterval = setInterval(() => {
+			this.#anchoredStep++;
+			this.#advanceTodoSettle();
+			this.#renderTodoList();
+			this.#renderSubagentList();
+			this.ui.requestRender();
+		}, RAIL_IDLE_STEP_MS);
+		// A chrome animation must never be the reason the process stays alive.
+		this.#anchoredMotionInterval.unref?.();
+	}
+
+	/** Disarms the anchored motion frame. Idempotent, so both the disarm path and the freeze call it. */
+	#cancelAnchoredMotionTimer(): void {
+		if (!this.#anchoredMotionInterval) return;
+		clearInterval(this.#anchoredMotionInterval);
+		this.#anchoredMotionInterval = undefined;
+	}
+
+	/**
+	 * Whether either anchored block has something in flight worth a frame.
+	 *
+	 * The board's own liveness is read from what the last render measured rather
+	 * than measured again: this runs on every frame, `#todoOwnedTasks` walks every
+	 * active session against every task on the board, and the answer cannot have
+	 * changed since the render that produced it — a change to either side arrives
+	 * as an event that re-renders first.
+	 */
+	#anchoredMotionOwed(): boolean {
+		// A live board is owed frames only while the agent is moving. Otherwise
+		// the clock ran for the whole time the operator spent reading a plan that
+		// was not being worked, and every one of those frames repainted two
+		// regions to draw the same thing.
+		if (todoBoardRailTravels(this.#todoMotion())) return true;
+		return this.#observerRegistry
+			.getSessionsSpawnedBy(this.#focusController.focusedAgentId)
+			.some(session => session.kind === "subagent" && session.status === "active" && session.detached === true);
+	}
+
+	/**
+	 * Advance the board's exit by one frame, and clear it when the pass is over.
+	 *
+	 * The last frame of a settle is the static render, so stopping one frame past
+	 * the envelope leaves the region on the bytes the renderer produced and then
+	 * removes it — never on a half-cooled frame.
+	 */
+	#advanceTodoSettle(): void {
+		if (this.#todoSettleFrame === undefined) return;
+		if (this.#todoSettleFrame >= RAIL_SETTLE_FRAMES) {
+			this.#todoSettleFrame = undefined;
+			this.#todoSettlePhases = undefined;
+			return;
+		}
+		this.#todoSettleFrame++;
+	}
+
+	/**
+	 * Note that the plan closed, so the render can draw the exit as an event.
+	 *
+	 * A plan closing is the only event the board has; everything else about a
+	 * board is a state and needs no memory.
+	 */
+	#noteTodoTransitions(before: TodoPhase[], after: TodoPhase[]): void {
+		const nonEmptyBefore = before.filter(phase => phase.tasks.length > 0);
+		const nonEmptyAfter = after.filter(phase => phase.tasks.length > 0);
+		// A board that arrives ALREADY finished never had rows on screen, so there is
+		// nothing to sweep away: it draws nothing at all, which is how the anchored
+		// region says there is no open work. Arming the exit from an empty `before`
+		// made a resumed session, and every caller that hands the HUD a closed plan
+		// in one shot, play an exit for a board it never showed.
+		const closedNow =
+			nonEmptyAfter.length > 0 &&
+			isTodoListDone(nonEmptyAfter) &&
+			nonEmptyBefore.length > 0 &&
+			!isTodoListDone(nonEmptyBefore);
+		if (closedNow && transitionsEnabled()) {
+			this.#todoSettlePhases = nonEmptyAfter;
+			this.#todoSettleFrame = 1;
+		}
+		this.#syncAnchoredMotionTimer();
+	}
+
+	/**
+	 * Re-derive the todo HUD from the session currently ON SCREEN.
+	 *
+	 * `viewSession`, not `session`: while the view is proxied onto an agent the
+	 * board above the composer has to be that agent's, and the driving session's
+	 * board has to come back intact on the way out. Both directions run through
+	 * `clearTransientSessionUi`, which is the only caller that needs it
+	 * synchronously; the async `reloadTodos` the session-switch paths already
+	 * use is the same work plus a render request.
+	 */
+	#syncTodoSurfaceToView(): void {
+		this.todoPhases = this.viewSession.getTodoPhases();
+		this.#syncTodoAutoClearTimer();
+		this.#renderTodoList();
+	}
+
+	async #getPlanFilePath(): Promise<string> {
+		return this.session.getPlanReferencePath() || DEFAULT_PLAN_FILE_URL;
+	}
+
+	#resolvePlanFilePath(planFilePath: string): string {
+		return resolvePlanFilePath(planFilePath, {
+			localProtocol: {
+				getArtifactsDir: () => this.sessionManager.getArtifactsDir(),
+				getSessionId: () => this.sessionManager.getSessionId(),
+			},
+			cwd: this.sessionManager.getCwd(),
+		});
+	}
+
+	#updatePlanModeStatus(): void {
+		const status =
+			this.planModeEnabled || this.planModePaused
+				? {
+						enabled: this.planModeEnabled,
+						paused: this.planModePaused,
+					}
+				: undefined;
+		this.statusLine.setPlanModeStatus(status);
+		// The composer gutter morphs to `◈` while planning (DS-6): re-derive it
+		// at the same choke point every plan enable/disable/pause flows through.
+		this.updateEditorBorderColor();
+		this.ui.requestRender();
+	}
+
+	#updateVibeModeStatus(): void {
+		this.statusLine.setVibeModeStatus(this.vibeModeEnabled ? { enabled: true } : undefined);
+		this.ui.requestRender();
+	}
+
+	#updateGoalModeStatus(): void {
+		const status =
+			this.goalModeEnabled || this.goalModePaused
+				? { enabled: this.goalModeEnabled, paused: this.goalModePaused }
+				: undefined;
+		this.statusLine.setGoalModeStatus(status);
+		this.ui.requestRender();
+	}
+
+	#resetGoalContinuationSuppression(): void {
+		this.#goalSuppressNextContinuation = false;
+		this.#goalUserContinuationSuppressed = false;
+	}
+
+	#getPausedGoalState(): GoalModeState | undefined {
+		const state = this.session.getGoalModeState();
+		if (!state?.goal || state.enabled || state.goal.status !== "paused") {
+			return undefined;
+		}
+		return state;
+	}
+
+	#goalFromModeData(modeData: SessionContext["modeData"]): Goal | undefined {
+		const goal = modeData?.goal;
+		if (!goal || typeof goal !== "object") return undefined;
+		const value = goal as Record<string, unknown>;
+		if (
+			typeof value.id !== "string" ||
+			typeof value.objective !== "string" ||
+			typeof value.status !== "string" ||
+			typeof value.tokensUsed !== "number" ||
+			typeof value.timeUsedSeconds !== "number" ||
+			typeof value.createdAt !== "number" ||
+			typeof value.updatedAt !== "number"
+		) {
+			return undefined;
+		}
+		return {
+			id: value.id,
+			objective: value.objective,
+			status: value.status as Goal["status"],
+			tokenBudget: typeof value.tokenBudget === "number" ? value.tokenBudget : undefined,
+			tokensUsed: value.tokensUsed,
+			timeUsedSeconds: value.timeUsedSeconds,
+			// Back-compat: goals persisted before turn accounting existed lack this.
+			turnsCompleted: typeof value.turnsCompleted === "number" ? value.turnsCompleted : 0,
+			createdAt: value.createdAt,
+			updatedAt: value.updatedAt,
+		};
+	}
+
+	/** The objective as it appears in a one-line notice. One owner for the cap. */
+	#goalSummary(objective: string): string {
+		return objective.length > 48 ? `${objective.slice(0, 47)}…` : objective;
+	}
+
+	async #handleGoalSessionEvent(event: AgentSessionEvent): Promise<void> {
+		if (event.type === "auto_retry_start") {
+			// The next `agent_start` is this same turn resuming, not a new one. The
+			// session's retry supersedes the killed attempt's `agent_end`, so this is
+			// the only notice the mode gets that the work continues.
+			this.#goalTurnRetrying = true;
+			return;
+		}
+		if (event.type === "agent_start") {
+			// A retried turn keeps the tool calls its killed attempt already made:
+			// the work happened, and a retry that only talks afterwards is not the
+			// model saying it has nothing left to do.
+			if (this.#goalTurnRetrying) {
+				this.#goalTurnRetrying = false;
+			} else {
+				this.#goalTurnHadToolCalls = false;
+			}
+			this.#cancelGoalContinuation();
+			return;
+		}
+		if (event.type === "tool_execution_start") {
+			this.#goalTurnHadToolCalls = true;
+			// A visible user turn pauses autonomous goal continuation unless the
+			// turn actually resumes execution. Merely producing prose is not
+			// evidence that the user intended goal mode to take control again.
+			const pendingVisibleUserTurn =
+				this.#pendingSubmittedInput !== undefined && !this.#pendingSubmittedInput.customType;
+			if (this.#goalUserTurnInFlight || pendingVisibleUserTurn) {
+				this.#resetGoalContinuationSuppression();
+			}
+			return;
+		}
+		if (event.type === "message_start" && event.message.role === "user" && !event.message.synthetic) {
+			this.#goalUserTurnInFlight = true;
+			this.#goalUserContinuationSuppressed = true;
+			this.#cancelGoalContinuation();
+			return;
+		}
+		if (event.type === "goal_updated") {
+			// Handle drop before clearing goalModeEnabled so #exitGoalMode can
+			// restore the pre-goal tool set while the flag is still true.
+			if (event.state?.goal?.status === "dropped") {
+				await this.#exitGoalMode({ reason: "dropped", silent: true });
+				return;
+			}
+			const activating = !this.goalModeEnabled && event.state?.enabled === true;
+			if (activating) {
+				this.#resetGoalContinuationSuppression();
+			}
+			this.goalModeEnabled = event.state?.enabled === true;
+			this.goalModePaused = event.state?.enabled !== true && event.state?.goal?.status === "paused";
+			if (!event.state?.enabled) {
+				this.#cancelGoalContinuation();
+			}
+			this.#updateGoalModeStatus();
+			return;
+		}
+		if (event.type !== "agent_end") {
+			return;
+		}
+		this.#goalUserTurnInFlight = false;
+		// A retry that never resumed (aborted, cancelled) must not make the NEXT turn
+		// inherit this one's tool-call evidence.
+		this.#goalTurnRetrying = false;
+		if (goalTurnEndedInError(event)) {
+			// A turn the provider killed neither finished the goal's work nor showed
+			// that the model had nothing left to call, so its tool-call count says
+			// nothing about whether the goal should keep driving. Latching
+			// suppression from it is what left a recovered session idle: the retry
+			// landed, the suppression stayed, and a human had to type "keep going".
+			// The continuation stays owed, and the tolerance is bounded.
+			this.#goalFailedTurns += 1;
+			if (this.#goalFailedTurns >= GOAL_FAILED_TURN_LIMIT) {
+				this.#goalContinuationTurnInFlight = false;
+				this.#goalSuppressNextContinuation = true;
+				this.showWarning(
+					`Goal mode stopped driving after ${formatCount("failed turn", this.#goalFailedTurns)}. Send a message to resume it.`,
+				);
+				return;
+			}
+			this.#scheduleGoalContinuation();
+			return;
+		}
+		this.#goalFailedTurns = 0;
+		if (this.#goalContinuationTurnInFlight) {
+			this.#goalSuppressNextContinuation = !this.#goalTurnHadToolCalls;
+			this.#goalContinuationTurnInFlight = false;
+		}
+		if (this.session.getGoalModeState()?.mode === "exiting") {
+			await this.#exitGoalMode({ reason: "completed", silent: true });
+			return;
+		}
+		this.#scheduleGoalContinuation();
+	}
+
+	async #applyPlanModeModel(): Promise<void> {
+		const resolved = this.session.resolveRoleModelWithThinking("plan");
+		if (!resolved.model) return;
+
+		const currentModel = this.session.model;
+		const sameModel = modelsAreEqual(currentModel, resolved.model);
+		const planThinkingLevel = resolved.explicitThinkingLevel ? resolved.thinkingLevel : undefined;
+
+		this.#planModePreviousModelState = currentModel
+			? { model: currentModel, thinkingLevel: this.session.configuredThinkingLevel() }
+			: undefined;
+
+		if (!sameModel) {
+			if (this.session.isStreaming) {
+				this.#pendingModelSwitch = { model: resolved.model, thinkingLevel: planThinkingLevel };
+				return;
+			}
+			try {
+				await this.session.setModelTemporary(resolved.model, planThinkingLevel);
+			} catch (error) {
+				this.showWarning(`Failed to switch to plan model for plan mode: ${errorMessage(error)}`);
+			}
+		} else if (planThinkingLevel) {
+			this.session.setThinkingLevel(planThinkingLevel);
+		}
+	}
+
+	/** Apply any deferred model switch after the current stream ends. */
+	async flushPendingModelSwitch(): Promise<void> {
+		const pending = this.#pendingModelSwitch;
+		if (!pending) return;
+		this.#pendingModelSwitch = undefined;
+		try {
+			await this.session.setModelTemporary(pending.model, pending.thinkingLevel);
+		} catch (error) {
+			this.showWarning(`Failed to switch model after streaming: ${errorMessage(error)}`);
+		}
+	}
+
+	async #clearTransientModeState(): Promise<void> {
+		if (this.planModeEnabled || this.planModePaused) {
+			if (this.#planModePreviousTools !== undefined) {
+				await this.session.setActiveToolsByName(this.#planModePreviousTools);
+			}
+			this.session.setStandingResolveHandler?.(null);
+			this.session.setPlanModeState(undefined);
+			this.planModeEnabled = false;
+			this.planModePaused = false;
+			this.planModePlanFilePath = undefined;
+			this.#planModePreviousTools = undefined;
+			this.#planModePreviousModelState = undefined;
+			this.#pendingModelSwitch = undefined;
+			this.#planModeHasEntered = false;
+			this.#updatePlanModeStatus();
+		}
+
+		if (this.goalModeEnabled || this.goalModePaused) {
+			if (this.#goalModePreviousTools !== undefined) {
+				await this.session.setActiveToolsByName(this.#goalModePreviousTools);
+			}
+			this.session.setGoalModeState(undefined);
+			this.goalModeEnabled = false;
+			this.goalModePaused = false;
+			this.#goalModePreviousTools = undefined;
+			this.#goalTurnHadToolCalls = false;
+			this.#goalContinuationTurnInFlight = false;
+			this.#resetGoalContinuationSuppression();
+			this.#goalUserTurnInFlight = false;
+			this.#cancelGoalContinuation();
+			this.#updateGoalModeStatus();
+		}
+
+		if (this.vibeModeEnabled) {
+			await this.session.deactivateVibeTools(this.#vibeModePreviousTools ?? []);
+			this.session.setVibeModeState(undefined);
+			this.vibeModeEnabled = false;
+			this.#vibeModePreviousTools = undefined;
+			await VibeSessionRegistry.global().killAll(
+				this.session.getAgentId() ?? MAIN_AGENT_ID,
+				this.session.asyncJobManager,
+			);
+			this.#updateVibeModeStatus();
+		}
+	}
+
+	/** Reconcile mode state from session entries on resume/switch. */
+	async #reconcileModeFromSession(options?: { preserveActiveGoal?: boolean }): Promise<void> {
+		await this.#clearTransientModeState();
+		const sessionContext = this.sessionManager.buildSessionContext();
+		const goalEnabled = this.session.settings.get("goal.enabled");
+		if (!goalEnabled && (sessionContext.mode === "goal" || sessionContext.mode === "goal_paused")) {
+			// Goal mode is off, so nothing activates here — but the stored objective
+			// is not this setting's to destroy. Recording `none` dropped it for
+			// good, and in silence: a session came back with no goal and nothing
+			// saying that a settings toggle had taken it. The record stays on the
+			// branch, inert, so turning Goal Mode back on restores it. Plan mode
+			// still clears below, because its entry can come from a startup default
+			// nobody chose.
+			this.session.goalRuntime.clearAccounting();
+			const stored = this.#goalFromModeData(sessionContext.modeData);
+			logger.warn("goal mode is disabled; the session's stored goal stays inactive", {
+				mode: sessionContext.mode,
+				readable: stored !== undefined,
+				goalId: stored?.id,
+			});
+			this.showWarning(
+				stored
+					? `Goal Mode is off in settings, so "${this.#goalSummary(stored.objective)}" stays stored and inactive.`
+					: "Goal Mode is off in settings, so this session's stored goal stays inactive.",
+			);
+			return;
+		}
+		if (sessionContext.mode === "goal" || sessionContext.mode === "goal_paused") {
+			const goal = this.#goalFromModeData(sessionContext.modeData);
+			if (!goal) {
+				// A record that cannot be parsed cannot be restored, so it goes —
+				// out loud. Silence here read as the goal unsetting itself.
+				logger.warn("stored goal record is unreadable; clearing goal mode", { mode: sessionContext.mode });
+				this.showWarning("This session's stored goal could not be read and was cleared.");
+				this.sessionManager.appendModeChange("none");
+				return;
+			}
+			this.session.setGoalModeState({
+				enabled: sessionContext.mode === "goal",
+				mode: "active",
+				goal,
+			});
+			const restored = await this.session.goalRuntime.onThreadResumed({
+				preserveActiveGoal: options?.preserveActiveGoal,
+			});
+			this.goalModeEnabled = restored?.enabled === true;
+			this.goalModePaused = restored?.enabled !== true && restored?.goal.status === "paused";
+			// The goal tool is part of the normal enabled tool set. Retain the
+			// pre-goal set so leaving or dropping the restored goal preserves it.
+			if (restored?.goal) {
+				const previousTools = this.session.getActiveToolNames();
+				this.#goalModePreviousTools = previousTools;
+				await this.session.setActiveToolsByName([...new Set([...previousTools, "goal"])]);
+			}
+			this.#updateGoalModeStatus();
+			return;
+		}
+		this.session.goalRuntime.clearAccounting();
+		if (sessionContext.mode === "vibe") {
+			await this.#enterVibeMode();
+			return;
+		}
+		if (!this.session.settings.get("plan.enabled")) {
+			// Clear stale plan/plan_paused mode so re-enabling the setting
+			// later doesn't unexpectedly restore an old plan session.
+			if (sessionContext.mode === "plan" || sessionContext.mode === "plan_paused") {
+				this.sessionManager.appendModeChange("none");
+			}
+			return;
+		}
+		if (sessionContext.mode === "plan") {
+			const planFilePath = sessionContext.modeData?.planFilePath as string | undefined;
+			await this.#enterPlanMode({ planFilePath });
+		} else if (sessionContext.mode === "plan_paused") {
+			this.planModePaused = true;
+			this.#planModeHasEntered = true;
+			this.#updatePlanModeStatus();
+		}
+	}
+
+	async #enterPlanMode(options?: { planFilePath?: string; workflow?: "parallel" | "iterative" }): Promise<void> {
+		if (this.planModeEnabled) {
+			return;
+		}
+		if (this.goalModeEnabled || this.goalModePaused) {
+			this.showWarning("Exit goal mode first.");
+			return;
+		}
+		if (this.vibeModeEnabled) {
+			this.showWarning("Exit vibe mode first.");
+			return;
+		}
+
+		this.planModePaused = false;
+
+		const planFilePath = options?.planFilePath ?? (await this.#getPlanFilePath());
+		const previousTools = this.session.getActiveToolNames();
+		// `plan-mode-active.md` instructs the agent to draft the plan file with
+		// `write` and refine it with `edit`. Both must be in the active set or the
+		// agent falls back to `edit` on a non-existent file and stalls. `edit` is an
+		// essential built-in so it survives `tools.discoveryMode === "all"`, but
+		// `write` has `loadMode: "discoverable"` and is hidden behind
+		// `search_tool_bm25` — re-activate it here only when the current registry
+		// entry is the built-in write tool (issue #3165). A shadowing extension
+		// tool named `write` must stay inactive because plan mode's read-only
+		// guarantee relies on the built-in write/edit guard. `resolve` is hidden
+		// too; the standing handler below consumes plan-approval calls through it.
+		const planAugmentations = ["resolve"];
+		if (this.session.hasBuiltInTool("write")) {
+			planAugmentations.push("write");
+		}
+		const uniquePlanTools = [...new Set([...previousTools.filter(name => name !== "goal"), ...planAugmentations])];
+
+		this.#planModePreviousTools = previousTools;
+		this.planModePlanFilePath = planFilePath;
+		this.planModeEnabled = true;
+		// Suppress cache-miss marker on the next turn: plan mode changes the system
+		// prompt, which predictably invalidates the cache.
+		this.lastAssistantUsage = undefined;
+
+		await this.session.setActiveToolsByName(uniquePlanTools);
+		this.session.setPlanModeState({
+			enabled: true,
+			planFilePath,
+			workflow: options?.workflow ?? "parallel",
+			reentry: this.#planModeHasEntered,
+		});
+		this.session.setStandingResolveHandler?.(input => this.#runPlanApprovalResolve(input));
+		if (this.session.isStreaming) {
+			await this.session.sendPlanModeContext({ deliverAs: "steer" });
+		}
+		this.#planModeHasEntered = true;
+		await this.#applyPlanModeModel();
+		this.#updatePlanModeStatus();
+		this.sessionManager.appendModeChange("plan", { planFilePath });
+		this.showStatus(`Plan mode enabled. Plan file: ${planFilePath}`);
+	}
+
+	/** Standing resolve dispatcher registered while plan mode is active. The agent
+	 *  submits the finalized plan by calling `resolve { action: "apply", extra: { title } }`;
+	 *  this handler validates the plan file exists, normalizes the title, and shapes the
+	 *  payload that `event-controller` forwards to `handlePlanApproval`. */
+	#runPlanApprovalResolve(input: unknown): Promise<AgentToolResult<ResolveToolDetails>> {
+		return runResolveInvocation(input as Parameters<typeof runResolveInvocation>[0], {
+			sourceToolName: "plan_approval",
+			label: "Plan ready for approval",
+			apply: async (_reason, extra) => {
+				const state = this.session.getPlanModeState?.();
+				if (!state?.enabled) {
+					throw new ToolError("Plan mode is not active.");
+				}
+				const { planFilePath, title } = await resolveApprovedPlan({
+					suppliedTitle: extra?.title,
+					statePlanFilePath: state.planFilePath,
+					readPlan: url => this.#readPlanFile(url),
+					listPlanFiles: () => this.#listLocalPlanFiles(),
+				});
+				const details: PlanApprovalDetails = {
+					planFilePath,
+					title,
+					planExists: true,
+				};
+				return {
+					content: [{ type: "text" as const, text: "Plan ready for approval." }],
+					details,
+				};
+			},
+		});
+	}
+
+	async #restorePlanPreviousModel(prev: { model: Model; thinkingLevel?: ConfiguredThinkingLevel }): Promise<void> {
+		if (modelsAreEqual(this.session.model, prev.model)) {
+			// Same model — only thinking level may differ. Avoid setModelTemporary()
+			// which would reset provider-side sessions and break continuity.
+			this.session.setThinkingLevel(prev.thinkingLevel);
+		} else if (this.session.isStreaming) {
+			this.#pendingModelSwitch = { model: prev.model, thinkingLevel: prev.thinkingLevel };
+		} else {
+			await this.session.setModelTemporary(prev.model, prev.thinkingLevel);
+		}
+	}
+
+	/**
+	 * Idempotent post-compaction model transition for the plan-approval compact
+	 * path. The deferred pre-plan state is consumed on first application, so a
+	 * second call (the before-flush hook vs. the short-circuit fallback) is a
+	 * no-op. "failed" intentionally stays on the plan model — the context is
+	 * intact and we dispatch best-effort.
+	 */
+	async #applyDeferredPlanModelTransition(
+		outcome: CompactionOutcome | undefined,
+		executionModel: ResolvedRoleModel | undefined,
+	): Promise<void> {
+		const deferredPrev = this.#planModePreviousModelState;
+		if (deferredPrev === undefined || outcome === "failed") return;
+		this.#planModePreviousModelState = undefined;
+		if (executionModel) {
+			await this.#applyPlanExecutionModel(executionModel);
+		} else {
+			await this.#restorePlanPreviousModel(deferredPrev);
+		}
+	}
+
+	async #exitPlanMode(options?: { silent?: boolean; paused?: boolean; deferModelRestore?: boolean }): Promise<void> {
+		if (!this.planModeEnabled) {
+			return;
+		}
+
+		const previousTools = this.#planModePreviousTools;
+		if (previousTools && previousTools.length > 0) {
+			await this.session.setActiveToolsByName(previousTools);
+		}
+		if (this.#planModePreviousModelState) {
+			if (!options?.deferModelRestore) {
+				await this.#restorePlanPreviousModel(this.#planModePreviousModelState);
+			}
+			// If #applyPlanModeModel queued a deferred switch to the plan-role model
+			// (because the session was streaming on entry), drop it now: we are
+			// leaving plan mode, so flushing it on the next agent_end would land the
+			// session on the plan-role model after the user has exited plan mode
+			// (issue #816). This runs even when deferModelRestore is set
+			// (compact-approval path): otherwise the stale plan switch survives and
+			// flushPendingModelSwitch() later clobbers the restored/execution model.
+			// Only clear when the pending target matches the plan-role model — leave
+			// any unrelated user-queued switch intact.
+			const pending = this.#pendingModelSwitch;
+			if (pending) {
+				const planResolution = this.session.resolveRoleModelWithThinking("plan");
+				if (planResolution.model && modelsAreEqual(pending.model, planResolution.model)) {
+					this.#pendingModelSwitch = undefined;
+				}
+			}
+		}
+		this.session.setStandingResolveHandler?.(null);
+		this.session.setPlanModeState(undefined);
+		this.planModeEnabled = false;
+		// Suppress cache-miss marker on the next turn: plan exit changes the system
+		// prompt, which predictably invalidates the cache.
+		this.lastAssistantUsage = undefined;
+		this.planModePaused = options?.paused ?? false;
+		this.planModePlanFilePath = undefined;
+		this.#planModePreviousTools = undefined;
+		if (!options?.deferModelRestore) this.#planModePreviousModelState = undefined;
+		this.#updatePlanModeStatus();
+		const paused = options?.paused ?? false;
+		this.sessionManager.appendModeChange(paused ? "plan_paused" : "none");
+		if (!options?.silent) {
+			this.showStatus(paused ? "Plan mode paused." : "Plan mode disabled.");
+		}
+	}
+
+	async #enterGoalMode(options: { objective?: string; resume?: boolean; silent?: boolean }): Promise<void> {
+		if (this.goalModeEnabled) {
+			return;
+		}
+		if (this.planModeEnabled || this.planModePaused) {
+			this.showWarning("Exit plan mode first.");
+			return;
+		}
+		if (this.vibeModeEnabled) {
+			this.showWarning("Exit vibe mode first.");
+			return;
+		}
+		const previousTools = this.session.getActiveToolNames();
+		const goalTools = [...new Set([...previousTools, "goal"])];
+		this.#goalModePreviousTools = previousTools;
+		this.goalModePaused = false;
+		const state = options.resume
+			? await this.session.goalRuntime.resumeGoal()
+			: await this.session.goalRuntime.createGoal({ objective: options.objective ?? "" });
+		await this.session.setActiveToolsByName(goalTools);
+		this.session.setGoalModeState(state);
+		this.goalModeEnabled = true;
+		this.#resetGoalContinuationSuppression();
+		this.#updateGoalModeStatus();
+		if (this.session.isStreaming) {
+			await this.session.sendGoalModeContext({ deliverAs: "steer" });
+		}
+		if (!options.silent) {
+			this.showStatus(options.resume ? "Goal mode resumed." : "Goal mode enabled.");
+		}
+	}
+
+	async #exitGoalMode(options?: {
+		silent?: boolean;
+		paused?: boolean;
+		reason?: "completed" | "paused" | "dropped";
+	}): Promise<void> {
+		const previousTools = this.#goalModePreviousTools;
+		if (this.goalModeEnabled && previousTools) {
+			await this.session.setActiveToolsByName(previousTools);
+		}
+		const currentState = this.session.getGoalModeState();
+		if (options?.reason === "completed") {
+			this.session.setGoalModeState(undefined);
+			this.sessionManager.appendModeChange("none");
+			this.sessionManager.appendCustomEntry("goal-completed", {
+				objective: currentState?.goal?.objective,
+				tokensUsed: currentState?.goal?.tokensUsed,
+				tokenBudget: currentState?.goal?.tokenBudget,
+				timeUsedSeconds: currentState?.goal?.timeUsedSeconds,
+			});
+		}
+		this.goalModeEnabled = false;
+		this.goalModePaused = options?.paused ?? false;
+		this.#goalModePreviousTools = undefined;
+		this.#goalContinuationTurnInFlight = false;
+		this.#resetGoalContinuationSuppression();
+		this.#goalUserTurnInFlight = false;
+		this.#cancelGoalContinuation();
+		this.#updateGoalModeStatus();
+		if (!options?.silent) {
+			if (options?.reason === "completed") {
+				this.showStatus("Goal mode completed.");
+			} else if (options?.reason === "dropped") {
+				this.showStatus("Goal dropped.");
+			} else if (options?.paused) {
+				this.showStatus("Goal mode paused.");
+			} else {
+				this.showStatus("Goal mode disabled.");
+			}
+		}
+	}
+
+	async #readPlanFile(planFilePath: string): Promise<string | null> {
+		const resolvedPath = this.#resolvePlanFilePath(planFilePath);
+		try {
+			return await Bun.file(resolvedPath).text();
+		} catch (error) {
+			if (isEnoent(error)) {
+				return null;
+			}
+			throw error;
+		}
+	}
+
+	async #hasPlanModeDraftContent(planFilePath: string): Promise<boolean> {
+		const candidates = new Set<string>([planFilePath, ...(await this.#listLocalPlanFiles())]);
+		for (const candidate of candidates) {
+			const content = await this.#readPlanFile(candidate);
+			if (content !== null && content.trim().length > 0) return true;
+		}
+		return false;
+	}
+
+	/** `local://` URLs of plan files in the session-local root, newest first.
+	 *  A fallback for `resolveApprovedPlan` when the agent dropped `extra.title`,
+	 *  so the plan it wrote is still found by scanning recent `*-plan.md` files. */
+	async #listLocalPlanFiles(): Promise<string[]> {
+		return listLocalPlanFileUrls(this.#resolvePlanFilePath("local://"));
+	}
+
+	showPlanReview(
+		planContent: string,
+		title: string,
+		options: string[],
+		dialogOptions?: {
+			helpText?: string;
+			disabledIndices?: number[];
+			onExternalEditor?: () => void;
+			onPlanEdited?: (content: string) => void;
+			onFeedbackChange?: (feedback: string) => void;
+			initialIndex?: number;
+		},
+		extra?: { slider?: HookSelectorSlider },
+	): Promise<string | undefined> {
+		this.#hidePlanReview();
+		const { promise, resolve } = Promise.withResolvers<string | undefined>();
+		let settled = false;
+		const finish = (choice: string | undefined): void => {
+			if (settled) return;
+			settled = true;
+			this.#hidePlanReview();
+			this.ui.requestRender();
+			resolve(choice);
+		};
+		this.#planReviewCancel = () => finish(undefined);
+		const overlay = new PlanReviewOverlay(
+			planContent,
+			{
+				promptTitle: title,
+				options,
+				disabledIndices: dialogOptions?.disabledIndices,
+				helpText: dialogOptions?.helpText,
+				initialIndex: dialogOptions?.initialIndex,
+				slider: extra?.slider,
+				externalEditorLabel: this.keybindings.getDisplayString("app.editor.external") || undefined,
+				requestRender: () => this.ui.requestRender(),
+			},
+			{
+				onPick: choice => finish(choice),
+				onCancel: () => finish(undefined),
+				onCopyPlan: content => void this.#copyPlanToClipboard(content),
+				onExternalEditor: dialogOptions?.onExternalEditor,
+				onAnnotationExternalEditor: (draft, commit) => void this.#openPlanAnnotationInExternalEditor(draft, commit),
+				onPlanEdited: dialogOptions?.onPlanEdited,
+				onFeedbackChange: dialogOptions?.onFeedbackChange,
+			},
+		);
+		this.#planReviewOverlay = overlay;
+		this.#planReviewOverlayHandle = this.ui.showOverlay(overlay, {
+			anchor: "bottom-center",
+			width: "100%",
+			maxHeight: "100%",
+			margin: 0,
+			fullscreen: true,
+		});
+		this.ui.setFocus(overlay);
+		this.ui.requestRender();
+		return promise;
+	}
+
+	#hidePlanReview(): void {
+		this.#planReviewCancel = undefined;
+		this.#planReviewOverlayHandle?.hide();
+		this.#planReviewOverlayHandle = undefined;
+		this.#planReviewOverlay = undefined;
+	}
+
+	#dismissPlanReview(): void {
+		const cancel = this.#planReviewCancel;
+		this.#planReviewCancel = undefined;
+		cancel?.();
+		this.#hidePlanReview();
+	}
+
+	#getEditorTerminalPath(): string | null {
+		if (process.platform === "win32") {
+			return null;
+		}
+		return "/dev/tty";
+	}
+
+	async #openEditorTerminalHandle(): Promise<fs.FileHandle | null> {
+		const terminalPath = this.#getEditorTerminalPath();
+		if (!terminalPath) {
+			return null;
+		}
+		try {
+			return await fs.open(terminalPath, "r+");
+		} catch {
+			// No controlling terminal: piped stdin, a CI runner, a detached process. That is ordinary rather
+			// than a failure, and null is the same "cannot hand a terminal to an editor" the win32 branch above
+			// returns, so the caller already has one path for it.
+			return null;
+		}
+	}
+
+	#getPlanApprovalContextUsage(): ContextUsage | undefined {
+		const executionModel = this.#planModePreviousModelState?.model ?? this.session.model;
+		const contextWindow = executionModel?.contextWindow;
+		if (typeof contextWindow === "number") {
+			return this.session.getContextUsage({ contextWindow });
+		}
+		return this.session.getContextUsage();
+	}
+
+	#formatKeepContextLabel(contextUsage: ContextUsage | undefined): string {
+		if (!contextUsage) {
+			return "Approve and keep context";
+		}
+		const tokens = formatContextTokenCount(contextUsage.tokens);
+		const contextWindow = formatContextTokenCount(contextUsage.contextWindow);
+		return `Approve and keep context (~${tokens} / ${contextWindow})`;
+	}
+
+	#isKeepContextDisabled(contextUsage: ContextUsage | undefined): boolean {
+		return contextUsage !== undefined && contextUsage.percent > PLAN_KEEP_CONTEXT_DISABLE_THRESHOLD_PERCENT;
+	}
+
+	async #copyPlanToClipboard(content: string): Promise<void> {
+		try {
+			await copyToClipboard(content);
+			this.showStatus("Copied plan to clipboard");
+		} catch (error) {
+			this.showWarning(`Failed to copy plan to clipboard: ${errorMessage(error)}`);
+		}
+	}
+
+	async #openPlanInExternalEditor(planFilePath: string): Promise<void> {
+		const editorCmd = getEditorCommand();
+		if (!editorCmd) {
+			this.showWarning("No editor configured. Set $VISUAL or $EDITOR environment variable.");
+			return;
+		}
+
+		const resolvedPath = this.#resolvePlanFilePath(planFilePath);
+		let currentText: string;
+		try {
+			currentText = await Bun.file(resolvedPath).text();
+		} catch (error) {
+			if (isEnoent(error)) {
+				this.showError(`Plan file not found at ${planFilePath}`);
+				return;
+			}
+			this.showWarning(`Failed to open external editor: ${errorMessage(error)}`);
+			return;
+		}
+
+		let ttyHandle: fs.FileHandle | null = null;
+		try {
+			ttyHandle = await this.#openEditorTerminalHandle();
+			this.ui.stop();
+
+			const stdio: [number | "inherit", number | "inherit", number | "inherit"] = ttyHandle
+				? [ttyHandle.fd, ttyHandle.fd, ttyHandle.fd]
+				: ["inherit", "inherit", "inherit"];
+
+			const result = await openInEditor(editorCmd, currentText, {
+				extension: path.extname(resolvedPath) || ".md",
+				stdio,
+				trimTrailingNewline: false,
+			});
+			if (result !== null) {
+				await Bun.write(resolvedPath, result);
+				this.#planReviewOverlay?.setPlanContent(result);
+				this.showStatus("Plan updated in external editor.");
+			}
+		} catch (error) {
+			this.showWarning(`Failed to open external editor: ${errorMessage(error)}`);
+		} finally {
+			if (ttyHandle) {
+				await ttyHandle.close();
+			}
+			this.ui.start();
+			this.ui.requestRender(true);
+		}
+	}
+
+	async #openPlanAnnotationInExternalEditor(draft: string, commit: (text: string | null) => void): Promise<void> {
+		const editorCmd = getEditorCommand();
+		if (!editorCmd) {
+			this.showWarning("No editor configured. Set $VISUAL or $EDITOR environment variable.");
+			return;
+		}
+
+		let ttyHandle: fs.FileHandle | null = null;
+		try {
+			ttyHandle = await this.#openEditorTerminalHandle();
+			this.ui.stop();
+
+			const stdio: [number | "inherit", number | "inherit", number | "inherit"] = ttyHandle
+				? [ttyHandle.fd, ttyHandle.fd, ttyHandle.fd]
+				: ["inherit", "inherit", "inherit"];
+
+			const result = await openInEditor(editorCmd, draft, { extension: ".md", stdio });
+			if (result !== null) {
+				commit(result);
+			}
+		} catch (error) {
+			this.showWarning(`Failed to open external editor: ${errorMessage(error)}`);
+		} finally {
+			if (ttyHandle) {
+				await ttyHandle.close();
+			}
+			this.ui.start();
+			this.ui.requestRender(true);
+		}
+	}
+
+	async #applyPlanExecutionModel(entry: ResolvedRoleModel | undefined): Promise<void> {
+		if (!entry) return;
+		try {
+			await this.session.applyRoleModel(entry);
+			this.statusLine.invalidate();
+			this.updateEditorBorderColor();
+			this.showStatus(`Continuing with ${entry.role}: ${entry.model.name || entry.model.id}`);
+		} catch (error) {
+			this.showWarning(`Could not switch to the ${entry.role} model: ${errorMessage(error)}`);
+		}
+	}
+
+	#resolveLocalRoot(): string {
+		return resolveLocalUrlToPath("local://", {
+			getArtifactsDir: () => this.sessionManager.getArtifactsDir(),
+			getSessionId: () => this.sessionManager.getSessionId(),
+		});
+	}
+
+	async #copyLocalArtifactsForFreshSession(sourceRoot: string, destinationRoot: string): Promise<void> {
+		if (sourceRoot === destinationRoot) return;
+
+		let sourceRootStat: { isDirectory(): boolean };
+		try {
+			sourceRootStat = await fs.lstat(sourceRoot);
+		} catch (error) {
+			if (isEnoent(error)) return;
+			throw error;
+		}
+
+		if (!sourceRootStat.isDirectory()) return;
+
+		await fs.mkdir(destinationRoot, { recursive: true });
+		await this.#copyLocalArtifactEntries(sourceRoot, destinationRoot);
+	}
+
+	async #copyLocalArtifactEntries(sourceDir: string, destinationDir: string): Promise<void> {
+		const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+		for (const entry of entries) {
+			const sourcePath = path.join(sourceDir, entry.name);
+			const destinationPath = path.join(destinationDir, entry.name);
+
+			if (entry.isDirectory()) {
+				await fs.mkdir(destinationPath, { recursive: true });
+				await this.#copyLocalArtifactEntries(sourcePath, destinationPath);
+				continue;
+			}
+
+			if (entry.isFile()) {
+				await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+				await fs.copyFile(sourcePath, destinationPath);
+			}
+		}
+	}
+
+	async #approvePlan(
+		planContent: string,
+		options: {
+			planFilePath: string;
+			title: string;
+			preserveContext?: boolean;
+			compactBeforeExecute?: boolean;
+			executionModel?: ResolvedRoleModel;
+		},
+	): Promise<void> {
+		const previousTools = this.#planModePreviousTools ?? this.session.getActiveToolNames();
+
+		// Mark the pending abort caused by the plan-mode → compaction transition as
+		// silent BEFORE #exitPlanMode raises it. The `finally` below clears the
+		// flag on every terminal compaction outcome (ok / cancelled / failed /
+		// throw) so a leaked flag cannot silence a later unrelated abort.
+		// Branchless mark+clear when !compactBeforeExecute: mark is gated; clear
+		// is unconditional and idempotent.
+		if (options.compactBeforeExecute) {
+			this.session.markPlanInternalAbortPending();
+		}
+		let compactOutcome: CompactionOutcome | undefined;
+		try {
+			await this.#exitPlanMode({
+				silent: true,
+				paused: false,
+				deferModelRestore: options.compactBeforeExecute === true,
+			});
+
+			if (!options.preserveContext) {
+				const oldLocalRoot = this.#resolveLocalRoot();
+				await this.handleClearCommand();
+				const newLocalRoot = this.#resolveLocalRoot();
+				await this.#copyLocalArtifactsForFreshSession(oldLocalRoot, newLocalRoot);
+				const newLocalPath = resolveLocalUrlToPath(options.planFilePath, {
+					getArtifactsDir: () => this.sessionManager.getArtifactsDir(),
+					getSessionId: () => this.sessionManager.getSessionId(),
+				});
+				await fs.mkdir(path.dirname(newLocalPath), { recursive: true });
+				await fs.writeFile(newLocalPath, planContent);
+			} else if (options.compactBeforeExecute) {
+				// Distill the plan-mode transcript before the execution turn is queued so
+				// the plan-approved synthetic prompt lands as a fresh cache anchor.
+				// Outcome is consumed after tool-restoration and plan-reference-path
+				// bookkeeping below; `markPlanReferenceSent` is intentionally deferred
+				// past the cancel guard — see the comment at the cancel branch.
+				// Cancellation skips the synthetic-prompt dispatch (the explicit
+				// abort is honored); failure proceeds best-effort — approval intent stands.
+				const compactionPrompt = prompt.render(planModePrompts["plan-mode/compact-instructions"].text, {
+					planFilePath: options.planFilePath,
+				});
+				// Pin the plan reference path BEFORE compaction so any user messages
+				// queued during the compaction await (which `handleCompactCommand`
+				// flushes via `flushCompactionQueue` before returning) see the
+				// approved plan in `#buildPlanReferenceMessage`. Reassignment after
+				// the try/finally is idempotent and kept for the !compactBeforeExecute
+				// branch.
+				this.session.setPlanReferencePath(options.planFilePath);
+				// Ride the plan-mode distillation prompt through as `internalGuidance`
+				// so it reaches native summarization without leaking into the public
+				// `customInstructions` channel on `session_before_compact` — extensions
+				// there treat that field as user focus and would query-bias the
+				// summary toward the plan boilerplate (issue #4359).
+				compactOutcome = await this.handleCompactCommand(
+					undefined,
+					undefined,
+					outcome => this.#applyDeferredPlanModelTransition(outcome, options.executionModel),
+					compactionPrompt,
+				);
+			}
+		} finally {
+			// Unconditional clear. Idempotent: a no-op when the flag was never set
+			// (i.e., the !compactBeforeExecute branch), and a no-op when the flag
+			// was already consumed by AgentSession.#handleAgentEvent's aborted
+			// message_end stamping. Guarantees the flag is dead at every exit.
+			this.session.clearPlanInternalAbortPending();
+		}
+
+		// Restore the execution tool set, but force-enable `read`: approved-plan
+		// prompts now require loading the durable local:// plan file before work.
+		const executionTools = previousTools.includes("read") ? previousTools : [...previousTools, "read"];
+		await this.session.setActiveToolsByName(executionTools);
+		this.session.setPlanReferencePath(options.planFilePath);
+
+		// Resolve the deferred plan-approval model transition. On the compact path
+		// the before-flush hook passed to handleCompactCommand already ran this (so
+		// any input queued during compaction executed on the post-compaction
+		// model); the re-run here is idempotent and covers the short-circuit where
+		// compaction never executed. It runs for "cancelled" too — the operator
+		// aborted only the compaction, not the approval — so the next turn no longer
+		// lands on the plan model. "failed" stays on the plan model (context
+		// intact) and dispatches best-effort.
+		if (options.compactBeforeExecute) {
+			await this.#applyDeferredPlanModelTransition(compactOutcome, options.executionModel);
+		} else {
+			await this.#applyPlanExecutionModel(options.executionModel);
+		}
+
+		if (compactOutcome === "cancelled") {
+			// Explicit abort: honor it. `executeCompaction` already surfaced
+			// `showError("Compaction cancelled")`; we add the deferred-dispatch
+			// warning and exit without dispatching the synthetic plan-approved
+			// prompt. `markPlanReferenceSent` stays unset so
+			// `AgentSession.#buildPlanReferenceMessage` injects the plan reference
+			// on the operator's next `prompt()` call.
+			this.showWarning(
+				"Plan approved, but compaction was cancelled — execution not dispatched. Submit a turn to continue.",
+			);
+			return;
+		}
+
+		// Approved plans land in a fresh (or compacted) session whose first user-visible
+		// turn is the synthetic plan-approved prompt — that path bypasses the
+		// input-controller's title generation. Seed an auto-name from the plan title
+		// so the session is not left unnamed. `setSessionName("auto")` is a no-op
+		// when the user has already chosen a name (preserveContext paths).
+		const seededName = humanizePlanTitle(options.title);
+		if (seededName && !this.sessionManager.getSessionName()) {
+			await this.sessionManager.setSessionName(seededName, "auto");
+		}
+
+		// markPlanReferenceSent fires only on the dispatch path so the synthetic
+		// plan-approved prompt is the source of the reference injection.
+		this.session.markPlanReferenceSent();
+		const planModePrompt = prompt.render(planModePrompts["plan-mode/approved"].text, {
+			planFilePath: options.planFilePath,
+			contextPreserved: options.preserveContext === true,
+		});
+		// A user turn queued during compaction was already fired by
+		// `flushCompactionQueue` before we returned from `handleCompactCommand`; the
+		// old abort-then-prompt path would have discarded that operator turn AND
+		// still surfaced `AgentBusyError` when the queued turn kicked off in the
+		// synchronous gap. Preserve the in-flight work and queue the hidden
+		// execution directive behind it as a synthetic follow-up. If `isStreaming`
+		// flips true between the check and dispatch (the same fire-and-forget race
+		// noted below), catch `AgentBusyError` and fall back to the same queue.
+		if (this.session.isStreaming) {
+			await this.session.followUp(planModePrompt, undefined, { synthetic: true });
+			return;
+		}
+		try {
+			await this.session.prompt(planModePrompt, { synthetic: true });
+		} catch (error) {
+			if (!(error instanceof AgentBusyError)) throw error;
+			await this.session.followUp(planModePrompt, undefined, { synthetic: true });
+		}
+	}
+	async #abortPlanApprovalTurnSilently(): Promise<void> {
+		this.session.markPlanInternalAbortPending();
+		try {
+			// Machinery closing its own turn, not the operator stopping the work: an
+			// abort that defaults to `interrupted` would pause an active goal for a
+			// reason the operator never gave. Plan mode and goal mode are mutually
+			// exclusive today, so this classifies the abort rather than fixing a live
+			// stall — the vocabulary is only worth having if every site uses it.
+			await this.session.abort({ goalReason: "internal" });
+		} finally {
+			this.session.clearPlanInternalAbortPending();
+		}
+	}
+
+	async handlePlanModeCommand(initialPrompt?: string): Promise<void> {
+		if (this.goalModeEnabled || this.goalModePaused) {
+			this.showWarning("Exit goal mode first.");
+			return;
+		}
+		if (this.vibeModeEnabled) {
+			this.showWarning("Exit vibe mode first.");
+			return;
+		}
+		if (this.planModeEnabled) {
+			const planFilePath = this.planModePlanFilePath ?? (await this.#getPlanFilePath());
+			if (await this.#hasPlanModeDraftContent(planFilePath)) {
+				const confirmed = await this.showHookConfirm(
+					"Exit plan mode?",
+					"This exits plan mode without approving a plan.",
+				);
+				if (!confirmed) return;
+			}
+			await this.#exitPlanMode({ paused: true });
+			return;
+		}
+		if (this.planModePaused && !initialPrompt) {
+			// No-arg third toggle: paused → off. Tools, model, and plan state were
+			// already restored by the prior #exitPlanMode({ paused: true }); only the
+			// paused flag, the reentry marker, and the session mode entry remain.
+			// Prompted /plan invocations fall through to #enterPlanMode below so the
+			// supplied prompt is still submitted as the first plan-mode turn.
+			this.planModePaused = false;
+			this.#planModeHasEntered = false;
+			this.#updatePlanModeStatus();
+			this.sessionManager.appendModeChange("none");
+			this.showStatus("Plan mode disabled.");
+			return;
+		}
+		if (!this.session.settings.get("plan.enabled")) {
+			this.showWarning("Plan mode is disabled. Enable it in settings (plan.enabled).");
+			return;
+		}
+		await this.#enterPlanMode();
+		if (initialPrompt && this.onInputCallback) {
+			this.onInputCallback(this.startPendingSubmission({ text: initialPrompt }));
+		}
+	}
+
+	/**
+	 * `/vibe` toggle. Entering installs the ephemeral vibe tools, strips the
+	 * active toolset down to `read` plus those tools, and injects the director
+	 * context. Exiting unregisters them, restores the previous toolset, and kills
+	 * every worker session so workers cannot outlive the mode that directs them.
+	 */
+	async handleVibeModeCommand(initialPrompt?: string): Promise<void> {
+		if (this.vibeModeEnabled) {
+			await this.#exitVibeMode();
+			return;
+		}
+		if (this.planModeEnabled || this.planModePaused) {
+			this.showWarning("Exit plan mode first.");
+			return;
+		}
+		if (this.goalModeEnabled || this.goalModePaused) {
+			this.showWarning("Exit goal mode first.");
+			return;
+		}
+		await this.#enterVibeMode();
+		if (initialPrompt && this.onInputCallback) {
+			this.onInputCallback(this.startPendingSubmission({ text: initialPrompt }));
+		}
+	}
+
+	async #enterVibeMode(): Promise<void> {
+		if (this.vibeModeEnabled) {
+			return;
+		}
+		if (this.planModeEnabled || this.planModePaused) {
+			this.showWarning("Exit plan mode first.");
+			return;
+		}
+		if (this.goalModeEnabled || this.goalModePaused) {
+			this.showWarning("Exit goal mode first.");
+			return;
+		}
+
+		const previousTools = this.session.getActiveToolNames();
+		await this.session.activateVibeTools(["read"]);
+		this.#vibeModePreviousTools = previousTools;
+		this.vibeModeEnabled = true;
+		// Suppress cache-miss marker on the next turn: vibe mode changes the
+		// injected context, which predictably invalidates the cache.
+		this.lastAssistantUsage = undefined;
+		this.session.setVibeModeState({ enabled: true });
+		if (this.session.isStreaming) {
+			await this.session.sendVibeModeContext({ deliverAs: "steer" });
+		}
+		this.#updateVibeModeStatus();
+		this.sessionManager.appendModeChange("vibe");
+		this.showStatus("Vibe mode enabled. You direct fast/good worker sessions; toolset is read + vibe tools.");
+	}
+
+	async #exitVibeMode(): Promise<void> {
+		if (!this.vibeModeEnabled) {
+			return;
+		}
+		await this.session.deactivateVibeTools(this.#vibeModePreviousTools ?? []);
+		this.session.setVibeModeState(undefined);
+		this.vibeModeEnabled = false;
+		this.#vibeModePreviousTools = undefined;
+		this.lastAssistantUsage = undefined;
+		const killed = await VibeSessionRegistry.global().killAll(
+			this.session.getAgentId() ?? MAIN_AGENT_ID,
+			this.session.asyncJobManager,
+		);
+		this.#updateVibeModeStatus();
+		this.sessionManager.appendModeChange("none");
+		this.showStatus(
+			killed > 0 ? `Vibe mode disabled. Killed ${formatCount("worker session", killed)}.` : "Vibe mode disabled.",
+		);
+	}
+
+	async handleGoalModeCommand(rest?: string): Promise<void> {
+		try {
+			if (this.planModeEnabled || this.planModePaused) {
+				this.showWarning("Exit plan mode first.");
+				return;
+			}
+			if (this.vibeModeEnabled) {
+				this.showWarning("Exit vibe mode first.");
+				return;
+			}
+			if (!this.session.settings.get("goal.enabled")) {
+				this.showWarning("Goal mode is disabled. Enable it in settings (goal.enabled).");
+				return;
+			}
+			const { sub, rest: subRest } = parseGoalSubcommand(rest ?? "");
+			if (sub) {
+				await this.#dispatchGoalSubcommand(sub, subRest);
+				return;
+			}
+			if (this.goalModeEnabled) {
+				if (subRest) {
+					this.showStatus("Goal mode is already active. Use /goal to manage it, or /goal drop to start over.");
+					return;
+				}
+				await this.#openGoalMenu("active");
+				return;
+			}
+			const pausedState = this.#getPausedGoalState();
+			if (pausedState) {
+				if (subRest) {
+					this.showWarning("Resume the current goal first, or drop it before setting a new objective.");
+					return;
+				}
+				await this.#openGoalMenu("paused");
+				return;
+			}
+			if (subRest) {
+				await this.#startGoalFromObjective(subRest);
+				return;
+			}
+			const objective = (
+				await this.showHookEditor("Goal objective", undefined, undefined, { promptStyle: true })
+			)?.trim();
+			if (!objective) return;
+			await this.#startGoalFromObjective(objective);
+		} catch (error) {
+			this.showError(errorMessage(error));
+		}
+	}
+	async handleGuidedGoalCommand(rest?: string): Promise<void> {
+		try {
+			if (this.planModeEnabled || this.planModePaused) {
+				this.showWarning("Exit plan mode first.");
+				return;
+			}
+			if (!this.session.settings.get("goal.enabled")) {
+				this.showWarning("Goal mode is disabled. Enable it in settings (goal.enabled).");
+				return;
+			}
+			if (this.goalModeEnabled) {
+				this.showStatus("Goal mode is already active. Use /goal to manage it, or /goal drop to start over.");
+				return;
+			}
+			if (this.#getPausedGoalState()) {
+				this.showWarning("Resume the current goal first, or drop it before setting a new objective.");
+				return;
+			}
+
+			const initial = rest?.trim()
+				? rest.trim()
+				: (await this.showHookEditor("Guided goal", undefined, undefined, { promptStyle: true }))?.trim();
+			if (!initial) return;
+
+			const messages: GuidedGoalMessage[] = [{ role: "user", content: initial }];
+			let latestDraftObjective: string | undefined;
+			// One Codex side session for the whole interview: every follow-up turn
+			// reuses it so a multi-question interview shares a single websocket-only
+			// Codex socket instead of leaking one per turn (#5471 review).
+			const guidedGoalSessionId = newGuidedGoalSessionId(this.session);
+			for (let turn = 0; turn < 6; turn++) {
+				const result = await this.#withGuidedGoalProgress(
+					turn === 0 ? "Refining the objective" : "Reading your answer",
+					() => runGuidedGoalTurn(this.session, { messages, sideSessionId: guidedGoalSessionId }),
+				);
+				if (result.objective?.trim()) latestDraftObjective = result.objective.trim();
+				if (result.kind === "question") {
+					messages.push({ role: "assistant", content: result.question });
+					const answer = (
+						await this.showHookEditor(result.question, undefined, undefined, { promptStyle: true })
+					)?.trim();
+					if (!answer) return;
+					messages.push({ role: "user", content: answer });
+					continue;
+				}
+
+				const finalObjective = (
+					await this.showHookEditor("Review guided goal", result.objective, undefined, { promptStyle: true })
+				)?.trim();
+				if (!finalObjective) return;
+				await this.#startGoalFromObjective(finalObjective);
+				return;
+			}
+
+			// Hit the turn cap without an explicit `ready`. Rather than discard the whole interview,
+			// salvage the latest non-empty model objective draft seen on any earlier turn. A final
+			// question turn may omit `objective`; that must not erase a usable draft.
+			if (latestDraftObjective) {
+				const finalObjective = (
+					await this.showHookEditor("Review guided goal", latestDraftObjective, undefined, { promptStyle: true })
+				)?.trim();
+				if (finalObjective) {
+					await this.#startGoalFromObjective(finalObjective);
+					return;
+				}
+			}
+			this.showWarning("Guided goal setup needs more detail. Run /guided-goal again with a narrower objective.");
+		} catch (error) {
+			this.showError(errorMessage(error));
+		}
+	}
+
+	async #dispatchGoalSubcommand(sub: GoalSubcommand, rest: string): Promise<void> {
+		switch (sub) {
+			case "set":
+				await this.#handleGoalSetSubcommand(rest);
+				return;
+			case "show":
+				this.#showGoalDetails();
+				return;
+			case "pause":
+				await this.#pauseGoalAction();
+				return;
+			case "resume":
+				await this.#resumeGoalAction();
+				return;
+			case "drop":
+				await this.#confirmAndDropGoal();
+				return;
+		}
+	}
+
+	async #openGoalMenu(state: "active" | "paused"): Promise<void> {
+		const goal = this.session.getGoalModeState()?.goal;
+		if (!goal) return;
+		const summary = this.#goalSummary(goal.objective);
+		const title = state === "active" ? `Goal: ${summary} (${goal.status})` : `Goal paused: ${summary}`;
+		const items = state === "active" ? ["Show details", "Pause", "Drop"] : ["Resume", "Show details", "Drop"];
+		const choice = await this.showHookSelector(title, items);
+		if (!choice) return;
+		switch (choice) {
+			case "Show details":
+				this.#showGoalDetails();
+				return;
+			case "Pause":
+				await this.#pauseGoalAction();
+				return;
+			case "Resume":
+				await this.#resumeGoalAction();
+				return;
+			case "Drop":
+				await this.#confirmAndDropGoal();
+				return;
+		}
+	}
+
+	#showGoalDetails(): void {
+		const state = this.session.getGoalModeState();
+		const goal = state?.goal;
+		if (!goal) {
+			this.showStatus("No goal set.");
+			return;
+		}
+		const used = goal.tokensUsed.toLocaleString();
+		let tokensLine = used;
+		if (this.session.settings.get("goal.modelBudgetsEnabled") && goal.tokenBudget !== undefined) {
+			const left = Math.max(0, goal.tokenBudget - goal.tokensUsed);
+			const pct = goal.tokenBudget > 0 ? Math.min(999, Math.round((goal.tokensUsed / goal.tokenBudget) * 100)) : 0;
+			tokensLine = `${used} / ${goal.tokenBudget.toLocaleString()} (${pct}%, ${left.toLocaleString()} left)`;
+		}
+		const lines = [
+			`Objective: ${goal.objective}`,
+			`Status: ${goal.status}${state?.enabled ? "" : " (paused)"}`,
+			`Tokens: ${tokensLine}`,
+			`Turns: ${goal.turnsCompleted}`,
+			`Time spent: ${formatDurationCoarse(goal.timeUsedSeconds * 1000)}`,
+		];
+		this.showStatus(lines.join("\n"));
+	}
+
+	/**
+	 * Open the goal detail/action menu for the current goal (active or paused)
+	 * without typing `/goal`. Reuses the existing `#openGoalMenu` opener and its
+	 * runtime-wired actions; a no-op when no goal is set. This is the target of
+	 * the down-arrow status affordance wired in {@link InputController}.
+	 */
+	async openGoalDetail(): Promise<void> {
+		if (this.goalModeEnabled) {
+			await this.#openGoalMenu("active");
+			return;
+		}
+		if (this.#getPausedGoalState()) {
+			await this.#openGoalMenu("paused");
+		}
+	}
+
+	async #pauseGoalAction(): Promise<void> {
+		if (!this.goalModeEnabled) {
+			this.showWarning("No active goal to pause.");
+			return;
+		}
+		await this.session.goalRuntime.pauseGoal();
+		await this.#exitGoalMode({ paused: true, reason: "paused" });
+	}
+
+	async #resumeGoalAction(): Promise<void> {
+		if (!this.#getPausedGoalState()) {
+			this.showWarning("No paused goal to resume.");
+			return;
+		}
+		await this.#enterGoalMode({ resume: true, silent: true });
+		this.showStatus("Goal mode resumed.");
+		this.#scheduleGoalContinuation();
+	}
+
+	async #confirmAndDropGoal(): Promise<void> {
+		if (!this.goalModeEnabled && !this.#getPausedGoalState()) {
+			this.showWarning("No goal to drop.");
+			return;
+		}
+		const confirmed = await this.showHookConfirm(
+			"Drop goal?",
+			"This removes the goal record. Accumulated usage stays in the session log.",
+		);
+		if (!confirmed) return;
+		await this.session.goalRuntime.dropGoal();
+		await this.#exitGoalMode({ reason: "dropped" });
+	}
+
+	async #startGoalFromObjective(objective: string): Promise<void> {
+		await this.#enterGoalMode({ objective, silent: true });
+		this.#resetGoalContinuationSuppression();
+		if (!this.session.isStreaming && this.onInputCallback) {
+			this.onInputCallback(this.startPendingSubmission({ text: objective }));
+		}
+	}
+
+	async #replaceGoalFromObjective(objective: string): Promise<void> {
+		const state = await this.session.goalRuntime.replaceGoal({ objective });
+		this.session.setGoalModeState(state);
+		this.goalModeEnabled = true;
+		this.goalModePaused = false;
+		this.#resetGoalContinuationSuppression();
+		this.#updateGoalModeStatus();
+		if (this.session.isStreaming) {
+			await this.session.sendGoalModeContext({ deliverAs: "steer" });
+		}
+		if (!this.session.isStreaming && this.onInputCallback) {
+			this.onInputCallback(this.startPendingSubmission({ text: objective }));
+		}
+	}
+
+	async #handleGoalSetSubcommand(rest: string): Promise<void> {
+		if (!this.goalModeEnabled && this.#getPausedGoalState()) {
+			this.showWarning("Resume the current goal first, or drop it before setting a new objective.");
+			return;
+		}
+		const objective = rest.trim()
+			? rest.trim()
+			: (await this.showHookEditor("Goal objective", undefined, undefined, { promptStyle: true }))?.trim();
+		if (!objective) return;
+		if (this.goalModeEnabled) {
+			await this.#replaceGoalFromObjective(objective);
+			return;
+		}
+		await this.#startGoalFromObjective(objective);
+	}
+
+	/** Manually (re-)open the plan-review overlay — bound to `/plan-review`. Lets
+	 *  the operator pull the review back up after dismissing it, or review a plan
+	 *  the agent wrote without calling `resolve`. There is no fixed plan filename:
+	 *  `getPlanReferencePath()` is empty until a plan is actually approved (and does
+	 *  not survive a restart), so this drives off the newest `local://<slug>-plan.md`
+	 *  the agent wrote — the files persist in the session artifacts dir, so the scan
+	 *  works before any review and across restarts. */
+	async openPlanReview(): Promise<void> {
+		if (!this.planModeEnabled) {
+			this.showWarning("Plan mode is not active.");
+			return;
+		}
+		const noPlan = "No plan to review yet — write one to a local://<slug>-plan.md file first.";
+		const [planFilePath] = await this.#listLocalPlanFiles();
+		if (!planFilePath) {
+			this.showWarning(noPlan);
+			return;
+		}
+		const planContent = await this.#readPlanFile(planFilePath);
+		if (planContent === null) {
+			this.showWarning(noPlan);
+			return;
+		}
+		const { title } = resolvePlanTitle({ planContent, planFilePath });
+		await this.handlePlanApproval({ planFilePath, title, planExists: true });
+	}
+
+	async handlePlanApproval(details: PlanApprovalDetails): Promise<void> {
+		if (!this.planModeEnabled) {
+			this.showWarning("Plan mode is not active.");
+			return;
+		}
+
+		// Abort the agent to prevent it from continuing (e.g., re-submitting the
+		// plan) while the popup is showing. The event listener fires asynchronously
+		// (agent's #emit is fire-and-forget), so without this the model sees
+		// "Plan ready for approval." and immediately re-invokes `resolve` in a loop.
+		// This abort is an internal UI transition, not operator cancellation.
+		await this.#abortPlanApprovalTurnSilently();
+
+		const planFilePath = details.planFilePath || this.planModePlanFilePath || (await this.#getPlanFilePath());
+		this.planModePlanFilePath = planFilePath;
+		const planContent = await this.#readPlanFile(planFilePath);
+		if (!planContent) {
+			this.showError(`Plan file not found at ${planFilePath}`);
+			return;
+		}
+
+		const contextUsage = this.#getPlanApprovalContextUsage();
+		const keepContextLabel = this.#formatKeepContextLabel(contextUsage);
+		const keepContextDisabled = this.#isKeepContextDisabled(contextUsage);
+
+		// Model-tier slider: let the operator pick which configured role model
+		// (smol/default/slow/…) executes the approved plan. The slider always starts
+		// on the `default` tier so execution defaults to the default model no matter
+		// which model drove the planning conversation. Left/right move it from there;
+		// hidden when fewer than two role models resolve — a lone tier is no choice.
+		// `selectedTierIndex` tracks the live slider position.
+		// `cycleOrder` is the ctrl+p cycle and no longer carries the legacy `default`
+		// pseudo-role (see settings.ts's cycleOrder migration), but the slider still
+		// needs `default` as its anchor tier, so it is prepended explicitly here.
+		const roleOrder = ["default", ...this.session.settings.get("cycleOrder").filter(role => role !== "default")];
+		const cycle = this.session.getRoleModelCycle(roleOrder);
+		const defaultTierIndex = cycle ? cycle.models.findIndex(entry => entry.role === "default") : -1;
+		const startTierIndex = defaultTierIndex >= 0 ? defaultTierIndex : (cycle?.currentIndex ?? 0);
+		let selectedTierIndex = startTierIndex;
+		const slider: HookSelectorSlider | undefined =
+			cycle && cycle.models.length > 1
+				? {
+						caption: "continue with",
+						index: startTierIndex,
+						segments: cycle.models.map(entry => ({
+							label: entry.role,
+							detail: entry.model.name || entry.model.id,
+						})),
+						onChange: index => {
+							selectedTierIndex = index;
+						},
+					}
+				: undefined;
+		// The overlay now owns the dynamic, focus-aware help line; the caller only
+		// supplies the trailing cancel hint.
+		const helpText = "esc cancel";
+		// In-overlay edits (section deletes/undo) and section annotations. Deletes
+		// update `editedContent` (and mirror to disk); annotations build `feedback`
+		// that the Refine branch re-prompts the model with.
+		let editedContent: string | undefined;
+		let feedback = "";
+
+		const choice = await this.showPlanReview(
+			planContent,
+			"Plan mode - next step",
+			["Approve and execute", "Approve and compact context", keepContextLabel, "Refine plan"],
+			{
+				helpText,
+				onExternalEditor: () => void this.#openPlanInExternalEditor(planFilePath),
+				onPlanEdited: content => {
+					editedContent = content;
+					void Bun.write(this.#resolvePlanFilePath(planFilePath), content);
+				},
+				onFeedbackChange: value => {
+					feedback = value;
+				},
+				disabledIndices: keepContextDisabled ? [PLAN_KEEP_CONTEXT_OPTION_INDEX] : undefined,
+			},
+			{ slider },
+		);
+
+		if (choice === "Approve and execute" || choice === "Approve and compact context" || choice === keepContextLabel) {
+			try {
+				// Prefer in-overlay edits (already in memory) over a disk re-read. The
+				// overlay mirrors edits as they happen, and approval awaits one final
+				// write so the durable plan file and synthetic prompt carry the same text.
+				const latestPlanContent = editedContent ?? (await this.#readPlanFile(planFilePath));
+				if (editedContent !== undefined) {
+					await Bun.write(this.#resolvePlanFilePath(planFilePath), editedContent);
+				}
+				if (!latestPlanContent) {
+					this.showError(`Plan file not found at ${planFilePath}`);
+					return;
+				}
+				// Capture the operator's tier choice and hand it to #approvePlan, which
+				// applies it AFTER #exitPlanMode. #exitPlanMode normally restores
+				// #planModePreviousModelState (the model from before plan mode), so
+				// applying the slider choice any earlier would be silently reverted.
+				// Pass executionModel only when the slider was actually shown — a
+				// singleton cycle (e.g. only modelRoles.plan is configured, so
+				// getRoleModelCycle synthesizes a lone `default` entry from the
+				// currently active plan model) hides the slider, the operator made
+				// no selection, and the pre-plan model is not in the cycle. Pinning
+				// that singleton would silently switch the session back to the plan
+				// model after #exitPlanMode restored the pre-plan model.
+				// Treat the choice as implicit only when applying the selected role
+				// would land on the same end state as the restore — same model AND
+				// the same effective thinking level. A role with an explicit thinking
+				// suffix that differs from the restored thinking level must still go
+				// through applyRoleModel, otherwise approving on the same model with a
+				// different configured thinking level silently keeps the pre-plan level.
+				const restoredState = this.#planModePreviousModelState;
+				const restoredIndex =
+					cycle && restoredState
+						? cycle.models.findIndex(entry => {
+								if (!modelsAreEqual(entry.model, restoredState.model)) return false;
+								if (!entry.explicitThinkingLevel) return true;
+								return entry.thinkingLevel === restoredState.thinkingLevel;
+							})
+						: -1;
+				const executionModel =
+					slider && cycle && selectedTierIndex !== restoredIndex ? cycle.models[selectedTierIndex] : undefined;
+				await this.#approvePlan(latestPlanContent, {
+					planFilePath,
+					title: details.title,
+					preserveContext: choice !== "Approve and execute",
+					compactBeforeExecute: choice === "Approve and compact context",
+					executionModel,
+				});
+			} catch (error) {
+				this.showError(`Failed to finalize approved plan: ${errorMessage(error)}`);
+			}
+			return;
+		}
+
+		if (choice === "Refine plan") {
+			const refinement = feedback.trim();
+			try {
+				if (refinement) {
+					if (this.onInputCallback) {
+						this.onInputCallback(this.startPendingSubmission({ text: feedback }));
+					} else {
+						await this.session.prompt(feedback);
+					}
+				} else {
+					this.showStatus("Refine plan: enter a follow-up prompt.");
+				}
+			} catch (error) {
+				this.showError(`Failed to refine plan: ${errorMessage(error)}`);
+			}
+			return;
+		}
+	}
+
+	stop(): void {
+		this.#freezeFrameProduction();
+		if (this.#cleanupUnsubscribe) {
+			this.#cleanupUnsubscribe();
+		}
+		this.#shutdownInputGateRelease?.();
+		this.#shutdownInputGateRelease = undefined;
+		if (this.isInitialized) {
+			this.ui.stop();
+			this.isInitialized = false;
+		}
+	}
+
+	/**
+	 * Disconnect everything that can still turn session state into a frame or
+	 * turn a keystroke into session work: the loading/mic/clock animations, the
+	 * anchored motion frame, the todo/observer/goal timers, voice input, extension terminal input
+	 * listeners and hook widgets, the event bus, the agent/bash subscriptions,
+	 * the event controller, the status line, the resize hook, and the session
+	 * event subscription. Everything here is idempotent, and the method itself
+	 * is guarded, because shutdown() runs it BEFORE the teardown await. A slow
+	 * `session.dispose` (the consolidate budget is seconds) must not leave the
+	 * dying session painting or accepting work. Meanwhile stop() runs it again at
+	 * the end for every path that never went through shutdown().
+	 *
+	 * What deliberately stays live until stop(): the postmortem registration
+	 * (a signal mid-teardown must still reach the memoized teardown), the
+	 * shutdown input gate, and the terminal itself.
+	 */
+	#frameProductionFrozen = false;
+	#freezeFrameProduction(): void {
+		if (this.#frameProductionFrozen) return;
+		this.#frameProductionFrozen = true;
+		if (this.loadingAnimation) {
+			this.#stopLoadingAnimation(false);
+		}
+		this.#cleanupMicAnimation();
+		if (this.#clockTimer) {
+			clearInterval(this.#clockTimer);
+			this.#clockTimer = undefined;
+		}
+		this.#cancelTodoAutoClearTimer();
+		this.#cancelAnchoredMotionTimer();
+		this.#cancelObserverUiSyncTimer();
+		this.#cancelGoalContinuation();
+		if (this.#sttController) {
+			this.#sttController.dispose();
+			this.#sttController = undefined;
+		}
+		this.#extensionUiController.clearExtensionTerminalInputListeners();
+		this.#extensionUiController.clearHookWidgets();
+		for (const unsubscribe of this.#eventBusUnsubscribers) {
+			unsubscribe();
+		}
+		this.#eventBusUnsubscribers = [];
+		this.#observerRegistry.dispose();
+		this.#agentRegistryUnsubscribe?.();
+		this.#agentRegistryUnsubscribe = undefined;
+		this.#agentRegistrySubscriptionTarget = undefined;
+		this.#bashForegroundUnsubscribe?.();
+		this.#bashForegroundUnsubscribe = undefined;
+		this.#backgroundSessionsUnsubscribe?.();
+		this.#backgroundSessionsUnsubscribe = undefined;
+		this.#eventController.dispose();
+		this.statusLine.dispose();
+		if (this.#resizeHandler) {
+			process.stdout.removeListener("resize", this.#resizeHandler);
+			this.#resizeHandler = undefined;
+		}
+		if (this.unsubscribe) {
+			this.unsubscribe();
+			this.unsubscribe = undefined;
+		}
+	}
+
+	/**
+	 * Wait for one committed frame so the closing status is actually on screen
+	 * before `#freezeFrameProduction` runs. `showStatus` only SCHEDULES a
+	 * paint; without an explicit commit the freeze could win the race and the
+	 * operator would stare at a frozen terminal with no explanation for the
+	 * teardown pause. Bounded so a stopped or headless UI can never hang
+	 * shutdown.
+	 */
+	#commitClosingFrame(): Promise<void> {
+		if (!this.isInitialized) return Promise.resolve();
+		return new Promise<void>(resolve => {
+			const previous = this.ui.onFrameComposed;
+			let settled = false;
+			const finish = () => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timer);
+				this.ui.onFrameComposed = previous;
+				resolve();
+			};
+			const timer = setTimeout(finish, 250);
+			this.ui.onFrameComposed = () => {
+				try {
+					previous?.();
+				} finally {
+					finish();
+				}
+			};
+			this.ui.requestRender(true);
+		});
+	}
+
+	async shutdown(): Promise<void> {
+		if (this.#isShuttingDown) return;
+		this.#isShuttingDown = true;
+
+		// From this moment the session is leaving, so its editor must not take
+		// another keystroke. Teardown below can hold the terminal for seconds
+		// (the consolidate budget plus the input drain), and every key delivered
+		// in that window would otherwise land in the dying session's editor.
+		// Swallow it all instead. The one exception is Ctrl+C: the hard-abort
+		// ladder for a stuck teardown (issue #2600) lives below the input
+		// listeners, so the gate passes it through.
+		//
+		// This gate covers only what this process still reads. It never covered
+		// the relaunch leak it used to claim: once the terminal is released
+		// nothing here is reading fd 0, so the kernel queues arriving bytes and
+		// hands them to the relaunched child. That window belongs to the child,
+		// and `init()` closes it there with `flushPendingTtyInput()`.
+		this.#shutdownInputGateRelease ??= this.ui.addInputListener(data =>
+			matchesKey(data, "ctrl+c") ? undefined : { consume: true },
+		);
+
+		this.#btwController.dispose();
+		this.#omfgController.dispose();
+		this.#focusController.dispose();
+
+		// Surface an explicit "Closing session…" line so the user sees a reason
+		// for the pause while `session.dispose()` flushes memory consolidate and
+		// other cleanups (issue #3641).
+		this.showStatus("Closing session…");
+
+		// Commit the closing frame, then disconnect every frame producer BEFORE
+		// the teardown await: the closing frame is the last frame this session
+		// paints, and a multi-second dispose can never make the dying session
+		// look alive again. (The previous code relied on the teardown await
+		// yielding a tick for the status to paint and left every producer live
+		// for the whole window.)
+		await this.#commitClosingFrame();
+		this.#freezeFrameProduction();
+
+		// A session handed off by `/new` is still finishing its turn and owns its
+		// own transcript writer, so wait for it before the UI stops. Its turn is
+		// already bounded by the agent loop; nothing new can be submitted to it.
+		await BackgroundSessions.global().drain();
+
+		// Persist the draft and dispose the session through the shared teardown
+		// so a signal that arrives mid-shutdown cannot fire a second dispose.
+		// The teardown is a promise-memoized singleton; whichever path calls it
+		// first runs the work, the other awaits the same settled promise.
+		// The teardown is registered lazily in `init()` — a `/exit` reached
+		// before `init()` completed falls back to a direct dispose.
+		if (this.#signalTeardown) {
+			await this.#signalTeardown();
+		} else {
+			await this.session.dispose({ mnemopiConsolidateTimeoutMs: SHUTDOWN_CONSOLIDATE_BUDGET_MS });
+		}
+
+		// Do not force a final render during teardown: disposed session/UI state can
+		// collapse to an empty frame, clearing the viewport and leaving the parent
+		// shell prompt at row 0. Stop from the last committed frame so the terminal
+		// hands Bash the cursor immediately after visible veyyon content.
+		// Drain any in-flight Kitty key release events before stopping.
+		// This prevents escape sequences from leaking to the parent shell over slow SSH.
+		await this.ui.terminal.drainInput(1000);
+		popTerminalTitle();
+		this.stop();
+
+		// The brand bookend: the sun sets on the session — open with the sunrise,
+		// close with the sunset. TTY only; piped exits stay silent.
+		if (process.stderr.isTTY) {
+			const sunset = renderSunsetField({ cols: 40, rows: 7, time: 0.6, trueColor: TERMINAL.trueColor });
+			process.stderr.write(`\n${sunset.join("\n")}\n${chalk.dim("the sun sets on this session")}\n`);
+		}
+
+		// Print resumption hint if this is a persisted session
+		const sessionId = this.sessionManager.getSessionId();
+		const sessionFile = this.sessionManager.getSessionFile();
+		if (sessionId && sessionFile) {
+			process.stderr.write(`\n${chalk.dim(`Resume this session with ${APP_NAME} --resume ${sessionId}`)}\n`);
+		}
+
+		// A requested relaunch (e.g. `/profile <name>`) takes over the restored
+		// terminal; the parent lingers only to propagate the child's exit code.
+		if (this.#relaunchSpec) {
+			const { argv, env } = this.#relaunchSpec;
+			const childEnv: Record<string, string> = {};
+			for (const [key, value] of Object.entries({ ...process.env, ...env })) {
+				if (value !== undefined) childEnv[key] = value;
+			}
+			// Tell the child that whatever is queued on the tty predates it.
+			childEnv[RELAUNCH_MARKER] = "1";
+			const child = Bun.spawn(argv, { stdio: ["inherit", "inherit", "inherit"], env: childEnv });
+			await postmortem.quit(await child.exited);
+			return;
+		}
+
+		await postmortem.quit(0);
+	}
+
+	requestRelaunch(spec: { argv: string[]; env?: Record<string, string | undefined> }): void {
+		this.#relaunchSpec = spec;
+	}
+
+	async checkShutdownRequested(): Promise<void> {
+		if (!this.shutdownRequested) return;
+		await this.shutdown();
+	}
+
+	// Extension UI integration
+	setToolUIContext(uiContext: ExtensionUIContext, hasUI: boolean): void {
+		this.#toolUiContextSetter(uiContext, hasUI);
+	}
+
+	initializeHookRunner(uiContext: ExtensionUIContext, hasUI: boolean): void {
+		this.#extensionUiController.initializeHookRunner(uiContext, hasUI);
+	}
+
+	setEditorComponent(
+		factory: ((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => CustomEditor) | undefined,
+	): void {
+		const previousEditor = this.editor;
+		const previousText = previousEditor.getText();
+		const nextEditor = factory
+			? factory(this.ui, getEditorTheme(), this.keybindings)
+			: new CustomEditor(getEditorTheme());
+
+		nextEditor.setUseTerminalCursor(this.ui.getShowHardwareCursor());
+		nextEditor.setAutocompleteMaxVisible(this.settings.get("autocompleteMaxVisible"));
+		nextEditor.onAutocompleteCancel = () => {
+			this.ui.requestRender(true);
+		};
+		nextEditor.onAutocompleteUpdate = () => {
+			this.ui.requestRender();
+		};
+		this.#lendPopupMotion(nextEditor);
+		previousEditor.disposeAutocompleteMotion();
+		nextEditor.setShimmerRepaintHandler(() => this.ui.requestComponentRender(this.editor));
+		nextEditor.setBorderVisible(false);
+		nextEditor.setPlaceholder(COMPOSER_PLACEHOLDER);
+		nextEditor.setMaxHeight(this.#computeEditorMaxHeight());
+		if (this.historyStorage) {
+			nextEditor.setHistoryStorage(this.historyStorage);
+		}
+		nextEditor.setText(previousText);
+
+		this.editorContainer.clear();
+		this.editor = nextEditor;
+		this.editorContainer.addChild(nextEditor);
+		this.ui.setFocus(nextEditor);
+
+		this.#inputController.setupKeyHandlers();
+		this.#inputController.setupEditorSubmitHandler();
+
+		void this.refreshSlashCommandState().catch(error => {
+			logger.warn("Failed to refresh slash command state for custom editor", { error: String(error) });
+		});
+
+		this.updateEditorBorderColor();
+		this.ui.requestRender();
+	}
+
+	/**
+	 * Lend an editor the frames and the ground its suggestion popup needs to grow
+	 * instead of cutting in. Both gates are the overlay ones — a terminal that
+	 * skips a card's unfold must not be handed a popup's, and the rows resolve out
+	 * of the same ground a card unfolds out of.
+	 */
+	#lendPopupMotion(editor: CustomEditor): void {
+		editor.setAutocompleteMotion({
+			requestRender: () => this.ui.requestRender(),
+			enabled: pointerMotionEnabled(),
+			ground: modalRevealGround(),
+		});
+	}
+
+	// UI helpers
+	present(content: Component | readonly Component[]): void {
+		if (Array.isArray(content)) {
+			for (const item of content) this.#mountChatChild(item);
+		} else {
+			this.#mountChatChild(content as Component);
+		}
+		this.ui.requestRender();
+	}
+
+	#mountChatChild(item: Component): void {
+		this.chatContainer.addChild(item);
+		if (item instanceof ChatBlock) {
+			item.mount(this.#chatHost);
+		}
+		// The composer stays anchored to the viewport bottom as the transcript
+		// grows; HomeAnchorLayout.sync latches the anchor off for good only once the
+		// content first fills the viewport, so a short reply keeps the composer on
+		// the bottom edge instead of riding up under it.
+		this.#layout.sync();
+	}
+
+	resetTranscript(): void {
+		this.chatContainer.dispose();
+		this.chatContainer.clear();
+	}
+
+	showStatus(message: string, options?: { dim?: boolean }): void {
+		this.#uiHelpers.showStatus(message, options);
+	}
+
+	showError(message: string): void {
+		this.#pendingSubmittedInput = undefined;
+		this.clearOptimisticUserMessage();
+		this.#pendingWorkingMessage = undefined;
+		if (this.loadingAnimation) {
+			this.#stopLoadingAnimation(true);
+		}
+		this.#uiHelpers.showError(message);
+	}
+
+	showPinnedError(message: string): void {
+		this.#dismissPlanReview();
+		this.errorBannerContainer.clear();
+		this.errorBannerContainer.addChild(new ErrorBannerComponent(message));
+		this.ui.requestRender();
+	}
+
+	clearPinnedError(): void {
+		if (this.errorBannerContainer.children.length === 0) return;
+		this.errorBannerContainer.clear();
+		this.ui.requestRender();
+	}
+
+	showWarning(message: string): void {
+		this.#uiHelpers.showWarning(message);
+	}
+
+	#handleLspStartupEvent(event: LspStartupEvent): void {
+		// Live surfaces showing warmup state (the /lsp panel, status chrome)
+		// must repaint when server states change; without this the pending
+		// mark lingers until an unrelated event happens to paint a frame.
+		// (Historically this render rode on dead welcome-card LSP plumbing.)
+		this.ui.requestRender();
+		if (event.type === "failed") {
+			this.showWarning(`LSP startup failed: ${event.error}. It will retry lazily on write.`);
+			return;
+		}
+
+		const failedServers = event.servers.filter(server => server.status === "error");
+
+		if (failedServers.length === 1) {
+			const failedServer = failedServers[0];
+			const detail = failedServer.error ? `: ${failedServer.error}` : "";
+			this.showWarning(`LSP startup failed for ${failedServer.name}${detail}. It will retry lazily on write.`);
+			return;
+		}
+
+		if (failedServers.length > 1) {
+			const failedNames = failedServers.map(server => server.name).join(", ");
+			this.showWarning(`LSP startup failed for ${failedNames}. It will retry lazily on write.`);
+		}
+	}
+
+	#clearWorkingMessageAccentCache(): void {
+		this.#workingMessageAccentCacheKey = undefined;
+		this.#workingMessageAccentCacheValue = undefined;
+		this.#workingMessageAccentCacheHasValue = false;
+	}
+
+	#buildWorkingMessageAccentCacheKey(): WorkingMessageAccentCacheKey {
+		const sessionAccentEnabled = !isSettingsInitialized() || settings.get("statusLine.sessionAccent") !== false;
+		return {
+			sessionAccentEnabled,
+			sessionName: sessionAccentEnabled ? this.sessionManager.getSessionName() : undefined,
+			accentSurfaceLuminance: theme.accentSurfaceLuminance,
+		};
+	}
+
+	#workingMessageAccentCacheKeyEquals(a: WorkingMessageAccentCacheKey, b: WorkingMessageAccentCacheKey): boolean {
+		return (
+			a.sessionName === b.sessionName &&
+			a.accentSurfaceLuminance === b.accentSurfaceLuminance &&
+			a.sessionAccentEnabled === b.sessionAccentEnabled
+		);
+	}
+
+	#cacheWorkingMessageAccent(
+		key: WorkingMessageAccentCacheKey,
+		value: WorkingMessageAccent | undefined,
+	): WorkingMessageAccent | undefined {
+		this.#workingMessageAccentCacheKey = key;
+		this.#workingMessageAccentCacheValue = value;
+		this.#workingMessageAccentCacheHasValue = true;
+		return value;
+	}
+
+	#getWorkingMessageAccent(): WorkingMessageAccent | undefined {
+		const key = this.#buildWorkingMessageAccentCacheKey();
+		if (
+			this.#workingMessageAccentCacheHasValue &&
+			this.#workingMessageAccentCacheKey &&
+			this.#workingMessageAccentCacheKeyEquals(key, this.#workingMessageAccentCacheKey)
+		) {
+			return this.#workingMessageAccentCacheValue;
+		}
+		if (!key.sessionAccentEnabled || !key.sessionName) {
+			return this.#cacheWorkingMessageAccent(key, undefined);
+		}
+		const hex = getSessionAccentHex(key.sessionName, theme.getMajorThemeColorHexes(), key.accentSurfaceLuminance);
+		const main = getSessionAccentAnsi(hex);
+		const dim = getSessionAccentAnsi(adjustHsv(hex, { s: 0.55, v: 0.65 }));
+		return this.#cacheWorkingMessageAccent(key, main && dim ? { main, dim } : undefined);
+	}
+
+	ensureLoadingAnimation(): void {
+		if (!this.loadingAnimation) {
+			this.#clearWorkingMessageAccentCache();
+			this.statusContainer.disposeChildren();
+			const messageColorFn = ((message: string) =>
+				renderWorkingMessage(
+					message,
+					this.#getWorkingMessageAccent(),
+					this.#workingClockText,
+				)) as LoaderMessageColorFn & {
+				animated?: true;
+			};
+			// Shimmer drives the 30fps redraw; when it is disabled the working
+			// message is static, so leave `animated` unset and let the loader use
+			// the spinner-only ~12.5fps cadence instead of repainting a frozen line.
+			if (shimmerEnabled()) messageColorFn.animated = true;
+			this.loadingAnimation = new Loader(
+				this.ui,
+				spinner => {
+					// The breathing-pixel spinner keeps its frames and runs MOLTEN —
+					// the warm arc's lava heat cycle — while the agent works (the one
+					// live thing). Semantic activity states still win: in living mode
+					// ask/error recolor the whole line green/red via the living hue.
+					const living = livingSpinnerColor(theme);
+					if (living) return `${living}${spinner}\x1b[39m`;
+					const accent = this.#getWorkingMessageAccent();
+					if (accent) return `${accent.main}${spinner}\x1b[39m`;
+					return lavaText(spinner, theme, TERMINAL.trueColor);
+				},
+				messageColorFn,
+				this.#defaultWorkingMessage,
+				getSymbolTheme().spinnerFrames,
+			);
+			this.statusContainer.addChild(this.loadingAnimation);
+			// Seed the per-task clock for the default "Working…" phase so the
+			// elapsed readout is present from the first painted frame.
+			this.#resetTaskClock();
+			this.#setTaskMessage(this.#defaultWorkingMessage);
+		} else if (!this.statusContainer.children.includes(this.loadingAnimation)) {
+			this.statusContainer.disposeChildren();
+			this.statusContainer.addChild(this.loadingAnimation);
+			this.ui.requestRender();
+		}
+		this.applyPendingWorkingMessage();
+		// The board's motion is owed by the agent moving, and this is the edge
+		// where it starts. Nothing else on this path touches the anchored
+		// regions, so without it a board that was still when the turn began
+		// stays still until some unrelated event redraws it.
+		this.#renderTodoList();
+	}
+
+	/**
+	 * Run `work` behind a spinner in the status area.
+	 *
+	 * A guided-goal turn is a one-shot completion that streams nothing and
+	 * emits no session events, so the screen between the answer the user typed
+	 * and the next question showed no sign that anything was running.
+	 */
+	async #withGuidedGoalProgress<T>(label: string, work: () => Promise<T>): Promise<T> {
+		this.statusContainer.disposeChildren();
+		const loader = new Loader(
+			this.ui,
+			spinner => theme.fg("accent", spinner),
+			text => theme.fg("muted", text),
+			`${label} (esc to cancel)`,
+			getSymbolTheme().spinnerFrames,
+		);
+		this.statusContainer.addChild(loader);
+		this.ui.requestRender();
+		try {
+			return await work();
+		} finally {
+			loader.stop();
+			this.statusContainer.disposeChildren();
+			this.ui.requestRender();
+		}
+	}
+
+	#stopLoadingAnimation(clearStatusContainer: boolean): void {
+		const cleared = this.clearWorkingLoader();
+		if (!cleared) return;
+		this.#clearWorkingMessageAccentCache();
+		if (clearStatusContainer) {
+			this.statusContainer.disposeChildren();
+		}
+	}
+
+	/**
+	 * ONE owner for clearing the working loader: stop it, UNMOUNT it, and drop the
+	 * reference. Controllers that abort a turn outside the normal agent_end path
+	 * (fork, compact, handoff, error) call this — never `loadingAnimation.stop()`
+	 * directly — so the loader can never be left running while the agent rests.
+	 *
+	 * Unmounting is not tidiness. `stop()` only kills the timer, so a stopped
+	 * loader left mounted keeps drawing its last frame — `Working… · 0:00 [esc]`,
+	 * byte-identical forever — and a chrome row that never changes is
+	 * indistinguishable from settled transcript content to anything downstream
+	 * that decides what may enter the terminal's scrollback. `#stopWorkingLoader`
+	 * in the event controller cleared the reference without touching the
+	 * container, and the frozen row it left behind is what turned up wedged
+	 * between two tool blocks in the operator's history, still offering an `esc`
+	 * that interrupts nothing.
+	 *
+	 * It removes only its OWN child, never the container's other children: a
+	 * transient overlay (auto-compaction, retry) mounts its own loader here and
+	 * owns its own teardown.
+	 */
+	clearWorkingLoader(): boolean {
+		if (!this.loadingAnimation) return false;
+		this.loadingAnimation.stop();
+		this.statusContainer.removeChild(this.loadingAnimation);
+		this.loadingAnimation = undefined;
+		this.#resetTaskClock();
+		// The other edge: the agent has stopped, so the board owes no more
+		// frames. Skipped while frame production is frozen, because a frozen mode
+		// must not touch its containers on the way out.
+		if (!this.#frameProductionFrozen) this.#renderTodoList();
+		return true;
+	}
+
+	setWorkingMessage(message?: string): void {
+		if (message === undefined) {
+			this.#pendingWorkingMessage = undefined;
+			if (this.loadingAnimation) {
+				this.#setTaskMessage(this.#defaultWorkingMessage);
+			}
+			return;
+		}
+
+		if (this.loadingAnimation) {
+			this.#setTaskMessage(message);
+			return;
+		}
+
+		this.#pendingWorkingMessage = message;
+	}
+
+	/**
+	 * ONE composer for the working line: splits the caller's message into task
+	 * label + esc hint, restarts the per-task clock when the label changes, and
+	 * hands the loader `label · 0:42 ⟦esc⟧`. Re-invoking with the same label
+	 * refreshes only the clock (the 1s heartbeat rides this).
+	 */
+	#setTaskMessage(message: string): void {
+		const hint = interruptHint();
+		const hasHint = message.endsWith(hint);
+		const label = hasHint ? message.slice(0, -hint.length) : message;
+		if (label !== this.#taskLabel) {
+			this.#taskLabel = label;
+			this.#taskStartedAt = Date.now();
+		}
+		this.#taskHasHint = hasHint;
+		this.#refreshTaskClock();
+	}
+
+	#refreshTaskClock(): void {
+		if (!this.loadingAnimation || this.#taskLabel === undefined) return;
+		this.#workingClockText = ` · ${formatClock(Date.now() - this.#taskStartedAt)}`;
+		this.loadingAnimation.setMessage(
+			`${this.#taskLabel}${this.#workingClockText}${this.#taskHasHint ? interruptHint() : ""}`,
+		);
+	}
+
+	/** Forget the task clock when the working loader goes away, so the next
+	 * run's first task starts its clock at 0:00 instead of inheriting one. */
+	#resetTaskClock(): void {
+		this.#taskLabel = undefined;
+		this.#taskHasHint = false;
+		this.#taskStartedAt = 0;
+		this.#workingClockText = undefined;
+	}
+
+	applyPendingWorkingMessage(): void {
+		if (this.#pendingWorkingMessage === undefined) {
+			return;
+		}
+
+		const message = this.#pendingWorkingMessage;
+		this.#pendingWorkingMessage = undefined;
+		this.setWorkingMessage(message);
+	}
+
+	showUpdateReadyNotification(newVersion: string, warnings?: readonly string[]): void {
+		this.#uiHelpers.showUpdateReadyNotification(newVersion, warnings);
+	}
+
+	showUpdateFailedNotification(newVersion: string, error: string): void {
+		this.#uiHelpers.showUpdateFailedNotification(newVersion, error);
+	}
+
+	showNewVersionNotification(newVersion: string): void {
+		this.#uiHelpers.showNewVersionNotification(newVersion);
+	}
+
+	showPluginUpdatesNotification(count: number): void {
+		this.#uiHelpers.showPluginUpdatesNotification(count);
+	}
+
+	showPluginUpdatesInstalledNotification(count: number): void {
+		this.#uiHelpers.showPluginUpdatesInstalledNotification(count);
+	}
+
+	showUnparseableSettingsNotification(files: readonly QuarantinedSettingsFile[]): void {
+		this.#uiHelpers.showUnparseableSettingsNotification(files);
+	}
+
+	showSettingsSaveFailureNotification(failure: SettingsSaveFailure): void {
+		this.#uiHelpers.showSettingsSaveFailureNotification(failure);
+	}
+
+	clearEditor(): void {
+		this.#uiHelpers.clearEditor();
+	}
+
+	updatePendingMessagesDisplay(): void {
+		this.#uiHelpers.updatePendingMessagesDisplay();
+	}
+
+	refreshComposerShortcuts(): void {
+		this.#refreshComposerShortcuts();
+	}
+
+	/** Remove the startup welcome card (and its spacers) — the first real
+	 *  keystroke ends the hero moment. Idempotent; the bottom anchor stays so
+	 *  the composer does not jump until a conversation turn scrolls in. */
+	dismissWelcome(): void {
+		this.#welcomeController.dismiss();
+	}
+
+	queueCompactionMessage(text: string, mode: "steer" | "followUp", images?: ImageContent[]): void {
+		this.#uiHelpers.queueCompactionMessage(text, mode, images);
+	}
+
+	flushCompactionQueue(options?: { willRetry?: boolean }): Promise<void> {
+		return this.#uiHelpers.flushCompactionQueue(options);
+	}
+
+	flushPendingBashComponents(): void {
+		this.#uiHelpers.flushPendingBashComponents();
+	}
+
+	isKnownSlashCommand(text: string): boolean {
+		return this.#uiHelpers.isKnownSlashCommand(text);
+	}
+
+	addMessageToChat(
+		message: AgentMessage,
+		options?: { populateHistory?: boolean; imageLinks?: readonly (string | undefined)[] },
+	): Component[] {
+		return this.#uiHelpers.addMessageToChat(message, options);
+	}
+
+	renderSessionContext(
+		sessionContext: SessionContext,
+		options?: { updateFooter?: boolean; populateHistory?: boolean },
+	): void {
+		for (const message of sessionContext.messages) {
+			this.noteDisplayableThinkingContent(message);
+		}
+		this.#uiHelpers.renderSessionContext(sessionContext, options);
+	}
+
+	renderInitialMessages(options?: { preserveExistingChat?: boolean; clearTerminalHistory?: boolean }): void {
+		this.#uiHelpers.renderInitialMessages(options);
+	}
+
+	getUserMessageText(message: Message): string {
+		return this.#uiHelpers.getUserMessageText(message);
+	}
+
+	findLastAssistantMessage(): AssistantMessage | undefined {
+		return this.#uiHelpers.findLastAssistantMessage();
+	}
+
+	extractAssistantText(message: AssistantMessage): string {
+		return this.#uiHelpers.extractAssistantText(message);
+	}
+
+	// Command handling
+	handleExportCommand(text: string): Promise<void> {
+		return this.#commandController.handleExportCommand(text);
+	}
+
+	async handleDumpCommand(): Promise<void> {
+		return this.#commandController.handleDumpCommand();
+	}
+
+	handleAdvisorDumpCommand(isRaw?: boolean) {
+		return this.#commandController.handleAdvisorDumpCommand(isRaw);
+	}
+
+	handleDebugTranscriptCommand(): Promise<void> {
+		return this.#commandController.handleDebugTranscriptCommand();
+	}
+
+	handleShareCommand(): Promise<void> {
+		return this.#commandController.handleShareCommand();
+	}
+
+	handleTodoCommand(args: string): Promise<void> {
+		return this.#todoCommandController.handleTodoCommand(args);
+	}
+
+	handleSessionCommand(): Promise<void> {
+		return this.#commandController.handleSessionCommand();
+	}
+
+	handleAdvisorStatusCommand(): Promise<void> {
+		return this.#commandController.handleAdvisorStatusCommand();
+	}
+
+	handleJobsCommand(): Promise<void> {
+		return this.#commandController.handleJobsCommand();
+	}
+
+	handleUsageCommand(reports?: UsageReport[] | null): Promise<void> {
+		return this.#commandController.handleUsageCommand(reports);
+	}
+
+	async handleChangelogCommand(): Promise<void> {
+		await this.#commandController.handleChangelogCommand();
+	}
+
+	handleHotkeysCommand(): void {
+		this.#commandController.handleHotkeysCommand();
+	}
+
+	handleToolsCommand(): void {
+		this.#commandController.handleToolsCommand();
+	}
+
+	handleContextCommand(): void {
+		this.#commandController.handleContextCommand();
+	}
+
+	#prepareSessionSwitch(): void {
+		this.#btwController.dispose();
+		this.#omfgController.dispose();
+		this.#extensionUiController.clearExtensionTerminalInputListeners();
+		this.clearPinnedError();
+		this.#hidePlanReview();
+	}
+
+	handleClearCommand(): Promise<void> {
+		this.#prepareSessionSwitch();
+		return this.#commandController.handleClearCommand();
+	}
+
+	handleFreshCommand(): Promise<void> {
+		return this.#commandController.handleFreshCommand();
+	}
+
+	handleDropCommand(): Promise<void> {
+		this.#prepareSessionSwitch();
+		return this.#commandController.handleDropCommand();
+	}
+
+	handleForkCommand(): Promise<void> {
+		this.#btwController.dispose();
+		this.#omfgController.dispose();
+		return this.#commandController.handleForkCommand();
+	}
+
+	handleMoveCommand(targetPath?: string): Promise<void> {
+		return this.#commandController.handleMoveCommand(targetPath);
+	}
+
+	handleRenameCommand(title: string): Promise<void> {
+		return this.#commandController.handleRenameCommand(title);
+	}
+
+	handleMemoryCommand(text: string): Promise<void> {
+		return this.#commandController.handleMemoryCommand(text);
+	}
+
+	async handleSTTToggle(): Promise<void> {
+		if (!settings.get("stt.enabled")) {
+			this.showWarning("Speech-to-text is disabled. Enable it in settings: stt.enabled");
+			return;
+		}
+		if (!this.#sttController) {
+			this.#sttController = new STTController();
+		}
+		await this.#sttController.toggle(this.editor, {
+			showWarning: (msg: string) => this.showWarning(msg),
+			showStatus: (msg: string) => this.showStatus(msg),
+			requestRender: () => this.ui.requestRender(),
+			onStateChange: (state: SttState) => {
+				// Duck assistant speech while the user is talking (push-to-talk); restore after.
+				if (state === "recording") vocalizer.duck();
+				else vocalizer.unduck();
+				if (state === "recording") {
+					this.#voicePreviousShowHardwareCursor = this.ui.getShowHardwareCursor();
+					this.#voicePreviousUseTerminalCursor = this.editor.getUseTerminalCursor();
+					this.ui.setShowHardwareCursor(false);
+					this.editor.setUseTerminalCursor(false);
+					this.#startMicAnimation();
+				} else if (state === "transcribing") {
+					this.#stopMicAnimation();
+					this.#setMicCursor({ r: 200, g: 200, b: 200 });
+				} else {
+					this.#cleanupMicAnimation();
+				}
+				this.ui.requestRender();
+			},
+		});
+	}
+
+	#setMicCursor(color: { r: number; g: number; b: number }): void {
+		this.editor.cursorOverride = `\x1b[38;2;${color.r};${color.g};${color.b}m${theme.icon.mic}\x1b[0m`;
+		// Theme symbols can be wide (for example, ), so measure the rendered override.
+		this.editor.cursorOverrideWidth = visibleWidth(this.editor.cursorOverride);
+	}
+
+	#updateMicIcon(): void {
+		const { r, g, b } = hsvToRgb({ h: this.#voiceHue, s: 0.9, v: 1.0 });
+		this.#setMicCursor({ r, g, b });
+	}
+
+	#startMicAnimation(): void {
+		if (this.#voiceAnimationInterval) return;
+		this.#voiceHue = 0;
+		this.#updateMicIcon();
+		this.#voiceAnimationInterval = setInterval(() => {
+			this.#voiceHue = (this.#voiceHue + 8) % 360;
+			this.#updateMicIcon();
+			// Component-scoped: the hue sweep only recolors the editor's cursor
+			// glyph, so the transcript subtree is reused per animation frame.
+			this.ui.requestComponentRender(this.editor);
+		}, 60);
+	}
+
+	#stopMicAnimation(): void {
+		if (this.#voiceAnimationInterval) {
+			clearInterval(this.#voiceAnimationInterval);
+			this.#voiceAnimationInterval = undefined;
+		}
+	}
+
+	#cleanupMicAnimation(): void {
+		if (this.#voiceAnimationInterval) {
+			clearInterval(this.#voiceAnimationInterval);
+			this.#voiceAnimationInterval = undefined;
+		}
+		this.editor.cursorOverride = undefined;
+		this.editor.cursorOverrideWidth = undefined;
+		if (this.#voicePreviousShowHardwareCursor !== null) {
+			this.ui.setShowHardwareCursor(this.#voicePreviousShowHardwareCursor);
+			this.#voicePreviousShowHardwareCursor = null;
+		}
+		if (this.#voicePreviousUseTerminalCursor !== null) {
+			this.editor.setUseTerminalCursor(this.#voicePreviousUseTerminalCursor);
+			this.#voicePreviousUseTerminalCursor = null;
+		}
+	}
+
+	async showDebugSelector(): Promise<void> {
+		await this.#selectorController.showDebugSelector();
+	}
+
+	resetObserverRegistry(): void {
+		this.#observerRegistry.resetSessions();
+		this.#observerRegistry.setMainSession(this.sessionManager.getSessionFile() ?? undefined);
+	}
+
+	handleBashCommand(command: string, excludeFromContext?: boolean): Promise<void> {
+		return this.#commandController.handleBashCommand(command, excludeFromContext);
+	}
+
+	handlePythonCommand(code: string, excludeFromContext?: boolean): Promise<void> {
+		return this.#commandController.handlePythonCommand(code, excludeFromContext);
+	}
+
+	async handleMCPCommand(text: string): Promise<void> {
+		const controller = new MCPCommandController(this);
+		await controller.handle(text);
+	}
+
+	async handleSSHCommand(text: string): Promise<void> {
+		const controller = new SSHCommandController(this);
+		await controller.handle(text);
+	}
+
+	handleCompactCommand(
+		customInstructions?: string,
+		mode?: CompactMode,
+		beforeFlush?: (outcome: CompactionOutcome) => void | Promise<void>,
+		internalGuidance?: string,
+	): Promise<CompactionOutcome> {
+		return this.#commandController.handleCompactCommand(customInstructions, mode, beforeFlush, internalGuidance);
+	}
+
+	handleHandoffCommand(customInstructions?: string): Promise<void> {
+		return this.#commandController.handleHandoffCommand(customInstructions);
+	}
+
+	handleShakeCommand(mode: ShakeMode): Promise<void> {
+		return this.#commandController.handleShakeCommand(mode);
+	}
+
+	executeCompaction(
+		customInstructionsOrOptions?: string | CompactOptions,
+		isAuto?: boolean,
+	): Promise<CompactionOutcome> {
+		return this.#commandController.executeCompaction(customInstructionsOrOptions, isAuto);
+	}
+
+	openInBrowser(urlOrPath: string): void {
+		this.#commandController.openInBrowser(urlOrPath);
+	}
+
+	focusActiveEditorArea(): void {
+		this.#selectorController.focusActiveEditorArea();
+	}
+
+	// Selector handling
+	async showFullWelcome(): Promise<void> {
+		const recentSessions = await getRecentSessions(this.sessionManager.getSessionDir()).then(sessions =>
+			sessions.map(s => ({ name: s.name, timeAgo: s.timeAgo })),
+		);
+		this.#welcomeController.showFull({
+			version: this.#version,
+			modelName: this.session.model?.name ?? "",
+			providerName: this.session.model?.provider ?? "",
+			recentSessions,
+		});
+	}
+
+	showSettingsSelector(initialItemId?: string): void {
+		this.#selectorController.showSettingsSelector(initialItemId);
+	}
+
+	showAdvisorConfigure(): Promise<void> {
+		return this.#selectorController.showAdvisorConfigure();
+	}
+
+	showHistorySearch(): void {
+		this.#selectorController.showHistorySearch();
+	}
+
+	showExtensionsDashboard(): void {
+		void this.#selectorController.showExtensionsDashboard();
+	}
+
+	showAgentsDashboard(options?: { requireContent?: boolean; processScope?: boolean }): void {
+		this.#selectorController.showAgentsDashboard(this.#observerRegistry, options);
+	}
+
+	showSecretList(): void {
+		this.#commandController.showSecretList();
+	}
+
+	showModelSelector(options?: { temporaryOnly?: boolean }): void {
+		this.#selectorController.showModelSelector(options);
+	}
+
+	showThinkingSelector(): void {
+		this.#selectorController.showThinkingSelector();
+	}
+
+	showSubcommandPicker(
+		commandName: string,
+		subcommands: readonly SubcommandDef[],
+		onSelect: (subcommand: SubcommandDef) => void,
+	): void {
+		this.#selectorController.showSubcommandPicker(commandName, subcommands, onSelect);
+	}
+
+	showPluginSelector(mode?: "install" | "uninstall"): void {
+		void this.#selectorController.showPluginSelector(mode);
+	}
+
+	showUserMessageSelector(): void {
+		this.#selectorController.showUserMessageSelector();
+	}
+
+	showCopySelector(): void {
+		this.#selectorController.showCopySelector();
+	}
+
+	showTreeSelector(): void {
+		this.#selectorController.showTreeSelector();
+	}
+
+	showSessionSelector(): void {
+		this.#selectorController.showSessionSelector();
+	}
+
+	handleResumeSession(sessionPath: string): Promise<void> {
+		this.#btwController.dispose();
+		this.#omfgController.dispose();
+		this.resetObserverRegistry();
+		return this.#selectorController.handleResumeSession(sessionPath);
+	}
+
+	handleSessionDeleteCommand(): Promise<void> {
+		return this.#selectorController.handleSessionDeleteCommand();
+	}
+
+	showAccountManager(providerId?: string): Promise<void> {
+		return this.#selectorController.showAccountManager(providerId);
+	}
+
+	showLogin(providerId?: string): Promise<void> {
+		return this.#selectorController.showLogin(providerId);
+	}
+
+	showLogout(providerId?: string): Promise<void> {
+		return this.#selectorController.showLogout(providerId);
+	}
+
+	showResetUsageSelector(): Promise<void> {
+		return this.#selectorController.showResetUsageSelector();
+	}
+
+	showProviderSetup(): Promise<void> {
+		return runProviderSetupWizard(this);
+	}
+
+	showHookConfirm(title: string, message: string): Promise<boolean> {
+		return this.#extensionUiController.showHookConfirm(title, message);
+	}
+
+	// Input handling
+	handleCtrlC(): void {
+		this.#inputController.handleCtrlC();
+	}
+
+	handleCtrlD(): void {
+		this.#inputController.handleCtrlD();
+	}
+
+	handleCtrlZ(): void {
+		this.#inputController.handleCtrlZ();
+	}
+
+	handleDequeue(): void {
+		this.#inputController.handleDequeue();
+	}
+
+	handleImagePaste(): Promise<boolean> {
+		return this.#inputController.handleImagePaste();
+	}
+
+	/** Queue slash-command input behind the active turn. */
+	handleQueueCommand(message: string): Promise<void> {
+		return this.#inputController.handleQueueCommand(message);
+	}
+
+	handleBtwCommand(question: string): Promise<void> {
+		return this.#btwController.start(question);
+	}
+
+	handleTanCommand(work: string): Promise<void> {
+		return this.#tanCommandController.start(work);
+	}
+
+	hasActiveBtw(): boolean {
+		return this.#btwController.hasActiveRequest();
+	}
+
+	handleBtwEscape(): boolean {
+		return this.#btwController.handleEscape();
+	}
+
+	canBranchBtw(): boolean {
+		return this.#btwController.canBranch();
+	}
+
+	handleBtwBranchKey(): Promise<boolean> {
+		return this.#btwController.handleBranch();
+	}
+
+	canCopyBtw(): boolean {
+		return this.#btwController.canCopy();
+	}
+
+	handleBtwCopyKey(): Promise<boolean> {
+		return this.#btwController.handleCopy();
+	}
+
+	async handleBtwBranch(question: string, assistantMessage: AssistantMessage): Promise<void> {
+		try {
+			const result = await this.session.branchFromBtw(question, assistantMessage);
+			if (result.cancelled) {
+				this.showStatus("/btw branch cancelled", { dim: true });
+				return;
+			}
+			this.#btwController.dispose();
+			this.#omfgController.dispose();
+			this.renderInitialMessages({ clearTerminalHistory: true });
+			this.updateEditorBorderColor();
+			this.showStatus(
+				result.sessionFile ? `Branched /btw to ${path.basename(result.sessionFile)}` : "Branched /btw",
+			);
+		} catch (error) {
+			this.showError(`Cannot branch /btw: ${errorMessage(error)}`);
+		}
+	}
+
+	handleOmfgCommand(complaint: string): Promise<void> {
+		return this.#omfgController.start(complaint);
+	}
+
+	hasActiveOmfg(): boolean {
+		return this.#omfgController.hasActiveRequest();
+	}
+
+	handleOmfgEscape(): boolean {
+		return this.#omfgController.handleEscape();
+	}
+
+	cycleThinkingLevel(): void {
+		this.#inputController.cycleThinkingLevel();
+	}
+
+	cycleRoleModel(direction?: "forward" | "backward"): Promise<void> {
+		return this.#inputController.cycleRoleModel(direction);
+	}
+
+	toggleToolOutputExpansion(): void {
+		this.#inputController.toggleToolOutputExpansion();
+	}
+
+	setToolsExpanded(expanded: boolean): void {
+		this.#inputController.setToolsExpanded(expanded);
+	}
+
+	toggleThinkingBlockVisibility(): void {
+		this.#inputController.toggleThinkingBlockVisibility();
+	}
+
+	toggleTodoExpansion(): void {
+		this.todoExpanded = !this.todoExpanded;
+		this.#renderTodoList();
+		this.ui.requestRender();
+	}
+
+	setTodos(todos: TodoItem[] | TodoPhase[]): void {
+		const before = this.todoPhases;
+		if (todos.length > 0 && "tasks" in todos[0]) {
+			this.todoPhases = todos as TodoPhase[];
+		} else {
+			this.todoPhases = [
+				{
+					name: "Todos",
+					tasks: todos as TodoItem[],
+				},
+			];
+		}
+		// Every board write comes through here, so this is the one place that can
+		// see a task close. A renderer cannot: it is handed a state and has no way
+		// to know which part of it is new.
+		this.#noteTodoTransitions(before, this.todoPhases);
+		this.#syncTodoAutoClearTimer();
+		this.#renderTodoList();
+		this.ui.requestRender();
+	}
+
+	async reloadTodos(): Promise<void> {
+		this.#syncTodoSurfaceToView();
+		this.ui.requestRender();
+	}
+
+	openExternalEditor(): void {
+		this.#inputController.openExternalEditor();
+	}
+
+	registerExtensionShortcuts(): void {
+		this.#inputController.registerExtensionShortcuts();
+	}
+
+	// Hook UI methods
+	initHooksAndCustomTools(): Promise<void> {
+		return this.#extensionUiController.initHooksAndCustomTools();
+	}
+
+	emitCustomToolSessionEvent(
+		reason: "start" | "switch" | "branch" | "tree" | "shutdown",
+		previousSessionFile?: string,
+	): Promise<void> {
+		return this.#extensionUiController.emitCustomToolSessionEvent(reason, previousSessionFile);
+	}
+
+	setHookWidget(key: string, content: ExtensionWidgetContent, options?: ExtensionWidgetOptions): void {
+		this.#extensionUiController.setHookWidget(key, content, options);
+	}
+
+	setHookStatus(key: string, text: string | undefined): void {
+		this.#extensionUiController.setHookStatus(key, text);
+	}
+
+	showHookSelector(
+		title: string,
+		options: ExtensionUISelectItem[],
+		dialogOptions?: InteractiveSelectorDialogOptions,
+		extra?: { slider?: HookSelectorSlider },
+	): Promise<string | undefined> {
+		return this.#extensionUiController.showHookSelector(title, options, dialogOptions, extra);
+	}
+
+	hideHookSelector(): void {
+		this.#extensionUiController.hideHookSelector();
+	}
+
+	showAskDialog(
+		questions: ExtensionAskDialogQuestion[],
+		dialogOptions?: ExtensionUIDialogOptions,
+	): Promise<ExtensionAskDialogResult | undefined> {
+		return this.#extensionUiController.showAskDialog(questions, dialogOptions);
+	}
+
+	showHookInput(
+		title: string,
+		placeholder?: string,
+		inputOptions?: { mask?: string; hint?: string },
+	): Promise<string | undefined> {
+		return this.#extensionUiController.showHookInput(title, placeholder, undefined, inputOptions);
+	}
+
+	hideHookInput(): void {
+		this.#extensionUiController.hideHookInput();
+	}
+
+	showHookEditor(
+		title: string,
+		prefill?: string,
+		dialogOptions?: ExtensionUIDialogOptions,
+		editorOptions?: { promptStyle?: boolean },
+	): Promise<string | undefined> {
+		return this.#extensionUiController.showHookEditor(title, prefill, dialogOptions, editorOptions);
+	}
+
+	hideHookEditor(): void {
+		this.#extensionUiController.hideHookEditor();
+	}
+
+	showHookNotify(message: string, type?: "info" | "warning" | "error"): void {
+		this.#extensionUiController.showHookNotify(message, type);
+	}
+
+	showHookCustom<T>(
+		factory: (
+			tui: TUI,
+			theme: Theme,
+			keybindings: KeybindingsManager,
+			done: (result: T) => void,
+		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
+		options?: { overlay?: boolean },
+	): Promise<T> {
+		return this.#extensionUiController.showHookCustom(factory, options);
+	}
+
+	showExtensionError(extensionPath: string, error: string): void {
+		this.#extensionUiController.showExtensionError(extensionPath, error);
+	}
+
+	showToolError(toolName: string, error: string): void {
+		this.#extensionUiController.showToolError(toolName, error);
+	}
+
+	#subscribeToAgent(): void {
+		this.#eventController.subscribeToAgent();
+	}
+
+	#goalUnsubscribe?: () => void;
+
+	/** Subscribe goal bookkeeping to the session currently displayed. */
+	#subscribeToGoalSessionEvents(): void {
+		// Return the async handler so AgentSession can attach its rejection
+		// guard; a detached goal bookkeeping failure must not crash the TUI.
+		this.#goalUnsubscribe = this.session.subscribe(event => {
+			return this.#handleGoalSessionEvent(event).catch(error => {
+				logger.warn("Goal mode session event handler failed", {
+					event: event.type,
+					error: errorMessage(error),
+				});
+				this.showWarning(`Goal mode update failed: ${errorMessage(error)}`);
+			});
+		});
+	}
+
+	/**
+	 * Point the UI at `next` and hand the session it was displaying to the
+	 * background keeper, so a turn in flight runs to completion instead of
+	 * being aborted.
+	 *
+	 * Every controller reads `ctx.session` dynamically and none caches its own
+	 * reference, so reassigning the four session-derived fields re-points the
+	 * whole UI at once. The two event subscriptions and the status line are the
+	 * only holders of a session reference that must be moved by hand.
+	 *
+	 * `next` may already be streaming — that is what re-attaching a session
+	 * handed off earlier looks like — so the turn state a missed `agent_start`
+	 * would have armed is armed here instead.
+	 */
+	attachMainSession(next: AgentSession): KeptSession {
+		const previous = this.session;
+		// Re-attaching the displayed session hands nothing over, so it must not enter
+		// the background set: that set is what the status line counts, and a visible
+		// conversation counted there reports off-screen spend to someone watching it.
+		if (next === previous) return BackgroundSessions.global().describeAttached(previous);
+		this.unsubscribe?.();
+		this.unsubscribe = undefined;
+		this.#goalUnsubscribe?.();
+		this.#goalUnsubscribe = undefined;
+		this.session = next;
+		this.sessionManager = next.sessionManager;
+		this.settings = next.settings;
+		this.agent = next.agent;
+		this.#eventController.resetTranscriptAnchors();
+		this.#subscribeToAgent();
+		this.#subscribeToGoalSessionEvents();
+		this.statusLine.setSession(next);
+		if (next.isStreaming) void this.#eventController.handleEvent({ type: "agent_start" });
+		return BackgroundSessions.global().keep(previous);
+	}
+}

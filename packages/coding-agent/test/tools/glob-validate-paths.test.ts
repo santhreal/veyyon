@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
-import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	expandDelimitedPathEntries,
 	parseFindPattern,

@@ -33,9 +33,9 @@ import type {
 	SetupScene,
 	SetupSceneController,
 	SetupWizardContext,
-} from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";
-import { SetupWizardComponent } from "@veyyon/coding-agent/modes/setup-wizard/wizard-overlay";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/types";
+import { SetupWizardComponent } from "@veyyon/coding-agent/modes/terminal/setup-wizard/wizard-overlay";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { useFullColor } from "./helpers/theme-assertions";
 
 const WIDTH = 100;

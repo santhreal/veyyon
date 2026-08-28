@@ -20,9 +20,9 @@
 
 import { beforeAll, describe, expect, mock, test, vi } from "bun:test";
 import { AgentBusyError } from "@veyyon/agent-core";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { CompactionQueuedMessage, InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
-import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";
+import type { CompactionQueuedMessage, InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { UiHelpers } from "@veyyon/coding-agent/modes/terminal/utils/ui-helpers";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(() => {
 	initTheme();

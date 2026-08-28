@@ -30,9 +30,9 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { BAR_RAMPS, SYMBOL_PRESETS } from "@veyyon/coding-agent/modes/theme/symbols";
-import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { renderAsciiBar } from "@veyyon/coding-agent/slash-commands/helpers/format";
+import { BAR_RAMPS, SYMBOL_PRESETS } from "@veyyon/coding-agent/theme/symbols";
+import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	captureDirOverrides,
 	getCustomThemesDir,
@@ -42,7 +42,7 @@ import {
 } from "@veyyon/utils";
 import { EIGHTH_BLOCKS, subCellBar } from "@veyyon/utils/bar";
 
-const DARK_THEME_PATH = path.join(import.meta.dir, "..", "src", "modes", "theme", "dark.json");
+const DARK_THEME_PATH = path.join(import.meta.dir, "..", "src", "theme", "dark.json");
 const dirOverrides = captureDirOverrides();
 
 /** Colour stub, so these assertions see glyphs and not SGR. */

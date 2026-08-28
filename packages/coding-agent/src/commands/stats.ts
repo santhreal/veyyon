@@ -3,7 +3,7 @@
  */
 import { Command, Flags } from "@veyyon/utils/cli";
 import { runStatsCommand, type StatsCommandArgs } from "../cli/stats-cli";
-import { initTheme } from "../modes/theme/theme";
+import { initTheme } from "../theme/theme";
 
 export default class Stats extends Command {
 	static description = "View usage statistics";

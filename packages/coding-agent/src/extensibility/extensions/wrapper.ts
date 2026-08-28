@@ -5,8 +5,8 @@ import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallb
 import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/ai";
 import { errorMessage, isCancellation, toError } from "@veyyon/utils";
 import type { Settings } from "../../config/settings";
-import type { Theme } from "../../modes/theme/theme";
 import { AgentRegistry } from "../../registry/agent-registry";
+import type { Theme } from "../../theme/theme";
 import {
 	type ApprovalMode,
 	formatApprovalCard,

@@ -1,9 +1,9 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
-import { PlanReviewOverlay } from "@veyyon/coding-agent/modes/components/dialogs/plan-review-overlay";
-import type { HookSelectorSlider } from "@veyyon/coding-agent/modes/components/selectors/hook-selector";
-import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { PlanReviewOverlay } from "@veyyon/coding-agent/modes/terminal/components/dialogs/plan-review-overlay";
+import type { HookSelectorSlider } from "@veyyon/coding-agent/modes/terminal/components/selectors/hook-selector";
+import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/theme/theme";
 import { setKeybindings } from "@veyyon/utils/keybindings";
 import { useFullColor } from "../../helpers/theme-assertions";
 

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 async function flushMicrotasks(): Promise<void> {
 	await Promise.resolve();

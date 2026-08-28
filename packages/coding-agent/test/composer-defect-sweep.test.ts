@@ -23,7 +23,7 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
-import { initTheme } from "../src/modes/theme/theme";
+import { initTheme } from "../src/theme/theme";
 import {
 	type RunnerOptions,
 	runComposerOracleScenario,

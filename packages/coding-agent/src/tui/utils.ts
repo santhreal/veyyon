@@ -4,7 +4,7 @@
 
 import { padding } from "@veyyon/utils/padding";
 import { visibleWidth } from "@veyyon/utils/width";
-import type { Theme, ThemeBg } from "../modes/theme/theme";
+import type { Theme, ThemeBg } from "../theme/theme";
 import type { State } from "./types";
 
 /** Cached typed-array scratch space for hashing non-string primitives. */

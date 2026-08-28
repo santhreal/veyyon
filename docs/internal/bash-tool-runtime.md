@@ -281,9 +281,9 @@ This component is wired by `CommandController.handleBashCommand()` and fed from 
 - [`src/session/streaming-output.ts`](../../packages/coding-agent/src/session/streaming-output.ts): `OutputSink`, `TailBuffer`, truncation/artifact spill, and summary metadata.
 - [`src/tools/output-meta.ts`](../../packages/coding-agent/src/tools/output-meta.ts): truncation metadata shape + notice injection wrapper.
 - [`src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts): session-level `executeBash`, message recording, abort lifecycle.
-- [`src/modes/components/transcript/bash-execution.ts`](../../packages/coding-agent/src/modes/components/transcript/bash-execution.ts): interactive `!` command execution component.
-- [`src/modes/controllers/command-controller.ts`](../../packages/coding-agent/src/modes/controllers/command-controller.ts): wiring for interactive `!` command UI stream/update completion.
+- [`src/modes/terminal/components/transcript/bash-execution.ts`](../../packages/coding-agent/src/modes/terminal/components/transcript/bash-execution.ts): interactive `!` command execution component.
+- [`src/modes/terminal/controllers/command-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/command-controller.ts): wiring for interactive `!` command UI stream/update completion.
 - [`src/modes/rpc/rpc-mode.ts`](../../packages/coding-agent/src/modes/rpc/rpc-mode.ts): RPC `bash` and `abort_bash` command surface.
 - [`src/internal-urls/artifact-protocol.ts`](../../packages/coding-agent/src/internal-urls/artifact-protocol.ts): `artifact://<id>` resolution.
 
-*Verified against `632fd91c3b4e` on 2026-08-28.*
+*Verified against `23e2a7938b9f` on 2026-08-28.*

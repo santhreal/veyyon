@@ -7,9 +7,9 @@ import type { ModelRegistry } from "../../config/model-registry";
 import type { EditToolDetails } from "../../edit";
 import type { ExecOptions, ExecResult } from "../../exec/exec";
 import type * as PiCodingAgent from "../../index";
-import type { Theme } from "../../modes/theme/theme";
 import type { CustomMessagePayload, HookMessage } from "../../session/messages";
 import type { ReadonlySessionManager, SessionManager } from "../../session/session-manager";
+import type { Theme } from "../../theme/theme";
 import type { BashToolDetails, GlobToolDetails, GrepToolDetails, ReadToolDetails } from "../../tools";
 import type {
 	AgentEndEvent,

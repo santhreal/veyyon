@@ -28,9 +28,9 @@
 // reading its frame accounting through `DIAG_PATH`.
 
 import { type Component, CURSOR_MARKER, type Focusable, ProcessTerminal, TUI } from "@veyyon/tui";
-import { TranscriptContainer } from "../../packages/coding-agent/src/modes/components/transcript/transcript-container";
-import { HomeAnchorLayout } from "../../packages/coding-agent/src/modes/controllers/home-anchor-layout";
-import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
+import { TranscriptContainer } from "../../packages/coding-agent/src/modes/terminal/components/transcript/transcript-container";
+import { HomeAnchorLayout } from "../../packages/coding-agent/src/modes/terminal/controllers/home-anchor-layout";
+import { initTheme } from "../../packages/coding-agent/src/theme/theme";
 
 const args = process.argv.slice(2);
 

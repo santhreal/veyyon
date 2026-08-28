@@ -29,7 +29,7 @@ import { KEYBINDINGS as VIA_LOADER } from "@veyyon/coding-agent/config/keybindin
 import { moduleSpecifiersIn, namedImportsFrom, typeOnlyModuleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const SRC = path.resolve(import.meta.dir, "../../src");
-const EDITOR = path.join(SRC, "modes", "components", "custom-editor.ts");
+const EDITOR = path.join(SRC, "modes", "terminal", "components", "composer", "custom-editor.ts");
 const DEFS = path.join(SRC, "config", "keybinding-defs.ts");
 
 const EDITOR_SOURCE = fs.readFileSync(EDITOR, "utf8");
@@ -88,7 +88,7 @@ describe("the keybinding defaults have one owner", () => {
 	 * so it would have stayed green with the import deleted.
 	 */
 	it("reads the shared table in the editor", () => {
-		expect(namedImportsFrom(EDITOR_SOURCE, "../../config/keybinding-defs")).toEqual(["KEYBINDINGS"]);
+		expect(namedImportsFrom(EDITOR_SOURCE, "../../../../config/keybinding-defs")).toEqual(["KEYBINDINGS"]);
 	});
 });
 

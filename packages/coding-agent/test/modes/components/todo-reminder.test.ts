@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { TodoReminderComponent } from "@veyyon/coding-agent/modes/components/dashboard/todo-reminder";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { TodoReminderComponent } from "@veyyon/coding-agent/modes/terminal/components/dashboard/todo-reminder";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { TodoItem } from "@veyyon/coding-agent/tools/todo";
 
 function render(todos: TodoItem[]): string {

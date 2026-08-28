@@ -17,10 +17,10 @@ import {
 	type SessionCompactEvent,
 	type SessionEvent,
 } from "@veyyon/coding-agent/extensibility/hooks";
-import { theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { theme } from "@veyyon/coding-agent/theme/theme";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { e2eApiKey } from "./helpers/e2e-session";

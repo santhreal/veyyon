@@ -19,10 +19,10 @@
 import {
 	COMPOSER_INSET_COLS,
 	resolveComposerAccents,
-} from "../../packages/coding-agent/src/modes/components/composer/composer-chrome";
-import { BtwPanelComponent } from "../../packages/coding-agent/src/modes/components/dialogs/btw-panel";
-import { OmfgPanelComponent } from "../../packages/coding-agent/src/modes/components/dialogs/omfg-panel";
-import { initTheme, theme } from "../../packages/coding-agent/src/modes/theme/theme";
+} from "../../packages/coding-agent/src/modes/terminal/components/composer/composer-chrome";
+import { BtwPanelComponent } from "../../packages/coding-agent/src/modes/terminal/components/dialogs/btw-panel";
+import { OmfgPanelComponent } from "../../packages/coding-agent/src/modes/terminal/components/dialogs/omfg-panel";
+import { initTheme, theme } from "../../packages/coding-agent/src/theme/theme";
 import type { TUI } from "../../packages/tui/src/index";
 import { flag, hasFlag, renderWidth } from "./render-args";
 

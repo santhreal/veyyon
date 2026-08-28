@@ -21,18 +21,18 @@
  */
 
 import type { AgentMessage } from "../../packages/agent/src/index";
-import { TinyTitleDownloadProgressComponent } from "../../packages/coding-agent/src/modes/components/chrome/tiny-title-download-progress";
+import { TinyTitleDownloadProgressComponent } from "../../packages/coding-agent/src/modes/terminal/components/chrome/tiny-title-download-progress";
 import {
 	COMPOSER_INSET_COLS,
 	resolveComposerAccents,
-} from "../../packages/coding-agent/src/modes/components/composer/composer-chrome";
-import { BtwPanelComponent } from "../../packages/coding-agent/src/modes/components/dialogs/btw-panel";
-import { OmfgPanelComponent } from "../../packages/coding-agent/src/modes/components/dialogs/omfg-panel";
-import { ErrorBannerComponent } from "../../packages/coding-agent/src/modes/components/transcript/error-banner";
-import { showCommandMessage } from "../../packages/coding-agent/src/modes/controllers/command-controller-shared";
-import { initTheme, theme } from "../../packages/coding-agent/src/modes/theme/theme";
-import type { InteractiveModeContext } from "../../packages/coding-agent/src/modes/types";
-import { UiHelpers } from "../../packages/coding-agent/src/modes/utils/ui-helpers";
+} from "../../packages/coding-agent/src/modes/terminal/components/composer/composer-chrome";
+import { BtwPanelComponent } from "../../packages/coding-agent/src/modes/terminal/components/dialogs/btw-panel";
+import { OmfgPanelComponent } from "../../packages/coding-agent/src/modes/terminal/components/dialogs/omfg-panel";
+import { ErrorBannerComponent } from "../../packages/coding-agent/src/modes/terminal/components/transcript/error-banner";
+import { showCommandMessage } from "../../packages/coding-agent/src/modes/terminal/controllers/command-controller-shared";
+import type { InteractiveModeContext } from "../../packages/coding-agent/src/modes/terminal/types";
+import { UiHelpers } from "../../packages/coding-agent/src/modes/terminal/utils/ui-helpers";
+import { initTheme, theme } from "../../packages/coding-agent/src/theme/theme";
 import { type Component, Container, type TUI } from "../../packages/tui/src/index";
 import { flag, hasFlag, renderWidth } from "./render-args";
 

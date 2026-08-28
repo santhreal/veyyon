@@ -4,8 +4,8 @@ import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import {
 	buildComposerShortcuts,
 	ComposerShortcutsBar,
-} from "@veyyon/coding-agent/modes/components/composer/composer-shortcuts";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/composer/composer-shortcuts";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { useFullColor } from "../../helpers/theme-assertions";
 
 await initTheme(false, "unicode", false, "titanium", "light");

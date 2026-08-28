@@ -16,11 +16,11 @@ import { formatCount, formatMoreLines, formatNumber } from "@veyyon/utils";
 import { settings } from "../config/settings-instance";
 import type { EvalCellResult, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "../eval/types";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { formatContextUsage } from "../modes/components/status-line/context-thresholds";
-import { truncateToVisualLines } from "../modes/components/transcript/visual-truncate";
-import { getMarkdownTheme } from "../modes/theme/markdown-theme";
-import type { Theme } from "../modes/theme/theme";
-import { expandHintSuffix } from "../modes/utils/key-hint";
+import { formatContextUsage } from "../modes/terminal/components/status-line/context-thresholds";
+import { truncateToVisualLines } from "../modes/terminal/components/transcript/visual-truncate";
+import { expandHintSuffix } from "../modes/terminal/utils/key-hint";
+import { getMarkdownTheme } from "../theme/markdown-theme";
+import type { Theme } from "../theme/theme";
 import { markFramedBlockComponent, outputBlockContentWidth, renderCodeCell, renderOutputBlock } from "../tui";
 import {
 	JSON_TREE_MAX_DEPTH_COLLAPSED,

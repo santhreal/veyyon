@@ -283,8 +283,8 @@ function isIsRecordCloneBody(body: string): boolean {
 // the coding-agent modes/ UI lane, which an active feature branch owns; convert
 // them when that lane unblocks, then remove the entry. Shrink-only.
 const ISRECORD_INLINE_GRANDFATHERED = new Set([
-	"coding-agent/src/modes/controllers/event-controller.ts",
-	"coding-agent/src/modes/utils/transcript-render-helpers.ts",
+	"coding-agent/src/modes/terminal/controllers/event-controller.ts",
+	"coding-agent/src/modes/terminal/utils/transcript-render-helpers.ts",
 ]);
 
 // A dotted value/member expression (no call parens, no index brackets).
@@ -326,9 +326,9 @@ const NEGATED_INLINE_ISRECORD = [
 // remove the entry. Shrink-only.
 const NEGATED_ISRECORD_INLINE_GRANDFATHERED = new Set([
 	"coding-agent/src/modes/acp/acp-event-mapper.ts",
-	"coding-agent/src/modes/components/selectors/model-hub.ts",
-	"coding-agent/src/modes/components/transcript/read-tool-group.ts",
-	"coding-agent/src/modes/controllers/omfg-rule.ts",
+	"coding-agent/src/modes/terminal/components/selectors/model-hub.ts",
+	"coding-agent/src/modes/terminal/components/transcript/read-tool-group.ts",
+	"coding-agent/src/modes/terminal/controllers/omfg-rule.ts",
 	"coding-agent/src/modes/rpc/rpc-mode.ts",
 ]);
 

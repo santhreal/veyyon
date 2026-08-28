@@ -18,11 +18,11 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { CustomMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/custom-message";
-import { HookMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/hook-message";
-import { UserMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/user-message";
-import { initTheme, setTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { CustomMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/custom-message";
+import { HookMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/hook-message";
+import { UserMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/user-message";
 import type { CustomMessage, HookMessage } from "@veyyon/coding-agent/session/messages";
+import { initTheme, setTheme, theme } from "@veyyon/coding-agent/theme/theme";
 
 /** Any ANSI background attribute: truecolor (48;2), 256 (48;5), or the classic
  * 40-47/100-107 range. The terminal-default reset `\x1b[49m` is allowed — it

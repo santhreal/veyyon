@@ -3,7 +3,7 @@
  */
 import { Args, Command, Flags, renderCommandHelp } from "@veyyon/utils/cli";
 import { AGENTS_ACTIONS, type AgentsAction, type AgentsCommandArgs, runAgentsCommand } from "../cli/agents-cli";
-import { initTheme } from "../modes/theme/theme";
+import { initTheme } from "../theme/theme";
 
 export default class Agents extends Command {
 	static description = "Manage bundled task agents";

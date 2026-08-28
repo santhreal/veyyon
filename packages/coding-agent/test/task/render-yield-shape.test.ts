@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentProgress, SingleResult, TaskToolDetails } from "@veyyon/coding-agent/task";
 import { taskToolRenderer } from "@veyyon/coding-agent/task/renderer";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 
 // Regression for #1987: when a subagent stores a non-array value in
 // `extractedToolData.yield`, the renderer cast it to `Array<{ data }>` and

@@ -19,10 +19,10 @@
  * numbers copied out of a layout that will move.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { AgentDashboard } from "@veyyon/coding-agent/modes/components/dashboard/agent-dashboard";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentDashboard } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-dashboard";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;

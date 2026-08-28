@@ -12,8 +12,8 @@ import {
 	extractInternalUrlContext,
 	getInternalUrlSuggestions,
 	isInternalUrlPrefix,
-} from "@veyyon/coding-agent/modes/internal-url-autocomplete";
-import { PromptActionAutocompleteProvider } from "@veyyon/coding-agent/modes/prompt-action-autocomplete";
+} from "@veyyon/coding-agent/modes/terminal/autocomplete/internal-url-autocomplete";
+import { PromptActionAutocompleteProvider } from "@veyyon/coding-agent/modes/terminal/autocomplete/prompt-action-autocomplete";
 
 function skill(name: string, description = ""): Skill {
 	return { name, description, filePath: `/skills/${name}/SKILL.md`, baseDir: `/skills/${name}`, source: "test" };
