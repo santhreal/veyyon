@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ImageContent, Message, MessageAttribution, ServiceTierByFamily, TextContent, Usage } from "@veyyon/ai";
+import type { ImageContent, Message, MessageAttribution, ServiceTierByFamily, TextContent } from "@veyyon/ai";
 import { allowsSessionTelemetry, type InstrumentationLevel } from "@veyyon/ai/instrumentation";
 import {
 	directoryExists,
@@ -29,6 +29,14 @@ import {
 } from "./messages";
 import type { OperatorNotices } from "./operator-notices";
 import { type BuildSessionContextOptions, buildSessionContext, type SessionContext } from "./session-context";
+import {
+	clearDraftOnlyMarker,
+	draftPathFor,
+	hasDraftOnlyMarker,
+	holdsOnlyDraftMetadata,
+	isAssistantEntry,
+	writeDraftOnlyMarker,
+} from "./session-drafts";
 import {
 	type BranchSummaryEntry,
 	type CompactionEntry,
@@ -63,6 +71,19 @@ import {
 	type TtsrInjectionEntry,
 	type UsageStatistics,
 } from "./session-entries";
+import { SessionEntryIndex } from "./session-entry-index";
+import {
+	artifactsDirectoryFor,
+	assertSessionSequence,
+	fileSafeTimestamp,
+	findEntriesThroughCheckpoint,
+	getLifecycleStateFromEntries,
+	isSessionIncarnationTelemetry,
+	mintSessionId,
+	nextSessionSequence,
+	nowIso,
+	resolveBreadcrumbToInteractiveRoot,
+} from "./session-lifecycle";
 import { findMostRecentSession, listAllSessions, listSessions, type SessionInfo } from "./session-listing";
 import { loadEntriesFromFile, readTitleSlotFromFile, resolveBlobRefsInEntries } from "./session-loader";
 import { generateId, migrateToCurrentVersion } from "./session-migrations";
@@ -83,237 +104,7 @@ import {
 } from "./session-storage";
 import { type SessionTitleUpdate, serializeTitleSlot } from "./session-title-slot";
 
-const DRAFT_ONLY_SESSION_MARKER = ".draft-only-session";
-
 const CHUNK_TARGET_CHARS = 1 << 20;
-
-function mintSessionId(): string {
-	return Bun.randomUUIDv7();
-}
-
-function nowIso(): string {
-	return new Date().toISOString();
-}
-
-function fileSafeTimestamp(iso: string): string {
-	return iso.replace(/[:.]/g, "-");
-}
-
-function artifactsDirectoryFor(sessionFile: string | undefined): string | null {
-	return sessionFile ? sessionFileStem(sessionFile) : null;
-}
-
-function resolveBreadcrumbToInteractiveRoot(sessionFile: string): string {
-	let current = path.resolve(sessionFile);
-	for (let depth = 0; depth < 8; depth++) {
-		const parentSessionFile = sessionFileName(path.dirname(current));
-		if (pathStateSync(parentSessionFile) !== "present") return current;
-		current = parentSessionFile;
-	}
-	return current;
-}
-
-function emptyUsageStatistics(): UsageStatistics {
-	return {
-		input: 0,
-		output: 0,
-		cacheRead: 0,
-		cacheWrite: 0,
-		totalTokens: 0,
-		orchestrationInput: 0,
-		orchestrationOutput: 0,
-		orchestrationCacheRead: 0,
-		premiumRequests: 0,
-		cost: 0,
-	};
-}
-
-function taskUsageFrom(details: unknown): Usage | undefined {
-	if (details === null || typeof details !== "object") return undefined;
-	const maybeUsage = (details as Record<string, unknown>).usage;
-	return maybeUsage !== null && typeof maybeUsage === "object" ? (maybeUsage as Usage) : undefined;
-}
-
-function entryUsage(entry: SessionEntry): Usage | undefined {
-	if (entry.type !== "message") return undefined;
-	const message = entry.message;
-	if (message.role === "assistant") return message.usage;
-	if (message.role === "toolResult" && message.toolName === "task") return taskUsageFrom(message.details);
-	return undefined;
-}
-
-function addUsage(target: UsageStatistics, usage: Usage | undefined): void {
-	if (!usage) return;
-	target.input += usage.input;
-	target.output += usage.output;
-	target.cacheRead += usage.cacheRead;
-	target.cacheWrite += usage.cacheWrite;
-	target.totalTokens += usage.totalTokens;
-	target.orchestrationInput += usage.orchestration?.input ?? 0;
-	target.orchestrationOutput += usage.orchestration?.output ?? 0;
-	target.orchestrationCacheRead += usage.orchestration?.cacheRead ?? 0;
-	target.premiumRequests += usage.premiumRequests ?? 0;
-	target.cost += usage.cost.total;
-}
-
-function isAssistantEntry(entry: SessionEntry): boolean {
-	return entry.type === "message" && entry.message.role === "assistant";
-}
-
-function isDraftOnlyMetadataEntry(entry: SessionEntry): boolean {
-	switch (entry.type) {
-		case "model_change":
-		case "thinking_level_change":
-		case "service_tier_change":
-		case "mode_change":
-		case "session_lifecycle":
-			return true;
-		default:
-			return false;
-	}
-}
-
-function holdsOnlyDraftMetadata(entries: readonly SessionEntry[]): boolean {
-	let goalIsLive = false;
-	for (const entry of entries) {
-		if (entry.type === "mode_change") {
-			goalIsLive = entry.mode === "goal" || entry.mode === "goal_paused";
-			continue;
-		}
-		if (!isDraftOnlyMetadataEntry(entry)) return false;
-	}
-	return !goalIsLive;
-}
-
-function isSessionIncarnationTelemetry(entry: SessionEntry): boolean {
-	return entry.type === "session_lifecycle" || entry.type === "session_checkpoint";
-}
-
-function orderedByTimestamp(a: SessionTreeNode, b: SessionTreeNode): number {
-	return new Date(a.entry.timestamp).getTime() - new Date(b.entry.timestamp).getTime();
-}
-
-class SessionEntryIndex {
-	#entriesById = new Map<string, SessionEntry>();
-	#children = new Map<string | null, SessionEntry[]>();
-	#labels = new Map<string, string>();
-	#leaf: string | null = null;
-	#usage = emptyUsageStatistics();
-
-	clear(): void {
-		this.#entriesById.clear();
-		this.#children.clear();
-		this.#labels.clear();
-		this.#leaf = null;
-		this.#usage = emptyUsageStatistics();
-	}
-
-	rebuild(entries: readonly SessionEntry[]): void {
-		this.clear();
-		for (const entry of entries) this.insert(entry);
-	}
-
-	insert(entry: SessionEntry): void {
-		this.#entriesById.set(entry.id, entry);
-		this.#leaf = entry.id;
-
-		const bucket = this.#children.get(entry.parentId);
-		if (bucket) bucket.push(entry);
-		else this.#children.set(entry.parentId, [entry]);
-
-		if (entry.type === "label") {
-			if (entry.label) this.#labels.set(entry.targetId, entry.label);
-			else this.#labels.delete(entry.targetId);
-		}
-
-		addUsage(this.#usage, entryUsage(entry));
-	}
-
-	has(id: string): boolean {
-		return this.#entriesById.has(id);
-	}
-
-	get(id: string): SessionEntry | undefined {
-		return this.#entriesById.get(id);
-	}
-
-	entriesById(): Map<string, SessionEntry> {
-		return this.#entriesById;
-	}
-
-	leafId(): string | null {
-		return this.#leaf;
-	}
-
-	leafEntry(): SessionEntry | undefined {
-		return this.#leaf ? this.#entriesById.get(this.#leaf) : undefined;
-	}
-
-	setLeaf(id: string | null): void {
-		this.#leaf = id;
-	}
-
-	childrenOf(parentId: string): SessionEntry[] {
-		return [...(this.#children.get(parentId) ?? [])];
-	}
-
-	labelFor(id: string): string | undefined {
-		return this.#labels.get(id);
-	}
-
-	labelsInEffect(): IterableIterator<[string, string]> {
-		return this.#labels.entries();
-	}
-
-	usageSnapshot(): UsageStatistics {
-		return { ...this.#usage };
-	}
-
-	pathTo(id: string | null | undefined = this.#leaf): SessionEntry[] {
-		const branch: SessionEntry[] = [];
-		const seen = new Set<string>();
-		let cursor = id ? this.#entriesById.get(id) : undefined;
-
-		while (cursor && !seen.has(cursor.id)) {
-			seen.add(cursor.id);
-			branch.push(cursor);
-			cursor = cursor.parentId ? this.#entriesById.get(cursor.parentId) : undefined;
-		}
-		branch.reverse();
-		return branch;
-	}
-
-	tree(entries: readonly SessionEntry[]): SessionTreeNode[] {
-		const nodes = new Map<string, SessionTreeNode>();
-		const roots: SessionTreeNode[] = [];
-
-		for (const entry of entries) {
-			nodes.set(entry.id, { entry, children: [], label: this.#labels.get(entry.id) });
-		}
-
-		for (const entry of entries) {
-			const node = nodes.get(entry.id)!;
-			const parentId = entry.parentId;
-			if (parentId === null || parentId === entry.id) {
-				roots.push(node);
-				continue;
-			}
-
-			const parent = nodes.get(parentId);
-			if (parent) parent.children.push(node);
-			else roots.push(node);
-		}
-
-		const stack = roots.slice();
-		while (stack.length > 0) {
-			const node = stack.pop()!;
-			node.children.sort(orderedByTimestamp);
-			for (let ci = 0; ci < node.children.length; ci++) stack.push(node.children[ci]!);
-		}
-
-		return roots;
-	}
-}
 
 export type ReadonlySessionManager = Pick<
 	SessionManager,
@@ -371,26 +162,6 @@ interface DiskQueueOptions {
 	ignoreEpoch?: boolean;
 	epoch?: number;
 }
-
-function assertSessionSequence(sequence: unknown): asserts sequence is number {
-	if (!Number.isSafeInteger(sequence) || (sequence as number) < 0 || (sequence as number) >= Number.MAX_SAFE_INTEGER) {
-		throw new Error(
-			`Session sequence must be a non-negative safe integer below ${Number.MAX_SAFE_INTEGER}; repair or remove the invalid telemetry entry before resuming`,
-		);
-	}
-}
-
-function nextSessionSequence(entries: readonly SessionEntry[]): number {
-	let highest = entries.length;
-	for (const entry of entries) {
-		if (entry.sequence === undefined) continue;
-		assertSessionSequence(entry.sequence);
-		if (entry.sequence > highest) highest = entry.sequence;
-	}
-	assertSessionSequence(highest);
-	return highest + 1;
-}
-
 export class SessionManager {
 	#cwd: string;
 	#sessionDir: string;
@@ -1024,37 +795,6 @@ export class SessionManager {
 		this.#lifecycleEnded = true;
 	}
 
-	#draftPath(): string | null {
-		const artifactsDir = this.getArtifactsDir();
-		return artifactsDir ? path.join(artifactsDir, "draft.txt") : null;
-	}
-
-	#draftOnlySessionMarkerPath(): string | null {
-		const artifactsDir = this.getArtifactsDir();
-		return artifactsDir ? path.join(artifactsDir, DRAFT_ONLY_SESSION_MARKER) : null;
-	}
-
-	#hasDraftOnlySessionMarker(): boolean {
-		const markerPath = this.#draftOnlySessionMarkerPath();
-		return markerPath !== null && this.#storage.existsStateSync(markerPath) === "present";
-	}
-
-	async #writeDraftOnlySessionMarker(): Promise<void> {
-		const markerPath = this.#draftOnlySessionMarkerPath();
-		if (!markerPath) return;
-		await this.#storage.writeText(markerPath, "");
-	}
-
-	async #clearDraftOnlySessionMarker(): Promise<void> {
-		const markerPath = this.#draftOnlySessionMarkerPath();
-		if (!markerPath) return;
-		try {
-			await this.#storage.unlink(markerPath);
-		} catch (err) {
-			if (!isEnoent(err)) throw err;
-		}
-	}
-
 	#artifactManagerForSession(): ArtifactManager | null {
 		if (this.#adoptedArtifactManager) return this.#adoptedArtifactManager;
 
@@ -1418,16 +1158,16 @@ export class SessionManager {
 			return;
 		}
 
-		const draftPath = this.#draftPath();
+		const draftPath = draftPathFor(this.getArtifactsDir());
 		if (draftPath && this.#storage.existsStateSync(draftPath) !== "absent") return;
 		if (!holdsOnlyDraftMetadata(this.#entries)) {
-			await this.#clearDraftOnlySessionMarker();
+			await clearDraftOnlyMarker(this.#storage, this.getArtifactsDir());
 			this.#draftOnlySessionCleanupArmed = false;
 			return;
 		}
 
 		if (await this.holdsForeignEntries()) {
-			await this.#clearDraftOnlySessionMarker();
+			await clearDraftOnlyMarker(this.#storage, this.getArtifactsDir());
 			this.#draftOnlySessionCleanupArmed = false;
 			return;
 		}
@@ -1613,7 +1353,7 @@ export class SessionManager {
 	}
 
 	async saveDraft(text: string): Promise<void> {
-		const draftPath = this.#draftPath();
+		const draftPath = draftPathFor(this.getArtifactsDir());
 		if (!draftPath || !this.#persist) return;
 
 		if (text.length === 0) {
@@ -1633,14 +1373,14 @@ export class SessionManager {
 			holdsOnlyDraftMetadata(this.#entries);
 		await this.ensureOnDisk();
 		if (draftWillMaterializeMetadataOnlyFile) {
-			await this.#writeDraftOnlySessionMarker();
+			await writeDraftOnlyMarker(this.#storage, this.getArtifactsDir());
 			this.#draftOnlySessionCleanupArmed = true;
 		}
 		await this.#storage.writeText(draftPath, text);
 	}
 
 	async consumeDraft(): Promise<string | null> {
-		const draftPath = this.#draftPath();
+		const draftPath = draftPathFor(this.getArtifactsDir());
 		if (!draftPath) return null;
 
 		let draft: string;
@@ -1656,7 +1396,7 @@ export class SessionManager {
 		} catch (err) {
 			if (!isEnoent(err)) throw err;
 		}
-		if (holdsOnlyDraftMetadata(this.#entries) && this.#hasDraftOnlySessionMarker())
+		if (holdsOnlyDraftMetadata(this.#entries) && hasDraftOnlyMarker(this.#storage, this.getArtifactsDir()))
 			this.#draftOnlySessionCleanupArmed = true;
 
 		return draft;
@@ -1948,11 +1688,7 @@ export class SessionManager {
 	}
 
 	getLifecycleState(): SessionLifecycleState | "unknown" {
-		for (let index = this.#entries.length - 1; index >= 0; index--) {
-			const entry = this.#entries[index];
-			if (entry?.type === "session_lifecycle") return entry.state;
-		}
-		return "unknown";
+		return getLifecycleStateFromEntries(this.#entries);
 	}
 
 	createCheckpoint(): SessionCheckpoint | null {
@@ -1968,16 +1704,7 @@ export class SessionManager {
 	}
 
 	getEntriesThroughCheckpoint(checkpoint: SessionCheckpoint | string): SessionEntry[] {
-		const checkpointId = typeof checkpoint === "string" ? checkpoint : checkpoint.id;
-		const index = this.#entries.findIndex(
-			(entry): entry is SessionCheckpointEntry => entry.type === "session_checkpoint" && entry.id === checkpointId,
-		);
-		if (index < 0) throw new Error(`Session checkpoint ${checkpointId} not found`);
-		const entry = this.#entries[index] as SessionCheckpointEntry;
-		if (typeof checkpoint !== "string" && entry.prefixSequence !== checkpoint.prefixSequence) {
-			throw new Error(`Session checkpoint ${checkpointId} identity does not match`);
-		}
-		return this.#entries.slice(0, index);
+		return findEntriesThroughCheckpoint(this.#entries, checkpoint);
 	}
 
 	getTree(): SessionTreeNode[] {
