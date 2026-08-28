@@ -148,7 +148,7 @@ export function buildStartupImportGraph(repoRoot: string, entry: string): Startu
 		for (const imported of imports) {
 			if (imported.kind !== "import-statement") continue;
 			const spec = imported.path;
-			if (spec.startsWith("node:") || spec.startsWith("bun:")) continue;
+			if (spec === "bun" || spec.startsWith("node:") || spec.startsWith("bun:")) continue;
 			let resolved: string | undefined;
 			if (spec.startsWith(".") || spec.startsWith("/")) {
 				resolved =

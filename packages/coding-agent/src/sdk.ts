@@ -68,7 +68,9 @@ import { TtsrManager } from "./export/ttsr";
 import { DEFAULT_PLAN_FILE_URL } from "./plan-mode/plan-file-url";
 import { resolveGateInputs, resolveIntentField } from "./system-prompt-builder/gate-inputs";
 import "./discovery";
-import { type ArgotGate, type ArgotSession, renderPreamble, shouldEncode } from "argot";
+import { type ArgotGate, shouldEncode } from "argot/policy";
+import { renderPreamble } from "argot/preamble";
+import type { ArgotSession } from "argot/session";
 import {
 	collectArgotLoadedRoots,
 	createArgotSession,
