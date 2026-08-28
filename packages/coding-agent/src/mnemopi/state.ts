@@ -674,7 +674,7 @@ function createMemory(config: MnemopiBackendConfig, bank: string): Mnemopi {
 	} as ConstructorParameters<typeof Mnemopi>[0]);
 }
 
-function resolveBankDbPath(config: MnemopiBackendConfig, bank: string): string {
+export function resolveBankDbPath(config: MnemopiBackendConfig, bank: string): string {
 	const sharedBank = config.globalBank ?? config.baseBank ?? "default";
 	if (bank === sharedBank) return config.dbPath;
 	const { BankManager } = requireMnemopiCore();
