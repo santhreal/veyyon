@@ -338,7 +338,12 @@ describe("primitive ownership", () => {
 	 */
 	it("lets no module call the introducer ESC", async () => {
 		const offenders: string[] = [];
-		const trees = [UTILS_SRC, TUI_SRC, CODING_AGENT_SRC, path.resolve(import.meta.dir, "../../bench/src/metaharness")];
+		const trees = [
+			UTILS_SRC,
+			TUI_SRC,
+			CODING_AGENT_SRC,
+			path.resolve(import.meta.dir, "../../bench/src/metaharness"),
+		];
 		for (const tree of trees) {
 			for (const file of new Bun.Glob("**/*.ts").scanSync(tree)) {
 				const full = path.join(tree, file);
