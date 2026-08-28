@@ -8,10 +8,10 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { defaultConfig, SOURCE_BIN_MOUNT, SOURCE_SRC_MOUNT } from "../../../src/backends/harbor/runner/config";
-import type { SourceMount } from "../../../src/backends/harbor/runner/deps";
-import { buildMountsJson, writeComposeOverlay } from "../../../src/backends/harbor/runner/mounts";
-import { repoRootDir } from "../../../src/paths";
+import { defaultConfig, SOURCE_BIN_MOUNT, SOURCE_SRC_MOUNT } from "../../../backends/harbor/config";
+import type { SourceMount } from "../../../backends/harbor/deps";
+import { buildMountsJson, writeComposeOverlay } from "../../../backends/harbor/mounts";
+import { repoRootDir } from "../../../engine/package-paths";
 
 describe("a mounts json binds source repo and linux deps", () => {
 	let benchDir: string;

@@ -4,21 +4,21 @@ import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
 import type { FileSearchDetails } from "@veyyon/coding-agent/tools/file-search";
 import type { SearchToolDetails } from "@veyyon/coding-agent/tools/search";
-import { materializeCorpus } from "../../../src/benches/search/corpus";
-import {
-	registerBuiltinSearchBench,
-	requireSearchCaseSuite,
-	requireSearchCorpus,
-	searchArms,
-	searchCaseSuites,
-} from "../../../src/benches/search/registry";
+import { materializeCorpus } from "../../../benches/search/corpus";
 import {
 	canonicalizeResultContent,
 	collectSearchBenchmarkLimitations,
 	compareArmResult,
 	formatSearchBenchReport,
 	runSearchBench,
-} from "../../../src/benches/search/runner";
+} from "../../../benches/search/main";
+import {
+	registerBuiltinSearchBench,
+	requireSearchCaseSuite,
+	requireSearchCorpus,
+	searchArms,
+	searchCaseSuites,
+} from "../../../benches/search/registry";
 
 describe("the search bench corpus", () => {
 	it("materializes a registered spec on disk and removes it again", async () => {

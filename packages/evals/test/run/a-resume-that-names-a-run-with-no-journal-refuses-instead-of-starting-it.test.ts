@@ -23,30 +23,22 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import { registerAllBackends } from "../../src/backends";
-import { describeResume } from "../../src/cli";
-import { requireBackend, requireSuite, type SuiteContext } from "../../src/core";
-import { registerBuiltinHarnesses } from "../../src/harnesses";
+import type { SuiteContext } from "../../engine/contracts";
+import { executeRun } from "../../engine/execute-run";
+import { backends, harnesses, suites } from "../../engine/loaded-members";
 import {
-	buildRunPlan,
-	executeRun,
 	journalExists,
 	journalPathFor,
 	openRunJournal,
 	ResumeWithoutJournalError,
 	RUN_JOURNAL_KIND,
 	RUN_JOURNAL_VERSION,
-} from "../../src/run";
-import { registerAllSuites } from "../../src/suites";
+} from "../../engine/run-journal";
+import { buildRunPlan } from "../../engine/run-plan";
+import { describeResume } from "../../evals";
 
 /** Any journal these cases open belongs to one plan; the digest itself is not the subject. */
 const PLAN_DIGEST = "0123456789abcdef";
-
-// The registries are process-wide, and a chunk of the test bucket may hold no other file
-// that populates them.
-registerAllSuites();
-registerAllBackends();
-registerBuiltinHarnesses();
 
 const temps: TempDir[] = [];
 
@@ -86,11 +78,12 @@ describe("the journal a resume looks for", () => {
 describe("a resume of a run with no journal", () => {
 	it("refuses before any preflight, naming the path and both ways out", async () => {
 		const dir = await runsDir();
-		const suite = requireSuite("typescript-edit");
+		const suite = suites.require("typescript-edit");
 		const context: SuiteContext = { workDir: dir, options: {} };
 		const tasks = await suite.discoverTasks(context);
 		const plan = await buildRunPlan({
 			suite,
+			harnesses,
 			runId: "typo-in-the-run-id",
 			selection: { harnesses: ["veyyon"], models: ["vendor/model"] },
 			tasks: tasks.slice(0, 1),
@@ -100,7 +93,8 @@ describe("a resume of a run with no journal", () => {
 
 		const failure = executeRun({
 			plan,
-			backend: requireBackend(suite.backend),
+			harnesses,
+			backend: backends.require(suite.backend),
 			workDir: dir,
 			runsDir: dir,
 			jobs: 1,

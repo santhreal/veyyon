@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { type SearchArm, UNIFIED_TOOL_ARM } from "../../../src/benches/search/arms";
-import type { SearchCaseSuite } from "../../../src/benches/search/cases";
-import type { SearchCorpusSpec } from "../../../src/benches/search/corpus";
+import { type SearchArm, UNIFIED_TOOL_ARM } from "../../../benches/search/arms";
+import type { SearchCaseSuite } from "../../../benches/search/cases";
+import type { SearchCorpusSpec } from "../../../benches/search/corpus";
+import { collectSearchBenchmarkLimitations, runSearchBench, runSearchCaseSuite } from "../../../benches/search/main";
 import {
 	DuplicateSearchBenchMemberError,
 	registerBuiltinSearchBench,
@@ -17,12 +18,7 @@ import {
 	searchCaseSuites,
 	searchCorpora,
 	searchCorpusIds,
-} from "../../../src/benches/search/registry";
-import {
-	collectSearchBenchmarkLimitations,
-	runSearchBench,
-	runSearchCaseSuite,
-} from "../../../src/benches/search/runner";
+} from "../../../benches/search/registry";
 
 /**
  * WHY: the bench used to carry one corpus, one literal case list and exactly two arms named

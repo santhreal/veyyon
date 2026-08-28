@@ -20,15 +20,14 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import YAML from "yaml";
-import { stagePierAssets } from "../../src/backends/pier/asset-staging";
-import { PierExecutionBackend } from "../../src/backends/pier/backend";
-import { registerPierBackend } from "../../src/backends/pier/register";
-import * as pierRunner from "../../src/backends/pier/runner";
+import { stagePierAssets } from "../../backends/pier/asset-staging";
+import { PierExecutionBackend } from "../../backends/pier/main";
+import * as pierRunner from "../../backends/pier/runner";
 import {
 	ARM_ATTACHMENT_KINDS,
 	ARM_ATTACHMENT_MANIFEST_VERSION,
 	type ArmAttachmentManifest,
-} from "../../src/core/arm-attachments";
+} from "../../engine/arm-attachments";
 import type {
 	EvalSuite,
 	PreflightVerdict,
@@ -38,15 +37,15 @@ import type {
 	TrialCell,
 	TrialScore,
 	Variant,
-} from "../../src/core/types";
-import { registerBuiltinHarnesses } from "../../src/harnesses/index";
-import { evalsPackageDir } from "../../src/paths";
+} from "../../engine/contracts";
+import { harnesses } from "../../engine/loaded-members";
+import { evalsPackageDir } from "../../engine/package-paths";
 
 const SCRATCH_BASE = path.join(evalsPackageDir(), ".internal", "test-pier-assets");
 
 function createStubSuite(): EvalSuite {
 	return {
-		name: "stub-pier-suite",
+		id: "stub-pier-suite",
 		version: "1.0.0",
 		displayName: "Stub Pier Suite",
 		description: "Suite for testing asset staging",
@@ -83,9 +82,6 @@ describe("PierExecutionBackend asset staging", () => {
 	let origPath: string | undefined;
 
 	beforeEach(() => {
-		registerBuiltinHarnesses();
-		registerPierBackend();
-
 		testDir = path.join(SCRATCH_BASE, `run-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
 		fs.mkdirSync(testDir, { recursive: true });
 
@@ -186,6 +182,7 @@ describe("PierExecutionBackend asset staging", () => {
 			suite,
 			workDir,
 			runsDir: path.join(workDir, "runs"),
+			harnesses,
 			options: {
 				variants,
 				model: "mock/model-a",
@@ -282,7 +279,7 @@ describe("PierExecutionBackend asset staging", () => {
 		// 2. Run trial and verify that the backend passes the real binary_sha in job config
 		const cell: TrialCell = {
 			variant: "baseline",
-			suite: suite.name,
+			suite: suite.id,
 			task: "task-1",
 			repeat: 0,
 		};
@@ -333,6 +330,7 @@ describe("PierExecutionBackend asset staging", () => {
 			suite,
 			workDir,
 			runsDir: path.join(workDir, "runs"),
+			harnesses,
 			options: {
 				variants: [variant],
 			},
@@ -370,6 +368,7 @@ describe("PierExecutionBackend asset staging", () => {
 			suite,
 			workDir,
 			runsDir: path.join(workDir, "runs"),
+			harnesses,
 			options: {
 				variants: [variant],
 			},
@@ -397,6 +396,7 @@ describe("PierExecutionBackend asset staging", () => {
 			suite,
 			workDir,
 			runsDir: path.join(workDir, "runs"),
+			harnesses,
 		};
 
 		const backend = new PierExecutionBackend({
@@ -421,6 +421,7 @@ describe("PierExecutionBackend asset staging", () => {
 			suite,
 			workDir,
 			runsDir: path.join(workDir, "runs"),
+			harnesses,
 		};
 
 		const backend = new PierExecutionBackend({
@@ -444,6 +445,7 @@ describe("PierExecutionBackend asset staging", () => {
 			suite,
 			workDir,
 			runsDir: path.join(workDir, "runs"),
+			harnesses,
 		};
 
 		const backend = new PierExecutionBackend({

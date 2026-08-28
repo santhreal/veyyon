@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { dropCostProbe, probeTrialCost, resetCostProbes } from "../../../src/backends/harbor/runner/cost-probe";
+import { dropCostProbe, probeTrialCost, resetCostProbes } from "../../../backends/harbor/cost-probe";
 
 describe("a cost probe reads only appended bytes across calls", () => {
 	let tmpDir: string;

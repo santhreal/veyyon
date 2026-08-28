@@ -19,7 +19,7 @@
 import { describe, expect, test } from "bun:test";
 import * as path from "node:path";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
-import { deepSweSuiteDir } from "../../../src/paths";
+import { deepSweSuiteDir } from "../../../engine/package-paths";
 import {
 	budgetedTrialTimeoutSec,
 	parseTaskTimeBudget,
@@ -29,7 +29,7 @@ import {
 	type TaskTimeBudgetSec,
 	taskTimeBudget,
 	truncationWarning,
-} from "../../../src/suites/deep-swe/trial-timeout";
+} from "../../../suites/deep-swe/trial-timeout";
 
 /**
  * A real DeepSWE `task.toml`, trimmed to the tables this module reads but

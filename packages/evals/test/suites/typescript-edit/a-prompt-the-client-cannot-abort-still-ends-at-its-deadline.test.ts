@@ -18,10 +18,10 @@
 
 import { describe, expect, it } from "bun:test";
 import { setTimeout as sleepFor } from "node:timers/promises";
-import { collectPromptEvents, PROMPT_UNWIND_GRACE_MS } from "../../../src/suites/typescript-edit/adapter/runner/events";
-import type { BenchmarkPromptDelivery } from "../../../src/suites/typescript-edit/adapter/runner/prompt-delivery";
-import { PromptTimeoutError } from "../../../src/suites/typescript-edit/adapter/runner/telemetry";
-import type { BenchmarkClient, BenchmarkConfig } from "../../../src/suites/typescript-edit/adapter/runner/types";
+import { collectPromptEvents, PROMPT_UNWIND_GRACE_MS } from "../../../suites/typescript-edit/runner/events";
+import type { BenchmarkPromptDelivery } from "../../../suites/typescript-edit/runner/prompt-delivery";
+import { PromptTimeoutError } from "../../../suites/typescript-edit/runner/telemetry";
+import type { BenchmarkClient, BenchmarkConfig } from "../../../suites/typescript-edit/runner/types";
 
 /** Long enough for a bounded attempt to finish, short enough that an unbounded one is observed. */
 const OBSERVATION_MS = 3000;

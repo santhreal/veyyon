@@ -22,18 +22,18 @@ import {
 	suiteCacheDir,
 	suiteDatasetDir,
 	UnsafePathSegmentError,
-} from "../../src/paths";
+} from "../../engine/package-paths";
 import {
 	TERMINAL_BENCH_SUITE_NAME,
 	terminalBenchDatasetDir,
 	terminalBenchTaskListsDir,
-} from "../../src/suites/terminal-bench/paths";
+} from "../../suites/terminal-bench/paths";
 import {
 	TYPESCRIPT_EDIT_SUITE_NAME,
 	typescriptEditCacheDir,
 	typescriptEditFixturesArchive,
 	typescriptEditFixturesArchiveRelative,
-} from "../../src/suites/typescript-edit/paths";
+} from "../../suites/typescript-edit/paths";
 
 /** Segments that must be rejected wherever a dynamic path component is accepted. */
 const HOSTILE_SEGMENTS = ["..", ".", "", " ", "../../etc", "a/b", "a\\b", "v3.0.0 ", " v3.0.0", "tag\0null"] as const;

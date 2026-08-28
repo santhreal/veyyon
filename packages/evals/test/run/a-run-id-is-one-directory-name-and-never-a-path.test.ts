@@ -23,15 +23,16 @@ import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { main, parseEvalsArgs } from "../../src/cli";
-import type { EvalSuite, PreflightVerdict, TaskDescriptor, TrialScore } from "../../src/core";
-import { assertSafeJobName, RunStore } from "../../src/manager/store";
-import { UnsafePathSegmentError } from "../../src/paths";
-import { buildRunPlan } from "../../src/run";
-import { journalPathFor } from "../../src/run/journal";
-import { ManagerServer } from "../../src/server/main";
-import { RunnerManager } from "../../src/server/runner";
-import { FREE_FORM_PARAMS, PATH_SEGMENT_PARAMS, SERVER_ROUTES } from "../../src/wire";
+import { ManagerServer } from "../../api/main";
+import { RunnerManager } from "../../api/runner";
+import type { EvalSuite, PreflightVerdict, TaskDescriptor, TrialScore } from "../../engine/contracts";
+import { harnesses } from "../../engine/loaded-members";
+import { UnsafePathSegmentError } from "../../engine/package-paths";
+import { journalPathFor } from "../../engine/run-journal";
+import { buildRunPlan } from "../../engine/run-plan";
+import { FREE_FORM_PARAMS, PATH_SEGMENT_PARAMS, SERVER_ROUTES } from "../../engine/store-shapes";
+import { main, parseEvalsArgs } from "../../evals";
+import { assertSafeJobName, RunStore } from "../../store/sqlite";
 
 /** Every shape of id that is not a single directory name. */
 const NOT_ONE_SEGMENT: string[] = [
@@ -76,7 +77,7 @@ function tempDir(prefix: string): string {
 /** A suite with one task, so a plan can be built without a corpus. */
 function oneTaskSuite(): EvalSuite {
 	return {
-		name: "probe",
+		id: "probe",
 		version: "1.0.0",
 		displayName: "Probe",
 		description: "one task, no corpus",
@@ -124,6 +125,7 @@ describe("buildRunPlan", () => {
 		await expect(
 			buildRunPlan({
 				suite: oneTaskSuite(),
+				harnesses,
 				selection: { harnesses: ["veyyon"], models: ["anthropic/claude-sonnet-4-6"] },
 				runId: badId,
 			}),
@@ -132,8 +134,8 @@ describe("buildRunPlan", () => {
 
 	it("keeps an id that is one directory name, and generates one otherwise", async () => {
 		const selection = { harnesses: ["veyyon"], models: ["anthropic/claude-sonnet-4-6"] };
-		const named = await buildRunPlan({ suite: oneTaskSuite(), selection, runId: GOOD_ID });
-		const generated = await buildRunPlan({ suite: oneTaskSuite(), selection });
+		const named = await buildRunPlan({ suite: oneTaskSuite(), harnesses, selection, runId: GOOD_ID });
+		const generated = await buildRunPlan({ suite: oneTaskSuite(), harnesses, selection });
 
 		expect(named.runId).toBe(GOOD_ID);
 		expect(generated.runId.startsWith("probe-")).toBe(true);

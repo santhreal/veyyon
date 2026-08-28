@@ -25,9 +25,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getEnumValues, getType, isSettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import * as YAML from "yaml";
-import { armsDir } from "../../../src/paths";
-import { isArmConfigFile } from "../../../src/suites/deep-swe/arm-fingerprint";
-import { mistypedArmSettings, unknownArmSettings } from "../../../src/suites/deep-swe/treatment-guard";
+import { armsDir } from "../../../engine/package-paths";
+import { isArmConfigFile } from "../../../suites/deep-swe/arm-fingerprint";
+import { mistypedArmSettings, unknownArmSettings } from "../../../suites/deep-swe/treatment-guard";
 
 const ARMS_DIR = armsDir();
 /** Every arm file on disk, so a newly added arm is covered without editing this suite. */

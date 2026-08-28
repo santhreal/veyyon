@@ -23,14 +23,14 @@ import {
 	countHashlineEditSubtypes,
 	detectProviderFailure,
 	getProviderFailureRetryDelayMs,
-} from "../../../../src/suites/typescript-edit/adapter/runner/retry";
+} from "../../../../suites/typescript-edit/runner/retry";
 import {
 	EDIT_FAILURE_CATEGORIES,
 	type EditFailureCategory,
 	type PromptAttemptTelemetry,
 	type ProviderFailure,
 	type TaskRunResult,
-} from "../../../../src/suites/typescript-edit/adapter/runner/types";
+} from "../../../../suites/typescript-edit/runner/types";
 
 describe("provider failure retry backoff", () => {
 	it("follows a 1s * 2^(n-1) sequence capped at 10,000ms", () => {

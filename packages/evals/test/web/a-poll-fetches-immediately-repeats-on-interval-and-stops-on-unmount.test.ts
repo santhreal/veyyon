@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { parseHTML } from "linkedom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { usePolled } from "../../src/web/hooks/use-polled";
+import { usePolled } from "../../dashboard/hooks/use-polled";
 
 interface RenderedHook<T> {
 	readonly result: { current: T };

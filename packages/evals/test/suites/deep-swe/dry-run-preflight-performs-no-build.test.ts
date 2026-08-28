@@ -26,10 +26,10 @@ import { afterEach, beforeEach, describe, expect, it, type Mock, spyOn } from "b
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AuthStorage, type CredentialHealthResult } from "@veyyon/ai";
-import { internalScratchDir } from "../../../src/paths";
-import { builtinSuites } from "../../../src/suites";
-import { checkBinaryBuildNeeded } from "../../../src/suites/deep-swe/runner/preflight";
-import { deepSweSuite } from "../../../src/suites/deep-swe/suite";
+import { suites } from "../../../engine/loaded-members";
+import { internalScratchDir } from "../../../engine/package-paths";
+import { deepSweSuite } from "../../../suites/deep-swe/main";
+import { checkBinaryBuildNeeded } from "../../../suites/deep-swe/runner/preflight";
 
 function createScratchDir(prefix: string): string {
 	const base = internalScratchDir();
@@ -142,12 +142,12 @@ describe("dry-run preflight purity and artifact reporting", () => {
 		const optedOutSuites: readonly string[] = [];
 
 		try {
-			// Fail by default on any new suite: sweep builtinSuites at runtime
-			expect(builtinSuites.length).toBeGreaterThan(0);
+			// Fail by default on any new suite: sweep suites at runtime
+			expect(suites.list().length).toBeGreaterThan(0);
 			expect(optedOutSuites).toEqual([]);
 
-			for (const suite of builtinSuites) {
-				if (optedOutSuites.includes(suite.name)) continue;
+			for (const suite of suites.list()) {
+				if (optedOutSuites.includes(suite.id)) continue;
 
 				const filesBefore = fs.readdirSync(tempDir);
 				const verdict = await suite.preflight({

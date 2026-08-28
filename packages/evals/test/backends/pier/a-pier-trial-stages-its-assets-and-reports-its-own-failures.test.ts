@@ -2,22 +2,21 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { pierBackend } from "../../../src/backends/pier/backend";
-import { registerPierBackend } from "../../../src/backends/pier/register";
+import { pierBackend } from "../../../backends/pier/main";
 import {
 	checkPierPreflight,
 	cleanupPierContainers,
 	trialArtifactsFromExecution,
 	writePierJobConfig,
-} from "../../../src/backends/pier/runner";
-import { BackendRegistry, hasBackend, requireBackend } from "../../../src/core/backend-registry";
-import { terminateProcessTree } from "../../../src/core/process-tree";
-import { boundRawOutput } from "../../../src/core/trial-deadline";
-import type { EvalSuite, RunContext, SuiteProvenance, TaskDescriptor, TrialScore } from "../../../src/core/types";
+} from "../../../backends/pier/runner";
+import type { EvalSuite, RunContext, SuiteProvenance, TaskDescriptor, TrialScore } from "../../../engine/contracts";
+import { backends, harnesses } from "../../../engine/loaded-members";
+import { boundRawOutput } from "../../../engine/trial-deadline";
+import { terminateProcessTree } from "../../../engine/trial-process";
 
 function createMockSuite(): EvalSuite {
 	return {
-		name: "mock-pier-suite",
+		id: "mock-pier-suite",
 		version: "1.0.0",
 		displayName: "Mock Pier Suite",
 		description: "Mock Pier Suite Description",
@@ -55,23 +54,10 @@ describe("Pier ExecutionBackend", () => {
 		expect(typeof pierBackend.cleanup).toBe("function");
 	});
 
-	it("resolves from backend registry via requireBackend('pier')", () => {
-		expect(hasBackend("pier")).toBe(true);
-		const backend = requireBackend("pier");
+	it("resolves from backend registry via require('pier')", () => {
+		expect(backends.has("pier")).toBe(true);
+		const backend = backends.require("pier");
 		expect(backend).toBe(pierBackend);
-	});
-
-	it("registerPierBackend is idempotent and supports custom registries", () => {
-		const custom = new BackendRegistry();
-		expect(custom.has("pier")).toBe(false);
-
-		registerPierBackend(custom);
-		expect(custom.has("pier")).toBe(true);
-		expect(custom.require("pier")).toBe(pierBackend);
-
-		// Calling second time must not throw DuplicateBackendRegistrationError
-		expect(() => registerPierBackend(custom)).not.toThrow();
-		expect(custom.require("pier")).toBe(pierBackend);
 	});
 
 	it("writes valid pier job yaml configuration", () => {
@@ -208,12 +194,14 @@ describe("Pier ExecutionBackend", () => {
 				suite: createMockSuite(),
 				workDir: checkout,
 				runsDir: outRoot,
+				harnesses,
 			};
 			const contextB: RunContext = {
 				runId: "run_beta",
 				suite: createMockSuite(),
 				workDir: checkout,
 				runsDir: outRoot,
+				harnesses,
 			};
 
 			await pierBackend.prepare(contextA);

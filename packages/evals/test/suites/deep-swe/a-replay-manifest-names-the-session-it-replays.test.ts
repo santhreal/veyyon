@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { loadReplayManifest } from "../../../src/suites/deep-swe/replay-manifest";
+import { loadReplayManifest } from "../../../suites/deep-swe/replay-manifest";
 
 /** The model this run requested. A replay is pinned against it, not against a constant
  * in the code: the runner has no default model, so every run names its own. */

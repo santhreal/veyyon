@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { parseTrial, readJobResult } from "../../../src/backends/harbor/runner/results";
+import { parseTrial, readJobResult } from "../../../backends/harbor/results";
 
 describe("a trial parser handles truncated and partial results", () => {
 	let jobDir: string;

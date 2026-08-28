@@ -23,10 +23,11 @@
  */
 
 import { describe, expect, it, test } from "bun:test";
-import { EDIT_PROMPT_BENCH_FLAGS } from "../../src/benches/edit-prompt-bench";
-import { GOAL_BUDGET_CONTEXT_FLAGS } from "../../src/benches/goal-budget-context-bench";
-import { DISCLOSURE_BENCH_FLAGS } from "../../src/benches/search/disclosure";
-import { SEARCH_BENCH_FLAGS } from "../../src/benches/search/runner";
+import { parseServerArgs, SERVER_FLAGS } from "../../api/main";
+import { EDIT_PROMPT_BENCH_FLAGS } from "../../benches/edit-prompt";
+import { GOAL_BUDGET_CONTEXT_FLAGS } from "../../benches/goal-budget-context";
+import { DISCLOSURE_BENCH_FLAGS } from "../../benches/search/disclosure";
+import { SEARCH_BENCH_FLAGS } from "../../benches/search/main";
 import {
 	type FlagGrammar,
 	FlagValueError,
@@ -36,24 +37,20 @@ import {
 	parseFlags,
 	requireFlag,
 	UnknownFlagError,
-} from "../../src/core/flags";
-import { registerBuiltinHarnesses } from "../../src/harnesses";
-import { BENCH_REPORT_FLAGS } from "../../src/report/bench-report";
-import { TRACE_REPORT_FLAGS } from "../../src/report/trace-report";
-import { parseServerArgs, SERVER_FLAGS } from "../../src/server/main";
-import { CONTEXT_ENCODE_FLAGS } from "../../src/suites/deep-swe/context-encode-ceiling";
-import { GEN_DICTS_FLAGS } from "../../src/suites/deep-swe/gen-dicts";
-import { CHANNEL_SPLIT_FLAGS } from "../../src/suites/deep-swe/measure-channel-split";
-import { RETYPE_LIKELIHOOD_FLAGS } from "../../src/suites/deep-swe/measure-retype-likelihood";
-import { ONLINE_CODEC_FLAGS } from "../../src/suites/deep-swe/online-codec-ceiling";
-import { PREFIX_COMPOSITION_FLAGS } from "../../src/suites/deep-swe/prefix-composition";
-import { parseArgs, VALUED_FLAGS, VALUELESS_FLAGS } from "../../src/suites/deep-swe/runner/cli-args";
-import { EDIT_ADAPTER_FLAGS } from "../../src/suites/typescript-edit/adapter/cli";
-import { GENERATE_FLAGS } from "../../src/suites/typescript-edit/generate";
+} from "../../engine/flag-grammar";
+import { CHANNEL_SPLIT_FLAGS } from "../../measurements/channel-split";
+import { CONTEXT_ENCODE_FLAGS } from "../../measurements/context-encode-ceiling";
+import { ONLINE_CODEC_FLAGS } from "../../measurements/online-codec-ceiling";
+import { PREFIX_COMPOSITION_FLAGS } from "../../measurements/prefix-composition";
+import { RETYPE_LIKELIHOOD_FLAGS } from "../../measurements/retype-likelihood";
+import { EDIT_ADAPTER_FLAGS } from "../../suites/typescript-edit/cli";
+import { GENERATE_FLAGS } from "../../suites/typescript-edit/generate";
+import { BENCH_REPORT_FLAGS } from "../../tools/bench-report";
+import { GEN_DICTS_FLAGS } from "../../tools/generate-dicts";
+import { TRACE_REPORT_FLAGS } from "../../tools/trace-report";
 
 /** Every grammar an evals entry point reads its invocation through. */
 const GRAMMARS: Readonly<Record<string, FlagGrammar>> = {
-	"deep-swe runner": { valued: VALUED_FLAGS, valueless: VALUELESS_FLAGS, aliases: { h: "help" } },
 	"search bench": SEARCH_BENCH_FLAGS,
 	"search disclosure bench": DISCLOSURE_BENCH_FLAGS,
 	"edit-prompt bench": EDIT_PROMPT_BENCH_FLAGS,
@@ -372,26 +369,5 @@ describe("the manager server reads that grammar", () => {
 		expect(bare.port).toBe(4700);
 		expect(bare.host).toBe("127.0.0.1");
 		expect(bare.token).toBeUndefined();
-	});
-});
-
-describe("the deep-swe runner reads that grammar", () => {
-	it("accepts -h for --help, which the runner declares valueless", () => {
-		expect(parseArgs(["-h"])).toEqual({ help: "" });
-		expect(parseArgs(["--help", "--tasks", "tasks/smoke.txt"])).toEqual({ help: "", tasks: "tasks/smoke.txt" });
-		expect(Object.keys(VALUELESS_FLAGS)).toContain("help");
-	});
-
-	it("refuses a misspelled arm flag instead of running the default arms", () => {
-		expect(() => parseArgs(["--armz", "baseline"])).toThrow(/Unknown flag "--armz"/);
-	});
-
-	it("accepts every flag a registered harness reads, and only those", () => {
-		registerBuiltinHarnesses();
-		const harnessFlags = ["omp-binary", "omp-api-key", "factory-binary", "factory-auth", "hermes-auth", "auth-db"];
-		for (const flag of harnessFlags) {
-			expect(Object.keys(parseArgs([`--${flag}`, "x"], harnessFlags))).toContain(flag);
-			expect(() => parseArgs([`--${flag}`, "x"])).toThrow(UnknownFlagError);
-		}
 	});
 });

@@ -17,14 +17,14 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { emissionsOf, emptyCounts } from "../../../engine/transcript-corpus";
 import {
 	applyCounts,
 	emptySplit,
 	finalizeSplit,
 	foldEmission,
 	measureEvents,
-} from "../../../src/suites/deep-swe/measure-channel-split";
-import { emissionsOf, emptyCounts } from "../../../src/suites/deep-swe/transcript-corpus";
+} from "../../../measurements/channel-split";
 
 /** An assistant turn carrying the given content parts. */
 function assistantTurn(content: unknown[]): unknown {

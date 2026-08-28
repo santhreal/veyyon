@@ -36,29 +36,28 @@ import type {
 	TrialArtifacts,
 	TrialCell,
 	TrialScore,
-} from "../../src/core";
+} from "../../engine/contracts";
+import { executeRun } from "../../engine/execute-run";
+import { harnesses } from "../../engine/loaded-members";
+import { readRunJournal } from "../../engine/run-journal";
+import type { RunPlan } from "../../engine/run-plan";
+import { buildRunPlan } from "../../engine/run-plan";
+import { summarizeRunCells } from "../../engine/run-record";
 import {
 	DEFAULT_TRIAL_ATTEMPTS,
-	HarnessRegistry,
 	isRetryableTrialFailure,
 	MAX_TRIAL_ATTEMPTS,
 	resolveTrialAttempts,
-	summarizeRunCells,
 	TRIAL_RETRY_BASE_DELAY_MS,
 	TRIAL_RETRY_MAX_DELAY_MS,
 	trialRetryDelayMs,
-} from "../../src/core";
-import { registerBuiltinHarnesses } from "../../src/harnesses";
-import { buildRunPlan, executeRun, type RunPlan, readRunJournal } from "../../src/run";
-
-const harnesses = new HarnessRegistry();
-registerBuiltinHarnesses(harnesses);
+} from "../../engine/trial-retry";
 
 const selection = { harnesses: ["veyyon"], models: ["vendor/model-a"] } as const;
 
 function planOneTask(task: string): Promise<RunPlan> {
 	const suite: EvalSuite = {
-		name: "probe",
+		id: "probe",
 		version: "1.0.0",
 		displayName: "Probe",
 		description: "A suite that exists to exercise the retry decision.",
@@ -79,7 +78,7 @@ function planOneTask(task: string): Promise<RunPlan> {
 			return { ok: true };
 		},
 	};
-	return buildRunPlan({ suite, selection, harnessRegistry: harnesses });
+	return buildRunPlan({ suite, selection, harnesses });
 }
 
 interface FlakyBackend {
@@ -194,6 +193,7 @@ describe("executeRun retries a thrown trial", () => {
 
 		const record = await executeRun({
 			plan,
+			harnesses,
 			backend: probe.backend,
 			workDir,
 			runsDir,
@@ -218,7 +218,7 @@ describe("executeRun retries a thrown trial", () => {
 		const plan = await planOneTask("flake");
 		const probe = flakyBackend(1, () => new Error("connection refused"));
 
-		const record = await executeRun({ plan, backend: probe.backend, workDir, runsDir, sleep: noSleep });
+		const record = await executeRun({ plan, harnesses, backend: probe.backend, workDir, runsDir, sleep: noSleep });
 		const journal = await readRunJournal(runsDir, record.id);
 
 		expect(probe.cleaned).toEqual(["flake/veyyon/1", "flake/veyyon/1"]);
@@ -238,6 +238,7 @@ describe("executeRun retries a thrown trial", () => {
 
 		const record = await executeRun({
 			plan,
+			harnesses,
 			backend: probe.backend,
 			workDir,
 			runsDir,
@@ -264,6 +265,7 @@ describe("executeRun retries a thrown trial", () => {
 
 		await executeRun({
 			plan,
+			harnesses,
 			backend: probe.backend,
 			workDir,
 			runsDir,
@@ -280,6 +282,7 @@ describe("executeRun retries a thrown trial", () => {
 
 		const record = await executeRun({
 			plan,
+			harnesses,
 			backend: probe.backend,
 			workDir,
 			runsDir,
@@ -300,6 +303,7 @@ describe("executeRun retries a thrown trial", () => {
 
 		const record = await executeRun({
 			plan,
+			harnesses,
 			backend: probe.backend,
 			workDir,
 			runsDir,
@@ -323,6 +327,7 @@ describe("executeRun retries a thrown trial", () => {
 
 		const record = await executeRun({
 			plan,
+			harnesses,
 			backend: probe.backend,
 			workDir,
 			runsDir,

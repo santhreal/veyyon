@@ -18,16 +18,15 @@
  * is a real attempt and stays a scored trial.
  */
 
-import { beforeAll, describe, expect, it, spyOn } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { agentSetupFailure, HarborBackend } from "../../src/backends/harbor/backend";
-import type { Config } from "../../src/backends/harbor/runner/config";
-import type { SourceMount } from "../../src/backends/harbor/runner/deps";
-import { listHarnesses } from "../../src/core/harness-registry";
-import type { EvalSuite, RunContext, TaskDescriptor, TrialCell, TrialScore, Variant } from "../../src/core/types";
-import { registerBuiltinHarnesses } from "../../src/harnesses/index";
+import type { Config } from "../../backends/harbor/config";
+import type { SourceMount } from "../../backends/harbor/deps";
+import { agentSetupFailure, HarborBackend } from "../../backends/harbor/main";
+import type { EvalSuite, RunContext, TaskDescriptor, TrialCell, TrialScore, Variant } from "../../engine/contracts";
+import { harnesses } from "../../engine/loaded-members";
 
 const TASK = "carry-the-mounts";
 const MODEL = "vendor/model-x";
@@ -43,7 +42,7 @@ const VARIANT: Variant = {
 
 function stubSuite(): EvalSuite {
 	return {
-		name: "mount-fidelity-suite",
+		id: "mount-fidelity-suite",
 		version: "1.0.0",
 		displayName: "Mount Fidelity Suite",
 		description: "Fixture suite that describes one task and scores nothing.",
@@ -79,6 +78,7 @@ async function makeContext(options: Record<string, unknown> = {}): Promise<RunCo
 		suite: stubSuite(),
 		workDir: root,
 		runsDir: path.join(root, "runs"),
+		harnesses,
 		options: { variants: [VARIANT], ...options },
 	};
 }
@@ -132,10 +132,6 @@ async function argvForEnvType(envType: "docker" | "apple-container"): Promise<re
 }
 
 describe("a harbor trial carries its mounts", () => {
-	beforeAll(() => {
-		registerBuiltinHarnesses();
-	});
-
 	it("passes docker the compose overlay that binds the repository, the deps tree and the host gateway", async () => {
 		const argv = await argvForEnvType("docker");
 		const overlayIndex = argv.indexOf("--extra-docker-compose");
@@ -215,13 +211,13 @@ describe("a harbor run refuses a dead auth gateway", () => {
 
 		// Swept from the registry rather than listed: a harness that gains or loses
 		// `authGateway` moves between these two sets with no edit here.
-		for (const harness of listHarnesses()) {
+		for (const harness of harnesses.list()) {
 			const binding = harness.backends.harbor;
 			if (!binding) continue;
-			const variant: Variant = { ...VARIANT, name: harness.name, harness: harness.name };
+			const variant: Variant = { ...VARIANT, name: harness.id, harness: harness.id };
 			const verdict = await backend.preflight(await makeContext({ variants: [variant] }));
-			expect({ harness: harness.name, ok: verdict.ok }).toEqual({
-				harness: harness.name,
+			expect({ harness: harness.id, ok: verdict.ok }).toEqual({
+				harness: harness.id,
 				ok: binding.authGateway !== true,
 			});
 		}

@@ -29,13 +29,10 @@ import {
 	containerProgramPath,
 	programDirFor,
 	validateContainerProgram,
-} from "../../src/core/container-program";
-import { listHarnesses } from "../../src/core/harness-registry";
-import type { HarnessAdapter, Variant } from "../../src/core/types";
-import { registerBuiltinHarnesses } from "../../src/harnesses/index";
-import { agentsDir } from "../../src/paths";
-
-registerBuiltinHarnesses();
+} from "../../engine/container-program";
+import type { HarnessAdapter, Variant } from "../../engine/contracts";
+import { harnesses } from "../../engine/loaded-members";
+import { agentsDir } from "../../engine/package-paths";
 
 /** Harnesses whose container run is one declaration. A new one turns the sweep red. */
 const PROGRAM_HARNESSES: readonly string[] = ["omp"];
@@ -64,13 +61,13 @@ afterAll(() => {
 });
 
 function programHarnesses(): HarnessAdapter[] {
-	return listHarnesses().filter(harness => harness.containerProgram !== undefined);
+	return harnesses.list().filter(harness => harness.containerProgram !== undefined);
 }
 
 /** The harness's own declaration, refusing rather than skipping if it has none. */
 function declaredProgram(harness: HarnessAdapter): ContainerProgram {
 	const build = harness.containerProgram;
-	if (!build) throw new Error(`harness ${harness.name} declares no container program`);
+	if (!build) throw new Error(`harness ${harness.id} declares no container program`);
 	return build.call(harness, { model: MODEL, options }).program;
 }
 
@@ -185,7 +182,7 @@ describe("a harness that runs in a container declares that run once", () => {
 	it("declares a program for exactly the harnesses pinned here", () => {
 		expect(
 			programHarnesses()
-				.map(harness => harness.name)
+				.map(harness => harness.id)
 				.sort(),
 		).toEqual([...PROGRAM_HARNESSES]);
 	});
@@ -212,13 +209,13 @@ describe("a harness that runs in a container declares that run once", () => {
 			const systemRoot = fs.mkdtempSync(path.join(os.tmpdir(), "evals-program-system-"));
 			try {
 				await harness.stageAssets?.({
-					variant: variantFor(harness.name, "arm-one"),
+					variant: variantFor(harness.id, "arm-one"),
 					targetDir: armRoot,
 					backend: "pier",
 					options,
 				});
 				await harness.stageAssets?.({
-					system: harness.name,
+					system: harness.id,
 					assetsDir: systemRoot,
 					outRoot: systemRoot,
 					binarySha: "deadbeef",
@@ -226,15 +223,15 @@ describe("a harness that runs in a container declares that run once", () => {
 					model: MODEL,
 				});
 
-				const armPath = containerProgramPath(programDirFor(armRoot, harness.name, "arm-one"));
-				const systemPath = containerProgramPath(programDirFor(systemRoot, harness.name, harness.name));
+				const armPath = containerProgramPath(programDirFor(armRoot, harness.id, "arm-one"));
+				const systemPath = containerProgramPath(programDirFor(systemRoot, harness.id, harness.id));
 				expect(fs.existsSync(armPath)).toBe(true);
 				expect(fs.readFileSync(systemPath, "utf8")).toBe(fs.readFileSync(armPath, "utf8"));
 
 				// The legacy comparison path hands the same file to the agent as a job-config
 				// kwarg, so a second layout cannot appear there either.
 				const kwargs = harness.buildJobConfigKwargs?.({
-					system: harness.name,
+					system: harness.id,
 					task: "task-1",
 					repeat: 0,
 					model: MODEL,
@@ -261,12 +258,12 @@ describe("a harness that runs in a container declares that run once", () => {
 			const root = fs.mkdtempSync(path.join(os.tmpdir(), "evals-program-refuse-"));
 			try {
 				await harness.stageAssets?.({
-					variant: variantFor(harness.name, "arm-one"),
+					variant: variantFor(harness.id, "arm-one"),
 					targetDir: root,
 					backend: "harbor",
 					options,
 				});
-				const stagedPath = containerProgramPath(programDirFor(root, harness.name, "arm-one"));
+				const stagedPath = containerProgramPath(programDirFor(root, harness.id, "arm-one"));
 				const bytes = fs.readFileSync(stagedPath, "utf8");
 
 				const mutated: Record<string, unknown> = {};

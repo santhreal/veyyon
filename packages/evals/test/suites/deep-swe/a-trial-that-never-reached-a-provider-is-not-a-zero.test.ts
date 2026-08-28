@@ -23,9 +23,9 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import type { TrialCell } from "../../../src/core/types";
-import { parseTrialResult } from "../../../src/suites/deep-swe/runner/trial-result";
-import { deepSweSuite } from "../../../src/suites/deep-swe/suite";
+import type { TrialCell } from "../../../engine/contracts";
+import { deepSweSuite } from "../../../suites/deep-swe/main";
+import { parseTrialResult } from "../../../suites/deep-swe/runner/trial-result";
 
 const NO_PATCH_LINE =
 	"Error response from daemon: Could not find the file /logs/artifacts/model.patch in container abc123";

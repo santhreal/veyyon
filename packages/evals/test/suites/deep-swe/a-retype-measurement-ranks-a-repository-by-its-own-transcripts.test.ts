@@ -21,7 +21,7 @@ import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { measureRetype, rankAgreement } from "../../../src/suites/deep-swe/measure-retype-likelihood";
+import { measureRetype, rankAgreement } from "../../../measurements/retype-likelihood";
 
 describe("rank agreement", () => {
 	test("a ranking that matches the observed order scores 1", () => {

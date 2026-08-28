@@ -21,9 +21,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { pickMergedTrials, summarizeArm } from "../../src/manager/experiments";
-import { RunStore } from "../../src/manager/store";
-import { CELL_CLASS } from "../../src/web/components/task-matrix";
+import { CELL_CLASS } from "../../dashboard/components/task-matrix";
 import {
 	isDecidedTrialStatus,
 	isGradedTrialStatus,
@@ -32,7 +30,9 @@ import {
 	TRIAL_STATUSES,
 	type TraceRow,
 	type TrialStatus,
-} from "../../src/wire";
+} from "../../engine/store-shapes";
+import { pickMergedTrials, summarizeArm } from "../../store/experiments";
+import { RunStore } from "../../store/sqlite";
 
 const cleanups: Array<() => void> = [];
 

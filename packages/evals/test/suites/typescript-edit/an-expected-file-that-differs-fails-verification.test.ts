@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import { verifyExpectedFiles } from "../../../src/suites/typescript-edit/verify";
+import { verifyExpectedFiles } from "../../../suites/typescript-edit/verify";
 
 async function createTempDirs(): Promise<{
 	root: string;

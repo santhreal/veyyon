@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ManagerServer } from "../../src/server/main";
+import { ManagerServer } from "../../api/main";
 
 const cleanups: Array<() => void> = [];
 afterEach(async () => {

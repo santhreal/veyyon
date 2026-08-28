@@ -35,15 +35,15 @@ import {
 	prepareArgotWorkdir,
 	runArgotBench,
 	runContentReproBench,
-} from "../../../src/suites/typescript-edit/argot-bench";
+} from "../../../suites/typescript-edit/argot-bench";
 import {
 	assembleRunMeasurement,
 	assertArgotCertified,
 	EDIT_TASK_TRUTHS,
-} from "../../../src/suites/typescript-edit/argot-certify";
-import { extractBenchmarkFixtures } from "../../../src/suites/typescript-edit/extract";
-import { loadTasksFromDir } from "../../../src/suites/typescript-edit/tasks";
-import { verifyExpectedFileSubset } from "../../../src/suites/typescript-edit/verify";
+} from "../../../suites/typescript-edit/argot-certify";
+import { extractBenchmarkFixtures } from "../../../suites/typescript-edit/extract";
+import { loadTasksFromDir } from "../../../suites/typescript-edit/tasks";
+import { verifyExpectedFileSubset } from "../../../suites/typescript-edit/verify";
 
 const BENCH_MODEL = process.env.ARGOT_BENCH_MODEL;
 const TEST_PROFILE = "argot-bench-test";

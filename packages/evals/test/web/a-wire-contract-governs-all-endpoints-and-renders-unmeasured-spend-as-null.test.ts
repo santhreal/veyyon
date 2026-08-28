@@ -24,8 +24,8 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ManagerServer } from "../../src/server/main";
-import type { RouteDescriptor } from "../../src/wire";
+import { ManagerServer } from "../../api/main";
+import type { RouteDescriptor } from "../../engine/store-shapes";
 import {
 	type AddArmRequest,
 	type ApiErrorResponse,
@@ -52,7 +52,7 @@ import {
 	type TraceRow,
 	type TranscriptEntry,
 	type UpdateExperimentMetaResponse,
-} from "../../src/wire";
+} from "../../engine/store-shapes";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {

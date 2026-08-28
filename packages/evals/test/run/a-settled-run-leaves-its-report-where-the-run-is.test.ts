@@ -41,15 +41,14 @@ import type {
 	TrialArtifacts,
 	TrialCell,
 	TrialScore,
-} from "../../src/core";
-import { HarnessRegistry, listSuites, runDirFor } from "../../src/core";
-import { registerBuiltinHarnesses } from "../../src/harnesses";
-import { buildRunPlan, executeRun, type RunPlan, readRunJournal } from "../../src/run";
-import { registerAllSuites } from "../../src/suites";
-import { deepSweSuite } from "../../src/suites/deep-swe/suite";
-
-const harnesses = new HarnessRegistry();
-registerBuiltinHarnesses(harnesses);
+} from "../../engine/contracts";
+import { executeRun } from "../../engine/execute-run";
+import { harnesses, suites } from "../../engine/loaded-members";
+import { readRunJournal } from "../../engine/run-journal";
+import { runDirFor } from "../../engine/run-layout";
+import type { RunPlan } from "../../engine/run-plan";
+import { buildRunPlan } from "../../engine/run-plan";
+import { deepSweSuite } from "../../suites/deep-swe/main";
 
 const selection = { harnesses: ["veyyon"], models: ["vendor/model-a"] } as const;
 
@@ -59,7 +58,7 @@ interface ProbeSuiteOptions {
 
 function probeSuite(options: ProbeSuiteOptions = {}): EvalSuite {
 	const suite: EvalSuite = {
-		name: "probe",
+		id: "probe",
 		version: "1.0.0",
 		displayName: "Probe",
 		description: "A suite that exists to exercise what a settled run writes.",
@@ -85,7 +84,7 @@ function probeSuite(options: ProbeSuiteOptions = {}): EvalSuite {
 }
 
 function planFor(suite: EvalSuite, runId: string): Promise<RunPlan> {
-	return buildRunPlan({ suite, selection, harnessRegistry: harnesses, runId });
+	return buildRunPlan({ suite, selection, harnesses, runId });
 }
 
 const backend: ExecutionBackend = {
@@ -119,7 +118,7 @@ describe("what a settled run leaves behind", () => {
 
 	it("writes the run record into the run's own directory, whatever the suite", async () => {
 		const plan = await planFor(probeSuite(), "record-run");
-		const record = await executeRun({ plan, backend, workDir, runsDir, jobs: 1 });
+		const record = await executeRun({ plan, harnesses, backend, workDir, runsDir, jobs: 1 });
 
 		const runDir = runDirFor(runsDir, "record-run");
 		const written = JSON.parse(await fs.readFile(path.join(runDir, "run.json"), "utf8")) as {
@@ -152,7 +151,7 @@ describe("what a settled run leaves behind", () => {
 			}),
 			"render-run",
 		);
-		await executeRun({ plan, backend, workDir, runsDir, jobs: 1 });
+		await executeRun({ plan, harnesses, backend, workDir, runsDir, jobs: 1 });
 
 		const runDir = runDirFor(runsDir, "render-run");
 		expect(seen).toHaveLength(1);
@@ -180,11 +179,12 @@ describe("what a settled run leaves behind", () => {
 
 		const record = await executeRun({
 			plan,
+			harnesses,
 			backend,
 			workDir,
 			runsDir,
 			jobs: 1,
-			onReportFailure: reason => failures.push(reason),
+			onReportFailure: (reason: string) => failures.push(reason),
 		});
 
 		expect(record.results).toHaveLength(2);
@@ -200,11 +200,11 @@ describe("what a settled run leaves behind", () => {
 
 	it("rewrites the record when a resumed run adds rows", async () => {
 		const plan = await planFor(probeSuite(), "resumed-run");
-		await executeRun({ plan, backend, workDir, runsDir, jobs: 1 });
+		await executeRun({ plan, harnesses, backend, workDir, runsDir, jobs: 1 });
 		const runDir = runDirFor(runsDir, "resumed-run");
 		await fs.writeFile(path.join(runDir, "run.json"), JSON.stringify({ id: "stale", results: [] }));
 
-		const resumed = await executeRun({ plan, backend, workDir, runsDir, jobs: 1, resume: true });
+		const resumed = await executeRun({ plan, harnesses, backend, workDir, runsDir, jobs: 1, resume: true });
 
 		const written = JSON.parse(await fs.readFile(path.join(runDir, "run.json"), "utf8")) as {
 			id: string;
@@ -218,13 +218,12 @@ describe("what a settled run leaves behind", () => {
 
 describe("every registered suite", () => {
 	it("either renders its own report or is a recorded exception", () => {
-		registerAllSuites();
-		const suites = listSuites();
-		expect(suites.length).toBeGreaterThanOrEqual(3);
+		const allSuites = suites.list();
+		expect(allSuites.length).toBeGreaterThanOrEqual(3);
 
-		const declining = suites
+		const declining = allSuites
 			.filter(suite => typeof suite.writeRunReport !== "function")
-			.map(suite => suite.name)
+			.map(suite => suite.id)
 			.sort();
 
 		// Pinned by exact equality: a new suite lands in this list and turns the file red until

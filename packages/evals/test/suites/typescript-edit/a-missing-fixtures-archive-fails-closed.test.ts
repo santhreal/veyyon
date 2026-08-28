@@ -18,9 +18,9 @@ import {
 	extractBenchmarkFixtures,
 	extractFixtures,
 	readFixturesArchive,
-} from "../../../src/suites/typescript-edit/extract";
-import { computeTypescriptEditProvenance } from "../../../src/suites/typescript-edit/provenance";
-import { TypescriptEditSuite } from "../../../src/suites/typescript-edit/suite";
+} from "../../../suites/typescript-edit/extract";
+import { TypescriptEditSuite } from "../../../suites/typescript-edit/main";
+import { computeTypescriptEditProvenance } from "../../../suites/typescript-edit/provenance";
 
 describe("a missing fixtures archive fails closed across all callers", () => {
 	let tempDir: string | null = null;

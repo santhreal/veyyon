@@ -19,18 +19,15 @@
  * spawn, since no container is started here.
  */
 
-import { beforeAll, describe, expect, it, spyOn } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { HarborBackend, NO_MODEL_AGENTS } from "../../src/backends/harbor/backend";
-import { parseArgs, resolveResumeConfig } from "../../src/backends/harbor/runner/cli";
-import { InProcessBackend } from "../../src/backends/in-process/backend";
-import { builtinBackends } from "../../src/backends/index";
-import { PierExecutionBackend } from "../../src/backends/pier/backend";
-import * as pierRunner from "../../src/backends/pier/runner";
-import { listHarnesses } from "../../src/core/harness-registry";
-import { MalformedModelIdError, ModelNotNamedError, parseModelId, resolveTrialModel } from "../../src/core/trial-model";
+import { parseArgs, resolveResumeConfig } from "../../backends/harbor/cli";
+import { HarborBackend, NO_MODEL_AGENTS } from "../../backends/harbor/main";
+import { InProcessBackend } from "../../backends/in-process/main";
+import { PierExecutionBackend } from "../../backends/pier/main";
+import * as pierRunner from "../../backends/pier/runner";
 import type {
 	BackendId,
 	EvalSuite,
@@ -40,8 +37,9 @@ import type {
 	TrialCell,
 	TrialScore,
 	Variant,
-} from "../../src/core/types";
-import { registerBuiltinHarnesses } from "../../src/harnesses/index";
+} from "../../engine/contracts";
+import { backends, harnesses } from "../../engine/loaded-members";
+import { MalformedModelIdError, ModelNotNamedError, parseModelId, resolveTrialModel } from "../../engine/trial-model";
 
 const TASK = "name-the-model";
 const SUITE = "model-axis-suite";
@@ -68,7 +66,7 @@ function variantNamed(harness: string, model: string): Variant {
 
 function stubSuite(backend: BackendId): EvalSuite {
 	return {
-		name: SUITE,
+		id: SUITE,
 		version: "1.0.0",
 		displayName: "Model Axis Suite",
 		description: "Fixture suite that describes one task and scores nothing.",
@@ -108,6 +106,7 @@ async function makeContext(
 		suite: stubSuite(backend),
 		workDir: root,
 		runsDir: path.join(root, "runs"),
+		harnesses,
 		options: { variants, ...options },
 	};
 }
@@ -117,7 +116,7 @@ function cell(variantName: string): TrialCell {
 }
 
 function harnessesBoundTo(backend: BackendId): readonly HarnessAdapter[] {
-	return listHarnesses().filter(harness => harness.backends[backend] !== undefined);
+	return harnesses.list().filter(harness => harness.backends[backend] !== undefined);
 }
 
 function stubSubprocess(): Bun.Subprocess {
@@ -175,10 +174,12 @@ async function driveTrial(
 	let error: Error | null = null;
 
 	if (backendId === "pier") {
-		const writeSpy = spyOn(pierRunner, "writePierJobConfig").mockImplementation(opts => {
-			launches.push({ backend: "pier", model: opts.modelName ?? null });
-			return path.join(opts.configDir, `${opts.jobName}.yaml`);
-		});
+		const writeSpy = spyOn(pierRunner, "writePierJobConfig").mockImplementation(
+			(opts: pierRunner.PierJobConfigOptions) => {
+				launches.push({ backend: "pier", model: opts.modelName ?? null });
+				return path.join(opts.configDir, `${opts.jobName}.yaml`);
+			},
+		);
 		const runSpy = spyOn(pierRunner, "runPierTrial").mockImplementation(async () => ({
 			exitCode: 0,
 			stdout: "",
@@ -225,12 +226,6 @@ async function driveTrial(
 }
 
 describe("a trial runs the model the run named", () => {
-	// The harness registry is process-wide and self-registers on import; re-registering
-	// is idempotent. Clearing it here would poison every later file in the same worker.
-	beforeAll(() => {
-		registerBuiltinHarnesses();
-	});
-
 	it("splits a provider-namespaced id at its first slash and keeps the rest of the name", () => {
 		const parsed = parseModelId(NAMESPACED_MODEL);
 
@@ -252,26 +247,26 @@ describe("a trial runs the model the run named", () => {
 
 	it("prefers the variant's model, then the run option, then the harness's own default", () => {
 		const context = { options: { model: "option/model" } };
-		const withDefault = { name: "third-party", defaultModel: "harness/model" };
+		const withDefault = { id: "third-party", defaultModel: "harness/model" };
 
 		expect(resolveTrialModel(variantNamed("h", PLAIN_MODEL), withDefault, context).id).toBe(PLAIN_MODEL);
 		expect(resolveTrialModel(variantNamed("h", ""), withDefault, context).id).toBe("option/model");
 		expect(resolveTrialModel(variantNamed("h", ""), withDefault, { options: {} }).id).toBe("harness/model");
-		expect(() =>
-			resolveTrialModel(variantNamed("h", ""), { name: "h", defaultModel: null }, { options: {} }),
-		).toThrow(ModelNotNamedError);
+		expect(() => resolveTrialModel(variantNamed("h", ""), { id: "h", defaultModel: null }, { options: {} })).toThrow(
+			ModelNotNamedError,
+		);
 	});
 
 	it("carries the plan's model into every backend a plan can name, unchanged", async () => {
 		const driven: string[] = [];
-		for (const backend of builtinBackends) {
+		for (const backend of backends.list()) {
 			for (const harness of harnessesBoundTo(backend.id)) {
-				const variant = variantNamed(harness.name, NAMESPACED_MODEL);
+				const variant = variantNamed(harness.id, NAMESPACED_MODEL);
 				const { launches, error } = await driveTrial(backend.id, variant);
 
 				expect(error).toBeNull();
 				expect(launches.map(launch => launch.model)).toEqual([NAMESPACED_MODEL]);
-				driven.push(`${harness.name}:${backend.id}`);
+				driven.push(`${harness.id}:${backend.id}`);
 			}
 		}
 		// Pinned by equality so a new backend, a new harness, or a binding that stops
@@ -288,9 +283,9 @@ describe("a trial runs the model the run named", () => {
 	});
 
 	it("takes the run's --model when the plan's variant names none", async () => {
-		for (const backend of builtinBackends) {
+		for (const backend of backends.list()) {
 			for (const harness of harnessesBoundTo(backend.id)) {
-				const variant = variantNamed(harness.name, "");
+				const variant = variantNamed(harness.id, "");
 				const { launches, error } = await driveTrial(backend.id, variant, { model: PLAIN_MODEL });
 
 				expect(error).toBeNull();
@@ -303,10 +298,10 @@ describe("a trial runs the model the run named", () => {
 
 	it("refuses, launching nothing, when no axis names a model and the harness declares none", async () => {
 		let refusals = 0;
-		for (const backend of builtinBackends) {
+		for (const backend of backends.list()) {
 			for (const harness of harnessesBoundTo(backend.id)) {
 				if (harness.defaultModel !== null) continue;
-				const variant = variantNamed(harness.name, "");
+				const variant = variantNamed(harness.id, "");
 				const { launches, error } = await driveTrial(backend.id, variant);
 
 				expect(error).toBeInstanceOf(ModelNotNamedError);
@@ -316,13 +311,13 @@ describe("a trial runs the model the run named", () => {
 			}
 		}
 		// Every backend must be represented, or a backend silently stopped being driven.
-		expect(refusals).toBeGreaterThanOrEqual(builtinBackends.length);
+		expect(refusals).toBeGreaterThanOrEqual(backends.list().length);
 	});
 
 	it("refuses, launching nothing, an id that is not provider-qualified", async () => {
-		for (const backend of builtinBackends) {
+		for (const backend of backends.list()) {
 			for (const harness of harnessesBoundTo(backend.id)) {
-				const variant = variantNamed(harness.name, BARE_MODEL);
+				const variant = variantNamed(harness.id, BARE_MODEL);
 				const { launches, error } = await driveTrial(backend.id, variant);
 
 				expect(error).toBeInstanceOf(MalformedModelIdError);
@@ -357,9 +352,9 @@ describe("a trial runs the model the run named", () => {
 		// model and the arm's name is then unambiguous. Every such default must be a
 		// provider-qualified id, or the backend it reaches cannot route it.
 		const declared: string[] = [];
-		for (const harness of listHarnesses()) {
+		for (const harness of harnesses.list()) {
 			if (harness.defaultModel === null) continue;
-			declared.push(harness.name);
+			declared.push(harness.id);
 			expect(() => parseModelId(harness.defaultModel ?? "")).not.toThrow();
 		}
 		expect(declared.sort()).toEqual(["factory", "hermes", "omp"]);

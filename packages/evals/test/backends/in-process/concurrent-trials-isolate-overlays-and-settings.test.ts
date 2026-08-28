@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import { $env, TempDir } from "@veyyon/utils";
-import { InProcessBackend, registerInProcessBackend } from "../../../src/backends/in-process/backend";
+import { InProcessBackend } from "../../../backends/in-process/main";
 import type {
 	EvalSuite,
 	SuiteProvenance,
@@ -9,15 +9,14 @@ import type {
 	TrialArtifacts,
 	TrialCell,
 	TrialScore,
-} from "../../../src/core/types";
-import { registerBuiltinHarnesses } from "../../../src/harnesses";
-import { buildRunPlan, executeRun } from "../../../src/run";
+} from "../../../engine/contracts";
+import { executeRun } from "../../../engine/execute-run";
+import { harnesses } from "../../../engine/loaded-members";
+import { buildRunPlan } from "../../../engine/run-plan";
 
-registerBuiltinHarnesses();
-registerInProcessBackend();
 function createConcurrentProbeSuite(): EvalSuite {
 	return {
-		name: "concurrent-probe-suite",
+		id: "concurrent-probe-suite",
 		version: "1.0.0",
 		displayName: "Concurrent Probe Suite",
 		description: "Suite for testing concurrent in-process trial isolation",
@@ -80,6 +79,7 @@ describe("Concurrent in-process trials overlay and settings isolation", () => {
 
 			const plan = await buildRunPlan({
 				suite,
+				harnesses,
 				selection: {
 					harnesses: ["veyyon"],
 					configs: [configA, configB],
@@ -98,6 +98,7 @@ describe("Concurrent in-process trials overlay and settings isolation", () => {
 			// Execute the run plan with jobs: 2 (concurrent in-process trial execution)
 			const record = await executeRun({
 				plan,
+				harnesses,
 				backend,
 				workDir: tempDir.absolute(),
 				runsDir: tempDir.join("runs"),

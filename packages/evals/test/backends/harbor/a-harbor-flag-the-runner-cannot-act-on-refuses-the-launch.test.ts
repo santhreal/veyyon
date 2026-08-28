@@ -27,8 +27,8 @@ import {
 	HelpRequestedError,
 	mapErrorToExitCode,
 	parseArgs,
-} from "../../../src/backends/harbor/runner/cli";
-import { UnsafePathSegmentError } from "../../../src/paths";
+} from "../../../backends/harbor/cli";
+import { UnsafePathSegmentError } from "../../../engine/package-paths";
 
 const MODEL = ["--model", "anthropic/claude-opus-4-8"];
 

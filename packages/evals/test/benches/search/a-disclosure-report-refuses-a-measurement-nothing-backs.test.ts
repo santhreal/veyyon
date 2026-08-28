@@ -25,7 +25,7 @@ import {
 	buildSearchDisclosureReport,
 	formatSearchDisclosureBenchmark,
 	type SearchDisclosureMeasurement,
-} from "../../../src/benches/search/disclosure";
+} from "../../../benches/search/disclosure";
 
 const MEASURED: SearchDisclosureMeasurement = {
 	fileCount: 20,

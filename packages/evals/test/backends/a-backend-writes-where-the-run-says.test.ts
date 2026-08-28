@@ -16,22 +16,20 @@
  * output is pier's to place, and no container starts here.
  */
 
-import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { registerAllBackends } from "../../src/backends/index";
-import { PierExecutionBackend } from "../../src/backends/pier/backend";
-import * as pierRunner from "../../src/backends/pier/runner";
-import { listBackends } from "../../src/core/backend-registry";
-import type { EvalSuite, RunContext, TrialCell } from "../../src/core/types";
-import { registerBuiltinHarnesses } from "../../src/harnesses/index";
+import { PierExecutionBackend } from "../../backends/pier/main";
+import * as pierRunner from "../../backends/pier/runner";
+import type { EvalSuite, RunContext, TrialCell } from "../../engine/contracts";
+import { backends, harnesses } from "../../engine/loaded-members";
 
 const RUN_ID = "where-the-run-says";
 
 function stubSuite(): EvalSuite {
 	return {
-		name: "runs-dir-suite",
+		id: "runs-dir-suite",
 		version: "1.0.0",
 		displayName: "Runs dir",
 		description: "Stub suite for the output-directory sweep.",
@@ -69,6 +67,7 @@ function contextFor(overrides: Partial<RunContext> = {}): RunContext {
 		suite: stubSuite(),
 		workDir,
 		runsDir,
+		harnesses,
 		// `install: published` keeps harbor's prepare off the source-dependency path, which
 		// builds a checkout. The sweep is about where output lands, not about a build.
 		options: { variants: [], install: "published", envType: "docker" },
@@ -86,11 +85,6 @@ function entriesUnder(dir: string): readonly string[] {
 }
 
 describe("a backend writes where the run says", () => {
-	beforeAll(() => {
-		registerBuiltinHarnesses();
-		registerAllBackends();
-	});
-
 	beforeEach(() => {
 		runsDir = fs.mkdtempSync(path.join(os.tmpdir(), "evals-runsdir-out-"));
 		workDir = fs.mkdtempSync(path.join(os.tmpdir(), "evals-runsdir-work-"));
@@ -102,11 +96,11 @@ describe("a backend writes where the run says", () => {
 	});
 
 	it("creates nothing under the working directory, for every registered backend", async () => {
-		const backends = listBackends();
-		expect(backends.length).toBeGreaterThan(0);
+		const allBackends = backends.list();
+		expect(allBackends.length).toBeGreaterThan(0);
 
 		const offenders: string[] = [];
-		for (const backend of backends) {
+		for (const backend of allBackends) {
 			// A backend whose preparation cannot complete here — a missing binary, an absent
 			// docker daemon — still must not have placed anything under the working directory
 			// on the way to failing.

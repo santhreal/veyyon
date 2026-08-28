@@ -19,7 +19,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { encodeGreedy } from "../../../src/suites/deep-swe/context-encode-ceiling";
+import { encodeGreedy } from "../../../measurements/context-encode-ceiling";
 
 describe("encodeGreedy", () => {
 	/**

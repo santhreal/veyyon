@@ -27,17 +27,17 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { TempDir } from "@veyyon/utils";
-import type { SearchArm } from "../../../src/benches/search/arms";
-import type { SearchBenchmarkCase, SearchCaseSuite } from "../../../src/benches/search/cases";
-import { registerBuiltinSearchBench, searchArms, searchCaseSuites } from "../../../src/benches/search/registry";
+import type { SearchArm } from "../../../benches/search/arms";
+import type { SearchBenchmarkCase, SearchCaseSuite } from "../../../benches/search/cases";
 import {
 	DEFAULT_ITERATIONS_PER_CASE,
 	resolveIterations,
 	runSearchBench,
 	runSearchCaseSuite,
 	sampleExtremes,
-} from "../../../src/benches/search/runner";
-import { FlagValueError, flagChoice, flagCount, flagNumber, requireFlag } from "../../../src/core/flags";
+} from "../../../benches/search/main";
+import { registerBuiltinSearchBench, searchArms, searchCaseSuites } from "../../../benches/search/registry";
+import { FlagValueError, flagChoice, flagCount, flagNumber, requireFlag } from "../../../engine/flag-grammar";
 
 const run = promisify(execFile);
 

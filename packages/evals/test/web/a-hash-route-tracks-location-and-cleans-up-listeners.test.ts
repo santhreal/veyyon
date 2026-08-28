@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { parseHTML } from "linkedom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { useHashRoute } from "../../src/web/hooks/use-hash-route";
+import { useHashRoute } from "../../dashboard/hooks/use-hash-route";
 
 interface RenderedHook<T> {
 	readonly result: { current: T };

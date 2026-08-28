@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { harborRunnerArgs } from "../../../src/backends/harbor/launch-args";
+import { harborRunnerArgs } from "../../../backends/harbor/launch-args";
 
 /**
  * Launch argv mapping: model/dataset/include flags must appear as real CLI

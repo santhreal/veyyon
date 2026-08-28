@@ -14,9 +14,9 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ManagerServer } from "../../src/server/main";
-import { ROUTE_HANDLERS } from "../../src/server/router";
-import { SERVER_ROUTES } from "../../src/wire";
+import { ManagerServer } from "../../api/main";
+import { ROUTE_HANDLERS } from "../../api/router";
+import { SERVER_ROUTES } from "../../engine/store-shapes";
 
 const cleanups: Array<() => void> = [];
 afterEach(async () => {

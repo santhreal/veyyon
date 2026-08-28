@@ -22,11 +22,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { main, parseEvalsArgs, suiteContext } from "../../src/cli";
-import { registerBackend, unregisterBackend } from "../../src/core/backend-registry";
-import { registerHarness, unregisterHarness } from "../../src/core/harness-registry";
-import { registerSuite, unregisterSuite } from "../../src/core/suite-registry";
-import type { EvalSuite, ExecutionBackend, HarnessAdapter, RunContext } from "../../src/core/types";
+import type { EvalSuite, ExecutionBackend, HarnessAdapter, RunContext, TrialCell } from "../../engine/contracts";
+import { backends, harnesses, suites } from "../../engine/loaded-members";
+import { main, parseEvalsArgs, suiteContext } from "../../evals";
 
 const SUITE = "option-parity-suite";
 const BACKEND = "option-parity-backend";
@@ -40,7 +38,7 @@ const seen: { prepare: Record<string, unknown>[]; runTrial: Record<string, unkno
 
 function probeSuite(): EvalSuite {
 	return {
-		name: SUITE,
+		id: SUITE,
 		version: "1.0.0",
 		displayName: "Option parity",
 		description: "Probe suite that runs one scored cell against a probe backend.",
@@ -65,7 +63,7 @@ function probeSuite(): EvalSuite {
 
 function probeHarness(): HarnessAdapter {
 	return {
-		name: HARNESS,
+		id: HARNESS,
 		displayName: "Option parity harness",
 		description: "Probe harness bound to the probe backend.",
 		flags: ["vey-binary"],
@@ -89,7 +87,7 @@ function probeBackend(): ExecutionBackend {
 		async prepare(context: RunContext) {
 			seen.prepare.push({ ...context.options });
 		},
-		async runTrial(cell, context: RunContext) {
+		async runTrial(cell: TrialCell, context: RunContext) {
 			seen.runTrial.push({ ...context.options });
 			return { logPaths: [], trialDir: path.join(context.runsDir, "probe", cell.task) };
 		},
@@ -121,15 +119,15 @@ describe("every option the CLI parses reaches the running trial", () => {
 		seen.prepare.length = 0;
 		seen.runTrial.length = 0;
 		runsDir = fs.mkdtempSync(path.join(os.tmpdir(), "evals-option-parity-"));
-		registerSuite(probeSuite());
-		registerHarness(probeHarness());
-		registerBackend(probeBackend());
+		suites.register(probeSuite());
+		harnesses.register(probeHarness());
+		backends.register(probeBackend());
 	});
 
 	afterEach(() => {
-		unregisterSuite(SUITE);
-		unregisterHarness(HARNESS);
-		unregisterBackend(BACKEND);
+		suites.unregister(SUITE);
+		harnesses.unregister(HARNESS);
+		backends.unregister(BACKEND);
 		fs.rmSync(runsDir, { recursive: true, force: true });
 	});
 

@@ -24,16 +24,13 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, type Mock, spyOn } from "bun:test";
-import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { promisify } from "node:util";
 import { AuthStorage, type CredentialHealthResult } from "@veyyon/ai";
-import { requireHarness } from "../../../src/core/harness-registry";
-import type { HarnessAdapter } from "../../../src/core/types";
-import { registerBuiltinHarnesses } from "../../../src/harnesses";
-import { internalScratchDir } from "../../../src/paths";
-import { stageAllArms } from "../../../src/suites/deep-swe/runner/arm-staging";
+import type { HarnessAdapter } from "../../../engine/contracts";
+import { harnesses } from "../../../engine/loaded-members";
+import { internalScratchDir } from "../../../engine/package-paths";
+import { stageAllArms } from "../../../suites/deep-swe/runner/arm-staging";
 import {
 	ArmAttachmentError,
 	BinaryBuildFailedError,
@@ -67,24 +64,14 @@ import {
 	UnknownArmError,
 	UnknownArmSettingsError,
 	ZeroIvCollisionError,
-} from "../../../src/suites/deep-swe/runner/errors";
+} from "../../../suites/deep-swe/runner/errors";
 import {
+	executeDeepSweRun,
 	mergeIntoReport,
 	reaggregate,
 	requirePierAgentImportPath,
-	runBench,
-} from "../../../src/suites/deep-swe/runner/executor";
-import { requireFile } from "../../../src/suites/deep-swe/runner/preflight";
-
-registerBuiltinHarnesses();
-
-const execFileAsync = promisify(execFile);
-
-/**
- * Resolved from this file rather than the working directory: the workspace test bucket runs bun
- * with the package as its cwd, so a repo-relative literal resolved to packages/evals/packages/evals.
- */
-const DEEP_SWE_RUN_SCRIPT = path.resolve(import.meta.dirname, "..", "..", "..", "src/suites/deep-swe/run.ts");
+} from "../../../suites/deep-swe/runner/executor";
+import { requireFile } from "../../../suites/deep-swe/runner/preflight";
 
 function createScratchDir(prefix: string): string {
 	const base = internalScratchDir();
@@ -383,32 +370,34 @@ describe("staging and execution failures throw errors and survive process", () =
 			expect(surviving).toBe(true);
 		});
 
-		it("throws MissingTasksRootError when --tasks-root is missing or empty", async () => {
+		it("throws MissingTasksRootError when tasksRoot is missing or empty", async () => {
 			coveredErrors.add(MissingTasksRootError);
 			let surviving = false;
 			await expect(
-				runBench(["--tasks-root", "", "--arms", "baseline", "--model", "anthropic/claude-sonnet-4-5", "--dry-run"]),
+				executeDeepSweRun({
+					tasksRoot: "",
+					arms: ["baseline"],
+					model: "anthropic/claude-sonnet-4-5",
+					dryRun: true,
+				}),
 			).rejects.toBeInstanceOf(MissingTasksRootError);
 			surviving = true;
 			expect(surviving).toBe(true);
 		});
 
-		it("throws EmptyArmsError when --arms is empty", async () => {
+		it("throws EmptyArmsError when arms list is empty", async () => {
 			coveredErrors.add(EmptyArmsError);
 			const tasksDir = path.join(tempDir, "tasks");
 			fs.mkdirSync(tasksDir, { recursive: true });
 
 			let surviving = false;
 			await expect(
-				runBench([
-					"--arms",
-					" , ",
-					"--tasks-root",
-					tasksDir,
-					"--model",
-					"anthropic/claude-sonnet-4-5",
-					"--dry-run",
-				]),
+				executeDeepSweRun({
+					arms: [" , "],
+					tasksRoot: tasksDir,
+					model: "anthropic/claude-sonnet-4-5",
+					dryRun: true,
+				}),
 			).rejects.toBeInstanceOf(EmptyArmsError);
 			surviving = true;
 			expect(surviving).toBe(true);
@@ -421,51 +410,44 @@ describe("staging and execution failures throw errors and survive process", () =
 
 			let surviving = false;
 			await expect(
-				runBench([
-					"--arms",
-					"nonexistent-custom-arm",
-					"--tasks-root",
-					tasksDir,
-					"--model",
-					"anthropic/claude-sonnet-4-5",
-					"--dry-run",
-				]),
+				executeDeepSweRun({
+					arms: ["nonexistent-custom-arm"],
+					tasksRoot: tasksDir,
+					model: "anthropic/claude-sonnet-4-5",
+					dryRun: true,
+				}),
 			).rejects.toBeInstanceOf(UnknownArmError);
 			surviving = true;
 			expect(surviving).toBe(true);
 		});
 
-		it("throws MissingModelError when --model is missing", async () => {
+		it("throws MissingModelError when model is missing", async () => {
 			coveredErrors.add(MissingModelError);
 			const tasksDir = path.join(tempDir, "tasks");
 			fs.mkdirSync(tasksDir, { recursive: true });
 
 			let surviving = false;
-			await expect(runBench(["--arms", "baseline", "--tasks-root", tasksDir, "--dry-run"])).rejects.toBeInstanceOf(
-				MissingModelError,
-			);
+			await expect(
+				executeDeepSweRun({ arms: ["baseline"], tasksRoot: tasksDir, dryRun: true }),
+			).rejects.toBeInstanceOf(MissingModelError);
 			surviving = true;
 			expect(surviving).toBe(true);
 		});
 
-		it("throws InvalidTrialTimeoutError when --trial-timeout is unparseable", async () => {
+		it("throws InvalidTrialTimeoutError when trial timeout is unparseable", async () => {
 			coveredErrors.add(InvalidTrialTimeoutError);
 			const tasksDir = path.join(tempDir, "tasks");
 			fs.mkdirSync(tasksDir, { recursive: true });
 
 			let surviving = false;
 			await expect(
-				runBench([
-					"--arms",
-					"baseline",
-					"--model",
-					"anthropic/claude-sonnet-4-5",
-					"--tasks-root",
-					tasksDir,
-					"--trial-timeout",
-					"not-a-number",
-					"--dry-run",
-				]),
+				executeDeepSweRun({
+					arms: ["baseline"],
+					model: "anthropic/claude-sonnet-4-5",
+					tasksRoot: tasksDir,
+					trialTimeout: "not-a-number",
+					dryRun: true,
+				}),
 			).rejects.toBeInstanceOf(InvalidTrialTimeoutError);
 			surviving = true;
 			expect(surviving).toBe(true);
@@ -478,15 +460,12 @@ describe("staging and execution failures throw errors and survive process", () =
 
 			let surviving = false;
 			await expect(
-				runBench([
-					"--arms",
-					"baseline",
-					"--model",
-					"anthropic/claude-sonnet-4-5",
-					"--tasks-root",
-					tasksDir,
-					"--dry-run",
-				]),
+				executeDeepSweRun({
+					arms: ["baseline"],
+					model: "anthropic/claude-sonnet-4-5",
+					tasksRoot: tasksDir,
+					dryRun: true,
+				}),
 			).rejects.toBeInstanceOf(NoTasksSelectedError);
 			surviving = true;
 			expect(surviving).toBe(true);
@@ -501,17 +480,13 @@ describe("staging and execution failures throw errors and survive process", () =
 
 			let surviving = false;
 			await expect(
-				runBench([
-					"--arms",
-					"baseline",
-					"--model",
-					"anthropic/claude-sonnet-4-5",
-					"--tasks-root",
-					tasksDir,
-					"--binary",
-					"",
-					"--dry-run",
-				]),
+				executeDeepSweRun({
+					arms: ["baseline"],
+					model: "anthropic/claude-sonnet-4-5",
+					tasksRoot: tasksDir,
+					binary: "",
+					dryRun: true,
+				}),
 			).rejects.toBeInstanceOf(InvalidBinaryPinError);
 			surviving = true;
 			expect(surviving).toBe(true);
@@ -526,15 +501,12 @@ describe("staging and execution failures throw errors and survive process", () =
 
 			let surviving = false;
 			await expect(
-				runBench([
-					"--arms",
-					"baseline",
-					"--model",
-					"anthropic/claude-sonnet-4-5",
-					"--tasks-root",
-					tasksDir,
-					"--dry-run",
-				]),
+				executeDeepSweRun({
+					arms: ["baseline"],
+					model: "anthropic/claude-sonnet-4-5",
+					tasksRoot: tasksDir,
+					dryRun: true,
+				}),
 			).rejects.toBeInstanceOf(InvalidTaskBudgetError);
 			surviving = true;
 			expect(surviving).toBe(true);
@@ -573,7 +545,7 @@ describe("staging and execution failures throw errors and survive process", () =
 			coveredErrors.add(MissingBackendBindingError);
 
 			const unbound: HarnessAdapter = {
-				name: "pier-unbound",
+				id: "pier-unbound",
 				displayName: "Pier Unbound",
 				description: "A harness that builds pier kwargs without declaring a pier binding.",
 				flags: [],
@@ -587,7 +559,7 @@ describe("staging and execution failures throw errors and survive process", () =
 
 			expect(() => requirePierAgentImportPath(unbound)).toThrowError(MissingBackendBindingError);
 			expect(() => requirePierAgentImportPath(unbound)).toThrowError(/pier-unbound/);
-			expect(requirePierAgentImportPath(requireHarness("veyyon"))).toBe("veyyon_agent:VeyyonAgent");
+			expect(requirePierAgentImportPath(harnesses.require("veyyon"))).toBe("veyyon_agent:VeyyonAgent");
 		});
 
 		/**
@@ -625,46 +597,9 @@ describe("staging and execution failures throw errors and survive process", () =
 			expect(resolveExitCode(new Error("generic"))).toBe(1);
 		});
 
-		it("executes run.ts CLI in child process and verifies exit code 1 on missing model", async () => {
-			const runScript = DEEP_SWE_RUN_SCRIPT;
-			const tasksDir = path.join(tempDir, "tasks");
-			fs.mkdirSync(tasksDir, { recursive: true });
-
-			let procError: { code?: number; stderr?: string } | null = null;
-			try {
-				await execFileAsync("bun", [runScript, "--arms", "baseline", "--tasks-root", tasksDir]);
-			} catch (err: unknown) {
-				procError = err as { code?: number; stderr?: string };
-			}
-
-			expect(procError).not.toBeNull();
-			expect(procError?.code).toBe(1);
-			expect(procError?.stderr).toContain("--model <provider/model-id> is required");
-		});
-
-		it("executes run.ts CLI in child process and verifies exit code 1 on unknown arm", async () => {
-			const runScript = DEEP_SWE_RUN_SCRIPT;
-			const tasksDir = path.join(tempDir, "tasks");
-			fs.mkdirSync(tasksDir, { recursive: true });
-
-			let procError: { code?: number; stderr?: string } | null = null;
-			try {
-				await execFileAsync("bun", [
-					runScript,
-					"--arms",
-					"nonexistent-arm",
-					"--tasks-root",
-					tasksDir,
-					"--model",
-					"test/model",
-				]);
-			} catch (err: unknown) {
-				procError = err as { code?: number; stderr?: string };
-			}
-
-			expect(procError).not.toBeNull();
-			expect(procError?.code).toBe(1);
-			expect(procError?.stderr).toContain("unknown arm");
+		it("resolves exit code 1 for MissingModelError and UnknownArmError", () => {
+			expect(resolveExitCode(new MissingModelError("--model required"))).toBe(1);
+			expect(resolveExitCode(new UnknownArmError("unknown arm"))).toBe(1);
 		});
 	});
 

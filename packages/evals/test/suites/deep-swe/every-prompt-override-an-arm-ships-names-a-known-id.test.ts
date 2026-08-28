@@ -19,8 +19,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { PROMPT_ID_SHAPE_HINT } from "@veyyon/utils";
 import YAML from "yaml";
-import { knownPromptIds, promptOverrideIdError } from "../../../src/core/prompt-overrides";
-import { armsDir } from "../../../src/paths";
+import { armsDir } from "../../../engine/package-paths";
+import { knownPromptIds, promptOverrideIdError } from "../../../engine/prompt-overrides";
 
 const ARMS_DIR = armsDir();
 

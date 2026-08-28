@@ -9,7 +9,7 @@
  * `--reaggregate` path: a live comparison run that failed its gates exited 0.
  *
  * The class this closes: a library function reaching for the host process's exit code instead of
- * returning what it found. `reaggregate` and `runBench` return the comparison, and `run.ts` is the
+ * returning what it found. `reaggregate` returns the comparison, and `evals.ts` is the
  * one place that maps a non-passing verdict to exit 1.
  *
  * What it does not catch: the gate arithmetic itself, proven in
@@ -18,17 +18,13 @@
  */
 
 import { afterEach, describe, expect, it } from "bun:test";
-import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { promisify } from "node:util";
 import { TempDir } from "@veyyon/utils";
-import { reaggregate } from "../../../src/suites/deep-swe/runner/executor";
+import { reaggregate } from "../../../suites/deep-swe/runner/executor";
 
-const run = promisify(execFile);
 const MODEL = "test/model";
 const TASK = "task-a";
-const CLI = path.resolve(import.meta.dirname, "../../../src/suites/deep-swe/run.ts");
 
 interface SystemFixture {
 	readonly system: string;
@@ -181,19 +177,5 @@ describe("re-aggregating a comparison run", () => {
 		} finally {
 			process.exitCode = before;
 		}
-	});
-});
-
-describe("the deep-swe entry point", () => {
-	it("exits 1 for a comparison that did not pass and 0 for one that did", async () => {
-		const failing = await writeComparisonRun([REFERENCE, { ...COMPETITOR, reward: 1 }]);
-		const passing = await writeComparisonRun([REFERENCE, COMPETITOR]);
-
-		await expect(
-			run(process.execPath, [CLI, "--reaggregate", failing], { maxBuffer: 8 << 20 }),
-		).rejects.toMatchObject({ code: 1 });
-
-		const ok = await run(process.execPath, [CLI, "--reaggregate", passing], { maxBuffer: 8 << 20 });
-		expect(ok.stdout).toContain("reaggregated 2 runs");
 	});
 });

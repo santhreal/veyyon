@@ -26,12 +26,9 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import * as dataset from "../../../src/suites/terminal-bench/dataset";
-import {
-	computeTaskSetContentHash,
-	computeTerminalBenchProvenance,
-} from "../../../src/suites/terminal-bench/provenance";
-import { parseTaskList } from "../../../src/suites/terminal-bench/task-list";
+import * as dataset from "../../../suites/terminal-bench/dataset";
+import { computeTaskSetContentHash, computeTerminalBenchProvenance } from "../../../suites/terminal-bench/provenance";
+import { parseTaskList } from "../../../suites/terminal-bench/task-list";
 
 const temps: TempDir[] = [];
 

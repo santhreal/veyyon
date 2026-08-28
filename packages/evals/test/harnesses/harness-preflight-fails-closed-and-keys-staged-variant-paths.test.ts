@@ -27,12 +27,12 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AuthStorage } from "@veyyon/ai";
-import { listHarnesses, programDirFor, sanitizeVariantName, type Variant } from "../../src/core";
-import { preflightHarnesses } from "../../src/core/harness-preflight";
-import { registerBuiltinHarnesses } from "../../src/harnesses";
-import { internalScratchDir } from "../../src/paths";
-
-registerBuiltinHarnesses();
+import { programDirFor } from "../../engine/container-program";
+import type { Variant } from "../../engine/contracts";
+import { preflightHarnesses } from "../../engine/harness-preflight";
+import { harnesses } from "../../engine/loaded-members";
+import { internalScratchDir } from "../../engine/package-paths";
+import { sanitizeVariantName } from "../../engine/run-layout";
 
 interface HarnessFixtureSetup {
 	readonly options: Record<string, unknown>;
@@ -143,15 +143,15 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 	}
 
 	it("verifies all registered harnesses are covered by the test sweep and none are skipped", () => {
-		const registeredHarnesses = listHarnesses();
+		const registeredHarnesses = harnesses.list();
 		expect(registeredHarnesses.length).toBeGreaterThan(0);
 
 		const knownFixtureHarnesses = new Set(["veyyon", "omp", "factory", "hermes"]);
 		const unexercised: string[] = [];
 
 		for (const harness of registeredHarnesses) {
-			if (!knownFixtureHarnesses.has(harness.name)) {
-				unexercised.push(harness.name);
+			if (!knownFixtureHarnesses.has(harness.id)) {
+				unexercised.push(harness.id);
 			}
 		}
 
@@ -160,7 +160,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 	});
 
 	it("refuses preflight for every registered harness when required binaries or credentials are missing", async () => {
-		const registeredHarnesses = listHarnesses();
+		const registeredHarnesses = harnesses.list();
 
 		for (const harness of registeredHarnesses) {
 			// Pass options pointing to nonexistent paths or empty configurations
@@ -191,7 +191,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 		const nonExecOmp = createNonExecutable(path.join(scratchDir, "nonexec-omp", "omp"));
 		const nonExecDroid = createNonExecutable(path.join(scratchDir, "nonexec-droid", "droid"));
 
-		const veyyonHarness = listHarnesses().find(h => h.name === "veyyon");
+		const veyyonHarness = harnesses.list().find(h => h.id === "veyyon");
 		if (veyyonHarness) {
 			const verdict = await veyyonHarness.preflight({
 				backend: "pier",
@@ -201,7 +201,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 			expect(verdict.reason).toMatch(/not executable/i);
 		}
 
-		const ompHarness = listHarnesses().find(h => h.name === "omp");
+		const ompHarness = harnesses.list().find(h => h.id === "omp");
 		if (ompHarness) {
 			const verdict = await ompHarness.preflight({
 				backend: "pier",
@@ -214,7 +214,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 			expect(verdict.reason).toMatch(/not executable/i);
 		}
 
-		const factoryHarness = listHarnesses().find(h => h.name === "factory");
+		const factoryHarness = harnesses.list().find(h => h.id === "factory");
 		if (factoryHarness) {
 			const authPath = createTextFile(path.join(scratchDir, "factory-auth-valid", "key.txt"), "valid-secret");
 			const verdict = await factoryHarness.preflight({
@@ -237,16 +237,16 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 		]);
 
 		try {
-			const registeredHarnesses = listHarnesses();
+			const registeredHarnesses = harnesses.list();
 
 			for (const harness of registeredHarnesses) {
-				const fixture = setupValidHarnessFixture(harness.name);
+				const fixture = setupValidHarnessFixture(harness.id);
 				const verdict = await harness.preflight({
 					backend: "pier",
 					options: fixture.options,
 				});
 
-				expect(verdict.ok, `Harness "${harness.name}" failed preflight: ${verdict.reason}`).toBe(true);
+				expect(verdict.ok, `Harness "${harness.id}" failed preflight: ${verdict.reason}`).toBe(true);
 				expect(verdict.missingRequirements).toBeUndefined();
 			}
 		} finally {
@@ -256,16 +256,16 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 	});
 
 	it("stageAssets writes to disjoint variant-keyed paths for multiple variants of the same harness", async () => {
-		const registeredHarnesses = listHarnesses();
+		const registeredHarnesses = harnesses.list();
 		const targetDir = path.join(scratchDir, "staged-assets");
 		fs.mkdirSync(targetDir, { recursive: true });
 
 		for (const harness of registeredHarnesses) {
-			const fixture = setupValidHarnessFixture(harness.name);
+			const fixture = setupValidHarnessFixture(harness.id);
 
 			const variantA: Variant = {
 				name: "arm-baseline-v1",
-				harness: harness.name,
+				harness: harness.id,
 				configPath:
 					typeof fixture.options["factory-settings"] === "string"
 						? (fixture.options["factory-settings"] as string)
@@ -277,7 +277,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 
 			const variantB: Variant = {
 				name: "arm-candidate-v2",
-				harness: harness.name,
+				harness: harness.id,
 				configPath:
 					typeof fixture.options["factory-settings"] === "string"
 						? (fixture.options["factory-settings"] as string)
@@ -305,7 +305,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 			// looks for it; the rest key the arm's directory directly off the target.
 			const stagedDirFor = (variant: Variant): string =>
 				harness.containerProgram
-					? programDirFor(targetDir, harness.name, variant.name)
+					? programDirFor(targetDir, harness.id, variant.name)
 					: path.join(targetDir, sanitizeVariantName(variant.name));
 			const pathA = stagedDirFor(variantA);
 			const pathB = stagedDirFor(variantB);
@@ -380,6 +380,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 			const reports = await preflightHarnesses(variants, {
 				backend: "pier",
 				options: combinedOptions,
+				harnesses,
 			});
 
 			// Must return exactly one report per variant in matching order
@@ -408,8 +409,8 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 	});
 
 	it("preflightHarnesses de-duplicates probes: probes each distinct harness+backend pair only once", async () => {
-		const veyyonHarness = listHarnesses().find(h => h.name === "veyyon");
-		const ompHarness = listHarnesses().find(h => h.name === "omp");
+		const veyyonHarness = harnesses.list().find(h => h.id === "veyyon");
+		const ompHarness = harnesses.list().find(h => h.id === "omp");
 		expect(veyyonHarness).toBeDefined();
 		expect(ompHarness).toBeDefined();
 
@@ -453,6 +454,7 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 			const reports = await preflightHarnesses(variants, {
 				backend: "pier",
 				options: {},
+				harnesses,
 			});
 
 			expect(reports.length).toBe(100);

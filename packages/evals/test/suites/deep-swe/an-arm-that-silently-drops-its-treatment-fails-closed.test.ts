@@ -18,7 +18,7 @@ import {
 	type MistypedArmSetting,
 	mistypedArmSettings,
 	unknownArmSettings,
-} from "../../../src/suites/deep-swe/treatment-guard";
+} from "../../../suites/deep-swe/treatment-guard";
 
 const MODEL = "google-antigravity/gemini-3.6-flash";
 

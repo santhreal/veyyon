@@ -21,10 +21,9 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { defaultSuiteRegistry } from "../../src/core/suite-registry";
-import type { TrialArtifacts, TrialCell } from "../../src/core/types";
-import { internalScratchDir } from "../../src/paths";
-import { registerAllSuites } from "../../src/suites";
+import type { TrialArtifacts, TrialCell } from "../../engine/contracts";
+import { suites } from "../../engine/loaded-members";
+import { internalScratchDir } from "../../engine/package-paths";
 
 function createScratchDir(prefix: string): string {
 	const base = internalScratchDir();
@@ -171,11 +170,10 @@ const SUITE_SCORE_DRIVERS: Record<string, SuiteScoreDriver> = {
 };
 
 describe("Score Honesty — every registered suite maps infrastructure failures to reward: null", () => {
-	registerAllSuites(defaultSuiteRegistry);
-	const registeredSuites = defaultSuiteRegistry.list();
+	const registeredSuites = suites.list();
 
 	it("covers every registered suite from the registry without gaps", () => {
-		const suiteNames = registeredSuites.map(s => s.name).sort();
+		const suiteNames = registeredSuites.map(s => s.id).sort();
 		const drivenNames = Object.keys(SUITE_SCORE_DRIVERS).sort();
 		const uncovered = suiteNames.filter(name => !drivenNames.includes(name));
 
@@ -184,12 +182,12 @@ describe("Score Honesty — every registered suite maps infrastructure failures 
 	});
 
 	for (const suite of registeredSuites) {
-		describe(`Suite: ${suite.name}`, () => {
-			const driver = SUITE_SCORE_DRIVERS[suite.name];
+		describe(`Suite: ${suite.id}`, () => {
+			const driver = SUITE_SCORE_DRIVERS[suite.id];
 
-			it(`reports reward: null and non-empty error on infrastructure failure for ${suite.name}`, async () => {
+			it(`reports reward: null and non-empty error on infrastructure failure for ${suite.id}`, async () => {
 				expect(driver).toBeDefined();
-				const scratch = createScratchDir(`score-infra-${suite.name}-`);
+				const scratch = createScratchDir(`score-infra-${suite.id}-`);
 				try {
 					const { cell, artifacts } = await driver!.createInfrastructureFailureArtifacts(scratch);
 					const score = await suite.scoreTrial(cell, artifacts);
@@ -207,9 +205,9 @@ describe("Score Honesty — every registered suite maps infrastructure failures 
 				}
 			});
 
-			it(`reports reward: 0 and error: null on genuine task failure for ${suite.name}`, async () => {
+			it(`reports reward: 0 and error: null on genuine task failure for ${suite.id}`, async () => {
 				expect(driver).toBeDefined();
-				const scratch = createScratchDir(`score-zero-${suite.name}-`);
+				const scratch = createScratchDir(`score-zero-${suite.id}-`);
 				try {
 					const { cell, artifacts } = await driver!.createGenuineZeroArtifacts(scratch);
 					const score = await suite.scoreTrial(cell, artifacts);

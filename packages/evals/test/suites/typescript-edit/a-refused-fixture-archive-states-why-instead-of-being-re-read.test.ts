@@ -29,8 +29,8 @@ import {
 	FixtureArchiveError,
 	type FixtureArchiveFailure,
 	readFixturesArchive,
-} from "../../../src/suites/typescript-edit/extract";
-import { TypescriptEditSuite } from "../../../src/suites/typescript-edit/suite";
+} from "../../../suites/typescript-edit/extract";
+import { TypescriptEditSuite } from "../../../suites/typescript-edit/main";
 
 /** A valid gzipped tar holding no entries: 10240 zero bytes is an empty archive. */
 const EMPTY_TAR_GZ = gzipSync(Buffer.alloc(10240));

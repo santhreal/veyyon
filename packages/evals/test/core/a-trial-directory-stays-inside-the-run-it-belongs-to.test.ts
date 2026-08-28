@@ -19,18 +19,27 @@
  * the owner sweep alone; the traces controller separately refuses a resolved path outside the job
  * directory.
  */
-import { beforeAll, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import { registerAllBackends } from "../../src/backends";
-import * as harborBackendModule from "../../src/backends/harbor/backend";
-import { HarborBackend } from "../../src/backends/harbor/backend";
-import * as inProcessBackendModule from "../../src/backends/in-process/backend";
-import { InProcessBackend } from "../../src/backends/in-process/backend";
-import * as pierBackendModule from "../../src/backends/pier/backend";
-import { PierExecutionBackend } from "../../src/backends/pier/backend";
-import { listBackendIds } from "../../src/core/backend-registry";
+import * as harborBackendModule from "../../backends/harbor/main";
+import { HarborBackend } from "../../backends/harbor/main";
+import * as inProcessBackendModule from "../../backends/in-process/main";
+import { InProcessBackend } from "../../backends/in-process/main";
+import * as pierBackendModule from "../../backends/pier/main";
+import { PierExecutionBackend } from "../../backends/pier/main";
+import type {
+	EvalSuite,
+	RunContext,
+	SuiteProvenance,
+	TaskDescriptor,
+	TrialCell,
+	TrialScore,
+	Variant,
+} from "../../engine/contracts";
+import { backends, harnesses } from "../../engine/loaded-members";
+import { pathSegmentFrom, UnsafePathSegmentError } from "../../engine/package-paths";
 import {
 	DEFAULT_RUN_SEGMENT,
 	DEFAULT_TASK_SEGMENT,
@@ -40,19 +49,8 @@ import {
 	trialDirFor,
 	trialJobName,
 	trialSegments,
-} from "../../src/core/trial-naming";
-import type {
-	EvalSuite,
-	RunContext,
-	SuiteProvenance,
-	TaskDescriptor,
-	TrialCell,
-	TrialScore,
-	Variant,
-} from "../../src/core/types";
-import { registerBuiltinHarnesses } from "../../src/harnesses/index";
-import { pathSegmentFrom, UnsafePathSegmentError } from "../../src/paths";
-import * as telemetryModule from "../../src/suites/typescript-edit/adapter/runner/telemetry";
+} from "../../engine/run-layout";
+import * as telemetryModule from "../../suites/typescript-edit/runner/telemetry";
 
 /** Names a segment is derived from, generated at run time so a dot run of any length is covered. */
 function adversarialNames(): string[] {
@@ -89,7 +87,7 @@ function adversarialNames(): string[] {
 
 function probeSuite(): EvalSuite {
 	return {
-		name: "naming-probe-suite",
+		id: "naming-probe-suite",
 		version: "1.0.0",
 		displayName: "Naming Probe Suite",
 		description: "Suite used to drive trial directory naming",
@@ -290,13 +288,8 @@ const NAMING_COVERAGE: Readonly<Record<string, string>> = {
 };
 
 describe("no backend spells a trial path of its own", () => {
-	beforeAll(() => {
-		registerAllBackends();
-		registerBuiltinHarnesses();
-	});
-
 	it("covers every registered backend", () => {
-		expect([...listBackendIds()].sort()).toEqual(Object.keys(NAMING_COVERAGE).sort());
+		expect([...backends.ids()].sort()).toEqual(Object.keys(NAMING_COVERAGE).sort());
 	});
 
 	it("exports no naming rule beside the owner's", () => {
@@ -332,6 +325,7 @@ describe("no backend spells a trial path of its own", () => {
 				suite: probeSuite(),
 				workDir: temp.absolute(),
 				runsDir,
+				harnesses,
 				options: { variants: CLIMBING_VARIANT, cleanup: true },
 			};
 
@@ -374,6 +368,7 @@ describe("no backend spells a trial path of its own", () => {
 				suite: probeSuite(),
 				workDir: temp.absolute(),
 				runsDir,
+				harnesses,
 				// apple-container skips the docker container sweep, so no container runtime is reached.
 				options: { cleanup: true, envType: "apple-container" },
 			};
@@ -411,6 +406,7 @@ describe("no backend spells a trial path of its own", () => {
 			suite: probeSuite(),
 			workDir: "/unused",
 			runsDir: "/unused/runs",
+			harnesses,
 		});
 
 		expect(calls).toContainEqual(["docker", "rm", "-f", "mine"]);

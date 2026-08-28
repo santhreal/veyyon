@@ -14,8 +14,8 @@
 
 import { describe, expect, it } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ExperimentsList } from "../../src/web/components/experiments-index";
-import type { ExperimentSummary } from "../../src/wire";
+import { ExperimentsList } from "../../dashboard/components/experiments-index";
+import type { ExperimentSummary } from "../../engine/store-shapes";
 
 function summary(overrides: Partial<ExperimentSummary> = {}): ExperimentSummary {
 	return {

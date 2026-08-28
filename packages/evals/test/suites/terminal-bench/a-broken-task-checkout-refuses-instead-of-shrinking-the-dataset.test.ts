@@ -19,8 +19,8 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { discoverTerminalBenchTasks } from "../../../src/suites/terminal-bench/dataset";
-import { computeTaskSetContentHash } from "../../../src/suites/terminal-bench/provenance";
+import { discoverTerminalBenchTasks } from "../../../suites/terminal-bench/dataset";
+import { computeTaskSetContentHash } from "../../../suites/terminal-bench/provenance";
 
 const cleanups: Array<() => void> = [];
 

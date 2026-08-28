@@ -12,7 +12,6 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { emptyArmResult } from "../../../src/suites/deep-swe/aggregate";
 import {
 	classifyError,
 	finishedWithoutPatch,
@@ -21,10 +20,11 @@ import {
 	providerFinishReason,
 	providerQuotaStop,
 	quotaStopMarker,
-} from "../../../src/suites/deep-swe/aggregate/error-classification";
-import { renderQuotaTruncationBanner, renderReport } from "../../../src/suites/deep-swe/aggregate/report-render";
-import { summarizeCell } from "../../../src/suites/deep-swe/aggregate/stats";
-import type { ArmResult } from "../../../src/suites/deep-swe/aggregate/types";
+} from "../../../suites/deep-swe/aggregate/error-classification";
+import { emptyArmResult } from "../../../suites/deep-swe/aggregate/index";
+import { renderQuotaTruncationBanner, renderReport } from "../../../suites/deep-swe/aggregate/report-render";
+import { summarizeCell } from "../../../suites/deep-swe/aggregate/stats";
+import type { ArmResult } from "../../../suites/deep-swe/aggregate/types";
 import {
 	FINISHED_WITHOUT_PATCH_JOB_LOG,
 	KILLED_MID_RUN_JOB_LOG,

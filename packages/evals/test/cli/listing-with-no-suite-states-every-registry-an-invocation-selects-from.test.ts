@@ -1,6 +1,6 @@
 /**
  * WHY: `--list` documented itself as listing "suites, backends and harnesses" and printed
- * only suites, from the `builtinSuites` literal rather than from the registry. Two axes of
+ * only suites, from the suites registry. Two axes of
  * the five had no discovery path at all: an operator learned the harness names from the
  * source, and a suite registered from outside this package was invisible to the listing
  * that was supposed to enumerate it.
@@ -18,11 +18,9 @@
  */
 
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
-import { describeRegistries, main } from "../../src/cli";
-import { listBackendIds } from "../../src/core/backend-registry";
-import { listHarnessNames } from "../../src/core/harness-registry";
-import { listSuiteNames } from "../../src/core/suite-registry";
-import type { BackendId, HarnessAdapter } from "../../src/core/types";
+import type { BackendId, HarnessAdapter } from "../../engine/contracts";
+import { backends, harnesses, suites as loadedSuites } from "../../engine/loaded-members";
+import { describeRegistries, main } from "../../evals";
 
 type ListedSuite = Parameters<typeof describeRegistries>[0][number];
 type ListedHarness = Parameters<typeof describeRegistries>[2][number];
@@ -30,18 +28,18 @@ type ListedHarness = Parameters<typeof describeRegistries>[2][number];
 function harness(name: string, defaultModel: string | null, backends: readonly BackendId[]): ListedHarness {
 	const bound: Record<string, HarnessAdapter["backends"][BackendId]> = {};
 	for (const id of backends) bound[id] = {};
-	return { name, defaultModel, backends: bound };
+	return { id: name, defaultModel, backends: bound };
 }
 
 describe("the listing of a registry", () => {
 	const suites: ListedSuite[] = [
-		{ name: "zebra-suite", backend: "in-process", description: "last by name, first registered" },
-		{ name: "alpha-suite", backend: "pier", description: "first by name, last registered" },
+		{ id: "zebra-suite", backend: "in-process", description: "last by name, first registered" },
+		{ id: "alpha-suite", backend: "pier", description: "first by name, last registered" },
 	];
 
 	it("lists a member this package does not ship", () => {
 		const text = describeRegistries(
-			[{ name: "extension-suite", backend: "modal", description: "registered elsewhere" }],
+			[{ id: "extension-suite", backend: "modal", description: "registered elsewhere" }],
 			["modal"],
 			[harness("extension-harness", "vendor/model-1", ["modal"])],
 		);
@@ -116,15 +114,15 @@ describe("`evals --list` with no suite", () => {
 
 		// Swept from the registries the CLI itself populated: a new member is covered here
 		// the moment it registers, and a member the listing drops turns this red.
-		expect(listSuiteNames().length).toBeGreaterThan(0);
-		expect(listBackendIds().length).toBeGreaterThan(0);
-		expect(listHarnessNames().length).toBeGreaterThan(0);
-		for (const name of listSuiteNames()) expect(text).toContain(name);
-		for (const id of listBackendIds()) expect(text).toContain(id);
-		for (const name of listHarnessNames()) expect(text).toContain(name);
+		expect(loadedSuites.ids().length).toBeGreaterThan(0);
+		expect(backends.ids().length).toBeGreaterThan(0);
+		expect(harnesses.ids().length).toBeGreaterThan(0);
+		for (const name of loadedSuites.ids()) expect(text).toContain(name);
+		for (const id of backends.ids()) expect(text).toContain(id);
+		for (const name of harnesses.ids()) expect(text).toContain(name);
 
-		expect(text).toContain("suites (name, backend, description):");
+		expect(text).toContain("suites (id, backend, description):");
 		expect(text).toContain("backends (id):");
-		expect(text).toContain("harnesses (name, default model, backends it binds):");
+		expect(text).toContain("harnesses (id, default model, backends it binds):");
 	});
 });

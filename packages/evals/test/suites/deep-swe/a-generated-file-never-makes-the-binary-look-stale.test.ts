@@ -24,12 +24,12 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { internalScratchDir } from "../../../src/paths";
+import { internalScratchDir } from "../../../engine/package-paths";
 import {
 	BUILD_GENERATED_EXCLUSIONS,
 	checkBinaryBuildNeeded,
 	isBuildGeneratedFile,
-} from "../../../src/suites/deep-swe/runner/preflight";
+} from "../../../suites/deep-swe/runner/preflight";
 
 function createScratchDir(prefix: string): string {
 	const base = internalScratchDir();

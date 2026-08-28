@@ -23,7 +23,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { parseTrialResult } from "../../../src/suites/deep-swe/runner/trial-result";
+import { parseTrialResult } from "../../../suites/deep-swe/runner/trial-result";
 
 const AGENT_TIMEOUT = {
 	exception_type: "AgentTimeoutError",

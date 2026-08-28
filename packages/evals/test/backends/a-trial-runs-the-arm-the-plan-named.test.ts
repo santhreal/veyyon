@@ -1,7 +1,7 @@
 /**
  * WHY: a TrialCell carries the variant NAME only, and every container backend used to
  * re-derive the harness and the model from that string. Pier passed the name to
- * `getHarness()`, so a matrix variant named `veyyon+alpha@vendor/model-x` matched no
+ * the harness registry, so a matrix variant named `veyyon+alpha@vendor/model-x` matched no
  * harness and fell back to `veyyon_agent:VeyyonAgent` with the binding's extra kwargs
  * dropped and the variant's model ignored; harbor guessed the harbor agent from the
  * name's punctuation and selected the agent `veyyon+alpha`. Both reported the result
@@ -18,17 +18,15 @@
  * downstream of the spawn, since no container is started here.
  */
 
-import { beforeAll, describe, expect, it, spyOn } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { HarborBackend } from "../../src/backends/harbor/backend";
-import { builtinBackends } from "../../src/backends/index";
-import { PierExecutionBackend } from "../../src/backends/pier/backend";
-import * as pierRunner from "../../src/backends/pier/runner";
-import { UnknownCellVariantError } from "../../src/core/cell-variant";
-import { containerProgramPath, programDirFor } from "../../src/core/container-program";
-import { listHarnesses } from "../../src/core/harness-registry";
+import { HarborBackend } from "../../backends/harbor/main";
+import { PierExecutionBackend } from "../../backends/pier/main";
+import * as pierRunner from "../../backends/pier/runner";
+import { UnknownCellVariantError } from "../../engine/cell-variant";
+import { containerProgramPath, programDirFor } from "../../engine/container-program";
 import type {
 	BackendId,
 	EvalSuite,
@@ -38,8 +36,8 @@ import type {
 	TrialCell,
 	TrialScore,
 	Variant,
-} from "../../src/core/types";
-import { registerBuiltinHarnesses } from "../../src/harnesses/index";
+} from "../../engine/contracts";
+import { backends, harnesses } from "../../engine/loaded-members";
 
 /** Backends this suite drives end to end without a container runtime. */
 const DRIVEN_BACKENDS: ReadonlySet<BackendId> = new Set<BackendId>(["pier", "harbor"]);
@@ -54,8 +52,8 @@ function overlayVariantName(harnessName: string): string {
 
 function planVariant(harness: HarnessAdapter): Variant {
 	return {
-		name: overlayVariantName(harness.name),
-		harness: harness.name,
+		name: overlayVariantName(harness.id),
+		harness: harness.id,
 		configPath: null,
 		promptVariantPath: null,
 		model: MODEL,
@@ -65,7 +63,7 @@ function planVariant(harness: HarnessAdapter): Variant {
 
 function stubSuite(backend: BackendId): EvalSuite {
 	return {
-		name: "plan-fidelity-suite",
+		id: "plan-fidelity-suite",
 		version: "1.0.0",
 		displayName: "Plan Fidelity Suite",
 		description: "Fixture suite that describes one task and scores nothing.",
@@ -101,6 +99,7 @@ async function makeContext(backend: BackendId, variants: readonly Variant[]): Pr
 		suite: stubSuite(backend),
 		workDir: root,
 		runsDir: path.join(root, "runs"),
+		harnesses,
 		options: { variants },
 	};
 }
@@ -110,7 +109,7 @@ function cell(variantName: string): TrialCell {
 }
 
 function harnessesBoundTo(backend: BackendId): readonly HarnessAdapter[] {
-	return listHarnesses().filter(harness => harness.backends[backend] !== undefined);
+	return harnesses.list().filter(harness => harness.backends[backend] !== undefined);
 }
 
 interface CapturedSpawn {
@@ -128,14 +127,8 @@ function stubSubprocess(): Bun.Subprocess {
 }
 
 describe("a trial runs the arm the plan named", () => {
-	// The harness registry is process-wide and self-registers on import; re-registering is
-	// idempotent. Clearing it here would poison every later file in the same worker.
-	beforeAll(() => {
-		registerBuiltinHarnesses();
-	});
-
 	it("refuses a cell whose variant the plan does not define, on every registered backend", async () => {
-		for (const backend of builtinBackends) {
+		for (const backend of backends.list()) {
 			const context = await makeContext(backend.id, [
 				{
 					name: "planned-arm",
@@ -189,15 +182,15 @@ describe("a trial runs the arm the plan named", () => {
 			const config = configs[0];
 			if (!config) throw new Error("pier job config was never written");
 			const binding = harness.backends.pier;
-			if (!binding) throw new Error(`harness ${harness.name} lost its pier binding mid-test`);
+			if (!binding) throw new Error(`harness ${harness.id} lost its pier binding mid-test`);
 			const expectedImportPath = binding.agentImportPath;
-			if (!expectedImportPath) throw new Error(`harness ${harness.name} declares no pier agent import path`);
+			if (!expectedImportPath) throw new Error(`harness ${harness.id} declares no pier agent import path`);
 			expect(config.agentImportPath).toBe(expectedImportPath);
 			expect(config.modelName).toBe(MODEL);
 			// A program-delivered harness names the arm in the path of the program it runs; a
 			// veyyon-shaped one names it as a kwarg the agent reads its overlay from.
 			if (harness.containerProgram) {
-				const suffix = containerProgramPath(programDirFor("", harness.name, variant.name));
+				const suffix = containerProgramPath(programDirFor("", harness.id, variant.name));
 				expect(String(config.kwargs.program_path).endsWith(suffix)).toBe(true);
 			} else {
 				expect(config.kwargs.arm_name).toBe(variant.name);
@@ -230,7 +223,7 @@ describe("a trial runs the arm the plan named", () => {
 			expect(spawns).toHaveLength(1);
 			const argv = spawns[0]?.argv ?? [];
 			const binding = harness.backends.harbor;
-			if (!binding) throw new Error(`harness ${harness.name} lost its harbor binding mid-test`);
+			if (!binding) throw new Error(`harness ${harness.id} lost its harbor binding mid-test`);
 			// harbor selects an agent by import path when the binding names one, and by agent
 			// name otherwise. Either way the value comes from the binding, never from the
 			// variant name: `veyyon+alpha@vendor/model-x` is not an agent.
@@ -241,7 +234,7 @@ describe("a trial runs the arm the plan named", () => {
 			} else {
 				const agentIndex = argv.indexOf("-a");
 				expect(agentIndex).toBeGreaterThan(-1);
-				expect(argv[agentIndex + 1]).toBe(binding.agentName ?? harness.name);
+				expect(argv[agentIndex + 1]).toBe(binding.agentName ?? harness.id);
 			}
 			expect(argv).toContain(MODEL);
 			expect(argv).not.toContain(variant.name);
@@ -249,7 +242,7 @@ describe("a trial runs the arm the plan named", () => {
 	});
 
 	it("refuses harbor for a harness that declares no harbor binding", async () => {
-		const unbound = listHarnesses().filter(harness => harness.backends.harbor === undefined);
+		const unbound = harnesses.list().filter(harness => harness.backends.harbor === undefined);
 		expect(unbound.length).toBeGreaterThan(0);
 
 		for (const harness of unbound) {
@@ -275,10 +268,10 @@ describe("a trial runs the arm the plan named", () => {
 
 	it("leaves no registered harness binding unexercised except the recorded opt-outs", () => {
 		const undriven: string[] = [];
-		for (const harness of listHarnesses()) {
+		for (const harness of harnesses.list()) {
 			for (const backend of Object.keys(harness.backends)) {
 				if (!DRIVEN_BACKENDS.has(backend)) {
-					undriven.push(`${harness.name}:${backend}`);
+					undriven.push(`${harness.id}:${backend}`);
 				}
 			}
 		}

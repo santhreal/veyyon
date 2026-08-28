@@ -1,9 +1,0 @@
-{
-	"extends": "../../../tsconfig.workspace.json",
-	"include": [".", "../../test/web/*.test.tsx"],
-	"compilerOptions": {
-		"lib": ["ES2024", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
-		"noEmit": true,
-		"types": ["bun", "react", "react-dom"]
-	}
-}

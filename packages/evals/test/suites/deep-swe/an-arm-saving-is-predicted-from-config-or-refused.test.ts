@@ -21,13 +21,9 @@ import {
 	formatArmPrediction,
 	PREFIX_AFFECTING_SETTINGS,
 	predictArmSaving,
-} from "../../../src/suites/deep-swe/arm-prediction";
-import {
-	accumulatePrefixMass,
-	sessionPrefixSteps,
-	type TranscriptRecord,
-} from "../../../src/suites/deep-swe/prefix-mass";
-import { SKIP_SIGNATURE_CHARS } from "../../../src/suites/deep-swe/prefix-stability";
+} from "../../../suites/deep-swe/arm-prediction";
+import { accumulatePrefixMass, sessionPrefixSteps, type TranscriptRecord } from "../../../suites/deep-swe/prefix-mass";
+import { SKIP_SIGNATURE_CHARS } from "../../../suites/deep-swe/prefix-stability";
 
 /** An assistant turn carrying one tool call with a signature of the given length. */
 const sig = (chars: number): TranscriptRecord =>

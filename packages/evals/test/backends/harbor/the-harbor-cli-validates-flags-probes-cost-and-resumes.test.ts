@@ -2,23 +2,19 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { cleanupHarborTrialContainers } from "../../../src/backends/harbor/runner/cleanup";
-import { parseArgs, resolveResumeConfig } from "../../../src/backends/harbor/runner/cli";
-import { buildHarborEnv, buildResumeArgs, collectForwardEnv } from "../../../src/backends/harbor/runner/config";
-import { readTrials } from "../../../src/backends/harbor/runner/results";
-import { terminateProcessTree } from "../../../src/core/process-tree";
+import { cleanupHarborTrialContainers } from "../../../backends/harbor/cleanup";
+import { parseArgs, resolveResumeConfig } from "../../../backends/harbor/cli";
+import { buildHarborEnv, buildResumeArgs, collectForwardEnv } from "../../../backends/harbor/config";
+import { readTrials } from "../../../backends/harbor/results";
+import { harnesses } from "../../../engine/loaded-members";
 import {
 	boundRawOutput,
 	DEFAULT_GRACE_PERIOD_MS,
 	DEFAULT_TRIAL_TIMEOUT_SEC,
 	HARD_CEILING_TRIAL_TIMEOUT_SEC,
 	RAW_OUTPUT_MAX_BYTES,
-} from "../../../src/core/trial-deadline";
-import { registerBuiltinHarnesses } from "../../../src/harnesses";
-
-// The harbor seams resolve their agent through the process-wide harness registry, so a
-// chunk that holds no other registering file would otherwise read an empty registry.
-registerBuiltinHarnesses();
+} from "../../../engine/trial-deadline";
+import { terminateProcessTree } from "../../../engine/trial-process";
 
 describe("generic agent-arg / env passthrough", () => {
 	it("forwards repeated --agent-arg as a JSON array the in-container agent can parse", () => {
@@ -34,13 +30,27 @@ describe("generic agent-arg / env passthrough", () => {
 		]);
 		expect(cfg.agentArgs).toEqual(["--prewalk", "--prewalk-into", "google/gemini-3.5-flash"]);
 
-		const env = buildHarborEnv(cfg, "/tmp/models.yml", null, "test");
+		const env = buildHarborEnv(
+			cfg,
+			"/tmp/models.yml",
+			null,
+			"test",
+			null,
+			harnesses.require(cfg.agent).backends.harbor,
+		);
 		expect(JSON.parse(env.VEYYON_BENCH_AGENT_ARGS ?? "[]")).toEqual(cfg.agentArgs);
 	});
 
 	it("omits VEYYON_BENCH_AGENT_ARGS when no --agent-arg was passed", () => {
 		const cfg = parseArgs(["--model", "anthropic/claude-opus-4-8"]);
-		const env = buildHarborEnv(cfg, "/tmp/models.yml", null, "test");
+		const env = buildHarborEnv(
+			cfg,
+			"/tmp/models.yml",
+			null,
+			"test",
+			null,
+			harnesses.require(cfg.agent).backends.harbor,
+		);
 		expect(env.VEYYON_BENCH_AGENT_ARGS).toBeUndefined();
 	});
 
@@ -49,11 +59,25 @@ describe("generic agent-arg / env passthrough", () => {
 		// the model's own provider authenticate directly (forwarded env key)
 		// while only e.g. oauth-only providers route through the gateway.
 		const explicit = parseArgs(["--model", "anthropic/claude-opus-4-8", "--providers", "google"]);
-		const envExplicit = buildHarborEnv(explicit, "/tmp/models.yml", null, "test");
+		const envExplicit = buildHarborEnv(
+			explicit,
+			"/tmp/models.yml",
+			null,
+			"test",
+			null,
+			harnesses.require(explicit.agent).backends.harbor,
+		);
 		expect(new Set(envExplicit.VEYYON_BENCH_GATEWAY_PROVIDERS?.split(","))).toEqual(new Set(["google"]));
 		// No flag: the model's provider is gateway-routed by default.
 		const derived = parseArgs(["--model", "anthropic/claude-opus-4-8"]);
-		const envDerived = buildHarborEnv(derived, "/tmp/models.yml", null, "test");
+		const envDerived = buildHarborEnv(
+			derived,
+			"/tmp/models.yml",
+			null,
+			"test",
+			null,
+			harnesses.require(derived.agent).backends.harbor,
+		);
 		expect(new Set(envDerived.VEYYON_BENCH_GATEWAY_PROVIDERS?.split(","))).toEqual(new Set(["anthropic"]));
 	});
 
@@ -76,11 +100,18 @@ describe("install modes", () => {
 	it("defaults to source mode and publishes the mount contract to the agent", () => {
 		const cfg = parseArgs(["--model", "anthropic/claude-opus-4-8"]);
 		expect(cfg.install).toBe("source");
-		const env = buildHarborEnv(cfg, "/tmp/models.yml", null, "test", {
-			arch: "arm64",
-			depsDir: "/tmp/deps",
-			nodeModules: ["node_modules"],
-		});
+		const env = buildHarborEnv(
+			cfg,
+			"/tmp/models.yml",
+			null,
+			"test",
+			{
+				arch: "arm64",
+				depsDir: "/tmp/deps",
+				nodeModules: ["node_modules"],
+			},
+			harnesses.require(cfg.agent).backends.harbor,
+		);
 		expect(env.VEYYON_BENCH_INSTALL).toBe("source");
 		expect(env.VEYYON_BENCH_SOURCE_DIR).toBe("/opt/veyyon/src");
 		expect(env.VEYYON_BENCH_SOURCE_BUN).toBe("/opt/veyyon/bin/bun");
@@ -89,7 +120,14 @@ describe("install modes", () => {
 
 	it("omits source mount env when no mount was prepared (binary/local runs)", () => {
 		const cfg = parseArgs(["--model", "anthropic/claude-opus-4-8", "--install", "local"]);
-		const env = buildHarborEnv(cfg, "/tmp/models.yml", "/tmp/veyyon.tgz", "test");
+		const env = buildHarborEnv(
+			cfg,
+			"/tmp/models.yml",
+			"/tmp/veyyon.tgz",
+			"test",
+			null,
+			harnesses.require(cfg.agent).backends.harbor,
+		);
 		expect(env.VEYYON_BENCH_INSTALL).toBe("local");
 		expect(env.VEYYON_BENCH_SOURCE_DIR).toBeUndefined();
 		expect(env.VEYYON_BENCH_SOURCE_ARCH).toBeUndefined();

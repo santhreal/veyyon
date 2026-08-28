@@ -10,20 +10,18 @@
 
 import { describe, expect, it } from "bun:test";
 import Handlebars from "handlebars";
-import { buildPrompt, type FileEntry } from "../../../src/suites/typescript-edit/generate";
-import type { Mutation, MutationInfo } from "../../../src/suites/typescript-edit/mutations";
-import forcedAdoptionPromptText from "../../../src/suites/typescript-edit/prompts/argot-forced-adoption.md" with {
+import { buildPrompt, type FileEntry } from "../../../suites/typescript-edit/generate";
+import type { Mutation, MutationInfo } from "../../../suites/typescript-edit/mutations/index";
+import forcedAdoptionPromptText from "../../../suites/typescript-edit/prompts/argot-forced-adoption.md" with {
 	type: "text",
 };
-import sigilEmissionPromptText from "../../../src/suites/typescript-edit/prompts/argot-sigil-emission.md" with {
+import sigilEmissionPromptText from "../../../suites/typescript-edit/prompts/argot-sigil-emission.md" with {
 	type: "text",
 };
-import reproBarrelPromptText from "../../../src/suites/typescript-edit/prompts/repro-barrel-reexport.md" with {
+import reproBarrelPromptText from "../../../suites/typescript-edit/prompts/repro-barrel-reexport.md" with {
 	type: "text",
 };
-import reproFeaturePromptText from "../../../src/suites/typescript-edit/prompts/repro-new-feature.md" with {
-	type: "text",
-};
+import reproFeaturePromptText from "../../../suites/typescript-edit/prompts/repro-new-feature.md" with { type: "text" };
 
 describe("prompts render byte-identically", () => {
 	it("renders repro-barrel-reexport template byte-identically", () => {

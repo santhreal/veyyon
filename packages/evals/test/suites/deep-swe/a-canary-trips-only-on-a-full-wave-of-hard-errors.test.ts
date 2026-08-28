@@ -11,8 +11,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { mostCommonAgentReason, shouldTripCanary } from "../../../src/suites/deep-swe/aggregate/canary";
-import { isHardError } from "../../../src/suites/deep-swe/aggregate/error-classification";
+import { mostCommonAgentReason, shouldTripCanary } from "../../../suites/deep-swe/aggregate/canary";
+import { isHardError } from "../../../suites/deep-swe/aggregate/error-classification";
 
 describe("isHardError — the fail-fast canary's definition of a systematic (not task) failure", () => {
 	// WHY THIS SUITE EXISTS. A whole bench run (120 jobs × ~1min of container

@@ -26,7 +26,7 @@ import {
 	isMutationTool,
 	PromptTimeoutError,
 	PromptTurnLimitError,
-} from "../../../../src/suites/typescript-edit/adapter/runner/telemetry";
+} from "../../../../suites/typescript-edit/runner/telemetry";
 
 describe("telemetry and tool payload extraction", () => {
 	it("extracts text from diverse tool result shapes and malformed values", () => {

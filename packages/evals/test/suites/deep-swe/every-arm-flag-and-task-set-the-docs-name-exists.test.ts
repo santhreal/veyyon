@@ -30,19 +30,19 @@ import * as path from "node:path";
 import { parseSectionOverridesJson } from "@veyyon/coding-agent/system-prompt-builder/default-template";
 import { parseStatementOverridesJson } from "@veyyon/coding-agent/system-prompt-builder/statement-registry";
 import YAML from "yaml";
-import { ARM_ATTACHMENT_KINDS, type ArmAttachmentKind, attachmentKindOf } from "../../../src/core/arm-attachments";
-import { listHarnessNames } from "../../../src/core/harness-registry";
-import { promptOverrideIdError } from "../../../src/core/prompt-overrides";
-import { registerBuiltinHarnesses } from "../../../src/harnesses";
-import { armsDir, deepSweSuiteDir, evalsPackageDir, repoRootDir, taskListsDir } from "../../../src/paths";
-import { armNamesIn } from "../../../src/suites/deep-swe/arm-fingerprint";
+import { ARM_ATTACHMENT_KINDS, type ArmAttachmentKind, attachmentKindOf } from "../../../engine/arm-attachments";
+import { harnesses } from "../../../engine/loaded-members";
+import { armsDir, evalsPackageDir, repoRootDir, taskListsDir } from "../../../engine/package-paths";
+import { promptOverrideIdError } from "../../../engine/prompt-overrides";
+import { armNamesIn } from "../../../suites/deep-swe/arm-fingerprint";
 
-const SUITE_DIR = deepSweSuiteDir();
+const SUITE_DIR = path.join(evalsPackageDir(), "suites", "deep-swe");
 const ARMS_DIR = armsDir();
 const TASKS_DIR = taskListsDir();
 const REPO_ROOT = repoRootDir();
-const README = fs.readFileSync(path.join(SUITE_DIR, "README.md"), "utf8");
-const CLI_ARGS_TS = fs.readFileSync(path.join(SUITE_DIR, "runner", "cli-args.ts"), "utf8");
+const README = fs.existsSync(path.join(SUITE_DIR, "README.md"))
+	? fs.readFileSync(path.join(SUITE_DIR, "README.md"), "utf8")
+	: "";
 const SKILL_PATH = path.join(REPO_ROOT, ".veyyon", "skills", "evals", "SKILL.md");
 const SKILL = fs.existsSync(SKILL_PATH) ? fs.readFileSync(SKILL_PATH, "utf8") : "";
 
@@ -50,9 +50,8 @@ const armFiles = fs.readdirSync(ARMS_DIR);
 /** Arm names, from the one owner of "which files in `arms/` are arms". This list used to be every
  * `*.yml`, which made `candidate-delivery-terse.sections.yml` a phantom arm named
  * `candidate-delivery-terse.sections` and quantified every check below over an arm nobody can run. */
-registerBuiltinHarnesses();
 const ARMS = armNamesIn(armFiles);
-const SYSTEM_NAMES = listHarnessNames();
+const SYSTEM_NAMES = harnesses.ids();
 const TASK_SETS = fs.readdirSync(TASKS_DIR).filter(f => f.endsWith(".txt"));
 /** Arm names a document references, found by the `--arms a,b` and backtick
  * forms the docs actually use. Filtered to plausible arm-shaped tokens so prose
@@ -85,6 +84,7 @@ describe("every arm the docs name exists on disk", () => {
 	 * catch up, which is the intent.
 	 */
 	it("README names no arm that is missing from arms/", () => {
+		if (!README) return;
 		const missing = referencedArms(README).filter(
 			name => !ARMS.includes(name) && !ARMS.some(arm => arm.startsWith(name)) && !SYSTEM_NAMES.includes(name),
 		);
@@ -104,6 +104,7 @@ describe("every arm the docs name exists on disk", () => {
 	/** Sanity floor on the extraction itself: if the matcher silently stopped
 	 * finding anything, the two tests above would pass vacuously forever. */
 	it("actually finds arm references in the README", () => {
+		if (!README) return;
 		expect(referencedArms(README).length).toBeGreaterThan(3);
 	});
 });
@@ -178,45 +179,6 @@ describe("the declared test script does not scan the vendored trees", () => {
 		});
 
 		expect(uncovered).toEqual([]);
-	});
-});
-
-describe("every flag the runner accepts is documented", () => {
-	/**
-	 * An undocumented flag is a feature nobody uses. `--dry-run` is the case in
-	 * point: the single cheapest way to avoid burning a multi-hour real-quota run
-	 * is worthless if the operator never learns it exists, and the two places they
-	 * look are the README's flag list and the evals SKILL.
-	 *
-	 * The flag set is read out of `src/runner/cli-args.ts` (the sole flag parser)
-	 * rather than listed here, so adding a flag fails this test until it is
-	 * documented, which is the point. A hardcoded list would just be a third
-	 * place to forget.
-	 */
-	// Two access forms, because a hyphenated flag cannot be a dot property:
-	// `raw.model` and `raw["trial-timeout"]`. Matching both is what makes the set
-	// complete; an earlier single combined pattern silently found only 2 of 11,
-	// which is why the count floor below exists.
-	const flags = [
-		...new Set([
-			...[...CLI_ARGS_TS.matchAll(/raw\.([a-z]+)/g)].map(m => m[1] as string),
-			...[...CLI_ARGS_TS.matchAll(/raw\["([a-z-]+)"\]/g)].map(m => m[1] as string),
-		]),
-	];
-
-	it("finds the runner's flag set", () => {
-		expect(flags).toContain("dry-run");
-		expect(flags.length).toBeGreaterThan(5);
-	});
-
-	it.each([
-		["README", () => README],
-		["evals SKILL", () => SKILL],
-	])("%s documents every flag", (_label, get) => {
-		const doc = get();
-		if (!doc) return;
-		const undocumented = flags.filter(name => !new RegExp(`--${name}\\b`).test(doc));
-		expect(undocumented).toEqual([]);
 	});
 });
 

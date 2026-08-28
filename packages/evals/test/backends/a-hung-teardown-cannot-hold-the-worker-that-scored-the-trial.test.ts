@@ -25,23 +25,30 @@
  * dispose directly would pass this file.
  */
 
-import { beforeAll, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import { TempDir } from "@veyyon/utils";
-import { InProcessBackend, type InProcessClientLike } from "../../src/backends/in-process/backend";
-import type { EvalSuite, RunContext, SuiteProvenance, TaskDescriptor, TrialCell, Variant } from "../../src/core";
+import { InProcessBackend, type InProcessClientLike } from "../../backends/in-process/main";
+import type {
+	EvalSuite,
+	RunContext,
+	SuiteProvenance,
+	TaskDescriptor,
+	TrialCell,
+	Variant,
+} from "../../engine/contracts";
+import { harnesses } from "../../engine/loaded-members";
 import {
 	MAX_TEARDOWN_GRACE_MS,
 	MIN_TEARDOWN_GRACE_MS,
 	TEARDOWN_GRACE_MS,
 	teardownGraceFromOptions,
 	teardownWithin,
-} from "../../src/core";
-import { registerBuiltinHarnesses } from "../../src/harnesses/index";
+} from "../../engine/trial-deadline";
 
 function probeSuite(): EvalSuite {
 	return {
-		name: "teardown-probe",
+		id: "teardown-probe",
 		version: "1.0.0",
 		displayName: "Teardown Probe",
 		description: "A suite that exists to end a trial and then get out of the way.",
@@ -156,12 +163,6 @@ describe("teardownWithin bounds one teardown", () => {
 });
 
 describe("an in-process trial whose client will not dispose", () => {
-	// The backend resolves the trial's model through the harness the variant names, so the registry
-	// has to hold the builtin adapters. Registration is idempotent and process-wide.
-	beforeAll(() => {
-		registerBuiltinHarnesses();
-	});
-
 	async function runTrialWith(dispose: () => Promise<void>): Promise<Record<string, unknown>> {
 		const tempDir = await TempDir.create("@evals-test-teardown-");
 		try {
@@ -181,6 +182,7 @@ describe("an in-process trial whose client will not dispose", () => {
 				suite: probeSuite(),
 				workDir: tempDir.absolute(),
 				runsDir: tempDir.join("runs"),
+				harnesses,
 				options: { variants: [variant], teardownGraceMs: MIN_TEARDOWN_GRACE_MS },
 			};
 			const cell: TrialCell = { suite: "teardown-probe", variant: "teardown-arm", task: "task-1", repeat: 1 };

@@ -1,56 +1,39 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import { InProcessBackend, inProcessBackend, registerInProcessBackend } from "../../../src/backends/in-process/backend";
-import { getBackend, requireBackend } from "../../../src/core/backend-registry";
-import { getSuite, requireSuite, SuiteRegistry } from "../../../src/core/suite-registry";
-import type { RunContext, TrialArtifacts, TrialCell } from "../../../src/core/types";
-import { registerBuiltinHarnesses } from "../../../src/harnesses/index";
-import {
-	registerTypescriptEditSuite,
-	TypescriptEditSuite,
-	typescriptEditSuite,
-} from "../../../src/suites/typescript-edit/suite";
-import { verifyExpectedFiles } from "../../../src/suites/typescript-edit/verify";
+import { InProcessBackend, inProcessBackend } from "../../../backends/in-process/main";
+import type { EvalSuite, RunContext, TrialArtifacts, TrialCell } from "../../../engine/contracts";
+import { backends, harnesses, suites } from "../../../engine/loaded-members";
+import { Registry } from "../../../engine/member-registry";
+import { TypescriptEditSuite, typescriptEditSuite } from "../../../suites/typescript-edit/main";
+import { verifyExpectedFiles } from "../../../suites/typescript-edit/verify";
 
 describe("TypeScript Edit Benchmark — EvalSuite & ExecutionBackend contracts", () => {
 	// The in-process backend resolves the trial's model through the harness the variant
 	// names, so the harness registry has to be populated. Registration is idempotent and
 	// process-wide; clearing it would poison every later file in this worker.
-	beforeAll(() => {
-		registerBuiltinHarnesses();
-	});
 
 	it("registers with global registries under 'typescript-edit' and 'in-process'", () => {
-		registerTypescriptEditSuite();
-		registerInProcessBackend();
-
-		const suite = requireSuite("typescript-edit");
-		expect(getSuite("typescript-edit")).toBe(typescriptEditSuite);
+		const suite = suites.require("typescript-edit");
+		expect(suites.get("typescript-edit")).toBe(typescriptEditSuite);
 		expect(typescriptEditSuite).toBeInstanceOf(TypescriptEditSuite);
-		expect(suite.name).toBe("typescript-edit");
+		expect(suite.id).toBe("typescript-edit");
 		expect(suite.backend).toBe("in-process");
 		expect(suite.version).toBe("1.0.0");
 		expect(suite.displayName).toBe("TypeScript Edit Benchmark");
 
-		const backend = requireBackend("in-process");
-		expect(getBackend("in-process")).toBe(inProcessBackend);
+		const backend = backends.require("in-process");
+		expect(backends.get("in-process")).toBe(inProcessBackend);
 		expect(inProcessBackend).toBeInstanceOf(InProcessBackend);
 		expect(backend.id).toBe("in-process");
 	});
 
 	it("registration is idempotent across calls and custom registries", () => {
-		// Calling multiple times should not throw
-		expect(() => registerTypescriptEditSuite()).not.toThrow();
-		expect(() => registerTypescriptEditSuite()).not.toThrow();
-		expect(() => registerInProcessBackend()).not.toThrow();
-		expect(() => registerInProcessBackend()).not.toThrow();
-
-		const customSuiteRegistry = new SuiteRegistry();
-		registerTypescriptEditSuite(customSuiteRegistry);
+		const customSuiteRegistry = new Registry<EvalSuite>("suite");
+		customSuiteRegistry.register(typescriptEditSuite);
 		expect(customSuiteRegistry.has("typescript-edit")).toBe(true);
-		expect(() => registerTypescriptEditSuite(customSuiteRegistry)).not.toThrow();
+		expect(() => customSuiteRegistry.registerOnce(typescriptEditSuite)).not.toThrow();
 	});
 
 	it("discovers tasks from the committed fixtures archive", async () => {
@@ -140,8 +123,8 @@ describe("TypeScript Edit Benchmark — EvalSuite & ExecutionBackend contracts",
 
 	describe("end-to-end trial execution and scoring with in-process backend", () => {
 		it("drives trial through registered backend and scores pass vs fail with verifier parity", async () => {
-			const suite = requireSuite("typescript-edit");
-			const backend = requireBackend("in-process");
+			const suite = suites.require("typescript-edit");
+			const backend = backends.require("in-process");
 
 			const taskId = "access-remove-optional-chain-001";
 			const descriptor = await suite.describeTask(taskId, {});
@@ -155,6 +138,7 @@ describe("TypeScript Edit Benchmark — EvalSuite & ExecutionBackend contracts",
 					suite,
 					workDir: tempRunsDir.absolute(),
 					runsDir: tempRunsDir.absolute(),
+					harnesses,
 					options: {
 						model: "vendor/test-model",
 						tools: ["read", "edit", "write"],

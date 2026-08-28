@@ -22,8 +22,8 @@ import {
 	percentile,
 	pickBestRunIndex,
 	summarizeTokenDistribution,
-} from "../../../../src/suites/typescript-edit/adapter/runner/stats";
-import type { TaskRunResult } from "../../../../src/suites/typescript-edit/adapter/runner/types";
+} from "../../../../suites/typescript-edit/runner/stats";
+import type { TaskRunResult } from "../../../../suites/typescript-edit/runner/types";
 
 describe("percentile linear interpolation", () => {
 	it("handles empty and single-element samples without division errors", () => {

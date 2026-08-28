@@ -20,7 +20,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { type QueuedTrial, trialQueue } from "../../../src/suites/deep-swe/aggregate/merge";
+import { type QueuedTrial, trialQueue } from "../../../suites/deep-swe/aggregate/merge";
 
 /** Arms present in the first `n` trials, which is what a run cut short at `n` would produce. */
 function armsInPrefix(queue: QueuedTrial[], n: number): string[] {

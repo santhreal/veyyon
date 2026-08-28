@@ -26,7 +26,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { TrialResultRecord } from "../../src/core";
+import type { TrialResultRecord } from "../../engine/run-record";
 
 /** Any journal these cases open belongs to one plan; the digest itself is not the subject. */
 const PLAN_DIGEST = "0123456789abcdef";
@@ -39,7 +39,7 @@ import {
 	RUN_JOURNAL_VERSION,
 	readRunJournal,
 	StaleRunJournalError,
-} from "../../src/run/journal";
+} from "../../engine/run-journal";
 
 const RUN_ID = "run-journal-shape";
 

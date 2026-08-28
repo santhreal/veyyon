@@ -26,7 +26,6 @@ import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import { main, TASK_LIST_EXTENSIONS } from "../../src/cli";
 import type {
 	EvalSuite,
 	ExecutionBackend,
@@ -34,14 +33,17 @@ import type {
 	TaskDescriptor,
 	TrialArtifacts,
 	TrialScore,
-} from "../../src/core";
-import { buildRunPlan, executeRun } from "../../src/run";
+} from "../../engine/contracts";
+import { executeRun } from "../../engine/execute-run";
+import { harnesses } from "../../engine/loaded-members";
 import {
 	checkRunDirectories,
 	RUN_DIRECTORY_ROLES,
 	type RunDirectoryRole,
 	UnusableRunDirectoryError,
-} from "../../src/run/directories";
+} from "../../engine/run-directories";
+import { buildRunPlan } from "../../engine/run-plan";
+import { main, TASK_LIST_EXTENSIONS } from "../../evals";
 
 /** Captures what the CLI wrote to a stream, without letting it reach the terminal. */
 function capture(stream: "stdout" | "stderr"): { text: () => string } {
@@ -360,7 +362,7 @@ describe("executeRun", () => {
 			await fs.writeFile(runsFile, "");
 			const seen: string[] = [];
 			const suite: EvalSuite = {
-				name: "recording",
+				id: "recording",
 				version: "1.0.0",
 				displayName: "Recording",
 				description: "a suite that records whether its preflight ran",
@@ -385,12 +387,13 @@ describe("executeRun", () => {
 			};
 			const plan = await buildRunPlan({
 				suite,
+				harnesses,
 				selection: { harnesses: ["veyyon"], models: [MODEL] },
 				context: { workDir: temp.path() },
 			});
 
 			await expect(
-				executeRun({ plan, backend: recordingBackend(seen), workDir: temp.path(), runsDir: runsFile }),
+				executeRun({ plan, harnesses, backend: recordingBackend(seen), workDir: temp.path(), runsDir: runsFile }),
 			).rejects.toThrow(UnusableRunDirectoryError);
 			expect(seen).toEqual([]);
 			expect((await fs.stat(runsFile)).isFile()).toBe(true);

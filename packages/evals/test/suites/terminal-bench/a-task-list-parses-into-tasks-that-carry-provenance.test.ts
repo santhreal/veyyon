@@ -1,13 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { getDefaultTerminalBenchCacheDir } from "../../../src/suites/terminal-bench/dataset";
+import { getDefaultTerminalBenchCacheDir } from "../../../suites/terminal-bench/dataset";
 import {
 	listPredefinedTaskSets,
 	loadTaskList,
 	parseTaskList,
 	parseTaskListProvenance,
-} from "../../../src/suites/terminal-bench/task-list";
+} from "../../../suites/terminal-bench/task-list";
 
 describe("Terminal-Bench Task List Parsing & Provenance", () => {
 	it("parses a @biased provenance directive with a reason", () => {

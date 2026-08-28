@@ -16,19 +16,12 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import {
-	HarborBindingNotFoundError,
-	harborAgentLogPath,
-	requireHarborBinding,
-} from "../../src/backends/harbor/backend";
-import { buildHarborArgs } from "../../src/backends/harbor/launch-args";
-import { buildHarborEnv, type Config } from "../../src/backends/harbor/runner/config";
-import { agentLabel } from "../../src/backends/harbor/runner/ui";
-import { listHarnesses, requireHarness } from "../../src/core/harness-registry";
-import type { HarnessAdapter, HarnessCapabilities, PreflightVerdict } from "../../src/core/types";
-import { registerBuiltinHarnesses } from "../../src/harnesses/index";
-
-registerBuiltinHarnesses();
+import { buildHarborEnv, type Config } from "../../backends/harbor/config";
+import { buildHarborArgs } from "../../backends/harbor/launch-args";
+import { HarborBindingNotFoundError, harborAgentLogPath, requireHarborBinding } from "../../backends/harbor/main";
+import { agentLabel } from "../../backends/harbor/ui";
+import type { HarnessAdapter, HarnessCapabilities, PreflightVerdict } from "../../engine/contracts";
+import { harnesses } from "../../engine/loaded-members";
 
 /** A runner config with every field the frame and the env builder read. */
 function mockRunnerConfig(): Config {
@@ -73,7 +66,7 @@ function mockRunnerConfig(): Config {
 
 describe("a harbor harness resolves its agent name and log path from the registry", () => {
 	it("every harness declaring a harbor binding produces a resolvable agent name and log path", () => {
-		const allHarnesses = listHarnesses();
+		const allHarnesses = harnesses.list();
 		expect(allHarnesses.length).toBeGreaterThan(0);
 
 		const harborBound = allHarnesses.filter(h => Boolean(h.backends.harbor));
@@ -94,24 +87,24 @@ describe("a harbor harness resolves its agent name and log path from the registr
 	});
 
 	it("a harness without a harbor binding is rejected by name with harbor-capable ids", () => {
-		const allHarnesses = listHarnesses();
+		const allHarnesses = harnesses.list();
 		const unbound = allHarnesses.filter(h => !h.backends.harbor);
 		expect(unbound.length).toBeGreaterThan(0);
 
-		const harborCapableNames = allHarnesses.filter(h => Boolean(h.backends.harbor)).map(h => h.name);
+		const harborCapableNames = allHarnesses.filter(h => Boolean(h.backends.harbor)).map(h => h.id);
 
 		for (const harness of unbound) {
-			expect(() => requireHarborBinding(harness)).toThrow(HarborBindingNotFoundError);
+			expect(() => requireHarborBinding(harness, harborCapableNames)).toThrow(HarborBindingNotFoundError);
 
 			try {
-				requireHarborBinding(harness);
+				requireHarborBinding(harness, harborCapableNames);
 				expect.unreachable("requireHarborBinding should have thrown");
 			} catch (err) {
 				expect(err).toBeInstanceOf(HarborBindingNotFoundError);
 				const error = err as HarborBindingNotFoundError;
 				expect(error.name).toBe("HarborBindingNotFoundError");
-				expect(error.harnessName).toBe(harness.name);
-				expect(error.message).toContain(harness.name);
+				expect(error.harnessName).toBe(harness.id);
+				expect(error.message).toContain(harness.id);
 				for (const capableId of harborCapableNames) {
 					expect(error.message).toContain(capableId);
 				}
@@ -126,7 +119,7 @@ describe("a harbor harness resolves its agent name and log path from the registr
 		expect(harborAgentLogPath("nop")).toBe("agent/nop.txt");
 		expect(harborAgentLogPath("custom_agent")).toBe("agent/custom_agent.txt");
 
-		const veyyon = requireHarness("veyyon");
+		const veyyon = harnesses.require("veyyon");
 		expect(harborAgentLogPath(veyyon)).toBe("agent/veyyon.txt");
 	});
 
@@ -139,7 +132,7 @@ describe("a harbor harness resolves its agent name and log path from the registr
 		};
 
 		const invalidHarness: HarnessAdapter = {
-			name: "invalid-harbor-agent",
+			id: "invalid-harbor-agent",
 			displayName: "Invalid Harbor Agent",
 			description: "Harness with an empty harbor binding",
 			flags: [],
@@ -159,7 +152,7 @@ describe("a harbor harness resolves its agent name and log path from the registr
 		expect(() => requireHarborBinding(invalidHarness)).toThrow(/declares a harbor backend binding with no agentName/);
 
 		const missingAgentNameHarness: HarnessAdapter = {
-			name: "missing-agent-name",
+			id: "missing-agent-name",
 			displayName: "Missing Agent Name",
 			description: "Harness with undefined agentName in harbor binding",
 			flags: [],
@@ -180,19 +173,25 @@ describe("a harbor harness resolves its agent name and log path from the registr
 	});
 
 	it("buildHarborArgs resolves agent import path or name from the harness registry", () => {
-		const veyyonArgs = buildHarborArgs({
-			jobsDir: "/runs/jobs",
-			jobName: "job-veyyon",
-			agent: "veyyon",
-		});
+		const veyyonArgs = buildHarborArgs(
+			{
+				jobsDir: "/runs/jobs",
+				jobName: "job-veyyon",
+				agent: "veyyon",
+			},
+			harnesses,
+		);
 		expect(veyyonArgs).toContain("--agent-import-path");
 		expect(veyyonArgs).toContain("veyyon_local:VeyyonLocal");
 
-		const oracleArgs = buildHarborArgs({
-			jobsDir: "/runs/jobs",
-			jobName: "job-oracle",
-			agent: "oracle",
-		});
+		const oracleArgs = buildHarborArgs(
+			{
+				jobsDir: "/runs/jobs",
+				jobName: "job-oracle",
+				agent: "oracle",
+			},
+			harnesses,
+		);
 		expect(oracleArgs).toContain("-a");
 		expect(oracleArgs).toContain("oracle");
 		expect(oracleArgs).not.toContain("--agent-import-path");
@@ -201,7 +200,14 @@ describe("a harbor harness resolves its agent name and log path from the registr
 	it("buildHarborEnv produces agent env only for harbor-bound harnesses", () => {
 		const mockConfig = mockRunnerConfig();
 
-		const env = buildHarborEnv(mockConfig, "/path/to/models.yaml", null, "1.0.0");
+		const env = buildHarborEnv(
+			mockConfig,
+			"/path/to/models.yaml",
+			null,
+			"1.0.0",
+			null,
+			harnesses.require(mockConfig.agent).backends.harbor,
+		);
 		expect(env.VEYYON_BENCH_INSTALL).toBe("source");
 		expect(env.VEYYON_BENCH_AGENT_ARGS).toBe('["--flag"]');
 		expect(env.VEYYON_BENCH_GATEWAY).toBe("1");
@@ -214,7 +220,14 @@ describe("a harbor harness resolves its agent name and log path from the registr
 
 		// omp is harbor-bound and carries its own credentials in its program env file, so
 		// it gets the agent channel with the gateway switched off rather than announced.
-		const programEnv = buildHarborEnv({ ...mockConfig, agent: "omp" }, "/path/to/models.yaml", null, "1.0.0");
+		const programEnv = buildHarborEnv(
+			{ ...mockConfig, agent: "omp" },
+			"/path/to/models.yaml",
+			null,
+			"1.0.0",
+			null,
+			harnesses.require("omp").backends.harbor,
+		);
 		expect(programEnv.VEYYON_BENCH_AGENT_ARGS).toBe('["--flag"]');
 		expect(programEnv.VEYYON_BENCH_GATEWAY).toBe("0");
 		expect(programEnv.VEYYON_BENCH_GATEWAY_URL).toBeUndefined();
@@ -224,11 +237,11 @@ describe("a harbor harness resolves its agent name and log path from the registr
 	it("the progress frame labels whichever harness the run drove", () => {
 		const base: Config = { ...mockRunnerConfig(), agentArgs: [] };
 
-		for (const harness of listHarnesses()) {
+		for (const harness of harnesses.list()) {
 			const binding = harness.backends.harbor;
 			if (!binding) continue;
-			const label = agentLabel({ ...base, agent: harness.name }, binding);
-			expect(label.startsWith(harness.name)).toBe(true);
+			const label = agentLabel({ ...base, agent: harness.id }, binding);
+			expect(label.startsWith(harness.id)).toBe(true);
 			// The install mode describes source this repository mounts or packs, so it belongs on the
 			// frame only for a harness whose binding asks for one of those.
 			const built = binding.sourceMount === true || binding.localTarball === true;

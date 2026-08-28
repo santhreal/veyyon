@@ -104,6 +104,12 @@ docs/internal/design.md
 packages/*/adv-debug-*/
 adv-debug-*/
 
+
+# Evals run state, trial outputs, and seeded credentials (never commit)
+packages/evals/runs/
+packages/evals/assets/*.db
+packages/evals/assets/*.db-shm
+packages/evals/assets/*.db-wal
 # Local bun install cache (leaks into workspaces; never commit)
 .bun/
 

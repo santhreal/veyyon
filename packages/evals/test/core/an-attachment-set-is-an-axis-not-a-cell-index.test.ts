@@ -25,7 +25,7 @@ import {
 	EmptyAxisError,
 	expandVariantMatrix,
 	VARIANT_MATRIX_AXES,
-} from "../../src/core/variant-matrix";
+} from "../../engine/variant-matrix";
 
 const HARNESS = "veyyon";
 const MODEL = "anthropic/claude-sonnet-4-6";

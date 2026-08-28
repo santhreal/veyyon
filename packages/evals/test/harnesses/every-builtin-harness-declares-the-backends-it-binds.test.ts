@@ -7,7 +7,7 @@
  * TypeScript already proves.
  *
  * The class this closes: a registered harness whose bindings cannot start a trial. Every
- * assertion sweeps `listHarnesses()` at run time, so a fifth harness is covered the
+ * assertion sweeps `harnesses.list()` at run time, so a fifth harness is covered the
  * moment it registers, and the registered set is pinned by equality: adding one turns
  * this red until its bindings are recorded here.
  *
@@ -17,15 +17,14 @@
  * that may lack it, so only the verdict's shape and its refusal contract are asserted.
  */
 
-import { beforeAll, describe, expect, it } from "bun:test";
-import { requireBackendBinding } from "../../src/core/cell-variant";
-import { HarnessRegistry, listHarnesses, listHarnessNames, requireHarness } from "../../src/core/harness-registry";
-import type { BackendId } from "../../src/core/types";
-import { registerBuiltinHarnesses } from "../../src/harnesses";
-import { factoryAdapter } from "../../src/harnesses/adapters/factory";
-import { hermesAdapter } from "../../src/harnesses/adapters/hermes";
-import { ompAdapter } from "../../src/harnesses/adapters/omp";
-import { veyyonAdapter } from "../../src/harnesses/adapters/veyyon";
+import { describe, expect, it } from "bun:test";
+import { requireBackendBinding } from "../../engine/cell-variant";
+import type { BackendId } from "../../engine/contracts";
+import { harnesses } from "../../engine/loaded-members";
+import { factoryAdapter } from "../../harnesses/factory";
+import { hermesAdapter } from "../../harnesses/hermes";
+import { ompAdapter } from "../../harnesses/omp";
+import { veyyonAdapter } from "../../harnesses/veyyon";
 
 /**
  * The bindings each shipped harness is expected to declare. Pinned by exact equality so
@@ -46,38 +45,34 @@ const SHIPPED_ADAPTERS = {
 	hermes: hermesAdapter,
 } as const;
 
-beforeAll(() => {
-	registerBuiltinHarnesses();
-});
-
 describe("the registered harnesses", () => {
 	it("is exactly the shipped set, so a new harness records its bindings here", () => {
-		expect([...listHarnessNames()].sort()).toEqual(Object.keys(EXPECTED_BINDINGS).sort());
+		expect([...harnesses.ids()].sort()).toEqual(Object.keys(EXPECTED_BINDINGS).sort());
 	});
 
 	it("resolves each harness by the name it states, so a rename cannot orphan it", () => {
-		for (const name of listHarnessNames()) {
-			expect(requireHarness(name).name).toBe(name);
+		for (const name of harnesses.ids()) {
+			expect(harnesses.require(name).id).toBe(name);
 		}
 	});
 
 	it("resolves each name to the adapter module that ships it, so no second instance can drift", () => {
 		for (const [name, adapter] of Object.entries(SHIPPED_ADAPTERS)) {
-			expect(requireHarness(name)).toBe(adapter);
+			expect(harnesses.require(name)).toBe(adapter);
 		}
-		expect(Object.keys(SHIPPED_ADAPTERS).sort()).toEqual([...listHarnessNames()].sort());
+		expect(Object.keys(SHIPPED_ADAPTERS).sort()).toEqual([...harnesses.ids()].sort());
 	});
 
 	it("declares the backends recorded for it, and no others", () => {
-		for (const harness of listHarnesses()) {
-			expect(Object.keys(harness.backends).sort()).toEqual([...EXPECTED_BINDINGS[harness.name]].sort());
+		for (const harness of harnesses.list()) {
+			expect(Object.keys(harness.backends).sort()).toEqual([...EXPECTED_BINDINGS[harness.id]].sort());
 		}
 	});
 });
 
 describe("a binding a run can start a trial from", () => {
 	it("names an agent import path and an absolute container assets directory for every pier binding", () => {
-		for (const harness of listHarnesses()) {
+		for (const harness of harnesses.list()) {
 			const binding = requireBackendBinding(harness, "pier");
 			expect(binding.agentImportPath).toMatch(/^\w[\w.]*:\w+$/);
 			expect(binding.containerAssetsDir?.startsWith("/")).toBe(true);
@@ -85,16 +80,16 @@ describe("a binding a run can start a trial from", () => {
 	});
 
 	it("rejects a backend the harness does not bind, naming the backends it does", () => {
-		const pierOnly = listHarnesses().find(harness => EXPECTED_BINDINGS[harness.name].length === 1);
+		const pierOnly = harnesses.list().find(harness => EXPECTED_BINDINGS[harness.id].length === 1);
 		if (!pierOnly) throw new Error("expected at least one pier-only harness");
 
 		expect(() => requireBackendBinding(pierOnly, "harbor")).toThrow(
-			new RegExp(`Harness "${pierOnly.name}" declares no binding for backend "harbor".*Bound backends: pier`),
+			new RegExp(`Harness "${pierOnly.id}" declares no binding for backend "harbor".*Bound backends: pier`),
 		);
 	});
 
 	it("routes the veyyon harbor binding to the local agent under the harbor agent name", () => {
-		const veyyon = requireHarness("veyyon");
+		const veyyon = harnesses.require("veyyon");
 		const harbor = requireBackendBinding(veyyon, "harbor");
 
 		expect(harbor.agentImportPath).toBe("veyyon_local:VeyyonLocal");
@@ -103,27 +98,13 @@ describe("a binding a run can start a trial from", () => {
 	});
 
 	it("states no default model for veyyon, so a run that names none is refused rather than guessed", () => {
-		expect(requireHarness("veyyon").defaultModel).toBeNull();
-	});
-});
-
-describe("registering the builtins into a fresh registry", () => {
-	it("registers every shipped harness and stays idempotent, because a second run must not duplicate a name", () => {
-		const custom = new HarnessRegistry();
-		expect(custom.list()).toEqual([]);
-
-		registerBuiltinHarnesses(custom);
-		const first = custom.listNames();
-		expect([...first].sort()).toEqual(Object.keys(EXPECTED_BINDINGS).sort());
-
-		registerBuiltinHarnesses(custom);
-		expect(custom.listNames()).toEqual(first);
+		expect(harnesses.require("veyyon").defaultModel).toBeNull();
 	});
 });
 
 describe("preflighting a harness against this host", () => {
 	it("returns a verdict that names what is missing whenever it refuses", async () => {
-		for (const harness of listHarnesses()) {
+		for (const harness of harnesses.list()) {
 			const verdict = await harness.preflight({ backend: "pier" });
 			if (verdict.ok) continue;
 			expect(verdict.missingRequirements?.length ?? 0).toBeGreaterThan(0);

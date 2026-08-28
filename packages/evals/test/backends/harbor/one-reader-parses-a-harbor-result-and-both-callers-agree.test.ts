@@ -22,9 +22,9 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { parseFinishedTrialResult, parseTrial } from "../../../src/backends/harbor/runner/results";
-import { clearBenchmarkCache, readBenchmarkSnapshot } from "../../../src/manager/benchmarks";
-import type { TrialStatus } from "../../../src/wire";
+import { parseFinishedTrialResult, parseTrial } from "../../../backends/harbor/results";
+import type { TrialStatus } from "../../../engine/store-shapes";
+import { clearBenchmarkCache, readBenchmarkSnapshot } from "../../../store/benchmarks";
 
 interface Expected {
 	readonly status: TrialStatus;

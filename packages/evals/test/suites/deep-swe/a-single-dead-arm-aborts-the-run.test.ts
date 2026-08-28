@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { armCanaryFailure, shouldTripCanary } from "../../../src/suites/deep-swe/aggregate/canary";
+import { armCanaryFailure, shouldTripCanary } from "../../../suites/deep-swe/aggregate/canary";
 
 /**
  * The per-arm fail-fast canary, and the blind spot it exists to close.

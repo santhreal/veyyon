@@ -1,34 +1,35 @@
 import { describe, expect, it, spyOn } from "bun:test";
 import { AuthStorage } from "@veyyon/ai";
-import { hasSuite, requireSuite, SuiteRegistry } from "../../../src/core/suite-registry";
-import { registerDeepSweSuite } from "../../../src/suites/deep-swe/register";
-import { deepSweSuite } from "../../../src/suites/deep-swe/suite";
+import type { EvalSuite } from "../../../engine/contracts";
+import { suites } from "../../../engine/loaded-members";
+import { Registry } from "../../../engine/member-registry";
+import { deepSweSuite } from "../../../suites/deep-swe/main";
 
 describe("DeepSweSuite", () => {
 	it("satisfies EvalSuite contract with pier backend", () => {
-		expect(deepSweSuite.name).toBe("deep-swe");
+		expect(deepSweSuite.id).toBe("deep-swe");
 		expect(deepSweSuite.displayName).toBe("DeepSWE");
 		expect(deepSweSuite.backend).toBe("pier");
 		expect(typeof deepSweSuite.version).toBe("string");
 		expect(typeof deepSweSuite.description).toBe("string");
 	});
 
-	it("resolves from suite registry via requireSuite('deep-swe')", () => {
-		expect(hasSuite("deep-swe")).toBe(true);
-		const suite = requireSuite("deep-swe");
+	it("resolves from suite registry via suites.require('deep-swe')", () => {
+		expect(suites.has("deep-swe")).toBe(true);
+		const suite = suites.require("deep-swe");
 		expect(suite).toBe(deepSweSuite);
 	});
 
-	it("registerDeepSweSuite is idempotent and supports custom registries", () => {
-		const custom = new SuiteRegistry();
+	it("registers in a custom registry and registerOnce is idempotent", () => {
+		const custom = new Registry<EvalSuite>("suite");
 		expect(custom.has("deep-swe")).toBe(false);
 
-		registerDeepSweSuite(custom);
+		custom.register(deepSweSuite);
 		expect(custom.has("deep-swe")).toBe(true);
 		expect(custom.require("deep-swe")).toBe(deepSweSuite);
 
-		// Calling a second time must not throw DuplicateSuiteRegistrationError
-		expect(() => registerDeepSweSuite(custom)).not.toThrow();
+		// Calling registerOnce a second time must not throw DuplicateMemberError
+		expect(() => custom.registerOnce(deepSweSuite)).not.toThrow();
 		expect(custom.require("deep-swe")).toBe(deepSweSuite);
 	});
 

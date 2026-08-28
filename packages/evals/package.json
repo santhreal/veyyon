@@ -7,37 +7,32 @@
 	"author": "santhreal",
 	"license": "MIT",
 	"bin": {
-		"evals": "src/cli.ts",
-		"evals-server": "src/server/main.ts"
+		"evals": "evals.ts"
 	},
 	"exports": {
 		".": {
-			"types": "./src/index.ts",
-			"import": "./src/index.ts"
+			"types": "./evals.ts",
+			"import": "./evals.ts"
 		},
 		"./*": {
-			"types": "./src/*.ts",
-			"import": "./src/*.ts"
+			"types": "./*.ts",
+			"import": "./*.ts"
 		},
-		"./*.js": "./src/*.ts"
+		"./*.js": "./*.ts"
 	},
 	"scripts": {
 		"check": "biome check . && bun run check:types",
-		"check:types": "tsgo -p tsconfig.json --noEmit && tsgo -p src/web/tsconfig.json --noEmit",
+		"check:types": "tsgo -p tsconfig.json --noEmit && tsgo -p dashboard/tsconfig.json --noEmit",
 		"lint": "biome lint .",
 		"test": "bun test",
 		"test:py": "python3 -m unittest discover -s agents -p '*_test.py'",
-		"serve": "bun run src/server/main.ts",
-		"dev": "bun --hot src/server/main.ts",
-		"evals": "bun src/cli.ts",
-		"list": "bun src/cli.ts --list",
-		"bench:search": "bun src/benches/search/runner.ts",
-		"bench:search:disclosure": "bun src/benches/search/disclosure.ts",
-		"deepswe": "bun src/suites/deep-swe/run.ts",
-		"deepswe:smoke": "bun src/suites/deep-swe/run.ts --tasks datasets/deep-swe/tasks/smoke.txt --arms baseline --jobs 1",
-		"deepswe:smoke:dry": "bun src/suites/deep-swe/run.ts --tasks datasets/deep-swe/tasks/smoke.txt --arms baseline --dry-run",
-		"deepswe:pilot": "bun src/suites/deep-swe/run.ts --tasks datasets/deep-swe/tasks/pilot-10.txt --arms baseline,full --jobs 2",
-		"deepswe:compare": "bun src/suites/deep-swe/run.ts --arms veyyon,omp --model opencode-go/deepseek-v4-flash --tasks datasets/deep-swe/tasks/pilot-10.txt"
+		"serve": "bun evals.ts serve",
+		"dev": "bun --hot evals.ts serve",
+		"evals": "bun evals.ts",
+		"list": "bun evals.ts --list",
+		"bench": "bun evals.ts bench",
+		"measure": "bun evals.ts measure",
+		"tool": "bun evals.ts tool"
 	},
 	"dependencies": {
 		"@babel/generator": "catalog:",
