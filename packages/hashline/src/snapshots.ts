@@ -1,31 +1,8 @@
-/**
- * Per-session snapshot store used by {@link Recovery} and {@link Patcher} to
- * bind hashline section tags to the exact file content that minted them.
- *
- * A section tag is a content-derived hash of the *whole file* (see
- * {@link computeFileHash}). Any read of byte-identical content mints the same
- * tag, so reads of one file state fuse onto one anchor and a follow-up edit
- * anchored at any line validates whenever the live file still hashes to it.
- *
- * Producers (typically `read` / `search` / `write` tools) call
- * {@link SnapshotStore.record} with the full normalized text they observed.
- * The store hashes it, dedups against the per-path history, and returns the
- * tag. Consumers (recovery, the patcher) resolve a stale tag back to the
- * recorded full text and map its unchanged edit anchors onto live content.
- *
- * The abstract base class lets callers plug in whatever storage they like
- * (LRU, persistent SQLite, etc.). {@link InMemorySnapshotStore} ships as a
- * sensible default backed by `lru-cache`: a bounded set of paths, each with a
- * short history of full-file versions so in-session edit chains can still
- * recover against the version a stale tag names.
- */
+/** Per-session snapshot store binding hashline section tags to file content. */
 import { LRUCache } from "lru-cache/raw";
 import { computeFileHash } from "./format";
 
-/**
- * One full-file version observed at a point in time. The tag the model sees is
- * {@link Snapshot.hash}; recovery replays edits against {@link Snapshot.text}.
- */
+/** One full-file version snapshot. */
 export interface Snapshot {
 	/** Canonical path this version belongs to. */
 	readonly path: string;
@@ -35,100 +12,41 @@ export interface Snapshot {
 	readonly hash: string;
 	/** Timestamp (ms since epoch) the version was recorded. */
 	recordedAt: number;
-	/**
-	 * 1-indexed file lines a producer (read/search) actually *displayed* under
-	 * this tag. A partial read (range, or a structural summary that collapsed
-	 * bodies) leaves this sparse; a whole-file read fills every line. Multiple
-	 * reads of the same content union into one set. `undefined` means "no
-	 * provenance recorded" — the patcher then skips the seen-line check and
-	 * applies as before. Mutated in place as more of the same content is read.
-	 */
+	/** 1-indexed lines displayed under this tag. */
 	seenLines?: Set<number>;
-	/**
-	 * 1-indexed lines a producer DISPLAYED BUT CLIPPED at its per-line column
-	 * cap: the model received the line number and a leading prefix, never the
-	 * full width. Deliberately kept out of {@link seenLines}, because an edit
-	 * that rewrites those bytes would be rewriting bytes nobody read.
-	 *
-	 * Tracked separately rather than merely omitted so the patcher can tell a
-	 * clipped line from one that was never rendered at all (an elided body, a
-	 * folded summary row, a line outside the read range). The distinction is
-	 * what lets a pure insertion anchor a clipped line — an insertion uses the
-	 * anchor's POSITION and leaves its bytes alone — while every destructive
-	 * form stays refused. A line never rendered is refused for every form,
-	 * insertion included: without even a prefix there is nothing to identify.
-	 */
+	/** 1-indexed lines displayed but clipped at column limit. */
 	clippedLines?: Set<number>;
 }
 
-/**
- * Storage seam for full-file version snapshots. The patcher calls {@link head}
- * for the latest version of a path and {@link byHash} when it needs the
- * historical version a section's stale tag names.
- */
+/** Storage seam for full-file version snapshots. */
 export abstract class SnapshotStore {
 	/** Most-recently recorded version for `path`, or `null` if none. */
 	abstract head(path: string): Snapshot | null;
 
-	/**
-	 * Recorded version for `path` whose tag equals `hash`, or `null`. When two
-	 * distinct texts collide on the 16-bit tag, returns the most-recently
-	 * recorded one.
-	 */
+	/** Recorded version for path whose tag equals hash. */
 	abstract byHash(path: string, hash: string): Snapshot | null;
 
-	/**
-	 * Recorded version for `path` whose {@link Snapshot.text} equals `fullText`,
-	 * or `null`. The patcher uses it on the no-drift path to attach seen-line
-	 * provenance to the exact text the model read.
-	 */
+	/** Recorded version for path whose text equals fullText. */
 	abstract byContent(path: string, fullText: string): Snapshot | null;
 
-	/**
-	 * Every retained version whose tag equals `hash`, across all tracked
-	 * paths. The patcher uses this to recover the intended file when a section
-	 * names a path that does not exist on disk but carries a tag the store
-	 * minted — the model mistyped the path of a file it read this session.
-	 *
-	 * The base returns no matches (recovery disabled); stores that can
-	 * enumerate their contents override it to enable tag-based path recovery.
-	 */
+	/** Every retained version across all paths whose tag equals hash. */
 	findByHash(_hash: string): Snapshot[] {
 		return [];
 	}
 
-	/**
-	 * Record the full normalized text of `path` and return its content tag.
-	 * `seenLines` (optional) are the 1-indexed lines the producer displayed;
-	 * they merge into {@link Snapshot.seenLines} across reads of identical text.
-	 */
+	/** Record full normalized text of path and return content tag. */
 	abstract record(path: string, fullText: string, seenLines?: Iterable<number>): string;
 
-	/**
-	 * Merge `lines` into the {@link Snapshot.seenLines} of the version whose tag
-	 * equals `hash`. No-op when no such version is retained (the content aged
-	 * out or was overwritten). Lets producers attach displayed lines after the
-	 * tag was already minted (the body is formatted after the hash is computed).
-	 */
+	/** Merge lines into seenLines of the version whose tag equals hash. */
 	abstract recordSeenLines(path: string, hash: string, lines: Iterable<number>): void;
 
-	/**
-	 * Merge `lines` into the {@link Snapshot.clippedLines} of the version whose
-	 * tag equals `hash`. Same contract as {@link recordSeenLines}, for the lines
-	 * a producer showed only a prefix of. A producer that applies a per-line
-	 * column cap reports both sets: the lines it displayed in full here as seen,
-	 * and the ones it truncated here.
-	 */
+	/** Merge lines into clippedLines of the version whose tag equals hash. */
 	abstract recordClippedLines(path: string, hash: string, lines: Iterable<number>): void;
 
 	/** Drop the version history for a single path. */
 	abstract invalidate(path: string): void;
 
-	/**
-	 * Move retained version history (and read provenance) from `from` to `to`.
-	 * No-op when `from` has no history. Used by file moves so tags minted from
-	 * reads of the source path stay valid at the destination.
-	 */
+	/** Relocate version history from one path to another. */
 	abstract relocate(from: string, to: string): void;
 
 	/** Drop every version history. */
@@ -159,26 +77,11 @@ export interface InMemorySnapshotStoreOptions {
 	maxPaths?: number;
 	/** Maximum full-file versions retained per path (default 4). Oldest dropped first. */
 	maxVersionsPerPath?: number;
-	/**
-	 * Global ceiling on retained snapshot text summed across every path's
-	 * version history, measured in UTF-16 code units (default 64 MiB).
-	 * Least-recently-used path histories are evicted to stay under it.
-	 */
+	/** Global ceiling on retained snapshot text in UTF-16 code units. */
 	maxTotalBytes?: number;
 }
 
-/**
- * In-memory {@link SnapshotStore} backed by `lru-cache`. Per-path history is a
- * short ring of full-file versions (oldest dropped first); per-session path
- * tracking is LRU-bounded so cold paths age out automatically.
- *
- * Recording byte-identical content again refreshes recency and reuses the
- * existing tag (read fusion); recording new content unshifts a fresh version
- * onto the front of the path history. Two distinct texts that collide on the
- * short 4-hex tag are retained as separate versions so callers can still tell
- * them apart via {@link Snapshot.text} — the tag is only a fast index, never
- * the identity.
- */
+/** In-memory SnapshotStore backed by LRU cache. */
 export class InMemorySnapshotStore extends SnapshotStore {
 	readonly #versions: LRUCache<string, Snapshot[]>;
 	readonly #maxVersionsPerPath: number;
@@ -223,19 +126,9 @@ export class InMemorySnapshotStore extends SnapshotStore {
 
 	record(path: string, fullText: string, seenLines?: Iterable<number>): string {
 		const hash = computeFileHash(fullText);
-		// `get` refreshes LRU recency for `path`.
 		const history = this.#versions.get(path) ?? [];
-		// Dedup requires full-text equality, not just tag equality: two distinct
-		// texts that happen to share the 4-hex tag are DIFFERENT snapshots — fusing
-		// them under one entry would corrupt seenLines (attaching lines from
-		// text B onto the stored text A) and let the patcher misresolve which
-		// snapshot the section tag names during recovery or seen-line validation.
-		// See issue #4075.
 		const existing = history.find(version => version.hash === hash && version.text === fullText);
 		if (existing) {
-			// Same content state observed again: refresh recency and promote to
-			// head (it is the current file content), then reuse the tag. Union any
-			// newly-displayed lines so re-reading more of the file widens coverage.
 			existing.recordedAt = Date.now();
 			mergeSeenLines(existing, seenLines);
 			if (history[0] !== existing) {

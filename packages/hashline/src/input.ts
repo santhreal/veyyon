@@ -1,12 +1,4 @@
-/**
- * Top-level patch parser. Splits an authored hashline input into a list of
- * {@link PatchSection}s, each rooted at a `[PATH#HASH]` header, then exposes
- * a {@link Patch} class that gives lazy access to the parsed edits per
- * section.
- *
- * The splitter is purely lexical — it doesn't know whether a section's path
- * actually exists. That's the patcher's job.
- */
+/** Top-level patch parser and section splitter. */
 import * as path from "node:path";
 import { applyEdits, collectEditAnchorLines } from "./apply";
 import { resolveBlockEdits } from "./block";
@@ -26,19 +18,7 @@ function unquoteHashlinePath(pathText: string): string {
 	return pathText;
 }
 
-/**
- * Strip apply_patch-style noise that models reflexively prepend to the
- * path. Examples observed in benchmark traces:
- *
- *   `Update File:foo.ts`, `Update:foo.ts`, `UpdateFile:foo.ts`,
- *   `Update/File:foo.ts`, `Update-file:foo.ts`, `Update(File):foo.ts`,
- *   `Update<File:foo.ts`, `Add File:foo.ts`, `Delete File:foo.ts`,
- *   `Move to:foo.ts`, `***foo.ts`, `***Update File:foo.ts`.
- *
- * We strip a leading `***` (the model duplicating the header sigil) and a
- * leading `(Update|Add|Delete|Move)[<separator>]*(File|to)?[<separator>]*:`
- * keyword block, case-insensitive. The remaining text is the real path.
- */
+/** Strip noise prefixes from path. */
 const APPLY_PATCH_PATH_NOISE_RE =
 	/^\*{0,3}\s*(?:(?:update|add|delete|move)[^A-Za-z0-9]*(?:file|to)?[^A-Za-z0-9]*:)?\s*\*{0,3}\s*/i;
 
@@ -46,22 +26,12 @@ function stripApplyPatchPathNoise(pathText: string): string {
 	return pathText.replace(APPLY_PATCH_PATH_NOISE_RE, "");
 }
 
-/**
- * Best-effort recovery for bracketed header lines the strict tokenizer
- * rejects. Strips apply_patch keyword noise (`Update File:`, `Update:`,
- * etc.) and an extra leading `***` (some models emit a hybrid
- * `[***foo.ts#HASH]` shape), then expects `PATH(#HASH)?`.
- * Returns `null` when no clean path can be salvaged.
- */
+/** Best-effort recovery for malformed bracketed header lines. */
 function tryParseRecoveryHeader(line: string, cwd?: string): RawSection | null {
 	if (!line.startsWith(HL_FILE_PREFIX) || !line.endsWith(HL_FILE_SUFFIX)) return null;
 	const body = stripApplyPatchPathNoise(line.slice(HL_FILE_PREFIX.length, line.length - HL_FILE_SUFFIX.length).trim());
 	if (body.length === 0) return null;
 
-	// Trailing `#XXXX` is the tag; everything before it is the path. The
-	// path may contain whitespace (Windows OneDrive folders, Program Files,
-	// etc.), so we anchor the tag at end-of-body rather than scanning
-	// forward and stopping at the first space.
 	const trailing = new RegExp(`#([0-9A-Fa-f]{${HL_FILE_HASH_LENGTH}})\\s*$`).exec(body);
 	let pathText: string;
 	let fileHash: string | undefined;
@@ -72,11 +42,6 @@ function tryParseRecoveryHeader(line: string, cwd?: string): RawSection | null {
 		pathText = body.replace(/\s+$/, "");
 	}
 
-	// Same rule as the strict tokenizer: the hashline header grammar uses
-	// `#` as the path/tag separator and does not allow `#` inside
-	// filenames. Anything `#` left in the path body — short tags, non-hex
-	// tags, over-long tags, stale-tag copy-paste, line-suffixed tags —
-	// means the header is malformed, not a path with an embedded hash.
 	if (pathText.includes("#")) return null;
 
 	const path = normalizeHashlinePath(pathText, cwd);
@@ -99,21 +64,13 @@ interface RawSection {
 	diff: string;
 }
 
-/**
- * Parse a `[PATH]` or `[PATH#hash]` header line. Returns `null` for lines that do
- * not start with `[`. Throws the strict "Input header must be …" error
- * when a bracketed line fails the strict shape (so malformed paths
- * surface immediately instead of being silently re-classified as payload).
- */
+/** Parse a header line. Returns null if not a header. */
 function parseHashlineHeaderLine(line: string, cwd?: string): RawSection | null {
 	const trimmed = line.trimEnd();
 	if (!trimmed.startsWith(HL_FILE_PREFIX)) return null;
 
 	const token = TOKENIZER.tokenize(trimmed);
 	if (token.kind !== "header") {
-		// Recovery: try to extract a path from the raw line after stripping
-		// apply_patch noise. This handles `[*** Update File:foo.ts#CB5A]` and
-		// the half-dozen variants models actually emit.
 		const recovered = tryParseRecoveryHeader(trimmed, cwd);
 		if (recovered !== null) return recovered;
 		throw new Error(
@@ -144,11 +101,7 @@ function stripLeadingBlankLines(input: string): string {
 	return lines.join("\n");
 }
 
-/**
- * Returns true when the input contains at least one line that the tokenizer
- * recognizes as a hashline op. Used by streaming previews to decide whether
- * the partial input is worth treating as a hashline patch yet.
- */
+/** Check if input contains at least one recognized hashline op. */
 export function containsRecognizableHashlineOperations(input: string): boolean {
 	for (const line of input.split(/\r?\n/)) {
 		if (TOKENIZER.isOp(line)) return true;
@@ -175,8 +128,6 @@ function splitRawSections(input: string, options: SplitOptions = {}): RawSection
 	const firstLine = lines[0] ?? "";
 
 	if (parseHashlineHeaderLine(firstLine, options.cwd) === null) {
-		// Catch unified-diff hunk-header contamination on the first line so
-		// the model sees a focused error.
 		const firstTrimmed = firstLine.trimEnd();
 		if (/^@@\s+[-+]?\d+,\d+\s+[-+]?\d+,\d+\s+@@/.test(firstTrimmed)) {
 			throw new Error(
@@ -208,10 +159,6 @@ function splitRawSections(input: string, options: SplitOptions = {}): RawSection
 		if (token.kind === "envelope-end" || token.kind === "abort") break;
 		if (token.kind === "envelope-begin") continue;
 
-		// Route every bracket-prefixed line through parseHashlineHeaderLine so
-		// malformed headers still raise the strict "Input header must be …"
-		// diagnostic (the tokenizer alone would silently classify them as
-		// payload).
 		if (trimmed.startsWith(HL_FILE_PREFIX)) {
 			const header = parseHashlineHeaderLine(line, options.cwd);
 			if (header !== null) {
@@ -227,12 +174,7 @@ function splitRawSections(input: string, options: SplitOptions = {}): RawSection
 	return sections;
 }
 
-/**
- * Snapshot of one section in a parsed {@link Patch}: a target file plus the
- * lazily-parsed list of edits that should land on it. Constructed by
- * {@link Patch.parse}; consumers usually iterate `patch.sections` rather
- * than build these directly.
- */
+/** Section in a parsed Patch. */
 export class PatchSection {
 	readonly path: string;
 	readonly fileHash: string | undefined;
@@ -245,11 +187,7 @@ export class PatchSection {
 		this.diff = raw.diff;
 	}
 
-	/**
-	 * Parse this section's diff body. Cached: subsequent calls return the
-	 * same `{ edits, fileOp?, warnings }` object so callers can safely call this from
-	 * multiple paths (preflight, apply, diff-preview).
-	 */
+	/** Parse this section's diff body. */
 	parse(): { edits: Edit[]; fileOp?: FileOp; warnings: readonly string[] } {
 		this.#parsed ??= parsePatch(this.diff);
 		const parsed = this.#parsed;
@@ -279,16 +217,7 @@ export class PatchSection {
 		return Array.from(new Set(collectEditAnchorLines(this.edits))).sort((a, b) => a - b);
 	}
 
-	/**
-	 * Apply this section's edits to `text` and return the post-edit result.
-	 * Pure: does no I/O, does not validate the section snapshot tag. The
-	 * {@link Patcher} owns tag validation and recovery; reach for this
-	 * method directly when you've already validated the file content and
-	 * just want the result.
-	 *
-	 * `blockResolver` resolves any `replace_block N:` edits against `text`; an
-	 * unresolvable block throws (this is the final, authoritative preview path).
-	 */
+	/** Apply this section's edits to text. */
 	applyTo(text: string, blockResolver?: BlockResolver): ApplyResult {
 		const { edits, warnings } = this.parse();
 		const resolveWarnings: string[] = [];
@@ -297,25 +226,13 @@ export class PatchSection {
 			onWarning: warning => resolveWarnings.push(warning),
 		});
 		const result = applyEdits(text, resolved);
-		// Preserve parse warnings so consumers don't need to call `parse()`
-		// separately.
 		const merged = warnings.concat(resolveWarnings, result.warnings ?? []);
 		return merged.length > 0
 			? { ...result, warnings: merged }
 			: { text: result.text, firstChangedLine: result.firstChangedLine };
 	}
 
-	/**
-	 * Streaming-tolerant counterpart to {@link applyTo}. Uses
-	 * {@link parsePatchStreaming} so a trailing in-flight op (no payload yet,
-	 * or a per-token parse error mid-stream) does not throw or emit a phantom
-	 * empty-payload edit. Intended for incremental diff previews; the writer
-	 * path should always use {@link applyTo}.
-	 *
-	 * `blockResolver` resolves any `replace_block N:` edits against `text`; an
-	 * unresolvable block is silently dropped so a half-written file does not
-	 * throw mid-stream.
-	 */
+	/** Streaming-tolerant counterpart to applyTo. */
 	applyPartialTo(text: string, blockResolver?: BlockResolver): ApplyResult {
 		const { edits, warnings } = parsePatchStreaming(this.diff);
 		const resolveWarnings: string[] = [];
@@ -330,12 +247,7 @@ export class PatchSection {
 			: { text: result.text, firstChangedLine: result.firstChangedLine };
 	}
 
-	/**
-	 * A copy of this section rebound to a different target `path`, preserving
-	 * the snapshot tag, diff body, and any cached parse result. Used by the
-	 * patcher's tag-based path recovery to redirect an edit whose authored
-	 * path does not exist onto the file its snapshot tag actually names.
-	 */
+	/** Rebind section to a different target path. */
 	withPath(path: string): PatchSection {
 		const next = new PatchSection({
 			path,
@@ -347,13 +259,7 @@ export class PatchSection {
 	}
 }
 
-/**
- * A parsed hashline patch — zero or more {@link PatchSection}s, each rooted
- * at a `[PATH#HASH]` header. Construct via {@link Patch.parse}.
- *
- * `Patch` is pure data: parsing is line-anchored and does not look at the
- * filesystem. To apply a patch, hand it to {@link Patcher.apply}.
- */
+/** Parsed hashline patch containing sections. */
 export class Patch {
 	readonly sections: readonly PatchSection[];
 
@@ -361,28 +267,13 @@ export class Patch {
 		this.sections = sections;
 	}
 
-	/**
-	 * Parse `input` into a {@link Patch}. `options.cwd` resolves absolute
-	 * paths inside headers to cwd-relative form; `options.path` provides a
-	 * fallback when the input lacks a header but contains hashline ops
-	 * (useful for streaming previews).
-	 *
-	 * Consecutive sections targeting the same path are merged into a single
-	 * section with concatenated diff bodies. Anchors authored against the
-	 * same file snapshot must be applied as one batch; otherwise the first
-	 * sub-edit shifts line numbers out from under the second's anchors and
-	 * validation fails.
-	 */
+	/** Parse input into Patch. */
 	static parse(input: string, options: SplitOptions = {}): Patch {
 		const raw = mergeSamePathSections(splitRawSections(input, options));
 		return new Patch(raw.map(section => new PatchSection(section)));
 	}
 
-	/**
-	 * Parse `input` and return only the first section. Throws if the input
-	 * has zero sections. Convenience for the single-section case where the
-	 * caller already knows the patch is one hunk.
-	 */
+	/** Parse single section from input. */
 	static parseSingle(input: string, options: SplitOptions = {}): PatchSection {
 		const patch = Patch.parse(input, options);
 		const first = patch.sections[0];
@@ -391,13 +282,7 @@ export class Patch {
 	}
 }
 
-/**
- * Collapse consecutive or interleaved sections targeting the same path into a
- * single section with concatenated diffs. Anchors authored against the same
- * file snapshot must be applied as one batch; otherwise the first sub-edit
- * shifts line numbers out from under the second's anchors and validation
- * fails. Path order is preserved by first occurrence.
- */
+/** Merge sections targeting the same path. */
 function mergeSamePathSections(sections: RawSection[]): RawSection[] {
 	const byPath = new Map<string, { fileHash?: string; diffs: string[] }>();
 	for (const section of sections) {
