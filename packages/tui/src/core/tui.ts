@@ -1016,6 +1016,15 @@ export class TUI extends Container {
 		return Math.max(0, this.#scrollSpaceLiveTop() - this.#virtualScrollTop);
 	}
 
+	/**
+	 * True when the last composed frame had content above the viewport, so a
+	 * scroll-back gesture has somewhere to go. A host renders a scroll affordance
+	 * from this rather than re-deriving it from row counts it cannot see.
+	 */
+	get frameScrollable(): boolean {
+		return this.#frameScrollable;
+	}
+
 	/** Resume following the live tail (host calls this on message submit). */
 	scrollToLiveTail(): void {
 		if (this.#virtualScrollTop === null) return;
