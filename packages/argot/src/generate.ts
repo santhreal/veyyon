@@ -39,15 +39,9 @@ export interface GenerateOptions {
 	savingsCoverage?: number;
 	/** How to name handles. Default `"mnemonic"`. */
 	naming?: HandleNaming;
-	/**
-	 * Token counter. Defaults to {@link estimateTokens}, a tokenizer-agnostic
-	 * heuristic. Pass your model's real tokenizer for exact accounting.
-	 */
+	/** Token counter function. */
 	countTokens?: (text: string) => number;
-	/**
-	 * Candidate extractor: given one corpus sample, yield the strings worth
-	 * considering. Defaults to {@link extractCandidates}.
-	 */
+	/** Candidate extractor function. */
 	extract?: (text: string) => Iterable<string>;
 	/** The share of line structure this harness's agent emits inside tool-call */
 	toolCallStructureShare?: number;
@@ -142,9 +136,6 @@ function lineStructureCandidates(rawLine: string, trimmed: string, previousLine:
 		// Indentation runs without keywords.
 		out.push(`\n${indent}`);
 	} else if (previousLine !== undefined && previousLine.trim().length === 0) {
-		// A declaration opening after a blank line: `\n\nfunc`, `\n\ntype`. Only
-		// valid at column zero, which is what makes it a declaration rather than a
-		// continuation.
 		out.push(`\n\n${firstWord}`);
 	}
 	return out;
@@ -162,14 +153,8 @@ export function emittedTokenCost(
 		);
 	}
 	if (!isLineStructure(expansion)) {
-		// Only line structure is escaped differently by channel. A path or an
-		// identifier is the same bytes in a tool call and in a message, which is
-		// asserted rather than assumed: see the agreement test in generate.test.ts.
 		return countTokens(expansion);
 	}
-	// `JSON.stringify` then strip the quotes: the exact bytes this string becomes
-	// inside a tool-call argument, produced by the same encoder the wire uses
-	// rather than by a hand-rolled escape table that could drift from it.
 	const escaped = countTokens(JSON.stringify(expansion).slice(1, -1));
 	const raw = countTokens(expansion);
 	return toolCallStructureShare * escaped + (1 - toolCallStructureShare) * raw;
@@ -207,8 +192,6 @@ function isReferenceNoiseLine(line: string): boolean {
 
 /** Check if token looks like a path, command, URL, or domain. */
 function isStructured(token: string): boolean {
-	// A slash, backslash, a dot between word characters, a scoped `::`, or a
-	// URL-ish `:` all mark a token as structured. A bare hyphenated word does not.
 	return /[/\\]/.test(token) || /\w\.\w/.test(token) || /::/.test(token) || /:\/\//.test(token);
 }
 
@@ -222,14 +205,9 @@ function looksLikeCommand(tokens: string[]): boolean {
 
 /** True when a line is a natural-language sentence rather than something an agent */
 function looksLikeProse(tokens: string[]): boolean {
-	// An enumeration comma attached to a whole word or number: `copy,` `1,`.
-	// A command's commas live INSIDE a token (`--opt=a,b`), never as a suffix on a
-	// standalone bare word.
 	if (tokens.some(t => /^[A-Za-z0-9][\w-]*,$/.test(t))) {
 		return true;
 	}
-	// A long run of ordinary words. Quotes and trailing punctuation are stripped so
-	// an opening quote does not hide the first word of a sentence.
 	let run = 0;
 	for (const token of tokens) {
 		const bare = token.replace(/^["'`(]+/, "").replace(/["'`).,;:!?]+$/, "");
@@ -240,7 +218,6 @@ function looksLikeProse(tokens: string[]): boolean {
 			run = 0;
 		}
 	}
-	// A sentence opening: an initial capitalised ordinary word (`Please`, `This`,
 	return /^[A-Z][a-z]+$/.test(tokens[0] ?? "");
 }
 
@@ -249,36 +226,20 @@ function looksLikeSourceCode(line: string): boolean {
 	if (/[;`{}]/.test(line) || /=>/.test(line) || /\w\(/.test(line)) {
 		return true;
 	}
-	// A parenthesized opener is an expression fragment, not a command
-	// (`(parsedDiagnostics.length > 0 ? a : b`).
 	if (/^\(/.test(line)) {
 		return true;
 	}
-	// JavaScript-only operators that never appear in a shell command line: optional
-	// chaining, nullish coalescing, and strict (in)equality. `&&`/`||` are excluded
-	// on purpose — they are valid shell (`cargo test --all && echo done`).
 	if (/\?\.|\?\?|!==|===/.test(line)) {
 		return true;
 	}
-	// A line ENDING on a dangling binary/continuation operator is a wrapped
-	// expression, not a command (`state.results.length > 0 ||`, `runtime.mode ??`).
-	// A real command ends on its last argument, never a bare operator.
 	if (/(\|\||&&|\?\?|[,+*=<>?:])$/.test(line)) {
 		return true;
 	}
-	// A line that OPENS with a language keyword is a statement, not a command — even
-	// when it carries no punctuation on this physical line (`if (a !== b || c`,
-	// `return process.platform`, `const header = state.metrics`). Commands never
-	// start with one of these words.
 	const firstWord = (line.split(/\s+/, 1)[0] ?? "").replace(/[^A-Za-z]/g, "");
 	return SOURCE_KEYWORDS.has(firstWord);
 }
 
-/**
- * JavaScript/TypeScript statement openers. A line beginning with one of these is
- * source code, never a shell command, so it is never captured as a whole handle.
- * This is a language-heuristic constant, not extensible domain data.
- */
+/** Statement keyword openers. */
 const SOURCE_KEYWORDS = new Set([
 	"if",
 	"else",
@@ -336,18 +297,10 @@ export function extractCandidates(text: string): string[] {
 		if (line.length === 0) {
 			continue;
 		}
-		// `undefined` for the first line: it has no predecessor, so it can never be
-		// the "declaration after a blank line" shape. Passing `""` there would read
-		// as a blank predecessor and mint a bogus candidate from the opening line of
-		// every file, including one-line prose.
 		for (const structure of lineStructureCandidates(rawLine, line, index === 0 ? undefined : lines[index - 1])) {
 			out.push(structure);
 		}
 		const rawTokens = line.split(/\s+/);
-		// A whole command-like line: multiple words that reference something
-		// structured, worth encoding as one unit. Prose sentences are excluded, and
-		// so are source-code statements — a model never retypes an arbitrary full line
-		// of code, so capturing one only wastes budget (see looksLikeSourceCode).
 		if (
 			/\s/.test(line) &&
 			!isCommentLine(line) &&
@@ -370,10 +323,6 @@ export function extractCandidates(text: string): string[] {
 /** The longest handle name the generator will mint. */
 const MAX_NAME_LENGTH = 4;
 
-/**
- * Stem length for {@link contentName}, which is not bound by the 2-token budget.
- * See the note there.
- */
 const CONTENT_NAME_STEM_LENGTH = 6;
 
 /** A short readable stem from an expansion's last path segment, for handle names. */
@@ -410,8 +359,6 @@ function contentName(expansion: string): string {
 
 /** Assign a short, deterministic handle name to every expansion in a set. */
 function buildMnemonicNames(allExpansions: Iterable<string>, reserved: Iterable<string> = []): Map<string, string> {
-	// Group distinct expansions by stem. Dedupe defensively; the caller passes
-	// distinct candidates, but a duplicate would otherwise inflate a group.
 	const byStem = new Map<string, Set<string>>();
 	for (const expansion of allExpansions) {
 		const stem = nameStem(expansion);
@@ -422,9 +369,6 @@ function buildMnemonicNames(allExpansions: Iterable<string>, reserved: Iterable<
 
 	const names = new Map<string, string>();
 	const used = new Set<string>(reserved);
-	// Pass 1: a uniquely-stemmed expansion claims the bare stem, unless a reserved
-	// (pinned) name already holds it — then it defers to disambiguation so the two
-	// never collide.
 	const deferred: string[] = [];
 	for (const stem of Array.from(byStem.keys()).sort()) {
 		const group = byStem.get(stem)!;
@@ -436,14 +380,9 @@ function buildMnemonicNames(allExpansions: Iterable<string>, reserved: Iterable<
 			for (const expansion of group) deferred.push(expansion);
 		}
 	}
-	// Pass 2: remaining expansions get `stem` + short hash suffix, with the stem
-	// truncated to keep the whole name within MAX_NAME_LENGTH.
 	for (const expansion of deferred.sort()) {
 		const hash = fnv1a(expansion, 0x811c9dc5).toString(36) + fnv1a(expansion, 0x9e3779b1).toString(36);
 		let name: string | undefined;
-		// Grow the suffix, shrinking the stem to pay for it, so the total never
-		// exceeds the budget. Longer suffixes are tried before giving up the stem
-		// entirely, which keeps names as readable as the budget allows.
 		for (let suffixLength = 1; suffixLength < MAX_NAME_LENGTH && name === undefined; suffixLength++) {
 			const stem = nameStem(expansion).slice(0, MAX_NAME_LENGTH - suffixLength);
 			for (let start = 0; start + suffixLength <= hash.length; start++) {
@@ -454,9 +393,6 @@ function buildMnemonicNames(allExpansions: Iterable<string>, reserved: Iterable<
 				}
 			}
 		}
-		// Exhausting every in-budget candidate means the short space is genuinely
-		// full. Spending a longer name is still better than minting a duplicate,
-		// which would bind one name to two expansions and corrupt every decode.
 		if (name === undefined) {
 			let overflow = 0;
 			do {
@@ -499,10 +435,6 @@ function toToml(sigil: string, handles: GeneratedHandle[]): string {
 	const lines: string[] = [];
 	lines.push("# Generated by argot. Review before committing: a handle must stand");
 	lines.push("# for exactly the string it replaces. Edit freely; this is just a start.");
-	// From the constant, never a literal: the loader REFUSES a file whose version is
-	// newer than it understands, which is the whole forward-compatibility guard. A
-	// hardcoded `1` here would keep writing version 1 after the constant moved,
-	// silently disarming that guard for every entry this generator produces.
 	lines.push(`version = ${SUPPORTED_VERSION}`);
 	if (sigil !== DEFAULT_SIGIL) {
 		lines.push(`sigil = "${escapeTomlBasic(sigil)}"`);
@@ -540,9 +472,6 @@ export interface RepoFile {
 /** Generate an `AGENTS.dict` from a corpus. */
 export function generateDict(corpus: string | string[], options: GenerateOptions = {}): GeneratedDict {
 	const tokenBudget = options.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
-	// When regenerating monotonically, the pinned vocabulary's sigil is
-	// authoritative: the cache was written with it and every frozen handle keys on
-	// it, so an option that disagreed would split the marker.
 	const pinnedEntries: Array<[string, string]> = options.pinned ? Array.from(options.pinned.handles) : [];
 	const hasPinned = pinnedEntries.length > 0;
 	const sigil = hasPinned && options.pinned ? options.pinned.sigil : (options.sigil ?? DEFAULT_SIGIL);
@@ -560,14 +489,12 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 	const toolCallStructureShare = options.toolCallStructureShare ?? DEFAULT_TOOL_CALL_STRUCTURE_SHARE;
 	const samples = typeof corpus === "string" ? [corpus] : corpus;
 
-	// Count distinct candidate expansions, preserving first-seen order so the
 	const seen = new Map<string, Candidate>();
 	let ordinal = 0;
 	for (const sample of samples) {
 		const seenInSample = new Set<string>();
 		for (const rawExpansion of extract(sample)) {
 			const expansion = rawExpansion;
-			// The character floor is a proxy for "long enough to be worth a handle",
 			if (!isLineStructure(expansion) && expansion.length < minExpansionLength) {
 				continue;
 			}
@@ -595,9 +522,6 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 
 	const candidatesConsidered = seen.size;
 
-	// Score each candidate by the output tokens it would remove. The handle's own
-	// token cost depends on its length; a numeric handle is a couple of tokens, a
-	// mnemonic a few, so score against the naming scheme's typical handle.
 	const scored: Array<{ candidate: Candidate; savedTokens: number; handleTokens: number }> = [];
 	let numericProbe = 0;
 	for (const candidate of seen.values()) {
@@ -607,8 +531,6 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 		if (pinnedExpansions.has(candidate.expansion)) {
 			continue; // already has a frozen handle; never propose a second one
 		}
-		// Approximate the handle length for scoring; exact names are assigned later.
-		// Content naming produces a longer name, so score it against its real name.
 		const probeName =
 			naming === "numeric"
 				? String(++numericProbe)
@@ -654,12 +576,9 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 			? `version = ${SUPPORTED_VERSION}\nsigil = "${sigil}"\n\n[handles]\n`
 			: `version = ${SUPPORTED_VERSION}\n\n[handles]\n`,
 	);
-	// New handle names must avoid every pinned name (monotonic: a pinned name is
-	// frozen to its expansion and can never be reused for something else).
 	const taken = new Set<string>(pinnedNames);
 	let dictTokens = headerTokens;
 
-	// Precompute mnemonic names for the whole candidate set up front, so each name
 	const mnemonicNames =
 		naming === "mnemonic"
 			? buildMnemonicNames(
@@ -668,10 +587,6 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 				)
 			: undefined;
 
-	// Frozen base: retain every pinned binding verbatim, scored by its frequency in
-	// the current corpus (0 if the string no longer appears). Always counted toward
-	// dictTokens, even past the budget — dropping a taught handle would break any
-	// text that already used it.
 	const pinnedHandles: GeneratedHandle[] = [];
 	for (const [name, expansion] of pinnedEntries) {
 		const candidate = seen.get(expansion);
@@ -690,8 +605,6 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 		});
 	}
 
-	// Continue numeric naming past the largest pinned number so a new handle never
-	// collides with a frozen one.
 	let numeric = 0;
 	if (naming === "numeric") {
 		for (const name of pinnedNames) {
@@ -715,14 +628,9 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 				: naming === "content"
 					? contentName(entry.candidate.expansion)
 					: (mnemonicNames?.get(entry.candidate.expansion) ?? nameStem(entry.candidate.expansion));
-		// Names are generated, so they always match the handle grammar; assert it
-		// to fail loud rather than emit a dict the loader would reject.
 		if (!HANDLE_NAME_RE.test(name)) {
 			continue;
 		}
-		// A content name is a hash, so on the rare chance two distinct expansions
-		// collide, skip the second rather than overwrite the first: losing a handle
-		// costs a little compression, reusing a name would mis-expand.
 		if (taken.has(name)) {
 			continue;
 		}
@@ -749,10 +657,6 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 	const chosenNew: GeneratedHandle[] = [];
 	let selectedSavings = pinnedSavings;
 	for (const handle of feasible) {
-		// The cut is a PREFIX, so `break` rather than `continue`: the list is ranked,
-		// and once the target is met every remaining handle is worth less than the
-		// one that met it. Reaching past the cut for a cheaper entry would admit a
-		// strictly worse handle.
 		if (selectedSavings >= savingsTarget) {
 			taken.delete(handle.name);
 			continue;
@@ -762,9 +666,6 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 		chosenNew.push(handle);
 	}
 
-	// Present pinned and new together, highest savings first. Order is cosmetic
-	// (the loader keys on names, not position); a deterministic sort keeps
-	// regeneration stable. Tie-break by name so the result is fully determined.
 	const chosen: GeneratedHandle[] = pinnedHandles.concat(chosenNew).sort((a, b) => {
 		if (b.savedTokens !== a.savedTokens) {
 			return b.savedTokens - a.savedTokens;
@@ -776,16 +677,10 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 	for (const handle of chosen) {
 		handleMap.set(handle.name, handle.expansion);
 	}
-	// Same reason as the emitted TOML above: the in-memory vocabulary and the file
-	// it serializes to must declare the same version, or a bump would make them
-	// disagree with no test noticing.
 	const vocab: Vocabulary = { version: SUPPORTED_VERSION, sigil, handles: handleMap, meta: new Map() };
 	const toml = chosen.length > 0 ? toToml(sigil, chosen) : "";
 	const estimatedSavings = chosen.reduce((sum, h) => sum + h.savedTokens, 0);
 	const carriedPerTurn = chosen.length > 0 ? dictTokens : 0;
-	// Output tokens are worth more than input tokens, so the saving buys more turns
-	// than a raw token comparison would suggest. Dividing by zero carried tokens is
-	// an empty dictionary, which costs nothing and therefore never stops paying.
 	const breakEvenTurns =
 		carriedPerTurn === 0
 			? Number.POSITIVE_INFINITY
