@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- 27 type definitions, constants, and enums extracted from `telemetry.ts` (1,996→1,803 lines) into `telemetry-helpers.ts`.
 - `agent-loop.ts` streaming and tool execution phases extracted into `agent-loop-context.ts`, `agent-loop-snapshots.ts`, and `agent-loop-stream.ts`.
 - Verbose inline comments stripped from `telemetry.ts` and `run-collector.ts`.
 - Verbose inline comments stripped from `agent-loop.ts`, `compaction/pruning.ts`, `compaction/branch-summarization.ts`, `compaction/compaction.ts`, `append-only-context.ts`, `proxy.ts`, and other source files.
