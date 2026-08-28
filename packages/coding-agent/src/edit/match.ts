@@ -1,26 +1,7 @@
 import { levenshteinDistance } from "@veyyon/utils";
 import { countLeadingWhitespace, normalizeForFuzzy, normalizeUnicode } from "./normalize";
 
-/**
- * Finding text inside a file: exact, whitespace-tolerant, unicode-normalized and
- * fuzzy matching, plus the error an unmatched edit reports.
- *
- * WHY THIS IS NOT IN `./modes/replace`, WHERE IT USED TO LIVE. `./diff` needs
- * `findMatch`, `EditMatchError` and `DEFAULT_FUZZY_THRESHOLD` to apply an edit,
- * and `./modes/replace` needs `generateDiffString` and `replaceText` from
- * `./diff` to report one. That is a cycle, and a cycle is instantiated as one
- * unit, so both modules cost the sum of the pair wherever either is imported.
- *
- * It is also the better home on its own terms. None of this is about the replace
- * TOOL: it takes strings and returns match positions, it touches no session, no
- * filesystem and no tool result, and the other edit modes want it too. What is
- * left in `./modes/replace` is the tool, and this file is what the tool matches
- * with.
- *
- * KEEP THIS MODULE AT THE BOTTOM. It may import `./normalize` and `@veyyon/utils`
- * and nothing else from the package. An import of `./diff` or of any tool module
- * puts the cycle back.
- */
+/** Text matching within files: exact, whitespace-tolerant, unicode, and fuzzy. */
 
 /** Count `\n` occurrences in `text[0..end)` via charCodeAt, avoiding `slice().split("\n").length`. */
 function countNewlinesTo(text: string, end: number): number {
@@ -138,12 +119,7 @@ function findFirstDifferentLine(oldLines: string[], newLines: string[]): { oldLi
 	return { oldLine: oldLines[0] ?? "", newLine: newLines[0] ?? "" };
 }
 
-/**
- * The message for an edit whose search text matched more than once. Exported
- * because the replace tool raises this case itself, after deciding an ambiguous
- * match is not something it can resolve; the wording belongs next to the matcher
- * that produced the outcome so the two cannot drift.
- */
+/** Formats occurrence error message when search text matches multiple times. */
 export function formatOccurrenceError(path: string, matchOutcome: MatchOutcome): string {
 	const previews = matchOutcome.occurrencePreviews?.join("\n\n") ?? "";
 	const moreMsg =
@@ -434,10 +410,7 @@ function findBestFuzzyMatch(content: string, target: string, threshold: number):
 	return result;
 }
 
-/**
- * Find a match for target text within content.
- * Used primarily for replace-mode edits.
- */
+/** Find a match for target text within content. */
 export function findMatch(
 	content: string,
 	target: string,
@@ -486,16 +459,7 @@ function matchesAt(lines: string[], pattern: string[], i: number, compare: (a: s
 	return true;
 }
 
-/**
- * Compute average similarity score for pre-normalized pattern lines at
- * position `i` of pre-normalized file lines.
- *
- * `minScore` is a bail threshold: when even perfect similarity on the
- * remaining lines cannot lift the average to `minScore`, returns the partial
- * average early (always ≤ the true score). The length-difference lower bound
- * on Levenshtein distance is used to skip the DP entirely for line pairs the
- * bail test already rules out.
- */
+/** Compute average similarity score for pre-normalized pattern lines at position i. */
 function fuzzyScoreAt(linesNorm: string[], patternNorm: string[], i: number, minScore = 0): number {
 	const count = patternNorm.length;
 	let totalScore = 0;
@@ -551,23 +515,7 @@ function stripCommentPrefix(line: string): string {
 	return trimmed.trimStart();
 }
 
-/**
- * Find a sequence of pattern lines within content lines.
- *
- * Attempts matches with decreasing strictness:
- * 1. Exact match
- * 2. Trailing whitespace ignored
- * 3. All whitespace trimmed
- * 4. Unicode punctuation normalized
- * 5. Prefix match (pattern is prefix of line)
- * 6. Substring match (pattern is substring of line)
- * 7. Fuzzy similarity match
- *
- * @param lines - The lines of the file content
- * @param pattern - The lines to search for
- * @param start - Starting index for the search
- * @param eof - If true, prefer matching at end of file first
- */
+/** Find a sequence of pattern lines within content lines using progressive matching strategies. */
 export function seekSequence(
 	lines: string[],
 	pattern: string[],
@@ -668,7 +616,6 @@ export function seekSequence(
 		return { index: undefined, confidence: 0 };
 	}
 
-	// Pass 7: Fuzzy matching - find best match above threshold
 	let bestScore = 0;
 	let secondBestScore = 0;
 	let bestIndex: number | undefined;
@@ -735,8 +682,6 @@ export function seekSequence(
 		};
 	}
 
-	// Pass 8: Character-based fuzzy matching via findMatch
-	// This is the final fallback for when line-based matching fails
 	const CHARACTER_MATCH_THRESHOLD = 0.92;
 	const patternText = pattern.join("\n");
 	const contentText = lines.slice(start).join("\n");
@@ -806,13 +751,7 @@ export function findClosestSequenceMatch(
 	return { index: bestIndex, confidence: bestScore, strategy: "fuzzy" };
 }
 
-/**
- * Find a context line in the file using progressive matching strategies.
- *
- * @param lines - The lines of the file content
- * @param context - The context line to search for
- * @param startFrom - Starting index for the search
- */
+/** Find a context line using progressive matching strategies. */
 export function findContextLine(
 	lines: string[],
 	context: string,
@@ -840,7 +779,6 @@ export function findContextLine(
 		}
 	}
 
-	// Pass 3: Unicode normalization match
 	const normalizedContext = normalizeUnicode(context);
 	const unicodeMatches = collectIndexedMatches(
 		startFrom,
@@ -856,7 +794,6 @@ export function findContextLine(
 		return { index: undefined, confidence: 0 };
 	}
 
-	// Pass 4: Prefix match (file line starts with context)
 	const contextNorm = normalizeForFuzzy(context);
 	if (contextNorm.length > 0) {
 		const prefixMatches = collectIndexedMatches(startFrom, endIndex, i =>
@@ -868,10 +805,6 @@ export function findContextLine(
 		}
 	}
 
-	// Pass 5: Substring match (file line contains context)
-	// First pass: find all substring matches (ignoring ratio)
-	// If exactly one match exists, accept it (uniqueness is sufficient)
-	// If multiple matches, apply ratio filter to disambiguate
 	if (contextNorm.length >= PARTIAL_MATCH_MIN_LENGTH) {
 		const allSubstringMatches: Array<{ index: number; ratio: number }> = [];
 		for (let i = startFrom; i < lines.length; i++) {
@@ -920,7 +853,6 @@ export function findContextLine(
 		}
 	}
 
-	// Pass 6: Fuzzy match using similarity
 	let bestIndex: number | undefined;
 	let bestScore = 0;
 	const fuzzyMatches: IndexedMatches = {

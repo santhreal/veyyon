@@ -34,8 +34,6 @@ import type { Theme } from "../modes/theme/theme-class";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from "../sdk";
 import { budgetedFileCommit, sessionBudgetLimits } from "../session/cpu-limit";
-// Owners, not the local `../tui` barrel: it re-exports `./file-list`, and that module took
-// `getLanguageFromPath` from the theme ENGINE, so three names cost 282 modules of presentation layer.
 import { fileHyperlink } from "../tui/hyperlink";
 import { framedBlock } from "../tui/output-block";
 import { renderStatusLine } from "../tui/status-line";
@@ -106,42 +104,18 @@ const HASHLINE_OP_RE =
 const UNIFIED_DIFF_HUNK_RE = /^@@\s+[-+]?\d+(?:,\d+)?\s+[-+]?\d+(?:,\d+)?\s+@@/;
 const APPLY_PATCH_MARKER_RE = /^\*\*\*\s+(?:Update File|Add File|Delete File|Move to):/;
 const READ_TRUNCATION_NOTICE_RE = /^\[(?:Showing lines \d+-\d+ of \d+|\d+ more lines? in (?:file|\S+))\b.*\bUse :L?\d+/;
-// The grep match marker sits at column 0 (`*42:code`) and the context marker is
-// exactly one leading space with no space after the colon (` 43:code`). Neither
-// tolerates arbitrary indentation: `^\s*` before the one-space form matched any
-// indented numeric mapping key, so a docker-compose `  80: http` or a k8s
-// manifest port was rejected as pasted search output. The `(?! )` keeps a YAML
-// key, which always separates its value with a space, out of the one-space form.
 const SEARCH_PREFIX_RE = /^(?:\*\d+:|[ ]\d+:(?! )|\s*>>>\s*\d+:)/;
 const LINE_PREFIX_RE = /^\s*(\d+):/;
 const EXECUTABLE_NOTICE = "[Notice: Made executable via chmod +x]";
 
 const BULK_DIRECTIVE_RE = /^#?(\d+)\s*[:=]\s*(@ours|@theirs|@base|@both)$/;
-/**
- * The head of a per-id directive line — `<id>:` / `<id>=` (optionally `#`-prefixed),
- * regardless of whether its value is a valid `@side` token. Used only to sharpen the
- * error message when a directive block is malformed (e.g. `15: some literal text`).
- */
 const BULK_DIRECTIVE_HEAD_RE = /^#?\d+\s*[:=]/;
 
 function truncateDirectiveLine(line: string): string {
 	return line.length > 60 ? `${line.slice(0, 57)}…` : line;
 }
 
-/**
- * Parse `conflict://*` per-id directive content: every non-empty line must be
- * `<id>: @side` (also accepted: `#<id> = @side`), where `@side` is one of
- * `@ours` / `@theirs` / `@base` / `@both`.
- *
- * Returns `null` only when NO line is directive-shaped (→ uniform bulk mode).
- * Throws on duplicate ids, and — critically — on a *partial* directive block:
- * content that mixes valid `<id>: @side` lines with lines that aren't. Without
- * that guard a per-id write carrying any non-token value (a literal or
- * multi-line replacement, e.g. `15: <multi-line content>`) fell through to
- * uniform bulk mode, which pasted the raw directive text verbatim into every
- * block and still reported success. Per-id bulk is token-only; literal or
- * multi-line replacements must go through individual `conflict://<N>` writes.
- */
+/** Parse conflict://* per-id directive content. */
 function parseBulkDirectives(content: string): Map<number, string> | null {
 	const map = new Map<number, string>();
 	const stray: string[] = [];
@@ -196,14 +170,7 @@ export interface WriteToolDetails {
 	resolvedPath?: string;
 }
 
-/**
- * Validate that write content is a raw file body and not a patch fragment or
- * read-output display echo.
- *
- * Replaces legacy silent prefix stripping with refusal: writing a modified
- * version of pasted patch content creates invisible file corruption, and
- * auto-stripping mangled legitimate numbered/prefixed text.
- */
+/** Validate that write content is a raw file body and not a patch fragment or read-output echo. */
 function assertValidWriteContent(content: string): void {
 	if (!content) return;
 	const lines = content.split("\n");
@@ -274,22 +241,10 @@ function assertValidWriteContent(content: string): void {
 	}
 }
 
-/**
- * Record a snapshot of the freshly-written `content` for `absolutePath`
- * so subsequent hashline edits address the new file with a current tag,
- * and return the matching `[displayPath#TAG]` header. Returns `undefined`
- * when the session is not in hashline mode so callers can no-op cheaply.
- *
- * Mirrors the post-commit snapshot recording the hashline patcher performs
- * after a successful edit: the model gets a tag without an extra `read`.
- */
+/** Record snapshot of freshly written content for hashline mode. */
 function maybeWriteSnapshotHeader(session: ToolSession, absolutePath: string, content: string): string | undefined {
 	if (!resolveFileDisplayMode(session).hashLines) return undefined;
 	const normalized = normalizeToLF(content);
-	// Every line is recorded as seen: the model authored the bytes, so the
-	// patcher's unseen-anchor gate should RUN and pass rather than be skipped
-	// by an empty provenance set. See allLineNumbers for why that distinction
-	// matters even though the two are indistinguishable today.
 	const tag = getFileSnapshotStore(session).record(
 		canonicalSnapshotKey(absolutePath),
 		normalized,
@@ -325,14 +280,7 @@ function emitWriteProgress(
 	});
 }
 
-/**
- * If `content` begins with a `#!` shebang, ensure the file is executable.
- *
- * Mirrors `chmod a+x` (adds user/group/other execute bits to existing mode).
- * Errors are swallowed: chmod failure (e.g. Windows ACL, read-only mount)
- * MUST NOT fail an otherwise successful write. Returns whether the mode
- * actually changed so the caller can surface a note.
- */
+/** If content begins with a shebang, ensure file is executable. */
 async function maybeMarkExecutableForShebang(absolutePath: string, content: string): Promise<boolean> {
 	if (!content.startsWith("#!")) return false;
 	try {
@@ -428,28 +376,18 @@ export function writeFilesystemTargets(args: unknown): string[] {
 	return typeof raw === "string" ? [unwrapHashlineHeaderPath(raw)] : [];
 }
 
-/**
- * Write tool implementation.
- *
- * Creates or overwrites files with optional LSP formatting and diagnostics.
- */
+/** Write tool implementation: creates or overwrites files with optional LSP formatting and diagnostics. */
 export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails> {
 	readonly name = "write";
 	readonly approval = (args: unknown): ToolTier => {
 		const rawPath = (args as Partial<WriteParams>).path;
 		if (typeof rawPath !== "string") return "write";
-		// Unwrap a hashline `[path#TAG]` wrapper first (parity with execute) so a
-		// wrapped `[ssh://h/x#ABCD]` can't dodge scheme detection and the tier checks below.
 		const path = unwrapHashlineHeaderPath(rawPath);
 		// Remote SSH writes open an outbound connection and run a remote shell —
 		// gate them like the exec-tier `ssh` tool, ahead of the handler-write
 		// logic. Substring match also covers selector-suffixed targets.
 		if (pathTargetsSsh(path)) return "exec";
 		if (!isInternalUrlPath(path)) return "write";
-		// Internal URLs are usually session-local artifacts (read tier), but a
-		// scheme whose handler exposes a `write` hook mutates handler-owned user
-		// data (e.g. vault:// notes) and must take the write tier so always-ask
-		// mode actually prompts.
 		const scheme = urlScheme(path.trim());
 		const handler = scheme ? InternalUrlRouter.instance().getHandler(scheme) : undefined;
 		return handler?.write ? "write" : "read";
@@ -460,10 +398,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		const content = typeof params.content === "string" ? params.content : "";
 		return [`Path: ${truncateForPrompt(targetPath)}`, `Content:\n${truncateForPrompt(content)}`];
 	};
-	// The cwd boundary reads this to gate out-of-cwd writes in non-yolo modes. The
-	// hashline `[path#TAG]` wrapper is unwrapped (parity with execute) so it can't
-	// dodge the gate; ssh/internal schemes are filtered by the boundary. See
-	// cwd-boundary.ts.
 	readonly filesystemTargets = (args: unknown): string[] => writeFilesystemTargets(args);
 	readonly label = "Write";
 	readonly description: string;
@@ -479,12 +413,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 	}
 
 	readonly #writethrough: WritethroughCallback;
-	/**
-	 * The budgeted stand-in for a bare `writethroughNoop`, for the write paths
-	 * that deliberately skip LSP formatting (conflict-marker resolution, SQLite
-	 * and archive members). They still put bytes on the operator's disk, so
-	 * they still spend the session tree's write budget.
-	 */
 	readonly #plainWritethrough: WritethroughCallback;
 	readonly #deferredDiagnostics: DeferredDiagnostics | undefined;
 
@@ -495,10 +423,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		const dedup = enableDiagnostics && session.settings.get("lsp.diagnosticsDeduplicate");
 		this.#deferredDiagnostics =
 			enableDiagnostics && session.queueDeferredDiagnostics ? new DeferredDiagnostics(session, dedup) : undefined;
-		// The harness is deliberately never a member of its own budget group, so
-		// no io.stat and no /proc/<pid>/io reading can see a byte the write tool
-		// puts on disk. Wrapping the commit callback is how those bytes reach the
-		// session tree's write budget, and how a write past it is refused.
 		const budgetSource = {
 			sessionId: () => session.getSessionId?.() ?? null,
 			limits: () => sessionBudgetLimits(session.settings),
@@ -731,18 +655,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		}
 	}
 
-	/**
-	 * Resolve a single `conflict://<N>` write by splicing the recorded
-	 * marker region in the registered file with `replacementContent`.
-	 * The write deliberately bypasses the LSP writethrough: the file may
-	 * still hold other unresolved marker blocks, so formatting could
-	 * corrupt them and diagnostics would be marker-noise anyway.
-	 *
-	 * Entry ids are session-stable: they keep working even after later
-	 * writes resolve other blocks in the same file. The recorded range
-	 * is re-validated on disk before splicing so an out-of-band edit
-	 * surfaces as a clear error instead of corrupting the file.
-	 */
+	/** Resolve a single conflict://<N> write by splicing the recorded marker region. */
 	async #resolveConflict(
 		entry: ConflictEntry,
 		replacementContent: string,
@@ -765,11 +678,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		const history = this.session.conflictHistory;
 		history?.invalidate(entry.id);
 		if (history) {
-			// Drop stale duplicate registrations of the same region: a re-read
-			// after an out-of-band shift registers a fresh id at the new
-			// startLine while the stale twin persists at the old one. A DISTINCT
-			// conflict block that is merely byte-identical still occurs in the
-			// post-splice content and must stay addressable.
+			// Drop stale duplicate registrations of the same region.
 			for (const other of history.entries()) {
 				if (
 					other.absolutePath === absolutePath &&
@@ -817,21 +726,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		return this.#resolveConflict(entry, replacementContent, signal);
 	}
 
-	/**
-	 * Bulk-resolve every registered conflict via `conflict://*`.
-	 *
-	 * Entries are grouped by file and applied bottom-up by recorded start
-	 * line so each splice keeps later anchors valid. `content` tokens are
-	 * expanded *per entry*, so `content: "@ours"` keeps each block's own
-	 * ours side rather than collapsing every conflict to the first
-	 * block's ours.
-	 *
-	 * All-or-nothing semantics within a file: if any splice for a file
-	 * fails (stale anchors, missing base for `@base`, etc.), that file is
-	 * left untouched and the error is surfaced. Files that succeed are
-	 * still written. The result text reports per-file counts so the agent
-	 * can re-read the failed files and retry.
-	 */
+	/** Bulk-resolve every registered conflict via conflict://*. */
 	async #resolveAllConflicts(
 		replacementContent: string,
 		signal: AbortSignal | undefined,
@@ -844,12 +739,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			);
 		}
 
-		// Per-id directive mode: content made solely of `<id>: @side` lines
-		// resolves each listed conflict with that side in one call. Ideal for
-		// merge-hell files where dozens of pick-one blocks each need their own
-		// winner — one call instead of one write per conflict. Parsed from the
-		// PRE-strip content: hashline prefix stripping would otherwise eat the
-		// `<id>: ` heads as echoed line numbers.
+		// Per-id directive mode: resolves each listed conflict with that side.
 		const directives = parseBulkDirectives(replacementContent);
 		if (directives) {
 			const known = new Set(allEntries.map(entry => entry.id));
@@ -1174,9 +1064,7 @@ function countLines(text: string): number {
 	return count;
 }
 
-/** Bounded newline scan: whether `text` spans more than `maxLines` lines.
- *  Runs on every live compose (the repaint predicate below), so it must not
- *  materialize the split the way `countLines` does. */
+/** Bounded newline scan: whether text spans more than maxLines lines. */
 function exceedsLineCount(text: string, maxLines: number): boolean {
 	if (!text) return false;
 	let lines = 1;
@@ -1207,15 +1095,7 @@ function normalizeDisplayText(text: unknown): string {
 	return displayText.replace(/\r/g, "");
 }
 
-/**
- * Minimum line-number gutter width for write previews. The streaming preview's
- * gutter must stay byte-stable as the line count grows: a width derived purely
- * from `String(totalLines).length` widens at the 10/100/1000-line crossings,
- * rewriting every already-rendered row — which forces the transcript's commit
- * audit to recommit the block's committed prefix (a full duplicate in native
- * scrollback). Reserving 3 digits keeps the gutter constant through 999 lines
- * and keeps the streamed rows byte-identical to the final result render.
- */
+/** Minimum line-number gutter width for write previews. */
 const WRITE_GUTTER_MIN_WIDTH = 3;
 
 function formatStreamingContent(
@@ -1230,10 +1110,6 @@ function formatStreamingContent(
 	const bodyText = cachedRenderedString(cache, uiTheme, expanded, language ?? "", content, () => {
 		const lines = normalizeDisplayText(content).split("\n");
 		const totalLines = lines.length;
-		// Collapsed: follow the streaming edge with a bounded tail window so the box
-		// stays short enough not to strand its scrolled-off head above the viewport
-		// while the block is volatile. `Ctrl+O` (expanded) lifts the cap for a
-		// deliberate full view — matching the eval streaming preview.
 		const startIndex = expanded ? 0 : Math.max(0, totalLines - WRITE_STREAMING_PREVIEW_LINES);
 		const visibleLines = lines.slice(startIndex);
 		const hidden = startIndex;
@@ -1252,10 +1128,6 @@ function formatStreamingContent(
 		}
 		return text;
 	});
-	// The animated glyph lives on this trailing line — inside the transcript's
-	// volatile-tail holdback — never in the header: an animating head row pins
-	// the native-scrollback commit boundary at the top of the block, so a long
-	// expanded preview could never scroll-append mid-stream.
 	const spinner = spinnerFrame !== undefined ? `${formatStatusIcon("running", uiTheme, spinnerFrame)} ` : "";
 	return `${bodyText}${spinner}${uiTheme.fg("dim", `… (streaming)`)}`;
 }
@@ -1301,10 +1173,6 @@ export const writeToolRenderer = {
 		const lang = rawPath ? (getLanguageFromPath(rawPath) ?? "text") : "text";
 		const langBadge = uiTheme.langBadge(lang);
 		const pathDisplay = filePath ? uiTheme.fg("accent", filePath) : uiTheme.fg("toolOutput", "…");
-		// No status icon on the head row: it's the head of the framed block, and
-		// native-scrollback commits are prefix-only — an animated glyph would pin
-		// the commit boundary at the top, and the pending hourglass just adds
-		// noise. The liveness cue rides the trailing "(streaming)" line instead.
 		const header = renderStatusLine(
 			{
 				title: "Write",
@@ -1349,9 +1217,6 @@ export const writeToolRenderer = {
 		const fileContent = normalizeDisplayText(args?.content);
 		const lang = rawPath ? getLanguageFromPath(rawPath) : undefined;
 		const langBadge = uiTheme.langBadge(lang);
-		// The header shows the cwd-relative path but links to the absolute path the
-		// write resolved to (args.path may be relative, which would yield a broken
-		// `file://` URI). Falls back to plain text when the result lacks a path.
 		const linkTarget = result.details?.resolvedPath;
 		const styledPath = filePath ? uiTheme.fg("accent", filePath) : uiTheme.fg("toolOutput", "…");
 		const pathDisplay = filePath && linkTarget ? fileHyperlink(linkTarget, styledPath) : styledPath;
@@ -1425,12 +1290,6 @@ export const writeToolRenderer = {
 		});
 	},
 	mergeCallAndResult: true,
-	// The collapsed pending preview follows the streaming edge with a tail
-	// window once the content outgrows it (`… (N earlier lines)` + last rows);
-	// the first partial result re-anchors the frame to the top of the file, so
-	// tail rows already committed to viewport/native scrollback would survive
-	// as stale content above the new frame without a full replay. Expanded and
-	// short previews stay top-anchored and skip the (scrollback-wiping) reset.
 	forceFirstResultViewportRepaint: (args: unknown, options: RenderResultOptions) =>
 		!options.expanded && exceedsLineCount(writeContentOf(args), WRITE_STREAMING_PREVIEW_LINES),
 };

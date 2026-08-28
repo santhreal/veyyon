@@ -46,11 +46,7 @@ import type {
 	StatusLineSettings,
 } from "./types";
 
-/**
- * Gap between the location group and the total-elapsed clock. Deliberately
- * wider than the standard `  ·  ` separator and dot-free, so the clock reads
- * as its own quiet zone at the end of the line rather than one more segment.
- */
+/** Gap between the location group and the total-elapsed clock. */
 const SESSION_CLOCK_GAP = "      ";
 const EMPTY_USAGE_STATS: UsageStatistics = {
 	input: 0,
@@ -94,53 +90,7 @@ function pushQuietPart(id: StatusLineSegmentId, ctx: SegmentContext, out: QuietP
 	out.push({ id, content: rendered.content, pin: rendered.pin });
 }
 
-/**
- * Shed order for the right group, as a rank rather than a boolean. Higher survives longer;
- * everything unlisted ranks 0 and sheds first, right to left, which is the ordinary case.
- *
- * A rank rather than a flag because "protected" cannot be absolute. When every remaining part
- * was protected the shed had nothing legal to drop, fell through to truncating the joined
- * group, and a one-cell budget rendered a bare `…` — destroying all four at once, including
- * the one the oldest contract here says must be the last thing standing. The ranking makes the
- * degradation ordered instead: the weakest ranked part goes, then the next, and the persistent
- * count is alone on the line before anything clips it.
- * Why each of the six outranks a badge:
- *
- * `background` (6) counts the conversations this process is running that NO screen is showing.
- * It outranks even the persistent subagent count, which is the only thing here it could be
- * accused of crowding out: a running subagent is spending in a transcript the operator is
- * looking at, and a handed-off conversation is spending somewhere they cannot look at all. It
- * renders nothing at zero, so on the overwhelmingly common single-conversation line it costs
- * the width it is worth, and the older contract below never observes it because that fixture
- * has no background conversation.
- *
- * `subagents` (5) is the persistent running count. It is the last thing standing by an older
- * contract than any of the rest: `status-line-running-subagents.test.ts` narrows the footline
- * to exactly the chip's width and requires the number to be what survives.
- *
- * `location_right` (4) is the owner-supplied zone holding the composer's draft token readout.
- * It is pushed LAST and the shed walks from the end, so without a rank it is always the FIRST
- * casualty however important it is. That is how the always-visible approval rung silently
- * evicted the draft counter at 100 columns: nothing removed the counter, the rung widened the
- * right group by one label and the counter fell off the end. Losing the count while the
- * operator is actively typing is a worse trade than dropping a badge they can re-read.
- *
- * `mode` (3) carries the approval rung — the one place that says whether the next command will
- * ask before it runs ("safety state outranks identity").
- *
- * `model` (2) is the active session model identity. Ranking it ensures the model name is preserved
- * against wide location strings (long working directories and git branches) by shortening the location
- * before shedding the model name.
- *
- * `context_pct` (1) is how much room is left before compaction fires — the footline's one live
- * value. `#gatherQuietSegments` appends it AFTER the right group on purpose, so it reads as the
- * line's last word, and the shed walks from the end: the deliberate placement made it the first
- * thing dropped at every width that did not fit, while `session_name`, a fixed string, was kept
- * ahead of it. On the DEFAULT preset at 80 columns that meant no gauge at all, and on `full` at
- * 160 it meant a cache-hit percentage on screen while the number that says when the session
- * ends was gone. It ranks lowest of the five because it is the only one that still reads as a
- * whole thought after the others are gone.
- */
+/** Shed order rank for the right group: higher ranks survive longer. */
 const RIGHT_PART_SHED_RANK: Record<string, number> = {
 	context_pct: 1,
 	model: 2,
@@ -150,10 +100,7 @@ const RIGHT_PART_SHED_RANK: Record<string, number> = {
 	background: 6,
 };
 
-/**
- * The part the row gives up next: the lowest-ranked one, taken from the END so that equally
- * ranked parts still go right to left. Index -1 for an empty group.
- */
+/** Lowest-ranked part the right group sheds next (from the end). */
 function weakestRightPart(parts: readonly QuietPart[]): { index: number; rank: number } {
 	let index = -1;
 	let rank = Number.POSITIVE_INFINITY;
@@ -167,30 +114,7 @@ function weakestRightPart(parts: readonly QuietPart[]): { index: number; rank: n
 	return { index, rank };
 }
 
-/**
- * What the location's FLOOR may be paid with, when the zone has been cut under the width at
- * which a directory or a branch still reads as itself.
- *
- * This is a different question from the shed order above, which asks what the ROW gives up to
- * fit at all, and it wants a different answer. These three are re-readable or recoverable: a
- * percentage is back on the next frame, a draft token estimate is re-derived on the next
- * keystroke, and owner-pinned right content restates itself. The model chip and the mode rungs
- * are not on that list: the chip is what this row exists to retain, and a rung says what the
- * next keystroke will DO, which is not something to spend on a wider directory.
- *
- * Neither is the persistent running-subagent count, which the row sheds LAST of all (see
- * RIGHT_PART_SHED_RANK). Paying the floor with it inverted that order twice over: a row whose
- * only remaining part was the count spent it and rendered nothing at all, and a row narrowing
- * under pressure lost the count while a mode rung it outranks stayed. A count is a small chip
- * and buys the zone almost nothing; the order it sits in is worth more than its three cells.
- * The animated badge slot is off the list for a duller reason: it is unranked, so the shed loop
- * above has already dropped it before this ladder can run.
- *
- * Without this the ladder stopped at the model chip and left the zone under its floor with
- * three spendable parts still on the row -- `…izer  ·  …g-path` beside a token estimate, two
- * fragments that each read as a name in their own right, which is the exact failure
- * MIN_LOCATION_PART exists to prevent.
- */
+/** Segments that may be shed to maintain minimum location width. */
 export const FLOOR_SPENDABLE: Record<string, true> = {
 	context_pct: true,
 	context_total: true,
@@ -209,10 +133,7 @@ const USAGE_SEGMENT_IDS: Record<string, true> = {
 	cache_hit: true,
 };
 
-/**
- * The spendable part the location's floor takes next: lowest-ranked first, from the END, so
- * the order among them matches the row's own. -1 when the row holds nothing it may spend.
- */
+/** Next spendable part to maintain minimum location floor. */
 function weakestSpendablePart(parts: readonly QuietPart[]): number {
 	let index = -1;
 	let rank = Number.POSITIVE_INFINITY;
@@ -243,11 +164,7 @@ interface WorktreeContext {
 	worktreeName: string;
 }
 
-/**
- * Project + worktree-dir names when `cwd` is a linked git worktree, else null.
- * The project name comes from the shared primary checkout; bare-repo worktrees
- * resolve to the shared `foo.git` dir, so a trailing `.git` is stripped.
- */
+/** Project and worktree directory names when cwd is a linked worktree. */
 function resolveWorktreeContext(cwd: string): WorktreeContext | null {
 	const worktree = git.repo.linkedWorktreeSync(cwd);
 	if (!worktree) return null;
@@ -257,28 +174,10 @@ function resolveWorktreeContext(cwd: string): WorktreeContext | null {
 	return { projectName, worktreeName: path.basename(worktree.root) };
 }
 
-/**
- * Per-{@link AgentSession} active-processing meter for the `time_spent`
- * segment. `activeMs` is the union of every completed `agent_start`→
- * `agent_end` window; `activeStartedAt` is the start timestamp of the
- * currently-running window, or `null` when idle.
- *
- * `sessionFile` snapshots the loaded session-file path at meter-creation
- * time. `AgentSession.switchSession` (/resume, /move, ACP fork, RPC
- * `switch_session`, extension `switchSession`) mutates the loaded file
- * under the same {@link AgentSession} ref, so the WeakMap key alone
- * cannot tell two conversations apart. `#meter()` compares this snapshot
- * against the live `session.sessionFile`, and a real-to-real change
- * starts the meter fresh instead of crediting the new conversation with
- * the previous one's accumulated active time. The undefined → real
- * first-save transition does not reset, since the session identity has
- * not changed.
- */
+/** Per-session active-processing meter for time_spent segment. */
 interface ActiveMeter {
 	activeMs: number;
 	activeStartedAt: number | null;
-	/** Duration of the most recently COMPLETED run window — what the location
-	 * line's stopped clock (`✓ 0:21`) shows once the agent yields. */
 	lastRunMs: number;
 	sessionFile: string | undefined;
 }
@@ -323,8 +222,6 @@ export interface StatusLineMotionOptions {
 	clock?: MotionClock;
 }
 
-/** Stable empty array for the no-hooks render path, so the TUI engine's
- * stableRows reference-equality check sees the same identity every frame. */
 const EMPTY_HOOK_ROWS: readonly string[] = [];
 const EMPTY_BOUNDS: readonly QuietSegmentBounds[] = [];
 
@@ -332,11 +229,7 @@ export class StatusLineComponent implements Component {
 	#settings: StatusLineSettings = {};
 	#effectiveSettings: EffectiveStatusLineSettings | undefined;
 	#cachedBranch: string | null | undefined = undefined;
-	/**
-	 * The plain branch name for lookups, kept apart from the displayed label.
-	 * `#cachedBranch` may carry an operation suffix (`topic|REBASE`), which is
-	 * for reading, not for querying a forge by.
-	 */
+	/** Plain branch name for lookups, without operation suffix. */
 	#cachedPrBranch: string | null = null;
 	#cachedBranchRepoId: string | null | undefined = undefined;
 	#cachedBranchCwd: string | undefined = undefined;
@@ -349,24 +242,7 @@ export class StatusLineComponent implements Component {
 	#cachedHookSig = "";
 	#subagentCount: number = 0;
 	#backgroundSessionCount: number = 0;
-	/**
-	 * Active-processing accounting for the `time_spent` segment, keyed per
-	 * {@link AgentSession} so the focus-controller mid-turn attach path
-	 * cannot leak an unmatched synthesized `agent_start` from a subagent
-	 * into the main session's meter.
-	 *
-	 * Each meter is `{ activeMs, activeStartedAt }`: `activeMs` is the union
-	 * of every completed `agent_start`→`agent_end` window since
-	 * {@link resetActiveTime} last reset it; `activeStartedAt` is the start
-	 * timestamp of the currently-running window (or `null` when idle).
-	 * `getActiveMs()` returns `activeMs + (now - activeStartedAt)` for the
-	 * currently-attached session, so the counter ticks live during a turn
-	 * and freezes the instant the agent yields.
-	 *
-	 * WeakMap so meters die with their session (e.g. a parked subagent
-	 * dropped from the registry); the main session's meter survives focus
-	 * round-trips because the same {@link AgentSession} ref is reused.
-	 */
+	/** Active-processing meter keyed per AgentSession. */
 	#activeMeters: WeakMap<AgentSession, ActiveMeter> = new WeakMap();
 	#planModeStatus: { enabled: boolean; paused: boolean } | null = null;
 	#loopModeStatus: { enabled: boolean } | null = null;
@@ -401,32 +277,13 @@ export class StatusLineComponent implements Component {
 	#usageFetchedAt = 0;
 	#usageInFlight = false;
 	#usageStartTimer: Timer | null = null;
-	/**
-	 * Serving-account memo. The label ladder has ONE owner ({@link accountDisplayLabel} over the
-	 * account inventory), and reaching it means reading every stored credential plus the
-	 * failed-refresh list, which is far too much work for a line that redraws on every spinner
-	 * tick. The key holds the cheap facts that can change the answer — the provider, how many
-	 * credentials it stores, which one routing says is serving, and that account's stored name — so
-	 * the rebuild happens when one of them moves and not otherwise. The name is in the key because
-	 * renaming an account from the card must change this line, not the line after next.
-	 */
+	/** Memoized serving account details. */
 	#cachedServingAccount: {
 		key: string;
 		value: { label: string; storedCount: number; isPrediction: boolean } | null;
 	} | null = null;
-	// Context-usage memo. The status line redraws on every agent event, so the
-	// hot path must not recompute context tokens unless an input changed.
-	// `getContextUsage()` anchors on the last assistant's real prompt-token
-	// count (matching the provider and the `/context` panel), so a stable
-	// message list + model window yields a stable result we can return verbatim.
 	#contextUsageCache: ContextUsageMemo | undefined;
-	// Reusable SegmentContext: #buildSegmentContext updates this in-place every
-	// frame instead of allocating a new ~25-field object. Safe because ctx is
-	// consumed synchronously by renderSegment and never stored.
 	#ctx: SegmentContext | undefined;
-	// Pre-allocated arrays for #gatherQuietSegments: cleared and refilled every
-	// frame instead of allocating new arrays. Safe because both callers
-	// (renderQuietLine, renderQuietLines) consume them synchronously.
 	#quietLocation: QuietPart[] = [];
 	#quietCapLeft: QuietPart[] = [];
 	#quietCapRight: QuietPart[] = [];
@@ -442,12 +299,7 @@ export class StatusLineComponent implements Component {
 	#quietBounds: QuietSegmentBounds[] = [];
 	#quietShiftedBounds: QuietSegmentBounds[] = [];
 
-	/**
-	 * The path expansion, as a value between the collapsed row and the expanded one, or
-	 * undefined when the host gave no repaint hook: a widening row nobody paints is a timer
-	 * with no picture, and every caller that only renders (tests, the two-line selector) gets
-	 * the hard cut it always got.
-	 */
+	/** Path expansion animation state. */
 	readonly #expansion: SettleValue | undefined;
 
 	constructor(
@@ -460,11 +312,6 @@ export class StatusLineComponent implements Component {
 				clock: motion.clock,
 				curve: MOTION.reflow,
 			});
-			// Seed the resting state so the FIRST click travels. SettleValue lands its first
-			// value without motion -- a gauge that sweeps up from zero on its first paint is
-			// animating the session starting -- and here that first value is the collapsed row,
-			// which is where the row already is.
-			this.#expansion.set(0);
 		}
 		this.#settings = {
 			preset: settings.get("statusLine.preset"),
@@ -496,17 +343,12 @@ export class StatusLineComponent implements Component {
 
 		const activeRepo = resolveActiveRepoContextSync(projectDir);
 		const effectiveGitCwd = activeRepo?.repoRoot ?? projectDir;
-		// Only collapse the bare-cwd case: a single-direct-child-repo context
-		// (activeRepo set) renders `<parent> ↳ <child>`, which we leave intact.
 		const worktree = activeRepo ? null : resolveWorktreeContext(effectiveGitCwd);
 		this.#activeRepoCache = { projectDir, activeRepo, effectiveGitCwd, worktree };
 		return this.#activeRepoCache;
 	}
 
-	/**
-	 * Re-point the status line at another session (focus proxy). Invalidate: model/context/usage all derive
-	 * from it. `focusedAgentId` is the focused subagent id while the view is proxied, undefined for main.
-	 */
+	/** Re-point the status line at another session. */
 	setSession(session: AgentSession, focusedAgentId?: string): void {
 		const sessionChanged = this.session !== session;
 		if (!sessionChanged && this.#focusedAgentId === focusedAgentId) return;
@@ -519,16 +361,7 @@ export class StatusLineComponent implements Component {
 		this.invalidate();
 	}
 
-	/**
-	 * Drop a meter's in-flight window when the newly-attached session is no
-	 * longer streaming. Handles the case where the focus controller
-	 * synthesized an `agent_start` on a mid-turn attach but the matching
-	 * real `agent_end` never reached us — the user detached before it
-	 * fired, and re-focusing later (after the agent finished) would
-	 * otherwise tick over the entire detached gap. Crediting that gap to
-	 * `activeMs` would be wrong (the agent finished at some point we never
-	 * observed), so the window is dropped rather than folded in.
-	 */
+	/** Drop in-flight meter window when newly attached session is no longer streaming. */
 	#closeStaleActiveWindow(): void {
 		const meter = this.#meter();
 		if (meter.activeStartedAt === null) return;
@@ -572,14 +405,7 @@ export class StatusLineComponent implements Component {
 		return this.#backgroundSessionCount;
 	}
 
-	/**
-	 * Reset the currently-attached session's active-time accumulators so
-	 * the `time_spent` segment starts from zero. Called from `/clear`,
-	 * fresh-session, and joined-collab paths; both the completed
-	 * accumulator and any in-flight window are dropped, so a reset
-	 * mid-turn ignores the running window (the matching `markActivityEnd`
-	 * will see an idle meter and no-op).
-	 */
+	/** Reset active-time accumulators for current session. */
 	resetActiveTime(): void {
 		const meter = this.#meter();
 		meter.activeMs = 0;
@@ -587,25 +413,14 @@ export class StatusLineComponent implements Component {
 		meter.lastRunMs = 0;
 	}
 
-	/**
-	 * Mark the currently-attached session as having started a unit of
-	 * active processing. Idempotent: a second start while a window is
-	 * already open is a no-op, so reentrant `agent_start` events (e.g.
-	 * nested auto-compaction loops, focus-controller mid-turn attach onto
-	 * an already-running window) do not double-count.
-	 */
+	/** Mark active processing start for current session. */
 	markActivityStart(): void {
 		const meter = this.#meter();
 		if (meter.activeStartedAt !== null) return;
 		meter.activeStartedAt = Date.now();
 	}
 
-	/**
-	 * Close the currently-attached session's open active-processing
-	 * window, folding its elapsed time into the accumulator. Idempotent
-	 * when the meter is already idle so callers can fire it on every
-	 * `agent_end` without guarding.
-	 */
+	/** Close active processing window for current session. */
 	markActivityEnd(): void {
 		const meter = this.#meter();
 		if (meter.activeStartedAt === null) return;
@@ -615,11 +430,7 @@ export class StatusLineComponent implements Component {
 		meter.activeStartedAt = null;
 	}
 
-	/**
-	 * Run-clock snapshot for the location line: `runningMs` is the current
-	 * run's live elapsed (null when the agent is idle), `lastRunMs` the
-	 * duration of the most recently completed run (0 before the first run).
-	 */
+	/** Run-clock snapshot (runningMs and lastRunMs). */
 	getRunClock(): { runningMs: number | null; lastRunMs: number } {
 		const meter = this.#meter();
 		return {
@@ -628,27 +439,14 @@ export class StatusLineComponent implements Component {
 		};
 	}
 
-	/**
-	 * Snapshot of total active-processing time for the currently-attached
-	 * session, including any in-flight window. Exposed for the segment
-	 * context builder; tests assert against this too.
-	 */
+	/** Snapshot of total active-processing time for current session. */
 	getActiveMs(): number {
 		const meter = this.#meter();
 		if (meter.activeStartedAt === null) return meter.activeMs;
 		return meter.activeMs + Math.max(0, Date.now() - meter.activeStartedAt);
 	}
 
-	/**
-	 * Return (lazily creating) the meter for the currently-attached
-	 * session. Detects an in-place session-file swap under the same
-	 * {@link AgentSession} ref (`switchSession` paths: `/resume`, `/move`,
-	 * ACP fork/load, RPC `switch_session`, extension `switchSession`):
-	 * a real-to-real change starts the meter fresh so the new
-	 * conversation does not inherit the previous one's accumulated active
-	 * time. The undefined → real first-save transition only refreshes the
-	 * snapshot — the conversation identity has not changed.
-	 */
+	/** Return or lazily create active meter for current session. */
 	#meter(): ActiveMeter {
 		const currentFile = this.session.sessionFile;
 		let meter = this.#activeMeters.get(this.session);
@@ -971,25 +769,8 @@ export class StatusLineComponent implements Component {
 		return `${activeProvider}\0${identity?.accountId ?? ""}\0${identity?.email ?? ""}\0${identity?.projectId ?? ""}\0${identity?.orgId ?? ""}`;
 	}
 
-	/**
-	 * Which stored credential is serving the active provider, and how many it stores.
-	 *
-	 * Reports the fact only; whether one account is worth naming on the line is the segment's
-	 * decision. Prefers what routing says is ACTIVE over what the user selected, because those
-	 * differ exactly when the interesting thing happened — a chosen account was rate-limit blocked
-	 * or revoked and traffic moved — and the line has to name what is being spent, not what was
-	 * picked. Falls back to the first stored credential, which is what an unselected provider uses.
-	 *
-	 * Carries whether the answer is a PREDICTION. Routing answers with the account the next request
-	 * would use even before one has gone out, so this resolver has a label to report from the first
-	 * frame; the flag is what stops the line from wording that as an account already being spent.
-	 * It joins the memo key, because the flip from predicted to observed happens on the first
-	 * request with everything else about the account unchanged, and a key that could not see it
-	 * would pin the opening wording for the rest of the cache's life.
-	 */
+	/** Resolve serving credential details for the active provider. */
 	#servingAccount(session: AgentSession): { label: string; storedCount: number; isPrediction: boolean } | null {
-		// Read here rather than in the segment, so the whole inventory walk below is skipped as well as
-		// the chip: an operator who has not asked for this pays neither the width nor the work.
 		if (!settings.get("statusLine.showAccount")) return null;
 		const activeProvider = session.state.model?.provider ?? session.model?.provider;
 		const authStorage = session.modelRegistry?.authStorage;
@@ -1018,10 +799,7 @@ export class StatusLineComponent implements Component {
 		return value;
 	}
 
-	/**
-	 * Startup redraws only arm a short-delayed task; timeout releases the render
-	 * cadence while a late successful fetch can still refresh the cached segment.
-	 */
+	/** Refresh provider usage in background. */
 	refreshUsageInBackground(): void {
 		const now = Date.now();
 		const session = this.session;
@@ -1163,24 +941,12 @@ export class StatusLineComponent implements Component {
 		return { tier: effectiveTier, fiveHour, sevenDay };
 	}
 
-	/**
-	 * Used-tokens / context-window totals for the status-line context% segment,
-	 * memoized so the per-event redraw stays O(1) when nothing changed.
-	 *
-	 * The numerator comes from `session.getContextUsage()`, which anchors on the
-	 * last assistant's real prompt-token count — so the bar matches the provider
-	 * and the `/context` panel — and reports `null` while that count is unknown
-	 * (right after compaction, before the next response). Exposed (non-private)
-	 * for unit tests and the collab host's state broadcast.
-	 */
+	/** Used-tokens and context-window totals for context% segment. */
 	getCachedContextBreakdown(): { usedTokens: number | null; contextWindow: number } {
 		const messages = this.session.messages ?? EMPTY_MESSAGES;
 		const modelContextWindow = this.session.model?.contextWindow ?? 0;
 		const length = messages.length;
 		const lastFingerprint = length > 0 ? messageFingerprint(messages[length - 1]!) : undefined;
-		// Bumps when the in-flight pending snapshot is set/cleared. Without it a
-		// value computed mid-turn (estimate of the active tail) would survive after
-		// the turn ends/aborts, since clearing the snapshot touches no message.
 		const contextUsageRevision = this.session.contextUsageRevision ?? 0;
 
 		const systemPrompt = this.session.systemPrompt;
@@ -1459,35 +1225,12 @@ export class StatusLineComponent implements Component {
 		return this.#cachedSubagentBadge;
 	}
 
-	/**
-	 * Running background jobs the SUBAGENT badge does not already stand for.
-	 *
-	 * A `task` spawn registers an async job (`type: "task"`, see `task/index.ts`) AND counts as a
-	 * running subagent, so counting every job here printed the same three agents twice: the bar
-	 * read `3 · 3`, two badges whose numbers moved together and neither of which said what it
-	 * was counting. Async bash, debug and launch jobs are real background work with no subagent
-	 * behind them, and those are what this badge is for.
-	 */
+	/** Running background jobs count excluding task subagents. */
 	#backgroundJobBadgeCount(): number {
 		return this.session.getRunningNonTaskJobCount();
 	}
 
-	/**
-	 * Quiet composer chrome: the segment set split across two whisper lines with
-	 * free space between them, instead of one crammed bar. Location (path · git)
-	 * lives above the composer's hairline; capability (model · mode) and budget
-	 * (context, session) sit below it, split left/right. Honors the configured
-	 * segments — a segment renders in its zone iff it appears in the preset.
-	 * `extras.locationRight` pins owner-supplied content (MCP health, the ghost
-	 * sun) at the location line's right edge.
-	 */
-	/**
-	 * Gather the quiet-zone segments into their three groups: location (path ·
-	 * git · pr), capability-left (model · mode …), and capability-right
-	 * (context, badges, background jobs). ONE owner for the grouping logic —
-	 * both the two-line selector layout ({@link renderQuietLines}) and the
-	 * composer's single footline ({@link renderQuietLine}) read from here.
-	 */
+	/** Gather quiet-zone segments into location, capability-left, and capability-right groups. */
 	#gatherQuietSegments(width: number): { location: QuietPart[]; capLeft: QuietPart[]; capRight: QuietPart[] } {
 		const effectiveSettings = this.#resolveSettings();
 		const gitEnabled = this.#gitEnabled();
@@ -1498,27 +1241,6 @@ export class StatusLineComponent implements Component {
 		const includeGit = gitEnabled && (hasGitSegment(leftCfg) || hasGitSegment(rightCfg));
 		const includePr = gitEnabled && (hasPrSegment(leftCfg) || hasPrSegment(rightCfg));
 		const includeUsage = hasUsageSegment(leftCfg) || hasUsageSegment(rightCfg);
-		// The footline reads at a glance, so the model-effort gap is roomy. The
-		// per-kind git counts and the token-text context gauge that the other
-		// options here used to switch between are gone: nothing could reach
-		// them, because this is the only place a segment is ever rendered.
-		//
-		// `path.maxLength` was pinned to 30 here, which quietly overrode every
-		// preset's own budget (40 on `default`, 60 on `nerd`) AND any
-		// `statusLine.segmentOptions.path.maxLength` the operator set — picking
-		// `nerd` for its long paths changed nothing on screen. The preset wins
-		// now; 30 is only the fallback for a preset that names no budget.
-		//
-		// EXPANDED PATH. A click on the path toggles `#pathExpanded`: the location zone
-		// gives up its clamp and takes the room the model chip vacates, so a path too long
-		// for the footline can be read without resizing the terminal. The shed loop below
-		// still clips the location to the row, so this widens the budget rather than
-		// promising the whole path.
-		//
-		// The clamp travels between the two budgets rather than switching between them, so
-		// the path grows a cell at a time out of the room the chip is giving back. Both ends
-		// of the trade are driven by ONE progress value, so the row can never be mid-way
-		// through widening while the chip is already gone.
 		const expansion = this.#expansionProgress();
 		const collapsedPathBudget = effectiveSettings.segmentOptions?.path?.maxLength ?? 30;
 		// A row narrower than the clamp has nothing to widen INTO, and interpolating toward it
@@ -1542,15 +1264,6 @@ export class StatusLineComponent implements Component {
 		capLeft.length = 0;
 		const capRight = this.#quietCapRight;
 		capRight.length = 0;
-		// The context gauge is the footline's one LIVE value; everything else on the
-		// right is standing state. A gauge configured on the left still belongs in the
-		// right group (it is a capability reading, not a location), but pushing it there
-		// during this first loop put it AHEAD of every right-configured segment, so the
-		// default preset read `model · gauge · session-name`: the number that changes
-		// every turn sandwiched between two that do not. Nobody chose that order; it
-		// fell out of which loop ran first. Held aside and appended after the right
-		// group instead, so the live value is the line's last word. A gauge the user
-		// configured on the RIGHT keeps the position they gave it.
 		const contextFromLeft = this.#quietContextFromLeft;
 		contextFromLeft.length = 0;
 		for (const id of leftCfg) {
@@ -1575,9 +1288,6 @@ export class StatusLineComponent implements Component {
 		return this.#quietGatherResult;
 	}
 
-	// Cached quiet options: the base spread (segmentOptions + model.roomy) is constant
-	// between settings changes; only path.maxLength varies (with the expansion animation).
-	// Caching by (segmentOptions ref, pathBudget) avoids 3 nested object allocations per frame.
 	#cachedQuietOptsBaseRef: object | undefined;
 	#cachedQuietOptsBudget = -1;
 	#cachedQuietOpts: StatusLineSegmentOptions | undefined;
@@ -1595,53 +1305,23 @@ export class StatusLineComponent implements Component {
 		};
 		return this.#cachedQuietOpts;
 	}
-
-	// Layout of the last rendered quiet footline, for click hit-testing
-	// (quietSegmentAt). Rewritten on every renderQuietLine call, so it always
-	// matches the line currently on screen; empty when no footline rendered.
 	#quietLineBounds: readonly QuietSegmentBounds[] = EMPTY_BOUNDS;
-
-	// Set by a click on the location (togglePathExpanded). While true the location zone is
-	// clamped to the row rather than the preset budget and spends the right group for the room,
-	// weakest first. Not persisted: a new session opens unexpanded.
 	#pathExpanded = false;
-
-	/**
-	 * Which half the click named, and therefore which one is shown whole while the other pays.
-	 * Both halves are clickable and a click on either expands the row; this is only the order
-	 * the cells are handed out in, so clicking the branch on a row too narrow for both reads
-	 * the branch rather than re-reading the directory the reader did not ask about.
-	 */
+	/** Which segment half the click named. */
 	#expandedHalf: StatusLineSegmentId = "path";
 
-	/**
-	 * How far the row is through the trade: 0 is the collapsed row, 1 the expanded one, and
-	 * anything between is a frame of the travel. Without a repaint hook there is no travel and
-	 * the answer is the toggle itself, so a caller that only renders sees the two end states
-	 * and nothing in between.
-	 */
+	/** Path expansion progress (0 collapsed, 1 expanded). */
 	#expansionProgress(): number {
 		return this.#expansion?.value ?? (this.#pathExpanded ? 1 : 0);
 	}
 
-	// Background-job badge animation state. Jobs ease in/out over
-	// BADGE_ANIM_MS so a start or finish reads as an intentional merge instead
-	// of the right group jumping sideways. The running-subagent count does not
-	// enter this slot: it is persistent state and must update synchronously.
-	// Between animations the slot is exactly the job badge's width, so there is
-	// no permanent dead space either.
 	#badgeSlotFromWidth = 0;
 	#badgeSlotTargetWidth = 0;
 	#badgeSlotAnimStartMs = 0;
-	// The job badge text being clipped during a close; the running-job count
-	// reaches zero before the slot finishes shrinking, so its text outlives it.
 	#badgeSlotText = "";
 	static readonly #BADGE_ANIM_MS = 240;
 
-	/** The badge slot at its current animated width, or null when the slot is
-	 * fully closed. The text slides in clipped to the easing width; the
-	 * caller unshifts the slot so the group's left edge eases open instead of
-	 * jumping. */
+	/** Animated badge slot text clipped to easing width. */
 	#animatedBadgeSlot(badgeParts: string[]): string | null {
 		const sep = stateSeparator();
 		const joined = badgeParts.length > 0 ? badgeParts.join(sep) : "";
@@ -1667,25 +1347,7 @@ export class StatusLineComponent implements Component {
 		return Math.round(this.#badgeSlotFromWidth + (this.#badgeSlotTargetWidth - this.#badgeSlotFromWidth) * eased);
 	}
 
-	/**
-	 * The composer's ONE metadata footline: location (path · git) on the left,
-	 * capability (model · mode · badges · context, then MCP health via
-	 * `extras.locationRight`) on the right. On narrow widths the right group
-	 * sheds parts from the end before the middle gap closes; returns null when
-	 * there is nothing to say (no empty chrome rows).
-	 */
-	/**
-	 * Join the location group and append the MODEL RUN clock with a roomy gap.
-	 * The clock is model runtime from the ONE active-processing meter (the
-	 * same accounting behind `time_spent`), never wall time since launch:
-	 * ONE clock, two states — while the agent runs it ticks the current run
-	 * (`0:42`); once the run finishes it freezes as a quiet receipt of the
-	 * completed run (`✓ 0:21`); before the model has ever started it says
-	 * nothing at all. Chrome, not a configurable segment — it rides the
-	 * location line whenever one renders (approved placement: next to the git
-	 * branch, with a decent amount of space). Dim; the mode's 1s heartbeat
-	 * keeps the running form ticking between agent events.
-	 */
+	/** Join location segments and append run clock. */
 	#locationWithRunClock(location: string[], sep: string, gap: string = SESSION_CLOCK_GAP): string {
 		const left = location.join(sep);
 		if (!left) return left;
@@ -1697,19 +1359,7 @@ export class StatusLineComponent implements Component {
 		return `${left}${gap}${theme.fg("dim", readout)}`;
 	}
 
-	/**
-	 * The focus badge on its own, with no segments: the footline row a composer renders while
-	 * `statusLine.enabled` is off. Null when nothing is proxied, so the zone drops the row.
-	 *
-	 * Esc means "leave this view" while the view is proxied onto an agent and "clear the line"
-	 * everywhere else, and this badge is the only persistent thing on screen that says which one
-	 * you are in. Turning standing status off must therefore not be able to strip the exit sign
-	 * off a view whose edge is otherwise invisible, so the badge is outside the setting.
-	 *
-	 * The recorded footline layout is cleared, not kept: with no segments on the row there is
-	 * nothing to hit-test, and stale bounds from an earlier render would resolve a click to a
-	 * segment that is no longer there.
-	 */
+	/** Render standalone focus badge when statusLine is disabled. */
 	renderFocusBadge(width: number): string | null {
 		this.#quietLineBounds = EMPTY_BOUNDS;
 		if (!this.#focusedAgentId) return null;
@@ -2035,26 +1685,11 @@ export class StatusLineComponent implements Component {
 		if (left && right) {
 			return badge + left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
 		}
-		// A location alone on the row is what a click on a name longer than the whole bar comes
-		// to: the reader asked for that name, and the row spent every readout it had to show as
-		// much of it as fits. Before the click could spend the last part this was unreachable --
-		// the subagent badge is appended to `capRight` unconditionally, so `right` was never
-		// empty -- and the lone-group return below dropped the location on the floor, painting
-		// an empty row on the one click that most needed to answer.
 		if (left) return badge + truncateToWidth(left, budget);
-		// A lone right group has no head worth keeping, so it loses its tail -- and it keeps the
-		// right edge, so the state it carries sits where the eye already looks for it.
 		return badge + padding(rightStart) + truncateToWidth(right, budget);
 	}
 
-	/**
-	 * Resolve a 0-based column of the LAST rendered quiet footline to the id of
-	 * the segment occupying it, or null for gaps/padding. This is the one
-	 * hit-test surface for status-line mouse routing (GMI-2b): the footline
-	 * records its layout as it renders, so the answer is always in sync with
-	 * what is actually on screen. Non-segment chrome reports as synthetic ids
-	 * ("badges", "location_right"); the run clock is unaddressable chrome.
-	 */
+	/** Resolve column of last rendered quiet footline to segment id. */
 	quietSegmentAt(col: number): string | null {
 		for (const entry of this.#quietLineBounds) {
 			if (col >= entry.start && col < entry.end) return entry.id;
@@ -2062,26 +1697,7 @@ export class StatusLineComponent implements Component {
 		return null;
 	}
 
-	/**
-	 * Toggle the expanded location. Clicking the directory, the branch or the pull request
-	 * widens the zone to the row and spends the right group for the room, weakest first;
-	 * clicking the same half again restores every part and every cell. Returns the new state so
-	 * the caller can request a render without reading it back.
-	 *
-	 * `half` is the segment the click landed on. It is shown whole while the other pays, so the
-	 * reader gets the name they pointed at. Clicking the OTHER half while the row is already
-	 * expanded hands the room over rather than collapsing: the row is already wide, and
-	 * collapsing it to answer a click on a second name would take the name away.
-	 *
-	 * The state lives here rather than in the caller because `renderQuietLine` is the only
-	 * place that knows the row's budget, and the expansion is a property of the line, not
-	 * of the session: a resize re-renders it and re-clips to the new width.
-	 *
-	 * A second click DURING the travel is retargeted rather than restarted, so the row turns
-	 * around from wherever it had got to instead of jumping to the far end and easing back.
-	 * `display.transitions: off` lands it on the same frame as the click, which is the hard
-	 * cut this replaced, byte for byte.
-	 */
+	/** Toggle expanded location zone. */
 	togglePathExpanded(half: StatusLineSegmentId = "path"): boolean {
 		const handOver = this.#pathExpanded && half !== this.#expandedHalf;
 		this.#expandedHalf = half;
