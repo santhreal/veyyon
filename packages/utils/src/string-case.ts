@@ -1,13 +1,5 @@
 /**
  * Convert kebab-case to camelCase (`"thinking-level"` -> `"thinkingLevel"`).
- *
- * The ONE owner of this conversion. It was previously hand-rolled privately in
- * `frontmatter.ts` (normalizing YAML keys) and again in the coding-agent's
- * system-prompt block registry (deriving the camelCase section-override keys
- * from the canonical kebab ids). Byte-identical copies still drift, and a
- * case-conversion helper belongs with the other case helpers, so both callers
- * import this.
- *
  * Only a lowercase letter after the hyphen is lifted, so a numeric or
  * already-uppercase segment (`"utf-8"`, `"X-Header"`) is left alone.
  */

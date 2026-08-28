@@ -83,13 +83,7 @@ export class TempDir {
 		return path.join(this.#path, ...paths);
 	}
 
-	// Dispose must not throw: it runs as a scope exits, often while an error is already
-	// propagating, and a removal failure would replace that error with one about cleanup.
-	// It must not be SILENT either, which is what it used to be. A `using` block whose
-	// removal fails leaves a directory in the system temp directory for good, and an
-	// empty catch means nothing anywhere says so: the only symptom is a disk filling up
-	// with directories nobody can account for. So the failure is reported the same way
-	// `removeTempPath` reports its own, naming the path and the reason (Law 10).
+	// Dispose must not throw; report removal errors through logger.
 	async [Symbol.asyncDispose](): Promise<void> {
 		try {
 			await this.remove();

@@ -459,13 +459,7 @@ export function tokenizeQuotedArgs(input: string): string[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Terminal width to lay help out for, clamped to something a human reads.
- *
- * Help used to be laid out for an infinite terminal: it padded to the widest entry and never
- * wrapped, so `veyyon --help` emitted 85 lines past 80 columns with a 221-character worst case, and
- * every one of those was re-wrapped by the terminal at an arbitrary point with no indent. The lower
- * bound keeps a narrow split pane from collapsing the description column to nothing; the upper one
- * stops a maximized window from producing lines too long to track back to their flag.
+ * Terminal width to lay help out for, clamped to a readable range.
  */
 function helpWidth(): number {
 	const columns = process.stdout.columns;

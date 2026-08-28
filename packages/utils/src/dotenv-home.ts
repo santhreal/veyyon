@@ -50,9 +50,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { DIR_LOCATION_ENV_KEYS } from "./dir-env-keys";
 import { parseEnvFile, type UnreadableEnvFileReporter } from "./dotenv-parse";
-// The owner of the one-line "what does this error say" question. `type-guards.ts` imports nothing, so it is
-// safe here for the same reason `fs-error.ts` is, and `type-guards-source-locks` forbids the inline
-// `instanceof Error ? .message : String(...)` this used to spell out.
 import { errorMessage } from "./type-guards";
 
 /**

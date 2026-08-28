@@ -2342,11 +2342,7 @@ export function getInstallId(): string {
 			cachedInstallId = existing;
 			return existing;
 		}
-		// File present and not an id — fall through and overwrite below. This is set for an
-		// EMPTY file too, which is what a crash between the create and the write leaves
-		// behind. It used to be `existing.length > 0`, so a zero-length file was never
-		// unlinked, the `O_EXCL` create below then failed with EEXIST forever, and the
-		// install generated a brand new id on every single launch with nothing to fix.
+		// File present and not a valid UUID — fall through and overwrite below.
 		observedInvalid = true;
 		if (existing.length > 0) {
 			// Replacing this file changes the install's identity, which is what server-side
