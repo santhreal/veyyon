@@ -1,10 +1,8 @@
-// ============================================================================
 // ASCII renderer — 2D text canvas
 //
 // Ported from AlexanderGrooff/mermaid-ascii cmd/draw.go.
 // The canvas is a column-major 2D array of single-character strings.
 // canvas[x][y] gives the character at column x, row y.
-// ============================================================================
 
 import type { Canvas, DrawingCoord, RoleCanvas, CharRole, AsciiTheme, ColorMode } from './types'
 import { colorizeLine, DEFAULT_ASCII_THEME } from './ansi'
@@ -32,9 +30,6 @@ export function copyCanvas(source: Canvas): Canvas {
   return mkCanvas(maxX, maxY)
 }
 
-// ============================================================================
-// Role canvas creation and management
-// ============================================================================
 
 /**
  * Create a blank role canvas filled with nulls.
@@ -166,9 +161,6 @@ export function increaseSize(canvas: Canvas, newX: number, newY: number): Canvas
   return canvas
 }
 
-// ============================================================================
-// Junction merging — Unicode box-drawing character compositing
-// ============================================================================
 
 /** All Unicode box-drawing characters that participate in junction merging. */
 const JUNCTION_CHARS = new Set([
@@ -230,9 +222,6 @@ export function mergeJunctions(c1: string, c2: string): string {
   return JUNCTION_MAP[c1]?.[c2] ?? c1
 }
 
-// ============================================================================
-// Canvas merging — composite multiple canvases with offset
-// ============================================================================
 
 /**
  * Merge overlay canvases onto a base canvas at the given offset.
@@ -295,9 +284,6 @@ export function mergeCanvases(
   return merged
 }
 
-// ============================================================================
-// Canvas → string conversion
-// ============================================================================
 
 /** Options for converting canvas to string with optional coloring. */
 export interface CanvasToStringOptions {
@@ -348,13 +334,11 @@ export function canvasToString(canvas: Canvas, options?: CanvasToStringOptions):
   return lines.join('\n')
 }
 
-// ============================================================================
 // Canvas vertical flip — used for BT (bottom-to-top) direction support.
 //
 // The ASCII renderer lays out graphs top-down (TD). For BT direction, we
 // flip the finished canvas vertically and remap directional characters so
 // arrows point upward and corners are mirrored correctly.
-// ============================================================================
 
 /**
  * Characters that change meaning when the Y-axis is flipped.

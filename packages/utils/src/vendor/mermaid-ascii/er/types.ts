@@ -1,9 +1,7 @@
-// ============================================================================
 // ER diagram types
 //
 // Models the parsed and positioned representations of a Mermaid ER diagram.
 // ER diagrams show database entities, their attributes, and relationships.
-// ============================================================================
 
 /** Parsed ER diagram — logical structure from mermaid text */
 export interface ErDiagram {
@@ -54,9 +52,6 @@ export interface ErRelationship {
   identifying: boolean
 }
 
-// ============================================================================
-// Positioned ER diagram — ready for SVG rendering
-// ============================================================================
 
 export interface PositionedErDiagram {
   width: number

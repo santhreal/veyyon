@@ -1,7 +1,6 @@
 import type { ClassDiagram, ClassNode, ClassRelationship, ClassMember, RelationshipType, ClassNamespace } from './types'
 import { normalizeBrTags } from '../multiline-utils'
 
-// ============================================================================
 // Class diagram parser
 //
 // Parses Mermaid classDiagram syntax into a ClassDiagram structure.
@@ -18,7 +17,6 @@ import { normalizeBrTags } from '../multiline-utils'
 //   A "1" --> "*" B : label   (with cardinality + label)
 //   Animal : +String name     (inline attribute)
 //   namespace MyNamespace { class A { } }
-// ============================================================================
 
 /**
  * Parse a Mermaid class diagram.

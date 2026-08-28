@@ -1,6 +1,3 @@
-// ============================================================================
-// Rounded rectangle shape renderer — uses rounded corner decorators
-// ============================================================================
 
 import type { ShapeRenderer } from './types'
 import { getBoxDimensions, renderBox, getBoxAttachmentPoint } from './rectangle'

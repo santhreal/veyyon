@@ -1,4 +1,3 @@
-// ============================================================================
 // ASCII renderer — class diagrams
 //
 // Renders classDiagram text to ASCII/Unicode art.
@@ -8,7 +7,6 @@
 // Layout: level-based top-down. "From" classes are placed above "to" classes
 // for all relationship types, matching ELK/mermaid.com behavior.
 // Relationship lines use simple Manhattan routing (vertical + horizontal).
-// ============================================================================
 
 import { parseClassDiagram } from '../class/parser'
 import type { ClassDiagram, ClassNode, ClassMember, ClassRelationship, RelationshipType } from '../class/types'
@@ -24,9 +22,6 @@ function classifyBoxChar(ch: string): CharRole {
   return 'text'
 }
 
-// ============================================================================
-// Class member formatting
-// ============================================================================
 
 /** Format a class member as a display string: visibility + name + optional type */
 function formatMember(m: ClassMember): string {
@@ -58,9 +53,6 @@ function buildClassSections(cls: ClassNode): string[][] {
   return [header, attrs, methods]
 }
 
-// ============================================================================
-// Relationship marker characters
-// ============================================================================
 
 interface RelMarker {
   /** Relationship type (determines marker shape) */
@@ -130,9 +122,6 @@ function getMarkerShape(
   }
 }
 
-// ============================================================================
-// Layout and rendering
-// ============================================================================
 
 /** Positioned class node on the canvas */
 interface PlacedClass {

@@ -1,6 +1,3 @@
-// ============================================================================
-// Stadium (pill) shape renderer — special parentheses-based rendering
-// ============================================================================
 //
 // Stadium has unique rendering: single-line is inline `(Label)`, multi-line
 // uses parentheses or rounded corners. This differs from other shapes that

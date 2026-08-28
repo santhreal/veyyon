@@ -1,4 +1,3 @@
-// ============================================================================
 // ASCII renderer — ER diagrams
 //
 // Renders erDiagram text to ASCII/Unicode art.
@@ -7,7 +6,6 @@
 //
 // Layout: entities are placed in a grid pattern (multiple rows if needed).
 // Relationship lines use Manhattan routing between entity boxes.
-// ============================================================================
 
 import { parseErDiagram } from '../er/parser'
 import type { ErDiagram, ErEntity, ErAttribute, Cardinality } from '../er/types'
@@ -23,9 +21,6 @@ function classifyBoxChar(ch: string): CharRole {
   return 'text'
 }
 
-// ============================================================================
-// Entity box content
-// ============================================================================
 
 /** Format an attribute line: "PK type name" or "FK type name" etc. */
 function formatAttribute(attr: ErAttribute): string {
@@ -42,9 +37,6 @@ function buildEntitySections(entity: ErEntity): string[][] {
   return [header, attrs]
 }
 
-// ============================================================================
-// Crow's foot notation
-// ============================================================================
 
 /**
  * Returns the ASCII/Unicode characters for a crow's foot cardinality marker.
@@ -79,9 +71,6 @@ function getCrowsFootChars(card: Cardinality, useAscii: boolean, isRight = false
   }
 }
 
-// ============================================================================
-// Positioned entity
-// ============================================================================
 
 interface PlacedEntity {
   entity: ErEntity
@@ -92,9 +81,6 @@ interface PlacedEntity {
   height: number
 }
 
-// ============================================================================
-// Connected Component Detection
-// ============================================================================
 
 /**
  * Find connected components in the ER diagram using DFS.
@@ -148,9 +134,6 @@ function findConnectedComponents(diagram: ErDiagram): Set<string>[] {
   return components
 }
 
-// ============================================================================
-// Layout and rendering
-// ============================================================================
 
 /**
  * Render a Mermaid ER diagram to ASCII/Unicode text.

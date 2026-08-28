@@ -1,6 +1,3 @@
-// ============================================================================
-// Shape renderer types — interface for pluggable ASCII shape renderers
-// ============================================================================
 
 import type { Canvas, DrawingCoord, Direction, AsciiNodeShape } from '../types'
 

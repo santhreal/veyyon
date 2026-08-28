@@ -1,4 +1,3 @@
-// ============================================================================
 // ASCII renderer — sequence diagrams
 //
 // Renders sequenceDiagram text to ASCII/Unicode art using a column-based layout.
@@ -7,7 +6,6 @@
 //
 // Layout is fundamentally different from flowcharts — no grid or A* pathfinding.
 // Instead: actors → columns, messages → rows, all positioned linearly.
-// ============================================================================
 
 import { parseSequenceDiagram } from '../sequence/parser'
 import type { SequenceDiagram, Block } from '../sequence/types'

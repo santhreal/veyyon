@@ -1,6 +1,5 @@
 import type { XYChart, XYAxis, XYChartSeries } from './types'
 
-// ============================================================================
 // XY Chart parser
 //
 // Parses Mermaid xychart-beta syntax into a typed XYChart structure.
@@ -15,7 +14,6 @@ import type { XYChart, XYAxis, XYChartSeries } from './types'
 //   y-axis (same patterns)
 //   bar [val1, val2, ...]
 //   line [val1, val2, ...]
-// ============================================================================
 
 /**
  * Parse a Mermaid xychart-beta diagram from preprocessed lines.

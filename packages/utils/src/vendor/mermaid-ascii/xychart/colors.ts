@@ -1,4 +1,3 @@
-// ============================================================================
 // XY Chart — shared color palette
 //
 // Generates monochromatic shades from the theme accent color.
@@ -7,14 +6,10 @@
 // color family (like navy ↔ cyan from blue).
 //
 // Used by both the SVG and ASCII renderers.
-// ============================================================================
 
 /** Default accent for charts when the theme doesn't provide one. */
 export const CHART_ACCENT_FALLBACK = '#3b82f6' // blue-500
 
-// ---------------------------------------------------------------------------
-// HSL ↔ Hex conversion
-// ---------------------------------------------------------------------------
 
 function hexToHsl(hex: string): [number, number, number] {
   const h = hex.replace('#', '')
@@ -59,9 +54,6 @@ function hslToHex(h: number, s: number, l: number): string {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`
 }
 
-// ---------------------------------------------------------------------------
-// Hex ↔ RGB conversion
-// ---------------------------------------------------------------------------
 
 function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace('#', '')
@@ -77,9 +69,6 @@ function rgbToHex(r: number, g: number, b: number): string {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 
 /** Check whether a string is a valid 6-digit hex color (e.g. "#3b82f6"). */
 export function isValidHex(color: string): boolean {

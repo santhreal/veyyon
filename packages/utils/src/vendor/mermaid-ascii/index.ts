@@ -1,4 +1,3 @@
-// ============================================================================
 // Mermaid → ASCII renderer (vendored)
 //
 // First-party copy of the ASCII rendering pipeline from `beautiful-mermaid`
@@ -9,6 +8,5 @@
 //
 // Public surface: renderMermaidASCII + AsciiRenderOptions (incl. the
 // `direction` override) and the theme/color-mode types.
-// ============================================================================
 
 export * from './ascii/index'

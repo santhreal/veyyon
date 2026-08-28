@@ -1,4 +1,3 @@
-// ============================================================================
 // Terminal display width — used by the ASCII renderer
 //
 // Terminals render most characters in 1 column, but East Asian wide
@@ -18,7 +17,6 @@
 // followed by WIDE_PAD in the continuation cell it covers. The ASCII
 // serializers drop WIDE_PAD cells when joining a row, so the emitted line
 // occupies exactly as many terminal columns as the canvas has cells.
-// ============================================================================
 
 /**
  * Placeholder occupying the second cell of a fullwidth glyph on the ASCII

@@ -1,6 +1,3 @@
-// ============================================================================
-// Shape registry — pluggable ASCII shape renderers
-// ============================================================================
 
 import type { AsciiNodeShape, Canvas, DrawingCoord, Direction } from '../types'
 import type { ShapeRenderer, ShapeDimensions, ShapeRenderOptions, ShapeRegistry } from './types'

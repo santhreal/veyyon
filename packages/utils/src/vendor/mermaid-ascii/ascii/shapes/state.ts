@@ -1,6 +1,3 @@
-// ============================================================================
-// State pseudo-state renderers — UML start and end states
-// ============================================================================
 
 import type { Canvas, DrawingCoord, Direction } from '../types'
 import { Up, Down, Left, Right, UpperLeft, UpperRight, LowerLeft, LowerRight } from '../types'

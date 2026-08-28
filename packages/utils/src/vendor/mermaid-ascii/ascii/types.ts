@@ -1,10 +1,8 @@
-// ============================================================================
 // ASCII renderer — type definitions
 //
 // Ported from AlexanderGrooff/mermaid-ascii (Go).
 // These types model the grid-based coordinate system, 2D text canvas,
 // and graph structures used by the ASCII/Unicode renderer.
-// ============================================================================
 
 import type { NodeShape } from '../types'
 
@@ -163,9 +161,6 @@ export interface AsciiGraph {
   bundles: EdgeBundle[]
 }
 
-// ============================================================================
-// Coordinate helpers
-// ============================================================================
 
 export function gridCoordEquals(a: GridCoord, b: GridCoord): boolean {
   return a.x === b.x && a.y === b.y
@@ -188,9 +183,6 @@ export function gridKey(c: GridCoord): string {
 /** Default empty style class. */
 export const EMPTY_STYLE: AsciiStyleClass = { name: '', styles: {} }
 
-// ============================================================================
-// Character role types for colored output
-// ============================================================================
 
 /**
  * Role of a character in the ASCII diagram, used for theming.
@@ -242,9 +234,6 @@ export type ColorMode =
   | 'truecolor' // 24-bit RGB (modern terminals)
   | 'html'      // HTML <span> tags with inline color styles (browsers)
 
-// ============================================================================
-// Edge bundling types
-// ============================================================================
 
 /**
  * Edge bundle — groups edges that share a common source or target.

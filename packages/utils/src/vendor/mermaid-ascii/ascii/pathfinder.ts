@@ -1,17 +1,12 @@
-// ============================================================================
 // ASCII renderer — A* pathfinding for edge routing
 //
 // Ported from AlexanderGrooff/mermaid-ascii cmd/arrow.go.
 // Uses A* search with a corner-penalizing heuristic to find clean
 // paths between nodes on the grid. Prefers straight lines over zigzags.
-// ============================================================================
 
 import type { GridCoord, AsciiNode } from './types'
 import { gridKey, gridCoordEquals } from './types'
 
-// ============================================================================
-// Priority queue (min-heap) for A* open set
-// ============================================================================
 
 interface PQItem {
   coord: GridCoord
@@ -79,9 +74,6 @@ class MinHeap {
   }
 }
 
-// ============================================================================
-// A* heuristic
-// ============================================================================
 
 /**
  * Manhattan distance with a +1 penalty when both dx and dy are non-zero.
@@ -96,9 +88,6 @@ export function heuristic(a: GridCoord, b: GridCoord): number {
   return absX + absY + 1
 }
 
-// ============================================================================
-// A* pathfinding
-// ============================================================================
 
 /** 4-directional movement (no diagonals in grid pathfinding). */
 const MOVE_DIRS: GridCoord[] = [

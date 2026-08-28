@@ -1,10 +1,8 @@
-// ============================================================================
 // ASCII renderer — direction system and edge path determination
 //
 // Ported from AlexanderGrooff/mermaid-ascii cmd/direction.go + cmd/mapping_edge.go.
 // Handles direction constants, edge attachment point selection,
 // and dual-path comparison for optimal edge routing.
-// ============================================================================
 
 import type { GridCoord, Direction, AsciiEdge, AsciiGraph } from './types'
 import {
@@ -15,9 +13,6 @@ import { getPath, mergePath } from './pathfinder'
 import { getEffectiveDirection, getNodeSubgraph } from './grid'
 import { displayWidth } from '../text-metrics'
 
-// ============================================================================
-// Direction utilities
-// ============================================================================
 
 export function getOpposite(d: Direction): Direction {
   if (d === Up) return Down
@@ -52,9 +47,6 @@ export function determineDirection(from: { x: number; y: number }, to: { x: numb
   }
 }
 
-// ============================================================================
-// Start/end direction selection for edges
-// ============================================================================
 
 /** Self-reference routing (node points to itself). */
 function selfReferenceDirection(graphDirection: string): [Direction, Direction, Direction, Direction] {
@@ -138,9 +130,6 @@ export function determineStartAndEndDir(
   return [preferredDir, preferredOppositeDir, alternativeDir, alternativeOppositeDir]
 }
 
-// ============================================================================
-// Edge path determination
-// ============================================================================
 
 /**
  * Determine the path for an edge by trying two candidate routes (preferred + alternative)

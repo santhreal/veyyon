@@ -1,7 +1,6 @@
 import type { SequenceDiagram, Actor, Message, Block, Note } from './types'
 import { normalizeBrTags } from '../multiline-utils'
 
-// ============================================================================
 // Sequence diagram parser
 //
 // Parses Mermaid sequenceDiagram syntax into a SequenceDiagram structure.
@@ -22,7 +21,6 @@ import { normalizeBrTags } from '../multiline-utils'
 //   Note left of A: Text
 //   Note right of A: Text
 //   Note over A,B: Text
-// ============================================================================
 
 /**
  * Parse a Mermaid sequence diagram.

@@ -1,11 +1,9 @@
-// ============================================================================
 // ASCII renderer — grid-based layout
 //
 // Ported from AlexanderGrooff/mermaid-ascii cmd/graph.go + cmd/mapping_node.go.
 // Places nodes on a logical grid, computes column/row sizes,
 // converts grid coordinates to character-level drawing coordinates,
 // and handles subgraph bounding boxes.
-// ============================================================================
 
 import type {
   GridCoord, DrawingCoord, Direction, AsciiGraph, AsciiNode, AsciiSubgraph,
@@ -18,9 +16,6 @@ import { drawBox } from './draw'
 import { maxLineWidth, lineCount } from './multiline-utils'
 import { getShapeDimensions } from './shapes/index'
 
-// ============================================================================
-// Grid coordinate → drawing coordinate conversion
-// ============================================================================
 
 /**
  * Convert a grid coordinate to a drawing (character) coordinate.
@@ -59,9 +54,6 @@ export function lineToDrawing(graph: AsciiGraph, line: GridCoord[]): DrawingCoor
   return line.map(c => gridToDrawingCoord(graph, c))
 }
 
-// ============================================================================
-// Node placement on the grid
-// ============================================================================
 
 /**
  * Reserve a 3x3 block in the grid for a node.
@@ -102,9 +94,6 @@ export function reserveSpotInGrid(
   return requested
 }
 
-// ============================================================================
-// Column width / row height computation
-// ============================================================================
 
 /**
  * Set column widths and row heights for a node's 3x3 grid block.
@@ -167,9 +156,6 @@ export function increaseGridSizeForPath(graph: AsciiGraph, path: GridCoord[]): v
   }
 }
 
-// ============================================================================
-// Subgraph helpers
-// ============================================================================
 
 function isNodeInAnySubgraph(graph: AsciiGraph, node: AsciiNode): boolean {
   return graph.subgraphs.some(sg => sg.nodes.includes(node))
@@ -259,9 +245,6 @@ function hasIncomingEdgeFromOutsideSubgraph(graph: AsciiGraph, node: AsciiNode):
   return true
 }
 
-// ============================================================================
-// Subgraph bounding boxes
-// ============================================================================
 
 function calculateSubgraphBoundingBox(graph: AsciiGraph, sg: AsciiSubgraph): void {
   if (sg.nodes.length === 0) return
@@ -376,9 +359,6 @@ export function offsetDrawingForSubgraphs(graph: AsciiGraph): void {
   }
 }
 
-// ============================================================================
-// Main layout orchestrator
-// ============================================================================
 
 /**
  * createMapping performs the full grid layout:
@@ -563,9 +543,6 @@ export function createMapping(graph: AsciiGraph): void {
   offsetDrawingForSubgraphs(graph)
 }
 
-// ============================================================================
-// Graph traversal helpers
-// ============================================================================
 
 /** Get all edges originating from a node. */
 function getEdgesFromNode(graph: AsciiGraph, node: AsciiNode): AsciiGraph['edges'] {

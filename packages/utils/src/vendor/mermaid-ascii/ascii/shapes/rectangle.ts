@@ -1,6 +1,3 @@
-// ============================================================================
-// Rectangle shape renderer — standard box with corners
-// ============================================================================
 //
 // This module provides the base box rendering used by all rectangular shapes.
 // The renderBox() function accepts custom corner characters, allowing different
@@ -15,9 +12,6 @@ import { dirEquals } from '../edge-routing'
 import { type CornerChars, getCorners } from './corners'
 import { displayWidth, toCells } from '../../text-metrics'
 
-// ============================================================================
-// Shared dimension calculation
-// ============================================================================
 
 /**
  * Calculate standard box dimensions for any rectangular shape.
@@ -53,9 +47,6 @@ export function getBoxDimensions(label: string, options: ShapeRenderOptions): Sh
   }
 }
 
-// ============================================================================
-// Shared box rendering
-// ============================================================================
 
 /**
  * Render a box with custom corner characters.
@@ -123,9 +114,6 @@ export function renderBox(
   return canvas
 }
 
-// ============================================================================
-// Shared attachment point calculation
-// ============================================================================
 
 /**
  * Calculate edge attachment point for rectangular shapes.
@@ -152,9 +140,6 @@ export function getBoxAttachmentPoint(
   return { x: centerX, y: centerY }
 }
 
-// ============================================================================
-// Rectangle renderer
-// ============================================================================
 
 /**
  * Rectangle shape renderer — the default box shape.

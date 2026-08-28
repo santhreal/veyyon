@@ -1,18 +1,13 @@
-// ============================================================================
 // ASCII renderer — color utilities
 //
 // Provides color output for themed ASCII diagrams.
 // Supports ANSI terminal modes (16/256/truecolor) and HTML <span> tags
 // for browser rendering.
-// ============================================================================
 
 import type { CharRole, AsciiTheme, ColorMode } from './types'
 
 declare const document: unknown
 
-// ============================================================================
-// Default theme — matches SVG theme colors for consistency
-// ============================================================================
 
 /**
  * Default ASCII theme derived from the SVG renderer's color palette.
@@ -27,9 +22,6 @@ export const DEFAULT_ASCII_THEME: AsciiTheme = {
   junction: '#a1a1aa', // same as border
 }
 
-// ============================================================================
-// Color mode detection
-// ============================================================================
 
 /**
  * Detect the best color mode for the current environment.
@@ -82,9 +74,6 @@ export function detectColorMode(): ColorMode {
   return 'none'
 }
 
-// ============================================================================
-// Hex color parsing
-// ============================================================================
 
 /**
  * Parse a hex color string to RGB values.
@@ -106,9 +95,6 @@ function parseHex(hex: string): { r: number; g: number; b: number } {
   }
 }
 
-// ============================================================================
-// ANSI escape code generation
-// ============================================================================
 
 /** ANSI escape sequence prefix */
 const ESC = '\x1b['
@@ -198,9 +184,6 @@ function ansi16Fg(hex: string): string {
   return `${ESC}${code + bright}m`
 }
 
-// ============================================================================
-// HTML color output (for browser rendering)
-// ============================================================================
 
 /** Escape characters that would break HTML output. */
 function escapeHtml(text: string): string {
@@ -212,9 +195,6 @@ function htmlSpan(hex: string, text: string): string {
   return `<span style="color:${hex}">${escapeHtml(text)}</span>`
 }
 
-// ============================================================================
-// Role → color mapping
-// ============================================================================
 
 /**
  * Get the color for a character role from the theme.

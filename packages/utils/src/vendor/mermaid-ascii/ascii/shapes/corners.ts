@@ -1,6 +1,3 @@
-// ============================================================================
-// Corner character lookup table for shape rendering
-// ============================================================================
 //
 // All shapes are rendered as rectangles with distinctive corner characters
 // to indicate shape type. This eliminates diagonal characters while keeping

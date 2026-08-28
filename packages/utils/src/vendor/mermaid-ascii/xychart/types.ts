@@ -1,10 +1,8 @@
-// ============================================================================
 // XY Chart types
 //
 // Models the parsed and positioned representations of a Mermaid xychart-beta
 // diagram. Supports bar charts, line charts, and combinations with categorical
 // or numeric x-axes.
-// ============================================================================
 
 /** Parsed XY chart — logical structure from mermaid text */
 export interface XYChart {
@@ -38,9 +36,6 @@ export interface XYChartSeries {
   data: number[]
 }
 
-// ============================================================================
-// Positioned XY chart — ready for SVG rendering
-// ============================================================================
 
 export interface PositionedXYChart {
   width: number

@@ -1,6 +1,3 @@
-// ============================================================================
-// Parsed graph — logical structure extracted from Mermaid text
-// ============================================================================
 
 export interface MermaidGraph {
   direction: Direction
@@ -65,9 +62,6 @@ export interface MermaidSubgraph {
   direction?: Direction
 }
 
-// ============================================================================
-// Positioned graph — after ELK layout, ready for SVG rendering
-// ============================================================================
 
 export interface PositionedGraph {
   width: number
@@ -119,14 +113,12 @@ export interface PositionedGroup {
   children: PositionedGroup[]
 }
 
-// ============================================================================
 // Render options — user-facing configuration
 //
 // Color theming uses CSS custom properties: --bg and --fg are required,
 // optional enrichment variables (--line, --accent, --muted, --surface,
 // --border) add richer color from Shiki themes or custom palettes.
 // See src/theme.ts for the full variable system.
-// ============================================================================
 
 export interface RenderOptions {
   /** Background color → CSS variable --bg. Default: '#FFFFFF' */

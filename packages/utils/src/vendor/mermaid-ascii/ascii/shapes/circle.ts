@@ -1,6 +1,3 @@
-// ============================================================================
-// Circle shape renderer — uses corner decorators instead of curves
-// ============================================================================
 
 import type { ShapeRenderer } from './types'
 import { getBoxDimensions, renderBox, getBoxAttachmentPoint } from './rectangle'

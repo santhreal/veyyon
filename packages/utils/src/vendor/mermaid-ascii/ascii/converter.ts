@@ -1,10 +1,8 @@
-// ============================================================================
 // ASCII renderer — MermaidGraph → AsciiGraph converter
 //
 // Bridges the existing TypeScript parser output to the ASCII renderer's
 // internal graph structure. This avoids maintaining a separate parser
 // for ASCII rendering — we reuse parseMermaid() and convert its output.
-// ============================================================================
 
 import type { MermaidGraph, MermaidSubgraph } from '../types'
 import type {

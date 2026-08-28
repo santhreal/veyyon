@@ -1,7 +1,6 @@
 import type { ErDiagram, ErEntity, ErAttribute, ErRelationship, Cardinality } from './types'
 import { normalizeBrTags } from '../multiline-utils'
 
-// ============================================================================
 // ER diagram parser
 //
 // Parses Mermaid erDiagram syntax into an ErDiagram structure.
@@ -23,7 +22,6 @@ import { normalizeBrTags } from '../multiline-utils'
 // Line style:
 //   --  identifying (solid line)
 //   ..  non-identifying (dashed line)
-// ============================================================================
 
 /**
  * Parse a Mermaid ER diagram.

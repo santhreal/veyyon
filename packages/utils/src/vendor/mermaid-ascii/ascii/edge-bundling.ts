@@ -1,4 +1,3 @@
-// ============================================================================
 // ASCII renderer — edge bundling for parallel links
 //
 // Analyzes edges to find parallel links (A & B --> C or A --> B & C) and
@@ -9,7 +8,6 @@
 //   - analyzeEdgeBundles(): Finds and creates bundles from graph edges
 //   - calculateJunctionPoint(): Computes optimal merge/split locations
 //   - routeBundledEdges(): Routes edges through junction points
-// ============================================================================
 
 import type {
   AsciiGraph, AsciiNode, AsciiEdge, EdgeBundle, GridCoord, Direction,
@@ -18,9 +16,6 @@ import { Up, Down, Left, Right, Middle, gridKey, gridCoordEquals } from './types
 import { getPath, mergePath } from './pathfinder'
 import { getNodeSubgraph } from './grid'
 
-// ============================================================================
-// Bundle analysis
-// ============================================================================
 
 /**
  * Analyze graph edges and create bundles for parallel links.
@@ -158,9 +153,6 @@ function canBundle(edges: AsciiEdge[], graph: AsciiGraph): boolean {
   return true
 }
 
-// ============================================================================
-// Junction point calculation
-// ============================================================================
 
 /**
  * Calculate the optimal junction point for a bundle.
@@ -230,9 +222,6 @@ export function calculateJunctionPoint(
   }
 }
 
-// ============================================================================
-// Bundled edge routing
-// ============================================================================
 
 /**
  * Route all edges in a bundle through the junction point.

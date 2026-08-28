@@ -1,9 +1,7 @@
-// ============================================================================
 // Class diagram types
 //
 // Models the parsed and positioned representations of a Mermaid class diagram.
 // Class diagrams show UML class relationships, inheritance, composition, etc.
-// ============================================================================
 
 /** Parsed class diagram — logical structure from mermaid text */
 export interface ClassDiagram {
@@ -76,9 +74,6 @@ export interface ClassNamespace {
   classIds: string[]
 }
 
-// ============================================================================
-// Positioned class diagram — ready for SVG rendering
-// ============================================================================
 
 export interface PositionedClassDiagram {
   width: number

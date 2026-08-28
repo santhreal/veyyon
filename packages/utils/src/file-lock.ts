@@ -22,7 +22,6 @@ const DEFAULT_OPTIONS: Required<FileLockOptions> = {
 	retryDelayMs: 100,
 };
 
-/** Maximum time an interrupted legacy creator gets to publish its owner record. */
 const OWNER_INFO_GRACE_MS = 1_000;
 const MAX_OWNER_INFO_BYTES = 4_096;
 const RESTORE_ATTEMPTS = 200;
@@ -167,11 +166,6 @@ function assertParentIdentitySync(filePath: string, expected: FileIdentity): voi
 }
 
 function parseOwnerBytes(bytes: Buffer): LockInfo | null {
-	// Two failure modes, kept apart. The decoder is `fatal`, so a lock file holding
-	// bytes that are not UTF-8 THROWS and only the decode needs guarding; the JSON
-	// half goes through `tryParseJson`, which is this package's one owner of
-	// "parse it or give me null". Writing that try/catch out again here is how a
-	// second, slightly different answer to the same question gets into the tree.
 	let text: string;
 	try {
 		text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -180,6 +174,15 @@ function parseOwnerBytes(bytes: Buffer): LockInfo | null {
 	}
 	const parsed = tryParseJson(text);
 	return isLockInfo(parsed) ? parsed : null;
+}
+
+function isInvalidOpenedStat(stat: fsSync.Stats, expectedSize: number, expectedIdentity: FileIdentity): boolean {
+	return (
+		!stat.isFile() ||
+		stat.nlink !== 1 ||
+		stat.size !== expectedSize ||
+		!sameIdentity(identityOf(stat), expectedIdentity)
+	);
 }
 
 async function inspectLockDirectory(lockPath: string): Promise<LockObservation | null> {
@@ -239,12 +242,7 @@ async function inspectLockDirectory(lockPath: string): Promise<LockObservation |
 	try {
 		handle = await fs.open(infoPath, fsSync.constants.O_RDONLY | (fsSync.constants.O_NOFOLLOW ?? 0));
 		const openedStat = await handle.stat();
-		if (
-			!openedStat.isFile() ||
-			openedStat.nlink !== 1 ||
-			openedStat.size !== infoStat.size ||
-			!sameIdentity(identityOf(openedStat), infoIdentity)
-		) {
+		if (isInvalidOpenedStat(openedStat, infoStat.size, infoIdentity)) {
 			return {
 				kind: "unsafe",
 				directoryIdentity,
@@ -256,11 +254,7 @@ async function inspectLockDirectory(lockPath: string): Promise<LockObservation |
 		const bytes = Buffer.allocUnsafe(infoStat.size + 1);
 		const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
 		const finalStat = await handle.stat();
-		if (
-			bytesRead !== infoStat.size ||
-			finalStat.size !== infoStat.size ||
-			!sameIdentity(identityOf(finalStat), infoIdentity)
-		) {
+		if (bytesRead !== infoStat.size || isInvalidOpenedStat(finalStat, infoStat.size, infoIdentity)) {
 			return {
 				kind: "unsafe",
 				directoryIdentity,
@@ -356,12 +350,7 @@ function inspectLockDirectorySync(lockPath: string): LockObservation | null {
 	try {
 		fd = fsSync.openSync(infoPath, fsSync.constants.O_RDONLY | (fsSync.constants.O_NOFOLLOW ?? 0));
 		const openedStat = fsSync.fstatSync(fd);
-		if (
-			!openedStat.isFile() ||
-			openedStat.nlink !== 1 ||
-			openedStat.size !== infoStat.size ||
-			!sameIdentity(identityOf(openedStat), infoIdentity)
-		) {
+		if (isInvalidOpenedStat(openedStat, infoStat.size, infoIdentity)) {
 			return {
 				kind: "unsafe",
 				directoryIdentity,
@@ -373,11 +362,7 @@ function inspectLockDirectorySync(lockPath: string): LockObservation | null {
 		const bytes = Buffer.allocUnsafe(infoStat.size + 1);
 		const bytesRead = fsSync.readSync(fd, bytes, 0, bytes.length, 0);
 		const finalStat = fsSync.fstatSync(fd);
-		if (
-			bytesRead !== infoStat.size ||
-			finalStat.size !== infoStat.size ||
-			!sameIdentity(identityOf(finalStat), infoIdentity)
-		) {
+		if (bytesRead !== infoStat.size || isInvalidOpenedStat(finalStat, infoStat.size, infoIdentity)) {
 			return {
 				kind: "unsafe",
 				directoryIdentity,
@@ -415,9 +400,7 @@ function inspectLockDirectorySync(lockPath: string): LockObservation | null {
 		if (fd !== undefined) {
 			try {
 				fsSync.closeSync(fd);
-			} catch {
-				// The observation is already complete; close errors do not authorize mutation.
-			}
+			} catch {}
 		}
 	}
 }
@@ -429,9 +412,6 @@ function observationIsStale(
 	isOwnerAlive: ProcessInstanceVerifier = isProcessInstanceAlive,
 ): boolean {
 	if (observation.kind === "valid" && observation.info) {
-		// Wall age never proves abandonment. A long-running live critical
-		// section remains exclusive until its exact process incarnation is
-		// proven dead or reused.
 		return !isOwnerAlive(observation.info.pid, observation.info.processIdentity);
 	}
 	if (observation.kind === "ownerless" || observation.kind === "invalid") {
@@ -537,8 +517,7 @@ async function restoreTransition(lockPath: string, expected: LockObservation): P
 	const parentIdentity = await inspectParent(lockPath);
 	for (let attempt = 0; attempt < RESTORE_ATTEMPTS; attempt++) {
 		const transition = await inspectLockDirectory(transitionPath);
-		if (transition === null) return false;
-		if (!sameObservationIdentity(transition, expected)) return false;
+		if (transition === null || !sameObservationIdentity(transition, expected)) return false;
 		try {
 			await assertParentIdentity(lockPath, parentIdentity);
 			await fs.rename(transitionPath, lockPath);
@@ -560,8 +539,7 @@ function restoreTransitionSync(lockPath: string, expected: LockObservation): boo
 	const parentIdentity = inspectParentSync(lockPath);
 	for (let attempt = 0; attempt < RESTORE_ATTEMPTS; attempt++) {
 		const transition = inspectLockDirectorySync(transitionPath);
-		if (transition === null) return false;
-		if (!sameObservationIdentity(transition, expected)) return false;
+		if (transition === null || !sameObservationIdentity(transition, expected)) return false;
 		try {
 			assertParentIdentitySync(lockPath, parentIdentity);
 			fsSync.renameSync(transitionPath, lockPath);
@@ -656,18 +634,11 @@ async function settleTransition(lockPath: string, staleMs: number): Promise<void
 	const transitionPath = getTransitionPath(lockPath);
 	const transition = await inspectLockDirectory(transitionPath);
 	if (transition === null || transition.kind === "unsafe") return;
-	// A transition is the brief atomic claim used by a release or stale reaper.
-	// Rename updates ctime, so contenders leave an active operation alone. If
-	// its process crashes, the same bounded grace turns it into recoverable
-	// state without ever chasing the live pathname.
 	if (Date.now() - transition.directoryCtimeMs <= OWNER_INFO_GRACE_MS) return;
 	const livePath = await inspectLockDirectory(lockPath);
 	if (livePath !== null) return;
 	if (observationIsStale(transition, staleMs, Date.now())) {
-		await removeObservedDirectory(transitionPath, transition).catch(() => {
-			// Another lifecycle participant won, or the inode changed. Either
-			// way, refusing the stale observation is the safe result.
-		});
+		await removeObservedDirectory(transitionPath, transition).catch(() => {});
 		return;
 	}
 	await restoreTransition(lockPath, transition);
@@ -683,9 +654,7 @@ function settleTransitionSync(lockPath: string, staleMs: number): void {
 	if (observationIsStale(transition, staleMs, Date.now())) {
 		try {
 			removeObservedDirectorySync(transitionPath, transition);
-		} catch {
-			// The transition was completed or replaced; never chase its pathname.
-		}
+		} catch {}
 		return;
 	}
 	restoreTransitionSync(lockPath, transition);
@@ -772,9 +741,7 @@ function prepareCandidateSync(lockPath: string): {
 		try {
 			const observation = inspectLockDirectorySync(candidatePath);
 			if (observation && observation.kind !== "unsafe") removeObservedDirectorySync(candidatePath, observation);
-		} catch {
-			// Preserve the acquisition error; the unique candidate is never the live lock.
-		}
+		} catch {}
 		throw error;
 	}
 }
@@ -870,9 +837,7 @@ function tryAcquireLockSync(lockPath: string): LockLease | null {
 				if (leftover && sameObservationIdentity(leftover, candidate.observation)) {
 					removeObservedDirectorySync(candidate.path, leftover);
 				}
-			} catch {
-				// A unique failed candidate is never removed without its pinned identity.
-			}
+			} catch {}
 		}
 	}
 }
@@ -968,25 +933,6 @@ function releaseLockSync(lockPath: string, expected: LockLease | string): void {
 	}
 }
 
-/**
- * Retire a lock whose owner is PROVEN gone and take it in the same breath, or
- * `null` when the pathname is not recoverable right now.
- *
- * Retiring and then sleeping through the retry delay before trying again made
- * recovery from a SIGKILLed process cost a whole extra retry interval for
- * nothing: once the reap reports "removed" the pathname is free, and no other
- * participant is closer to it than the process that just proved the owner dead.
- * The reap is still authorized by inode identity and by liveness, so this only
- * shortens the wait, it never widens who may remove a lock.
- *
- * Note what is NOT the fix here: `staleMs`. Abandonment is decided by
- * {@link observationIsStale}, which proves it from the owner's process identity
- * (immediately) or, for a torn directory with no publishable owner record, from
- * {@link OWNER_INFO_GRACE_MS}. Neither consults `staleMs`, so no value a call site
- * could pass for it would make an abandoned lock recoverable; the reachability had
- * to be fixed in the acquire loop. The grace that IS consulted is 1s against a
- * default retry window of 50 x 100ms, so it stays reachable inside one acquire.
- */
 async function reapStaleAndAcquire(lockPath: string, opts: Required<FileLockOptions>): Promise<LockLease | null> {
 	const observation = await inspectLockDirectory(lockPath);
 	if (!observation || !observationIsStale(observation, opts.staleMs, Date.now())) return null;
@@ -995,7 +941,6 @@ async function reapStaleAndAcquire(lockPath: string, opts: Required<FileLockOpti
 	return await tryAcquireLock(lockPath);
 }
 
-/** Synchronous twin of {@link reapStaleAndAcquire}. */
 function reapStaleAndAcquireSync(lockPath: string, opts: Required<FileLockOptions>): LockLease | null {
 	const observation = inspectLockDirectorySync(lockPath);
 	if (!observation || !observationIsStale(observation, opts.staleMs, Date.now())) return null;
@@ -1028,14 +973,7 @@ function acquireLockSync(filePath: string, options: FileLockOptions = {}): () =>
 	throw new Error(`Failed to acquire lock for ${escapeTerminalText(filePath)} after ${opts.retries} attempts`);
 }
 
-/**
- * Run `fn` while holding a cross-process advisory lock on the pathname.
- *
- * This API deliberately has generic pathname-only alias semantics: two callers
- * contend when they pass the same spelling, not merely when their resource
- * paths happen to resolve to the same inode. Security-sensitive callers must
- * separately canonicalize and pin the identity of the resource being guarded.
- */
+/** Run fn while holding a cross-process advisory lock on the pathname. */
 export async function withFileLock<T>(
 	filePath: string,
 	fn: () => Promise<T>,
@@ -1051,12 +989,7 @@ export async function withFileLock<T>(
 
 export type TryFileLockResult<T> = { acquired: true; value: T } | { acquired: false };
 
-/**
- * Run `fn` under the pathname lock if it is immediately available.
- *
- * Like {@link withFileLock}, aliases are not canonicalized. A caller protecting
- * a security-sensitive file must pin/canonicalize that file independently.
- */
+/** Run fn under the pathname lock if immediately available. */
 export async function tryWithFileLock<T>(
 	filePath: string,
 	fn: () => Promise<T>,
@@ -1082,10 +1015,7 @@ export async function tryWithFileLock<T>(
 	return { acquired: false };
 }
 
-/**
- * Synchronous twin of {@link withFileLock}; it uses the identical staged
- * publication and inode-authorized transition protocol.
- */
+/** Synchronous twin of withFileLock. */
 export function withFileLockSync<T>(filePath: string, fn: () => T, options: FileLockOptions = {}): T {
 	const release = acquireLockSync(filePath, options);
 	try {
@@ -1095,7 +1025,7 @@ export function withFileLockSync<T>(filePath: string, fn: () => T, options: File
 	}
 }
 
-/** Test-only handles for lifecycle and bounded-read contract tests. */
+/** Test-only internals. */
 export const __internalsForTesting = {
 	tryAcquireLock,
 	releaseLock,

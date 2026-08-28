@@ -1,4 +1,3 @@
-// ============================================================================
 // beautiful-mermaid — ASCII renderer public API
 //
 // Renders Mermaid diagrams to ASCII or Unicode box-drawing art.
@@ -14,7 +13,6 @@
 // Usage:
 //   import { renderMermaidASCII } from 'beautiful-mermaid'
 //   const ascii = renderMermaidASCII('graph LR\n  A --> B')
-// ============================================================================
 
 import { parseMermaid } from '../parser'
 import { convertToAsciiGraph } from './converter'

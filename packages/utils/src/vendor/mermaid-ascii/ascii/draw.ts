@@ -1,10 +1,8 @@
-// ============================================================================
 // ASCII renderer — drawing operations
 //
 // Ported from AlexanderGrooff/mermaid-ascii cmd/draw.go + cmd/arrow.go.
 // Contains all visual rendering: boxes, lines, arrows, corners,
 // subgraphs, labels, and the top-level draw orchestrator.
-// ============================================================================
 
 import type {
   Canvas, DrawingCoord, GridCoord, Direction,
@@ -23,20 +21,8 @@ import { getCorners } from './shapes/corners'
 import { getShapeAttachmentPoint } from './shapes/index'
 import { displayWidth, toCells, WIDE_PAD } from '../text-metrics'
 
-// ============================================================================
-// Node drawing — renders a node using shape-aware rendering
-// ============================================================================
 
-/**
- * Draw a node using its shape type.
- * Returns a standalone canvas containing the rendered shape.
- *
- * For basic shapes (rectangle, rounded), uses grid-determined dimensions
- * to ensure consistent sizing across nodes in the same column.
- * For special shapes (diamond, circle, state pseudo-states, etc.),
- * uses shape-specific dimension calculation but centers the content
- * within the grid cell dimensions to ensure proper vertical alignment.
- */
+/** Draw a node using its shape type. Returns a standalone canvas containing the rendered shape. */
 export function drawNode(node: AsciiNode, graph: AsciiGraph): Canvas {
   // All shapes use grid-determined dimensions to fill their allocated space.
   // This ensures consistent sizing across nodes and eliminates gaps between
@@ -45,15 +31,7 @@ export function drawNode(node: AsciiNode, graph: AsciiGraph): Canvas {
   return drawBoxWithGridDimensions(node, graph)
 }
 
-/**
- * Draw a box shape using grid-determined dimensions.
- * This ensures consistent sizing when multiple nodes share a column,
- * and eliminates gaps between nodes and subgraph borders by filling
- * the entire allocated grid space.
- *
- * All shapes are rendered as rectangles with distinctive corner characters
- * (defined in corners.ts) to indicate shape type.
- */
+/** Draw a box shape using grid-determined dimensions. This ensures consistent sizing when multiple nodes share a column, and eliminates gaps between nodes and subgraph borders by filling the entire allocated grid space. */
 function drawBoxWithGridDimensions(node: AsciiNode, graph: AsciiGraph): Canvas {
   const gc = node.gridCoord!
   const useAscii = graph.config.useAscii
@@ -117,29 +95,13 @@ function drawBoxWithGridDimensions(node: AsciiNode, graph: AsciiGraph): Canvas {
   return box
 }
 
-/**
- * Draw a node box with centered label text.
- * Returns a standalone canvas containing just the box.
- * Box size is determined by the grid column/row sizes for the node's position.
- */
+/** Draw a node box with centered label text. Returns a standalone canvas containing just the box. Box size is determined by the grid column/row sizes for the node's position. */
 export function drawBox(node: AsciiNode, graph: AsciiGraph): Canvas {
   return drawNode(node, graph)
 }
 
-// ============================================================================
-// Multi-section box drawing — for class and ER diagram nodes
-// ============================================================================
 
-/**
- * Draw a multi-section box with horizontal dividers between sections.
- * Used by class diagrams (header | attributes | methods) and ER diagrams (header | attributes).
- * Each section is an array of text lines to render left-aligned with padding.
- *
- * @param sections - Array of sections, each section is an array of text lines
- * @param useAscii - true for ASCII chars, false for Unicode box-drawing
- * @param padding - horizontal padding inside the box (default 1)
- * @returns A standalone Canvas containing the multi-section box
- */
+/** Draw a multi-section box with horizontal dividers between sections. Used by class diagrams (header | attributes | methods) and ER diagrams (header | attributes). Each section is an array of text lines to render left-aligned with padding. */
 export function drawMultiBox(
   sections: string[][],
   useAscii: boolean,
@@ -219,23 +181,9 @@ export function drawMultiBox(
   return canvas
 }
 
-// ============================================================================
-// Line drawing — 8-directional lines on the canvas
-// ============================================================================
 
-/**
- * Line character sets for different edge styles.
- * Each style has horizontal, vertical, and diagonal characters for both
- * Unicode (box-drawing) and ASCII (basic punctuation) modes.
- *
- * Unicode dotted: ┄ (horizontal), ┆ (vertical) — U+2504, U+2506
- * Unicode thick:  ━ (horizontal), ┃ (vertical) — U+2501, U+2503
- */
-/**
- * Line character sets for different edge styles.
- * Only horizontal and vertical characters - no diagonals.
- * All edges use orthogonal Manhattan routing (90° bends only).
- */
+/** Line character sets for different edge styles. Each style has horizontal, vertical, and diagonal characters for both Unicode (box-drawing) and ASCII (basic punctuation) modes. */
+/** Line character sets for different edge styles. Only horizontal and vertical characters - no diagonals. All edges use orthogonal Manhattan routing (90° bends only). */
 const LINE_CHARS = {
   solid: {
     h: { unicode: '─', ascii: '-' },
@@ -251,15 +199,7 @@ const LINE_CHARS = {
   },
 } as const
 
-/**
- * Draw a line between two drawing coordinates using orthogonal Manhattan routing.
- * Returns the list of coordinates that were drawn on.
- * offsetFrom/offsetTo control how many cells to skip at the start/end.
- *
- * All lines use 90° bends only - no diagonal lines are produced.
- * For diagonal directions, uses horizontal-first routing (draws horizontal
- * segment, then vertical segment).
- */
+/** Draw a line between two drawing coordinates using orthogonal Manhattan routing. Returns the list of coordinates that were drawn on. offsetFrom/offsetTo control how many cells to skip at the start/end. */
 export function drawLine(
   canvas: Canvas,
   from: DrawingCoord,
@@ -369,17 +309,8 @@ export function drawLine(
   return drawnCoords
 }
 
-// ============================================================================
-// Arrow drawing — path, corners, arrowheads, box-start junctions, labels
-// ============================================================================
 
-/**
- * Draw a complete arrow (edge) between two nodes.
- * Returns 6 separate canvases for layered compositing:
- * [path, boxStart, arrowHeadEnd, arrowHeadStart, corners, label]
- *
- * Supports bidirectional arrows via edge.hasArrowStart and edge.hasArrowEnd.
- */
+/** Draw a complete arrow (edge) between two nodes. Returns 6 separate canvases for layered compositing: [path, boxStart, arrowHeadEnd, arrowHeadStart, corners, label] */
 export function drawArrow(
   graph: AsciiGraph,
   edge: AsciiEdge,
@@ -448,10 +379,7 @@ function reverseDirection(dir: Direction): Direction {
   return Middle
 }
 
-/**
- * Draw the path lines for an edge.
- * Returns the canvas, the coordinates drawn for each segment, and the direction of each segment.
- */
+/** Draw the path lines for an edge. Returns the canvas, the coordinates drawn for each segment, and the direction of each segment. */
 function drawPath(
   graph: AsciiGraph,
   path: GridCoord[],
@@ -483,11 +411,7 @@ function drawPath(
   return [canvas, linesDrawn, lineDirs]
 }
 
-/**
- * Draw the junction character where an edge exits the source node's box.
- * Only applies to Unicode mode (ASCII mode just uses the line characters).
- * Skips drawing for state pseudo-states which have their own visual borders.
- */
+/** Draw the junction character where an edge exits the source node's box. Only applies to Unicode mode (ASCII mode just uses the line characters). Skips drawing for state pseudo-states which have their own visual borders. */
 function drawBoxStart(
   graph: AsciiGraph,
   path: GridCoord[],
@@ -513,10 +437,7 @@ function drawBoxStart(
   return canvas
 }
 
-/**
- * Draw the arrowhead at the end of an edge path.
- * Uses triangular Unicode symbols (▲▼◄►) or ASCII symbols (^v<>).
- */
+/** Draw the arrowhead at the end of an edge path. Uses triangular Unicode symbols (▲▼◄►) or ASCII symbols (^v<>). */
 function drawArrowHead(
   graph: AsciiGraph,
   lastLine: DrawingCoord[],
@@ -571,10 +492,7 @@ function drawArrowHead(
   return canvas
 }
 
-/**
- * Draw corner characters at path bends (where the direction changes).
- * Uses ┌┐└┘ in Unicode mode, + in ASCII mode.
- */
+/** Draw corner characters at path bends (where the direction changes). Uses ┌┐└┘ in Unicode mode, + in ASCII mode. */
 function drawCorners(graph: AsciiGraph, path: GridCoord[]): Canvas {
   const canvas = copyCanvas(graph.canvas)
 
@@ -637,16 +555,7 @@ function drawArrowLabel(graph: AsciiGraph, edge: AsciiEdge): Canvas {
   return canvas
 }
 
-/**
- * Draw text centered on a line segment defined by two drawing coordinates.
- * Supports multi-line labels.
- *
- * When isUpwardEdge is provided, offsets the label vertically to prevent
- * overlapping with labels from edges going the opposite direction:
- * - Upward edges: label placed in lower portion of segment
- * - Downward edges (isUpwardEdge=false): label placed in upper portion
- * - No direction (isUpwardEdge=undefined): label centered (default)
- */
+/** Draw text centered on a line segment defined by two drawing coordinates. Supports multi-line labels. */
 function drawTextOnLine(canvas: Canvas, line: DrawingCoord[], label: string, isUpwardEdge?: boolean): void {
   if (line.length < 2) return
   const minX = Math.min(line[0]!.x, line[1]!.x)
@@ -681,16 +590,8 @@ function drawTextOnLine(canvas: Canvas, line: DrawingCoord[], label: string, isU
   }
 }
 
-// ============================================================================
-// Node attachment point helper
-// ============================================================================
 
-/**
- * Get the drawing coordinate where an edge attaches to a node's border.
- * Uses grid-allocated dimensions so attachment points align with the actual
- * drawn box (which may be wider/taller than the intrinsic shape dimensions
- * when sharing a column/row with a larger node).
- */
+/** Get the drawing coordinate where an edge attaches to a node's border. Uses grid-allocated dimensions so attachment points align with the actual drawn box (which may be wider/taller than the intrinsic shape dimensions when sharing a column/row with a larger node). */
 function getNodeAttachmentPoint(
   graph: AsciiGraph,
   node: AsciiNode,
@@ -721,16 +622,8 @@ function getNodeAttachmentPoint(
   return getShapeAttachmentPoint(node.shape, dir, gridDimensions, baseCoord)
 }
 
-// ============================================================================
-// Bundled edge drawing — for parallel links (A & B --> C)
-// ============================================================================
 
-/**
- * Draw a single edge's segment in a bundle (source → junction for fan-in,
- * junction → target for fan-out).
- *
- * Returns the same tuple format as drawArrow for consistency.
- */
+/** Draw a single edge's segment in a bundle (source → junction for fan-in, junction → target for fan-out). */
 function drawBundledEdgeSegment(
   graph: AsciiGraph,
   edge: AsciiEdge,
@@ -828,10 +721,7 @@ function drawBundledEdgeSegment(
   return [pathCanvas, boxStartCanvas, empty, empty, cornersCanvas, labelCanvas]
 }
 
-/**
- * Draw the shared path segment of a bundle (junction → target for fan-in,
- * source → junction for fan-out).
- */
+/** Draw the shared path segment of a bundle (junction → target for fan-in, source → junction for fan-out). */
 function drawBundleSharedPath(graph: AsciiGraph, bundle: EdgeBundle): [Canvas, Canvas] {
   const pathCanvas = copyCanvas(graph.canvas)
   const cornersCanvas = copyCanvas(graph.canvas)
@@ -991,16 +881,7 @@ function drawBundledEdgeArrowhead(graph: AsciiGraph, edge: AsciiEdge): Canvas {
   return canvas
 }
 
-/**
- * Draw the junction character where bundled edges merge/split.
- *
- * Analyzes actual connecting directions to choose the correct character:
- * - ┼ (cross): lines from all 4 directions
- * - ┬ (T down): lines from left, right, and down
- * - ┴ (T up): lines from left, right, and up
- * - ├ (T right): lines from up, down, and right
- * - ┤ (T left): lines from up, down, and left
- */
+/** Draw the junction character where bundled edges merge/split. */
 function drawJunctionCharacter(graph: AsciiGraph, bundle: EdgeBundle): Canvas {
   const canvas = copyCanvas(graph.canvas)
 
@@ -1093,9 +974,6 @@ function drawJunctionCharacter(graph: AsciiGraph, bundle: EdgeBundle): Canvas {
   return canvas
 }
 
-// ============================================================================
-// Subgraph drawing
-// ============================================================================
 
 /** Draw a subgraph border rectangle. */
 export function drawSubgraphBox(sg: AsciiSubgraph, graph: AsciiGraph): Canvas {
@@ -1164,9 +1042,6 @@ export function drawSubgraphLabel(sg: AsciiSubgraph, graph: AsciiGraph): [Canvas
   return [canvas, { x: sg.minX, y: sg.minY }]
 }
 
-// ============================================================================
-// Top-level draw orchestrator
-// ============================================================================
 
 /** Sort subgraphs by nesting depth (shallowest first) for correct layered rendering. */
 function sortSubgraphsByDepth(subgraphs: AsciiSubgraph[]): AsciiSubgraph[] {
@@ -1178,14 +1053,8 @@ function sortSubgraphsByDepth(subgraphs: AsciiSubgraph[]): AsciiSubgraph[] {
   return sorted
 }
 
-// ============================================================================
-// Role tracking helpers for colored output
-// ============================================================================
 
-/**
- * Fill roles for all non-space characters in a canvas region.
- * Used after drawing a layer to record what role those characters have.
- */
+/** Fill roles for all non-space characters in a canvas region. Used after drawing a layer to record what role those characters have. */
 function fillRolesFromCanvas(
   roleCanvas: RoleCanvas,
   canvas: Canvas,
@@ -1221,10 +1090,7 @@ function fillRolesFromCanvases(
   }
 }
 
-/**
- * Special handling for node boxes: border chars get 'border' role, text gets 'text' role.
- * Detects text by checking if character is alphanumeric or common punctuation.
- */
+/** Special handling for node boxes: border chars get 'border' role, text gets 'text' role. Detects text by checking if character is alphanumeric or common punctuation. */
 function fillRolesForNodeBox(
   roleCanvas: RoleCanvas,
   canvas: Canvas,
@@ -1247,20 +1113,7 @@ function fillRolesForNodeBox(
   }
 }
 
-/**
- * Main draw function — renders the entire graph onto the canvas.
- * Drawing order matters for correct layering:
- * 1. Subgraph borders (bottom layer)
- * 2. Node boxes
- * 3. Edge paths (lines)
- * 4. Edge corners
- * 5. Arrowheads
- * 6. Box-start junctions
- * 7. Edge labels
- * 8. Subgraph labels (top layer)
- *
- * Also fills the roleCanvas with character roles for colored output.
- */
+/** Main draw function — renders the entire graph onto the canvas. Drawing order matters for correct layering: 1. Subgraph borders (bottom layer) 2. Node boxes 3. Edge paths (lines) 4. Edge corners 5. Arrowheads 6. Box-start junctions 7. Edge labels 8. Subgraph labels (top layer) */
 export function drawGraph(graph: AsciiGraph): Canvas {
   const useAscii = graph.config.useAscii
   const zero: DrawingCoord = { x: 0, y: 0 }

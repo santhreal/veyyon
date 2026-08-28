@@ -1,4 +1,3 @@
-// ============================================================================
 // ASCII renderer — XY Chart
 //
 // Renders xychart-beta diagrams to ASCII/Unicode text art.
@@ -9,7 +8,6 @@
 // Line charts: continuous staircase routing with rounded corners (╭╮╰╯│─).
 //
 // Multi-series support: each series gets a distinct color from a palette.
-// ============================================================================
 
 import { parseXYChart } from '../xychart/parser'
 import type { XYChart } from '../xychart/types'
@@ -18,9 +16,6 @@ import { colorizeText } from './ansi'
 import { getSeriesColor, CHART_ACCENT_FALLBACK } from '../xychart/colors'
 import { displayWidth, toCells, WIDE_PAD } from '../text-metrics'
 
-// ============================================================================
-// Constants
-// ============================================================================
 
 const PLOT_WIDTH = 60
 const PLOT_HEIGHT = 20
@@ -55,9 +50,6 @@ const ASC = {
   cornerBR: '+',
 } as const
 
-// ============================================================================
-// Multi-series color support
-// ============================================================================
 
 /** Per-cell hex color override canvas. Parallel to RoleCanvas. */
 type HexCanvas = (string | null)[][]
@@ -82,9 +74,6 @@ function roleToHex(role: CharRole, theme: AsciiTheme): string {
   }
 }
 
-// ============================================================================
-// Public API
-// ============================================================================
 
 export function renderXYChartAscii(
   text: string,
@@ -102,9 +91,6 @@ export function renderXYChartAscii(
   return renderVertical(chart, ch, colorMode, theme)
 }
 
-// ============================================================================
-// Vertical chart layout + rendering
-// ============================================================================
 
 function renderVertical(
   chart: XYChart,
@@ -264,9 +250,6 @@ function renderVertical(
   return canvasToString(canvas, roles, hexColors, colorMode, theme)
 }
 
-// ============================================================================
-// Horizontal chart layout + rendering
-// ============================================================================
 
 function renderHorizontal(
   chart: XYChart,
@@ -409,14 +392,12 @@ function renderHorizontal(
   return canvasToString(canvas, roles, hexColors, colorMode, theme)
 }
 
-// ============================================================================
 // Staircase line drawing — vertical charts
 //
 // Connects data points with flat segments (─) at each value's row,
 // vertical segments (│) between rows, and rounded corners (╭╮╰╯)
 // at transitions. The vertical step happens at the midpoint column
 // between adjacent data points.
-// ============================================================================
 
 function drawStaircaseLine(
   canvas: Canvas,
@@ -521,14 +502,12 @@ function drawStaircaseLine(
   }
 }
 
-// ============================================================================
 // Staircase line drawing — horizontal charts
 //
 // Same staircase approach but with axes swapped:
 // data values map to columns (horizontal position) and categories map to
 // rows (vertical position). Flat segments are vertical (│), transitions
 // are horizontal (─), with the same rounded corners.
-// ============================================================================
 
 function drawHorizontalStaircaseLine(
   canvas: Canvas,
@@ -614,9 +593,6 @@ function drawHorizontalStaircaseLine(
   }
 }
 
-// ============================================================================
-// Legend — shows series symbols with per-series colors
-// ============================================================================
 
 function drawLegend(
   canvas: Canvas,
@@ -667,9 +643,6 @@ function drawLegend(
   }
 }
 
-// ============================================================================
-// Canvas utilities
-// ============================================================================
 
 function createCanvas(width: number, height: number): Canvas {
   return Array.from({ length: width }, () => Array.from({ length: height }, () => ' '))
@@ -716,9 +689,6 @@ function writeText(canvas: Canvas, roles: RoleCanvas, row: number, startCol: num
   }
 }
 
-// ============================================================================
-// Canvas → string (with per-cell hex color support)
-// ============================================================================
 
 function canvasToString(
   canvas: Canvas,
@@ -768,11 +738,7 @@ function canvasToString(
   return lines.join('\n')
 }
 
-/**
- * Colorize a row of characters, using hex color overrides where available
- * and falling back to role-based theme colors otherwise.
- * Groups consecutive same-color characters for efficient escape sequences.
- */
+/** Colorize a row of characters, using hex color overrides where available and falling back to role-based theme colors otherwise. Groups consecutive same-color characters for efficient escape sequences. */
 function colorizeRow(
   chars: string[],
   roles: (CharRole | null)[],
@@ -825,9 +791,6 @@ function colorizeRow(
   return result
 }
 
-// ============================================================================
-// Helpers (chart-level)
-// ============================================================================
 
 function getDataCount(chart: XYChart): number {
   if (chart.xAxis.categories) return chart.xAxis.categories.length

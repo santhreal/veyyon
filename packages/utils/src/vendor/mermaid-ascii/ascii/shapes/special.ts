@@ -1,6 +1,3 @@
-// ============================================================================
-// Special shape renderers — subroutine, doublecircle, cylinder, etc.
-// ============================================================================
 //
 // Some shapes have unique internal structure (subroutine, cylinder) and keep
 // custom rendering. Others use the corner decorator pattern for simplicity.
@@ -15,9 +12,6 @@ import { getBoxDimensions, renderBox, getBoxAttachmentPoint } from './rectangle'
 import { getCorners } from './corners'
 import { displayWidth, toCells } from '../../text-metrics'
 
-// ============================================================================
-// Subroutine — keeps custom double-border rendering
-// ============================================================================
 
 /**
  * Subroutine shape renderer — double-bordered rectangle.
@@ -104,9 +98,6 @@ export const subroutineRenderer: ShapeRenderer = {
   getAttachmentPoint: getBoxAttachmentPoint,
 }
 
-// ============================================================================
-// Double circle — uses corner decorators
-// ============================================================================
 
 /**
  * Double circle shape renderer.
@@ -128,9 +119,6 @@ export const doublecircleRenderer: ShapeRenderer = {
   getAttachmentPoint: getBoxAttachmentPoint,
 }
 
-// ============================================================================
-// Cylinder — keeps custom rendering for database appearance
-// ============================================================================
 
 /**
  * Cylinder shape renderer — database symbol.
@@ -223,9 +211,6 @@ export const cylinderRenderer: ShapeRenderer = {
   getAttachmentPoint: getBoxAttachmentPoint,
 }
 
-// ============================================================================
-// Asymmetric (flag) — uses corner decorators
-// ============================================================================
 
 /**
  * Asymmetric (flag/banner) shape renderer.
@@ -247,9 +232,6 @@ export const asymmetricRenderer: ShapeRenderer = {
   getAttachmentPoint: getBoxAttachmentPoint,
 }
 
-// ============================================================================
-// Trapezoid — uses corner decorators instead of diagonal sides
-// ============================================================================
 
 /**
  * Trapezoid shape renderer — wider at bottom.
@@ -271,9 +253,6 @@ export const trapezoidRenderer: ShapeRenderer = {
   getAttachmentPoint: getBoxAttachmentPoint,
 }
 
-// ============================================================================
-// Trapezoid-alt — uses corner decorators instead of diagonal sides
-// ============================================================================
 
 /**
  * Trapezoid-alt shape renderer — wider at top.

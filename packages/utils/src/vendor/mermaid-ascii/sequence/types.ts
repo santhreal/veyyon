@@ -1,9 +1,7 @@
-// ============================================================================
 // Sequence diagram types
 //
 // Models the parsed and positioned representations of a Mermaid sequence diagram.
 // Sequence diagrams show actor interactions over time (vertical timeline).
-// ============================================================================
 
 /** Parsed sequence diagram — logical structure from mermaid text */
 export interface SequenceDiagram {
@@ -62,9 +60,6 @@ export interface Note {
   afterIndex: number
 }
 
-// ============================================================================
-// Positioned sequence diagram — ready for SVG rendering
-// ============================================================================
 
 export interface PositionedSequenceDiagram {
   width: number

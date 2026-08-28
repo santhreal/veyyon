@@ -1,6 +1,3 @@
-// ============================================================================
-// Hexagon shape renderer — uses corner decorators instead of diagonals
-// ============================================================================
 
 import type { ShapeRenderer } from './types'
 import { getBoxDimensions, renderBox, getBoxAttachmentPoint } from './rectangle'

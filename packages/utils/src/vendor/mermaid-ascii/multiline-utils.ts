@@ -1,10 +1,8 @@
-// ============================================================================
 // Label normalization
 //
 // Shared by the diagram parsers (flowchart/state, class, ER, sequence) to
 // normalize raw Mermaid label text before it reaches the ASCII renderers.
 // The SVG-only multi-line tspan renderers from upstream are not vendored.
-// ============================================================================
 
 /**
  * Normalize label text for terminal ASCII output: strip surrounding quotes,

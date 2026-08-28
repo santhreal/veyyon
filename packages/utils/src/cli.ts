@@ -3,18 +3,7 @@ import { clampLow } from "./math";
 import { startupMarker } from "./startup-marker";
 import { errorMessage } from "./type-guards";
 
-/**
- * A token that is a negative number rather than an option: `-1`, `-0.5`, `-1e-3`.
- * A short flag is a letter, so anything whose first character after the dash is a
- * digit or a decimal point cannot be one.
- */
 const NEGATIVE_NUMBER = /^-(?:\d|\.\d)/;
-
-/** Sentinel prefix for a masked negative number. Never valid user input. */
-// Written as escapes, not literal NULs. A raw control byte in the source makes
-// git classify this whole file as binary, which costs every reviewer the diff
-// and makes a merge conflict here unresolvable by hand. The runtime value is
-// identical.
 const NEGATIVE_MASK = "\u0000neg\u0000";
 
 interface ParsedArgs {
@@ -22,14 +11,7 @@ interface ParsedArgs {
 	positionals: string[];
 }
 
-/**
- * Replace negative-number tokens with sentinels so `node:util`'s parseArgs treats
- * them as ordinary words, and hand back the function that puts them where they
- * belong. Both halves of the result are restored: a negative number can arrive as
- * a positional (`config set presencePenalty -1`) or as a flag's value
- * (`--temperature -1`), and masking would otherwise leak the sentinel into one of
- * them.
- */
+/** Mask negative-number tokens so parseArgs does not treat them as flags. */
 function maskNegativeNumbers(argv: readonly string[]): {
 	args: string[];
 	restore: (parsed: ParsedArgs) => ParsedArgs;
@@ -70,29 +52,10 @@ function maskNegativeNumbers(argv: readonly string[]): {
 	};
 }
 
-/**
- * The status a command-line mistake exits with, following the conventional Unix
- * meaning of `2`: the invocation was wrong, so nothing ran and an identical retry
- * cannot help.
- *
- * `packages/coding-agent/src/cli/exit-codes.ts` declares the same number as
- * `EXIT_USAGE` rather than importing this one, because that module sits on
- * `cli.ts`'s static boot graph and this one does not: `the-boot-path-stays-thin`
- * caps that graph, and a boot-path module edge for a single integer is not worth
- * the parse on every `veyyon --version`. The two are held equal by an assertion
- * in `packages/coding-agent/test/cli/exit-codes.test.ts`, which is what stops
- * them drifting.
- */
+/** Exit code for CLI usage mistakes. */
 export const CLI_EXIT_USAGE = 2;
 
-/**
- * A user-facing argument/flag validation failure. Thrown by {@link Command.parse}
- * for missing/invalid positionals and flags. The top-level {@link run} handler
- * prints its message plus the command usage line to stderr and exits
- * {@link CLI_EXIT_USAGE}, instead of letting it bubble to the process-level catch,
- * which would dump a minified `dist/cli.js` code frame over a plain argument
- * mistake (issue #5369).
- */
+/** Validation error for missing/invalid CLI arguments or flags. */
 export class CliUsageError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -100,78 +63,57 @@ export class CliUsageError extends Error {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Flag & Arg descriptors
-// ---------------------------------------------------------------------------
-
 export interface FlagDescriptor<K extends "string" | "boolean" | "integer" = "string" | "boolean" | "integer"> {
 	kind: K;
 	description?: string;
 	char?: string;
-	default?: unknown;
-	multiple?: boolean;
-	options?: readonly string[];
+	default?: K extends "boolean" ? boolean : K extends "integer" ? number : string;
 	required?: boolean;
-	/**
-	 * Extra long names that mean the same flag. `--<alias>` parses into the
-	 * canonical name and the help entry lists it beside that name.
-	 *
-	 * Declare an alias rather than a second flag whenever two spellings are one
-	 * behaviour: two descriptors print two entries and imply they differ. This
-	 * field used to be accepted and silently ignored, so `--yolo` was declared as
-	 * an alias of `--auto-approve` with a comment claiming help would list it, and
-	 * help never did.
-	 */
-	aliases?: readonly string[];
+	multiple?: boolean;
+	options?: string[];
+	aliases?: string[];
 }
 
 export interface ArgDescriptor {
-	kind: "string";
 	description?: string;
 	required?: boolean;
 	multiple?: boolean;
-	options?: readonly string[];
+	options?: string[];
 }
 
 interface FlagInput {
 	description?: string;
 	char?: string;
-	default?: unknown;
-	multiple?: boolean;
-	options?: readonly string[];
 	required?: boolean;
-	aliases?: readonly string[];
+	multiple?: boolean;
+	options?: string[];
+	aliases?: string[];
 }
 
 interface ArgInput {
 	description?: string;
 	required?: boolean;
 	multiple?: boolean;
-	options?: readonly string[];
+	options?: string[];
 }
 
-/** Builders that match the `Flags.*()` / `Args.*()` API from oclif. */
 export const Flags = {
-	string<T extends FlagInput>(opts?: T): FlagDescriptor<"string"> & T {
-		return { kind: "string" as const, ...opts } as FlagDescriptor<"string"> & T;
+	string(opts: FlagInput & { default?: string } = {}): FlagDescriptor<"string"> {
+		return { kind: "string", ...opts };
 	},
-	boolean<T extends FlagInput>(opts?: T): FlagDescriptor<"boolean"> & T {
-		return { kind: "boolean" as const, ...opts } as FlagDescriptor<"boolean"> & T;
+	boolean(opts: FlagInput & { default?: boolean } = {}): FlagDescriptor<"boolean"> {
+		return { kind: "boolean", ...opts };
 	},
-	integer<T extends FlagInput & { default?: number }>(opts?: T): FlagDescriptor<"integer"> & T {
-		return { kind: "integer" as const, ...opts } as FlagDescriptor<"integer"> & T;
+	integer(opts: FlagInput & { default?: number } = {}): FlagDescriptor<"integer"> {
+		return { kind: "integer", ...opts };
 	},
 };
 
 export const Args = {
-	string<T extends ArgInput>(opts?: T): ArgDescriptor & T {
-		return { kind: "string" as const, ...opts } as ArgDescriptor & T;
+	string(opts: ArgInput = {}): ArgDescriptor {
+		return opts;
 	},
 };
-
-// ---------------------------------------------------------------------------
-// Parse result types — mirrors oclif's typed output from this.parse()
-// ---------------------------------------------------------------------------
 
 type FlagValue<D extends FlagDescriptor> = D["kind"] extends "boolean"
 	? D extends { default: boolean }
@@ -199,39 +141,93 @@ export interface ParseOutput<
 	argv: string[];
 }
 
-// ---------------------------------------------------------------------------
-// Command base class
-// ---------------------------------------------------------------------------
-
 export interface CommandCtor {
 	new (argv: string[], config: CliConfig): Command;
 	description?: string;
 	hidden?: boolean;
-	/** Diagnostic/dev tooling: listed under a separate DIAGNOSTIC COMMANDS help section. */
 	devTool?: boolean;
 	strict?: boolean;
-	aliases?: string[];
-	examples?: string[];
 	flags?: Record<string, FlagDescriptor>;
 	args?: Record<string, ArgDescriptor>;
+	examples?: string[];
 }
 
-/** Configuration passed to every command instance and help renderers. */
+/** Configuration passed to command instances and help renderers. */
 export interface CliConfig {
 	bin: string;
 	version: string;
-	/** All registered commands keyed by their canonical name. */
 	commands: Map<string, CommandCtor>;
-	/**
-	 * Listing metadata for the FULL registry, present when root help was
-	 * rendered from the command table without loading every module. The
-	 * `commands` map may then hold only the default command. Absent when the
-	 * config was built by loading everything.
-	 */
 	summaries?: Map<string, CommandSummary>;
 }
 
-/** Minimal Command base matching the oclif surface we use. */
+function parseFlagValue(name: string, desc: FlagDescriptor, raw: unknown): unknown {
+	if (desc.kind === "integer") {
+		if (raw === undefined || typeof raw === "boolean") {
+			return desc.default ?? undefined;
+		}
+		const n = Number.parseInt(raw as string, 10);
+		if (Number.isNaN(n)) {
+			throw new CliUsageError(`Expected integer for --${name}, got "${raw}"`);
+		}
+		return n;
+	}
+	if (desc.kind === "boolean") {
+		return raw !== undefined ? Boolean(raw) : desc.default !== undefined ? Boolean(desc.default) : undefined;
+	}
+	const val = raw !== undefined && typeof raw !== "boolean" ? raw : (desc.default ?? undefined);
+	if (val !== undefined && desc.options && !Array.isArray(val)) {
+		if (!desc.options.includes(val as string)) {
+			throw new CliUsageError(`Expected --${name} to be one of: ${desc.options.slice().join(", ")}; got "${val}"`);
+		}
+	}
+	return val;
+}
+
+function buildFlagParseOptions(flagDefs: Record<string, FlagDescriptor>): {
+	options: Record<
+		string,
+		{ type: "string" | "boolean"; short?: string; multiple?: boolean; default?: string | boolean }
+	>;
+	aliasToCanonical: Map<string, string>;
+} {
+	const options: Record<
+		string,
+		{ type: "string" | "boolean"; short?: string; multiple?: boolean; default?: string | boolean }
+	> = {};
+	const aliasToCanonical = new Map<string, string>();
+
+	for (const [name, desc] of Object.entries(flagDefs)) {
+		const opt: (typeof options)[string] = {
+			type: desc.kind === "boolean" ? "boolean" : "string",
+		};
+		if (desc.char) opt.short = desc.char;
+		if (desc.multiple) opt.multiple = true;
+		if (desc.default !== undefined) {
+			opt.default = desc.kind === "boolean" ? Boolean(desc.default) : String(desc.default);
+		}
+		options[name] = opt;
+	}
+
+	for (const [name, desc] of Object.entries(flagDefs)) {
+		for (const alias of desc.aliases ?? []) {
+			if (options[alias]) {
+				throw new Error(
+					`Flag alias --${alias} on --${name} collides with an existing flag. ` +
+						"Rename the alias or drop the duplicate declaration.",
+				);
+			}
+			aliasToCanonical.set(alias, name);
+			options[alias] = {
+				type: options[name].type,
+				...(options[name].multiple ? { multiple: true } : {}),
+			};
+		}
+	}
+
+	return { options, aliasToCanonical };
+}
+
+/** Minimal Command base matching the oclif surface used by veyyon. */
 export abstract class Command {
 	argv: string[];
 	config: CliConfig;
@@ -243,10 +239,7 @@ export abstract class Command {
 
 	abstract run(): Promise<void>;
 
-	/**
-	 * Parse argv against the static `flags` and `args` declared on the
-	 * concrete command class. Returns a typed `{ flags, args, argv }` object.
-	 */
+	/** Parse argv against the static flags and args declared on the command class. */
 	async parse<C extends CommandCtor>(
 		_Cmd: C,
 	): Promise<
@@ -264,58 +257,9 @@ export abstract class Command {
 		const argDefs = (Cmd.args ?? {}) as Record<string, ArgDescriptor>;
 		const strict = Cmd.strict !== false;
 
-		// Build node:util parseArgs options from flag descriptors
-		const options: Record<
-			string,
-			{ type: "string" | "boolean"; short?: string; multiple?: boolean; default?: string | boolean }
-		> = {};
-		// Alias long name -> canonical long name. Registered as its own parseArgs
-		// option (node:util has no alias concept) and folded back onto the
-		// canonical name below, so a command reads one field no matter which
-		// spelling the user typed.
-		const aliasToCanonical = new Map<string, string>();
-		for (const [name, desc] of Object.entries(flagDefs)) {
-			const opt: (typeof options)[string] = {
-				type: desc.kind === "boolean" ? "boolean" : "string",
-			};
-			if (desc.char) opt.short = desc.char;
-			if (desc.multiple) opt.multiple = true;
-			if (desc.default !== undefined) {
-				opt.default = desc.kind === "boolean" ? Boolean(desc.default) : String(desc.default);
-			}
-			options[name] = opt;
-		}
-		// Aliases register in a SECOND pass, after every canonical name exists.
-		// Doing it inline would make the collision check depend on declaration
-		// order: an alias declared before the flag it shadows would find nothing to
-		// collide with and then be silently overwritten.
-		for (const [name, desc] of Object.entries(flagDefs)) {
-			for (const alias of desc.aliases ?? []) {
-				if (options[alias]) {
-					throw new Error(
-						`Flag alias --${alias} on --${name} collides with an existing flag. ` +
-							"Rename the alias or drop the duplicate declaration.",
-					);
-				}
-				aliasToCanonical.set(alias, name);
-				// The alias never carries the default: it would then look "provided"
-				// on every run and win over the canonical name in the fold below.
-				options[alias] = {
-					type: options[name].type,
-					...(options[name].multiple ? { multiple: true } : {}),
-				};
-			}
-		}
+		const { options, aliasToCanonical } = buildFlagParseOptions(flagDefs);
 
-		// strict=false when command declares args (positionals must pass through)
-		// or when the command itself opts out
 		const { values: rawValues, positionals } = (() => {
-			// `node:util` parseArgs reads any leading `-` as an option, so a negative
-			// number is rejected as an unknown short flag: `veyyon config set
-			// presencePenalty -1` failed on a value the setting accepts, and the only
-			// way through was the `-- "-1"` escape. Negative numbers are hidden behind
-			// a sentinel for the parse and restored after, so they arrive as the value
-			// they are while unknown-flag detection stays strict for everything else.
 			const { args: maskedArgs, restore } = maskNegativeNumbers(this.argv);
 			try {
 				const parsed = nodeParseArgs({
@@ -330,11 +274,6 @@ export abstract class Command {
 			}
 		})();
 
-		// Fold an alias onto its canonical name before typing and validation, so
-		// every check below (options constraint, required, integer parse) applies
-		// to the alias exactly as it would to the canonical spelling. The canonical
-		// name wins when both were given: a user who wrote both meant the one the
-		// command actually reads, and picking the alias would be surprising.
 		for (const [alias, canonical] of aliasToCanonical) {
 			const aliasValue = rawValues[alias];
 			if (aliasValue !== undefined && rawValues[canonical] === undefined) {
@@ -342,43 +281,14 @@ export abstract class Command {
 			}
 		}
 
-		// Convert raw values to proper types and validate
 		const flags: Record<string, unknown> = {};
 		for (const [name, desc] of Object.entries(flagDefs)) {
-			const raw = rawValues[name];
-			if (desc.kind === "integer") {
-				if (raw === undefined || typeof raw === "boolean") {
-					flags[name] = desc.default ?? undefined;
-				} else {
-					const n = Number.parseInt(raw as string, 10);
-					if (Number.isNaN(n)) {
-						throw new CliUsageError(`Expected integer for --${name}, got "${raw}"`);
-					}
-					flags[name] = n;
-				}
-			} else if (desc.kind === "boolean") {
-				flags[name] =
-					raw !== undefined ? Boolean(raw) : desc.default !== undefined ? Boolean(desc.default) : undefined;
-			} else {
-				// string
-				const val = raw !== undefined && typeof raw !== "boolean" ? raw : (desc.default ?? undefined);
-				// Validate options constraint
-				if (val !== undefined && desc.options && !Array.isArray(val)) {
-					if (!desc.options.includes(val as string)) {
-						throw new CliUsageError(
-							`Expected --${name} to be one of: ${desc.options.slice().join(", ")}; got "${val}"`,
-						);
-					}
-				}
-				flags[name] = val;
-			}
-			// Validate required
+			flags[name] = parseFlagValue(name, desc, rawValues[name]);
 			if (desc.required && flags[name] === undefined) {
 				throw new CliUsageError(`Missing required flag: --${name}`);
 			}
 		}
 
-		// Map positionals to named args in declaration order and validate
 		const args: Record<string, unknown> = {};
 		let posIdx = 0;
 		for (const [argName, desc] of Object.entries(argDefs)) {
@@ -391,11 +301,9 @@ export abstract class Command {
 				args[argName] = val;
 				posIdx++;
 			}
-			// Validate required
 			if (desc.required && args[argName] === undefined) {
 				throw new CliUsageError(`Missing required argument: ${argName}`);
 			}
-			// Validate options constraint
 			const argVal = args[argName];
 			if (argVal !== undefined && desc.options && typeof argVal === "string") {
 				if (!desc.options.includes(argVal)) {
@@ -406,13 +314,6 @@ export abstract class Command {
 			}
 		}
 
-		// Reject positionals that no declared arg consumed. Silently dropping them
-		// lets an intuitive-but-wrong invocation run with a wider scope than the
-		// user wrote — `usage invalidate anthropic` swallows `anthropic` and
-		// invalidates every provider at exit 0 — so fail closed and name the stray
-		// token instead (Law 10: no silent fallbacks). A command that means to take
-		// arbitrary trailing positionals declares a `multiple` arg, which consumes
-		// them here and never reaches this check.
 		if (posIdx < positionals.length) {
 			const stray = positionals.slice(posIdx);
 			const label = stray.length === 1 ? "argument" : "arguments";
@@ -423,10 +324,7 @@ export abstract class Command {
 	}
 }
 
-/**
- * Split a command-argument string on whitespace, honoring double quotes and
- * backslash escapes: `add "phase one" x` → ["add", "phase one", "x"].
- */
+/** Split command arguments honoring quotes and backslash escapes. */
 export function tokenizeQuotedArgs(input: string): string[] {
 	const tokens: string[] = [];
 	let current = "";
@@ -454,83 +352,29 @@ export function tokenizeQuotedArgs(input: string): string[] {
 	return tokens;
 }
 
-// ---------------------------------------------------------------------------
-// Help rendering
-// ---------------------------------------------------------------------------
-
-/**
- * Terminal width to lay help out for, clamped to a readable range.
- */
 function helpWidth(): number {
 	const columns = process.stdout.columns;
 	if (typeof columns === "number" && columns > 0) return clampLow(columns, 60, 100);
-	// Not a TTY, so stdout reports no width. That is not the same as no width being KNOWN: piping
-	// help into a pager or `less -R` is the normal way to read a long one, and the shell still
-	// exports the real terminal size in COLUMNS. Consulting stdout alone laid out for 80 columns
-	// inside a 60-column pane and put 113 lines past the edge, which is the wrapping bug again by a
-	// different route. A junk COLUMNS falls through to the conventional 80 rather than being clamped
-	// into range, since a nonsense value is no evidence of width.
 	const exported = Number(process.env.COLUMNS);
 	if (Number.isFinite(exported) && exported > 0) return clampLow(exported, 60, 100);
 	return 80;
 }
 
-/**
- * How much of the terminal the left column may take when the caller does not say.
- *
- * One owner, defaulted on `gutter` itself rather than at each call site. It was briefly defaulted
- * in `renderHelpTable` instead, which left `renderRootHelp`'s direct `gutter` call passing nothing
- * for a required parameter: `width * undefined` is `NaN`, `Math.min(n, NaN)` is `NaN`, and the pad
- * silently collapsed to zero, printing `grepRun the grep tool standalone...` with no gap at all.
- * A layout constant with two homes is a layout constant with one stale home.
- */
 const DEFAULT_GUTTER_FRACTION = 1 / 3;
 
-/**
- * The widest left column worth aligning to, given the terminal.
- *
- * ALIGNING TO THE LONGEST ENTRY IS THE BUG. One flag spelling out an enum
- * (`--approval-mode=<plan|ask|auto-edit|yolo|always-ask|write>`, 58 characters) set the gutter for
- * all seventy-odd, so every description started past column 62 and had roughly fifteen usable
- * columns left. A single outlier decided the layout for everything around it.
- *
- * So the gutter is capped. Entries within it still align, which is what makes a flag list
- * scannable; the few that overflow put their description on the next line instead of dragging the
- * column right. Trading alignment for one entry beats losing the column for all.
- *
- * `maxFraction` is how much of the width that cap may take, and it is a parameter because the right
- * answer depends on what the left column IS. For flags a third is generous: the name is short and
- * the description is the content. For `veyyon config list` the left column is a dotted setting path
- * that legitimately runs to thirty characters, so a third pushed a four-character value like `true`
- * onto its own line and grew the listing from 470 lines to 714 for no gain in readability.
- */
 function gutter(entries: readonly string[], width: number, maxFraction: number = DEFAULT_GUTTER_FRACTION): number {
-	// `Bun.stringWidth`, never `.length`: a styled entry carries escape bytes that occupy no columns.
 	const longest = entries.length > 0 ? Math.max(...entries.map(entry => Bun.stringWidth(entry))) : 0;
 	return Math.min(longest + 2, Math.floor(width * maxFraction));
 }
 
-/**
- * Emit `left` and its description, wrapped, with continuation lines under the description.
- *
- * A wrapped description that returns to column 0 reads as a new entry, so the indent is what keeps
- * a two-line flag from looking like two flags. `Bun.wrapAnsi` is the repo's wrapper and is correct
- * for wide characters, which matters here because a description may quote a model id or a path.
- */
 function pushWrapped(lines: string[], left: string, description: string, column: number, width: number): void {
 	if (!description) {
 		lines.push(left);
 		return;
 	}
-	// An entry that would leave less than this before its description goes on its own line instead.
-	// `>` alone was not enough: a name exactly as wide as the gutter padded to zero and produced
-	// `ANTHROPIC_CUSTOM_HEADERSExtra headers ...`, one run-on token with no boundary at all.
 	const MIN_GAP = 2;
-	// Measured, not `.length`, so a styled left column pads to the right screen position.
 	const leftWidth = Bun.stringWidth(left);
 	const indent = " ".repeat(column);
-	// `trim: true` matters twice: without it a wrapped line keeps the space it broke on, so every
-	// continuation is indented one column too far AND every line carries invisible trailing bytes.
 	const wrapped = Bun.wrapAnsi(description, Math.max(20, width - column), { trim: true }).split("\n");
 	const [first, ...rest] = wrapped;
 	if (leftWidth + MIN_GAP > column) {
@@ -542,18 +386,7 @@ function pushWrapped(lines: string[], left: string, description: string, column:
 	for (const line of rest) lines.push(`${indent}${line}`);
 }
 
-/**
- * Lay out a two-column help table so it fits the terminal, wrapping the right column.
- *
- * Exported because the same table is built by hand elsewhere. `getExtraHelpText` in the coding
- * agent held an eighty-five line environment-variable table with its gutter typed into every row as
- * literal spaces, three different gutters across its sections, and no wrapping at all, so the widest
- * row ran to 129 columns and the terminal re-broke it wherever it liked. A padded string cannot
- * respond to a terminal width; a table of rows can, and there is now one place that knows how.
- *
- * Widths go through `Bun.stringWidth`, not `.length`, because a caller may style the left column and
- * an escape sequence occupies no columns on screen while counting as characters in a string.
- */
+/** Lay out a two-column help table wrapped to terminal width. */
 export function renderHelpTable(
 	rows: ReadonlyArray<readonly [name: string, description: string]>,
 	options: { indent?: string; maxGutterFraction?: number } = {},
@@ -561,8 +394,6 @@ export function renderHelpTable(
 	const indent = options.indent ?? "  ";
 	const width = helpWidth();
 	const lefts = rows.map(([name]) => `${indent}${name}`);
-	// The default lives on `gutter`; a caller whose left column is inherently longer (a dotted
-	// setting path) raises it rather than reimplementing the layout. See the note there.
 	const column = gutter(lefts, width, options.maxGutterFraction);
 	const lines: string[] = [];
 	for (const [index, [, description]] of rows.entries()) {
@@ -571,13 +402,7 @@ export function renderHelpTable(
 	return lines;
 }
 
-/**
- * Wrap a paragraph of help prose to the terminal, at a given indent.
- *
- * Prose interleaved into a table is how the environment section became unreadable: three sentences
- * about profile resolution sat between two variable rows, aligned as though they were rows, so the
- * eye read them as a variable with a very long name. Prose gets its own shape.
- */
+/** Wrap a paragraph of help text to the terminal at a given indent. */
 export function renderHelpParagraph(text: string, options: { indent?: string } = {}): string[] {
 	const indent = options.indent ?? "  ";
 	const width = helpWidth();
@@ -587,7 +412,7 @@ export function renderHelpParagraph(text: string, options: { indent?: string } =
 		.map(line => `${indent}${line}`);
 }
 
-/** Render full root help: header, default command details, subcommand list. */
+/** Render full root help for the CLI. */
 export function renderRootHelp(config: CliConfig): void {
 	const { bin, version, commands, summaries } = config;
 	const lines: string[] = [];
@@ -595,17 +420,11 @@ export function renderRootHelp(config: CliConfig): void {
 	lines.push("USAGE");
 	lines.push(`  $ ${bin} [COMMAND]\n`);
 
-	// Show the default command's flags/args/examples inline.
-	// The default command is the one marked hidden (it's the implicit entry point).
 	const defaultCmd = Array.from(commands.values()).find(C => C.hidden);
 	if (defaultCmd) {
 		renderCommandBody(lines, defaultCmd);
 	}
 
-	// List visible subcommands; diagnostic/dev tools get their own section so the
-	// main list reads as the product surface. Rows come from the registry
-	// summaries when the config was built without loading every module, and
-	// from the loaded statics otherwise — both describe the same classes.
 	type ListingRow = { name: string; description?: string; devTool?: boolean };
 	const listing: ListingRow[] = summaries
 		? Array.from(summaries.entries())
@@ -635,12 +454,6 @@ export function renderRootHelp(config: CliConfig): void {
 	process.stdout.write(lines.join("\n"));
 }
 
-/**
- * Format a command's positional args for a USAGE line. Required args render
- * bare (`MODELS`), optional args wrapped in brackets (`[MODELS]`), and
- * `multiple` args get a trailing ellipsis (`MODELS...`) so a required
- * variadic reads as `MODELS...`, not the misleading optional `[MODELS]`.
- */
 function formatUsageArgs(Cmd: CommandCtor): string {
 	const entries = Object.entries(Cmd.args ?? {});
 	if (entries.length === 0) return "";
@@ -651,7 +464,7 @@ function formatUsageArgs(Cmd: CommandCtor): string {
 	return ` ${parts.join(" ")}`;
 }
 
-/** Build the single USAGE line for a command (without the leading label). */
+/** Build the usage line for a command. */
 export function commandUsageLine(bin: string, id: string, Cmd: CommandCtor): string {
 	const hasFlags = Object.keys(Cmd.flags ?? {}).length > 0;
 	return `$ ${bin} ${id}${formatUsageArgs(Cmd)}${hasFlags ? " [FLAGS]" : ""}`;
@@ -672,7 +485,6 @@ function renderCommandBody(lines: string[], Cmd: CommandCtor): void {
 	const flagDefs = Cmd.flags ?? {};
 	const width = helpWidth();
 
-	// Arguments
 	const argEntries = Object.entries(argDefs);
 	if (argEntries.length > 0) {
 		lines.push("ARGUMENTS");
@@ -687,19 +499,14 @@ function renderCommandBody(lines: string[], Cmd: CommandCtor): void {
 		lines.push("");
 	}
 
-	// Flags
 	const flagEntries = Object.entries(flagDefs);
 	if (flagEntries.length > 0) {
 		lines.push("FLAGS");
 		const formatted: [string, string][] = [];
 		for (const [name, desc] of flagEntries) {
 			const charPart = desc.char ? `-${desc.char}, ` : "    ";
-			// Aliases share the canonical entry rather than getting one of their own:
-			// two entries for one behaviour reads as two behaviours.
 			const aliasPart = (desc.aliases ?? []).map(alias => `, --${alias}`).join("");
 			const namePart = `--${name}${aliasPart}`;
-			// Enum-constrained flags render their accepted values like args do —
-			// values that only surface as a parse error are invisible until guessed.
 			const typePart =
 				desc.kind === "boolean"
 					? ""
@@ -720,7 +527,6 @@ function renderCommandBody(lines: string[], Cmd: CommandCtor): void {
 		lines.push("");
 	}
 
-	// Examples
 	if (Cmd.examples && Cmd.examples.length > 0) {
 		lines.push("EXAMPLES");
 		for (const ex of Cmd.examples) {
@@ -732,30 +538,18 @@ function renderCommandBody(lines: string[], Cmd: CommandCtor): void {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// CLI entry point
-// ---------------------------------------------------------------------------
-
-/** Root-help listing metadata for a command, mirrored from the class statics. */
+/** Root-help listing metadata for a command. */
 export interface CommandSummary {
 	description?: string;
 	hidden?: boolean;
-	/** Diagnostic/dev tooling: listed under a separate DIAGNOSTIC COMMANDS help section. */
 	devTool?: boolean;
 }
 
-/** A lazily-loaded command: canonical name, loader, and optional aliases. */
+/** A lazily-loaded command entry. */
 export interface CommandEntry {
 	name: string;
 	load: () => Promise<CommandCtor>;
 	aliases?: string[];
-	/**
-	 * Listing metadata copied from the loaded class's statics. When EVERY entry
-	 * in the registry carries one, root help renders from the table and loads
-	 * only the default (hidden) command — on a large registry this removes most
-	 * of `veyyon --help`'s module-load cost. A parity test in each product pins
-	 * the copy against the real statics so it cannot drift.
-	 */
 	summary?: CommandSummary;
 }
 
@@ -764,33 +558,24 @@ export interface RunOptions {
 	version: string;
 	argv: string[];
 	commands: CommandEntry[];
-	/** Custom help renderer. Receives fully-populated config. */
 	help?: (config: CliConfig) => Promise<void> | void;
 }
 
-/** Find a command entry by exact name or alias. */
 function findEntry(commands: CommandEntry[], id: string): CommandEntry | undefined {
 	return commands.find(e => e.name === id) ?? commands.find(e => e.aliases?.includes(id));
 }
 
-/** Single source for the unknown-command message so every dispatch path agrees. */
 function unknownCommandLine(commandId: string): string {
 	return `Error: Unknown command '${commandId}'\n`;
 }
 
-/**
- * Main entry point — replaces `run()` from @oclif/core.
- *
- * Each command is explicitly registered with a lazy loader.
- * No filesystem scanning, no plugin system, no package.json reading.
- */
+/** Main CLI entry point. */
 export async function run(opts: RunOptions): Promise<void> {
 	const { bin, version, argv } = opts;
 
 	const commandId = argv[0] ?? "";
 	const commandArgv = argv.slice(1);
 
-	// Top-level help
 	if (commandId === "--help" || commandId === "-h" || commandId === "help" || commandId === "") {
 		const config = await loadRootHelpConfig(opts);
 		if (opts.help) {
@@ -801,32 +586,23 @@ export async function run(opts: RunOptions): Promise<void> {
 		return;
 	}
 
-	// Version
 	if (commandId === "--version" || commandId === "-v") {
 		process.stdout.write(`${bin}/${version}\n`);
 		return;
 	}
 
-	// Per-command help: load only the requested command. Loading the full
-	// command table here would make `veyyon <cmd> --help` hang or crash whenever
-	// any *unrelated* command module misbehaves at import time.
 	if (commandArgv.includes("--help") || commandArgv.includes("-h")) {
 		const entry = findEntry(opts.commands, commandId);
 		if (entry) {
 			const Cmd = await loadEntry(entry);
 			renderCommandHelp(bin, entry.name, Cmd);
 		} else {
-			// An unknown command is an error on the help path too: exit non-zero so
-			// `veyyon <typo> --help` matches `veyyon <typo>` instead of reporting the
-			// typo as success. Both are CLI_EXIT_USAGE, because a command name that
-			// does not exist is a command line that cannot succeed on a retry.
 			process.stderr.write(unknownCommandLine(commandId));
 			process.exitCode = CLI_EXIT_USAGE;
 		}
 		return;
 	}
 
-	// Find command by name or alias
 	const entry = findEntry(opts.commands, commandId);
 
 	if (!entry) {
@@ -841,16 +617,6 @@ export async function run(opts: RunOptions): Promise<void> {
 	try {
 		await instance.run();
 	} catch (error) {
-		// A usage mistake (missing/invalid arg or flag) is not a crash: print the
-		// message and the command's usage line, then exit CLI_EXIT_USAGE. Letting it
-		// reach the process-level catch would dump a minified `dist/cli.js` code
-		// frame over a plain argument error (issue #5369).
-		//
-		// The status is 2, not 1, because a subcommand's command line is still a
-		// command line: `veyyon --nope` and `veyyon config --nope` are the same
-		// mistake, and the published exit-code table promises 2 for "an
-		// unrecognized flag, a bad flag value". Returning 1 here split one mistake
-		// down the middle and told a wrapper script that retrying might help.
 		if (error instanceof CliUsageError) {
 			process.stderr.write(`Error: ${error.message}\n\n`);
 			process.stderr.write(`USAGE\n  ${commandUsageLine(bin, entry.name, Cmd)}\n`);
@@ -862,7 +628,6 @@ export async function run(opts: RunOptions): Promise<void> {
 	}
 }
 
-/** Load one command module, leaving streaming markers around the import. */
 async function loadEntry(entry: CommandEntry): Promise<CommandCtor> {
 	startupMarker(`cli:load:${entry.name}:start`);
 	const Cmd = await entry.load();
@@ -870,20 +635,9 @@ async function loadEntry(entry: CommandEntry): Promise<CommandCtor> {
 	return Cmd;
 }
 
-/**
- * Build the config for ROOT help. Root help lists every command's name and
- * one-line description, plus the default (hidden) command's full flag table.
- * When every registry entry carries a `summary`, the listing renders from the
- * table and ONLY the default command's module loads — on a large registry
- * this is most of `veyyon --help`'s cost. Any entry without a summary falls
- * back to loading everything, so an unsummarized command degrades the help
- * path instead of misrendering it.
- */
 async function loadRootHelpConfig(opts: RunOptions): Promise<CliConfig> {
 	const summaries = new Map<string, CommandSummary>();
 	for (const entry of opts.commands) {
-		// One unsummarized command degrades the help path to loading everything
-		// rather than rendering a listing that is missing a row.
 		if (!entry.summary) return loadAllCommands(opts);
 		summaries.set(entry.name, entry.summary);
 	}
@@ -896,7 +650,6 @@ async function loadRootHelpConfig(opts: RunOptions): Promise<CliConfig> {
 	return { bin: opts.bin, version: opts.version, commands, summaries };
 }
 
-/** Resolve all command loaders for help/alias display. */
 async function loadAllCommands(opts: RunOptions): Promise<CliConfig> {
 	const commands = new Map<string, CommandCtor>();
 	const loaded = await Promise.all(opts.commands.map(async e => [e.name, await loadEntry(e)] as const));

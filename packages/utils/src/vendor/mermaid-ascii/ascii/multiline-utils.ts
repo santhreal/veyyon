@@ -1,10 +1,8 @@
-// ============================================================================
 // ASCII renderer — multi-line text utilities
 //
 // Shared utilities for handling multi-line labels (containing \n from <br> tags)
 // in ASCII/Unicode rendering. Provides consistent text splitting, sizing, and
 // centered rendering across all diagram types.
-// ============================================================================
 
 import type { Canvas } from './types'
 import { drawText } from './canvas'

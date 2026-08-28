@@ -1,7 +1,6 @@
 import type { MermaidGraph, MermaidNode, MermaidEdge, MermaidSubgraph, Direction, NodeShape, EdgeStyle } from './types'
 import { normalizeBrTags } from './multiline-utils'
 
-// ============================================================================
 // Mermaid parser — flowcharts and state diagrams
 //
 // Supports:
@@ -10,7 +9,6 @@ import { normalizeBrTags } from './multiline-utils'
 //
 // Line-by-line regex approach — the grammar is regular enough
 // that we don't need a grammar generator or full parser combinator.
-// ============================================================================
 
 /**
  * Parse Mermaid text into a logical graph structure.
@@ -36,9 +34,6 @@ export function parseMermaid(text: string): MermaidGraph {
   return parseFlowchart(lines)
 }
 
-// ============================================================================
-// Flowchart parser
-// ============================================================================
 
 function parseFlowchart(lines: string[]): MermaidGraph {
   const headerMatch = lines[0]!.match(/^(?:graph|flowchart)\s+(TD|TB|LR|BT|RL)\s*$/i)
@@ -164,7 +159,6 @@ function parseFlowchart(lines: string[]): MermaidGraph {
   return graph
 }
 
-// ============================================================================
 // State diagram parser
 //
 // Supported syntax:
@@ -177,7 +171,6 @@ function parseFlowchart(lines: string[]): MermaidGraph {
 //   state CompositeState {
 //     inner1 --> inner2
 //   }
-// ============================================================================
 
 function parseStateDiagram(lines: string[]): MermaidGraph {
   const graph: MermaidGraph = {
@@ -356,9 +349,6 @@ function ensureStateNode(
   }
 }
 
-// ============================================================================
-// Shared utilities
-// ============================================================================
 
 /** Parse "fill:#f00,stroke:#333" style property strings into a Record */
 function parseStyleProps(propsStr: string): Record<string, string> {
@@ -378,12 +368,10 @@ function parseStyleProps(propsStr: string): Record<string, string> {
   return props
 }
 
-// ============================================================================
 // Flowchart edge line parser
 //
 // Handles chained edges like: A[Label] --> B(Label) -.-> C{Label}
 // Also handles & parallel links: A & B --> C & D
-// ============================================================================
 
 /**
  * Arrow regex — matches all arrow operators with optional labels.

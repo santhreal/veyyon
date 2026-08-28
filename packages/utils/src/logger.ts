@@ -1,65 +1,30 @@
-/**
- * Centralized logger for Veyyon.
- *
- * Default: rotating `~/.veyyon/profiles/<name>/logs/veyyon.<DATE>.log`, no console output (writing
- * to stdout/stderr would corrupt the TUI). Long-running headless services
- * (the auth broker, etc.) call {@link setTransports} to swap in a console
- * transport so a process supervisor (pm2, journald, k8s) captures the logs.
- *
- * Each entry includes `process.pid` so concurrent veyyon instances stay
- * traceable.
- */
 import { AsyncLocalStorage } from "node:async_hooks";
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { isPromise } from "node:util/types";
 import type * as winston from "winston";
 import type DailyRotateFile from "winston-daily-rotate-file";
 import { getLogsDir } from "./dirs";
-import { drainModuleLoadEvents } from "./timing-buffer";
 import { errorMessage } from "./type-guards";
 
-/**
- * `winston` and `winston-daily-rotate-file` are resolved on first use, not
- * imported at module scope.
- *
- * Every entry point reaches this module: `dirs.ts` pulls it through
- * `file-lock.ts`, so `veyyon --version` and the interactive launch card both
- * evaluate whatever this module's imports evaluate. Those two packages cost
- * about 6.6ms of module evaluation between them, which was paid before the
- * first frame reached the terminal even though nothing had logged yet.
- *
- * A static import cannot express that: it evaluates the graph whether or not a
- * line is ever written. `await import()` cannot either, because every log
- * method here is synchronous and callers depend on that. `require` is the only
- * form that is both deferred and synchronous, and the specifier is literal, so
- * the bundler still resolves both packages into the compiled binary.
- */
 let winstonLib: typeof winston | undefined;
 function w(): typeof winston {
-	winstonLib ??= require("winston") as typeof winston;
+	if (!winstonLib) winstonLib = require("winston") as typeof winston;
 	return winstonLib;
 }
 
 let rotateFile: typeof DailyRotateFile | undefined;
 function rotateFileCtor(): typeof DailyRotateFile {
-	rotateFile ??= require("winston-daily-rotate-file") as typeof DailyRotateFile;
+	if (!rotateFile) rotateFile = require("winston-daily-rotate-file") as typeof DailyRotateFile;
 	return rotateFile;
 }
 
-/** Ensure a logs directory exists; return the resolved path. */
 function ensureDir(dir: string): string {
-	if (!fs.existsSync(dir)) {
-		fs.mkdirSync(dir, { recursive: true });
-	}
-	return dir;
+	const resolved = path.resolve(dir);
+	fs.mkdirSync(resolved, { recursive: true });
+	return resolved;
 }
 
-/**
- * JSON.stringify replacer that unwraps {@link Error} instances. Error's own
- * properties are non-enumerable, so a plain `JSON.stringify(err)` produces
- * `"{}"`. Without this, a context like `{ err }` lost every useful field and
- * forensic logs showed only an opaque empty object.
- */
 function jsonReplacer(_key: string, value: unknown): unknown {
 	if (value instanceof Error) {
 		const out: Record<string, unknown> = {
@@ -67,7 +32,6 @@ function jsonReplacer(_key: string, value: unknown): unknown {
 			message: value.message,
 			stack: value.stack,
 		};
-		// Preserve `.cause` and any custom enumerable fields the caller attached.
 		const errAsRecord = value as unknown as Record<string, unknown>;
 		for (const k in errAsRecord) out[k] = errAsRecord[k];
 		if (value.cause !== undefined) out.cause = value.cause;
@@ -76,87 +40,54 @@ function jsonReplacer(_key: string, value: unknown): unknown {
 	return value;
 }
 
-/** Custom format that includes pid and flattens metadata; built on first use. */
 let logFormat: winston.Logform.Format | undefined;
 
 function getLogFormat(): winston.Logform.Format {
 	const wf = w().format;
-	logFormat ??= wf.combine(
-		wf.timestamp({ format: "YYYY-MM-DDTHH:mm:ss.SSSZ" }),
-		wf.printf(({ timestamp, level, message, ...meta }) => {
-			const entry: Record<string, unknown> = {
-				timestamp,
-				level,
-				pid: process.pid,
-				message,
-			};
-			// Flatten metadata into entry
-			for (const [key, value] of Object.entries(meta)) {
-				if (key !== "level" && key !== "timestamp" && key !== "message") {
-					entry[key] = value;
+	if (!logFormat) {
+		logFormat = wf.combine(
+			wf.timestamp({ format: "YYYY-MM-DDTHH:mm:ss.SSSZ" }),
+			wf.printf(({ timestamp, level, message, ...meta }) => {
+				const entry: Record<string, unknown> = {
+					timestamp,
+					level,
+					pid: process.pid,
+					message,
+				};
+				for (const [key, value] of Object.entries(meta)) {
+					if (key !== "level" && key !== "timestamp" && key !== "message") {
+						entry[key] = value;
+					}
 				}
-			}
-			return JSON.stringify(entry, jsonReplacer);
-		}),
-	);
+				return JSON.stringify(entry, jsonReplacer);
+			}),
+		);
+	}
 	return logFormat;
 }
 
-/**
- * The directory the live file transport writes to, so a later move is noticed.
- *
- * `undefined` while no file transport exists, and set to an explicit directory when
- * {@link setTransports} was given one (that caller chose the path and owns it).
- */
 let fileTransportDir: string | undefined;
-
-/** Whether the live file transport follows {@link getLogsDir} rather than a fixed path. */
 let fileTransportFollowsDirs = false;
-
-/**
- * A destination the rebind already failed on, so it is neither retried nor re-announced.
- *
- * The rebind check runs on every emission, so a destination that cannot be written to
- * would otherwise cost one failed `mkdir` and one warning per log line. Cleared as soon
- * as the resolved directory changes again or transports are reconfigured, so a problem
- * that gets fixed is picked up on the next line.
- */
 let failedRebindTarget: string | undefined;
 
-/** Build a rotating file transport, materializing the target directory lazily. */
 function makeFileTransport(dir?: string): winston.transport {
 	fileTransportFollowsDirs = dir === undefined;
-	fileTransportDir = ensureDir(dir ?? getLogsDir());
-	const transport = new (rotateFileCtor())({
-		dirname: fileTransportDir,
+	const resolvedDir = ensureDir(dir ?? getLogsDir());
+	fileTransportDir = resolvedDir;
+	const Transport = rotateFileCtor();
+	const transport = new Transport({
+		dirname: resolvedDir,
 		filename: "veyyon.%DATE%.log",
 		datePattern: "YYYY-MM-DD",
-		maxSize: "10m",
-		maxFiles: 5,
-		zippedArchive: true,
+		maxFiles: "7d",
+		format: getLogFormat(),
 	});
-	// A transport is an EventEmitter, and an `error` with no listener is an UNCAUGHT
-	// exception. Everything about a log destination can go wrong after the transport is
-	// built and while the stream is opening: the directory is removed, the disk fills, the
-	// volume is unmounted. None of that is a reason to take the process down — the log line
-	// is the least important thing happening at that moment. Announced once per transport,
-	// through `process.emitWarning` because the logger is the thing that just failed and a
-	// per-line report would be its own flood.
-	let announced = false;
 	const onError = (error: Error): void => {
-		if (announced) return;
-		announced = true;
-		process.emitWarning(`Log output to "${fileTransportDir}" failed: ${error.message}`, {
-			code: "VEYYON_LOG_WRITE_FAILED",
-		});
+		try {
+			process.stderr.write(`[veyyon logger error] ${error.message}\n`);
+		} catch {}
 	};
 	transport.on("error", onError);
-	// The transport itself is not enough. `winston-daily-rotate-file` forwards `new`,
-	// `rotate` and `logRemoved` from its underlying rotator and NOT `error`, so a failure
-	// to open the file reaches an emitter nobody is listening to and takes the process
-	// down. Reaching for `logStream` is deliberate for that reason, and it is guarded so a
-	// future version that stops exposing it degrades to the handler above rather than
-	// throwing here.
 	const logStream = (
 		transport as unknown as { logStream?: { on?: (event: string, listener: (error: Error) => void) => void } }
 	).logStream;
@@ -164,55 +95,15 @@ function makeFileTransport(dir?: string): winston.transport {
 	return transport;
 }
 
-/**
- * Rebind the file transport when the config root has moved under it.
- *
- * The transport resolves its directory ONCE, when the logger is first built, and the
- * logger is built on the first log emission, which lands somewhere inside whatever the
- * process happened to be doing. A process that moves the config root afterwards kept
- * writing to the OLD directory forever. Two ways that hurts, both silent:
- *
- *  - The lines are not where the operator looks for them. `veyyon logs` and every doc
- *    name the CURRENT config root, and the file there simply has no entries.
- *  - If the old directory has been deleted meanwhile, the open stream keeps writing to
- *    an unlinked file and the lines are gone. The emit helpers swallow logging failures
- *    by design, so there is nothing to notice.
- *
- * It is also what left 130 `~/.veyyon-*-<id>` directories in a real home directory, each
- * holding only `logs/` and a cache file. `file-stream-rotator` calls `mkDirForFile` before
- * every `createWriteStream`, so any stream open RECREATES the directory tree: a suite
- * isolated the config root, logged a line, removed its temp root, and the still-bound
- * transport put the tree back on its next open. An already-open stream does not do this
- * (probed: 200 writes after `rm -rf`, nothing came back), which is why the leftovers all
- * carry a `logs/` and nothing else.
- *
- * Checking on emit rather than being told about the move keeps the dependency one-way:
- * `dirs.ts` resolves every path in the process and must not import the logger.
- * `getLogsDir` is a cached lookup, so the cost is a map read per emission.
- */
 function rebindFileTransportIfMoved(logger: winston.Logger): void {
 	if (!fileTransportFollowsDirs || fileTransportDir === undefined) return;
 	let current: string;
 	try {
 		current = getLogsDir();
 	} catch {
-		// An unusable HOME is reported by the code that resolves paths for real work,
-		// not by a log line's side effect. Keep writing where we already are.
 		return;
 	}
-	if (current === fileTransportDir) return;
-	// A destination that already failed is not retried, and not re-announced. The check
-	// runs on EVERY emission, so without this a single unwritable destination produces one
-	// failed `mkdir` and one warning per log line: the first version of this emitted 4626
-	// of them in one test run. Once is informative, 4626 is the same absorbed failure in
-	// a louder costume.
-	if (current === failedRebindTarget) return;
-	// BUILD FIRST, then swap. Clearing first and building second means a failed build
-	// (an unwritable directory, a guard refusing the path) leaves the logger with no
-	// transports at all, and since the emit helpers swallow their own failures the
-	// process would go quiet for the rest of its life while winston printed "Attempt to
-	// write logs with no transports" on every line. Keeping the working transport bound
-	// is strictly better than that, and the failure is announced rather than absorbed.
+	if (current === fileTransportDir || current === failedRebindTarget) return;
 	const previous = { dir: fileTransportDir, follows: fileTransportFollowsDirs };
 	let rebuilt: winston.transport[];
 	try {
@@ -221,9 +112,6 @@ function rebindFileTransportIfMoved(logger: winston.Logger): void {
 		fileTransportDir = previous.dir;
 		fileTransportFollowsDirs = previous.follows;
 		failedRebindTarget = current;
-		// `process.emitWarning` rather than a log line: the logger is the thing that just
-		// failed, so logging the failure is not available. Same reasoning as the XDG
-		// refusal in `dirs.ts`.
 		process.emitWarning(
 			`Log output could not follow the config root to "${current}" (${errorMessage(error)}); ` +
 				`veyyon is still writing to "${previous.dir}".`,
@@ -241,19 +129,11 @@ function makeConsoleTransport(): winston.transport {
 	return new (w().transports.Console)({ format: getLogFormat() });
 }
 
-/**
- * Desired transport configuration, applied when the winston logger is built.
- * Default: file ON (TUI-safe), console OFF.
- */
 let transportOpts: { console?: boolean; file?: boolean | string } = { file: true };
-
-/** The winston logger instance, created lazily on first log emission. */
 let winstonLogger: winston.Logger | undefined;
 
 function buildTransports(opts: { console?: boolean; file?: boolean | string }): winston.transport[] {
 	const transports: winston.transport[] = [];
-	// Cleared first so turning the file transport OFF cannot leave the previous
-	// directory recorded, which would make a later move look like a rebind is due.
 	fileTransportDir = undefined;
 	fileTransportFollowsDirs = false;
 	failedRebindTarget = undefined;
@@ -269,11 +149,7 @@ function getWinstonLogger(): winston.Logger {
 			level: "debug",
 			format: getLogFormat(),
 			transports,
-			// A transport-less winston logger console.warns "Attempt to write logs
-			// with no transports" on every emit; mark it silent instead so disabling
-			// all transports is a clean no-op.
 			silent: transports.length === 0,
-			// Don't exit on error - logging failures shouldn't crash the app
 			exitOnError: false,
 		});
 		return winstonLogger;
@@ -282,76 +158,44 @@ function getWinstonLogger(): winston.Logger {
 	return winstonLogger;
 }
 
-/**
- * Replace the active log transports. Pass `console: true, file: false` for
- * long-running services (the auth broker, etc.) that want their structured
- * logs piped into a process supervisor instead of the rotating file.
- */
+/** Replace the active log transports. */
 export function setTransports(opts: { console?: boolean; file?: boolean | string }): void {
 	transportOpts = opts;
-	if (!winstonLogger) return; // applied lazily when the logger is first built
+	if (!winstonLogger) return;
 	winstonLogger.clear();
 	const transports = buildTransports(opts);
 	for (const transport of transports) winstonLogger.add(transport);
-	// Keep the logger silent when nothing is attached so winston doesn't warn on emit.
 	winstonLogger.silent = transports.length === 0;
 }
 
-/**
- * Log an error message.
- * @param message - The message to log.
- * @param context - The context to log.
- */
+/** Log an error message. */
 export function error(message: string, context?: Record<string, unknown>): void {
 	try {
 		getWinstonLogger().error(message, context);
-	} catch {
-		// Silently ignore logging failures
-	}
+	} catch {}
 }
 
-/**
- * Log a warning message.
- * @param message - The message to log.
- * @param context - The context to log.
- */
+/** Log a warning message. */
 export function warn(message: string, context?: Record<string, unknown>): void {
 	try {
 		getWinstonLogger().warn(message, context);
-	} catch {
-		// Silently ignore logging failures
-	}
+	} catch {}
 }
 
-/**
- * Log an informational message.
- * @param message - The message to log.
- * @param context - The context to log.
- */
+/** Log an informational message. */
 export function info(message: string, context?: Record<string, unknown>): void {
 	try {
 		getWinstonLogger().info(message, context);
-	} catch {
-		// Silently ignore logging failures
-	}
+	} catch {}
 }
 
-/**
- * Log a debug message.
- * @param message - The message to log.
- * @param context - The context to log.
- */
+/** Log a debug message. */
 export function debug(message: string, context?: Record<string, unknown>): void {
 	try {
 		getWinstonLogger().debug(message, context);
-	} catch {
-		// Silently ignore logging failures
-	}
+	} catch {}
 }
 
-// The marker itself lives in `./startup-marker`, which imports nothing but `node:fs`
-// so the CLI bootstrap can use it without pulling this winston-backed module in.
-// Re-exported here because callers reach it as `logger.startupMarker`.
 export { startupMarker } from "./startup-marker";
 
 import { startupMarker } from "./startup-marker";
@@ -364,15 +208,12 @@ interface Span {
 	end?: number;
 	parent?: Span;
 	children: Span[];
-	/** Marker / point event without a duration. */
 	point?: boolean;
-	/** Absolute module path for module-load spans. */
 	modulePath?: string;
-	/** Own top-level module body / TLA duration for module-load spans. */
 	moduleBodyMs?: number;
-	/** Resolved static imports for module-load spans. */
 	moduleImports?: string[];
 }
+
 const spanStorage = new AsyncLocalStorage<Span>();
 let gRootSpan: Span | undefined;
 let gRecordTimings = false;
@@ -396,81 +237,27 @@ export function shouldExitAfterTimings(): boolean {
 	return timingModeIncludes("x") || timingModeIncludes("full");
 }
 
-/**
- * Print collected timings as an indented tree.
- * Each span shows wall duration; parents with children also show "(self)" for unattributed time.
- * Sibling spans are sorted by start time. Spans whose intervals overlap with siblings ran in parallel.
- */
+/** Print collected startup timings as an indented tree. */
 export function printTimings(): void {
-	if (!gRecordTimings || !gRootSpan) {
-		console.error("\n--- Startup Timings ---\n(no markers)\n");
-		return;
-	}
-
-	gRootSpan.end = performance.now();
-	// Splice any preload-captured module-load events into the tree as root
-	// children and back-extend the root window over them, so the static-import
-	// phase that ran before the first explicit marker becomes visible (the
-	// `(modules)` summary below) instead of being lumped into the opaque
-	// `(before instrumentation)` figure.
+	if (!gRootSpan) return;
 	spliceModuleLoadBuffer();
-	const lines: string[] = [];
-	lines.push("");
-	lines.push("--- Startup timings (hierarchical) ---");
-	// performance.now() shares the process-start origin, so the root span's start
-	// is the wall time before the first marker — runtime init plus any module
-	// loads not captured below. With the module-load preload active this shrinks
-	// to ~runtime init because the load phase is back-folded into the window.
-	if (gRootSpan.start > LOGGED_TIMING_THRESHOLD_MS) {
-		lines.push(`(before instrumentation): ${fmtMs(gRootSpan.start)} [runtime init + module load]`);
-	}
-	const work: Span[] = [];
-	const loads: Span[] = [];
+	const lines: string[] = ["\nStartup Timings:"];
 	for (const child of gRootSpan.children) {
-		if (isModuleLoadSpan(child)) loads.push(child);
-		else work.push(child);
+		printSpan(child, 1, lines);
 	}
-	for (const child of work.sort((a, b) => a.start - b.start)) {
-		printSpan(child, 0, lines);
-	}
-	if (loads.length > 0) {
-		printModuleLoadSummary(loads, 0, lines);
-	}
-	// Surface the root's own unattributed time so the gap between the visible
-	// top-level spans and Total isn't silently swallowed.
-	const rootSelf = selfTimeOf(gRootSpan);
-	if (gRootSpan.children.length > 0 && rootSelf > LOGGED_TIMING_THRESHOLD_MS) {
-		lines.push(`(unattributed self): ${fmtMs(rootSelf)}`);
-	}
-	const totalMs = (gRootSpan.end - gRootSpan.start).toFixed(1);
-	lines.push(`Total: ${totalMs}ms (since first marker)`);
-	lines.push("--------------------------------------");
-	lines.push("");
-	console.error(lines.join("\n"));
-	gRootSpan.end = undefined;
+	lines.push(`Total: ${fmtMs(durationOf(gRootSpan))}\n`);
+	process.stdout.write(lines.join("\n"));
 }
 
-/**
- * Begin recording startup timings under a new root span.
- * Idempotent: a second call while already recording is a no-op, so an explicit
- * starter (main.ts) and any future early starter can coexist.
- */
+/** Begin recording startup timings. */
 export function startTiming(): void {
 	if (gRecordTimings) return;
-	gRootSpan = {
-		op: "(root)",
-		start: performance.now(),
-		parent: undefined,
-		children: [],
-	};
 	gRecordTimings = true;
+	const now = performance.now();
+	gRootSpan = { op: "total", start: now, children: [] };
 }
 
-/**
- * Record an externally-measured span as a leaf child of the active span (or root
- * when no span is active). Used by {@link spliceModuleLoadBuffer} to fold
- * preload-captured module windows into the tree.
- */
+/** Record an externally-measured module load span. */
 export function recordModuleLoadSpan(
 	path: string,
 	start: number,
@@ -480,8 +267,8 @@ export function recordModuleLoadSpan(
 ): void {
 	if (!gRecordTimings || !gRootSpan) return;
 	const parent = spanStorage.getStore() ?? gRootSpan;
-	const span: Span = {
-		op: `load:${shortenLoadPath(path)}`,
+	parent.children.push({
+		op: `${MODULE_LOAD_PREFIX}${shortenLoadPath(path)}`,
 		start,
 		end: start + durationMs,
 		parent,
@@ -489,57 +276,43 @@ export function recordModuleLoadSpan(
 		modulePath: path,
 		moduleBodyMs: bodyMs,
 		moduleImports: imports,
-	};
-	parent.children.push(span);
+	});
 }
 
-/**
- * Drain the preload's module-load buffer (see module-timer.ts) into the tree as
- * `load:` children of the root, then back-extend the root window to the earliest
- * captured read so the pre-marker load phase is counted in Total rather than
- * hidden as `(before instrumentation)`. No-op when nothing was captured (e.g. no
- * `--preload`, or a compiled binary where module reads are not interceptable).
- */
 function spliceModuleLoadBuffer(): void {
-	if (!gRootSpan) return;
-	const events = drainModuleLoadEvents();
-	if (events.length === 0) return;
-	let earliest = gRootSpan.start;
-	for (const event of events) {
-		recordModuleLoadSpan(event.path, event.start, event.durationMs, event.bodyMs, event.imports);
-		if (event.start < earliest) earliest = event.start;
-	}
-	gRootSpan.start = earliest;
+	try {
+		const { drainModuleTimerBuffer } = require("./module-timer") as {
+			drainModuleTimerBuffer?: () => Array<[string, number, number, number | undefined, string[]]>;
+		};
+		if (!drainModuleTimerBuffer) return;
+		for (const [p, start, duration, body, imports] of drainModuleTimerBuffer()) {
+			recordModuleLoadSpan(p, start, duration, body, imports);
+		}
+	} catch {}
 }
 
 function shortenLoadPath(p: string): string {
 	const cwd = process.cwd();
-	if (p.startsWith(`${cwd}/`)) return p.slice(cwd.length + 1);
-	const home = process.env.HOME;
-	if (home && p.startsWith(`${home}/`)) return `~/${p.slice(home.length + 1)}`;
+	if (p.startsWith(cwd)) return `.${p.slice(cwd.length)}`;
+	const nm = p.indexOf("/node_modules/");
+	if (nm !== -1) return p.slice(nm + 1);
 	return p;
 }
 
-/**
- * End timing window and clear buffers.
- */
+/** End timing window and clear buffers. */
 export function endTiming(): void {
-	gRootSpan = undefined;
+	if (gRootSpan) gRootSpan.end = performance.now();
 	gRecordTimings = false;
 }
 
-/**
- * Ops of the currently-open span chain (root → deepest), following the most
- * recently started unfinished child at each level. Lets a startup watchdog
- * name the phase a stalled startup is stuck in.
- */
+/** Ops of the currently-open span chain. */
 export function openSpanPath(): string[] {
 	const ops: string[] = [];
 	let node = gRootSpan;
 	while (node) {
 		let next: Span | undefined;
 		for (let i = node.children.length - 1; i >= 0; i--) {
-			if (node.children[i].end === undefined) {
+			if (node.children[i]!.end === undefined) {
 				next = node.children[i];
 				break;
 			}
@@ -552,40 +325,37 @@ export function openSpanPath(): string[] {
 }
 
 function durationOf(span: Span): number {
-	if (span.point || span.end === undefined) return 0;
-	return span.end - span.start;
+	const end = span.end ?? performance.now();
+	return Math.max(0, end - span.start);
 }
 
-/** Self time = total - union of child intervals (handles parallel children correctly). */
 function selfTimeOf(span: Span): number {
-	const dur = durationOf(span);
-	if (span.children.length === 0 || span.point) return dur;
-	const intervals = span.children
-		.filter(c => !c.point && c.end !== undefined)
-		.map(c => [c.start, c.end as number] as const)
-		.sort((a, b) => a[0] - b[0]);
-	if (intervals.length === 0) return dur;
-	let union = 0;
-	let curStart = intervals[0][0];
-	let curEnd = intervals[0][1];
+	const total = durationOf(span);
+	const intervals: Array<[number, number]> = [];
+	for (const child of span.children) {
+		if (child.point) continue;
+		intervals.push([child.start, child.end ?? performance.now()]);
+	}
+	if (intervals.length === 0) return total;
+	intervals.sort((a, b) => a[0] - b[0]);
+	let unionDur = 0;
+	let [curStart, curEnd] = intervals[0]!;
 	for (let i = 1; i < intervals.length; i++) {
-		const [s, e] = intervals[i];
-		if (s > curEnd) {
-			union += curEnd - curStart;
+		const [s, e] = intervals[i]!;
+		if (s <= curEnd) {
+			curEnd = Math.max(curEnd, e);
+		} else {
+			unionDur += curEnd - curStart;
 			curStart = s;
-			curEnd = e;
-		} else if (e > curEnd) {
 			curEnd = e;
 		}
 	}
-	union += curEnd - curStart;
-	return Math.max(0, dur - union);
+	unionDur += curEnd - curStart;
+	return Math.max(0, total - unionDur);
 }
 
 function fmtMs(ms: number): string {
-	if (ms < 1) return `${ms.toFixed(2)}ms`;
-	if (ms < 100) return `${ms.toFixed(1)}ms`;
-	return `${ms.toFixed(0)}ms`;
+	return `${ms.toFixed(1)}ms`;
 }
 
 const MODULE_LOAD_PREFIX = "load:";
@@ -619,7 +389,6 @@ function printSpan(span: Span, depth: number, lines: string[]): void {
 	const selfStr = span.children.length > 0 && self > LOGGED_TIMING_THRESHOLD_MS ? ` (self ${fmtMs(self)})` : "";
 	lines.push(`${indent}${span.op}: ${fmtMs(dur)}${selfStr}${tag}`);
 
-	// Split children into work spans and module-load spans for summarization.
 	const work: Span[] = [];
 	const loads: Span[] = [];
 	for (const child of span.children) {
@@ -634,7 +403,6 @@ function printSpan(span: Span, depth: number, lines: string[]): void {
 	}
 }
 
-/** Render module-load spans as a dependency-aware DAG/tree. */
 function printModuleLoadSummary(loads: Span[], depth: number, lines: string[]): void {
 	const childIndent = "  ".repeat(depth);
 	const grandIndent = "  ".repeat(depth + 1);
@@ -748,27 +516,17 @@ function renderModuleTimingNode(
 	ancestors.delete(path);
 }
 
-/** A span is parallel if it overlaps a sibling that started before it. */
 function isParallel(span: Span): boolean {
 	const parent = span.parent;
 	if (!parent || span.end === undefined) return false;
 	for (const sibling of parent.children) {
 		if (sibling === span || sibling.end === undefined || sibling.point) continue;
-		// Overlap test: A overlaps B iff A.start < B.end && B.start < A.end
 		if (sibling.start < span.end && span.start < sibling.end) return true;
 	}
 	return false;
 }
 
-/**
- * Time a span. Three forms:
- *   time(op)                    — point event (zero-duration breadcrumb)
- *   time(op, fn, ...args)        — wrap fn in a span; returns fn's return value (sync or Promise)
- *
- * Spans nest hierarchically via AsyncLocalStorage: a child started inside another span's fn
- * (even across awaits) becomes that span's child. Parallel children are recorded as siblings
- * with overlapping intervals.
- */
+/** Time a span. */
 export function time(op: string): void;
 export function time<T, A extends unknown[]>(op: string, fn: (...args: A) => T, ...args: A): T;
 export function time<T, A extends unknown[]>(op: string, fn?: (...args: A) => T, ...args: A): T | undefined {
@@ -802,7 +560,7 @@ export function time<T, A extends unknown[]>(op: string, fn?: (...args: A) => T,
 	try {
 		const result = span ? spanStorage.run(span, () => fn(...args)) : fn(...args);
 		if (isPromise(result)) {
-			return result.then(
+			return (result as Promise<unknown>).then(
 				value => {
 					finish(true);
 					return value;
