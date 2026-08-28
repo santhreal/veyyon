@@ -27,7 +27,7 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
 import { HomeAnchorLayout } from "@veyyon/coding-agent/modes/controllers/home-anchor-layout";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
+import { createFrameRecorder, settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
 
 class Block implements Component {
@@ -95,6 +95,7 @@ describe("a streamed row never slides the rows already on screen", () => {
 					test(`${kind} transcript, ${rows} rows, ${rowsPerToken} row(s) per token, ${width}-column rows`, async () => {
 						const term = new VirtualTerminal(80, rows, 5_000);
 						const tui = new TUI(term, true);
+						const recorder = createFrameRecorder(term);
 						const transcript = kind === "plain" ? new Container() : new TranscriptContainer();
 						const layout = new HomeAnchorLayout({
 							ui: tui,
@@ -114,6 +115,7 @@ describe("a streamed row never slides the rows already on screen", () => {
 						transcript.addChild(answer);
 						tui.requestRender();
 						await settleFrames(term, tui);
+						recorder.collectFrame();
 
 						// The arm only proves something while the screen has room left to
 						// route: with zero slack the engine scrolls and every row moves by
@@ -124,6 +126,7 @@ describe("a streamed row never slides the rows already on screen", () => {
 						const slid: Array<{ token: number; row: number; before: string; after: string }> = [];
 						const composerOffBottom: Array<{ token: number; last: number }> = [];
 						const overslid: Array<{ token: number; deficit: number; row: number; after: string }> = [];
+						const repainted: Array<{ token: number; added: number; rewritten: number }> = [];
 						let previous = occupiedRows(paintedRows(term));
 						let token = 0;
 						let fittingSteps = 0;
@@ -142,6 +145,7 @@ describe("a streamed row never slides the rows already on screen", () => {
 							layout.sync(true);
 							tui.requestRender();
 							await settleFrames(term, tui);
+							const frame = recorder.collectFrame();
 
 							const current = paintedRows(term);
 							if (deficit === 0) {
@@ -163,6 +167,12 @@ describe("a streamed row never slides the rows already on screen", () => {
 									if (after !== text) overslid.push({ token, deficit, row: landed, after });
 								}
 							}
+							// A step that fits costs the rows it added and nothing else: a
+							// bottom-anchored layout reprinted the rows it slid as well, which
+							// is the same defect read off the byte stream instead of the grid.
+							if (deficit === 0 && frame.rowsRewritten > screenRowsPerToken) {
+								repainted.push({ token, added: screenRowsPerToken, rewritten: frame.rowsRewritten });
+							}
 							const last = current.reduce((seen, row, index) => (row.trim().length > 0 ? index : seen), -1);
 							if (last !== rows - 1) composerOffBottom.push({ token, last });
 							previous = occupiedRows(current);
@@ -174,10 +184,11 @@ describe("a streamed row never slides the rows already on screen", () => {
 						// up by exactly the rows that did not fit and no further. The composer
 						// owns the bottom edge throughout. All three are read off the terminal,
 						// so the arm carries no expected geometry of its own.
-						expect({ slid, overslid, composerOffBottom }).toEqual({
+						expect({ slid, overslid, composerOffBottom, repainted }).toEqual({
 							slid: [],
 							overslid: [],
 							composerOffBottom: [],
+							repainted: [],
 						});
 						expect(fittingSteps).toBeGreaterThan(0);
 						expect(overflowSteps).toBeLessThanOrEqual(1);
