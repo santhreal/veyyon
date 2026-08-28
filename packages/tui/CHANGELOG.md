@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- 46 additional type definitions and functions appended to `components/markdown-helpers.ts` from `components/markdown.ts` (1,987→1,679 lines).
 - Deep comment strip pass on `tui.ts`, `editor.ts`, and `markdown.ts`.
 - Free helper functions, types, and constants extracted from `editor.ts` (2,771→2,494 lines) into `editor-helpers.ts`.
 - 27 free helper functions, types, and constants extracted from `markdown.ts` (2,290→2,002 lines) into `markdown-helpers.ts`.

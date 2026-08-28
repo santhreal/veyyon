@@ -1,364 +1,56 @@
-import { LRUCache } from "lru-cache/raw";
-import { Marked, type Token, Tokenizer, type TokenizerAndRendererExtension, type Tokens } from "marked";
+import type { Token } from "marked";
 import { SGR_RESET } from "../ansi";
 import { latexToBlock } from "../latex-block";
-import { inlineMathSpanEnd, isBareMathEnvironment, latexToUnicode } from "../latex-to-unicode";
-import type { SymbolTheme } from "../symbols";
 import { TERMINAL } from "../terminal-capabilities";
 import type { Component } from "../tui";
 import {
 	applyBackgroundToLine,
 	Ellipsis,
-	encodeTextSized,
 	getPaddingX,
-	getSegmenter,
 	padding,
 	replaceTabs,
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "../utils";
+
 import {
+	alignCellText,
 	BLOCK_HTML_REGEX,
+	canStreamLex,
+	capMarkdownNesting,
 	createHtmlNormalizationState,
+	type DefaultTextStyle,
+	EMPTY_RENDER_LINES,
+	encodeTextSizedHeading,
+	formatHyperlink,
+	getHrChar,
 	HEADING_PREFIXES,
 	hangWrapTreeGuideLines,
 	htmlTagName,
+	type InlineStyleContext,
+	isMathToken,
 	isOsc66Line,
+	type ListToken,
+	type MarkdownTheme,
 	markCurrentHtmlItemContent,
+	markdownParser,
 	normalizeHtmlEntitiesForTerminal,
 	normalizeHtmlForTerminal,
-	STRICT_STRIKETHROUGH_REGEX,
+	OVER_NESTED,
+	objectId,
+	renderCache,
+	renderMathToken,
 	splitTerminalLines,
+	type TableAlign,
+	type TableToken,
 } from "./markdown-helpers";
 
-class StrictStrikethroughTokenizer extends Tokenizer {
-	override del(src: string): Tokens.Del | undefined {
-		const match = STRICT_STRIKETHROUGH_REGEX.exec(src);
-		if (!match) {
-			return undefined;
-		}
-
-		const text = match[2];
-		return {
-			type: "del",
-			raw: match[0],
-			text,
-			tokens: this.lexer.inlineTokens(text),
-		};
-	}
-}
-
-const markdownParser = new Marked();
-markdownParser.setOptions({
-	tokenizer: new StrictStrikethroughTokenizer(),
-});
-
-const CUSTOM_HR_START_REGEX = /(?:^|\n) {0,3}([-*_─━═=–—])[ \t]*(?:\1[ \t]*){2,}(?:\n+|$)/;
-const CUSTOM_HR_TOKENIZER_REGEX = /^ {0,3}([-*_─━═=–—])[ \t]*(?:\1[ \t]*){2,}(?:\n+|$)/;
-
-function getHrChar(char: string, hrChar: string): string {
-	const isAscii = hrChar === "-";
-	switch (char) {
-		case "=":
-			return "=";
-		case "═":
-			return isAscii ? "=" : "═";
-		case "━":
-			return isAscii ? "-" : "━";
-		case "─":
-			return isAscii ? "-" : "─";
-		case "–":
-			return isAscii ? "-" : "–";
-		case "—":
-			return isAscii ? "-" : "—";
-		default:
-			return hrChar;
-	}
-}
-
-const customHrExtension: TokenizerAndRendererExtension = {
-	name: "customHr",
-	level: "block",
-	start(src) {
-		const match = CUSTOM_HR_START_REGEX.exec(src);
-		if (!match) return undefined;
-		let idx = match.index;
-		if (src.charCodeAt(idx) === 0x0a) {
-			idx += 1;
-		}
-		return idx;
-	},
-	tokenizer(src) {
-		const match = CUSTOM_HR_TOKENIZER_REGEX.exec(src);
-		if (match) {
-			return {
-				type: "hr",
-				raw: match[0],
-			};
-		}
-		return undefined;
-	},
-	renderer() {
-		return "";
-	},
-};
-
-const mathExtension: TokenizerAndRendererExtension = {
-	name: "math",
-	level: "inline",
-	start(src) {
-		const m = /\$|\\\(|\\\[/.exec(src);
-		return m ? m.index : undefined;
-	},
-	tokenizer(src) {
-		if (src.charCodeAt(0) === 0x24 && src.charCodeAt(1) === 0x24) {
-			const end = src.indexOf("$$", 2);
-			if (end !== -1 && src.slice(2, end).trim().length > 0) {
-				return { type: "math", raw: src.slice(0, end + 2), text: src.slice(2, end), display: true };
-			}
-			return undefined;
-		}
-		if (src.charCodeAt(0) === 0x5c && src.charCodeAt(1) === 0x5b) {
-			const end = src.indexOf("\\]", 2);
-			if (end !== -1) return { type: "math", raw: src.slice(0, end + 2), text: src.slice(2, end), display: true };
-			return undefined;
-		}
-		if (src.charCodeAt(0) === 0x5c && src.charCodeAt(1) === 0x28) {
-			const end = src.indexOf("\\)", 2);
-			if (end !== -1) return { type: "math", raw: src.slice(0, end + 2), text: src.slice(2, end), display: false };
-			return undefined;
-		}
-		if (src.charCodeAt(0) === 0x24 /* $ */) {
-			const end = inlineMathSpanEnd(src, 0);
-			if (end !== -1) return { type: "math", raw: src.slice(0, end + 1), text: src.slice(1, end), display: false };
-		}
-		return undefined;
-	},
-	renderer(token) {
-		return (token as { text?: string }).text ?? "";
-	},
-};
-
-const MATH_BLOCK_DOLLAR = /^ {0,3}\$\$[ \t]*\n([\s\S]+?)\n {0,3}\$\$[ \t]*(?:\n|$)/;
-const MATH_BLOCK_BRACKET = /^ {0,3}\\\[[ \t]*\n([\s\S]+?)\n {0,3}\\\][ \t]*(?:\n|$)/;
-const MATH_BLOCK_START = /(?:^|\n) {0,3}(?:\$\$|\\\[)[ \t]*\n/;
-const mathBlockExtension: TokenizerAndRendererExtension = {
-	name: "mathBlock",
-	level: "block",
-	start(src) {
-		const m = MATH_BLOCK_START.exec(src);
-		return m ? m.index : undefined;
-	},
-	tokenizer(src) {
-		const m = MATH_BLOCK_DOLLAR.exec(src) ?? MATH_BLOCK_BRACKET.exec(src);
-		if (!m || m[1].trim().length === 0) return undefined;
-		return { type: "math", raw: m[0], text: m[1], display: true };
-	},
-	renderer(token) {
-		return (token as { text?: string }).text ?? "";
-	},
-};
-
-const BARE_ENV_BEGIN = /(?:^|\n)[ \t]{0,3}\\begin\{([A-Za-z]+\*?)\}/;
-function bareMathEnvBlock(src: string): readonly [number, number] | null {
-	const bm = BARE_ENV_BEGIN.exec(src);
-	if (!bm || !isBareMathEnvironment(bm[1])) return null;
-	const beginLineStart = bm.index === 0 ? 0 : bm.index + 1; // skip the matched leading `\n`
-	const endToken = `\\end{${bm[1]}}`;
-	const endAt = src.indexOf(endToken, bm.index);
-	if (endAt === -1) return null;
-	if (/\n[ \t]*\n/.test(src.slice(beginLineStart, endAt))) return null;
-	let blockEnd = endAt + endToken.length;
-	while (src.charCodeAt(blockEnd) === 0x20 || src.charCodeAt(blockEnd) === 0x09) blockEnd++;
-	if (src.charCodeAt(blockEnd) === 0x0a) blockEnd++;
-	let start = beginLineStart;
-	if (start > 0 && src.charCodeAt(start - 1) === 0x0a) {
-		const prevStart = src.lastIndexOf("\n", start - 2) + 1;
-		const prevLine = src.slice(prevStart, start - 1);
-		if (/[=([{]\s*$/.test(prevLine)) start = prevStart;
-	}
-	return [start, blockEnd];
-}
-const mathEnvBlockExtension: TokenizerAndRendererExtension = {
-	name: "mathEnvBlock",
-	level: "block",
-	start(src) {
-		const r = bareMathEnvBlock(src);
-		return r ? r[0] : undefined;
-	},
-	tokenizer(src) {
-		const r = bareMathEnvBlock(src);
-		if (r?.[0] !== 0) return undefined; // only consume when the block starts at offset 0
-		const raw = src.slice(0, r[1]);
-		const text = raw.replace(/\n[ \t]*$/, "");
-		if (text.trim().length === 0) return undefined;
-		return { type: "math", raw, text, display: true };
-	},
-	renderer(token) {
-		return (token as { text?: string }).text ?? "";
-	},
-};
-markdownParser.use({ extensions: [customHrExtension, mathBlockExtension, mathEnvBlockExtension, mathExtension] });
-
-const RENDER_CACHE_MAX = 256; // sane cap: ~256 distinct message × width combos
-const RENDER_CACHE_MAX_SIZE = 512 * 1024;
-const RENDER_CACHE_MAX_ENTRY_SIZE = 32 * 1024;
-const EMPTY_RENDER_LINES: readonly string[] = [];
-const renderCache = new LRUCache<string, readonly string[]>({
-	max: RENDER_CACHE_MAX,
-	maxSize: RENDER_CACHE_MAX_SIZE,
-	maxEntrySize: RENDER_CACHE_MAX_ENTRY_SIZE,
-	sizeCalculation: renderedLinesCacheSize,
-});
-
-function renderedLinesCacheSize(lines: readonly string[]): number {
-	let size = lines.length;
-	for (let i = 0; i < lines.length; i++) size += lines[i]!.length;
-	return Math.max(1, size);
-}
-
-const HAS_REF_DEF = /^ {0,3}\[(?:\\.|[^\]\\])+\]:/m;
-
-function canStreamLex(text: string): boolean {
-	return !HAS_REF_DEF.test(text) && !text.includes("\r");
-}
-
-const MAX_BLOCKQUOTE_MARKERS = 24;
-const MAX_LEADING_INDENT = 64;
-const OVER_NESTED = new RegExp(
-	`(?:^|\\n)(?:[ \\t]*>){${MAX_BLOCKQUOTE_MARKERS + 1},}|(?:^|\\n)[ \\t]{${MAX_LEADING_INDENT + 1},}\\S`,
-);
-const BLOCKQUOTE_CAP = new RegExp(`^((?:[ \\t]*>){${MAX_BLOCKQUOTE_MARKERS}})(?:[ \\t]*>)+`, "gm");
-const INDENT_CAP = new RegExp(`^([ \\t]{${MAX_LEADING_INDENT}})[ \\t]+(?=\\S)`, "gm");
-
-function capMarkdownNesting(text: string): string {
-	if (!OVER_NESTED.test(text)) return text;
-	return text.replace(BLOCKQUOTE_CAP, "$1").replace(INDENT_CAP, "$1");
-}
-
-export function clearRenderCache(): void {
-	renderCache.clear();
-}
-
-const themeObjectIds = new WeakMap<object, number>();
-let nextObjectId = 0;
-function objectId(o: object): number {
-	let id = themeObjectIds.get(o);
-	if (id === undefined) {
-		id = nextObjectId++;
-		themeObjectIds.set(o, id);
-	}
-	return id;
-}
-
-export interface DefaultTextStyle {
-	color?: (text: string) => string;
-	bgColor?: (text: string) => string;
-	bold?: boolean;
-	italic?: boolean;
-	strikethrough?: boolean;
-	underline?: boolean;
-}
-
-export interface MarkdownTheme {
-	heading: (text: string) => string;
-	link: (text: string) => string;
-	linkUrl: (text: string) => string;
-	code: (text: string) => string;
-	codeBlock: (text: string) => string;
-	codeBlockBorder: (text: string) => string;
-	codeBlockFence?: (lang: string | undefined, pos: "open" | "close") => string;
-	quote: (text: string) => string;
-	quoteBorder: (text: string) => string;
-	hr: (text: string) => string;
-	listBullet: (text: string) => string;
-	bold: (text: string) => string;
-	italic: (text: string) => string;
-	strikethrough: (text: string) => string;
-	underline: (text: string) => string;
-	highlightCode?: (code: string, lang?: string) => string[];
-	resolveMermaidAscii?: (source: string, maxWidth?: number) => string | null;
-	symbols: SymbolTheme;
-}
-
-interface InlineStyleContext {
-	applyText: (text: string) => string;
-	stylePrefix: string;
-}
-
-type ListToken = Token & { items: Array<{ tokens?: Token[] }>; ordered: boolean; start?: number };
-type TableCellToken = { tokens?: Token[] };
-type TableAlign = "left" | "center" | "right" | null;
-type TableToken = Token & {
-	header: TableCellToken[];
-	rows: TableCellToken[][];
-	align?: TableAlign[];
-	raw?: string;
-};
-
-function alignCellText(text: string, width: number, align: TableAlign): string {
-	const slack = Math.max(0, width - visibleWidth(text));
-	if (slack === 0) return text;
-	if (align === "right") return padding(slack) + text;
-	if (align === "center") {
-		const left = Math.floor(slack / 2);
-		return padding(left) + text + padding(slack - left);
-	}
-	return text + padding(slack);
-}
-
-function formatHyperlink(text: string, target: string): string {
-	if (!TERMINAL.hyperlinks || !target) {
-		return text;
-	}
-
-	const safeTarget = target.replaceAll("\x1b", "").replaceAll("\x07", "");
-	if (!safeTarget) {
-		return text;
-	}
-
-	return `\x1b]8;;${safeTarget}\x07${text}\x1b]8;;\x07`;
-}
-
-function isAsciiTextSizingPayload(text: string): boolean {
-	for (let i = 0; i < text.length; i++) {
-		const code = text.charCodeAt(i);
-		if (code < 0x20 || code > 0x7e) return false;
-	}
-	return true;
-}
-
-function encodeTextSizedHeading(text: string, scale: 1 | 2 | 3): string {
-	let out = "";
-	let asciiRun = "";
-	const flushAscii = () => {
-		if (asciiRun === "") return;
-		out += encodeTextSized(asciiRun, { scale });
-		asciiRun = "";
-	};
-
-	for (const { segment } of getSegmenter().segment(text)) {
-		if (isAsciiTextSizingPayload(segment)) {
-			asciiRun += segment;
-			continue;
-		}
-		flushAscii();
-		out += encodeTextSized(segment, { scale, widthCells: visibleWidth(segment) });
-	}
-	flushAscii();
-	return out;
-}
-
-const MATH_NEWLINES = /\n+/g;
-
-function isMathToken(token: Token): token is Token & { text: string; display: boolean } {
-	return (token as { type: string }).type === "math";
-}
-
-function renderMathToken(text: string): string {
-	return latexToUnicode(text).replace(MATH_NEWLINES, " ");
-}
+export {
+	clearRenderCache,
+	type DefaultTextStyle,
+	type MarkdownTheme,
+} from "./markdown-helpers";
 
 function soleDisplayMath(tokens?: Token[]): (Token & { text: string }) | null {
 	if (!tokens) return null;
