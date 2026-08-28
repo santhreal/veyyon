@@ -3,8 +3,8 @@
  * Handles data loading, tree building, filtering, and toggle persistence.
  */
 import * as path from "node:path";
-import { fuzzyMatch } from "@veyyon/tui";
 import { getMCPConfigPath, logger } from "@veyyon/utils";
+import { fuzzyMatch } from "@veyyon/utils/fuzzy";
 import type { ContextFile } from "../../../capability/context-file";
 import type { ExtensionModule } from "../../../capability/extension-module";
 import type { Hook } from "../../../capability/hook";

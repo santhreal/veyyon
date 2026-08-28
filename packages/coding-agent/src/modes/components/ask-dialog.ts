@@ -1,25 +1,23 @@
+import { Ellipsis } from "@veyyon/natives";
 import {
 	type Component,
-	clamp,
-	Ellipsis,
-	HoverFade,
 	Markdown,
 	type MarkdownTheme,
-	matchesKey,
-	padding,
 	renderInlineMarkdown,
-	replaceTabs,
-	routeSgrMouseInput,
 	ScrollView,
 	type Tab,
 	TabBar,
 	Text,
 	type TUI,
-	truncateToWidth,
-	visibleWidth,
-	wrapTextWithAnsi,
 } from "@veyyon/tui";
 import { clampLow, collapseWhitespace, formatCount, formatMoreLines, isRecord } from "@veyyon/utils";
+import { matchesKey } from "@veyyon/utils/keys";
+import { clamp } from "@veyyon/utils/math";
+import { HoverFade } from "@veyyon/utils/motion";
+import { routeSgrMouseInput } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { stripRecommendedSuffix, withRecommendedSuffix } from "@veyyon/wire";
 import type {
 	ExtensionAskDialogOption,

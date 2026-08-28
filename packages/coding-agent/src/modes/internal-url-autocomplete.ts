@@ -6,7 +6,9 @@
  * TUI editor (`packages/tui/src/components/editor.ts`); the editor fires the
  * popup, this module decides whether there are candidates to show.
  */
-import { type AutocompleteItem, isSubsequenceMatch, subsequenceScore } from "@veyyon/tui";
+
+import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
+import { isSubsequenceMatch, subsequenceScore } from "@veyyon/utils/fuzzy";
 import type { Skill } from "../extensibility/skills";
 import { InternalUrlRouter } from "../internal-urls/router";
 

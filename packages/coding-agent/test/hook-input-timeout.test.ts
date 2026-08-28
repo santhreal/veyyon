@@ -3,7 +3,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { HookInputComponent } from "@veyyon/coding-agent/modes/components/hook-input";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { DEFAULT_MASK_CHAR, type TUI } from "@veyyon/tui";
-import { PASTE_END, PASTE_START } from "@veyyon/tui/bracketed-paste";
+import { PASTE_END, PASTE_START } from "@veyyon/utils/bracketed-paste";
 
 beforeAll(async () => {
 	const theme = await getThemeByName("dark");

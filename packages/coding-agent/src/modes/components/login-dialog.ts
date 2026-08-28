@@ -1,13 +1,8 @@
-import {
-	type Component,
-	getKeybindings,
-	Input,
-	padding,
-	routeSgrMouseInput,
-	type SgrMouseEvent,
-	type TUI,
-	wrapTextWithAnsi,
-} from "@veyyon/tui";
+import { type Component, Input, type TUI } from "@veyyon/tui";
+import { getKeybindings } from "@veyyon/utils/keybindings";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { theme } from "../../modes/theme/theme";
 import { formatProviderName } from "../../slash-commands/helpers/format";
 import { openPath } from "../../utils/open";

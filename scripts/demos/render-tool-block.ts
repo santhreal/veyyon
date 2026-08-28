@@ -19,7 +19,10 @@
  *
  * `--theme <name>` renders another theme; the default is titanium.
  */
-import { padding, visibleWidth, wrapTextWithAnsi } from "@veyyon/tui";
+
+import { padding } from "@veyyon/utils/padding";
+import { visibleWidth } from "@veyyon/utils/width";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
 import type { OutputBlockOptions } from "../../packages/coding-agent/src/tui/output-block";
 import { renderOutputBlock } from "../../packages/coding-agent/src/tui/output-block";

@@ -1,11 +1,18 @@
-// Core TUI interfaces and classes
+// The terminal renderer and the component tree it paints.
+//
+// Everything this barrel reaches either performs I/O on a terminal device or is a
+// component that renders into one. The string processing that used to live here —
+// width math, ANSI and SGR rewriting, key parsing, LaTeX conversion, motion curves,
+// fuzzy matching, paint encoding — is in `@veyyon/utils`, imported from there
+// directly. This barrel re-exports none of it: a consumer that needs `visibleWidth`
+// depends on string math, not on a renderer, and the import should say so.
 
-// Autocomplete support
-export * from "./autocomplete";
 // Components
 export * from "./components/box";
 export * from "./components/cancellable-loader";
 export * from "./components/editor";
+// Editor component interface (for custom editors)
+export type * from "./components/editor-component";
 export * from "./components/image";
 export * from "./components/input";
 export * from "./components/loader";
@@ -18,49 +25,16 @@ export * from "./components/spacer";
 export * from "./components/tab-bar";
 export * from "./components/text";
 export * from "./components/truncated-text";
-// DECCARA rectangular-SGR background-fill optimizer
-export * from "./deccara";
 // Desktop notifications via D-Bus (Linux freedesktop notifications)
 export * from "./desktop-notify";
-// Editor component interface (for custom editors)
-export type * from "./editor-component";
-// Fuzzy matching
-export * from "./fuzzy";
-// Keybindings
-export * from "./keybindings";
-// Kitty keyboard protocol helpers
-export * from "./keys";
-// Kitty graphics: Unicode placeholders
-export * from "./kitty-graphics";
-// LaTeX → Unicode/ANSI math rendering
-export * from "./latex-block";
-export * from "./latex-to-unicode";
-// One shared animation clock, its curve table, and the frame transforms it drives
-export * from "./motion";
-export * from "./motion-grow";
-export * from "./motion-hover";
-export * from "./motion-paint";
-export * from "./motion-settle";
-// SGR mouse report parsing
-export * from "./mouse";
-// Per-column background repainting, and the surface language built on it
-export * from "./paint-columns";
-// Terminal interface and implementations
-export * from "./paint-ground";
-export * from "./paint-surface";
-// Mermaid diagram support
 // Input buffering for batch splitting
 export * from "./stdin-buffer";
-// Every horizontal bar the product draws, at eight steps per cell
-export * from "./sub-cell-bar";
-export type * from "./symbols";
+// Terminal interface and implementations
 export * from "./terminal";
-// Terminal image support
+// Terminal capability probing (image protocols, DECCARA, hyperlinks)
 export * from "./terminal-capabilities";
 // TTY ID
 export * from "./ttyid";
 export * from "./tui";
-// Utilities
-export * from "./utils";
 // Terminal window focus (DECSET 1004), read by the notification gate
 export * from "./window-focus";

@@ -37,21 +37,22 @@ import { KEYBINDINGS } from "@veyyon/coding-agent/config/keybindings";
 
 const CODING_AGENT_SRC = path.resolve(import.meta.dir, "../../src");
 const TUI_SRC = path.resolve(import.meta.dir, "../../../tui/src");
+const UTILS_SRC = path.resolve(import.meta.dir, "../../../utils/src");
 
 /**
- * Both roots are scanned, because the table is assembled from two packages.
+ * All three roots are scanned, because the table is assembled across packages.
  *
- * `KEYBINDINGS` spreads `TUI_KEYBINDINGS` from `@veyyon/tui`, and the components
- * that read the `tui.*` ids live in that package. Scanning only `coding-agent`
+ * `KEYBINDINGS` spreads `TUI_KEYBINDINGS` from `@veyyon/utils/keybindings`, and the
+ * components that read the `tui.*` ids live in `@veyyon/tui`. Scanning only `coding-agent`
  * would report all twenty-four of them as unread, which is a wall of false
  * findings and the fastest way to get a gate switched off.
  */
-const ROOTS = [CODING_AGENT_SRC, TUI_SRC];
+const ROOTS = [CODING_AGENT_SRC, TUI_SRC, UTILS_SRC];
 
 /** The two modules that DECLARE the bindings, which naturally name all of them. */
 const DECLARING_MODULES = new Set([
 	path.join(CODING_AGENT_SRC, "config", "keybindings.ts"),
-	path.join(TUI_SRC, "keybindings.ts"),
+	path.join(UTILS_SRC, "keybindings.ts"),
 ]);
 
 /**

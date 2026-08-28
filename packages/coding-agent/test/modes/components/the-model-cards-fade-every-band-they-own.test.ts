@@ -45,7 +45,8 @@ import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selec
 import { getThemeByName, initTheme, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import type { AccountInventory } from "@veyyon/coding-agent/session/account-inventory";
-import { type AnsiPolicy, getAnsiPolicy, motionClock, setAnsiPolicy, TERMINAL, type TUI } from "@veyyon/tui";
+import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TERMINAL, type TUI } from "@veyyon/tui";
+import { motionClock } from "@veyyon/utils/motion";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const WIDTH = 110;

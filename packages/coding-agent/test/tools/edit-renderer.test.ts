@@ -10,8 +10,9 @@ import { renderDiff } from "@veyyon/coding-agent/modes/components/diff";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
 import { InMemorySnapshotStore } from "@veyyon/hashline";
-import { getAnsiPolicy, setAnsiPolicy, Text, type TUI, visibleWidth } from "@veyyon/tui";
+import { getAnsiPolicy, setAnsiPolicy, Text, type TUI } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 import { createToolExecution } from "../helpers/tool-execution";
 
 beforeAll(async () => {

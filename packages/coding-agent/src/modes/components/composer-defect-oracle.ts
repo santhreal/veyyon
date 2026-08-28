@@ -8,8 +8,8 @@
  * packages/coding-agent/src/modes/components/composer-chrome.ts).
  */
 
-import { sgrSequence } from "@veyyon/tui/ansi";
-import { visibleWidth } from "@veyyon/tui/utils";
+import { sgrSequence } from "@veyyon/utils/ansi";
+import { visibleWidth } from "@veyyon/utils/width";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 
 export const COMPOSER_ORACLE_GUARANTEES = [

@@ -30,8 +30,7 @@
 import { describe, expect, it } from "bun:test";
 import { type SelectItem, SelectList, type SelectListTheme } from "@veyyon/tui/components/select-list";
 import { SettingsList, type SettingsListTheme } from "@veyyon/tui/components/settings-list";
-import { MOTION, MotionClock } from "@veyyon/tui/motion";
-import { HoverFade } from "@veyyon/tui/motion-hover";
+import { HoverFade, MOTION, MotionClock } from "@veyyon/utils/motion";
 
 const FRAME = 1000 / 60;
 

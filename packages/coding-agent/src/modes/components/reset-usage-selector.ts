@@ -1,13 +1,9 @@
-import {
-	type Component,
-	HoverFade,
-	matchesKey,
-	padding,
-	routeSgrMouseInput,
-	ScrollView,
-	type SgrMouseEvent,
-} from "@veyyon/tui";
+import { type Component, ScrollView } from "@veyyon/tui";
 import { clampLow, formatCount } from "@veyyon/utils";
+import { matchesKey } from "@veyyon/utils/keys";
+import { HoverFade } from "@veyyon/utils/motion";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
 import type { ResetUsageAccount } from "../../slash-commands/helpers/reset-usage";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";

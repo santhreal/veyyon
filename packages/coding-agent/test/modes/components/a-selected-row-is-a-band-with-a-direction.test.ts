@@ -45,7 +45,9 @@ import {
 	theme,
 	visibleGroundHex,
 } from "@veyyon/coding-agent/modes/theme/theme";
-import { type AnsiPolicy, Ellipsis, getAnsiPolicy, setAnsiPolicy, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { Ellipsis } from "@veyyon/natives";
+import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 
 /** The grey a real terminal reports, so the ramp resolves out of something that is not black. */
 const TERMINAL_GREY = "#1e2127";

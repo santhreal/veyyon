@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { SETTING_TABS } from "@veyyon/coding-agent/config/settings-schema";
 import { getSettingsForTab } from "@veyyon/coding-agent/modes/components/settings-defs";
-import { fuzzyRank, getSettingItemFilterText, type SettingItem } from "@veyyon/tui";
+import { getSettingItemFilterText, type SettingItem } from "@veyyon/tui";
+import { fuzzyRank } from "@veyyon/utils/fuzzy";
 
 /**
  * Search over the REAL settings surface, using the same filter text the

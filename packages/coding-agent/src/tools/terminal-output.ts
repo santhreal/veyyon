@@ -1,5 +1,5 @@
-import { SGR_RESET, sgrSequence } from "@veyyon/tui/ansi";
 import { sanitizeText } from "@veyyon/utils";
+import { SGR_RESET, sgrSequence } from "@veyyon/utils/ansi";
 import type { Terminal as XtermTerminal } from "@xterm/headless";
 
 const SGR = sgrSequence("g");

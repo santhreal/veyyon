@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { TabBar, type TabBarTheme } from "@veyyon/tui/components/tab-bar";
-import { visibleWidth } from "@veyyon/tui/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 
 const ansiTheme: TabBarTheme = {
 	label: text => text,

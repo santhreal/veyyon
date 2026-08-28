@@ -16,7 +16,7 @@ import { EvalExecutionComponent } from "@veyyon/coding-agent/modes/components/ev
 import { EXECUTION_MAX_DISPLAY_COLUMNS } from "@veyyon/coding-agent/modes/components/execution-shared";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { TUI } from "@veyyon/tui";
-import { visibleWidth } from "@veyyon/tui";
+import { visibleWidth } from "@veyyon/utils/width";
 
 const MAX_DISPLAY_LINE_CHARS = EXECUTION_MAX_DISPLAY_COLUMNS;
 

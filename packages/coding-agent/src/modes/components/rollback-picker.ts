@@ -23,7 +23,8 @@
  * One owner for what a row MEANS, two renderers for how it looks: the picker
  * cannot drift into marking "current" differently from the text listing.
  */
-import type { SelectItem, SgrMouseEvent } from "@veyyon/tui";
+import type { SelectItem } from "@veyyon/tui";
+import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 import { type RollbackRow, rollbackMarkers, rollbackPublishedDate, type UrlOpener } from "../../cli/rollback-cli";
 import { getSelectListTheme } from "../../modes/theme/theme";
 import { ModalSelectListComponent } from "./modal-select-list";

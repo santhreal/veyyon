@@ -16,10 +16,11 @@
  * Based on code from OpenTUI (https://github.com/anomalyco/opentui)
  * MIT License - Copyright (c) 2025 opentui
  */
+
+import { ESC } from "@veyyon/utils/ansi";
+import { PASTE_END, PASTE_MAX_BYTES, PASTE_START } from "@veyyon/utils/bracketed-paste";
+import { isKittyProtocolActive } from "@veyyon/utils/keys";
 import { EventEmitter } from "events";
-import { ESC } from "./ansi";
-import { PASTE_END, PASTE_MAX_BYTES, PASTE_START } from "./bracketed-paste";
-import { isKittyProtocolActive } from "./keys";
 
 // Paste-mode recovery bounds: a lost/corrupted end marker (ssh/tmux
 // truncation) must not hang input forever or grow memory unboundedly.

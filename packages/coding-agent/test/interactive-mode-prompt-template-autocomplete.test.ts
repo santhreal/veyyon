@@ -23,8 +23,8 @@ import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import type { AutocompleteProvider } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
+import type { AutocompleteProvider } from "@veyyon/utils/autocomplete";
 import { type } from "arktype";
 
 function makeTool(name: string): AgentTool {

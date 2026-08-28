@@ -77,8 +77,8 @@ import type {
 } from "@veyyon/coding-agent/modes/components/status-line/types";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { visibleWidth } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";
 
 const makeTempDir = useTrackedTempDirs("veyyon-statusline-terminal-safety-");

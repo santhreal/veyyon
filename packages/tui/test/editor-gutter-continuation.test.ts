@@ -13,8 +13,8 @@
  *  4. Single-row input never shows the whisper.
  */
 import { describe, expect, it } from "bun:test";
+import { visibleWidth } from "@veyyon/utils/width";
 import { Editor } from "../src/components/editor";
-import { visibleWidth } from "../src/utils";
 import { defaultEditorTheme } from "./test-themes";
 
 const GUTTER = "  > ";

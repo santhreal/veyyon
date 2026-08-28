@@ -1,15 +1,12 @@
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProviderInfo } from "@veyyon/ai/oauth/types";
-import {
-	type Component,
-	clampLow,
-	extractPrintableText,
-	fuzzyFilter,
-	HoverFade,
-	matchesKey,
-	type SgrMouseEvent,
-	truncateToWidth,
-} from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
+import { fuzzyFilter } from "@veyyon/utils/fuzzy";
+import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
+import { clampLow } from "@veyyon/utils/math";
+import { HoverFade } from "@veyyon/utils/motion";
+import type { SgrMouseEvent } from "@veyyon/utils/mouse";
+import { truncateToWidth } from "@veyyon/utils/width";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
 import { theme } from "../../modes/theme/theme";

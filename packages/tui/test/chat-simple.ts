@@ -1,7 +1,6 @@
 /**
  * Simple chat interface demo using tui.ts
  */
-import { CombinedAutocompleteProvider } from "@veyyon/tui/autocomplete";
 import { Editor } from "@veyyon/tui/components/editor";
 import { Loader } from "@veyyon/tui/components/loader";
 import { Markdown } from "@veyyon/tui/components/markdown";
@@ -9,6 +8,7 @@ import { Text } from "@veyyon/tui/components/text";
 import { ProcessTerminal } from "@veyyon/tui/terminal";
 import { TUI } from "@veyyon/tui/tui";
 import { getProjectDir } from "@veyyon/utils";
+import { CombinedAutocompleteProvider } from "@veyyon/utils/autocomplete";
 import chalk from "chalk";
 import { defaultEditorTheme, defaultMarkdownTheme } from "./test-themes";
 

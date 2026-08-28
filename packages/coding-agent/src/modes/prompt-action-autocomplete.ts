@@ -3,11 +3,10 @@ import {
 	type AutocompleteProvider,
 	CombinedAutocompleteProvider,
 	findLeadingSlashCommandStart,
-	getKeybindings,
-	isSubsequenceMatch,
 	type SlashCommand,
-	subsequenceScore,
-} from "@veyyon/tui";
+} from "@veyyon/utils/autocomplete";
+import { isSubsequenceMatch, subsequenceScore } from "@veyyon/utils/fuzzy";
+import { getKeybindings } from "@veyyon/utils/keybindings";
 import { formatKeyHints, type KeybindingsManager } from "../config/keybindings";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../config/settings-instance";

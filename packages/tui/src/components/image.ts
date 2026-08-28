@@ -1,5 +1,5 @@
-import { SGR_RESET } from "../ansi";
-import { getKittyGraphics } from "../kitty-graphics";
+import { SGR_RESET } from "@veyyon/utils/ansi";
+import { getKittyGraphics } from "@veyyon/utils/kitty-graphics";
 import {
 	getCellDimensions,
 	getImageDimensions,

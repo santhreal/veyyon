@@ -12,7 +12,7 @@
  * future edit cannot "fix" masking by masking the buffer itself.
  */
 import { describe, expect, it } from "bun:test";
-import { PASTE_END, PASTE_START } from "../src/bracketed-paste";
+import { PASTE_END, PASTE_START } from "@veyyon/utils/bracketed-paste";
 import { DEFAULT_MASK_CHAR, Input, maskValue } from "../src/components/input";
 
 /** Everything the terminal would receive, with escape sequences kept. */

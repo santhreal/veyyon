@@ -1,14 +1,9 @@
+import { padding } from "@veyyon/utils/padding";
+import { applyBackgroundToLine, sgrCarryAfter } from "@veyyon/utils/sgr";
+import { getPaddingX } from "@veyyon/utils/tight-mode";
+import { visibleWidth } from "@veyyon/utils/width";
+import { normalizeWrapInput, replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type { Component } from "../tui";
-import {
-	applyBackgroundToLine,
-	getPaddingX,
-	normalizeWrapInput,
-	padding,
-	replaceTabs,
-	sgrCarryAfter,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "../utils";
 
 /**
  * Text component - displays multi-line text with word wrapping

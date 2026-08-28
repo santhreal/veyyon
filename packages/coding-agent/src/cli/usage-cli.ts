@@ -9,8 +9,8 @@
  */
 import type { AuthStorage, UsageHistoryEntry, UsageLimit, UsageReport, UsageUnit } from "@veyyon/ai";
 import { resolveUsedFraction } from "@veyyon/ai/usage";
-import { SUB_CELL_BAR_RAMP, subCellBar } from "@veyyon/tui/sub-cell-bar";
 import { clamp01, DAY_MS, formatCount, formatDuration, formatNumber, pluralize, sanitizeText } from "@veyyon/utils";
+import { SUB_CELL_BAR_RAMP, subCellBar } from "@veyyon/utils/bar";
 import chalk from "chalk";
 import { credentialRemedySentence } from "../config/missing-credentials";
 import { ModelRegistry } from "../config/model-registry";

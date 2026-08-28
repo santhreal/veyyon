@@ -4,16 +4,12 @@
  * Model entries switch the current session only.
  */
 import type { Model } from "@veyyon/ai";
-import {
-	type Component,
-	matchesKey,
-	padding,
-	routeSgrMouseInput,
-	type SgrMouseEvent,
-	type TUI,
-	truncateToWidth,
-} from "@veyyon/tui";
+import type { Component, TUI } from "@veyyon/tui";
 import { errorMessage } from "@veyyon/utils";
+import { matchesKey } from "@veyyon/utils/keys";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth } from "@veyyon/utils/width";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import { theme } from "../theme/theme";

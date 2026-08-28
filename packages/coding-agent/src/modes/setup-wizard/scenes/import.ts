@@ -1,11 +1,7 @@
-import {
-	routeSelectListMouse,
-	type SelectItem,
-	type SelectList,
-	type SgrMouseEvent,
-	truncateToWidth,
-} from "@veyyon/tui";
+import type { SelectItem, SelectList } from "@veyyon/tui";
 import { errorMessage, getAgentDir } from "@veyyon/utils";
+import { routeSelectListMouse, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { truncateToWidth } from "@veyyon/utils/width";
 import { type ImportCandidate, importForeignItems, scanForeignConfig } from "../../../discovery/import-scan";
 import { shortenPath } from "../../../tools/render-utils";
 import { theme } from "../../theme/theme";

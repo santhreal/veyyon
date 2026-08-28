@@ -30,7 +30,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { expandHintSuffix, keyHint } from "@veyyon/coding-agent/modes/utils/key-hint";
-import { getKeybindings, setKeybindings } from "@veyyon/tui";
+import { getKeybindings, setKeybindings } from "@veyyon/utils/keybindings";
 
 const SRC = path.resolve(import.meta.dir, "../../../src");
 

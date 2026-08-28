@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Text } from "@veyyon/tui/components/text";
-import { visibleWidth } from "@veyyon/tui/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 
 describe("Text component", () => {
 	it("reports whether setText changed the stored text", () => {

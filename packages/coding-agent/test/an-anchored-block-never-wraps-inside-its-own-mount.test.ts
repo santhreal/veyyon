@@ -50,8 +50,10 @@ import { type SubagentProgressPayload, TASK_SUBAGENT_PROGRESS_CHANNEL } from "@v
 import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/todo";
 import { paintRailMotion, railIdleHeadAt } from "@veyyon/coding-agent/tui/rail-motion";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
-import { getPaddingX, Text, visibleWidth } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
+import { getPaddingX } from "@veyyon/utils/tight-mode";
+import { visibleWidth } from "@veyyon/utils/width";
 
 /** The width the mode hands a block, which is what the mount leaves it. */
 function contentColumns(terminalColumns: number): number {

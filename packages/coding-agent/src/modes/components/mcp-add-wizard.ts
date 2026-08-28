@@ -3,21 +3,14 @@
  *
  * Interactive multi-step wizard for adding MCP servers.
  */
-import {
-	type Component,
-	Container,
-	HoverFade,
-	Input,
-	matchesKey,
-	padding,
-	replaceTabs,
-	routeSgrMouseInput,
-	type SgrMouseEvent,
-	Spacer,
-	Text,
-	truncateToWidth,
-} from "@veyyon/tui";
+import { type Component, Container, Input, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, getMCPConfigPath, getProjectDir } from "@veyyon/utils";
+import { matchesKey } from "@veyyon/utils/keys";
+import { HoverFade } from "@veyyon/utils/motion";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import { validateServerName } from "../../mcp/config-writer";
 import { analyzeAuthError, discoverOAuthEndpoints, fetchResourceMetadataScopes } from "../../mcp/oauth-discovery";
 import type { MCPHttpServerConfig, MCPServerConfig, MCPSseServerConfig, MCPStdioServerConfig } from "../../mcp/types";

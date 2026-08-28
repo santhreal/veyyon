@@ -1,4 +1,5 @@
-import { type Component, matchesKey, type OverlayFocusOwner } from "@veyyon/tui";
+import type { Component, OverlayFocusOwner } from "@veyyon/tui";
+import { matchesKey } from "@veyyon/utils/keys";
 import type { InteractiveModeContext } from "../types";
 import { renderSetupSplash, SETUP_SPLASH_MS, SETUP_TICK_MS } from "./scenes/splash";
 

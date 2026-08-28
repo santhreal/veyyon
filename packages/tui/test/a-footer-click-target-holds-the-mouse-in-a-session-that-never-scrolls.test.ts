@@ -25,7 +25,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
-import type { MouseRoutable, SgrMouseEvent } from "@veyyon/tui/mouse";
+import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
 import { StressRenderScheduler } from "./render-stress-scheduler";
 import { VirtualTerminal } from "./virtual-terminal";
 

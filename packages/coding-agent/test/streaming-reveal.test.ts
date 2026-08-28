@@ -12,7 +12,7 @@ import {
 	visibleUnits,
 } from "@veyyon/coding-agent/modes/controllers/streaming-reveal";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { getSegmenter } from "@veyyon/tui";
+import { getSegmenter } from "@veyyon/utils/width";
 
 beforeAll(async () => {
 	await initTheme(false);

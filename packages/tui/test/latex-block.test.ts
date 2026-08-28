@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { latexToBlock } from "@veyyon/tui/latex-block";
 import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import { latexToBlock } from "@veyyon/utils/latex-block";
 
 const originalTrueColor = TERMINAL.trueColor;
 afterEach(() => {

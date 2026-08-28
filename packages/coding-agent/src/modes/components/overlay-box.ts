@@ -4,7 +4,9 @@
  * gray hairlines, never sun/ember. ModalShell and these helpers share one
  * structural color so every card reads as Veyyon, not a gray clone.
  */
-import { padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
+
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { theme } from "../theme/theme";
 
 /** Pad or truncate a (possibly ANSI-styled) string to exactly `width` columns. */

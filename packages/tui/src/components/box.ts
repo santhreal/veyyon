@@ -1,5 +1,8 @@
+import { padding } from "@veyyon/utils/padding";
+import { applyBackgroundToLine } from "@veyyon/utils/sgr";
+import { getPaddingX } from "@veyyon/utils/tight-mode";
+import { visibleWidth } from "@veyyon/utils/width";
 import type { Component } from "../tui";
-import { applyBackgroundToLine, getPaddingX, padding, visibleWidth } from "../utils";
 
 type Cache = {
 	width: number;

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { SelectList, type SelectListTheme } from "@veyyon/tui/components/select-list";
-import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/tui/keybindings";
-import type { SgrMouseEvent } from "@veyyon/tui/mouse";
-import { visibleWidth } from "@veyyon/tui/utils";
+import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/utils/keybindings";
+import type { SgrMouseEvent } from "@veyyon/utils/mouse";
+import { visibleWidth } from "@veyyon/utils/width";
 
 const testTheme = {
 	selectedPrefix: (text: string) => text,

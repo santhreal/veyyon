@@ -32,7 +32,7 @@ import {
 	PROGRESS_RUN_MIN_LINES,
 	previewWindowRows,
 } from "@veyyon/coding-agent/tools/render-utils";
-import { resetKeybindingsForTests, setKeybindings } from "@veyyon/tui";
+import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
 
 const ORIGINAL_ROWS = Object.getOwnPropertyDescriptor(process.stdout, "rows");
 

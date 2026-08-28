@@ -52,15 +52,9 @@ import {
 	outputBlockContentWidth,
 	renderOutputBlock,
 } from "@veyyon/coding-agent/tui/output-block";
-import {
-	type AnsiPolicy,
-	getAnsiPolicy,
-	setAnsiPolicy,
-	TERMINAL,
-	type TUI,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@veyyon/tui";
+import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TERMINAL, type TUI } from "@veyyon/tui";
+import { visibleWidth } from "@veyyon/utils/width";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { createToolExecution } from "./helpers/tool-execution";
 
 const ui = { requestRender: () => {}, requestComponentRender: () => {} } as unknown as TUI;

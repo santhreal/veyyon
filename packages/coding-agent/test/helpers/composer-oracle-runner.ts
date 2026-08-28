@@ -9,8 +9,8 @@
 import { stripVTControlCharacters } from "node:util";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import { type Component, Container, Editor, Spacer, TUI } from "@veyyon/tui";
-import type { MouseRoutable, SgrMouseEvent } from "@veyyon/tui/mouse";
 import { stripAnsi } from "@veyyon/utils";
+import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
 import { settleFrames } from "../../../tui/test/helpers/settle-frames";
 import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
 import {

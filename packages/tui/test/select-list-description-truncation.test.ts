@@ -15,7 +15,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { SelectList, type SelectListTheme } from "@veyyon/tui/components/select-list";
-import type { BoxSymbols } from "@veyyon/tui/symbols";
+import type { BoxSymbols } from "@veyyon/utils/symbols";
 
 const box: BoxSymbols = {
 	topLeft: "┌",

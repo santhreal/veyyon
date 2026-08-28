@@ -5,7 +5,8 @@ import { BtwController } from "@veyyon/coding-agent/modes/controllers/btw-contro
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import * as clipboard from "@veyyon/coding-agent/utils/clipboard";
-import { Container, replaceTabs, type TUI } from "@veyyon/tui";
+import { Container, type TUI } from "@veyyon/tui";
+import { replaceTabs } from "@veyyon/utils/wrap";
 
 const usage: Usage = {
 	input: 0,

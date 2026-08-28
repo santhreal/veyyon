@@ -1,14 +1,4 @@
-import {
-	type Component,
-	centerLine,
-	Ellipsis,
-	padding,
-	replaceTabs,
-	TERMINAL,
-	truncateToWidth,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@veyyon/tui";
+import { type Component, TERMINAL } from "@veyyon/tui";
 import { APP_NAME, clamp01, DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault } from "@veyyon/utils";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../../config/settings-instance";
@@ -19,7 +9,11 @@ import { theme } from "../../modes/theme/theme";
 // welcome card stays the one place a reader looks for anything about welcome tips.
 export { clearLaunchTip, setLaunchTip, updateInstalledTip } from "./launch-tip";
 
-import { SGR_RESET } from "@veyyon/tui/ansi";
+import { Ellipsis } from "@veyyon/natives";
+import { SGR_RESET } from "@veyyon/utils/ansi";
+import { centerLine, padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { takeLaunchTip } from "./launch-tip";
 import { sunMark } from "./sun";
 import tipsText from "./tips.txt" with { type: "text" };

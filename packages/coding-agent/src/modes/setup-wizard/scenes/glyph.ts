@@ -1,4 +1,5 @@
-import { routeSelectListMouse, type SelectItem, type SelectList, type SgrMouseEvent } from "@veyyon/tui";
+import type { SelectItem, SelectList } from "@veyyon/tui";
+import { routeSelectListMouse, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { type SymbolPreset, setSymbolPreset, theme } from "../../theme/theme";
 import type { SetupKeyHint, SetupScene, SetupSceneController, SetupSceneHost } from "./types";
 import { createWizardList, filterEscapeHint } from "./wizard-list";

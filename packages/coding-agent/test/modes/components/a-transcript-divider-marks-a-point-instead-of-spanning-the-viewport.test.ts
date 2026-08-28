@@ -33,7 +33,7 @@ import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/compo
 import { TRANSCRIPT_DIVIDER_RULE_WIDTH } from "@veyyon/coding-agent/modes/components/transcript-divider";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { Component } from "@veyyon/tui";
-import { KeybindingsManager, setKeybindings } from "@veyyon/tui/keybindings";
+import { KeybindingsManager, setKeybindings } from "@veyyon/utils/keybindings";
 
 const WIDTH = 80;
 

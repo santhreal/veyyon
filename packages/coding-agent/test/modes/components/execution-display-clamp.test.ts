@@ -32,7 +32,8 @@ import {
 	EXECUTION_STREAMING_LINE_CAP,
 } from "@veyyon/coding-agent/modes/components/execution-shared";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
-import { resetKeybindingsForTests, setKeybindings, visibleWidth } from "@veyyon/tui";
+import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
+import { visibleWidth } from "@veyyon/utils/width";
 
 describe("the execution display budgets", () => {
 	/**

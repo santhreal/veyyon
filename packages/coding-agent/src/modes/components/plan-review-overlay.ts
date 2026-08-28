@@ -16,19 +16,13 @@
  * ↑/↓ select options, Enter confirms, ←/→ drives the slider when there is no
  * sidebar, g/G + PgUp/PgDn scroll, and the external-editor key opens the plan.
  */
-import {
-	type Component,
-	clampLow,
-	Ellipsis,
-	Input,
-	Markdown,
-	type MarkdownTheme,
-	matchesKey,
-	routeSgrMouseInput,
-	ScrollView,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
+
+import { Ellipsis } from "@veyyon/natives";
+import { type Component, Input, Markdown, type MarkdownTheme, ScrollView } from "@veyyon/tui";
+import { matchesKey } from "@veyyon/utils/keys";
+import { clampLow } from "@veyyon/utils/math";
+import { routeSgrMouseInput } from "@veyyon/utils/mouse";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { theme } from "../theme/theme";
 import {

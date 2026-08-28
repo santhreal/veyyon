@@ -17,8 +17,7 @@
  * degrade is loud in behavior, not silent in correctness: the fallback is the
  * exact pre-detection rendering, never a wrong guess at the ground.
  */
-
-import type { PaintGroundPlan } from "@veyyon/tui";
+import type { PaintGroundPlan } from "@veyyon/utils/paint-ground";
 
 /** Currently detected terminal background (`#rrggbb`), if any. */
 let detectedGround: string | undefined;

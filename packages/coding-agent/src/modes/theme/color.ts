@@ -3,7 +3,7 @@
 // Owned here per the theme boundary split; theme.ts re-exports the public
 // surface so external imports are unchanged.
 
-import { SGR_BG_RESET, SGR_FG_RESET } from "@veyyon/tui/ansi";
+import { SGR_BG_RESET, SGR_FG_RESET } from "@veyyon/utils/ansi";
 import { isRecord } from "@veyyon/utils/type-guards";
 import type { SpinnerFramesOverride } from "./symbols";
 

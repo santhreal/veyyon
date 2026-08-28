@@ -17,29 +17,22 @@ import type { CompactionOutcome } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, ImageContent, Message, Model, Usage, UsageReport } from "@veyyon/ai";
 import { modelsAreEqual } from "@veyyon/catalog/models";
 import type {
-	AutocompleteProvider,
 	Component,
 	EditorTheme,
 	LoaderMessageColorFn,
 	NativeScrollbackLiveRegion,
 	OverlayHandle,
-	SlashCommand,
 } from "@veyyon/tui";
 import {
 	Container,
 	clearRenderCache,
-	getPaddingX,
 	Loader,
-	matchesKey,
 	ProcessTerminal,
-	planPaintGround,
 	Spacer,
 	setTerminalTextSizing,
-	setTuiTight,
 	TERMINAL,
 	Text,
 	TUI,
-	visibleWidth,
 } from "@veyyon/tui";
 import { isInsideTerminalMultiplexer } from "@veyyon/tui/terminal-capabilities";
 import {
@@ -58,6 +51,11 @@ import {
 	postmortem,
 	prompt,
 } from "@veyyon/utils";
+import type { AutocompleteProvider, SlashCommand } from "@veyyon/utils/autocomplete";
+import { matchesKey } from "@veyyon/utils/keys";
+import { planPaintGround } from "@veyyon/utils/paint-ground";
+import { getPaddingX, setTuiTight } from "@veyyon/utils/tight-mode";
+import { visibleWidth } from "@veyyon/utils/width";
 import { isTerminalTodoStatus, isTodoListDone } from "@veyyon/wire";
 import chalk from "chalk";
 import type { CollabGuestLink } from "../collab/guest";

@@ -29,8 +29,9 @@ import { initTheme, stopThemeWatcher, theme } from "@veyyon/coding-agent/modes/t
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { getPaddingX, TUI } from "@veyyon/tui";
+import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
+import { getPaddingX } from "@veyyon/utils/tight-mode";
 import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
 
 const COLUMNS = 100;

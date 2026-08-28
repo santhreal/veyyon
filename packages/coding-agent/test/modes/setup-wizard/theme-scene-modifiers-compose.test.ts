@@ -22,8 +22,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { themeSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/theme";
 import type { SetupSceneController, SetupSceneResult } from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
-import { visibleWidth } from "@veyyon/tui";
 import { getProjectAgentDir, TempDir } from "@veyyon/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../../helpers/settings-test-state";
 
 const ENTER = "\r";

@@ -1,24 +1,18 @@
+import { Ellipsis } from "@veyyon/natives";
+import { OSC66, SGR_RESET, sgrSequence } from "@veyyon/utils/ansi";
+import { latexToBlock } from "@veyyon/utils/latex-block";
+import { inlineMathSpanEnd, isBareMathEnvironment, latexToUnicode } from "@veyyon/utils/latex-unicode";
+import { padding } from "@veyyon/utils/padding";
+import { applyBackgroundToLine, sgrCarryAfter } from "@veyyon/utils/sgr";
+import type { SymbolTheme } from "@veyyon/utils/symbols";
+import { encodeTextSized } from "@veyyon/utils/text-sizing";
+import { getPaddingX } from "@veyyon/utils/tight-mode";
+import { getSegmenter, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { LRUCache } from "lru-cache/raw";
 import { Marked, type Token, Tokenizer, type TokenizerAndRendererExtension, type Tokens } from "marked";
-import { OSC66, SGR_RESET, sgrSequence } from "../ansi";
-import { latexToBlock } from "../latex-block";
-import { inlineMathSpanEnd, isBareMathEnvironment, latexToUnicode } from "../latex-to-unicode";
-import type { SymbolTheme } from "../symbols";
 import { TERMINAL } from "../terminal-capabilities";
 import type { Component } from "../tui";
-import {
-	applyBackgroundToLine,
-	Ellipsis,
-	encodeTextSized,
-	getPaddingX,
-	getSegmenter,
-	padding,
-	replaceTabs,
-	sgrCarryAfter,
-	truncateToWidth,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "../utils";
 
 const STRICT_STRIKETHROUGH_REGEX = /^(~~)(?=[^\s~])((?:\\.|[^\\])*?(?:\\.|[^\s~\\]))\1(?=[^~]|$)/;
 

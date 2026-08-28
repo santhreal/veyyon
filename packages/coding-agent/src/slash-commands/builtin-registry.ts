@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { getOAuthProviders, type OAuthProviderInfo } from "@veyyon/ai/oauth";
 import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import { stripEffortTierSuffix } from "@veyyon/catalog/variant-collapse";
-import { type AutocompleteItem, Spacer } from "@veyyon/tui";
+import { Spacer } from "@veyyon/tui";
 import {
 	APP_NAME,
 	CHANGELOG_URL,
@@ -18,6 +18,7 @@ import {
 	nearestNames,
 	truncate,
 } from "@veyyon/utils";
+import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
 import { advisorStatusNextStep, describeAdvisorToggle } from "../advisor/messages";
 import { runTrustSlashCommand } from "../cli/trust-cli";
 import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest";

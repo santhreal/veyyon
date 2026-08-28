@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { handleInputOrEscape } from "@veyyon/coding-agent/modes/components/plugin-settings";
-import { setKittyProtocolActive } from "@veyyon/tui";
+import { setKittyProtocolActive } from "@veyyon/utils/keys";
 
 afterEach(() => {
 	setKittyProtocolActive(false);

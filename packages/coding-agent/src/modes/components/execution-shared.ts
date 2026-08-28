@@ -7,17 +7,10 @@
  * stay in their respective files.
  */
 
-import {
-	type Component,
-	Container,
-	Ellipsis,
-	Loader,
-	Text,
-	type TUI,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
+import { Ellipsis } from "@veyyon/natives";
+import { type Component, Container, Loader, Text, type TUI } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { getSymbolTheme } from "../../modes/theme/symbol-theme";
 import { theme } from "../../modes/theme/theme-binding";
 import { formatTruncationMetaNotice, type TruncationMeta } from "../../tools/output-meta";

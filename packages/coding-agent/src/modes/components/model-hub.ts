@@ -13,23 +13,15 @@ import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { getCatalogProviderEntry } from "@veyyon/catalog/provider-models";
-import {
-	type Component,
-	extractPrintableText,
-	fuzzyFilter,
-	getKeybindings,
-	HoverFade,
-	Input,
-	matchesKey,
-	padding,
-	routeSgrMouseInput,
-	ScrollView,
-	type SgrMouseEvent,
-	type TUI,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
+import { type Component, Input, ScrollView, type TUI } from "@veyyon/tui";
 import { clampLow, errorMessage } from "@veyyon/utils";
+import { fuzzyFilter } from "@veyyon/utils/fuzzy";
+import { getKeybindings } from "@veyyon/utils/keybindings";
+import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
+import { HoverFade } from "@veyyon/utils/motion";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import type { ModelRegistry } from "../../config/model-registry";
 import { getKnownRoleIds, getRoleInfo, ROLE_INHERIT_LABEL } from "../../config/model-roles";
 import type { Settings } from "../../config/settings";

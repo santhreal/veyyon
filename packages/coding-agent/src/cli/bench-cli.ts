@@ -15,8 +15,9 @@ import type {
 } from "@veyyon/ai";
 import { resolveModelServiceTier, streamSimple } from "@veyyon/ai";
 import { buildModelProviderPriorityRank } from "@veyyon/catalog/identity";
-import { replaceTabs, truncateToWidth } from "@veyyon/tui";
 import { errorMessage, formatDuration, getAgentDir, getProjectDir } from "@veyyon/utils";
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import chalk from "chalk";
 import type { ApiKeyResolverModel } from "../config/api-key-resolver";
 import { credentialRemedySentence } from "../config/missing-credentials";

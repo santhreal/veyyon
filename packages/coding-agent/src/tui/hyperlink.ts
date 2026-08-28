@@ -7,7 +7,7 @@
  */
 import * as url from "node:url";
 import { detectStreamAnsiPolicy, TERMINAL } from "@veyyon/tui";
-import { BEL, OSC, ST } from "@veyyon/tui/ansi";
+import { BEL, OSC, ST } from "@veyyon/utils/ansi";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../config/settings-instance";
 // The three leaf modules, NOT the `../internal-urls` barrel. The barrel also

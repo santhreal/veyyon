@@ -6,8 +6,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
 import { astGrepToolRenderer } from "@veyyon/coding-agent/tools/ast-grep";
-import { visibleWidth } from "@veyyon/tui";
 import { removeWithRetries, sanitizeText } from "@veyyon/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 import { useFullColor } from "../helpers/theme-assertions";
 
 function createTestSession(cwd = "/tmp/test", overrides: Partial<ToolSession> = {}): ToolSession {

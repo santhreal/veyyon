@@ -1,12 +1,11 @@
+import { SUB_CELL_BAR_RAMP, type SubCellBarRamp } from "@veyyon/utils/bar";
+
 // Symbol presets, spinner frames and bar ramps: the single owner of every glyph
 // the TUI renders (status icons, tree connectors, box drawing, tool glyphs), of
 // the per-preset spinner frame sets, and of the glyphs a progress bar is drawn
 // from. Pure data + pure helpers — no runtime state.
 // Consumers go through `theme.ts` (the theme boundary), which re-exports the
 // public pieces.
-
-import { SUB_CELL_BAR_RAMP, type SubCellBarRamp } from "@veyyon/tui/sub-cell-bar";
-
 // ============================================================================
 // Symbol Presets
 // ============================================================================

@@ -1,4 +1,5 @@
-import type { Component, SgrMouseEvent } from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
+import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 import type { InteractiveModeContext } from "../../types";
 
 /**

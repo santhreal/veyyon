@@ -21,21 +21,15 @@
  * all it can show.
  */
 import { getOAuthProviders } from "@veyyon/ai/oauth";
-import {
-	type Component,
-	extractPrintableText,
-	fuzzyFilter,
-	HoverFade,
-	Input,
-	matchesKey,
-	padding,
-	routeSgrMouseInput,
-	type SgrMouseEvent,
-	truncateToWidth,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@veyyon/tui";
+import { type Component, Input } from "@veyyon/tui";
 import { clampLow } from "@veyyon/utils";
+import { fuzzyFilter } from "@veyyon/utils/fuzzy";
+import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
+import { HoverFade } from "@veyyon/utils/motion";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type { AccountInventory, AccountRow } from "../../session/account-inventory";
 import { accountsForProvider, selectedButRotated } from "../../session/account-inventory";
 import { formatProviderName } from "../../slash-commands/helpers/format";

@@ -16,18 +16,10 @@
  * `save` callback.
  */
 import type { Model } from "@veyyon/ai";
-import {
-	type Component,
-	Input,
-	type MouseRoutable,
-	routeSgrMouseInput,
-	type SelectItem,
-	SelectList,
-	type SgrMouseEvent,
-	type TUI,
-	truncateToWidth,
-} from "@veyyon/tui";
+import { type Component, Input, type SelectItem, SelectList, type TUI } from "@veyyon/tui";
 import { clampLow, errorMessage } from "@veyyon/utils";
+import { type MouseRoutable, routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { truncateToWidth } from "@veyyon/utils/width";
 import {
 	ADVISOR_DEFAULT_TOOL_NAMES,
 	type AdvisorConfig,

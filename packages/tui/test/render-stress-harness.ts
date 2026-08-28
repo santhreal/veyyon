@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import { __veyyonNativesV1_2_0 } from "@veyyon/natives";
+import { __veyyonNativesV1_2_0, Ellipsis } from "@veyyon/natives";
 import { ProcessTerminal } from "@veyyon/tui/terminal";
 import {
 	type Component,
@@ -13,17 +13,10 @@ import {
 	type OverlayOptions,
 	TUI,
 } from "@veyyon/tui/tui";
-import {
-	Ellipsis,
-	extractSegments,
-	sliceByColumn,
-	sliceWithWidth,
-	truncateToWidth,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@veyyon/tui/utils";
 import type { JsonValue } from "@veyyon/utils";
 import { setTerminalHeadless } from "@veyyon/utils";
+import { extractSegments, sliceByColumn, sliceWithWidth, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { StressRenderScheduler } from "./render-stress-scheduler";
 import { VirtualTerminal } from "./virtual-terminal";
 

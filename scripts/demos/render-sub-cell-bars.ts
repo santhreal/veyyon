@@ -17,7 +17,8 @@
  * fill a solid one, so a ramp that reads as travel on the operator's grey page can read as a solid
  * slab on black.
  */
-import { MotionClock } from "@veyyon/tui";
+
+import { MotionClock } from "@veyyon/utils/motion";
 import { TinyTitleDownloadProgressComponent } from "../../packages/coding-agent/src/modes/components/tiny-title-download-progress";
 import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
 import { formatUsageWindowLine, renderAsciiBar } from "../../packages/coding-agent/src/slash-commands/helpers/format";

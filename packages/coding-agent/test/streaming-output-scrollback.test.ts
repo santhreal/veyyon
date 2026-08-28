@@ -6,7 +6,8 @@ import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/trans
 import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { evalToolRenderer } from "@veyyon/coding-agent/tools/eval-render";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
-import { type Component, resetKeybindingsForTests, setKeybindings, TUI } from "@veyyon/tui";
+import { type Component, TUI } from "@veyyon/tui";
+import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
 import { settleFrames } from "../../tui/test/helpers/settle-frames";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal";
 import { createToolExecution } from "./helpers/tool-execution";

@@ -39,8 +39,8 @@ import {
 	type SecretCommandOutcome,
 } from "@veyyon/coding-agent/slash-commands/helpers/secret";
 import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
-import { PASTE_END, PASTE_START } from "@veyyon/tui/bracketed-paste";
 import { stripAnsi } from "@veyyon/utils";
+import { PASTE_END, PASTE_START } from "@veyyon/utils/bracketed-paste";
 
 let home: string;
 let project: string;

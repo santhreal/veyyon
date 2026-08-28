@@ -1,18 +1,13 @@
-import { getKeybindings } from "../keybindings";
-import { extractPrintableText, isLoneLineFeed } from "../keys";
-import { HoverFade, type HoverFadeOptions } from "../motion-hover";
-import type { MouseRoutable, SgrMouseEvent } from "../mouse";
+import { Ellipsis } from "@veyyon/natives";
+import { getKeybindings } from "@veyyon/utils/keybindings";
+import { extractPrintableText, isLoneLineFeed } from "@veyyon/utils/keys";
+import { clamp, clampLow } from "@veyyon/utils/math";
+import { HoverFade, type HoverFadeOptions } from "@veyyon/utils/motion";
+import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { sanitizeSingleLine, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type { Component } from "../tui";
-import {
-	clamp,
-	clampLow,
-	Ellipsis,
-	padding,
-	sanitizeSingleLine,
-	truncateToWidth,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "../utils";
 import { ScrollView } from "./scroll-view";
 import { filterSettingItems } from "./settings-search";
 

@@ -9,7 +9,7 @@
  * the ctrl+p role-cycle status so both surfaces read identically.
  */
 
-import { SGR_BG_RESET, SGR_FG_RESET, SGR_INTENSITY_RESET } from "@veyyon/tui/ansi";
+import { SGR_BG_RESET, SGR_FG_RESET, SGR_INTENSITY_RESET } from "@veyyon/utils/ansi";
 import { type ThemeColor, theme } from "../theme/theme";
 
 export interface TrackSegment {

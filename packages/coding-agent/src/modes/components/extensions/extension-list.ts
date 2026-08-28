@@ -5,15 +5,11 @@
  * that toggles the entire provider. All items below are dimmed when the
  * master switch is off.
  */
-import {
-	type Component,
-	HoverFade,
-	type HoverFadeOptions,
-	matchesKey,
-	padding,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
+import { matchesKey } from "@veyyon/utils/keys";
+import { HoverFade, type HoverFadeOptions } from "@veyyon/utils/motion";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { isProviderEnabled } from "../../../discovery";
 import { withIcon } from "../../../modes/theme/icon-label";
 import { theme } from "../../../modes/theme/theme";

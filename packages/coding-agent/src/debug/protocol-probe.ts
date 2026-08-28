@@ -17,7 +17,6 @@ import * as zlib from "node:zlib";
 import {
 	type Component,
 	Container,
-	encodeTextSized,
 	Image,
 	type ImageBudget,
 	ImageProtocol,
@@ -25,8 +24,8 @@ import {
 	Spacer,
 	TERMINAL,
 	Text,
-	type TextSizingScale,
 } from "@veyyon/tui";
+import { encodeTextSized, type TextSizingScale } from "@veyyon/utils/text-sizing";
 import { COMPOSER_INSET_COLS } from "../modes/components/composer-chrome";
 import { theme } from "../modes/theme/theme";
 

@@ -6,8 +6,8 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { ImageContent, Model, TextContent, TSchema } from "@veyyon/ai";
-import type { KeyId } from "@veyyon/tui";
 import { errorMessage, getAgentDir, hasFsCode, isEacces, isEnoent, logger, reportFault } from "@veyyon/utils";
+import type { KeyId } from "@veyyon/utils/keys";
 import { Type } from "arktype";
 import * as zodModule from "zod/v4";
 import { type ExtensionModule, extensionModuleCapability } from "../../capability/extension-module";
@@ -32,7 +32,6 @@ import { type ManifestHolder, manifestFromPackageJson } from "../manifest-key";
 import { installLegacyPiSpecifierShim, loadLegacyPiModule } from "../plugins/legacy-pi-compat";
 import { getAllPluginExtensionPaths } from "../plugins/loader";
 import * as TypeBox from "../typebox";
-
 import { resolvePath, withExitGuard } from "../utils";
 import type {
 	AssistantThinkingRenderer,

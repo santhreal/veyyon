@@ -12,7 +12,7 @@ import type { ImageContent } from "@veyyon/ai";
 import { KEYBINDINGS } from "@veyyon/coding-agent/config/keybindings";
 import { CompactionSummaryMessageComponent } from "@veyyon/coding-agent/modes/components/compaction-summary-message";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { getKeybindings, KeybindingsManager, setKeybindings } from "@veyyon/tui/keybindings";
+import { getKeybindings, KeybindingsManager, setKeybindings } from "@veyyon/utils/keybindings";
 
 beforeAll(() => {
 	initTheme();

@@ -6,16 +6,11 @@
  * auth badges, or clear/unset.
  */
 import type { Model } from "@veyyon/ai";
-import {
-	type Component,
-	Container,
-	type HoverFadeOptions,
-	matchesKey,
-	type SgrMouseEvent,
-	Spacer,
-	Text,
-	truncateToWidth,
-} from "@veyyon/tui";
+import { type Component, Container, Spacer, Text } from "@veyyon/tui";
+import { matchesKey } from "@veyyon/utils/keys";
+import type { HoverFadeOptions } from "@veyyon/utils/motion";
+import type { SgrMouseEvent } from "@veyyon/utils/mouse";
+import { truncateToWidth } from "@veyyon/utils/width";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import { theme } from "../theme/theme";

@@ -16,8 +16,7 @@
  *   - A cold/unique-text pass with no possible reuse, so cache overhead can't
  *     hide a cold-path regression.
  */
-
-import { fuzzyFilter, fuzzyRank, resetFuzzyIndexCache } from "../src/fuzzy";
+import { fuzzyFilter, fuzzyRank, resetFuzzyIndexCache } from "@veyyon/utils/fuzzy";
 
 // ─── Deterministic corpus ───────────────────────────────────────────────────
 // Base model IDs × variant tags (real catalogs look exactly like this), plus a

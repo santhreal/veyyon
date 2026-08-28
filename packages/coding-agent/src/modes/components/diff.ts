@@ -1,5 +1,5 @@
-import { SGR_INTENSITY_RESET } from "@veyyon/tui/ansi";
 import { DEFAULT_TAB_WIDTH, sanitizeText } from "@veyyon/utils";
+import { SGR_INTENSITY_RESET } from "@veyyon/utils/ansi";
 import * as Diff from "diff";
 import { type CodeFrameMarker, formatCodeFrameLine, replaceTabs } from "../../tools/render-utils";
 import { getLanguageFromPath } from "../../utils/lang-from-path";

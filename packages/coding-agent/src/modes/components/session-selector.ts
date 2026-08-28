@@ -1,21 +1,12 @@
-import {
-	type Component,
-	Container,
-	FuzzyText,
-	HoverFade,
-	type HoverFadeOptions,
-	Input,
-	matchesKey,
-	padding,
-	replaceTabs,
-	routeSgrMouseInput,
-	ScrollView,
-	Spacer,
-	Text,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
+import { type Component, Container, Input, ScrollView, Spacer, Text } from "@veyyon/tui";
 import { clampLow, errorMessage, formatBytes } from "@veyyon/utils";
+import { FuzzyText } from "@veyyon/utils/fuzzy";
+import { matchesKey } from "@veyyon/utils/keys";
+import { HoverFade, type HoverFadeOptions } from "@veyyon/utils/motion";
+import { routeSgrMouseInput } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import { withIcon } from "../../modes/theme/icon-label";
 import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";

@@ -6,7 +6,7 @@ import { ThemeSelectorComponent } from "@veyyon/coding-agent/modes/components/th
 import { ThinkingSelectorComponent } from "@veyyon/coding-agent/modes/components/thinking-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { ConfiguredThinkingLevel } from "@veyyon/coding-agent/thinking";
-import type { SgrMouseEvent } from "@veyyon/tui";
+import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 
 beforeAll(async () => {
 	await initTheme();

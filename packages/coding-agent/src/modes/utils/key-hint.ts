@@ -19,7 +19,8 @@
  * across the TUI, while `formatKeyHints` produces the title-case form the settings
  * UI and `/hotkeys` use.
  */
-import { getKeybindings, type Keybinding } from "@veyyon/tui";
+
+import { getKeybindings, type Keybinding } from "@veyyon/utils/keybindings";
 import { formatKeyHints, type KeyId } from "../../config/keybindings";
 
 /**

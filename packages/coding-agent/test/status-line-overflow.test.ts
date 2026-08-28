@@ -3,8 +3,8 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { visibleWidth } from "@veyyon/tui";
 import { getProjectDir, setProjectDir } from "@veyyon/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 
 // Tracked temp directories: the factory deletes what it made when this file finishes.

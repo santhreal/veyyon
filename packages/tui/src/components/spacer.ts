@@ -1,5 +1,5 @@
+import { clamp } from "@veyyon/utils/math";
 import type { Component } from "../tui";
-import { clamp } from "../utils";
 
 /**
  * Spacer component that renders empty lines

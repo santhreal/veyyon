@@ -1,6 +1,6 @@
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 
-import { SGR_FG_RESET, SGR_INTENSITY_RESET } from "@veyyon/tui/ansi";
+import { SGR_FG_RESET, SGR_INTENSITY_RESET } from "@veyyon/utils/ansi";
 import { clamp01 } from "@veyyon/utils/math";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../../config/settings-instance";

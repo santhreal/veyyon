@@ -1,14 +1,10 @@
-import {
-	type Component,
-	extractPrintableText,
-	matchesKey,
-	padding,
-	parseSgrMouse,
-	replaceTabs,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
 import { clampLow, errorMessage, pluralize, sanitizeText } from "@veyyon/utils";
+import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
+import { parseSgrMouse } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import { bottomBorder, divider, row, topBorder } from "../modes/components/overlay-box";
 import { theme } from "../modes/theme/theme";
 import { copyToClipboard } from "../utils/clipboard";

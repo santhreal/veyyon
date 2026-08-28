@@ -38,8 +38,12 @@
  *     It is visible on screen until the editor is cleared, so {@link addSecret} says so in its
  *     confirmation rather than leaving the user to assume otherwise.
  */
-import { Ellipsis, padding, sanitizeSingleLine, truncateToWidth, visibleWidth } from "@veyyon/tui/utils";
+
+import { Ellipsis } from "@veyyon/natives";
 import { errorMessage, formatCount } from "@veyyon/utils";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { sanitizeSingleLine } from "@veyyon/utils/wrap";
 import type { SecretAuditLog, SecretExpansionRecord } from "./audit";
 import type { MaskedInventory } from "./obfuscator";
 import { MAX_SECRET_NAME_LENGTH } from "./placeholder";

@@ -1,4 +1,5 @@
-import type { Component, MouseRoutable, SgrMouseEvent } from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
+import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
 import type { KeybindingsManager } from "../../config/keybindings";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 import { appKey } from "./keybinding-hints";

@@ -1,4 +1,4 @@
-import { getKeybindings } from "../keybindings";
+import { getKeybindings } from "@veyyon/utils/keybindings";
 import { Loader } from "./loader";
 
 /**

@@ -1,16 +1,10 @@
 import type { AgentToolContext } from "@veyyon/agent-core";
 import { type PtyRunResult, PtySession } from "@veyyon/natives";
-import {
-	type Component,
-	extractPrintableText,
-	matchesKey,
-	padding,
-	parseKey,
-	parseKittySequence,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
 import { errorMessage, sanitizeText } from "@veyyon/utils";
+import { extractPrintableText, matchesKey, parseKey, parseKittySequence } from "@veyyon/utils/keys";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import type * as XtermModule from "@xterm/headless";
 import type { Terminal as XtermTerminalType } from "@xterm/headless";
 import { Settings } from "../config/settings";

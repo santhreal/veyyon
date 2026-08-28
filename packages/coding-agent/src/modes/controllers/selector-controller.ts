@@ -6,9 +6,10 @@ import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 // barrel (346).
 import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai/registry/derived";
 import type { Component, OverlayHandle } from "@veyyon/tui";
-import { Loader, Spacer, setTuiTight, Text } from "@veyyon/tui";
+import { Loader, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, getActiveAuthDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
 import * as logger from "@veyyon/utils/logger";
+import { setTuiTight } from "@veyyon/utils/tight-mode";
 import {
 	type AdvisorConfigScope,
 	discoverAdvisorConfigs,

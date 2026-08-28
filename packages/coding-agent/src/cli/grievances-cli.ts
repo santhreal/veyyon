@@ -2,8 +2,8 @@
  * CLI handler for `veyyon grievances` — view, clean, and manually push reported tool issues.
  */
 import { existsSync } from "node:fs";
-import { subCellBar } from "@veyyon/tui/sub-cell-bar";
 import { formatCount, getAutoQaDbDir, pluralize } from "@veyyon/utils";
+import { subCellBar } from "@veyyon/utils/bar";
 import chalk from "chalk";
 import { Settings } from "../config/settings";
 import { flushGrievances, openAutoQaDb } from "../tools/report-tool-issue";

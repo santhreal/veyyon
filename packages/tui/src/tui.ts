@@ -17,17 +17,27 @@
  */
 import * as fs from "node:fs";
 import { performance } from "node:perf_hooks";
+import { Ellipsis } from "@veyyon/natives";
+import { SGR_RESET, sgrSequence } from "@veyyon/utils/ansi";
+import { planDeccaraFills } from "@veyyon/utils/deccara";
 import { getDebugLogPath } from "@veyyon/utils/dirs";
 import { $flag } from "@veyyon/utils/env";
+import { isKeyRelease, matchesKey } from "@veyyon/utils/keys";
 import * as logger from "@veyyon/utils/logger";
 import { popLoopPhase, pushLoopPhase } from "@veyyon/utils/loop-phase";
+import { LoopWatchdog } from "@veyyon/utils/loop-watchdog";
+import { clampLow } from "@veyyon/utils/math";
+import { type MouseRoutable, parseSgrMouse, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { errorMessage } from "@veyyon/utils/type-guards";
-import { SGR_RESET, sgrSequence } from "./ansi";
+import {
+	extractSegments,
+	normalizeTerminalOutput,
+	sliceByColumn,
+	sliceWithWidth,
+	truncateToWidth,
+	visibleWidth,
+} from "@veyyon/utils/width";
 import { DEFAULT_MAX_INLINE_IMAGES, ImageBudget } from "./components/image";
-import { planDeccaraFills } from "./deccara";
-import { isKeyRelease, matchesKey } from "./keys";
-import { LoopWatchdog } from "./loop-watchdog";
-import { type MouseRoutable, parseSgrMouse, type SgrMouseEvent } from "./mouse";
 import { isConPTYHosted, setAltScreenActive, type Terminal } from "./terminal";
 import {
 	encodeKittyDeleteImage,
@@ -39,16 +49,6 @@ import {
 	synchronizedOutputUserOverride,
 	TERMINAL,
 } from "./terminal-capabilities";
-import {
-	clampLow,
-	Ellipsis,
-	extractSegments,
-	normalizeTerminalOutput,
-	sliceByColumn,
-	sliceWithWidth,
-	truncateToWidth,
-	visibleWidth,
-} from "./utils";
 
 /**
  * Per-line terminator written after every non-image content row. It closes both

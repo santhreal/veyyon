@@ -17,8 +17,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import { maxSegmentVisualCol, offsetAtVisualCol, visualColAtOffset } from "@veyyon/tui/components/editor";
-import { getSegmenter, visibleWidth } from "@veyyon/tui/utils";
 import { fuzzSeed, lcg } from "@veyyon/utils/adversarial-strings";
+import { getSegmenter, visibleWidth } from "@veyyon/utils/width";
 
 /** Grapheme-cluster boundaries (code-unit indices, incl. 0 and length). */
 function boundaries(text: string): Set<number> {

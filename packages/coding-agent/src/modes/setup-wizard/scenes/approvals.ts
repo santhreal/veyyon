@@ -1,10 +1,6 @@
-import {
-	routeSelectListMouse,
-	type SelectItem,
-	type SelectList,
-	type SgrMouseEvent,
-	wrapTextWithAnsi,
-} from "@veyyon/tui";
+import type { SelectItem, SelectList } from "@veyyon/tui";
+import { routeSelectListMouse, type SgrMouseEvent } from "@veyyon/utils/mouse";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { normalizeApprovalMode } from "../../../tools/approval";
 import { AUTONOMY_LABEL, type AutonomyLevel } from "../../../tools/approval-modes";
 import { theme } from "../../theme/theme";

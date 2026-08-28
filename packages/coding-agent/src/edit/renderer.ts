@@ -4,9 +4,10 @@
 
 import { HL_FILE_PREFIX, HL_FILE_SUFFIX, HL_MOVE_KEYWORD, HL_REM_KEYWORD } from "@veyyon/hashline";
 import type { Component } from "@veyyon/tui";
-import { sliceWithWidth, visibleWidth, wrapTextWithAnsi } from "@veyyon/tui";
-import { SGR_FG_RESET } from "@veyyon/tui/ansi";
 import { errorMessage, formatMoreLines, sanitizeText } from "@veyyon/utils";
+import { SGR_FG_RESET } from "@veyyon/utils/ansi";
+import { sliceWithWidth, visibleWidth } from "@veyyon/utils/width";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { FileDiagnosticsResult } from "../lsp";
 import { renderDiff as renderDiffColored } from "../modes/components/diff";

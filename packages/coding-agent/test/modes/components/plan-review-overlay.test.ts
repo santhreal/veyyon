@@ -4,7 +4,7 @@ import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import type { HookSelectorSlider } from "@veyyon/coding-agent/modes/components/hook-selector";
 import { PlanReviewOverlay } from "@veyyon/coding-agent/modes/components/plan-review-overlay";
 import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
-import { setKeybindings } from "@veyyon/tui";
+import { setKeybindings } from "@veyyon/utils/keybindings";
 import { useFullColor } from "../../helpers/theme-assertions";
 
 const UP = "\x1b[A";

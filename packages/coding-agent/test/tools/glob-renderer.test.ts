@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { visibleWidth } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 import { globToolRenderer } from "../../src/tools/glob";
 import { expectNotAccented, useFullColor } from "../helpers/theme-assertions";
 

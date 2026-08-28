@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 
 /**
  * Tests for truncateToWidth behavior with Unicode characters.

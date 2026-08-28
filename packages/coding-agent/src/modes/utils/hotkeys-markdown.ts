@@ -1,4 +1,4 @@
-import type { Keybinding } from "@veyyon/tui";
+import type { Keybinding } from "@veyyon/utils/keybindings";
 import type { KeybindingsManager } from "../../config/keybindings";
 
 export interface HotkeysMarkdownBindings {

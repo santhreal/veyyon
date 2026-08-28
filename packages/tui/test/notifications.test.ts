@@ -3,15 +3,14 @@ import * as desktopNotify from "@veyyon/tui/desktop-notify";
 import { ProcessTerminal } from "@veyyon/tui/terminal";
 import {
 	getTerminalInfo,
-	isInsideTmux,
 	isInsideZellij,
 	isOsc99Supported,
 	NotifyProtocol,
 	setOsc99Supported,
 	TERMINAL,
-	wrapTmuxPassthrough,
 } from "@veyyon/tui/terminal-capabilities";
 import { setTerminalHeadless } from "@veyyon/utils";
+import { isInsideTmux, wrapTmuxPassthrough } from "@veyyon/utils/tmux";
 
 const stdinIsTtyDescriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
 const stdoutIsTtyDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");

@@ -1,7 +1,8 @@
 /**
  * Default themes for TUI tests using chalk
  */
-import type { EditorTheme, MarkdownTheme, SelectListTheme, SymbolTheme } from "@veyyon/tui";
+import type { EditorTheme, MarkdownTheme, SelectListTheme } from "@veyyon/tui";
+import type { SymbolTheme } from "@veyyon/utils/symbols";
 import { Chalk } from "chalk";
 
 const chalk = new Chalk({ level: 3 });

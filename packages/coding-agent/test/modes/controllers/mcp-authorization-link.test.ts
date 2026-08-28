@@ -3,7 +3,7 @@ import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { MCPAuthorizationLinkPrompt } from "@veyyon/coding-agent/modes/controllers/mcp-command-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { visibleWidth } from "@veyyon/tui";
+import { visibleWidth } from "@veyyon/utils/width";
 
 const OSC = "\x1b]";
 const BEL = "\x07";
