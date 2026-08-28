@@ -53,11 +53,6 @@ function ensureSeparators(): void {
 	segmentSep = theme.fg("dim", `  ${d}  `);
 }
 
-/** The glyph the active preset divides things with, without its padding. */
-function dot(): string {
-	return theme.sep.dot.trim();
-}
-
 /**
  * Between two independent states inside one segment: `! YOLO · Goal 12K/50K`.
  *

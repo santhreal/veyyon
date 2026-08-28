@@ -788,7 +788,10 @@ const costSegment: StatusLineSegment = {
 
 		let body = "";
 		if (cost) body = `$${cost.toFixed(2)}`;
-		if (normalizedPremiumRequests) body = body ? `${body} * ${formatNumber(normalizedPremiumRequests)}` : `* ${formatNumber(normalizedPremiumRequests)}`;
+		if (normalizedPremiumRequests)
+			body = body
+				? `${body} * ${formatNumber(normalizedPremiumRequests)}`
+				: `* ${formatNumber(normalizedPremiumRequests)}`;
 		if (usingSubscription) body = body ? `${body} (sub)` : "(sub)";
 		return { content: theme.fg("statusLineCost", body), visible: true };
 	},
