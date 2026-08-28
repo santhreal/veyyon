@@ -172,21 +172,10 @@ export async function initDb(): Promise<Database> {
 		db.run("ALTER TABLE messages ADD COLUMN premium_requests REAL NOT NULL DEFAULT 0");
 	}
 	db.run("UPDATE messages SET premium_requests = 0 WHERE premium_requests IS NULL");
-	// Token-usage-by-agent: each message is classified main / subagent / advisor
-	// from its transcript path. A brand-new table gets the column from CREATE
-	// TABLE and the parser labels rows at insert time; a pre-existing table gets
-	// the column here (defaulting every prior row to 'main') and enrolls the
-	// one-time path-based reclassification, gated by a meta sentinel.
 	const hasAgentTypeColumn = messageColumns.some(column => column.name === "agent_type");
 	if (!hasAgentTypeColumn) {
 		db.run("ALTER TABLE messages ADD COLUMN agent_type TEXT NOT NULL DEFAULT 'main'");
 	}
-	// For any pre-existing table, enroll the backfill PENDING unless a prior run
-	// already settled the sentinel — `OR IGNORE` leaves an existing
-	// COMPLETE/PENDING value intact, so an ALTER that committed before its
-	// sentinel write (process killed in between) still reclassifies on the next
-	// init instead of silently leaving every row as the 'main' default. A
-	// brand-new empty table has nothing to reclassify, so it settles COMPLETE.
 	db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)").run(
 		AGENT_TYPE_BACKFILL_KEY,
 		messagesTableExisted ? BACKFILL_PENDING : BACKFILL_COMPLETE,
@@ -348,21 +337,7 @@ export function setFileOffset(sessionFile: string, offset: number, lastModified:
 	stmt.run(sessionFile, offset, lastModified);
 }
 
-/**
- * Insert message stats into the database.
- *
- * Forked / branched sessions (see `SessionManager.fork()` and
- * `createBranchedSession()` in `@veyyon/coding-agent`) deep-copy a parent
- * session's entries into a new JSONL — same `entry_id`, `timestamp`, `model`,
- * `provider`, token counts, and `responseId`. The `UNIQUE(session_file,
- * entry_id)` constraint alone keys each row by file, so without the guard
- * below the same provider request would land twice and inflate every
- * aggregate. The `WHERE NOT EXISTS` clause skips inserts whose
- * `(entry_id, timestamp)` already exists under a different `session_file` —
- * first-write-wins across the lineage. Same-file re-syncs still hit the
- * `ON CONFLICT(session_file, entry_id)` upsert below so historical
- * `premium_requests` fix-ups continue to work.
- */
+/** Insert message stats into the database. */
 export function insertMessageStats(stats: MessageStats[]): number {
 	if (!db || stats.length === 0) return 0;
 
@@ -425,11 +400,7 @@ export function insertMessageStats(stats: MessageStats[]): number {
 	return inserted;
 }
 
-/**
- * Raw row shapes for the SQL queries below. sqlite results cannot be
- * statically typed, so each query narrows once at this checked boundary
- * instead of flowing `any` through the mappers.
- */
+/** Raw row shapes for the SQL queries below. sqlite results cannot be */
 interface AggregateRow {
 	total_requests: number | null;
 	failed_requests: number | null;
@@ -663,11 +634,7 @@ export function getStatsByFolder(cutoff?: number): FolderStats[] {
 	}));
 }
 
-/**
- * Get token usage grouped by agent type (main agent, task subagents, advisor).
- * Token columns are explicit so the dashboard's share denominator matches the
- * counts it renders. Rows missing `agent_type` (defensive) fall back to "main".
- */
+/** Get token usage grouped by agent type (main agent, task subagents, advisor). */
 export function getStatsByAgentType(cutoff?: number): AgentTypeStats[] {
 	if (!db) return [];
 
@@ -933,45 +900,7 @@ export function getCostTimeSeries(days = 90, cutoff?: number | null): CostTimeSe
 	}));
 }
 
-/**
- * Reset `file_offsets` (and any existing `user_messages` rows) so the next
- * successful sync re-parses every session and re-derives behavioral metrics.
- * Run once per metric-definition bump; the meta sentinel is only marked
- * complete after `syncAllSessions` finishes. Older timestamp sentinel values
- * are treated as pending so a failed compiled-binary sync cannot permanently
- * suppress the backfill.
- *
- * - v1: initial introduction of `user_messages`.
- * - v2: yelling-sentence metric replaces caps-word counts; existing rows are
- *   computed under the old definition and must be discarded.
- * - v3: drama runs collapsed into `anguish` (drama + elongated interjections
- *   + `dude` + dot runs), scored on a stripped prose body and gated on
- *   line count. Existing rows used the narrower definition.
- * - v4: added `negation` / `repetition` / `blame` signals and fixed a
- *   latent word-boundary bug in the profanity / anguish regexes that had
- *   left those metrics matching nothing in real prose.
- * - v5: renamed `yelling_sentences` column to `yelling` to match the other
- *   single-word signal columns (profanity, anguish, negation, ...).
- * - v6: dropped `git` from the profanity word list - it collided with the
- *   version-control tool name, so existing rows over-counted profanity.
- * - v7: false-positive trim measured against the real corpus: dot runs
- *   (`..`/`...`) no longer count as anguish; profanity list dropped
- *   technical-collision words (`dummy`, `blast`, `knob`, `trash`, `crud`,
- *   `garbage`, ...), opinion/dislike words (`useless`, `awful`, `hate`,
- *   `meh`, ...) and moved `ugh`/`argh`/`grr` interjections to anguish;
- *   yelling now requires multi-word caps (filenames like `AGENTS.md` no
- *   longer fragment into all-caps sentences); bare leading `no` only
- *   counts as negation when used as an interjection, not a determiner.
- * - v8: `no-op`-style compounds no longer count as corrective negation
- *   (hyphen after bare `no` only counts as a separator when it isn't
- *   gluing a compound word), and three measured false-negative clusters
- *   were recovered: sad emoticons (`:(`) score anguish, `why (would|did)
- *   you` scores blame, `makes (no|zero) sense` scores negation. v7
- *   shipped briefly without these, so any database that completed the v7
- *   backfill needs one more re-derive.
- *
- * Existing `messages` rows are unaffected - `INSERT OR IGNORE` keeps them.
- */
+/** Reset `file_offsets` (and any existing `user_messages` rows) so the next */
 function backfillUserMessages(database: Database): void {
 	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(USER_MESSAGES_BACKFILL_KEY) as
 		| { value: string }
@@ -985,14 +914,7 @@ function backfillUserMessages(database: Database): void {
 		.run(USER_MESSAGES_BACKFILL_KEY, BACKFILL_PENDING);
 }
 
-/**
- * One-shot wipe of `tool_calls` + `file_offsets` when the `tool_calls` table
- * is introduced (or its schema version bumps), so the next sync re-parses
- * every session and ingests historical tool calls. `messages` and
- * `user_messages` re-inserts are idempotent, so the offset reset is safe.
- * Same sentinel protocol as {@link backfillUserMessages}: the PENDING value
- * written here prevents re-wiping on subsequent inits.
- */
+/** One-shot wipe of `tool_calls` + `file_offsets` when the `tool_calls` table */
 function backfillToolCalls(database: Database): void {
 	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(TOOL_CALLS_BACKFILL_KEY) as
 		| { value: string }
@@ -1006,15 +928,7 @@ function backfillToolCalls(database: Database): void {
 		.run(TOOL_CALLS_BACKFILL_KEY, BACKFILL_PENDING);
 }
 
-/**
- * Reclassify pre-existing `messages` rows by agent type once, after the
- * `agent_type` column is added to an older database (every prior row defaulted
- * to 'main' on the ALTER). Classification is purely path-based — derived from
- * the stored `session_file` — so no session re-parse is needed. Idempotent and
- * crash-safe: enrolled (PENDING) only at migration time in {@link initDb} and
- * marked COMPLETE inside the same transaction that applies the updates, so an
- * interrupted run rolls back and retries on the next init.
- */
+/** Reclassify pre-existing `messages` rows by agent type once, after the */
 function backfillAgentType(database: Database): void {
 	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(AGENT_TYPE_BACKFILL_KEY) as
 		| { value: string }
@@ -1037,21 +951,7 @@ function backfillAgentType(database: Database): void {
 	apply();
 }
 
-/**
- * One-shot collapse of forked-session duplicates that landed under the old
- * `UNIQUE(session_file, entry_id)`-only invariant. `SessionManager.fork()`
- * and `createBranchedSession()` deep-copy a parent's entries into the new
- * JSONL — same `entry_id`, `timestamp`, `model`, `responseId`, token counts,
- * cost — and the previous insert path counted both files toward request /
- * token / cost totals. The migration keeps the lowest-`id` row per
- * `(entry_id, timestamp)` group (almost always the parent — sessions are
- * filename-timestamped and sync processes them in name order, so the
- * originating file lands first) and drops every other copy. Same fix on
- * `user_messages` since forks copy user entries too. Idempotent and
- * crash-safe: enrolled at module-load via the `meta` sentinel, marked
- * COMPLETE inside the same transaction so an aborted run rolls back and
- * retries on the next init.
- */
+/** One-shot collapse of forked-session duplicates that landed under the old */
 function backfillForkDuplicates(database: Database): void {
 	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(FORK_DEDUPE_KEY) as
 		| { value: string }
@@ -1077,14 +977,7 @@ function backfillForkDuplicates(database: Database): void {
 	apply();
 }
 
-/**
- * One-shot wipe of `file_offsets` to force `parseSessionFile` to re-parse
- * every session from byte zero. We don't touch `user_messages`; the parser
- * now emits a `UserMessageLink` for every assistant->parent pair, and the
- * guarded `updateUserMessageLinks` UPDATE fixes any row whose `model` was
- * left NULL by the old in-pass-only linking logic. Idempotent: gated by a
- * sentinel row in `meta`.
- */
+/** One-shot wipe of `file_offsets` to force `parseSessionFile` to re-parse */
 function repairUserMessageLinks(database: Database): void {
 	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(USER_MESSAGE_LINKS_REPAIR_KEY) as
 		| { value: string }
@@ -1097,16 +990,7 @@ function repairUserMessageLinks(database: Database): void {
 		.run(USER_MESSAGE_LINKS_REPAIR_KEY, BACKFILL_PENDING);
 }
 
-/**
- * One-shot wipe of `file_offsets` so the next sync re-parses every session
- * and re-derives `premium_requests` from recorded `service_tier_change`
- * entries. Earlier ingestions captured priority OpenAI traffic with
- * `premium_requests = 0` because the AI layer only set the field for GitHub
- * Copilot traffic. The parser now folds priority requests into the same
- * counter; combined with the UPSERT in `insertMessageStats`, a single sync
- * pass brings the messages table up to date without touching any other
- * column. Idempotent: gated by a sentinel row in `meta`.
- */
+/** One-shot wipe of `file_offsets` so the next sync re-parses every session */
 function backfillPriorityPremiumRequests(database: Database): void {
 	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(PRIORITY_PREMIUM_REQUESTS_BACKFILL_KEY) as
 		| { value: string }
@@ -1143,12 +1027,7 @@ export function markUserMessageLinksRepairComplete(): void {
 	);
 }
 
-/**
- * Insert user-message stats. Idempotent via UNIQUE(session_file, entry_id).
- * The `WHERE NOT EXISTS` clause matches {@link insertMessageStats}: forks
- * copy user entries verbatim into the child JSONL, so the same
- * `(entry_id, timestamp)` must not land twice across different session files.
- */
+/** Insert user-message stats. Idempotent via UNIQUE(session_file, entry_id). */
 export function insertUserMessageStats(stats: UserMessageStats[]): number {
 	if (!db || stats.length === 0) return 0;
 
@@ -1196,15 +1075,7 @@ export function insertUserMessageStats(stats: UserMessageStats[]): number {
 	return inserted;
 }
 
-/**
- * Backfill the responding `model`/`provider` on user-message rows that were
- * persisted before their assistant reply was parsed (a side effect of
- * incremental `fromOffset` syncing: the `userByEntryId` map in
- * `parseSessionFile` only spans a single pass). Each row is updated at most
- * once because the `model IS NULL` guard short-circuits subsequent passes.
- *
- * Returns the number of rows actually updated.
- */
+/** Backfill the responding `model`/`provider` on user-message rows that were */
 export function updateUserMessageLinks(links: UserMessageLink[]): number {
 	if (!db || links.length === 0) return 0;
 
@@ -1402,15 +1273,7 @@ export function getBehaviorByModel(cutoff?: number | null): BehaviorModelStats[]
 	}));
 }
 
-/**
- * Insert tool-call rows. Idempotent via UNIQUE(session_file, tool_call_id);
- * the `WHERE NOT EXISTS` guard mirrors {@link insertMessageStats}: forked
- * sessions deep-copy assistant entries (same `entry_id`, `timestamp`, and
- * tool-call ids under a new file), so first-write-wins across the lineage
- * keeps aggregates from double counting. Keyed on the assistant entry
- * identity, not the call id alone — provider call ids are not a global
- * namespace across unrelated sessions.
- */
+/** Insert tool-call rows. Idempotent via UNIQUE(session_file, tool_call_id); */
 export function insertToolCalls(calls: ToolCallStats[]): number {
 	if (!db || calls.length === 0) return 0;
 
@@ -1455,13 +1318,7 @@ export function insertToolCalls(calls: ToolCallStats[]): number {
 	return inserted;
 }
 
-/**
- * Attach result size / error flag to persisted tool-call rows. Results can
- * land in a later incremental sync pass than the call that produced them, so
- * this is an UPDATE keyed by (session_file, tool_call_id). The `IS NULL`
- * guard makes re-syncs idempotent; rows skipped by the fork guard simply
- * never match.
- */
+/** Attach result size / error flag to persisted tool-call rows. Results can */
 export function updateToolResults(links: ToolResultLink[]): number {
 	if (!db || links.length === 0) return 0;
 
@@ -1482,11 +1339,7 @@ export function updateToolResults(links: ToolResultLink[]): number {
 	return updated;
 }
 
-/**
- * Shared SELECT list for tool aggregates. Real provider usage comes from the
- * invoking assistant turn (`messages` join) divided by `calls_in_turn`, so
- * per-tool token/cost shares stay additive across tools.
- */
+/** Shared SELECT list for tool aggregates. Real provider usage comes from the */
 const TOOL_AGGREGATE_COLUMNS = `
 	COUNT(*) as calls,
 	SUM(CASE WHEN t.is_error = 1 THEN 1 ELSE 0 END) as errors,
