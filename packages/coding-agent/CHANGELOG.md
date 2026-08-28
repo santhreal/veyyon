@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- 40 free helper functions, types, and constants extracted from `fetch.ts` (2,001→1,574 lines) into `fetch-helpers.ts`.
 - `settings-selector.ts` domain submenus extracted into 11 separate modules under `settings-submenus/`.
 - `interactive-mode.ts` controllers extracted into `interactive/` module (command-dispatch, event-handlers, lifecycle, goal-mode-controller, plan-mode-controller, todo-board-manager, working-loader-manager).
 - `agent-session.ts` deep comment strip removed 4,242 lines.
