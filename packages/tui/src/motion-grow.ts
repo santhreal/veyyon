@@ -1,21 +1,4 @@
-// A block of rows that grows into place instead of appearing whole.
-//
-// The suggestion popup, and any other block appended under a live surface, used
-// to be a cut: five rows of chrome existed on one frame that did not exist on
-// the frame before. The eye reads that as the composer jumping rather than as a
-// list opening, and it happens on almost every keystroke.
-//
-// A reveal is two transforms over rows that are ALREADY rendered: the block is
-// clipped to the rows it has grown to, and every visible row resolves out of the
-// ground behind it. Nothing upstream renders differently while it plays, so a
-// frame of the animation is byte-assertable and the component stays ignorant of
-// motion.
-//
-// The reveal is armed by the block APPEARING, not by every render of it. That is
-// the whole reason this is a class and not a function: a popup rebuilds its list
-// on every keystroke, and a reveal that restarted on each rebuild would replay a
-// 220ms grow per character typed, which is worse than no motion at all.
-
+// Block reveal animation controller for expanding popup elements.
 import { type Animation, type AnimationCurve, MOTION, type MotionClock, motionClock } from "./motion";
 import { fadeLinesTowards, revealedRows } from "./motion-paint";
 

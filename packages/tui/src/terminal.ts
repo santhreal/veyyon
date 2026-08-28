@@ -1148,8 +1148,7 @@ export class ProcessTerminal implements Terminal {
 					this.#kittyEnableSeq = "\x1b[>7u";
 					this.#safeWrite(this.#kittyEnableSeq);
 				} else {
-					// Level 1 (disambiguate escape codes) — enough for Shift+Enter
-					// without the modifyOtherKeys fallback that caused regression #3259.
+					// Level 1 (disambiguate escape codes) for Shift+Enter support.
 					this.#kittyEnableSeq = "\x1b[>1u";
 					this.#safeWrite(this.#kittyEnableSeq);
 				}

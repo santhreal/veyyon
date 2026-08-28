@@ -1873,7 +1873,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			}
 		}
 
-		// Check if we should trigger or update autocomplete
 		if (!this.#autocompleteState) {
 			// Auto-trigger for "/" at the start of a submitted command or a mid-prompt skill lookup.
 			if (char === "/" && (this.#isAtStartOfSubmittedMessage() || this.#isInMidPromptSkillSlashContext())) {
@@ -1897,24 +1896,15 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			else if (/[a-zA-Z0-9.\-_/]/.test(char)) {
 				const currentLine = this.#state.lines[this.#state.cursorLine] || "";
 				const textBeforeCursor = currentLine.slice(0, this.#state.cursorCol);
-				// Check if we're in a slash command or mid-prompt skill lookup.
 				if (this.#isInSlashAutocompleteContext()) {
 					this.#tryTriggerAutocomplete();
-				}
-				// Check if we're in an @ file reference context
-				else if (textBeforeCursor.match(/(?:^|[\s])@[^\s]*$/)) {
+				} else if (textBeforeCursor.match(/(?:^|[\s])@[^\s]*$/)) {
 					this.#tryTriggerAutocomplete();
-				}
-				// Check if we're in a # prompt action context
-				else if (textBeforeCursor.match(/#[^\s#]*$/)) {
+				} else if (textBeforeCursor.match(/#[^\s#]*$/)) {
 					this.#tryTriggerAutocomplete();
-				}
-				// Check if we're in a :emoji shortcode context
-				else if (textBeforeCursor.match(/(?:^|[\s([{>]):[a-zA-Z0-9_+-]*$/)) {
+				} else if (textBeforeCursor.match(/(?:^|[\s([{>]):[a-zA-Z0-9_+-]*$/)) {
 					this.#tryTriggerAutocomplete();
-				}
-				// Check if we're typing an internal URL scheme (e.g. local://, skill://)
-				else if (this.#textTriggersUrlAutocomplete(textBeforeCursor)) {
+				} else if (this.#textTriggersUrlAutocomplete(textBeforeCursor)) {
 					this.#tryTriggerAutocomplete();
 				}
 			}
@@ -3062,7 +3052,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 
 	async #tryTriggerAutocomplete(explicitTab: boolean = false): Promise<void> {
 		if (!this.#autocompleteProvider) return;
-		// Check if we should trigger file completion on Tab
 		if (explicitTab) {
 			const shouldTrigger =
 				!this.#autocompleteProvider.shouldTriggerFileCompletion ||

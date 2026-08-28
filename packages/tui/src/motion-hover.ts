@@ -1,20 +1,4 @@
-// The pointer band, faded in and out instead of switched.
-//
-// A hover band used to be a boolean: the row under the pointer was painted with
-// the selection background on the frame the motion report arrived, and unpainted
-// on the frame it left. Dragging the pointer down a list therefore strobed — a
-// hard band jumping row to row at whatever rate the terminal coalesces motion
-// reports, which is the one place in a terminal UI where a 90ms fade is the
-// difference between "the list is tracking me" and "something is flashing".
-//
-// The state is per ROW rather than one "current strength", because the interesting
-// frame is the one where two rows are painted at once: the row the pointer left is
-// still on its way out while the row it arrived at is on its way in. A single
-// strength cannot express that, and every attempt to fake it (fade out fully, then
-// fade in) doubles the latency of a gesture that has to feel immediate.
-//
-// Nothing here knows what a band looks like. It owns WHEN each row is at what
-// strength; the theme owns what strength 0.4 paints as.
+// Row-level hover fade animation controller.
 
 import { type Animation, MOTION, type MotionClock, motionClock } from "./motion";
 

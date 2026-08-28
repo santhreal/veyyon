@@ -4049,18 +4049,8 @@ export class TUI extends Container {
 					break;
 				}
 			}
-			// A frame the viewport SQUEEZED is not a frame that diverged. When the
-			// pinned chrome (HUD rows plus footer) grows past the viewport the
-			// transcript is left no room, the frame collapses to a strict PREFIX of
-			// what was committed, and every row it still shows matches the record
-			// byte for byte. Nothing in history changed and nothing is duplicated,
-			// so the erase-and-replay this used to request repaints the whole
-			// screen on every frame of a live turn — a strobe, and it is the reason
-			// a tall todo list or a busy subagent HUD makes the screen flash.
-			// Rebase the index either way (rows the frame no longer draws are not
-			// committed), but report a resync ONLY when the surviving rows really
-			// disagree with the record, which is the duplicate-block case this
-			// repair exists for.
+			// A frame squeezed by viewport bounds is a prefix match, not content divergence.
+			// Only report resync when surviving rows actually differ from the record.
 			const contentDiverged = diverged < limit;
 			frameSqueezed = !contentDiverged;
 			if (diverged < this.#committedRows) {

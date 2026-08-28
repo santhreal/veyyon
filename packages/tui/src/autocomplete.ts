@@ -554,9 +554,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			const suggestions = await this.#getFileSuggestions(pathMatch);
 			if (suggestions.length === 0) return null;
 
-			// Check if we have an exact match that is a directory
-			// In that case, we might want to return suggestions for the directory content instead
-			// But only if the prefix ends with /
 			if (suggestions.length === 1 && suggestions[0]?.value === pathMatch && !pathMatch.endsWith("/")) {
 				// Exact match found (e.g. user typed "src" and "src/" is the only match)
 				// We still return it so user can select it and add /
@@ -639,7 +636,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 
 		let beforePrefix = currentLine.slice(0, cursorCol - prefix.length);
 
-		// Check if we're completing a file attachment (prefix starts with "@")
 		if (prefix.startsWith("@")) {
 			const liveAtPrefix = this.#extractAtPrefix(textBeforeCursor);
 			if (liveAtPrefix) {
@@ -897,7 +893,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 					continue;
 				}
 
-				// Check if entry is a directory (or a symlink pointing to a directory)
 				let isDirectory = entry.isDirectory();
 				if (!isDirectory && entry.isSymbolicLink()) {
 					try {
@@ -1059,7 +1054,6 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		return null;
 	}
 
-	// Check if we should trigger file completion (called on Tab key)
 	shouldTriggerFileCompletion(lines: string[], cursorLine: number, cursorCol: number): boolean {
 		const currentLine = lines[cursorLine] || "";
 		const textBeforeCursor = currentLine.slice(0, cursorCol);
