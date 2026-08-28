@@ -75254,7 +75254,7 @@
 	"opencode-go": {
 		"deepseek-v4-flash": {
 			"id": "deepseek-v4-flash",
-			"name": "DeepSeek V4 Flash (2x usage)",
+			"name": "DeepSeek V4 Flash",
 			"api": "openai-completions",
 			"provider": "opencode-go",
 			"baseUrl": "https://opencode.ai/zen/go/v1",
@@ -75270,9 +75270,9 @@
 				"text"
 			],
 			"cost": {
-				"input": 0.07,
-				"output": 0.14,
-				"cacheRead": 0.0014,
+				"input": 0.22,
+				"output": 0.66,
+				"cacheRead": 0.007,
 				"cacheWrite": 0
 			},
 			"contextWindow": 1000000,
@@ -75283,6 +75283,41 @@
 				"reasoningContentField": "reasoning_content",
 				"requiresReasoningContentForToolCalls": true
 			},
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"low",
+					"high",
+					"max"
+				]
+			}
+		},
+		"deepseek-v4-flash-vision-exp": {
+			"id": "deepseek-v4-flash-vision-exp",
+			"name": "DeepSeek V4 Flash Vision Exp",
+			"api": "openai-completions",
+			"provider": "opencode-go",
+			"baseUrl": "https://opencode.ai/zen/go/v1",
+			"reasoning": true,
+			"reasoningOptions": {
+				"efforts": [
+					"low",
+					"high",
+					"max"
+				]
+			},
+			"input": [
+				"text",
+				"image"
+			],
+			"cost": {
+				"input": 0.22,
+				"output": 0.66,
+				"cacheRead": 0.007,
+				"cacheWrite": 0
+			},
+			"contextWindow": 1000000,
+			"maxTokens": 384000,
 			"thinking": {
 				"mode": "effort",
 				"efforts": [
@@ -75309,9 +75344,9 @@
 				"text"
 			],
 			"cost": {
-				"input": 0.435,
-				"output": 0.87,
-				"cacheRead": 0.003625,
+				"input": 0.66,
+				"output": 1.98,
+				"cacheRead": 0.022,
 				"cacheWrite": 0
 			},
 			"contextWindow": 1000000,
@@ -75437,9 +75472,44 @@
 				]
 			}
 		},
+		"glm-5.3-flash": {
+			"id": "glm-5.3-flash",
+			"name": "GLM-5.3-Flash (2x usage)",
+			"api": "openai-completions",
+			"provider": "opencode-go",
+			"baseUrl": "https://opencode.ai/zen/go/v1",
+			"reasoning": true,
+			"reasoningOptions": {
+				"efforts": [
+					"low",
+					"high",
+					"max"
+				]
+			},
+			"input": [
+				"text",
+				"image"
+			],
+			"cost": {
+				"input": 0.075,
+				"output": 0.25,
+				"cacheRead": 0.015,
+				"cacheWrite": 0
+			},
+			"contextWindow": 1000000,
+			"maxTokens": 131072,
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"low",
+					"high",
+					"max"
+				]
+			}
+		},
 		"gpt-5.6-luna": {
 			"id": "gpt-5.6-luna",
-			"name": "GPT-5.6 Luna (2x usage)",
+			"name": "GPT-5.6 Luna",
 			"api": "openai-responses",
 			"provider": "opencode-go",
 			"baseUrl": "https://opencode.ai/zen/go/v1",
@@ -75458,10 +75528,10 @@
 				"image"
 			],
 			"cost": {
-				"input": 0.1,
-				"output": 0.6,
-				"cacheRead": 0.01,
-				"cacheWrite": 0.125
+				"input": 0.2,
+				"output": 1.2,
+				"cacheRead": 0.02,
+				"cacheWrite": 0.25
 			},
 			"contextWindow": 1050000,
 			"maxTokens": 128000,
@@ -75511,9 +75581,46 @@
 				]
 			}
 		},
+		"grok-4.6": {
+			"id": "grok-4.6",
+			"name": "Grok 4.6",
+			"api": "openai-responses",
+			"provider": "opencode-go",
+			"baseUrl": "https://opencode.ai/zen/go/v1",
+			"reasoning": true,
+			"reasoningOptions": {
+				"efforts": [
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			},
+			"input": [
+				"text",
+				"image"
+			],
+			"cost": {
+				"input": 2,
+				"output": 6,
+				"cacheRead": 0.5,
+				"cacheWrite": 0
+			},
+			"contextWindow": 500000,
+			"maxTokens": 500000,
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
+		},
 		"hy3": {
 			"id": "hy3",
-			"name": "Hy3",
+			"name": "Hy3 (8x usage)",
 			"api": "openai-completions",
 			"provider": "opencode-go",
 			"baseUrl": "https://opencode.ai/zen/go/v1",
@@ -75528,9 +75635,9 @@
 				"text"
 			],
 			"cost": {
-				"input": 0.14,
-				"output": 0.58,
-				"cacheRead": 0.035,
+				"input": 0.0175,
+				"output": 0.0725,
+				"cacheRead": 0.004375,
 				"cacheWrite": 0
 			},
 			"contextWindow": 256000,
@@ -75642,6 +75749,28 @@
 					"max"
 				]
 			}
+		},
+		"longcat-2.0": {
+			"id": "longcat-2.0",
+			"name": "LongCat-2.0",
+			"api": "openai-completions",
+			"provider": "opencode-go",
+			"baseUrl": "https://opencode.ai/zen/go/v1",
+			"reasoning": true,
+			"reasoningOptions": {
+				"noEffortControl": true
+			},
+			"input": [
+				"text"
+			],
+			"cost": {
+				"input": 0.3,
+				"output": 1.2,
+				"cacheRead": 0.006,
+				"cacheWrite": 0
+			},
+			"contextWindow": 1000000,
+			"maxTokens": 131072
 		},
 		"mimo-v2-omni": {
 			"id": "mimo-v2-omni",
@@ -75803,6 +75932,45 @@
 			"contextWindow": 1000000,
 			"maxTokens": 131072
 		},
+		"muse-spark-1.2-contributor": {
+			"id": "muse-spark-1.2-contributor",
+			"name": "Muse Spark 1.2 Contributor",
+			"api": "openai-responses",
+			"provider": "opencode-go",
+			"baseUrl": "https://opencode.ai/zen/go/v1",
+			"reasoning": true,
+			"reasoningOptions": {
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			},
+			"input": [
+				"text",
+				"image"
+			],
+			"cost": {
+				"input": 0.1,
+				"output": 0.2,
+				"cacheRead": 0.002,
+				"cacheWrite": 0
+			},
+			"contextWindow": 1048576,
+			"maxTokens": 131072,
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
+		},
 		"qwen3.5-plus": {
 			"id": "qwen3.5-plus",
 			"name": "Qwen3.5 Plus",
@@ -75846,9 +76014,9 @@
 		"qwen3.7-max": {
 			"id": "qwen3.7-max",
 			"name": "Qwen3.7 Max",
-			"api": "anthropic-messages",
+			"api": "openai-completions",
 			"provider": "opencode-go",
-			"baseUrl": "https://opencode.ai/zen/go",
+			"baseUrl": "https://opencode.ai/zen/go/v1",
 			"reasoning": true,
 			"input": [
 				"text"
@@ -75860,24 +76028,14 @@
 				"cacheWrite": 3.125
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 65536,
-			"thinking": {
-				"mode": "budget",
-				"efforts": [
-					"minimal",
-					"low",
-					"medium",
-					"high",
-					"xhigh"
-				]
-			}
+			"maxTokens": 65536
 		},
 		"qwen3.7-plus": {
 			"id": "qwen3.7-plus",
 			"name": "Qwen3.7 Plus",
-			"api": "anthropic-messages",
+			"api": "openai-completions",
 			"provider": "opencode-go",
-			"baseUrl": "https://opencode.ai/zen/go",
+			"baseUrl": "https://opencode.ai/zen/go/v1",
 			"reasoning": true,
 			"input": [
 				"text",
@@ -75890,7 +76048,27 @@
 				"cacheWrite": 0.5
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 65536,
+			"maxTokens": 65536
+		},
+		"qwen3.8-flash": {
+			"id": "qwen3.8-flash",
+			"name": "Qwen3.8 Flash",
+			"api": "anthropic-messages",
+			"provider": "opencode-go",
+			"baseUrl": "https://opencode.ai/zen/go",
+			"reasoning": true,
+			"input": [
+				"text",
+				"image"
+			],
+			"cost": {
+				"input": 0.15,
+				"output": 0.47,
+				"cacheRead": 0.016,
+				"cacheWrite": 0.2
+			},
+			"contextWindow": 1000000,
+			"maxTokens": 131072,
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
@@ -75905,9 +76083,9 @@
 		"qwen3.8-max": {
 			"id": "qwen3.8-max",
 			"name": "Qwen3.8 Max",
-			"api": "anthropic-messages",
+			"api": "openai-completions",
 			"provider": "opencode-go",
-			"baseUrl": "https://opencode.ai/zen/go",
+			"baseUrl": "https://opencode.ai/zen/go/v1",
 			"reasoning": true,
 			"input": [
 				"text",
@@ -75920,17 +76098,7 @@
 				"cacheWrite": 2.5
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 131072,
-			"thinking": {
-				"mode": "budget",
-				"efforts": [
-					"minimal",
-					"low",
-					"medium",
-					"high",
-					"xhigh"
-				]
-			}
+			"maxTokens": 131072
 		}
 	},
 	"opencode-zen": {

@@ -67,6 +67,7 @@ export const BOOLEAN_FLAGS: Record<string, true> = {
 	"--list": true,
 	"--resume": true,
 	"--help": true,
+	"--no-gateway": true,
 };
 
 export interface EvalsCliArgs {
@@ -100,6 +101,11 @@ export interface EvalsCliArgs {
 	readonly list: boolean;
 	readonly resume: boolean;
 	readonly help: boolean;
+	/**
+	 * When true, the harbor backend skips the auth gateway and forwards provider
+	 * credentials directly. Used for local models (Ollama, lm-studio) that need no auth.
+	 */
+	readonly noGateway: boolean;
 	/**
 	 * Values passed under a harness-declared flag, keyed by the dashed option key the
 	 * adapter declared (`--vey-binary` arrives as `vey-binary`), which is the key its
@@ -154,6 +160,7 @@ export function parseEvalsArgs(
 	let list = false;
 	let resume = false;
 	let help = false;
+	let noGateway = false;
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index] as string;
 		if (!arg.startsWith("--")) {
@@ -172,6 +179,7 @@ export function parseEvalsArgs(
 			if (name === "--list") list = true;
 			if (name === "--resume") resume = true;
 			if (name === "--help") help = true;
+			if (name === "--no-gateway") noGateway = true;
 			continue;
 		}
 
@@ -322,6 +330,7 @@ export function parseEvalsArgs(
 		list,
 		resume,
 		help,
+		noGateway,
 		harnessOptions,
 	};
 }
@@ -382,6 +391,7 @@ Selection and execution:
   --timeout-multiplier <x>  scale whatever budget applies (number > 0). A scaled budget stops
                             at 3600s; a budget a task states for itself is honored to 86400s
   --dry-run                 print the plan and every preflight verdict, run nothing
+  --no-gateway              skip the auth gateway; forward provider keys directly (local models)
   --resume                  resume a prior run from its trials.jsonl journal
   --help                    this text
 ${harnessSection}`;
@@ -717,6 +727,7 @@ export function suiteContext(args: EvalsCliArgs, suite: EvalSuite): SuiteContext
 			// First, so a fixed option below is never overwritten by a harness flag of the
 			// same name: `--model` is the axis, and an adapter reads its own keys.
 			...args.harnessOptions,
+			...(args.noGateway ? { gateway: false } : {}),
 			dryRun: args.dryRun,
 			ensureBinary: !args.dryRun,
 			model: args.models[0],

@@ -32,7 +32,8 @@ export interface Config {
 	include: string[];
 	exclude: string[];
 	thinking: string | null;
-	/** Extra args forwarded verbatim to the in-container veyyon CLI invocation (repeatable). */
+	/** Auto-compaction threshold in tokens, written into the in-container config.yml. */
+	compactionThreshold: string | null;
 	agentArgs: string[];
 
 	agent: string;
@@ -80,6 +81,7 @@ export function defaultConfig(options?: { defaultDataset?: string }): Config {
 		include: [],
 		exclude: [],
 		thinking: null,
+		compactionThreshold: null,
 		agentArgs: [],
 
 		agent: "veyyon",
@@ -196,6 +198,7 @@ export function buildHarborEnv(
 	if (cfg.binaryArm64) env.VEYYON_BENCH_BINARY_ARM64 = cfg.binaryArm64;
 	if (cfg.binaryX64) env.VEYYON_BENCH_BINARY_X64 = cfg.binaryX64;
 	if (cfg.thinking) env.VEYYON_BENCH_THINKING = cfg.thinking;
+	if (cfg.compactionThreshold) env.VEYYON_BENCH_COMPACTION_THRESHOLD = cfg.compactionThreshold;
 	if (cfg.agentArgs.length > 0) env.VEYYON_BENCH_AGENT_ARGS = JSON.stringify(cfg.agentArgs);
 	if (cfg.webSearch) env.VEYYON_BENCH_WEB_SEARCH = "1";
 	// The gateway is a property of the binding: a harness whose credentials travel in its
