@@ -464,7 +464,19 @@
 - Free functions, types, and constants extracted from `extensibility/legacy-pi-coding-agent-shim.ts` (1,096→600 lines) into `extensibility/legacy-pi-coding-agent-shim-helpers.ts`.
 - Free functions, types, and constants extracted from `tools/path-utils.ts` (1,083→530 lines) into `tools/path-utils-helpers.ts`.
 - Free functions, types, and constants extracted from `eval/executor-base.ts` (1,101→644 lines) into `eval/executor-base-helpers.ts`.
-- Free functions, types, and constants extracted from `session/streaming-output.ts` (999→491 lines) into `session/streaming-output-helpers.ts`.
+- Free functions, types, and constants extracted from `session/streaming-output.ts` (999→491 lines) into `session/streaming-output-helpers.ts`.- Consolidated 4 duplicate HTTP error parsing patterns in image-gen.ts into shared `parseProviderErrorMessage` helper.
+- Consolidated 4 duplicate `countNewlines` definitions into `session/streaming-output.ts` import.
+- Replaced 20 if-else keybinding branches in `custom-editor.ts` with `#actionCallbacks` Map dispatch table (complexity 72→~20).
+- Extracted `BeamMemory` class from `beam/index.ts` barrel into `beam/beam-memory.ts` (342→4 lines).
+- Decomposed `migrateRawSettings` (complexity 183→1) into 20 focused methods.
+- Replaced 20 boolean flag else-if branches in `cli/args.ts` with `BOOLEAN_FLAGS` map lookup.
+- Extracted tool registry from `tools/index.ts` barrel into `tool-registry.ts` (436→18 lines).
+- Consolidated duplicate `getStringProperty` from `agent-session-helpers.ts` into `@veyyon/utils` import.
+- Consolidated 3 duplicate hex color helpers (`hexVal`, `hexChannel`, `parseHex`) into `modes/theme/color-helpers.ts`.
+- Consolidated 3 duplicate vault functions (`safeText`, `safeError`, `sameInode`) into `vault-crypto.ts` exports.
+- Consolidated duplicate `resolveBankDbPath` from `mnemopi/backend.ts` into `mnemopi/state.ts` export.
+- Consolidated duplicate `ensureRunnerScript` across 3 kernel files into `eval/kernel-base.ts` shared function.
+
 ### Added
 
 - Esc pressed twice within half a second over a composer holding text discards the draft; undo brings it back, and a single Esc still leaves the draft alone.
@@ -676,6 +688,17 @@
 - A streaming answer no longer slides the whole conversation up one row per streamed row: the anchor slack now sits below the content and above the composer, so a streamed row lands in the empty space and the composer keeps the viewport bottom.
 
 ### Removed
+- Removed 23 dead exported interfaces (88 lines) across 12 files.
+- Removed 14 dead exported type aliases (29 lines) across 12 files.
+- Removed 15 dead typebox type aliases (17 lines) from `extensibility/typebox.ts`.
+- Removed 8 dead exported type aliases (12 lines) across 8 files.
+- Removed 6 dead exported interfaces (33 lines) across 6 files.
+- Removed 64 dead exported functions (689 lines) across 45 files.
+- Removed 5 dead exported private declarations (`SmitheryConnectionsResponse`, `getKindDisplayName`, `RoutableSelectList`, `requireStats`, `WORKSPACE_WRITING_TOOL_SET`).
+- Removed 10 dead exported constants (49 lines) across 11 files.
+- Removed 6 dead exported functions (36 lines) across 6 files.
+- Removed 5 dead exported constants (8 lines) across 3 files.
+- Removed dead duplicate `location-fit.ts` (157 lines) — complete duplicate of `component-helpers.ts`.
 
 - The `/providers` account card no longer writes `accounts.loadBalancing`: its `b` key and footer chip are gone, Settings → Providers → Accounts is the one writer, and the card reports the stored value.
 - Dropped the Ecosia web search engine; it answered a search with a Cloudflare challenge rather than results, and the Public Web aggregate now fans out to Startpage, Google, DuckDuckGo and Mojeek.
