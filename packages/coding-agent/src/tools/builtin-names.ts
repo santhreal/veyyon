@@ -1,4 +1,4 @@
-import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot";
+import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot/constants";
 
 // The two Argot tool names come from the SDK constants (ONE PLACE): the tool
 // classes name themselves from the same constants, so the registry key, the

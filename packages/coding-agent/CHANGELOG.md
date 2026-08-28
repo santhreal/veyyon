@@ -57,6 +57,8 @@
 
 ### Fixed
 
+- The collab host, guest client and relay socket load when `/collab` or `/join` runs instead of during every interactive startup, and a settings domain reads the relay default from `@veyyon/wire` rather than through the collab protocol module.
+- Argot's dictionary generator, corpus walker and project vocabulary load when a project dictionary is first read instead of during every startup, so a session with `argot.enabled` off no longer evaluates them.
 - The stats dashboard's aggregator, SQLite layer and embedded client load when `/stats` first runs instead of during every interactive startup, removing 16 MB of resident memory from a session that never opens the dashboard.
 - The Python, Ruby and Julia eval backends call their kernel and executor modules on every cell instead of holding a copy of each taken when the backend module loaded, so an availability check or executor replaced after startup is the one that runs.
 - A `cursor-agent` model receives the operator's global, profile and project instruction files again: the assembled prompt was blanked for that api in favour of a channel the server ignores, so every layer reached the model on no channel at all; one prompt is now built for every api and carried to Cursor on the active user turn.
@@ -199,6 +201,7 @@
 - `grep` reports why an archive could not be opened or read when the failure is not an `Error`, instead of the word `undefined`.
 - A detached daemon that exited while no broker was supervising it is recorded as its own exit, not as a non-detached daemon terminated by the replacement broker.
 - Background conversations abandoned at shutdown before their transcript finished flushing are named in the log, instead of leaving a short file as the only trace.
+- A streaming answer no longer slides the whole conversation up one row per streamed row: the anchor slack now sits below the content and above the composer, so a streamed row lands in the empty space and the composer keeps the viewport bottom.
 
 ### Removed
 
