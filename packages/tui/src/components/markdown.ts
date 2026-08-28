@@ -22,12 +22,6 @@ import {
 
 const STRICT_STRIKETHROUGH_REGEX = /^(~~)(?=[^\s~])((?:\\.|[^\\])*?(?:\\.|[^\s~\\]))\1(?=[^~]|$)/;
 
-// OSC 66 (Kitty text-sizing) heading spans are emitted as a single indivisible
-// unit by the H1 render path. Like image-protocol lines, they must bypass
-// ANSI wrapping and width padding: re-wrapping splits/normalizes the sized span
-// (recomputing the explicit `w=` cell count and hoisting SGR out of the OSC
-// payload), and padding would append trailing cells past the doubled glyph.
-
 function isOsc66Line(line: string): boolean {
 	return line.includes(OSC66);
 }
@@ -87,9 +81,6 @@ function createHtmlNormalizationState(): HtmlNormalizationState {
 
 const HTML_COMMENT_REGEX = /<!--[\s\S]*?-->/g;
 const HTML_TAG_REGEX = /<\/?(?:br|p|ol|ul|li|span|summary|text|code|hr|blockquote)\b(?:\s[^>]*)?\s*\/?>/gi;
-// Block-level HTML that needs structural (not just textual) rendering: standalone
-// `<hr>` becomes a rule and balanced `<blockquote>…</blockquote>` renders with
-// quote styling. Group 1 captures blockquote inner content; it is undefined for hr.
 const BLOCK_HTML_REGEX = /<hr\b[^>]*\/?>|<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gi;
 const HEADING_PREFIXES = ["# ", "## ", "### ", "#### ", "##### ", "###### "];
 
@@ -144,15 +135,6 @@ function normalizeHtmlForTerminal(
 		const index = match.index ?? 0;
 		const textBeforeTag = normalizeHtmlEntitiesForTerminal(withoutComments.slice(lastIndex, index));
 		const name = htmlTagName(tag);
-		// Most tags handled here are block-level. Inline contexts — span, summary,
-		// text, and the content inside a `<code>` run — keep their surrounding
-		// whitespace verbatim because it is significant. For block-level tags, HTML formatting
-		// whitespace between tags (e.g. the newlines and indentation in
-		// pretty-printed `<ul>\n  <li>…`) is not rendered content; appending it
-		// literally would leak source indentation before bullets and blank rows
-		// between items, so a whitespace-only slice is dropped. Text inside a
-		// `<code>` run is routed through `codeHook` so the inline-code theme is
-		// applied without leaking the raw `<code>`/`</code>` tags.
 		const isInlineTag = name === "span" || name === "summary" || name === "text";
 		if (isInlineTag || inCode || textBeforeTag.trim() !== "") {
 			output += inCode && codeHook ? codeHook(textBeforeTag) : textBeforeTag;
@@ -254,18 +236,6 @@ function splitTerminalLines(text: string): string[] {
 	return lines;
 }
 
-// Tree-guide hanging wrap
-//
-// Models routinely emit box-drawing trees ("├── item") inside plain
-// paragraphs — directory layouts, decision trees. The lexer sees those lines
-// as ordinary prose, so the generic wrap pass restarts wrapped continuations
-// at column 0 and visually shears the tree apart (doubly fast for CJK text,
-// where every glyph is two cells wide). Mirror the guide semantics of
-// `tree(1)` / rich.tree instead: wrap the node text within the cells that
-// remain after the guide prefix, and indent every continuation row under the
-// node text — branch glyphs swap to their pass-through form (`├` → `│`,
-// `└` → blank) so the rails of still-open ancestors stay visually joined.
-
 const TREE_GUIDE_CONTINUATION: Record<string, string> = {
 	"│": "│",
 	"┃": "┃",
@@ -349,9 +319,6 @@ function hangWrapTreeGuideLines(text: string, width: number): string[] | undefin
 			carry = sgrCarryAfter(carry, line);
 			continue;
 		}
-		// Re-play the SGR state ahead of the node text so the wrapper carries
-		// it onto every continuation row; the codes are zero-width, so measured
-		// row widths are unaffected.
 		const activeCodes = carry + prefix.codes;
 		const rows = wrapTextWithAnsi(activeCodes + line.slice(prefix.end), width - visibleWidth(prefix.guides));
 		let hang = "";
@@ -389,14 +356,6 @@ markdownParser.setOptions({
 	tokenizer: new StrictStrikethroughTokenizer(),
 });
 
-// Math spans (`$$…$$`, `\[…\]`, `$…$`, `\(…\)`) are tokenized as a dedicated
-// `math` inline token before markdown's escape/emphasis/link rules run, so
-// backslash commands (`\frac`, `\alpha`) and intraword underscores (`x_i`)
-// survive intact instead of being mangled or split. The `$…$` form uses
-// pandoc's anti-currency heuristic (`inlineMathSpanEnd`) so "$5 and $10" is
-// never math. Inline extensions run before marked's escape tokenizer, so
-// `\(…\)` becomes math while a genuinely escaped `\$` is left to `escape` and
-// renders as a literal dollar.
 const CUSTOM_HR_START_REGEX = /(?:^|\n) {0,3}([-*_─━═=–—])[ \t]*(?:\1[ \t]*){2,}(?:\n+|$)/;
 const CUSTOM_HR_TOKENIZER_REGEX = /^ {0,3}([-*_─━═=–—])[ \t]*(?:\1[ \t]*){2,}(?:\n+|$)/;
 
@@ -483,12 +442,6 @@ const mathExtension: TokenizerAndRendererExtension = {
 	},
 };
 
-// Display math blocks: opening `$$` / `\[` and closing `$$` / `\]` each alone on
-// their own line (≤3 leading spaces). Matched at the block level — before
-// paragraph/list parsing — so a multi-line equation (e.g. a matrix with `\\`
-// row breaks) renders across several lines instead of being collapsed onto one,
-// and blank lines inside the block don't split it. The own-line requirement
-// keeps inline `$$…$$` inside prose for the inline tokenizer above.
 const MATH_BLOCK_DOLLAR = /^ {0,3}\$\$[ \t]*\n([\s\S]+?)\n {0,3}\$\$[ \t]*(?:\n|$)/;
 const MATH_BLOCK_BRACKET = /^ {0,3}\\\[[ \t]*\n([\s\S]+?)\n {0,3}\\\][ \t]*(?:\n|$)/;
 const MATH_BLOCK_START = /(?:^|\n) {0,3}(?:\$\$|\\\[)[ \t]*\n/;
@@ -509,13 +462,6 @@ const mathBlockExtension: TokenizerAndRendererExtension = {
 	},
 };
 
-// Bare (delimiter-less) display-math environments: `\begin{<mathenv>}…\end{…}`
-// written without `$$`/`\[` fences (common in raw model output). Captured at the
-// block level as a whole unit — including any immediately preceding `lhs =`
-// line — so marked never splits it on inline `\\` row breaks. Restricted to math
-// environments (isBareMathEnvironment), and the `≤3 leading spaces` + "block
-// starts at offset 0" guards keep fenced/indented `\begin{cases}` code blocks
-// for marked's own code rules.
 const BARE_ENV_BEGIN = /(?:^|\n)[ \t]{0,3}\\begin\{([A-Za-z]+\*?)\}/;
 function bareMathEnvBlock(src: string): readonly [number, number] | null {
 	const bm = BARE_ENV_BEGIN.exec(src);
@@ -524,12 +470,10 @@ function bareMathEnvBlock(src: string): readonly [number, number] | null {
 	const endToken = `\\end{${bm[1]}}`;
 	const endAt = src.indexOf(endToken, bm.index);
 	if (endAt === -1) return null;
-	// The `\end` must close before any blank line (i.e. within the same block).
 	if (/\n[ \t]*\n/.test(src.slice(beginLineStart, endAt))) return null;
 	let blockEnd = endAt + endToken.length;
 	while (src.charCodeAt(blockEnd) === 0x20 || src.charCodeAt(blockEnd) === 0x09) blockEnd++;
 	if (src.charCodeAt(blockEnd) === 0x0a) blockEnd++;
-	// Pull in one immediately-preceding `lhs =`/open-delimiter line (e.g. `f(x) =`).
 	let start = beginLineStart;
 	if (start > 0 && src.charCodeAt(start - 1) === 0x0a) {
 		const prevStart = src.lastIndexOf("\n", start - 2) + 1;
@@ -559,13 +503,6 @@ const mathEnvBlockExtension: TokenizerAndRendererExtension = {
 };
 markdownParser.use({ extensions: [customHrExtension, mathBlockExtension, mathEnvBlockExtension, mathExtension] });
 
-// Module-level LRU render cache
-// Each session-tree navigation discards and recreates Markdown component
-// instances, so the per-instance #cachedLines field is always cold on first
-// render of a fresh component. This module-level cache survives across
-// component lifetimes and eliminates redundant marked.lexer + highlightCode
-// (Rust FFI) work for content/layout combinations already seen this session.
-
 const RENDER_CACHE_MAX = 256; // sane cap: ~256 distinct message × width combos
 const RENDER_CACHE_MAX_SIZE = 512 * 1024;
 const RENDER_CACHE_MAX_ENTRY_SIZE = 32 * 1024;
@@ -583,47 +520,20 @@ function renderedLinesCacheSize(lines: readonly string[]): number {
 	return Math.max(1, size);
 }
 
-// A reference-link definition (`[label]: dest`) resolves across the whole
-// document, so a split lex cannot reproduce it — disable the streaming fast path
-// when one is present (rare in streamed output). The label may contain
-// backslash-escaped characters (`[a\]b]: x`), so escapes are matched explicitly;
-// over-matching is safe (it only costs the fast path), under-matching is not.
 const HAS_REF_DEF = /^ {0,3}\[(?:\\.|[^\]\\])+\]:/m;
 
-// Can this text be lexed as an appended tail? A reference definition resolves
-// across the whole document and CR is normalized by marked, so either one in the
-// scanned span forces a full lex.
 function canStreamLex(text: string): boolean {
 	return !HAS_REF_DEF.test(text) && !text.includes("\r");
 }
 
-// Untrusted model output can over-nest markdown structure: a blockquote nests
-// once per leading `>` (`>>>>…`), a list once per indentation step. marked's
-// block lexer recurses per nesting level and is super-linear on list indent, so
-// a payload nested thousands deep overflows the stack (deep `>`) or hangs for
-// minutes (deep list) *before* render() — a trivial DoS on the TUI. Cap each
-// line's structural nesting to a depth far beyond any real document; the
-// render-depth guard (Markdown.MAX_RENDER_DEPTH) then bounds token recursion for
-// whatever survives. Applied once per render, folded into tab normalization.
 const MAX_BLOCKQUOTE_MARKERS = 24;
 const MAX_LEADING_INDENT = 64;
-// Cheap detector: does any line's leading `>`-run or whitespace-run exceed a cap?
-// `.test()` short-circuits and allocates nothing on the common no-match input, so
-// the streaming hotpath pays only a linear scan (as HAS_REF_DEF already does).
 const OVER_NESTED = new RegExp(
 	`(?:^|\\n)(?:[ \\t]*>){${MAX_BLOCKQUOTE_MARKERS + 1},}|(?:^|\\n)[ \\t]{${MAX_LEADING_INDENT + 1},}\\S`,
 );
-// Slow-path caps (only run when OVER_NESTED matches): keep the first N leading
-// blockquote markers and drop the rest of the `>`-run; keep the first M leading
-// whitespace chars and drop the rest up to the first non-space. Multiline `^`, so
-// each line is capped independently — the transform stays line-local and thus
-// append-stable for the streaming prefix cache.
 const BLOCKQUOTE_CAP = new RegExp(`^((?:[ \\t]*>){${MAX_BLOCKQUOTE_MARKERS}})(?:[ \\t]*>)+`, "gm");
 const INDENT_CAP = new RegExp(`^([ \\t]{${MAX_LEADING_INDENT}})[ \\t]+(?=\\S)`, "gm");
 
-// Bound structural nesting depth so pathological input can neither overflow the
-// lexer stack nor hang it. No-op (returns the input) unless a line actually
-// over-nests, so realistic markdown pays only the OVER_NESTED scan.
 function capMarkdownNesting(text: string): string {
 	if (!OVER_NESTED.test(text)) return text;
 	return text.replace(BLOCKQUOTE_CAP, "$1").replace(INDENT_CAP, "$1");
@@ -633,8 +543,6 @@ export function clearRenderCache(): void {
 	renderCache.clear();
 }
 
-// Stable numeric IDs for structural theme/style objects (no ID field on type).
-// WeakMap-keyed so the ID matches strict object identity and doesn't get copied by spread/cloning.
 const themeObjectIds = new WeakMap<object, number>();
 let nextObjectId = 0;
 function objectId(o: object): number {
@@ -838,20 +746,8 @@ function collapseInlineHtml(tokens: Token[]): Token[] {
 	return out;
 }
 
-// Inline hex-color swatches
-// When prose/thinking mentions a CSS hex color (e.g. #C5FFD6 or `#C5FFD6`),
-// render a small chip painted with that color just before the code. The chip
-// glyph comes from the theme's symbol set (ASCII → Unicode → Nerd Font), so it
-// degrades gracefully; the color itself is exact 24-bit on truecolor terminals
-// and the nearest 256-color cell otherwise (Bun.color quantizes for us).
-
 const DEFAULT_COLOR_SWATCH_GLYPH = "■";
 
-// `#` + 3-8 hex digits, not glued to a surrounding word/`#`/`&` (avoids HTML
-// entities like &#9731; and paths like foo#fff) and not trailed by more hex
-// (so over-long runs never produce a misleading swatch). Length/letter rules
-// are enforced in classifyHexColor since the alternation can't express "exactly
-// 3, 6, or 8".
 const HEX_COLOR_REGEX = /(?<![\w#&])#([0-9a-fA-F]{3,8})(?![0-9a-fA-F])/g;
 const HEX_COLOR_EXACT_REGEX = /^#([0-9a-fA-F]{3,8})$/;
 
@@ -864,8 +760,6 @@ function classifyHexColor(hex: string, strict: boolean): boolean {
 
 function colorSwatch(hex: string, glyph: string): string {
 	const ansi = Bun.color(`#${hex}`, TERMINAL.trueColor ? "ansi-16m" : "ansi-256");
-	// Reset only the foreground (\x1b[39m) so an enclosing background/decoration
-	// applied later by the line renderer survives across the swatch.
 	return ansi ? `${ansi}${glyph}\x1b[39m ` : "";
 }
 
@@ -930,47 +824,18 @@ export class Markdown implements Component {
 	#renderDepth = 0;
 	#inlineDepth = 0;
 
-	// Cache for rendered output. Cached arrays are shared and returned by
-	// reference (render contract: results are component-owned and immutable to
-	// callers); the L2 LRU may hand the same array to multiple instances.
 	#cachedText?: string;
 	#cachedWidth?: number;
 	#cachedLines?: readonly string[];
 	#transientRenderCache = false;
 
-	// Streaming-lex cache: the largest blank-line-bounded prefix of #text whose
-	// block tokens are frozen, plus those tokens. marked has no resumable lexer,
-	// but block tokenization is local across a "\n\n" boundary with balanced
-	// fences, so lex(prefix) ++ lex(tail) === lex(prefix+tail). On append-only
-	// growth (the streaming path) this re-lexes only the grown tail instead of the
-	// whole buffer, turning O(N^2) reveal cost into O(N). Width/theme do not affect
-	// tokenization, so this cache is independent of the render caches above.
 	#streamPrefixText?: string;
 	#streamPrefixTokens?: Token[];
 	#streamPrefixLineCache?: StreamPrefixLineCache;
-	// The text the frozen prefix above was cut from. Held by reference so a frame
-	// re-deriving the same string knows the prefix still is one without comparing
-	// the whole transcript again.
 	#streamPrefixSource?: string;
-	// Leading whole lines of #text that need no render normalization, so a frame
-	// scans only what arrived after them (see #normalizeForRender).
 	#normalizedCleanHead?: string;
-	// Rows of the most recent render() that are settled — top padding plus the
-	// rendered frozen token prefix — exposed via getLastRenderSettledRows()
-	// for native-scrollback commit gating.
 	#lastRenderSettledRows = 0;
-	// Frozen-prefix text backing the last non-zero settled exposure. Settled
-	// rows are declared final downstream, so a render whose frozen text no
-	// longer extends this prefix (a rewind / wholesale rewrite) resets the
-	// exposure to 0 and re-earns it — the exposure is hard-monotone within a
-	// text lineage.
 	#settledExposedText?: string;
-	// True while #renderStreamingContentLines renders the frozen token range:
-	// frozen code blocks highlight even in transient mode so their bytes match
-	// the finalized render (they render once into the prefix line cache, so
-	// the FFI cost is amortized). The volatile tail normally stays
-	// unhighlighted; streaming diff fences line-highlight completed rows so
-	// semantic colors reach native scrollback before rows leave the viewport.
 	#renderingFrozenPrefix = false;
 	#streamingDiffLineCache?: StreamingDiffLineCache;
 	#activeRenderSignature?: RenderSignature;
@@ -1008,17 +873,9 @@ export class Markdown implements Component {
 	}
 
 	setText(text: string): boolean {
-		// Equality guard: streaming re-emits identical text on ticks that carried
-		// no delta (throttled provider frames, reconciled tool-execution updates).
-		// Without this, the caller-side `#cachedLines` gets thrown away and the
-		// full lex + wrap runs per re-emit — one of the top CPU hotspots during
-		// streaming (issue #4353). Mirrors `Text.setText`'s guard.
 		if (text === this.#text) return false;
 		this.#text = text;
 		if (!text.trim()) {
-			// Blank replacement: render() early-returns before #lexTokens can see
-			// the non-append edit, so drop the frozen stream state here or it
-			// outlives the content it indexed.
 			this.#streamPrefixText = undefined;
 			this.#streamPrefixTokens = undefined;
 			this.#streamPrefixLineCache = undefined;
@@ -1049,15 +906,6 @@ export class Markdown implements Component {
 		return this.#lastRenderSettledRows;
 	}
 
-	// Tab expansion and the nesting caps for render. Both are line-local — tabs
-	// are replaced one character at a time and each cap is anchored at a line
-	// start — so a span of whole lines that needed no transform cannot need one
-	// because text arrived after it. Only the arrived tail is scanned, and text
-	// that needs no transform is returned by reference rather than copied: the
-	// nesting scan alone was 0.030ms of a 0.053ms frame at 10,000 streamed
-	// tokens, spent on bytes that had already been scanned on every earlier
-	// frame. A tail that does need transforming falls back to normalizing the
-	// whole text, which is what every frame did before.
 	#normalizeForRender(raw: string): string {
 		const clean = this.#normalizedCleanHead;
 		const from = clean !== undefined && raw.length >= clean.length && raw.startsWith(clean) ? clean.length : 0;
@@ -1071,18 +919,6 @@ export class Markdown implements Component {
 		return raw;
 	}
 
-	// Lex `text` into block tokens, reusing the frozen stable prefix when the text
-	// only grew (the streaming path). Falls back to a full lex whenever the prefix
-	// is no longer a prefix (non-append edit), the text carries reference-link
-	// definitions, or it contains CR (marked normalizes CRLF, which would desync
-	// raw-span offsets). Every fallback is correctness-preserving — only speed
-	// differs; the render loop sees the identical token list either way.
-	//
-	// On the streaming path the two refusals are read off the arrived tail alone.
-	// A prefix is frozen only after the whole text passed this check, so neither
-	// shape can be inside it, and re-reading the transcript for them was the
-	// largest cost a long stream paid per frame: 0.032ms of a 0.082ms frame at
-	// 10,000 streamed tokens, spent again on every token.
 	#lexTokens(text: string): Token[] {
 		const prefix = this.#streamPrefixText;
 		const prefixTokens = this.#streamPrefixTokens;
@@ -1097,9 +933,6 @@ export class Markdown implements Component {
 				const tailTokens = markdownParser.lexer(tail);
 				const tokens = prefixTokens.concat(tailTokens);
 				this.#freezeStablePrefix(text, tokens, { preserveExisting: true });
-				// `text` extends the prefix, proven just above, and the freeze only
-				// ever advances the boundary within it. Recording which string that
-				// was is what lets the render path skip proving it again.
 				this.#streamPrefixSource = text;
 				return tokens;
 			}
@@ -1117,15 +950,6 @@ export class Markdown implements Component {
 		return tokens;
 	}
 
-	// Freeze the largest run of leading blocks that end on a hard "\n\n" boundary
-	// (complete and immutable under append-only growth) so the next streaming
-	// render re-lexes only the unfrozen tail. Caller guarantees no CR / no
-	// reference definitions, so each token's `raw` is a verbatim slice of `text`
-	// and the summed offsets address `text` exactly.
-	//
-	// A boundary already frozen stays frozen under append-only growth, so the
-	// scan resumes there instead of re-summing every token's raw and re-slicing
-	// the whole frozen prefix on every frame.
 	#freezeStablePrefix(text: string, tokens: Token[], opts: { preserveExisting: boolean }): void {
 		const existingText = opts.preserveExisting ? this.#streamPrefixText : undefined;
 		const existingTokens = existingText === undefined ? undefined : this.#streamPrefixTokens;
@@ -1135,23 +959,12 @@ export class Markdown implements Component {
 		for (let i = frozenCount; i < tokens.length; i++) {
 			const raw = tokens[i].raw;
 			const end = pos + raw.length;
-			// A `space` token ending in "\n\n" closes the preceding block, but a
-			// `list` before it can still be extended by a following same-marker
-			// item across the blank line (CommonMark loose-list continuation),
-			// which marked merges into one renumbered loose list. Freezing across
-			// such a cut would keep the lists separate. Never freeze right after a
-			// list — it stays in the re-lexed tail.
 			if (raw.endsWith("\n\n") && tokens[i - 1]?.type !== "list") {
 				frozenEnd = end;
 				frozenCount = i + 1;
 			}
 			pos = end;
 		}
-		// Freeze only when the tail begins with real block content. If the next
-		// char is whitespace (an extra blank line, or an indented continuation),
-		// the block separator straddles the cut and lex(prefix)++lex(tail) would
-		// desync from a full lex — e.g. a fence followed by "\n\n\n- list". When
-		// frozenEnd is at end-of-text the next char is unknown, so defer.
 		if (frozenCount > 0 && frozenEnd < text.length) {
 			const next = text.charCodeAt(frozenEnd);
 			if (next !== 0x20 /* space */ && next !== 0x0a /* \n */) {
@@ -1172,16 +985,10 @@ export class Markdown implements Component {
 	}
 
 	render(width: number): readonly string[] {
-		// L1: per-instance cache — fastest path for repeated renders of the same
-		// instance at the same width (e.g. resize debounce, repeated redraws).
-		// Returning the cached reference is load-bearing: parents memoize their
-		// concatenation on reference equality.
 		if (this.#cachedLines && this.#cachedText === this.#text && this.#cachedWidth === width) {
 			return this.#cachedLines;
 		}
 
-		// Recomputed below by the streaming path; every other path (cache-served,
-		// empty text, non-streaming full render) exposes no settled rows.
 		this.#lastRenderSettledRows = 0;
 
 		const paddingX = this.#ignoreTight ? this.#paddingX : getPaddingX(this.#paddingX);
@@ -1194,23 +1001,9 @@ export class Markdown implements Component {
 			return EMPTY_RENDER_LINES;
 		}
 
-		// Replace tabs with 3 spaces for consistent rendering, then bound structural
-		// nesting depth so pathological model output can't overflow or hang the lexer.
 		const normalizedText = this.#normalizeForRender(this.#text);
 		const signature = this.#renderSignature(width, paddingX);
 
-		// L2: module-level LRU — survives component disposal/recreation across
-		// session-tree navigations. Key encodes every dimension that affects the
-		// render output so different configurations never collide.
-		// Encode terminal capability state and theme/style function output samples
-		// so that capability shifts (image protocol changes, hyperlink toggle) or
-		// caller-supplied theme/bgColor functions that mutate their output without
-		// changing object identity invalidate the cache entry.
-		// bgColor probe uses \x01 (single non-printable byte): chalk/ANSI wrappers
-		// pass arbitrary bytes through verbatim, so this is safe and minimizes the
-		// risk of clashing with a function that returns text verbatim.
-		// theme.heading is used as the representative theme probe — it's required
-		// by MarkdownTheme and is one of the most styling-sensitive entries.
 		let cacheKey: string | undefined;
 		if (!this.transientRenderCache) {
 			cacheKey = this.#renderCacheKey(normalizedText, signature);
@@ -1287,21 +1080,10 @@ export class Markdown implements Component {
 	): string[] {
 		const frozenText = this.#streamPrefixText;
 		const frozenTokenCount = this.#streamPrefixTokens?.length ?? 0;
-		// #lexTokens records the string it left this prefix in place for, and it
-		// runs on every uncached render, so identity answers whether the prefix is
-		// still a prefix. Comparing the two strings instead re-read the whole
-		// settled transcript on every frame to reach the same answer. Anything
-		// else renders in full, which is correct and only slower.
 		if (frozenText === undefined || frozenTokenCount === 0 || this.#streamPrefixSource !== normalizedText) {
 			return this.#renderContentLines(tokens, 0, tokens.length, contentWidth, signature);
 		}
 
-		// The frozen rows are held as one immutable array and reused by reference
-		// while nothing new freezes, so a frame copies them exactly once — into
-		// the array it returns. Spreading them into an accumulator and slicing
-		// that accumulator back into the cache copied every settled row twice per
-		// frame, and `push(...rows)` puts one argument on the stack per row,
-		// which a long transcript is eventually large enough to overflow.
 		const reusablePrefix = this.#matchingStreamPrefixLineCache(normalizedText, frozenText, signature);
 		let frozenLines: readonly string[];
 		if (reusablePrefix && reusablePrefix.tokenCount === frozenTokenCount) {
@@ -1309,8 +1091,6 @@ export class Markdown implements Component {
 		} else {
 			const reusedUntil =
 				reusablePrefix && reusablePrefix.tokenCount < frozenTokenCount ? reusablePrefix.tokenCount : 0;
-			// Frozen tokens render with full fidelity (syntax highlighting on)
-			// so these cached rows byte-match the finalized render.
 			this.#renderingFrozenPrefix = true;
 			let rendered: string[];
 			try {
@@ -1327,10 +1107,6 @@ export class Markdown implements Component {
 			};
 		}
 
-		// Settled exposure (hard-monotone): these rows are declared final to
-		// the host, so expose them only while the frozen text still extends
-		// the previously exposed prefix; a rewind resets to 0 and re-earns on
-		// the rewritten lineage.
 		if (frozenLines.length > 0) {
 			const exposed = this.#settledExposedText;
 			if (exposed === undefined || exposed === frozenText || frozenText.startsWith(exposed)) {
@@ -1348,11 +1124,6 @@ export class Markdown implements Component {
 		return frozenLines.slice();
 	}
 
-	// `frozenText` is already known to be a prefix of `normalizedText`. When the
-	// entry was written for that same string — the common case, since the frozen
-	// text is reused by reference while nothing new freezes — both prefix
-	// questions are already answered and comparing the transcript again answers
-	// nothing.
 	#matchingStreamPrefixLineCache(
 		normalizedText: string,
 		frozenText: string,
@@ -1400,19 +1171,12 @@ export class Markdown implements Component {
 
 		for (let li = 0; li < renderedLines.length; li++) {
 			const line = renderedLines[li]!;
-			// Skip wrapping for image protocol lines and OSC 66 sized headings
-			// (would corrupt escape sequences / split the indivisible sized span).
 			const isOsc66 = isOsc66Line(line);
 			const isImageOrOsc66 = TERMINAL.isImageLine(line) || isOsc66;
 			const wrapped = isImageOrOsc66 ? undefined : wrapTextWithAnsi(line, contentWidth);
 			const lines = isImageOrOsc66 ? 1 : wrapped!.length;
 			for (let wi = 0; wi < lines; wi++) {
 				const wLine = isImageOrOsc66 ? line : wrapped![wi]!;
-				// The first empty row after a scale>1 OSC 66 heading is structural:
-				// it reserves the lower cells occupied by the multicell glyphs. Do
-				// not pad or background-fill it, because real spaces on that row can
-				// interact with Kitty's multicell overwrite rules during the first
-				// paint. Leave it as a cursor-only newline.
 				if (previousLineWasOsc66 && wLine === "") {
 					contentLines.push("");
 					previousLineWasOsc66 = false;
@@ -1430,9 +1194,6 @@ export class Markdown implements Component {
 				if (bgFn) {
 					contentLines.push(applyBackgroundToLine(leftMargin + wLine + rightMargin, signature.width, bgFn));
 				} else {
-					// No background - just pad to width. Measure the line alone and
-					// subtract the margin widths already known, avoiding a
-					// visibleWidth() call on the full concatenated string.
 					const paddingNeeded = Math.max(0, signature.width - visibleWidth(wLine) - 2 * signature.paddingX);
 					contentLines.push(leftMargin + wLine + rightMargin + padding(paddingNeeded));
 				}
@@ -1684,8 +1445,6 @@ export class Markdown implements Component {
 	#renderTokenInner(token: Token, width: number, nextTokenType?: string, styleContext?: InlineStyleContext): string[] {
 		const lines: string[] = [];
 
-		// Display math block (own-line `$$…$$` / `\[…\]`): stack `\frac` vertically
-		// and keep `\\` row breaks, so fractions and matrices span multiple lines.
 		if (isMathToken(token)) {
 			const mathLines = latexToBlock(token.text);
 			for (let mi = 0; mi < mathLines.length; mi++) lines.push(this.#applyDefaultStyle(mathLines[mi]!));
@@ -1748,11 +1507,6 @@ export class Markdown implements Component {
 			}
 
 			case "code": {
-				// Mermaid diagrams render as ASCII art when the theme supplies a
-				// resolver. The art is preformatted, so clip each row to the content
-				// width: the later wrap pass would otherwise fragment the box-drawing
-				// canvas. truncateToWidth is ANSI- and wide-char-aware, and the
-				// resolver already re-fits over-wide horizontal graphs top-down.
 				if (token.lang === "mermaid" && this.#theme.resolveMermaidAscii) {
 					const ascii = this.#theme.resolveMermaidAscii(token.text, width);
 					if (ascii) {
@@ -1924,8 +1678,6 @@ export class Markdown implements Component {
 
 	#renderInlineTokens(tokens: Token[], styleContext?: InlineStyleContext): string {
 		if (this.#inlineDepth >= Markdown.MAX_INLINE_DEPTH) {
-			// Degrade a pathologically deep inline tree to styled plain text: one
-			// O(n) flatten + one style pass, no further per-level ANSI wrapping.
 			const ctx = styleContext ?? this.#getDefaultInlineStyleContext();
 			const plain = plainInlineTokens(tokens);
 			return plain === "" ? "" : ctx.applyText(plain);
@@ -2009,12 +1761,8 @@ export class Markdown implements Component {
 		for (let i = 0; i < token.items.length; i++) {
 			const item = token.items[i];
 			const bullet = token.ordered ? `${startNumber + i}. ` : "- ";
-			// Continuation rows align under the item text, so the hang matches the
-			// actual bullet width (`10. ` is 4 cells, not 2).
 			const continuationIndent = indent + padding(bullet.length);
 
-			// Process item tokens; nested-list lines arrive structurally tagged and
-			// already carry their own full indent.
 			const itemLines = this.#renderListItem(item.tokens || [], depth, styleContext);
 
 			if (itemLines.length > 0) {
@@ -2088,7 +1836,6 @@ export class Markdown implements Component {
 				}
 				lines.push({ text: this.#codeFenceRow(token.lang, "close"), nested: false });
 			} else if (isMathToken(token)) {
-				// Display math block inside a list item: stack fractions / matrix rows.
 				const apply = styleContext?.applyText ?? ((t: string) => this.#applyDefaultStyle(t));
 				const isMathLines = latexToBlock(token.text);
 				for (let mi = 0; mi < isMathLines.length; mi++)
@@ -2156,8 +1903,6 @@ export class Markdown implements Component {
 			return lines;
 		}
 
-		// Calculate border overhead: "│ " + (n-1) * " │ " + " │"
-		// = 2 + (n-1) * 3 + 2 = 3n + 1
 		const borderOverhead = 3 * numCols + 1;
 		const availableForCells = availableWidth - borderOverhead;
 		if (availableForCells < numCols) {
@@ -2278,9 +2023,6 @@ export class Markdown implements Component {
 		const t = this.#theme.symbols.table;
 		const h = t.horizontal;
 		const v = t.vertical;
-		// A table whose delimiter row omits a column, or a token from a source that
-		// does not populate `align`, falls back to the GFM default rather than
-		// indexing past the end.
 		const align: TableAlign[] = new Array(numCols);
 		for (let i = 0; i < numCols; i++) align[i] = token.align?.[i] ?? null;
 
@@ -2309,9 +2051,6 @@ export class Markdown implements Component {
 		const separatorLine = `${t.teeRight}${h}${borderCells.join(`${h}${t.cross}${h}`)}${h}${t.teeLeft}`;
 		lines.push(separatorLine);
 
-		// Render rows with wrapping. Inter-row rules are drawn only where a cell
-		// wraps to multiple lines (they group the wrapped row visually); a grid
-		// line after every single-line row doubles table height for nothing.
 		let prevRowWrapped = false;
 		for (let rowIndex = 0; rowIndex < token.rows.length; rowIndex++) {
 			const row = token.rows[rowIndex];
@@ -2440,10 +2179,6 @@ function walkInlineTokens(tokens: Token[], ctx: InlineWalkContext): string {
 					break;
 				}
 				const clickableLinkText = formatHyperlink(styledLinkText, token.href);
-				// If link text matches href, only show the link once. Compare raw text
-				// (token.text) not styled text (linkText) since linkText has ANSI codes.
-				// For mailto: links, strip the prefix before comparing (autolinked emails
-				// have text="foo@bar.com" but href="mailto:foo@bar.com").
 				const href = token.href;
 				const hrefForComparison = href.startsWith("mailto:") ? href.slice(7) : href;
 				if (token.text === token.href || token.text === hrefForComparison) {
@@ -2490,10 +2225,6 @@ function walkInlineTokens(tokens: Token[], ctx: InlineWalkContext): string {
 		}
 	}
 
-	// Strip dangling re-opened-default SGR prefix left over from the last inline
-	// token (strong/em/codespan/link/del/etc.) so the emitted line self-terminates
-	// at its last styled segment instead of carrying an unmatched SGR open into
-	// the next line. Matches upstream behavior.
 	if (ctx.stripTrailingPrefix) {
 		while (ctx.stylePrefix && result.endsWith(ctx.stylePrefix)) {
 			result = result.slice(0, -ctx.stylePrefix.length);
@@ -2538,17 +2269,10 @@ function renderInlineTokens(
 	applyText: (t: string) => string,
 	depth = 0,
 ): string {
-	// Same O(n^2) ANSI-wrapping hazard as Markdown#renderInlineTokens: deeply
-	// nested emphasis (`**`×N) recurses N deep, each level re-wrapping. Past the
-	// shared cap, flatten to styled plain text (O(n), no per-level wrapping).
 	if (depth >= Markdown.MAX_INLINE_DEPTH) {
 		const plain = plainInlineTokens(tokens);
 		return plain === "" ? "" : applyText(plain);
 	}
-	// Thin adapter over the shared grammar walker: no color swatches, no OSC-8
-	// hyperlinks, no HTML-normalization state, no block cases — the single-line
-	// inline subset. `stylePrefix` is `applyText("")` (the base-color reset the
-	// former copy appended after each styled span).
 	return walkInlineTokens(tokens, {
 		theme: mdTheme,
 		applyText,

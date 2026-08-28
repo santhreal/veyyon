@@ -1,4 +1,3 @@
-/** Extension system types. Extensions are TypeScript modules that can: */
 import type {
 	AgentMessage,
 	AgentToolResult,
@@ -115,7 +114,6 @@ export interface ExtensionAskDialogQuestion {
 	options: ExtensionAskDialogOption[];
 	multi?: boolean;
 	recommended?: number;
-	/** Option labels selected when the dialog opens (multi questions only). */
 	preselected?: string[];
 }
 
@@ -135,9 +133,6 @@ export interface ExtensionAskDialogSubmitResult {
 	results: ExtensionAskDialogResultItem[];
 }
 
-/** Chat-redirect result: the user chose "Chat about this" instead of
- *  answering. Distinct from `undefined` (cancel) so AskTool can hand off to
- *  the chat loop rather than aborting. */
 export interface ExtensionAskDialogChatResult {
 	kind: "chat";
 }
@@ -148,41 +143,23 @@ export function getExtensionUISelectOptionLabel(option: ExtensionUISelectItem): 
 	return typeof option === "string" ? option : option.label;
 }
 
-/**
- * UI dialog options for extensions.
- */
 export interface ExtensionUIDialogOptions {
 	signal?: AbortSignal;
 	timeout?: number;
-	/** Invoked when the UI times out while waiting for a selection/input */
 	onTimeout?: () => void;
-	/** Invoked when the UI-managed timeout countdown starts */
 	onTimeoutStart?: () => void;
-	/** Invoked when user input resets a UI-managed timeout countdown */
 	onTimeoutReset?: () => void;
-	/** Initial cursor position for select dialogs (0-indexed) */
 	initialIndex?: number;
-	/** Input dialogs only: the answer is a credential, so a client MUST NOT echo it. Set by a login flow asking for a key or a pasted authorization code. Surfaces that have no masked field */
 	secret?: boolean;
-	/** Invoked when user presses left arrow in select dialogs */
 	onLeft?: () => void;
-	/** Invoked when user presses right arrow in select dialogs */
 	onRight?: () => void;
-	/** Invoked when user presses the external editor shortcut in select dialogs */
 	onExternalEditor?: () => void;
-	/** Optional footer hint text rendered by interactive selector */
 	helpText?: string;
-	/** Render a leading radio/checkbox marker before each markable option in select dialogs (matches the ask transcript). "radio" fills the cursor row */
 	selectionMarker?: "radio" | "checkbox";
-	/** For `selectionMarker: "checkbox"`: option indices currently checked. */
 	checkedIndices?: readonly number[];
-	/** Number of leading options that receive a selection marker; the remaining
-	 *  trailing options (e.g. "Other"/"Done" actions) keep the plain cursor.
-	 *  Defaults to all options when `selectionMarker` is set. */
 	markableCount?: number;
 }
 
-/** Raw terminal input listener for extensions. */
 export type TerminalInputHandler = (data: string) => { consume?: boolean; data?: string } | undefined;
 
 export type WidgetPlacement = "aboveEditor" | "belowEditor";
@@ -195,58 +172,41 @@ export type ExtensionUiComponent = Component & { dispose?(): void };
 export type ExtensionUiComponentFactory = (tui: TUI, theme: Theme) => ExtensionUiComponent;
 export type ExtensionWidgetContent = string[] | ExtensionUiComponentFactory | undefined;
 
-/** Wrap the current autocomplete provider with additional behavior (pi-compatible). */
 export type AutocompleteProviderFactory = (current: AutocompleteProvider) => AutocompleteProvider;
 
-/** UI context for extensions to request interactive UI. Each mode (interactive, RPC, print) provides its own implementation. */
-// fallow-ignore-next-line code-duplication Parallel to HookUIContext: extensions expose a strictly larger UI surface
 export interface ExtensionUIContext {
-	/** True when selector timeouts start only after the dialog is presented. */
 	timeoutStartsOnPresentation?: boolean;
-	/** Show a selector and return the selected label, even when an option also includes a description. */
 	select(
 		title: string,
 		options: ExtensionUISelectItem[],
 		dialogOptions?: ExtensionUIDialogOptions,
 	): Promise<string | undefined>;
 
-	/** Show a confirmation dialog. */
 	confirm(title: string, message: string, dialogOptions?: ExtensionUIDialogOptions): Promise<boolean>;
 
-	/** Show a text input dialog. */
 	input(title: string, placeholder?: string, dialogOptions?: ExtensionUIDialogOptions): Promise<string | undefined>;
 
-	/** Show the rich ask dialog when the interactive TUI surface is available. */
 	askDialog?(
 		questions: ExtensionAskDialogQuestion[],
 		dialogOptions?: ExtensionUIDialogOptions,
 	): Promise<ExtensionAskDialogResult | undefined>;
 
-	/** Show a notification to the user. */
 	notify(message: string, type?: "info" | "warning" | "error"): void;
 
-	/** Listen to raw terminal input (interactive mode only). Returns an unsubscribe function. */
 	onTerminalInput(handler: TerminalInputHandler): () => void;
 
-	/** Set status text in the footer/status bar. Pass undefined to clear. */
 	setStatus(key: string, text: string | undefined): void;
 
-	/** Set the working/loading message shown during streaming. Call with no argument to restore default. */
 	setWorkingMessage(message?: string): void;
 
-	/** Set a widget to display above or below the editor. Accepts string array or component factory. */
 	setWidget(key: string, content: ExtensionWidgetContent, options?: ExtensionWidgetOptions): void;
 
-	/** Set a custom footer component, or undefined to restore the built-in footer. */
 	setFooter(factory: ExtensionUiComponentFactory | undefined): void;
 
-	/** Set a custom header component, or undefined to restore the built-in header. */
 	setHeader(factory: ExtensionUiComponentFactory | undefined): void;
 
-	/** Set the terminal window/tab title. */
 	setTitle(title: string): void;
 
-	/** Show a custom component with keyboard focus. */
 	custom<T>(
 		factory: (
 			tui: TUI,
@@ -257,16 +217,12 @@ export interface ExtensionUIContext {
 		options?: { overlay?: boolean },
 	): Promise<T>;
 
-	/** Set the text in the core input editor. */
 	setEditorText(text: string): void;
 
-	/** Paste text into the core input editor. Interactive mode should route through the editor's paste handling (e.g. large paste markers). */
 	pasteToEditor(text: string): void;
 
-	/** Get the current text from the core input editor. */
 	getEditorText(): string;
 
-	/** Show a multi-line editor for text editing. */
 	editor(
 		title: string,
 		prefill?: string,
@@ -274,179 +230,108 @@ export interface ExtensionUIContext {
 		editorOptions?: { promptStyle?: boolean },
 	): Promise<string | undefined>;
 
-	/** Stack additional autocomplete behavior on top of the built-in provider (pi-compatible). Interactive mode rebuilds the editor's provider through */
 	addAutocompleteProvider(factory: AutocompleteProviderFactory): void;
 
-	/** Set a custom editor component via factory function, or `undefined` to restore the default editor. The factory must return a {@link CustomEditor} subclass. Plain `EditorComponent`/`Editor` */
 	setEditorComponent(
 		factory: ((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => CustomEditor) | undefined,
 	): void;
 
-	/** Get the current theme for styling. */
 	readonly theme: Theme;
 
-	/** Get all available themes with names and paths. */
 	getAllThemes(): Promise<{ name: string; path: string | undefined }[]>;
 
-	/** Load a theme by name without switching to it. */
 	getTheme(name: string): Promise<Theme | undefined>;
 
-	/** Set the current theme by name or Theme object. */
 	setTheme(theme: string | Theme): Promise<{ success: boolean; error?: string }>;
 
-	/** Get current tool output expansion state. */
 	getToolsExpanded(): boolean;
 
-	/** Set tool output expansion state. */
 	setToolsExpanded(expanded: boolean): void;
 }
 
 export interface ContextUsage {
-	/** Estimated context tokens. */
 	tokens: number;
 	contextWindow: number;
-	/** Context usage as percentage of context window. */
 	percent: number;
 }
 
 export interface CompactOptions {
 	onComplete?: (result: CompactionResult) => void;
 	onError?: (error: Error) => void;
-	/** Force a one-off compaction mode for this invocation, overriding the configured `compaction.strategy`. `summary` is the only mode `/compact` */
 	mode?: CompactMode;
-	/** Internal summarizer guidance — piped only to native summarization, never exposed as `customInstructions` on the `session_before_compact` extension */
 	internalGuidance?: string;
 }
 
-/**
- * Context passed to extension event handlers.
- */
-// fallow-ignore-next-line code-duplication Parallel to HookContext: extensions expose a strictly larger runtime
-/** Read-only model query facade exposed at `ctx.models`. Lets an extension select a model the same way core does — list authenticated models, read the session model, */
 export interface ExtensionModelQuery {
-	/** Authenticated models available this session (the same set `--model` selection sees). */
 	list(): Model[];
-	/** The current session model, if one is set. */
 	current(): Model | undefined;
-	/** Resolve a model string (`provider/id`, bare id) or role alias (`@slow`, a configured role) to a Model, using the same settings-backed aliases and match */
 	resolve(spec: string): Model | undefined;
-	/** Opaque lineage token for "are these the same family?" comparisons — every Claude point release shares a token, Claude and GPT differ. Backed by catalog canonical */
 	family(model: Model): string;
 }
 
 export interface ExtensionContext {
-	/** UI methods for user interaction */
 	ui: ExtensionUIContext;
-	/** Get current context usage for the active model. */
 	getContextUsage(): ContextUsage | undefined;
-	/** Compact the session context (interactive mode shows UI). */
 	compact(instructionsOrOptions?: string | CompactOptions): Promise<void>;
-	/** Whether UI is available (false in print/RPC mode) */
 	hasUI: boolean;
-	/** Current working directory */
 	cwd: string;
-	/** Session manager (read-only) */
 	sessionManager: ReadonlySessionManager;
-	/** Model registry for API key resolution */
 	modelRegistry: ModelRegistry;
-	/** Calling session's `local://` root mapping for external tool bridges. */
 	localProtocolOptions?: LocalProtocolOptions;
-	/** Live final-seam redaction for provider-bound extension/custom-tool strings. */
 	obfuscateProviderText?: (text: string) => string;
-	/** Current model (may be undefined) */
 	model: Model | undefined;
-	/** Read-only model query facade: list / current / resolve / family. */
 	models: ExtensionModelQuery;
-	/** Whether the agent is idle (not streaming) */
 	isIdle(): boolean;
-	/** Abort the current agent operation */
 	abort(): void;
-	/** Whether there are queued messages waiting */
 	hasPendingMessages(): boolean;
-	/** Gracefully shutdown and exit. */
 	shutdown(): void;
-	/** Get the current effective system prompt. */
 	getSystemPrompt(): string[];
-	/** Structured memory runtime for status/search/save across the configured backend. */
 	memory?: MemoryRuntimeContext;
 }
 
-/** Extended context for command handlers. Includes session control methods only safe in user-initiated commands. */
-// fallow-ignore-next-line code-duplication Parallel to HookCommandContext: same method names, different invariants —
 export interface ExtensionCommandContext extends ExtensionContext {
-	/** Get current context usage for the active model. */
 	getContextUsage(): ContextUsage | undefined;
 
-	/** Wait for the agent to finish streaming */
 	waitForIdle(): Promise<void>;
 
-	/** Start a new session, optionally with initialization. */
 	newSession(options?: {
 		parentSession?: string;
 		setup?: (sessionManager: SessionManager) => Promise<void>;
 	}): Promise<{ cancelled: boolean }>;
 
-	/** Branch from a specific entry, creating a new session file. */
 	branch(entryId: string): Promise<{ cancelled: boolean }>;
 
-	/** Navigate to a different point in the session tree. */
 	navigateTree(targetId: string, options?: { summarize?: boolean }): Promise<{ cancelled: boolean }>;
 
-	/** Switch to a different session file. */
 	switchSession(sessionPath: string): Promise<{ cancelled: boolean }>;
 
-	/** Reload the current session/runtime state. */
 	reload(): Promise<void>;
 
-	/** Compact the session context (interactive mode shows UI). */
 	compact(instructionsOrOptions?: string | CompactOptions): Promise<void>;
 }
 
-/** Rendering options for tool results */
 export interface ToolRenderResultOptions {
-	/** Whether the result view is expanded */
 	expanded: boolean;
-	/** Whether this is a partial/streaming result */
 	isPartial: boolean;
-	/** Current spinner frame index for animated elements (optional) */
 	spinnerFrame?: number;
 }
 
-/** Session event for tool onSession lifecycle */
 export interface ToolSessionEvent {
-	/** Reason for the session event */
 	reason: "start" | "switch" | "branch" | "tree" | "shutdown";
-	/** Previous session file path, or undefined for "start" and "shutdown" */
 	previousSessionFile: string | undefined;
 }
 
-/**
- * Tool definition for registerTool().
- */
 export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = unknown> {
-	/** Tool name (used in LLM tool calls) */
 	name: string;
-	/** Human-readable label for UI */
 	label: string;
-	/** Description for LLM */
 	description: string;
-	/** Parameter schema (Zod, or TypeBox for legacy/extension compat). */
 	parameters: TParams;
-	/** If true, tool is excluded unless explicitly listed in --tools or agent's tools field */
 	hidden?: boolean;
-	/** If true, tool is registered but not auto-included in the initial active set.
-	 *  The registering extension is responsible for activating/deactivating it via setActiveTools(). */
 	defaultInactive?: boolean;
-	/** If true, tool may stage deferred changes that require explicit resolve/discard. */
 	deferrable?: boolean;
-	/** Tool approval tier. Defaults to `"exec"` when omitted.
-	 *  `"read"`: read-only operations. `"write"`: mutations. `"exec"`: code execution. */
 	approval?: ToolApproval;
-	/** MCP server name for discovery/search metadata when this tool fronts an MCP server. */
 	mcpServerName?: string;
-	/** Original MCP tool name for discovery/search metadata. */
 	mcpToolName?: string;
-	/** Execute the tool. The signal comes THIRD here, matching how the agent calls every tool. */
 	execute(
 		toolCallId: string,
 		params: Static<TParams>,
@@ -455,13 +340,10 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 		ctx: ExtensionContext,
 	): Promise<AgentToolResult<TDetails>>;
 
-	/** Called on session lifecycle events - use to reconstruct state or cleanup resources */
 	onSession?: (event: ToolSessionEvent, ctx: ExtensionContext) => void | Promise<void>;
 
-	/** Custom rendering for tool call display */
 	renderCall?: (args: Static<TParams>, options: ToolRenderResultOptions, theme: Theme) => Component;
 
-	/** Custom rendering for tool result display */
 	renderResult?: (
 		result: AgentToolResult<TDetails>,
 		options: ToolRenderResultOptions,
@@ -470,14 +352,12 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	) => Component;
 }
 
-/** Fired after session_start to allow extensions to provide additional resource paths. */
 export interface ResourcesDiscoverEvent {
 	type: "resources_discover";
 	cwd: string;
 	reason: "startup" | "reload";
 }
 
-/** Result from resources_discover event handler */
 export interface ResourcesDiscoverResult {
 	skillPaths?: string[];
 	promptPaths?: string[];
@@ -501,18 +381,15 @@ export type {
 	TreePreparation,
 } from "../shared-events";
 
-/** Fired before a provider request is sent. Can replace the payload. */
 export interface BeforeProviderRequestEvent {
 	type: "before_provider_request";
 	payload: unknown;
 }
 
-/** Fired after a provider response is received, before its stream body is consumed. */
 export interface AfterProviderResponseEvent extends ProviderResponseMetadata {
 	type: "after_provider_response";
 }
 
-/** Fired after user submits prompt but before agent loop. */
 export interface BeforeAgentStartEvent {
 	type: "before_agent_start";
 	prompt: string;
@@ -529,26 +406,22 @@ export type {
 	TurnStartEvent,
 } from "../shared-events";
 
-/** Fired when a message starts (user, assistant, or toolResult) */
 export interface MessageStartEvent {
 	type: "message_start";
 	message: AgentMessage;
 }
 
-/** Fired during assistant message streaming with token-by-token updates */
 export interface MessageUpdateEvent {
 	type: "message_update";
 	message: AgentMessage;
 	assistantMessageEvent: AssistantMessageEvent;
 }
 
-/** Fired when a message ends */
 export interface MessageEndEvent {
 	type: "message_end";
 	message: AgentMessage;
 }
 
-/** Fired when a tool starts executing */
 export interface ToolExecutionStartEvent {
 	type: "tool_execution_start";
 	toolCallId: string;
@@ -557,7 +430,6 @@ export interface ToolExecutionStartEvent {
 	intent?: string;
 }
 
-/** Fired during tool execution with partial/streaming output */
 export interface ToolExecutionUpdateEvent {
 	type: "tool_execution_update";
 	toolCallId: string;
@@ -566,7 +438,6 @@ export interface ToolExecutionUpdateEvent {
 	partialResult: unknown;
 }
 
-/** Fired when a tool finishes executing */
 export interface ToolExecutionEndEvent {
 	type: "tool_execution_end";
 	toolCallId: string;
@@ -584,38 +455,26 @@ export type {
 	TtsrTriggeredEvent,
 } from "../shared-events";
 
-/** Fired when AuthStorage automatically soft-disables a credential (e.g. OAuth `invalid_grant`). Not fired for user-initiated `remove()` or duplicate-credential dedup. */
 export interface CredentialDisabledEvent {
 	type: "credential_disabled";
-	/** Provider id whose credential was disabled (e.g. "anthropic"). */
 	provider: string;
-	/** Verbatim error captured for forensics (truncated upstream). */
 	disabledCause: string;
 }
 
-/** Fired when user executes a bash command via ! or !! prefix */
 export interface UserBashEvent {
 	type: "user_bash";
-	/** The command to execute */
 	command: string;
-	/** True if !! prefix was used (excluded from LLM context) */
 	excludeFromContext: boolean;
-	/** Current working directory */
 	cwd: string;
 }
 
-/** Fired when user executes Python code via $ or $$ prefix */
 export interface UserPythonEvent {
 	type: "user_python";
-	/** The Python code to execute */
 	code: string;
-	/** True if $$ prefix was used (excluded from LLM context) */
 	excludeFromContext: boolean;
-	/** Current working directory */
 	cwd: string;
 }
 
-/** Fired when the user submits input (interactive mode only). */
 export interface InputEvent {
 	type: "input";
 	text: string;
@@ -681,7 +540,6 @@ export interface CustomToolCallEvent extends ToolCallEventBase {
 	input: Record<string, unknown>;
 }
 
-/** Fired before a tool executes. Can block. */
 export type ToolCallEvent =
 	| BashToolCallEvent
 	| ReadToolCallEvent
@@ -734,7 +592,6 @@ export interface CustomToolResultEvent extends ToolResultEventBase {
 	details: unknown;
 }
 
-/** Fired after a tool executes. Can modify result. */
 export type ToolResultEvent =
 	| BashToolResultEvent
 	| ReadToolResultEvent
@@ -744,7 +601,6 @@ export type ToolResultEvent =
 	| GlobToolResultEvent
 	| CustomToolResultEvent;
 
-/** Type guard for narrowing ToolCallEvent by tool name. Built-in tools narrow automatically (no type params needed): */
 export function isToolCallEventType(toolName: "bash", event: ToolCallEvent): event is BashToolCallEvent;
 export function isToolCallEventType(toolName: "read", event: ToolCallEvent): event is ReadToolCallEvent;
 export function isToolCallEventType(toolName: "edit", event: ToolCallEvent): event is EditToolCallEvent;
@@ -759,7 +615,6 @@ export function isToolCallEventType(toolName: string, event: ToolCallEvent): boo
 	return event.toolName === toolName;
 }
 
-/** Union of all event types */
 export type ExtensionEvent =
 	| ResourcesDiscoverEvent
 	| SessionEvent
@@ -802,25 +657,17 @@ export type BeforeProviderRequestEventResult = unknown;
 
 export type { ToolCallEventResult } from "../shared-events";
 
-/** Result from input event handler */
 export interface InputEventResult {
-	/** If true, the input was handled and should not continue through normal flow */
 	handled?: boolean;
-	/** Replace the input text */
 	text?: string;
-	/** Replace any pending images */
 	images?: ImageContent[];
 }
 
-/** Result from user_bash event handler */
 export interface UserBashEventResult {
-	/** Full replacement: extension handled execution, use this result */
 	result?: BashResult;
 }
 
-/** Result from user_python event handler */
 export interface UserPythonEventResult {
-	/** Full replacement: extension handled execution, use this result */
 	result?: PythonResult;
 }
 
@@ -828,7 +675,6 @@ export type { ToolResultEventResult } from "../shared-events";
 
 export interface BeforeAgentStartEventResult {
 	message?: CustomMessagePayload;
-	/** Replace the system prompt for this turn. A single string is taken as a one-section prompt. */
 	systemPrompt?: string | string[];
 }
 
@@ -862,9 +708,6 @@ export type AssistantThinkingRenderer = (
 	theme: Theme,
 ) => Component | undefined;
 
-// fallow-ignore-next-line code-duplication
-// Parallel to HookAPI's RegisteredCommand: extensions add
-// `getArgumentCompletions` and bind handlers to ExtensionCommandContext.
 export interface RegisteredCommand {
 	name: string;
 	description?: string;
@@ -872,30 +715,19 @@ export interface RegisteredCommand {
 	handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
 }
 
-/** Handler function type for events */
 // biome-ignore lint/suspicious/noConfusingVoidType: void allows bare return statements
 export type ExtensionHandler<E, R = undefined> = (event: E, ctx: ExtensionContext) => Promise<R | void> | R | void;
 
-/**
- * ExtensionAPI passed to extension factory functions.
- */
 export interface ExtensionAPI {
-	// Module Access
-	/** File logger for error/warning/debug messages */
 	logger: typeof PiLogger;
 
-	/** Injected legacy typebox shim for `Type.Object(...)` parameter authoring (prefer `arktype`). */
 	typebox: typeof TypeBox;
 
-	/** Injected arktype module for arktype-authored extension tools (canonical going forward). */
 	arktype: typeof arktype;
-	/** Injected zod/v4 module for canonical extension tool parameter schemas. */
 	zod: typeof zod;
 
-	/** Injected coding-agent exports for accessing SDK utilities */
 	pi: typeof PiCodingAgent;
 
-	// Event Subscription
 	on(event: "resources_discover", handler: ExtensionHandler<ResourcesDiscoverEvent, ResourcesDiscoverResult>): void;
 	on(event: "session_start", handler: ExtensionHandler<SessionStartEvent>): void;
 	on(
@@ -951,12 +783,8 @@ export interface ExtensionAPI {
 	on(event: "user_bash", handler: ExtensionHandler<UserBashEvent, UserBashEventResult>): void;
 	on(event: "user_python", handler: ExtensionHandler<UserPythonEvent, UserPythonEventResult>): void;
 
-	// Tool Registration
-	/** Register a tool that the LLM can call. */
 	registerTool<TParams extends TSchema = TSchema, TDetails = unknown>(tool: ToolDefinition<TParams, TDetails>): void;
 
-	// Command, Shortcut, Flag Registration
-	/** Register a custom command. */
 	registerCommand(
 		name: string,
 		options: {
@@ -966,7 +794,6 @@ export interface ExtensionAPI {
 		},
 	): void;
 
-	/** Register a keyboard shortcut. */
 	registerShortcut(
 		shortcut: KeyId,
 		options: {
@@ -975,7 +802,6 @@ export interface ExtensionAPI {
 		},
 	): void;
 
-	/** Register a CLI flag. */
 	registerFlag(
 		name: string,
 		options: {
@@ -985,135 +811,84 @@ export interface ExtensionAPI {
 		},
 	): void;
 
-	/** Set the display label for this extension, or set a label on a specific entry. */
 	setLabel(entryIdOrLabel: string, label?: string | undefined): void;
 
-	/** Get the value of a registered CLI flag. */
 	getFlag(name: string): boolean | string | undefined;
 
-	// Message Rendering
-	/** Register a custom renderer for CustomMessageEntry. */
 	registerMessageRenderer<T = unknown>(customType: string, renderer: MessageRenderer<T>): void;
 
-	/** Register a renderer for assistant thinking blocks. Rendered after the original thinking text. */
 	registerAssistantThinkingRenderer(renderer: AssistantThinkingRenderer): void;
 
-	// Actions
-	/** Send a custom message to the session. `deliverAs: "nextTurn"` keeps the message hidden from the editable pending-message UI. */
 	sendMessage<T = unknown>(
 		message: CustomMessagePayload<T>,
 		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
 	): void;
 
-	/** Send a user prompt: idle starts a turn; streaming queues as steer unless deliverAs is set. */
 	sendUserMessage(
 		content: string | (TextContent | ImageContent)[],
 		options?: { deliverAs?: "steer" | "followUp" },
 	): void;
 
-	/** Append a custom entry to the session for state persistence (not sent to LLM). */
 	appendEntry<T = unknown>(customType: string, data?: T): void;
 
-	/** Execute a shell command. */
 	exec(command: string, args: string[], options?: ExecOptions): Promise<ExecResult>;
 
-	/** Get the list of currently active tool names. */
 	getActiveTools(): string[];
 
-	/** Get all configured tools (built-in + extension tools). */
 	getAllTools(): string[];
 
-	/** Set the active tools by name. */
 	setActiveTools(toolNames: string[]): Promise<void>;
 
-	/** Get available slash commands in the current session. */
 	getCommands(): SlashCommandInfo[];
 
-	/** Set the current model. Returns false if no API key available. */
 	setModel(model: Model): Promise<boolean>;
 
-	/** Get current thinking level. */
 	getThinkingLevel(): ThinkingLevel | undefined;
 
-	/** Set thinking level for the current session. `persist` also saves it as the profile default, in the `defaultEffort` row */
 	setThinkingLevel(level: ThinkingLevel, persist?: boolean): void;
 
-	/** Get the current session name. */
 	getSessionName(): string | undefined;
 
-	/** Set the session name. Persists to the session file. */
 	setSessionName(name: string): Promise<void>;
 
-	// Provider Registration
-	/** Register or override a model provider. If `models` is provided: replaces all existing models for this provider. */
 	registerProvider(name: string, config: ProviderConfig): void;
 
-	/** Shared event bus for extension communication. */
 	events: EventBus;
 }
 
-/** Configuration for registering a provider via pi.registerProvider(). */
 export interface ProviderConfig {
-	/** Base URL for the API endpoint. Required when defining models. */
 	baseUrl?: string;
-	/** API key or environment variable name. Required when defining models unless oauth is provided. */
 	apiKey?: string;
-	/** API type identifier. Required when registering streamSimple or when models don't specify one. */
 	api?: Api;
-	/** Custom streaming function for non-built-in APIs. */
 	streamSimple?: (model: Model<Api>, context: Context, options?: SimpleStreamOptions) => AssistantMessageEventStream;
-	/** Custom headers to include in requests. */
 	headers?: Record<string, string>;
-	/** If true, adds Authorization: Bearer header with the resolved API key. */
 	authHeader?: boolean;
-	/** Models to register. If provided, replaces all existing models for this provider. */
 	models?: ProviderModelConfig[];
-	/** OAuth provider for /login support. */
 	oauth?: {
-		/** Display name in login UI. */
 		name: string;
-		/** Run the provider login flow and return credentials (or a plain API key) to persist. */
 		login(callbacks: OAuthLoginCallbacks): Promise<OAuthCredentials | string>;
-		/** Refresh expired credentials. */
 		refreshToken?(credentials: OAuthCredentials): Promise<OAuthCredentials>;
-		/** Convert credentials to an API key string for requests. */
 		getApiKey?(credentials: OAuthCredentials): string;
-		/** Optional model rewrite hook for credential-aware routing (e.g., enterprise URLs). */
 		modifyModels?(models: Model<Api>[], credentials: OAuthCredentials): Model<Api>[];
 	};
-	/** Async factory that fetches the live model list from the provider endpoint. Runs through the same SQLite model-cache as built-in providers (keyed by */
 	fetchDynamicModels?: (apiKey: string | undefined) => Promise<readonly ProviderModelConfig[]>;
 }
 
-/** Configuration for a model within a provider. */
 export interface ProviderModelConfig {
-	/** Model ID (e.g., "claude-sonnet-4@20250514"). */
 	id: string;
-	/** Display name (e.g., "Claude Sonnet 4 (Vertex)"). */
 	name: string;
-	/** API type override for this model. */
 	api?: Api;
-	/** Whether the model supports extended thinking at all. */
 	reasoning: boolean;
-	/** Optional canonical thinking capability metadata for per-model effort support. */
 	thinking?: Model["thinking"];
-	/** Supported input types. */
 	input: ("text" | "image")[];
-	/** Cost per million tokens. */
 	cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
-	/** Premium Copilot requests charged per user-initiated request. */
 	premiumMultiplier?: number;
-	/** Maximum context window size in tokens. */
 	contextWindow: number;
-	/** Maximum output tokens. */
 	maxTokens: number;
-	/** Custom headers for this model. */
 	headers?: Record<string, string>;
-	/** OpenAI compatibility settings. */
 	compat?: ModelSpec<Api>["compat"];
 }
 
-/** Extension factory function type. Supports both sync and async initialization. */
 export type ExtensionFactory = (pi: ExtensionAPI) => void | Promise<void>;
 
 export interface RegisteredTool<TParams extends TSchema = TSchema, TDetails = unknown> {
@@ -1140,7 +915,6 @@ type HandlerFn = (...args: unknown[]) => Promise<unknown>;
 
 export type SendMessageHandler = <T = unknown>(
 	message: CustomMessagePayload<T>,
-	/** `deliverAs: "nextTurn"` queues hidden custom context for the next turn. When paired with `triggerTurn: true` during prompt teardown, the session schedules */
 	options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
 ) => void;
 
@@ -1165,14 +939,11 @@ export type GetThinkingLevelHandler = () => ThinkingLevel | undefined;
 
 export type SetThinkingLevelHandler = (level: ThinkingLevel, persist?: boolean) => void;
 
-/** Shared state created by loader, used during registration and runtime. */
 export interface ExtensionRuntimeState {
 	flagValues: Map<string, boolean | string>;
-	/** Provider registrations queued during extension loading, processed during session initialization */
 	pendingProviderRegistrations: Array<{ name: string; config: ProviderConfig; sourceId: string }>;
 }
 
-/** Action implementations for ExtensionAPI methods. */
 export interface ExtensionActions {
 	sendMessage: SendMessageHandler;
 	sendUserMessage: SendUserMessageHandler;
@@ -1189,7 +960,6 @@ export interface ExtensionActions {
 	setSessionName: (name: string) => Promise<void>;
 }
 
-/** Actions for ExtensionContext (ctx.* in event handlers). */
 export interface ExtensionContextActions {
 	getModel: () => Model | undefined;
 	isIdle: () => boolean;
@@ -1199,11 +969,9 @@ export interface ExtensionContextActions {
 	getContextUsage: () => ContextUsage | undefined;
 	compact: (instructionsOrOptions?: string | CompactOptions) => Promise<void>;
 	getSystemPrompt: () => string[];
-	/** Live redaction-only transform for provider-bound extension and hook strings. */
 	obfuscateProviderText?: (text: string) => string;
 }
 
-/** Actions for ExtensionCommandContext (ctx.* in command handlers). */
 export interface ExtensionCommandContextActions {
 	getContextUsage: () => ContextUsage | undefined;
 	waitForIdle: () => Promise<void>;
@@ -1218,10 +986,8 @@ export interface ExtensionCommandContextActions {
 	reload: () => Promise<void>;
 }
 
-/** Full runtime = state + actions. */
 export interface ExtensionRuntime extends ExtensionRuntimeState, ExtensionActions {}
 
-/** A veyyon extension module that has been executed, with everything it registered. LOADED is the distinguishing word. `ManifestExtension` */
 export interface LoadedExtension {
 	path: string;
 	resolvedPath: string;
@@ -1235,11 +1001,9 @@ export interface LoadedExtension {
 	shortcuts: Map<KeyId, ExtensionShortcut>;
 }
 
-/** Result of loading extensions. */
 export interface LoadExtensionsResult {
 	extensions: LoadedExtension[];
 	errors: Array<{ path: string; error: string }>;
-	/** Project-scoped extensions that were NOT imported because the project carries no trust decision covering them. Separate from `errors` because nothing failed: the code is intact */
 	withheld: Array<{ path: string; reason: string }>;
 	runtime: ExtensionRuntime;
 }

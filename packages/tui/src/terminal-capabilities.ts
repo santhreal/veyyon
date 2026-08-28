@@ -63,7 +63,6 @@ function hasSixelDcsStart(line: string): boolean {
 	}
 }
 
-/** Terminal capability details used for rendering and protocol selection. */
 export class TerminalInfo {
 	constructor(
 		public readonly id: TerminalId,
@@ -73,16 +72,9 @@ export class TerminalInfo {
 		public readonly notifyProtocol: NotifyProtocol = NotifyProtocol.Bell,
 		public readonly deccara: boolean = false,
 		readonly supportsScreenToScrollback: boolean = false,
-		/** Renders the Kitty OSC 66 text-sizing protocol (scaled spans). Kitty only. */
 		public readonly textSizing: boolean = false,
 	) {}
 
-	/**
-	 * Mutable clone for the {@link TERMINAL} singleton: copies every field and
-	 * keeps the prototype methods, so the builder and runtime setters flip
-	 * runtime-resolved {@link RuntimeTerminal} capabilities in place instead of
-	 * reconstructing positional constructor args.
-	 */
 	clone(): RuntimeTerminal {
 		return Object.assign(Object.create(TerminalInfo.prototype), this) as RuntimeTerminal;
 	}
@@ -99,9 +91,6 @@ export class TerminalInfo {
 		if (this.notifyProtocol === NotifyProtocol.Bell) {
 			return NotifyProtocol.Bell;
 		}
-		// Structured notifications use OSC 99's rich metadata only once the
-		// terminal confirms support; otherwise collapse to a single message line
-		// (basic OSC 99 / OSC 9 still work).
 		if (typeof message !== "string") {
 			if (this.notifyProtocol === NotifyProtocol.Osc99 && osc99CapabilitiesConfirmed) {
 				return formatOsc99Notification(message);
@@ -113,44 +102,30 @@ export class TerminalInfo {
 
 	sendNotification(message: string | TerminalNotification): void {
 		if (isNotificationSuppressed() || isTerminalHeadless()) return;
-		// Suppress notifications when the terminal window is focused unless forced.
 		if (isWindowFocused() && !(typeof message === "object" && message.deliverWhenFocused === true)) return;
 		const formatted = this.formatNotification(message);
-		// Wrap OSC in tmux DCS passthrough and append BEL for monitor-bell.
 		if (this.notifyProtocol !== NotifyProtocol.Bell && isInsideTmux()) {
 			process.stdout.write(`${wrapTmuxPassthrough(formatted)}\x07`);
 			return;
 		}
-		// Follow OSC with BEL for Zellij notification flag.
 		if (this.notifyProtocol !== NotifyProtocol.Bell && isInsideZellij()) {
 			process.stdout.write(`${formatted}\x07`);
 			return;
 		}
 		process.stdout.write(formatted);
-		// Fan out notification via libnotify on Linux when using Bell protocol.
 		if (this.notifyProtocol === NotifyProtocol.Bell && shouldDeliverDesktopNotification(this.id, true)) {
 			sendDesktopNotification(message);
 		}
 	}
 }
 
-/** Detect terminal multiplexers where scrollback clearing and height-change redraws are hostile. */
 export function isInsideTerminalMultiplexer(env: NodeJS.ProcessEnv = Bun.env): boolean {
-	// TMUX/STY/ZELLIJ/CMUX workspace+surface ids are authoritative session
-	// signals. TERM can also survive when those are stripped (`sudo` without -E,
-	// `su`, env-sanitizing launchers/ssh). Do not use CMUX_SOCKET_PATH here: it is
-	// a CLI socket override and can be set outside a CMUX terminal.
 	if (env.TMUX || env.STY || env.ZELLIJ) return true;
 	if (env.CMUX_WORKSPACE_ID || env.CMUX_SURFACE_ID) return true;
 	const term = env.TERM?.toLowerCase() ?? "";
 	return term.startsWith("tmux") || term.startsWith("screen");
 }
 
-/**
- * Whether the agent process is running inside a Zellij session. Read fresh on
- * each call (like {@link isInsideTmux}) so a session attached/detached mid-run
- * is observed and tests can toggle `Bun.env.ZELLIJ` per case.
- */
 export function isInsideZellij(env: NodeJS.ProcessEnv = Bun.env): boolean {
 	return Boolean(env.ZELLIJ);
 }
@@ -181,11 +156,6 @@ function parseMajorMinorVersion(versionRaw?: string): { major: number; minor: nu
 	return { major, minor };
 }
 
-/**
- * Returns true when running in Windows Terminal with known SIXEL support.
- *
- * Windows Terminal introduced SIXEL support in preview 1.22.
- */
 export function isWindowsTerminalPreviewSixelSupported(
 	env: NodeJS.ProcessEnv = Bun.env,
 	platform: NodeJS.Platform = process.platform,
@@ -200,29 +170,16 @@ export function isWindowsTerminalPreviewSixelSupported(
 	return version.major > 1 || (version.major === 1 && version.minor >= 22);
 }
 
-/**
- * Resolve an explicit user override for DEC 2026 synchronized output. Returns
- * `false` for an opt-out, `true` for a force-on, or `null` when the user has
- * expressed no preference. Shared by the static default and the runtime DECRQM
- * probe so both honor the same precedence — an opt-out beats a force-on.
- */
 export function synchronizedOutputUserOverride(env: NodeJS.ProcessEnv = Bun.env): boolean | null {
 	if (env.VEYYON_NO_SYNC_OUTPUT || env.VEYYON_TUI_SYNC_OUTPUT === "0") return false;
 	if (env.VEYYON_FORCE_SYNC_OUTPUT === "1" || env.VEYYON_TUI_SYNC_OUTPUT === "1") return true;
 	return null;
 }
 
-/**
- * Whether `TERM_FEATURES` advertises DEC 2026 synchronized output via the `Sy`
- * capability token. `TERM_FEATURES` is a run of capitalized two-letter codes
- * (e.g. `…Sy…`), so a case-sensitive substring match is unambiguous: `Sy`
- * cannot straddle a code boundary because those are always lowercase→uppercase.
- */
 function advertisesSynchronizedOutput(termFeatures: string | undefined): boolean {
 	return termFeatures?.includes("Sy") ?? false;
 }
 
-/** Whether DEC 2026 synchronized-output wrappers should be enabled by default. */
 export function shouldEnableSynchronizedOutputByDefault(
 	env: NodeJS.ProcessEnv = Bun.env,
 	terminalId: TerminalId = TERMINAL_ID,
@@ -233,10 +190,6 @@ export function shouldEnableSynchronizedOutputByDefault(
 	if (advertisesSynchronizedOutput(env.TERM_FEATURES)) return true;
 	if (env.WT_SESSION) return true;
 
-	// Risky multiplexers start off even when an inner terminal id leaks through:
-	// older tmux/screen synchronized-output handling is flaky and a mux may not
-	// pass DEC 2026 to the outer host. The DECRQM probe re-enables sync when the
-	// mux reports `?2026` supported.
 	if (isInsideTerminalMultiplexer(env)) {
 		return false;
 	}
@@ -250,14 +203,10 @@ export function shouldEnableSynchronizedOutputByDefault(
 		case "vscode":
 			return true;
 		default:
-			// VTE family, GNU screen, Apple Terminal, Warp, legacy native console
-			// host (no WT_SESSION), and bare/unknown xterm profiles stay off until
-			// the DECRQM probe proves support.
 			return false;
 	}
 }
 
-/** Whether the terminal supports Kitty-style DECCARA rectangular SGR background changes. */
 export function detectRectangularSgrSupport(terminalId: TerminalId, env: NodeJS.ProcessEnv = Bun.env): boolean {
 	if (terminalId !== "kitty") return false;
 	const kill = env.VEYYON_NO_DECCARA;
@@ -267,30 +216,17 @@ export function detectRectangularSgrSupport(terminalId: TerminalId, env: NodeJS.
 	}
 	return true;
 }
-/**
- * Resolve an explicit user override for OSC 8 hyperlinks. Returns `false` for
- * an opt-out, `true` for a force-on, or `null` when the user has expressed no
- * preference. Opt-out beats force-on so a kill switch is unambiguous, mirroring
- * {@link synchronizedOutputUserOverride}.
- */
 export function hyperlinksUserOverride(env: NodeJS.ProcessEnv = Bun.env): boolean | null {
 	if (env.VEYYON_NO_HYPERLINKS === "1") return false;
 	if (env.VEYYON_FORCE_HYPERLINKS === "1") return true;
 	return null;
 }
 
-/**
- * Parse tmux's self-reported version from `TERM_PROGRAM_VERSION`. tmux sets
- * `TERM_PROGRAM=tmux` and `TERM_PROGRAM_VERSION=<version>` automatically since
- * 3.2a; older releases (or any path that does not surface the version) yield
- * `null` and the caller treats tmux conservatively.
- */
 function parseTmuxVersionFromEnv(env: NodeJS.ProcessEnv): { major: number; minor: number } | null {
 	if (env.TERM_PROGRAM?.toLowerCase() !== "tmux") return null;
 	return parseMajorMinorVersion(env.TERM_PROGRAM_VERSION);
 }
 
-/** Whether OSC 8 hyperlinks should be enabled by default. */
 export function shouldEnableHyperlinksByDefault(
 	env: NodeJS.ProcessEnv = Bun.env,
 	terminalId: TerminalId = TERMINAL_ID,
@@ -300,14 +236,8 @@ export function shouldEnableHyperlinksByDefault(
 
 	if (!getTerminalInfo(terminalId).hyperlinks) return false;
 
-	// STY is GNU screen's explicit session marker. It vetoes tmux enabling when
-	// multiplexers are nested because screen cannot forward OSC 8 anywhere in the
-	// path.
 	if (env.STY) return false;
 
-	// tmux check before TERM heuristics: TMUX is the authoritative current-session
-	// signal and supersedes TERM, which may be `screen-256color` under tmux's
-	// historical default-terminal setting.
 	if (env.TMUX) {
 		const version = parseTmuxVersionFromEnv(env);
 		if (!version) return false;
@@ -330,12 +260,6 @@ function getFallbackImageProtocol(terminalId: TerminalId): ImageProtocol | null 
 	}
 	return null;
 }
-/**
- * Warp implements the Kitty graphics protocol only on macOS/Linux; its Windows
- * build (including Warp-hosted WSL shells) renders the same APC sequences as
- * visible garbage. Keep platform/env injectable so the carve-out is testable
- * without mutating `process.platform`.
- */
 export function resolveWarpImageProtocol(
 	platform: NodeJS.Platform = process.platform,
 	env: NodeJS.ProcessEnv = Bun.env,
@@ -349,28 +273,19 @@ function getWarpTerminalInfo(platform: NodeJS.Platform, env: NodeJS.ProcessEnv =
 	return new TerminalInfo("warp", resolveWarpImageProtocol(platform, env), true, false, NotifyProtocol.Osc9);
 }
 const KNOWN_TERMINALS = Object.freeze({
-	// Fallback terminals
 	base: new TerminalInfo("base", null, false, false, NotifyProtocol.Bell),
 	trueColor: new TerminalInfo("trueColor", null, true, false, NotifyProtocol.Bell),
-	// Recognized terminals
 	kitty: new TerminalInfo("kitty", ImageProtocol.Kitty, true, true, NotifyProtocol.Osc99, true, true, true),
 	ghostty: new TerminalInfo("ghostty", ImageProtocol.Kitty, true, true, NotifyProtocol.Osc9),
 	wezterm: new TerminalInfo("wezterm", ImageProtocol.Kitty, true, true, NotifyProtocol.Osc9),
 	iterm2: new TerminalInfo("iterm2", ImageProtocol.Iterm2, true, true, NotifyProtocol.Osc9),
 	vscode: new TerminalInfo("vscode", null, true, true, NotifyProtocol.Bell),
 	alacritty: new TerminalInfo("alacritty", null, true, true, NotifyProtocol.Bell),
-	// Warp identifies via TERM_PROGRAM=WarpTerminal and ships the Kitty graphics
-	// protocol on macOS/Linux (direct placement only — no Unicode placeholders, so
-	// detectKittyUnicodePlaceholdersSupport correctly excludes it). It does not
-	// honor OSC 8 yet (the escape renders as visible text), so hyperlinks stay off,
-	// but it does support OSC 9 notifications.
 	warp: new TerminalInfo("warp", ImageProtocol.Kitty, true, false, NotifyProtocol.Osc9),
 });
 
-/** Level of ANSI styling supported by the environment. */
 export type AnsiPolicy = "full" | "noColor" | "plain";
 
-/** Read the styling policy out of the environment. */
 export function detectAnsiPolicy(env: NodeJS.ProcessEnv = Bun.env): AnsiPolicy {
 	const { FORCE_COLOR, NO_COLOR, TERM } = env;
 	if (FORCE_COLOR !== undefined && FORCE_COLOR !== "" && FORCE_COLOR !== "0") return "full";
@@ -379,16 +294,11 @@ export function detectAnsiPolicy(env: NodeJS.ProcessEnv = Bun.env): AnsiPolicy {
 	return "full";
 }
 
-/** Styling policy for output going to a specific stream. */
 export function detectStreamAnsiPolicy(
 	env: NodeJS.ProcessEnv = Bun.env,
 	isTty: boolean = process.stdout.isTTY === true,
 ): AnsiPolicy {
 	const policy = detectAnsiPolicy(env);
-	// FORCE_COLOR is checked HERE and not left to the downgrade below, because
-	// it is an explicit request that outranks the destination. Downgrading it
-	// would break the one case it exists for: a CI runner that pipes its output
-	// and still wants colour in the captured log.
 	const { FORCE_COLOR } = env;
 	if (FORCE_COLOR !== undefined && FORCE_COLOR !== "" && FORCE_COLOR !== "0") return policy;
 	if (policy === "full" && !isTty) return "plain";
@@ -397,27 +307,22 @@ export function detectStreamAnsiPolicy(
 
 var ansiPolicy: AnsiPolicy = detectAnsiPolicy();
 
-/** The active policy. One owner, so no surface decides this for itself. */
 export function getAnsiPolicy(): AnsiPolicy {
 	return ansiPolicy;
 }
 
-/** Override the policy (tests, and any runtime that learns better than the env). */
 export function setAnsiPolicy(policy: AnsiPolicy): void {
 	ansiPolicy = policy;
 }
 
-/** Whether foreground/background colour may be emitted. */
 export function colorEnabled(): boolean {
 	return ansiPolicy === "full";
 }
 
-/** Whether bold/italic/underline may be emitted. */
 export function attributesEnabled(): boolean {
 	return ansiPolicy !== "plain";
 }
 
-/** Resolve terminal identity from environment markers used by common emulators. */
 export function detectTerminalId(env: NodeJS.ProcessEnv = Bun.env): TerminalId {
 	function caseEq(a: string, b: string): boolean {
 		return a.toLowerCase() === b.toLowerCase(); // For compiler to pattern match
@@ -462,12 +367,6 @@ export function detectTerminalId(env: NodeJS.ProcessEnv = Bun.env): TerminalId {
 
 export const TERMINAL_ID: TerminalId = detectTerminalId(Bun.env);
 
-/**
- * The process-wide {@link TERMINAL} singleton: a {@link TerminalInfo} whose
- * post-construction capabilities — the image protocol and the probe-driven
- * flags — are writable, so the runtime setters and tests mutate them directly
- * instead of through an unsound cast. Every other field stays readonly.
- */
 export interface RuntimeTerminal extends TerminalInfo {
 	imageProtocol: ImageProtocol | null;
 	hyperlinks: boolean;
@@ -483,48 +382,30 @@ export const TERMINAL: RuntimeTerminal = (() => {
 	if (forcedImageProtocol !== undefined) {
 		resolved.imageProtocol = forcedImageProtocol;
 	} else if (resolved.id === "warp") {
-		// Warp advertises Kitty graphics on macOS/Linux only; drop it on win32.
 		resolved.imageProtocol = resolveWarpImageProtocol();
 	} else if (!resolved.imageProtocol) {
 		const fallbackImageProtocol = getFallbackImageProtocol(resolved.id);
 		if (fallbackImageProtocol) resolved.imageProtocol = fallbackImageProtocol;
 	}
-	// Resolve hyperlink capability from static flags and runtime environment.
 	resolved.hyperlinks = shouldEnableHyperlinksByDefault(Bun.env, resolved.id);
-	// Resolve DECCARA rectangular SGR capability.
 	resolved.deccara = detectRectangularSgrSupport(resolved.id, Bun.env) && !isBunTestRuntime();
 	return resolved;
 })();
 
-// Seed Kitty Unicode placeholder support from resolved terminal identity.
 setKittyGraphics({ unicodePlaceholders: detectKittyUnicodePlaceholdersSupport(TERMINAL.id, Bun.env) });
 
-/**
- * Override terminal image protocol at runtime after capability probes complete.
- */
 export function setTerminalImageProtocol(imageProtocol: ImageProtocol | null): void {
 	TERMINAL.imageProtocol = imageProtocol;
 }
 
-/**
- * Override DECCARA rectangular-SGR capability at runtime. Used by tests to
- * exercise the optimizer and fallback paths deterministically — the default is
- * resolved once at import and force-disabled under the test runtime.
- */
 export function setTerminalDeccara(enabled: boolean): void {
 	TERMINAL.deccara = enabled;
 }
 
-/** Override screen-to-scrollback clear support for targeted renderer tests. */
 export function setTerminalScreenToScrollback(enabled: boolean): void {
 	TERMINAL.supportsScreenToScrollback = enabled;
 }
 
-/**
- * Enable/disable OSC 66 text-sizing at runtime. The coding-agent calls this from
- * the `tui.textSizing` setting (gated on the terminal's static `textSizing`
- * capability); tests flip it directly to exercise the scaled-heading path.
- */
 export function setTerminalTextSizing(enabled: boolean): void {
 	TERMINAL.textSizing = enabled;
 }
@@ -551,19 +432,11 @@ export interface ImageRenderOptions {
 	maxWidthCells?: number;
 	maxHeightCells?: number;
 	preserveAspectRatio?: boolean;
-	/**
-	 * Stable Kitty image id (`i=`). When set, the image is displayed via a
-	 * transmit-once + placement scheme keyed off this id instead of re-sending the
-	 * base64 each frame.
-	 */
 	imageId?: number;
-	/** Stable Kitty placement id (`p=`); defaults to {@link imageId}. */
 	placementId?: number;
-	/** When true (Kitty + {@link imageId}), also return the one-time transmit sequence. */
 	includeTransmit?: boolean;
 }
 
-// Default cell dimensions - updated by TUI when terminal responds to query
 let cellDimensions: CellDimensions = { widthPx: 9, heightPx: 18 };
 
 export function getCellDimensions(): CellDimensions {
@@ -603,7 +476,6 @@ function chunkKittyApc(leadParams: string, base64Data: string): string {
 	return chunks.join("");
 }
 
-/** Transmit-and-display (`a=T`) — the self-contained form used when no stable id is available. */
 export function encodeKitty(
 	base64Data: string,
 	options: {
@@ -619,12 +491,10 @@ export function encodeKitty(
 	return chunkKittyApc(params.join(","), base64Data);
 }
 
-/** Transmit image data only (`a=t`), keyed by `imageId`, without displaying it. */
 export function encodeKittyTransmit(base64Data: string, imageId: number): string {
 	return chunkKittyApc(`a=t,f=100,q=2,i=${imageId}`, base64Data);
 }
 
-/** Display a previously transmitted image (`a=p`) at the cursor. */
 export function encodeKittyPlacement(options: {
 	imageId: number;
 	placementId?: number;
@@ -638,7 +508,6 @@ export function encodeKittyPlacement(options: {
 	return wrapTmuxPassthroughIfNeeded(`\x1b_G${params.join(",")}\x1b\\`);
 }
 
-/** Kitty graphics delete command for a single image id. */
 export function encodeKittyDeleteImage(imageId: number): string {
 	return wrapTmuxPassthroughIfNeeded(`\x1b_Ga=d,d=I,i=${imageId},q=2\x1b\\`);
 }
@@ -668,10 +537,8 @@ export function encodeITerm2(
 	return `\x1b]1337;File=${params.join(";")}:${base64Data}\x07`;
 }
 
-// Hard ceiling on an image's fitted cell grid to prevent allocation DoS.
 const MAX_IMAGE_FIT_CELLS = 4096;
 
-/** Pixel ceiling for the SIXEL encoder to prevent memory exhaustion. */
 const MAX_SIXEL_PIXELS = 16_777_216;
 
 export function calculateImageFit(
@@ -679,9 +546,6 @@ export function calculateImageFit(
 	options: ImageRenderOptions,
 	cellDims: CellDimensions,
 ): { columns: number; rows: number } {
-	// Sanitize source dimensions: a malformed/hostile header can report 0 or a
-	// non-finite value, and `0 * Infinity` in the scale math below yields NaN,
-	// which slips past `Math.min` caps. Force finite, >= 1.
 	const widthPx = Number.isFinite(imageDimensions.widthPx) ? Math.max(1, imageDimensions.widthPx) : 1;
 	const heightPx = Number.isFinite(imageDimensions.heightPx) ? Math.max(1, imageDimensions.heightPx) : 1;
 	const maxColumns = options.maxWidthCells !== undefined ? Math.max(1, Math.floor(options.maxWidthCells)) : undefined;
@@ -702,7 +566,6 @@ export function calculateImageFit(
 		if (maxRows !== undefined) rows = Math.min(rows, maxRows);
 	}
 
-	// Final safety clamp (covers both branches and every caller/protocol).
 	return {
 		columns: Math.min(columns, MAX_IMAGE_FIT_CELLS),
 		rows: Math.min(rows, MAX_IMAGE_FIT_CELLS),
@@ -726,9 +589,6 @@ export function getPngDimensions(base64Data: string): ImageDimensions | null {
 
 		return { widthPx: width, heightPx: height };
 	} catch {
-		// This asks "are these PNG bytes, and how big is the image". A truncated or corrupt header answers
-		// no, which is the same null the signature check above returns, and the caller then tries the next
-		// format and finally reports that it could not read the image.
 		return null;
 	}
 }
@@ -772,8 +632,6 @@ export function getJpegDimensions(base64Data: string): ImageDimensions | null {
 
 		return null;
 	} catch {
-		// Same contract as the PNG reader: a JPEG whose segment lengths run past the buffer is not a JPEG we
-		// can size, and null is already this function's answer for "no dimensions found".
 		return null;
 	}
 }
@@ -796,8 +654,6 @@ export function getGifDimensions(base64Data: string): ImageDimensions | null {
 
 		return { widthPx: width, heightPx: height };
 	} catch {
-		// A GIF header too short to hold the logical screen size is not a GIF we can size; null is the same
-		// answer the signature check above gives.
 		return null;
 	}
 }
@@ -837,8 +693,6 @@ export function getWebpDimensions(base64Data: string): ImageDimensions | null {
 
 		return null;
 	} catch {
-		// A WebP whose chunk headers run past the buffer has no readable dimensions, matching the explicit
-		// short-buffer returns above.
 		return null;
 	}
 }
@@ -875,16 +729,10 @@ export function renderImage(
 		if (options.imageId != null) {
 			const placementId = options.placementId ?? options.imageId;
 			const graphics = getKittyGraphics();
-			// Transmit-once (keyed by id). Repaints reuse the stored image, so the
-			// transmit is only emitted when requested.
 			let transmit: string | undefined;
 			if (options.includeTransmit) {
 				transmit = encodeKittyTransmit(base64Data, options.imageId);
 			}
-			// Unicode placeholders render the image as real text cells (which survive
-			// horizontal slicing, reflow and overlaps) instead of a cursor-positioned
-			// `a=p` placement. Falls back to direct placement when disabled or when the
-			// grid exceeds the diacritic table's addressable cell range.
 			if (graphics.unicodePlaceholders && kittyPlaceholdersFit(fit.columns, fit.rows)) {
 				const lines = renderKittyPlaceholderLines({
 					imageId: options.imageId,
@@ -894,7 +742,6 @@ export function renderImage(
 				});
 				return { lines, rows: fit.rows, transmit };
 			}
-			// Direct placement: re-emit only the tiny `a=p` on repaints.
 			const sequence = encodeKittyPlacement({
 				imageId: options.imageId,
 				placementId,
@@ -903,7 +750,6 @@ export function renderImage(
 			});
 			return { sequence, rows: fit.rows, transmit };
 		}
-		// No stable id (e.g. no budget): self-contained transmit-and-display.
 		const sequence = encodeKitty(base64Data, {
 			columns: fit.columns,
 			rows: fit.rows,
@@ -915,7 +761,6 @@ export function renderImage(
 		try {
 			const targetWidthPx = Math.max(1, fit.columns * cellDims.widthPx);
 			const targetHeightPx = Math.max(1, fit.rows * cellDims.heightPx);
-			// Check source and target bounds before SIXEL encoding.
 			const targetPixels = targetWidthPx * targetHeightPx;
 			const sourcePixels = Math.max(1, imageDimensions.widthPx) * Math.max(1, imageDimensions.heightPx);
 			if (targetPixels > MAX_SIXEL_PIXELS || sourcePixels > MAX_SIXEL_PIXELS) {
@@ -925,7 +770,6 @@ export function renderImage(
 			const sequence = encodeSixel(decoded, targetWidthPx, targetHeightPx);
 			return { sequence, rows: fit.rows };
 		} catch {
-			// Sixel encoding failed; fallback to placeholder.
 			return null;
 		}
 	}
@@ -941,10 +785,8 @@ export function renderImage(
 	return null;
 }
 
-/** Why a picture was replaced by a row of text. */
 export type ImageFallbackReason = "no-protocol" | "images-off" | "over-budget" | "unsupported-format";
 
-/** What the placeholder row states about the image it stands in for. */
 export interface ImageFallbackText {
 	readonly mimeType: string;
 	readonly dimensions?: ImageDimensions;
@@ -959,7 +801,6 @@ const IMAGE_FALLBACK_CAUSE: Record<ImageFallbackReason, string> = {
 	"unsupported-format": "unsupported format",
 };
 
-/** Format placeholder text for an image that cannot be displayed. */
 export function imageFallback(text: ImageFallbackText): string {
 	const parts: string[] = [];
 	if (text.filename) parts.push(text.filename);
@@ -969,11 +810,6 @@ export function imageFallback(text: ImageFallbackText): string {
 	return `[image not shown, ${cause}] ${parts.join(" · ")}`;
 }
 
-/**
- * Structured terminal notification. Rich fields are honored only by OSC 99
- * (Kitty) once support is confirmed; other protocols and the unconfirmed Kitty
- * path collapse to a single `title: body` line.
- */
 export interface TerminalNotification {
 	title?: string;
 	body?: string;
@@ -984,34 +820,24 @@ export interface TerminalNotification {
 	sound?: "silent" | "system" | "info" | "warning" | "error" | "question";
 	actions?: "focus" | "report" | "focus-report" | "none";
 	expiresMs?: number;
-	/** Deliver even while the terminal window holds focus. */
 	deliverWhenFocused?: boolean;
 }
 
-/**
- * Whether the terminal confirmed OSC 99 desktop-notification support via the
- * `p=?` query probe. Until confirmed, structured notifications collapse to a
- * single message line.
- */
 let osc99CapabilitiesConfirmed = false;
 
-/** Record the OSC 99 capability-probe result (called by ProcessTerminal). */
 export function setOsc99Supported(supported: boolean): void {
 	osc99CapabilitiesConfirmed = supported;
 }
 
-/** True when OSC 99 structured notifications have been confirmed available. */
 export function isOsc99Supported(): boolean {
 	return osc99CapabilitiesConfirmed;
 }
 
-/** Collapse a structured notification to a single line for non-OSC-99 sinks. */
 function notificationToLine(n: TerminalNotification): string {
 	if (n.title && n.body) return `${n.title}: ${n.body}`;
 	return n.title ?? n.body ?? "";
 }
 
-// C0/C1 control characters that are unsafe inside an OSC payload (must base64).
 const OSC99_UNSAFE = /[\x00-\x1f\x7f\x80-\x9f]/u;
 const OSC99_MAX_PAYLOAD_BYTES = 2048;
 let nextOsc99NotificationId = 1;
@@ -1104,12 +930,6 @@ function osc99Actions(actions: TerminalNotification["actions"]): string | undefi
 	}
 }
 
-/**
- * Format a structured notification as OSC 99 title/body payloads. Title and
- * body chunks share one id. Every non-final chunk carries `d=0`; the final
- * title or body chunk displays the notification. Metadata values that require
- * it (application name, type, icon name, sound) are base64-encoded.
- */
 function formatOsc99Notification(n: TerminalNotification): string {
 	const id = osc99Id(n.id);
 	const meta: string[] = [`i=${id}`, `f=${base64Utf8(APP_DISPLAY_NAME)}`];

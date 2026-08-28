@@ -1,7 +1,3 @@
-/**
- * Minimal TUI implementation with differential rendering.
- * See `docs/internal/tui-core-renderer.md`.
- */
 import * as fs from "node:fs";
 import { performance } from "node:perf_hooks";
 import { getDebugLogPath } from "@veyyon/utils/dirs";
@@ -38,7 +34,6 @@ import {
 	visibleWidth,
 } from "./utils";
 
-/** Per-line terminator written after non-image content rows to close SGR and OSC 8 state. */
 const LINE_TERMINATOR = "\x1b[0m\x1b]8;;\x07";
 const ERASE_LINE = "\x1b[2K";
 const ERASE_TO_END_OF_LINE = "\x1b[K";
@@ -58,12 +53,9 @@ const CURSOR_BEGIN = `${HIDE_CURSOR}${SYNC_OUTPUT_BEGIN}`;
 const CURSOR_BEGIN_NO_SYNC = HIDE_CURSOR;
 const CURSOR_END = SYNC_OUTPUT_END;
 const CURSOR_END_NO_SYNC = "";
-// Mouse reporting for fullscreen overlays (click, any-motion, SGR coordinates).
 const MOUSE_TRACKING_ON = "\x1b[?1000h\x1b[?1003h\x1b[?1006h";
 const MOUSE_TRACKING_OFF = "\x1b[?1006l\x1b[?1003l\x1b[?1000l";
-// Wheel/button-only tracking for scroll isolation (buttons 64/65 and SGR coordinates).
 const MOUSE_WHEEL_TRACKING_ON = "\x1b[?1000h\x1b[?1006h";
-// Scroll track chrome drawn on the right edge of frozen transcript regions.
 const SCROLL_TRACK_GROOVE = "\x1b[2m│\x1b[22m";
 const SCROLL_TRACK_THUMB = "█";
 const MOUSE_WHEEL_TRACKING_OFF = "\x1b[?1006l\x1b[?1000l";
@@ -71,7 +63,6 @@ const ALT_SCREEN_ENTER = "\x1b[?1049h";
 const ALT_SCREEN_EXIT = "\x1b[?1049l";
 const ALT_SCROLL_ON = "\x1b[?1007h";
 const ALT_SCROLL_OFF = "\x1b[?1007l";
-/** Legacy cursor-key sequences mapped to scroll direction (-1 back, +1 tail). */
 const LEGACY_CURSOR_SCROLL: Readonly<Record<string, -1 | 1 | undefined>> = {
 	"\x1b[A": -1,
 	"\x1b[B": 1,
@@ -117,37 +108,16 @@ const DEFAULT_RENDER_SCHEDULER: RenderScheduler = {
 	},
 };
 
-/** Component interface - components return an array of physical rows at the given width. */
 export interface Component {
-	/**
-	 * Render the component to an array of physical rows at the given width.
-	 * The result is component-owned and `readonly` to the caller; an unchanged
-	 * component may (and should) return the same array reference it returned
-	 * last time.
-	 */
 	render(width: number): readonly string[];
 
 	handleInput?(data: string): void;
 
-	/**
-	 * If true, component receives key release events (Kitty protocol).
-	 * Default is false - release events are filtered out.
-	 */
 	wantsKeyRelease?: boolean;
 
-	/**
-	 * Optional hook to invalidate any cached rendering state.
-	 * Called when theme changes or when component needs to re-render from scratch.
-	 */
 	invalidate?(): void;
 	setIgnoreTight?(ignore: boolean): void;
 
-	/**
-	 * Optional teardown. Called when the component is permanently removed from
-	 * the live tree (e.g. a transcript reset). Release timers, intervals, and
-	 * subscriptions here. Must be idempotent. Containers propagate dispose to
-	 * their children; leaf components without resources may omit it.
-	 */
 	dispose?(): void;
 }
 
@@ -155,7 +125,6 @@ export interface OverlayFocusOwner {
 	ownsOverlayFocusTarget(component: Component): boolean;
 }
 
-/** Component seam for append-only native-scrollback commits. */
 export interface NativeScrollbackLiveRegion {
 	getNativeScrollbackLiveRegionStart(): number | undefined;
 }
@@ -164,10 +133,6 @@ export interface NativeScrollbackCommittedRows {
 	setNativeScrollbackCommittedRows(rows: number): void;
 }
 
-/**
- * A component that discards rows after they enter native scrollback implements
- * this hook so a destructive full replay can rehydrate its complete frame.
- */
 export interface NativeScrollbackReplay {
 	prepareNativeScrollbackReplay(): void;
 }
@@ -176,10 +141,8 @@ function prepareNativeScrollbackReplay(component: Component): void {
 	(component as Component & Partial<NativeScrollbackReplay>).prepareNativeScrollbackReplay?.();
 }
 
-/** Virtualized root notification for rows dropped from the front of render output. */
 export interface NativeScrollbackCompaction {
 	takeNativeScrollbackDroppedRows(): number;
-	/** Rows of committed history the render must retain in the frame. */
 	setNativeScrollbackRetainRows?(rows: number): void;
 }
 
@@ -212,7 +175,6 @@ function getNativeScrollbackLiveRegionStart(component: Component): number | unde
 	return (component as Component & Partial<NativeScrollbackLiveRegion>).getNativeScrollbackLiveRegionStart?.();
 }
 
-/** Stability report for components that mutate returned render arrays in place. */
 export interface RenderStablePrefix {
 	getRenderStablePrefixRows(): number;
 }
@@ -221,7 +183,6 @@ function getRenderStablePrefixRows(component: Component): number | undefined {
 	return (component as Component & Partial<RenderStablePrefix>).getRenderStablePrefixRows?.();
 }
 
-/** Fast path for composing only the visible tail of a tall component during resize. */
 export interface ViewportTailProvider {
 	renderViewportTail(width: number, maxRows: number): readonly string[];
 }
@@ -231,7 +192,6 @@ function asViewportTailProvider(component: Component): ViewportTailProvider | un
 	return typeof candidate.renderViewportTail === "function" ? (candidate as ViewportTailProvider) : undefined;
 }
 
-/** Interface for components that can receive focus and display a cursor. */
 export interface Focusable {
 	focused: boolean;
 	setUseTerminalCursor?(useTerminalCursor: boolean): void;
@@ -244,7 +204,6 @@ export function isFocusable(component: Component | null): component is Component
 	return component !== null && "focused" in component;
 }
 
-/** Zero-width APC cursor marker emitted at cursor position by focused components. */
 export const CURSOR_MARKER = "\x1b_pi:c\x07";
 
 export { visibleWidth };
@@ -283,7 +242,6 @@ function isMultiplexerSession(): boolean {
 	return isInsideTerminalMultiplexer();
 }
 
-/** Terminals that re-report size on alt screen toggle (e.g. Warp), requiring in-place resize. */
 function reportsSizeOnAltScreenToggle(): boolean {
 	const override = Bun.env.VEYYON_TUI_RESIZE_IN_PLACE;
 	if (override === "0" || override === "false") return false;
@@ -291,15 +249,10 @@ function reportsSizeOnAltScreenToggle(): boolean {
 	return Bun.env.TERM_PROGRAM?.toLowerCase() === "warpterminal";
 }
 
-/** Resize repaints in place for multiplexers and terminals looping on alt-screen toggles. */
 function resizeRepaintsInPlace(): boolean {
 	return isMultiplexerSession() || reportsSizeOnAltScreenToggle();
 }
 
-/**
- * Options for overlay positioning and sizing.
- * Values can be absolute numbers or percentage strings (e.g., "50%").
- */
 export interface OverlayOptions {
 	width?: SizeValue;
 	minWidth?: number;
@@ -314,14 +267,8 @@ export interface OverlayOptions {
 
 	margin?: OverlayMargin | number;
 
-	/**
-	 * Control overlay visibility based on terminal dimensions.
-	 * If provided, overlay is only rendered when this returns true.
-	 * Called each render cycle with current terminal dimensions.
-	 */
 	visible?: (termWidth: number, termHeight: number) => boolean;
 
-	/** Borrow alternate screen buffer for this overlay's lifetime. */
 	fullscreen?: boolean;
 }
 
@@ -331,7 +278,6 @@ export interface OverlayHandle {
 	isHidden(): boolean;
 }
 
-/** Overlay that animates its exit before removal. */
 export interface OverlayExitAnimatable {
 	beginOverlayExit(requestRender: () => void, done: () => void): boolean;
 }
@@ -343,7 +289,6 @@ export function canAnimateOverlayExit(component: Component): component is Compon
 export class Container implements Component, MouseRoutable {
 	children: Component[] = [];
 
-	// Memoized concatenation of child renders, invalidated on child change or invalidate().
 	#memoLines: string[] | undefined;
 	#memoChildLines: (readonly string[])[] = [];
 	#memoWidth = -1;
@@ -392,11 +337,6 @@ export class Container implements Component, MouseRoutable {
 		}
 	}
 
-	/**
-	 * Propagate teardown to children. Call when the container's children are
-	 * being permanently discarded (not when they are detached for reuse — use
-	 * {@link clear} for that). Idempotent per child via each child's own dispose.
-	 */
 	dispose(): void {
 		for (let ci = 0; ci < this.children.length; ci++) {
 			this.children[ci]!.dispose?.();
@@ -431,7 +371,6 @@ export class Container implements Component, MouseRoutable {
 		return lines;
 	}
 
-	/** Hand a pointer event to the child under `line`. */
 	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
 		const children = this.children;
 		const refs = this.#memoChildLines;
@@ -449,7 +388,6 @@ export class Container implements Component, MouseRoutable {
 	}
 }
 
-/** Render intent for the frame: fullPaint (replay/resize/clear) vs update (relative repaint). */
 type RenderIntent =
 	| { kind: "fullPaint"; clearScrollback: boolean }
 	| { kind: "update"; chunkTo: number; windowTop: number };
@@ -472,7 +410,6 @@ interface CursorControlResult extends HardwareCursorUpdate {
 	visible: boolean;
 }
 
-/** Root child segment record within the composed frame. */
 interface FrameSegment {
 	component: Component;
 	lines: readonly string[];
@@ -499,20 +436,17 @@ interface PreparedLine {
 
 const SGR_SEQUENCE = sgrSequence("g");
 
-// SGR coalescing: merges adjacent CSI SGR sequences into single sequences to cut byte volume.
 const SGR_COALESCE_ENABLED = !$flag("VEYYON_NO_SGR_COALESCE");
 const CC_ESC = 0x1b;
 const CC_BRACKET = 0x5b; // [
 const CC_M = 0x6d; // m
 const CC_SEMI = 0x3b; // ;
 const CC_COLON = 0x3a; // :
-// Max parameter tokens per emitted merged SGR to stay within terminal parameter limits.
 
 function isSgrParamByte(c: number): boolean {
 	return (c >= 0x30 && c <= 0x39) || c === CC_SEMI || c === CC_COLON;
 }
 
-// Check if parameter list ends mid extended-color spec in ambiguous semicolon form.
 function endsWithIncompleteExtendedColor(params: string): boolean {
 	let i = 0;
 	const n = params.length;
@@ -554,7 +488,6 @@ function endsWithIncompleteExtendedColor(params: string): boolean {
 
 const MERGE_TOKEN_CAP = 16;
 
-/** Merge runs of byte-adjacent SGR sequences into one. */
 export function coalesceAdjacentSgr(line: string): string {
 	if (!SGR_COALESCE_ENABLED || line.indexOf("\x1b[") === -1) return line;
 	const n = line.length;
@@ -587,16 +520,6 @@ export function coalesceAdjacentSgr(line: string): string {
 		}
 		if (params.length > 1) {
 			out += line.slice(copiedUpto, i);
-			// Emit the merged run, but flush the current group before appending a
-			// list when (a) the previous list ended mid extended-color, so the
-			// next code cannot be absorbed as its missing channel/index, or (b)
-			// the token count would exceed MERGE_TOKEN_CAP. SGR params apply
-			// left-to-right regardless of how they are grouped across adjacent
-			// CSIs, so a capped/guarded split stays behavior-preserving — while a
-			// single unbounded merge would overflow a terminal's CSI parameter
-			// buffer (xterm.js caps at 32 and silently truncates the rest,
-			// corrupting colors). Empty params (`CSI m`) mean a full reset;
-			// normalize to `0` so the merged list stays unambiguous.
 			let group = "";
 			let groupTokens = 0;
 			let groupOpenSafe = true;
@@ -638,10 +561,6 @@ function isBlankRow(row: string): boolean {
 const RESYNC_TAIL_LOOKBACK = 24;
 const RESYNC_TAIL_SAMPLES = 8;
 
-/**
- * Decide whether `frame` still aligns with the committed prefix, and where to
- * re-anchor the commit index when it does not (-1 if no resync needed).
- */
 export function findCommittedPrefixResync(
 	frame: readonly string[],
 	prefix: readonly string[],
@@ -652,8 +571,6 @@ export function findCommittedPrefixResync(
 	const hardEnd = Math.min(prefix.length, Math.max(verified, Math.trunc(finalTo)));
 	if (hardEnd === 0) return -1;
 	if (frame.length >= hardEnd) {
-		// 1. Hard scan: frozen snapshots whose source just became final. Full
-		// scan, no tolerance — a finalized row that changed must re-anchor.
 		let hardMismatch = false;
 		for (let i = verified; i < hardEnd; i++) {
 			if (!rowsEquivalent(frame[i]!, prefix[i]!)) {
@@ -662,9 +579,6 @@ export function findCommittedPrefixResync(
 			}
 		}
 		if (!hardMismatch) {
-			// 2. Tail sample over the verified zone (only when the hard scan is
-			// clean): walk up from its end until LOOKBACK rows or SAMPLES
-			// non-blank comparisons.
 			let samples = 0;
 			let mismatches = 0;
 			for (let j = 1; j <= verified && j <= RESYNC_TAIL_LOOKBACK && samples < RESYNC_TAIL_SAMPLES; j++) {
@@ -682,9 +596,6 @@ export function findCommittedPrefixResync(
 			if (samples === 0 || mismatches <= 1) return -1;
 		}
 	}
-	// Misaligned (hard mismatch, tail-sample shift, or the frame no longer
-	// covers the checked zones): re-anchor at the first row whose content
-	// changed.
 	const limit = Math.min(hardEnd, frame.length);
 	for (let i = 0; i < limit; i++) {
 		if (!rowsEquivalent(frame[i]!, prefix[i]!)) return i;
@@ -703,29 +614,21 @@ export class TUI extends Container {
 
 	onDebug?: () => void;
 
-	/** Callback when user attempts text drag-select while mouse tracking is held. */
 	onSelectionAttempt?: () => void;
 	#pressCell: { row: number; col: number } | null = null;
 	#renderRequested = false;
 	#renderTimer: RenderTimer | undefined;
 	#renderScheduler: RenderScheduler;
 	#lastRenderAt = 0;
-	/** Decayed estimate of frame render cost (ms) for adaptive duty-cycle throttling. */
 	#frameCostEstimateMs = 0;
-	/** Weight of the newest frame in `#frameCostEstimateMs`. */
 	static readonly #FRAME_COST_SMOOTHING = 0.3;
 	static readonly #MIN_RENDER_INTERVAL_MS = 1000 / 30;
 	static readonly #INPUT_RENDER_GRACE_MS = TUI.#MIN_RENDER_INTERVAL_MS;
-	/** Cap on the adaptive floor derived from `#frameCostEstimateMs` (~5 fps bound). */
 	static readonly #MAX_ADAPTIVE_RENDER_MS = 200;
 	#inputRenderGraceUntilMs = 0;
-	// Pane-reflow settle window for multiplexer resize debounce.
 	static readonly #MULTIPLEXER_RESIZE_DEBOUNCE_MS = 50;
-	// Resize viewport fast path settle window (non-multiplexer).
 	static readonly #RESIZE_VIEWPORT_SETTLE_MS = 120;
-	// Delay before first Kitty image paint on Ghostty.
 	static readonly #GHOSTTY_INITIAL_IMAGE_DELAY_MS = 100;
-	// Post-paint settle window for ConPTY hosts.
 	static readonly #CONPTY_POST_FULL_PAINT_SETTLE_MS = 150;
 	static readonly #CONPTY_FRAME_TRUNCATE_THRESHOLD_BYTES = 512 * 1024;
 	static readonly #CONPTY_FRAME_RETAIN_BYTES = 64 * 1024;
@@ -746,52 +649,33 @@ export class TUI extends Container {
 	#paintEndSequence = this.#synchronizedOutputEnabled ? PAINT_END : PAINT_END_NO_SYNC;
 	#cursorBeginSequence = this.#synchronizedOutputEnabled ? CURSOR_BEGIN : CURSOR_BEGIN_NO_SYNC;
 	#cursorEndSequence = this.#synchronizedOutputEnabled ? CURSOR_END : CURSOR_END_NO_SYNC;
-	// Rows of the current frame physically committed to native scrollback or scrolled past window top.
 	#committedRows = 0;
-	// Raw rows mirroring [0, #committedRows) for audit against current render.
 	#committedPrefix: string[] = [];
-	// Rows virtualized children dropped from the front of render output.
 	#frameDroppedRows = 0;
-	// Frame row where child drop happened in previous frame coordinates.
 	#frameDroppedAt: number | undefined;
-	// Guards rehydrating re-render during destructive rebuild.
 	#rehydratingDivergence = false;
-	// Prepared rows scrolled off the window (engine mirror of terminal scrollback).
 	#scrollTape: string[] = [];
-	// Max rows kept on scroll tape.
 	#scrollTapeCap = 20_000;
-	// Snapshot of scroll space when frozen view freezes.
 	#scrollSnapshot: string[] | null = null;
-	// Rows of committed prefix verified as exact-final bytes.
 	#committedPrefixAuditRows = 0;
-	// Frame row currently mapped to screen row 0.
 	#windowTopRow = 0;
-	// Virtual scroll offset in scroll space when frozen; null when following live tail.
 	#scrollIsolation = false;
-	// Scroll transport mode: "mouse" (tracking on normal screen) vs "alt-arrows" (alt screen).
 	#scrollTransport: ScrollTransport = Bun.env.VEYYON_TUI_SCROLL_TRANSPORT === "alt-arrows" ? "alt-arrows" : "mouse";
 	#altScrollActive = false;
 	#wheelTrackingActive = false;
-	// True while composed frame overflows viewport or rows exist on scroll tape.
 	#frameScrollable = false;
-	// Pinned footer child count and resolved rows (composer zone).
 	#pinnedFooterChildCount = 0;
 	#pinnedFooterRows = 0;
 	#virtualScrollTop: number | null = null;
-	// Base scroll step in rows per wheel tick.
 	static readonly #WHEEL_SCROLL_ROWS = 3;
-	// Wheel acceleration window and max streak.
 	static readonly #WHEEL_ACCEL_WINDOW_MS = 300;
 	static readonly #WHEEL_ACCEL_MAX_STREAK = 3;
 	#lastWheelDirection: -1 | 1 | null = null;
 	#lastWheelAtMs = 0;
 	#wheelStreak = 0;
-	// Shift+drag selects while mouse tracking is active.
-	// Exactly what is painted on the screen rows (post-composite, prepared).
 	#previousWindow: string[] = [];
 	#nativeScrollbackLiveRegionStart: number | undefined;
 	#fullRedrawCount = 0;
-	// Inline image budget for graphics vs text fallback.
 	#imageBudget = new ImageBudget(DEFAULT_MAX_INLINE_IMAGES, () => this.requestRender());
 	#ghosttyInitialImageDelayDone = false;
 	#ghosttyInitialImageDelayTimer: RenderTimer | undefined;
@@ -799,56 +683,38 @@ export class TUI extends Container {
 	#clearScrollbackOnNextRender = false;
 	#forceViewportRepaintOnNextRender = false;
 	#hasEverRendered = false;
-	// Erase and replay history when final block form replaces live preview.
 	#scrollbackRebuildEnabled = true;
-	// Set by terminal resize callback; consumed on next render.
 	#resizeEventPending = false;
-	// Active multiplexer SIGWINCH debounce timer and deferred flags.
 	#multiplexerResizeTimer: RenderTimer | undefined;
 	#deferredForcedClearScrollback = false;
-	// True during non-multiplexer resize drag for viewport fast path.
 	#resizeViewportActive = false;
-	// Quiet-window settle timer for resize fast path.
 	#resizeViewportSettleTimer: RenderTimer | undefined;
-	// Transient viewport-only resize paint counter.
 	#resizeViewportPaintCount = 0;
-	// Alternate screen borrowed for transient resize frames.
 	#resizeAltActive = false;
 	#stopped = false;
-	// Event loop lag watchdog probe.
 	#watchdog: LoopWatchdog;
 
-	// Live tail of last resident alt paint.
 	#altTailRows: string[] = [];
-	// Pending replay flag for resident alt transcript on exit.
 	#altTranscriptReplayPending = false;
-	// Alt screen state for fullscreen overlay.
 	#altActive = false;
 	#altPreviousLines: string[] = [];
-	// Caret position from last alt-buffer paint.
 	#altPreviousCursor: { row: number; col: number } | undefined;
-	// True when alt screen is active due to fullscreen overlay.
 	#altOverlayBorrow = false;
 	#altEnterWidth = 0;
 	#altEnterHeight = 0;
 
-	// Persistent composed frame and segment ledger.
 	#composedFrame: string[] = [];
 	#frameSegments: FrameSegment[] = [];
 	#composeWidth = -1;
 	#frameCursorMarkers: { row: number; col: number }[] = [];
 	#renderStablePrefixRows = 0;
 
-	// Component-scoped render targets accumulated since last frame.
 	#componentRenderTargets = new Set<Component>();
 	#pendingRenderComponentsOnly = false;
-	// Root children to re-render during partial compose.
 	#partialComposeRoots: Set<Component> | null = null;
 	#partialComposeRootsScratch = new Set<Component>();
-	// Component to containing root child cache.
 	#componentRootCache = new WeakMap<Component, Component>();
 
-	// Prepared frame rows and metadata cache aligned with #composedFrame.
 	#preparedFrame: string[] = [];
 	#preparedMeta: PreparedLine[] = [];
 	#preparedValidRows = 0;
@@ -858,7 +724,6 @@ export class TUI extends Container {
 		options?: OverlayOptions;
 		preFocus: Component | null;
 		hidden: boolean;
-		/** Overlay is animating its exit: painted but non-interactive. */
 		exiting: boolean;
 	}[] = [];
 
@@ -886,7 +751,6 @@ export class TUI extends Container {
 		for (let index = 0; index < children.length; index++) {
 			const child = children[index]!;
 			const previous = previousSegments[index];
-			// Component-scoped reuse: skip render if child unchanged.
 			const reuse =
 				partialRoots !== null && previous !== undefined && previous.component === child && !partialRoots.has(child);
 			let childLines: readonly string[];
@@ -896,18 +760,14 @@ export class TUI extends Container {
 				childLines = previous.lines;
 				liveLocalStart = previous.liveLocalStart;
 			} else {
-				// Feed committed rows count to child before render.
 				const prevRows = previous !== undefined && previous.component === child ? previous.rowCount : 0;
 				const prevStart = previous !== undefined && previous.component === child ? previous.start : offset;
 				setNativeScrollbackCommittedRows(child, Math.min(prevRows, Math.max(0, this.#committedRows - prevStart)));
-				// Keep a viewport of committed history for shrink re-display.
 				setNativeScrollbackRetainRows(child, this.terminal.rows);
 				childLines = child.render(width);
-				// Read dropped rows report from virtualized child.
 				const childDropped = takeNativeScrollbackDroppedRows(child);
 				if (childDropped > 0) {
 					this.#frameDroppedRows += childDropped;
-					// Previous-frame coordinate offset for dropped rows.
 					this.#frameDroppedAt = Math.min(this.#frameDroppedAt ?? prevStart, prevStart);
 				}
 				const liveRegionStart = getNativeScrollbackLiveRegionStart(child);
@@ -916,10 +776,8 @@ export class TUI extends Container {
 						? clampLow(Math.trunc(liveRegionStart), 0, childLines.length)
 						: childLines.length;
 				}
-				// Read stability report for in-place mutators.
 				reported = getRenderStablePrefixRows(child);
 			}
-			// Topmost seam defines the exactness boundary.
 			if (liveLocalStart !== undefined && this.#nativeScrollbackLiveRegionStart === undefined) {
 				this.#nativeScrollbackLiveRegionStart = offset + liveLocalStart;
 			}
@@ -927,7 +785,6 @@ export class TUI extends Container {
 				if (previous !== undefined && previous.component === child && previous.start === offset) {
 					let stableCount = 0;
 					if (reported !== undefined) {
-						// In-place mutator report overrides reference equality.
 						stableCount = Number.isFinite(reported)
 							? Math.max(0, Math.min(childLines.length, previous.rowCount, Math.trunc(reported)))
 							: 0;
@@ -950,7 +807,6 @@ export class TUI extends Container {
 			offset += childLines.length;
 		}
 		this.#frameSegments = segments;
-		// Derive pinned footer rows from segment ledger.
 		if (this.#pinnedFooterChildCount > 0 && segments.length >= this.#pinnedFooterChildCount) {
 			this.#pinnedFooterRows = offset - segments[segments.length - this.#pinnedFooterChildCount]!.start;
 		} else {
@@ -958,10 +814,8 @@ export class TUI extends Container {
 		}
 
 		const frame = this.#composedFrame;
-		// Clamp stable rows defensively.
 		if (stableRows > frame.length) stableRows = frame.length;
 		if (stableRows !== offset || frame.length !== offset) {
-			// Re-ingest rows at/after stable prefix.
 			frame.length = stableRows;
 			this.#pruneFrameCursorMarkers(stableRows);
 			for (let si = 0; si < segments.length; si++) {
@@ -983,7 +837,6 @@ export class TUI extends Container {
 		markers.length = keep;
 	}
 
-	/** Append one row to composed frame, stripping CURSOR_MARKER sentinels. */
 	#ingestFrameRow(line: string): void {
 		let markerIndex = line.indexOf(CURSOR_MARKER);
 		if (markerIndex === -1) {
@@ -1012,7 +865,6 @@ export class TUI extends Container {
 		return this.#fullRedrawCount;
 	}
 
-	/** True while a frame is owed: requested, throttled, or settling. */
 	get renderPending(): boolean {
 		return (
 			this.#renderRequested ||
@@ -1022,17 +874,14 @@ export class TUI extends Container {
 		);
 	}
 
-	/** Rows of composed frame committed to native scrollback. */
 	get committedRows(): number {
 		return this.#committedRows;
 	}
 
-	/** Rows currently stored on the scroll tape. */
 	get scrollTapeRows(): number {
 		return this.#scrollTape.length;
 	}
 
-	/** Cap the scroll tape (rows). Floor enforced at terminal height. */
 	setScrollTapeCap(rows: number): void {
 		this.#scrollTapeCap = Math.max(this.terminal.rows, Math.trunc(rows));
 		this.#trimScrollTape();
@@ -1043,19 +892,16 @@ export class TUI extends Container {
 		if (excess > 0) this.#scrollTape.splice(0, excess);
 	}
 
-	/** Append rows that scrolled off the window to the scroll tape. */
 	#appendScrollTape(rows: readonly string[], from: number, to: number): void {
 		for (let i = from; i < to; i++) this.#scrollTape.push(rows[i] ?? "");
 		this.#trimScrollTape();
 	}
 
-	/** Total rows in scroll space (tape plus uncommitted frame rows above pinned footer). */
 	#scrollSpaceRows(frameRows = this.#previousFrameLength): number {
 		const uncommittedEnd = Math.max(this.#committedRows, frameRows - this.#pinnedFooterRows);
 		return this.#scrollTape.length + (uncommittedEnd - this.#committedRows);
 	}
 
-	/** Top row index of live tail view in scroll space. */
 	#scrollSpaceLiveTop(frameRows = this.#previousFrameLength): number {
 		const height = Math.max(1, this.terminal.rows);
 		const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
@@ -1063,15 +909,12 @@ export class TUI extends Container {
 		return Math.max(0, this.#scrollSpaceRows(frameRows) - regionRows);
 	}
 
-	/** Row count of the last composed frame. 0 before first render. */
 	get composedFrameRows(): number {
 		return this.#previousFrameLength;
 	}
 
-	/** Invoked at the top of every frame before root children render. */
 	onBeforeCompose?: () => void;
 
-	/** Invoked after frame commit once composed row count is readable. */
 	onFrameComposed?: () => void;
 	get resizeViewportPaints(): number {
 		return this.#resizeViewportPaintCount;
@@ -1085,7 +928,6 @@ export class TUI extends Container {
 		return this.#imageBudget;
 	}
 
-	/** Set max live inline images before older ones fall back to text. */
 	setMaxInlineImages(cap: number): void {
 		this.#imageBudget.setCap(cap);
 	}
@@ -1094,12 +936,10 @@ export class TUI extends Container {
 		return this.#scrollbackRebuildEnabled;
 	}
 
-	/** Enable/disable scrollback divergence rebuild on finalized block updates. */
 	setScrollbackRebuild(enabled: boolean): void {
 		this.#scrollbackRebuildEnabled = enabled;
 	}
 
-	/** Enable or disable scroll isolation. */
 	setScrollIsolation(enabled: boolean): void {
 		if (this.#scrollIsolation === enabled) return;
 		this.#scrollIsolation = enabled;
@@ -1109,14 +949,12 @@ export class TUI extends Container {
 		this.requestRender();
 	}
 
-	/** Set scroll transport mode ("mouse" vs "alt-arrows"). */
 	setScrollTransport(transport: ScrollTransport): void {
 		if (this.#scrollTransport === transport) return;
 		this.#scrollTransport = transport;
 		this.#resumeLiveTail();
 		this.#syncWheelTracking();
 		this.#syncAltScroll();
-		// Log selected scroll transport and capabilities.
 		logger.info("tui scroll transport selected", {
 			transport,
 			nativeSelectionPreserved: transport === "alt-arrows",
@@ -1130,14 +968,12 @@ export class TUI extends Container {
 		return this.#scrollTransport;
 	}
 
-	/** Scroll frozen transcript region by `rows` (-1 back, +1 tail). */
 	scrollByRows(rows: number): boolean {
 		if (!this.#scrollIsolation || rows === 0) return false;
 		if (!this.#frameScrollable) return false;
 		return this.#applyScrollDelta(rows);
 	}
 
-	/** Reset virtual scroll state and resume following live tail. */
 	#resumeLiveTail(): void {
 		this.#virtualScrollTop = null;
 		this.#scrollSnapshot = null;
@@ -1147,7 +983,6 @@ export class TUI extends Container {
 		return this.#scrollIsolation;
 	}
 
-	/** Pin the last `count` root children as the live footer (composer zone). */
 	setPinnedFooterChildCount(count: number): void {
 		this.#pinnedFooterChildCount = Math.max(0, count);
 	}
@@ -1156,7 +991,6 @@ export class TUI extends Container {
 		return this.#virtualScrollTop !== null;
 	}
 
-	/** Rows between frozen view top and live tail. */
 	get virtualScrollNewRows(): number {
 		if (this.#virtualScrollTop === null) return 0;
 		return Math.max(0, this.#scrollSpaceLiveTop() - this.#virtualScrollTop);
@@ -1168,7 +1002,6 @@ export class TUI extends Container {
 		this.requestRender();
 	}
 
-	/** True while any pinned footer child has click targets. */
 	#footerWantsPointer(): boolean {
 		const segments = this.#frameSegments;
 		if (this.#pinnedFooterChildCount <= 0 || segments.length === 0) return false;
@@ -1179,7 +1012,6 @@ export class TUI extends Container {
 		}
 		return false;
 	}
-	/** Update mouse wheel/button tracking state. */
 	#syncWheelTracking(): void {
 		const want =
 			this.#scrollTransport === "mouse" &&
@@ -1190,13 +1022,10 @@ export class TUI extends Container {
 			(this.#frameScrollable || this.#footerWantsPointer());
 		if (want === this.#wheelTrackingActive) return;
 		this.#wheelTrackingActive = want;
-		// A press whose release lands after tracking flips would pair a stale cell
-		// with an unrelated report, so the gesture never spans a mode change.
 		this.#pressCell = null;
 		this.terminal.write(want ? MOUSE_WHEEL_TRACKING_ON : MOUSE_WHEEL_TRACKING_OFF);
 	}
 
-	/** Update Alternate Scroll Mode state. */
 	#syncAltScroll(): void {
 		const want = this.#scrollTransport === "alt-arrows" && this.#scrollIsolation && !this.#stopped;
 		if (want === this.#altScrollActive) return;
@@ -1219,7 +1048,6 @@ export class TUI extends Container {
 		this.requestRender();
 	}
 
-	/** Whether synchronized output (DEC 2026) is active. */
 	get synchronizedOutput(): boolean {
 		return this.#synchronizedOutputEnabled;
 	}
@@ -1243,8 +1071,6 @@ export class TUI extends Container {
 
 		this.#focusedComponent = component;
 
-		// Set focused flag on new component and keep its software/hardware cursor
-		// rendering mode aligned with TUI's single cursor-visibility preference.
 		if (isFocusable(component)) {
 			component.focused = true;
 			this.#syncTerminalCursorMode(component);
@@ -1254,7 +1080,6 @@ export class TUI extends Container {
 	getFocused(): Component | null {
 		return this.#focusedComponent;
 	}
-	/** Whether component is currently attached to root children or overlay stack. */
 	#isAttached(component: Component): boolean {
 		const seen = new Set<Component>();
 		const search = (children: readonly Component[]): boolean => {
@@ -1274,7 +1099,6 @@ export class TUI extends Container {
 		return search(overlayComponents);
 	}
 
-	/** Restore focus after an overlay closes, falling back to attached focusables. */
 	#restoreFocusAfterOverlay(preFocus: Component | null): void {
 		const topVisible = this.#getTopmostInteractiveOverlay();
 		if (topVisible) {
@@ -1307,10 +1131,6 @@ export class TUI extends Container {
 		return search(this.children);
 	}
 
-	/**
-	 * Show an overlay component with configurable positioning and sizing.
-	 * Returns a handle to control the overlay's visibility.
-	 */
 	showOverlay(component: Component, options?: OverlayOptions): OverlayHandle {
 		component.setIgnoreTight?.(true);
 		const entry = { component, options, preFocus: this.#focusedComponent, hidden: false, exiting: false };
@@ -1350,7 +1170,6 @@ export class TUI extends Container {
 				if (entry.hidden === hidden) return;
 				entry.hidden = hidden;
 				if (hidden) {
-					// Move focus on hide.
 					if (isOverlayFocusTarget(component, this.#focusedComponent)) {
 						this.#restoreFocusAfterOverlay(entry.preFocus);
 					}
@@ -1380,7 +1199,6 @@ export class TUI extends Container {
 		return true;
 	}
 
-	/** Whether overlay entry is visible and interactive (not exiting). */
 	#isOverlayInteractive(entry: (typeof this.overlayStack)[number]): boolean {
 		return !entry.exiting && this.#isOverlayVisible(entry);
 	}
@@ -1415,7 +1233,6 @@ export class TUI extends Container {
 		this.#watchdog.start();
 		this.#ghosttyInitialImageDelayDone = false;
 		this.#ghosttyImageReadyAtMs = this.#renderScheduler.now() + TUI.#GHOSTTY_INITIAL_IMAGE_DELAY_MS;
-		// Listen for mode 2026 synchronized output support reports.
 		this.terminal.onPrivateModeReport?.((mode, supported) => {
 			if (mode !== 2026) return;
 			if (synchronizedOutputUserOverride() !== null) return;
@@ -1424,10 +1241,8 @@ export class TUI extends Container {
 		this.terminal.start(
 			data => this.#handleInput(data),
 			() => {
-				// Debounce multiplexer resizes to prevent flash during pane reflow.
 				this.#resizeEventPending = true;
 				if (!resizeRepaintsInPlace()) {
-					// Viewport fast path for non-multiplexer drag resizes.
 					this.#beginResizeViewport();
 					this.#requestResizeViewportPaint();
 					return;
@@ -1439,7 +1254,6 @@ export class TUI extends Container {
 			try {
 				listener();
 			} catch (error) {
-				// Isolate start listener failures from core rendering.
 				logger.error("TUI start listener threw; its feature did not initialize", {
 					error: errorMessage(error),
 				});
@@ -1599,16 +1413,9 @@ export class TUI extends Container {
 		if (!TERMINAL.imageProtocol) {
 			return;
 		}
-		// Query terminal for cell size in pixels: CSI 16 t
-		// Response format: CSI 6 ; height ; width t
 		this.terminal.write("\x1b[16t");
 	}
 
-	/**
-	 * Toggle synchronized-output (DEC 2026) wrappers on paint/cursor writes and
-	 * recompute the cached begin/end sequences. Driven by the terminal's DECRQM
-	 * mode-2026 report (#1765 covers the static env opt-out).
-	 */
 	#setSynchronizedOutput(enabled: boolean): void {
 		if (this.#synchronizedOutputEnabled === enabled) return;
 		this.#synchronizedOutputEnabled = enabled;
@@ -1619,8 +1426,6 @@ export class TUI extends Container {
 	}
 
 	stop(): void {
-		// Leave the alt buffer first so the teardown cursor math below runs against
-		// the restored normal screen (which #previousLines still describes).
 		if (this.#resizeAltActive) {
 			this.terminal.write(this.#leaveResizeAltSequence());
 		}
@@ -1639,19 +1444,12 @@ export class TUI extends Container {
 		this.#clearSixelProbeState();
 		this.#stopped = true;
 		this.#syncWheelTracking();
-		// Alternate Scroll Mode is a terminal flag, not a per-buffer one, so a
-		// stopped engine that left it set would hand the operator's next
-		// full-screen program a wheel that types arrow keys.
 		this.#syncAltScroll();
 		this.#watchdog.stop();
 		if (this.#renderTimer) {
 			this.#renderTimer.cancel();
 			this.#renderTimer = undefined;
 		}
-		// The request itself, not just its timer: a stopped engine owes no frame,
-		// and leaving the flag set made `renderPending` report a frame that could
-		// never arrive (`#scheduleRender` refuses while stopped). `start()` issues
-		// its own full-paint request, so nothing depends on carrying this across.
 		this.#renderRequested = false;
 		if (this.#ghosttyInitialImageDelayTimer) {
 			this.#ghosttyInitialImageDelayTimer.cancel();
@@ -1668,9 +1466,7 @@ export class TUI extends Container {
 		this.#resizeViewportActive = false;
 		this.#clearPostFullPaintSettle();
 		this.#deferredForcedClearScrollback = false;
-		// Replay resident alt-buffer transcript to normal screen on exit.
 		const replayedRows = this.#replayTranscriptToNormalScreen();
-		// Place cursor after rendered content on exit.
 		if (replayedRows === 0 && this.#previousFrameLength > 0) {
 			const targetRow = this.#previousFrameLength;
 			const viewportBottom = this.#windowTopRow + this.terminal.rows - 1;
@@ -1690,24 +1486,20 @@ export class TUI extends Container {
 		this.terminal.stop();
 	}
 
-	/** Replay resident alt-buffer transcript to normal screen. */
 	#replayTranscriptToNormalScreen(): number {
 		if (!this.#altTranscriptReplayPending) return 0;
 		this.#altTranscriptReplayPending = false;
 		const rows = this.#scrollTape.concat(this.#altTailRows);
 		if (rows.length === 0) return 0;
-		// Format rows with line terminators for clean terminal history.
 		let buffer = "";
 		for (let ri = 0; ri < rows.length; ri++) buffer += `${rows[ri]!}${LINE_TERMINATOR}\r\n`;
 		this.terminal.write(buffer);
 		return rows.length;
 	}
 
-	/** Force an immediate full repaint and scrollback replay. */
 	resetDisplay(): void {
 		if (this.#stopped) return;
 		this.invalidate();
-		// Fold into in-flight multiplexer resize debounce if active.
 		if (this.#multiplexerResizeTimer) {
 			this.#armMultiplexerResizeTimer(!isMultiplexerSession());
 			return;
@@ -1721,12 +1513,10 @@ export class TUI extends Container {
 	requestRender(force = false, options?: RenderRequestOptions): void {
 		this.#pendingRenderComponentsOnly = false;
 		if (force) {
-			// Fold forced repaints into in-flight multiplexer debounce.
 			if (this.#multiplexerResizeTimer) {
 				this.#armMultiplexerResizeTimer(options?.clearScrollback === true);
 				return;
 			}
-			// Forced render preempts post-full-paint settle.
 			this.#clearPostFullPaintSettle();
 			this.#prepareForcedRender(options?.clearScrollback === true);
 			this.#renderRequested = true;
@@ -1742,10 +1532,8 @@ export class TUI extends Container {
 		this.#requestOrdinaryRender();
 	}
 
-	/** Request a component-scoped partial render for localized updates. */
 	requestComponentRender(component: Component): void {
 		if (this.#stopped) return;
-		// Accumulate component-scoped targets if no full render is pending.
 		if (!this.#renderRequested && this.#postFullPaintSettleTimer === undefined) {
 			this.#pendingRenderComponentsOnly = true;
 		}
@@ -1753,7 +1541,6 @@ export class TUI extends Container {
 		this.#requestOrdinaryRender();
 	}
 
-	/** Rewrite a quiet, visible component segment directly without scheduling a full render. */
 	requestDirectWrite(component: Component): void {
 		if (this.#stopped) return;
 		if (
@@ -1899,7 +1686,6 @@ export class TUI extends Container {
 	}
 
 	#requestOrdinaryRender(): void {
-		// Coalesce non-forced renders inside post-full-paint settle window.
 		if (this.#postFullPaintSettleUntilMs > 0) {
 			const now = this.#renderScheduler.now();
 			if (now < this.#postFullPaintSettleUntilMs) {
@@ -1920,7 +1706,6 @@ export class TUI extends Container {
 		this.#renderScheduler.scheduleImmediate(() => this.#scheduleRender());
 	}
 
-	/** Decide whether this frame may compose component-scoped, resolving root children to re-render. */
 	#resolvePartialComposeRoots(width: number, height: number): Set<Component> | null {
 		if (this.#componentRenderTargets.size === 0) return null;
 		if (!this.#hasEverRendered || this.#resizeEventPending) return null;
@@ -1959,7 +1744,6 @@ export class TUI extends Container {
 		return null;
 	}
 
-	/** Arm or extend multiplexer-resize debounce timer for a single forced render once quiet. */
 	#armMultiplexerResizeTimer(clearScrollback: boolean): void {
 		this.#deferredForcedClearScrollback ||= clearScrollback;
 		if (this.#renderTimer) {
@@ -1982,7 +1766,6 @@ export class TUI extends Container {
 		}, TUI.#MULTIPLEXER_RESIZE_DEBOUNCE_MS);
 	}
 
-	/** Arm post-full-paint settle window after an overflowing emit on ConPTY hosts. */
 	#armPostFullPaintSettle(): void {
 		if (!isConPTYHosted()) return;
 		const until = this.#renderScheduler.now() + TUI.#CONPTY_POST_FULL_PAINT_SETTLE_MS;
@@ -2059,7 +1842,6 @@ export class TUI extends Container {
 		const now = this.#renderScheduler.now();
 		const elapsed = now - this.#lastRenderAt;
 		const cadenceDelay = Math.max(0, TUI.#MIN_RENDER_INTERVAL_MS - elapsed);
-		// Adaptive backpressure: target ~50% render duty cycle.
 		const adaptiveFloor = Math.min(TUI.#MAX_ADAPTIVE_RENDER_MS, this.#frameCostEstimateMs * 2);
 		const adaptiveDelay = Math.max(0, adaptiveFloor - elapsed);
 		const inputGraceDelay = Math.max(0, this.#inputRenderGraceUntilMs - now);
@@ -2077,7 +1859,6 @@ export class TUI extends Container {
 		}, delay);
 	}
 
-	/** Wrap #doRender() to record frame cost and report loop phase. */
 	#executeRender(): void {
 		const start = this.#renderScheduler.now();
 		this.#lastRenderAt = start;
@@ -2091,7 +1872,6 @@ export class TUI extends Container {
 		}
 	}
 
-	/** Wheel step for scroll isolation: freeze/walk the transcript region. */
 	#pinnedFooterScreenBounds(): {
 		footerTop: number;
 		footerBottom: number;
@@ -2121,7 +1901,6 @@ export class TUI extends Container {
 		};
 	}
 
-	/** Route a pinned-footer click to the root child under it. */
 	#routeFooterMouse(event: SgrMouseEvent, footerRow: number): void {
 		const segments = this.#frameSegments;
 		if (segments.length === 0) return;
@@ -2156,7 +1935,6 @@ export class TUI extends Container {
 		this.#applyScrollDelta(direction === -1 ? -step : step);
 	}
 
-	/** Move the frozen transcript view by `rows` in scroll-space coordinates. */
 	#applyScrollDelta(rows: number): boolean {
 		const liveTop = this.#scrollSpaceLiveTop();
 		if (rows < 0) {
@@ -2178,7 +1956,6 @@ export class TUI extends Container {
 		return true;
 	}
 
-	/** Handle raw input bytes delivered by the terminal. */
 	#handleInput(data: string): void {
 		pushLoopPhase("ui.input");
 		try {
@@ -2295,7 +2072,6 @@ export class TUI extends Container {
 		return true;
 	}
 
-	/** Resolve overlay layout from options. */
 	#resolveOverlayLayout(
 		options: OverlayOptions | undefined,
 		overlayHeight: number,
@@ -2409,7 +2185,6 @@ export class TUI extends Container {
 		}
 	}
 
-	/** Composite all visible overlays into the window slice. */
 	#compositeOverlaysIntoWindow(window: string[], termWidth: number, termHeight: number): string[] {
 		let result = window;
 		let copied = false;
@@ -2442,7 +2217,6 @@ export class TUI extends Container {
 		return result;
 	}
 
-	/** Draw scroll track on the right edge of the frozen transcript region. */
 	#drawScrollTrack(window: string[], regionRows: number, viewTop: number, spaceRows: number, width: number): void {
 		if (width < 4 || regionRows < 2 || spaceRows <= regionRows) return;
 		const col = width - 1;
@@ -2488,7 +2262,6 @@ export class TUI extends Container {
 		return sliceByColumn(result, 0, totalWidth, true);
 	}
 
-	/** Strip every CURSOR_MARKER from rendered lines and return marker positions. */
 	#extractCursorMarkers(lines: string[]): { row: number; col: number }[] {
 		const markers: { row: number; col: number }[] = [];
 		for (let row = lines.length - 1; row >= 0; row--) {
@@ -3149,7 +2922,6 @@ export class TUI extends Container {
 		});
 	}
 
-	/** Audit committed prefix for divergence and recommit if needed. */
 	#auditCommittedPrefix(rawFrame: readonly string[], newlyFinalEnd: number): void {
 		const prefix = this.#committedPrefix;
 		if (prefix.length === 0) return;
@@ -3164,7 +2936,6 @@ export class TUI extends Container {
 		}
 	}
 
-	/** Frame row where transcript history ends. */
 	#historyEndRow(frameLength: number): number {
 		const segments = this.#frameSegments;
 		let end = frameLength;
@@ -3181,7 +2952,6 @@ export class TUI extends Container {
 		return end;
 	}
 
-	/** Push post-emit committed-row count to root children. */
 	#publishCommittedRows(): void {
 		for (let si = 0; si < this.#frameSegments.length; si++) {
 			const segment = this.#frameSegments[si]!;
@@ -3192,7 +2962,6 @@ export class TUI extends Container {
 		}
 	}
 
-	/** Prepare composed frame for emission in place. */
 	#prepareFrame(frame: readonly string[], width: number): string[] {
 		const prepared = this.#preparedFrame;
 		const meta = this.#preparedMeta;
@@ -3339,8 +3108,6 @@ export class TUI extends Container {
 					continue;
 				}
 				if (next === 0x5d) {
-					// OSC 66 text-sizing spans carry visible payload inside the OSC.
-					// Fall back to visibleWidth() so scaled cells stay exact.
 					if (
 						line.charCodeAt(i + 2) === 0x36 &&
 						line.charCodeAt(i + 3) === 0x36 &&
@@ -3384,7 +3151,6 @@ export class TUI extends Container {
 		return SGR_RESET + ERASE_TO_END_OF_LINE + terminalLine;
 	}
 
-	/** Record state transition and update previous frame bookkeeping. */
 	#commit(
 		lines: readonly string[],
 		window: string[],
@@ -3456,7 +3222,6 @@ export class TUI extends Container {
 		);
 	}
 
-	/** Replay the frame from home, optionally clearing native scrollback first. */
 	#emitFullPaint(
 		frame: readonly string[],
 		window: string[],
@@ -3568,7 +3333,6 @@ export class TUI extends Container {
 		this.#commit(frame, window, width, height, committedCursor);
 	}
 
-	/** Enter non-multiplexer resize fast path. */
 	#beginResizeViewport(): void {
 		this.#resizeViewportActive = true;
 		this.#resizeViewportSettleTimer?.cancel();
@@ -3588,7 +3352,6 @@ export class TUI extends Container {
 		if (this.#renderRequested) this.#scheduleRender();
 	}
 
-	/** Compose and paint viewport for one resize fast-path frame. */
 	#renderResizeViewport(width: number, height: number): void {
 		if (width <= 0 || height <= 0) return;
 		this.#imageBudget.beginPass(true);
@@ -3597,7 +3360,6 @@ export class TUI extends Container {
 		this.#resizeViewportPaintCount += 1;
 	}
 
-	/** Build viewport window for a resize fast-path frame. */
 	#composeResizeViewport(width: number, height: number): { window: readonly string[]; contentRows: number } {
 		const tail: string[] = []; // bottom-first
 		const children = this.children;
@@ -3618,12 +3380,10 @@ export class TUI extends Container {
 		return { window: this.#prepareLinesArray(window, width), contentRows: count };
 	}
 
-	/** Resolve active keyboard-enhancement enter sequence. */
 	#keyboardEnhancementEnter(): string {
 		return this.terminal.keyboardEnhancementEnterSequence ?? this.terminal.kittyEnableSequence ?? "";
 	}
 
-	/** Resolve active keyboard-enhancement exit sequence. */
 	#keyboardEnhancementExit(): string {
 		const exit = this.terminal.keyboardEnhancementExitSequence;
 		if (exit !== undefined) return exit ?? "";
@@ -3648,7 +3408,6 @@ export class TUI extends Container {
 		return `${enhancementExit}${ALT_SCREEN_EXIT}`;
 	}
 
-	/** Emit throwaway viewport repaint for resize fast path. */
 	#emitResizeViewport(window: readonly string[], height: number, contentRows: number, width: number): void {
 		let buffer = `${this.#paintBeginSequence + this.#enterResizeAltSequence()}\x1b[H`;
 		for (let r = 0; r < height; r++) {
@@ -3670,7 +3429,6 @@ export class TUI extends Container {
 		return false;
 	}
 
-	/** Compose and paint fullscreen overlay on alt buffer. */
 	#renderAltFrame(width: number, height: number): void {
 		const base: string[] = new Array(Math.max(0, height)).fill("");
 		let lines = this.#compositeOverlaysIntoWindow(base, width, height);
@@ -3679,12 +3437,10 @@ export class TUI extends Container {
 		this.#emitAltFrame(lines, width, height);
 	}
 
-	/** Whether transcript should reside on alt buffer. */
 	#altTranscriptWanted(): boolean {
 		return this.#scrollTransport === "alt-arrows" && this.#scrollIsolation && !this.#stopped && this.#hasEverRendered;
 	}
 
-	/** Full per-row viewport rewrite on alt buffer. */
 	#emitAltFrame(lines: string[], width: number, height: number, cursor?: { row: number; col: number }): void {
 		const fitted: string[] = new Array(height);
 		for (let r = 0; r < height; r++) fitted[r] = lines[r] ?? "";
@@ -3733,7 +3489,6 @@ export class TUI extends Container {
 		this.#fullRedrawCount += 1;
 	}
 
-	/** Incremental frame update. */
 	#emitUpdate(
 		frame: readonly string[],
 		window: string[],
@@ -3911,7 +3666,6 @@ export class TUI extends Container {
 		fs.appendFileSync(getDebugLogPath(), msg);
 	}
 
-	/** Build cursor control sequences to position hardware cursor. */
 	#cursorControlSequence(
 		cursorPos: { row: number; col: number } | null,
 		totalLines: number,
@@ -3939,7 +3693,6 @@ export class TUI extends Container {
 		return this.#hardwareCursorVisibilityKnown && !this.#hardwareCursorVisible;
 	}
 
-	/** Write hardware cursor position as synchronized output block. */
 	#writeCursorPosition(cursorPos: { row: number; col: number } | null, totalLines: number): void {
 		const target = this.#targetHardwareCursorState(cursorPos, totalLines);
 		if (!target) {

@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 
-// Copilot model premium request multipliers by model identifier.
 const COPILOT_PREMIUM_MULTIPLIERS: Record<string, number> = {
 	"github-copilot/claude-haiku-4.5": 0.33,
 	"github-copilot/claude-opus-4.6": 3,
@@ -60,31 +59,11 @@ import {
 
 const packageRoot = path.join(import.meta.dir, "..");
 
-/**
- * Local/self-hosted providers (Ollama, vLLM, LM Studio, LiteLLM). Their model
- * catalogs are whatever happens to be running on the machine that invokes the
- * generator — bundling them would leak machine-specific endpoints (e.g.
- * `http://localhost:4000/v1`) into the committed snapshot. They are discovered
- * dynamically at runtime instead, so they are never fetched during generation
- * and never written to models.json.
- */
 const DISCOVERY_ONLY_PROVIDERS = new Set(["ollama", "vllm", "lm-studio", "litellm"]);
 const RETIRED_PROVIDERS = new Set(["wafer-pass", "wandb"]);
 
-/**
- * The committed snapshot, read back so a provider that no discovery run reached
- * keeps its previous rows. The JSON import is structurally a ModelSpec table,
- * which the type import cannot express.
- */
 const previousSnapshot = prevModelsJson as unknown as Record<string, Record<string, ModelSpec>>;
 
-/**
- * `--providers=a,b` regenerates only the named providers and carries every
- * other provider's rows over from the committed snapshot. It exists for a
- * provider whose discovery needs a key that a full run does not have. The
- * committed snapshot is only a full-tree regeneration when `bun run gen:models`
- * runs without this flag, so a partial run states which providers it wrote.
- */
 const providerFilterArg = process.argv.find(arg => arg.startsWith("--providers="));
 const providerFilter = providerFilterArg
 	? new Set(
@@ -115,10 +94,6 @@ async function resolveProviderApiKey(providerId: string, catalog: CatalogDiscove
 				return storedApiKey;
 			}
 			if (catalog.oauthProvider) {
-				// AuthStorage.getApiKey refreshes through the broker-aware
-				// single-flighted machinery, so a build-time invocation no
-				// longer silently falls back to bundled models when an
-				// expired-but-refreshable OAuth credential is on disk.
 				const oauthKey = await authStorage.getApiKey(catalog.oauthProvider);
 				if (oauthKey) {
 					return oauthKey;
@@ -150,13 +125,6 @@ async function fetchProviderModelsFromCatalog(descriptor: CatalogProviderDescrip
 		const managerOptions = descriptor.createModelManagerOptions({ apiKey });
 		const manager = createModelManager(managerOptions);
 		const result = await manager.refresh("online");
-		// `stale: true` means the dynamic fetch failed and the manager fell back
-		// to merging the local agent.db model cache over the static catalog —
-		// fine for a live session ("stale state remains visible"), poison for a
-		// committed bundle: cache rows written by older code leak outdated
-		// limits into models.json (e.g. the xai-oauth maxTokens regression).
-		// Treat it like missing credentials so the prev-snapshot/curated-seed
-		// fallback applies instead.
 		if (result.stale) {
 			console.warn(
 				`${descriptor.catalogDiscovery.label} dynamic fetch failed (stale cache merge), using fallback models`,
@@ -169,7 +137,6 @@ async function fetchProviderModelsFromCatalog(descriptor: CatalogProviderDescrip
 			return [];
 		}
 		console.log(`Fetched ${models.length} models from ${descriptor.catalogDiscovery.label} model manager`);
-		// The manager returns built models; models.json stores specs (sparse compat).
 		return models.map(model => toModelSpec(model));
 	} catch (error) {
 		console.error(`Failed to fetch ${descriptor.catalogDiscovery.label} models:`, error);
@@ -182,12 +149,6 @@ async function loadModelsDevData(): Promise<ModelSpec[]> {
 		console.log("Fetching models from models.dev API...");
 		const response = await fetch("https://models.dev/api.json");
 		const data = await response.json();
-		// Enrich-only twin descriptors (OAuth surfaces) are excluded here: their
-		// rows may overlay surfaces at runtime and feed applyTwinReasoningSurfaces
-		// below, but the bundle's model LIST for those providers comes from the
-		// curated seed and endpoint discovery — mapping them in would replace
-		// curated rows (compat, wire effort maps) and list models the
-		// subscription-gated endpoint does not serve.
 		const bundleDescriptors = MODELS_DEV_PROVIDER_DESCRIPTORS.filter(descriptor => descriptor.enrichOnly !== true);
 		const models = mapModelsDevToModels(data as Record<string, unknown>, bundleDescriptors);
 		models.sort((a, b) => a.id.localeCompare(b.id));
@@ -233,14 +194,8 @@ function applyGlobalModelsDevFallback(
 			model.provider === "baseten" ||
 			PROVIDERS_PUBLISHING_OWN_MODEL_LIMITS.has(model.provider)
 		) {
-			// These endpoints publish their own model surfaces; cross-router
-			// references must not invent capabilities or limits.
 			return model;
 		}
-		// Same provider AND id: the models.dev twin owns the declared surface.
-		// Discovery-reported limits lose to it — a stale or context-sized
-		// discovery number is how wrong windows ship (the reasoning surface is
-		// overlaid separately by overlayModelsDevReasoningOptions).
 		const twin = twinByKey.get(`${model.provider}/${model.id}`);
 		if (twin) {
 			return {
@@ -258,24 +213,12 @@ function applyGlobalModelsDevFallback(
 			name: reference.name,
 			reasoning: reference.reasoning,
 			input: reference.input,
-			// Cross-provider same-id references only FILL unknown limits: context
-			// sizes differ per host, so a foreign host's number never overrides.
 			contextWindow: model.contextWindow ?? reference.contextWindow,
 			maxTokens: model.maxTokens ?? reference.maxTokens,
 		};
 	});
 }
 
-/**
- * Overlay the models.dev reasoning surface (`reasoning_options`, already
- * normalized onto the models.dev rows by `mapModelsDevToModels`) onto rows
- * that came from AUTHORITATIVE endpoint discovery. Those rows replace their
- * models.dev twins in the merge above, which would otherwise drop the
- * declared effort ladder (OpenRouter's `/models` carries no effort
- * vocabulary; models.dev's `z-ai/glm-5.2` says high/xhigh while identity
- * alone would offer the full ladder). Same provider AND id only: a bare-id
- * match across providers says nothing about this host's accepted levels.
- */
 function overlayModelsDevReasoningOptions(
 	models: readonly ModelSpec[],
 	modelsDevModels: readonly ModelSpec[],
@@ -336,14 +279,6 @@ function applyCodexPricingFallback(models: readonly ModelSpec[]): ModelSpec[] {
 	});
 }
 
-/**
- * The Kimi Code subscription endpoint aliases `kimi-for-coding` and
- * `kimi-for-coding-highspeed` to its current flagship (K3) server-side;
- * models.dev declares the alias rows with empty reasoning_options because
- * the alias itself has no distinct surface. The aliases accept the same
- * effort levels as the K3 row they route to (same provider, same host),
- * so they inherit its declared surface; their own subscription limits stay.
- */
 function applyKimiCodingAliasSurface(models: readonly ModelSpec[], modelsDevModels: readonly ModelSpec[]): ModelSpec[] {
 	const k3 = modelsDevModels.find(model => model.provider === "kimi-code" && model.id === "k3");
 	const surface = k3?.reasoningOptions;
@@ -351,29 +286,11 @@ function applyKimiCodingAliasSurface(models: readonly ModelSpec[], modelsDevMode
 	const aliasIds = new Set(["kimi-for-coding", "kimi-for-coding-highspeed"]);
 	return models.map(model => {
 		if (model.provider !== "kimi-code" || !aliasIds.has(model.id)) return model;
-		// models.dev's empty alias declaration normalizes to `noEffortControl`;
-		// that describes the alias row, not the K3 it routes to, so it is
-		// replaced here. A real declared ladder always wins.
 		if (model.reasoning !== true || model.reasoningOptions?.efforts !== undefined) return model;
 		return { ...model, reasoningOptions: surface };
 	});
 }
 
-/**
- * First-party twin providers: same company serving the same models over the
- * same wire API under a different auth surface, which models.dev catalogs only
- * once. The twin's declared reasoning surface applies verbatim:
- * - `openai` → `openai-codex`: ChatGPT-auth Codex endpoint, Responses API
- *   (mirrors the pricing twin fallback above).
- * - `xai` → `xai-oauth`: SuperGrok OAuth endpoint, same Grok models.
- * - `opencode-zen` → `opencode`: legacy provider id for the same Zen gateway.
- * - `google` → `google-gemini-cli`: the official CLI OAuth surface shares the
- *   API's ids and thinking-level vocabulary. `google-antigravity` is NOT
- *   twinned: its auth is the Antigravity IDE's unofficial OAuth surface, whose
- *   served set and effort variants differ from the Google API's and are
- *   curated from captured client traffic (variant-collapse.ts).
- * Ids without a twin keep no surface.
- */
 const REASONING_SURFACE_TWINS: Readonly<Record<string, string>> = {
 	"openai-codex": "openai",
 	"xai-oauth": "xai",
@@ -401,11 +318,6 @@ function applyTwinReasoningSurfaces(models: readonly ModelSpec[], modelsDevModel
 	});
 }
 
-/**
- * Provider discovery sometimes reports context-sized Kimi output ceilings. Keep
- * the bundled catalog at the documented/provider-safe caps so request builders
- * that always send `max_tokens` do not over-allocate.
- */
 function applyKimiMaxTokensCap(models: readonly ModelSpec[]): ModelSpec[] {
 	const FIREWORKS_KIMI_PROVIDERS = new Set(["fireworks", "firepass"]);
 	return models.map(model => {
@@ -421,40 +333,17 @@ function applyKimiMaxTokensCap(models: readonly ModelSpec[]): ModelSpec[] {
 	});
 }
 
-/**
- * Fireworks' DeepSeek V4 endpoint accepts the user's effort through
- * `reasoning_effort` and rejects the DeepSeek-native binary `thinking` toggle
- * when both are present. Strip stale reference metadata from generated fallbacks.
- */
 function applyFireworksDeepSeekReasoningShape(models: readonly ModelSpec[]): ModelSpec[] {
 	return models.map(model => {
 		if (model.provider !== "fireworks" || model.api !== "openai-completions") return model;
-		// `.api` equality doesn't narrow the generic; the guard makes this cast sound.
 		return stripFireworksDeepSeekThinkingToggle(model as ModelSpec<"openai-completions">, model.id);
 	});
 }
 
-/**
- * Z.AI's `/v1/models` advertises context-tier variants with a `[1m]` suffix
- * (e.g. `glm-5.2[1m]`). That suffix is a Claude Code-side convention — Z.AI's
- * own docs instruct users to append `[1m]` to enable 1M context *inside Claude
- * Code* — but the inference endpoint rejects the bracketed id outright with
- * `[1211][Unknown Model, please check the model code.]`. The base id
- * (`glm-5.2`) already carries the full 1M context window (pinned by
- * {@link applyGeneratedModelPolicy}), so drop the unusable bracketed siblings
- * from the bundled catalog rather than ship a model that 400s on first use.
- */
 function dropUnusableZaiContextTierIds(models: readonly ModelSpec[]): ModelSpec[] {
 	return models.filter(model => !(model.provider === "zai" && model.id.endsWith("[1m]")));
 }
 
-/**
- * Fireworks discovery and prior snapshots can surface internal control-plane
- * resource ids (`accounts/fireworks/{models,routers}/...`) alongside the public
- * request ids (`kimi-k2.7-code`, `deepseek-v4-flash`, ...). The wire ids are an
- * implementation detail the request path reconstructs from the public id, so
- * drop them from the bundle outright.
- */
 function dropFireworksWireIds(models: readonly ModelSpec[]): ModelSpec[] {
 	return models.filter(
 		model =>
@@ -465,12 +354,6 @@ function dropFireworksWireIds(models: readonly ModelSpec[]): ModelSpec[] {
 	);
 }
 
-/**
- * Xiaomi's `/v1/models` can advertise ASR/TTS ids alongside chat/completions
- * models. Runtime discovery filters them, but previous bundled snapshots can
- * still resurrect those stale ids via the fallback merge. Drop them here so the
- * committed catalog matches the runtime surface.
- */
 function dropXiaomiAudioOnlyIds(models: readonly ModelSpec[]): ModelSpec[] {
 	return models.filter(model => {
 		const isXiaomiProvider = model.provider === "xiaomi" || model.provider.startsWith("xiaomi-token-plan-");
@@ -493,10 +376,6 @@ async function getOAuthAccessFromStorage(provider: OAuthProvider): Promise<OAuth
 	try {
 		const authStorage = await discoverAuthStorage();
 		try {
-			// `getOAuthAccess` runs the full AuthStorage refresh pipeline so an
-			// expired-but-refreshable credential gets rotated before discovery,
-			// and identity metadata (accountId/projectId/email) flows through
-			// for Codex/Antigravity downstream calls.
 			let access = await authStorage.getOAuthAccess(provider);
 			if (!access && provider === "google-antigravity") {
 				access = await authStorage.getOAuthAccess("google-gemini-cli");
@@ -511,9 +390,6 @@ async function getOAuthAccessFromStorage(provider: OAuthProvider): Promise<OAuth
 			err instanceof Error ? err.message : String(err),
 		);
 	}
-	// OAuth logins land in the machine-wide shared-auth store by default, which
-	// the broker/profile path above does not consult. Read it directly so a
-	// regen on a logged-in machine sees the same credentials the app wrote.
 	const shared = readSharedStoreOAuthAccess(provider);
 	if (!shared && provider === "google-antigravity") {
 		return readSharedStoreOAuthAccess("google-gemini-cli");
@@ -521,11 +397,6 @@ async function getOAuthAccessFromStorage(provider: OAuthProvider): Promise<OAuth
 	return shared;
 }
 
-/**
- * Direct read of the shared-auth store's `auth_credentials` rows. Returns the
- * access token only when the stored expiry is still in the future; refresh
- * stays with the app (a regen machine is a logged-in machine by definition).
- */
 function readSharedStoreOAuthAccess(provider: OAuthProvider): OAuthAccess | null {
 	try {
 		const db = new Database(path.join(getSharedAuthDir(), "agent.db"), { readonly: true });
@@ -557,10 +428,6 @@ function readSharedStoreOAuthAccess(provider: OAuthProvider): OAuthAccess | null
 	}
 }
 
-/**
- * Fetch available Antigravity models from the API using the discovery module.
- * Returns empty array if no auth is available (previous models used as fallback).
- */
 async function fetchAntigravityModels(): Promise<ModelSpec<"google-gemini-cli">[]> {
 	const access = await getOAuthAccessFromStorage("google-antigravity");
 	if (!access) {
@@ -621,7 +488,6 @@ async function fetchCodexDiscoveryModels(): Promise<ModelSpec<"openai-codex-resp
 }
 
 async function generateModels() {
-	// Fetch models from dynamic sources.
 	const modelsDevModels = await loadModelsDevData();
 	const catalogProviderDescriptors = PROVIDER_DESCRIPTORS.filter(
 		(descriptor): descriptor is CatalogProviderDescriptor =>
@@ -640,19 +506,12 @@ async function generateModels() {
 	);
 	const catalogProviderModels = catalogProviderModelBatches.flatMap(batch => batch.models);
 	const bundledModelsDevModels = modelsDevModels.filter(model => !authoritativeCatalogProviders.has(model.provider));
-	// getGitLabDuoModels returns built models; project back to spec stage for the bundle.
 	const gitLabDuoModels = getGitLabDuoModels().map(model => toModelSpec(model));
-	// Combine models. models.dev has priority unless a provider's successful endpoint
-	// discovery is authoritative; those endpoint snapshots replace models.dev rows.
 	let allModels = applyGlobalModelsDevFallback(
 		[...bundledModelsDevModels, ...catalogProviderModels, ...gitLabDuoModels],
 		modelsDevModels,
 	);
 
-	// models.dev aggregator rows (aimlapi, kilo, nanogpt, openrouter) routinely
-	// ship OpenAI o-series entries — incl. effort-pinned ids like
-	// `o3-mini-high` — with `reasoning: false`. Every o-series model reasons by
-	// construction; a false flag hides the whole thinking surface downstream.
 	allModels = allModels.map(model =>
 		!model.reasoning && isOpenAIOSeriesModelId(model.id) ? { ...model, reasoning: true } : model,
 	);
@@ -661,54 +520,20 @@ async function generateModels() {
 		allModels.push(CLOUDFLARE_FALLBACK_MODEL as ModelSpec<"anthropic-messages">);
 	}
 
-	// xai-oauth is not in models.dev; its descriptor's catalogDiscovery fetch
-	// only succeeds with live SuperGrok OAuth credentials (and on success the
-	// dynamic entries — already overlaid by applyXAIOAuthCuration — win dedup
-	// below). Always push the curated seed so a regen without credentials, or
-	// with a failed fetch, still bundles XAI_OAUTH_CURATED_MODELS verbatim:
-	// ModelRegistry.#loadModels() picks them up synchronously at boot, so a
-	// persisted `modelRoles.default = "xai-oauth/<id>"` is honored before the
-	// async refresh fires (interactive boot does not await refresh).
 	allModels.push(...buildXaiOAuthStaticSeed());
-	// Seed Anthropic models that are live on the first-party API or in limited
-	// release but that models.dev has not catalogued yet (e.g. Claude Fable 5 /
-	// Mythos 5). Deduped behind upstream entries; metadata is pinned in
-	// applyAnthropicCatalogPolicy.
 	allModels.push(...ANTHROPIC_CURATED_FALLBACK_MODELS);
-	// Seed Sakana's documented Fugu models so the provider is usable when
-	// catalog generation has no live API key. If live `/v1/models` succeeds,
-	// Sakana is authoritative and stale seed IDs must stay out.
 	if (!authoritativeCatalogProviders.has("sakana")) {
 		allModels.push(...SAKANA_FUGU_STATIC_MODELS);
 	}
-	// Seed Nous Portal's documented default so it resolves before the first
-	// OAuth-backed refresh.
 	if (!authoritativeCatalogProviders.has("nous-research")) {
 		allModels.push(...NOUS_RESEARCH_BUNDLED_MODELS);
 	}
-	// Seed Command Code's documented flagships when credentialed discovery is
-	// unavailable. Live discovery keeps the router's wider published catalog.
 	if (!authoritativeCatalogProviders.has("command-code")) {
 		allModels.push(...COMMAND_CODE_STATIC_MODELS);
 	}
-	// Seed the GitLab Duo Agent fallback model so a fresh install (no credentialed
-	// dynamic discovery/cache yet) still surfaces the provider's default model in the
-	// built-in catalog. The descriptor deliberately has NO `catalogDiscovery`, so it is
-	// excluded from the generator's discovery loop (`isCatalogDescriptor` filter above):
-	// generation never fetches `aiChatAvailableModels` for it. That is intentional —
-	// Duo discovery is credential- and namespace-scoped, so running it during generation
-	// would bundle one private account's pinned/selectable models (and its
-	// `gitlabDuoWorkflowRootNamespaceId`) as authoritative for every fresh install.
-	// The generic fallback is the only thing bundled; live namespace-scoped models are
-	// discovered at runtime per credential/workspace. The `authoritativeCatalogProviders`
-	// guard therefore always passes for this id, kept only to mirror the Sakana seed shape.
 	if (!authoritativeCatalogProviders.has("gitlab-duo-agent")) {
 		allModels.push(buildGitLabDuoWorkflowFallbackModel());
 	}
-	// Seed Fireworks "Fast" serving-path variants (`<id>-fast`). Fast routers are
-	// not enumerated by the serverless control-plane list, so discovery never
-	// surfaces them; the seed projects each base entry into a fast variant.
-	// Deduped behind any identical previous-snapshot entry.
 	allModels.push(...buildFireworksFastSeed());
 
 	const specialDiscoverySources = [
@@ -729,35 +554,19 @@ async function generateModels() {
 	}
 
 	const modelsDevSnapshotExcludedProviders = new Set<string>();
-	// The Nous offline seed is an intentional tool-capable subset. Never carry
-	// non-tool Hermes rows forward from an older generated snapshot.
 	modelsDevSnapshotExcludedProviders.add("nous-research");
 	for (const model of modelsDevModels) {
 		if (model.provider === "google-vertex") {
 			modelsDevSnapshotExcludedProviders.add(model.provider);
 		}
 	}
-	// A successful Antigravity fetch is the served-set truth for
-	// google-antigravity: the IDE OAuth surface gates its listing per
-	// subscription, so previous-snapshot rows the endpoint no longer serves
-	// must not ride forward (they would sit in the picker offering models that
-	// fail at request time). Only a live success excludes; a failed or
-	// credential-less run keeps the previous snapshot as the offline floor.
 	for (const discovery of specialDiscoveries) {
 		if (discovery.label === "Antigravity" && discovery.models.length > 0) {
 			modelsDevSnapshotExcludedProviders.add("google-antigravity");
 		}
 	}
-	// Merge previous models.json entries as fallback for provider/model pairs not
-	// fetched dynamically. Providers covered by authoritative endpoint discovery
-	// or authoritative models.dev sources keep that upstream list exactly, so
-	// retired entries from the previous snapshot do not reappear during regeneration.
-	// Discovery-only providers (local inference servers) — never bundle static models.
 	const fetchedKeys = new Set(allModels.map(model => `${model.provider}/${model.id}`));
 
-	// Previous-snapshot entries may carry an older ThinkingConfig vocabulary;
-	// applyGeneratedModelPolicies re-bakes `thinking` for every model, so the
-	// inbound shape is irrelevant beyond identity/pricing/compat fields.
 	for (const models of Object.values(previousSnapshot)) {
 		for (const model of Object.values(models)) {
 			if (
@@ -781,49 +590,34 @@ async function generateModels() {
 	allModels = dropUnusableZaiContextTierIds(allModels);
 	allModels = dropXiaomiAudioOnlyIds(allModels);
 	allModels = normalizeAntigravityEndpoint(allModels);
-	// Normalize display names: gateway author prefixes ("OpenAI: …"), alias
-	// markers ("(latest)"), provider attribution ("(Antigravity)"), and
-	// price/promo tags are model-extrinsic — strip them from the bundle.
 	allModels = allModels.map(model => {
 		const name = cleanModelName(model.name);
 		return name === model.name ? model : { ...model, name };
 	});
-	// Re-derive the first-party gpt-5.6 pro-reasoning aliases from the current
-	// base rows (stale previous-snapshot aliases are dropped inside), before the
-	// policy re-bake so the aliases get the same baked thinking metadata.
 	allModels = projectOpenAIProReasoningAliases(allModels);
 	allModels = overlayModelsDevReasoningOptions(allModels, modelsDevModels);
 	allModels = applyKimiCodingAliasSurface(allModels, modelsDevModels);
 	allModels = applyTwinReasoningSurfaces(allModels, modelsDevModels);
 	applyGeneratedModelPolicies(allModels);
 	linkOpenAIPromotionTargets(allModels);
-	// Collapse effort-tier variants AFTER the policy re-bake: live-discovery
-	// entries are already collapsed (rebake skips them); this pass folds
-	// previous-snapshot raw members into their logical families.
 	allModels = collapseEffortVariantsAcrossProviders(allModels);
-	// Fill remaining null endpoint limits from each model's canonical-family
-	// reference. Runs last so canonical ids and explicit policy limits are final.
 	applyCanonicalLimitFallback(allModels);
 
 	for (const model of allModels) {
 		canonicalizeModelCompat(model);
 	}
 
-	// Group by provider and sort each provider's models
 	const providers: Record<string, Record<string, ModelSpec>> = {};
 	for (const model of allModels) {
 		if (DISCOVERY_ONLY_PROVIDERS.has(model.provider) || RETIRED_PROVIDERS.has(model.provider)) continue;
 		if (!providers[model.provider]) {
 			providers[model.provider] = {};
 		}
-		// Use model ID as key to deduplicate the ordered sources assembled above.
-		// Earlier sources win.
 		if (!providers[model.provider][model.id]) {
 			providers[model.provider][model.id] = model;
 		}
 	}
 
-	// Sort providers alphabetically and models within each provider by ID
 	const sortObj = <V>(o: Record<string, V>): Record<string, V> => {
 		return Object.fromEntries(
 			Object.entries(o)
@@ -850,11 +644,9 @@ async function generateModels() {
 		MODELS[key] = sortObj(MODELS[key]);
 	}
 
-	// Generate JSON file
 	await Bun.write(path.join(packageRoot, "src/models.json"), JSON.stringify(MODELS, null, "	"));
 	console.log(`Generated src/models.json${providerFilter ? ` for ${[...providerFilter].join(", ")}` : ""}`);
 
-	// Print statistics
 	const totalModels = allModels.length;
 	const reasoningModels = allModels.filter(m => m.reasoning).length;
 
@@ -885,5 +677,4 @@ function canonicalizeModelCompat(model: ModelSpec<Api>): void {
 	}
 }
 
-// Run the generator
 generateModels().catch(console.error);

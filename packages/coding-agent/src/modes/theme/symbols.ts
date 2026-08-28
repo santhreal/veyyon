@@ -1,14 +1,8 @@
-// Symbol presets, spinner frames and bar ramps: the single owner of every glyph the TUI renders (status icons, tree connectors, box drawing, tool glyphs), of
-
 import { SUB_CELL_BAR_RAMP, type SubCellBarRamp } from "@veyyon/tui/sub-cell-bar";
 
 export type SymbolPreset = "unicode" | "nerd" | "ascii";
 
-/**
- * All available symbol keys organized by category.
- */
 export type SymbolKey =
-	// Status Indicators
 	| "status.success"
 	| "status.error"
 	| "status.warning"
@@ -22,7 +16,6 @@ export type SymbolKey =
 	| "status.shadowed"
 	| "status.aborted"
 	| "status.done"
-	// Navigation
 	| "nav.cursor"
 	| "nav.selected"
 	| "nav.expand"
@@ -30,20 +23,17 @@ export type SymbolKey =
 	| "nav.back"
 	| "nav.prev"
 	| "nav.next"
-	// Tree Connectors
 	| "tree.branch"
 	| "tree.last"
 	| "tree.vertical"
 	| "tree.horizontal"
 	| "tree.hook"
-	// Box Drawing - Rounded
 	| "boxRound.topLeft"
 	| "boxRound.topRight"
 	| "boxRound.bottomLeft"
 	| "boxRound.bottomRight"
 	| "boxRound.horizontal"
 	| "boxRound.vertical"
-	// Box Drawing - Sharp
 	| "boxSharp.topLeft"
 	| "boxSharp.topRight"
 	| "boxSharp.bottomLeft"
@@ -55,7 +45,6 @@ export type SymbolKey =
 	| "boxSharp.teeUp"
 	| "boxSharp.teeRight"
 	| "boxSharp.teeLeft"
-	// Separators
 	| "sep.powerline"
 	| "sep.powerlineThin"
 	| "sep.powerlineLeft"
@@ -69,7 +58,6 @@ export type SymbolKey =
 	| "sep.dot"
 	| "sep.slash"
 	| "sep.pipe"
-	// Icons
 	| "icon.model"
 	| "icon.plan"
 	| "icon.prewalk"
@@ -115,11 +103,8 @@ export type SymbolKey =
 	| "icon.extensionPrompt"
 	| "icon.extensionContextFile"
 	| "icon.extensionInstruction"
-	// STT
 	| "icon.mic"
-	// Compaction divider
 	| "icon.camera"
-	// Thinking Levels
 	| "thinking.minimal"
 	| "thinking.low"
 	| "thinking.medium"
@@ -127,30 +112,21 @@ export type SymbolKey =
 	| "thinking.xhigh"
 	| "thinking.max"
 	| "thinking.autoPending"
-	// Checkboxes. `progress` is a third state, not a colour variant: an
-	// in-progress task has to stay distinguishable from a pending one in a
-	// monochrome capture and for a reader who cannot separate the two hues.
 	| "checkbox.checked"
 	| "checkbox.unchecked"
 	| "checkbox.progress"
-	// Radio (single-choice)
 	| "radio.selected"
 	| "radio.unselected"
-	// Text Formatting
 	| "format.bullet"
 	| "format.dash"
 	| "format.bracketLeft"
 	| "format.bracketRight"
-	// Markdown-specific
 	| "md.quoteBorder"
 	| "md.hrChar"
 	| "md.bullet"
 	| "md.colorSwatch"
-	// Advisor note rail
 	| "advisor.rail"
-	// The rail a tool block hangs its output on, in place of a box
 	| "block.rail"
-	// Language/file type icons
 	| "lang.default"
 	| "lang.typescript"
 	| "lang.javascript"
@@ -188,7 +164,6 @@ export type SymbolKey =
 	| "lang.pdf"
 	| "lang.archive"
 	| "lang.binary"
-	// Settings tab icons
 	| "tab.appearance"
 	| "tab.model"
 	| "tab.interaction"
@@ -204,7 +179,6 @@ export type SymbolKey =
 	| "tab.providers"
 	| "tab.global"
 	| "tab.experimental"
-	// Tool identity icons
 	| "tool.write"
 	| "tool.edit"
 	| "tool.bash"
@@ -234,32 +208,19 @@ export type SymbolKey =
 export type SymbolMap = Record<SymbolKey, string>;
 
 export const UNICODE_SYMBOLS: SymbolMap = {
-	// Status
 	"status.success": "✓",
 	"status.error": "✗",
-	// A bare stroke matching ✓/✗ — this used to be the literal word "warn",
-	// which leaked as text ("warn interrupted" in the resume dialog).
 	"status.warning": "!",
-	// FONT COVERAGE CONTRACT: this preset is what a user WITHOUT a Nerd Font sees, so every glyph in it has to exist in the monospace fonts a plain
 	"status.info": "i",
 	"status.pending": "⋯",
 	"status.disabled": "⊗",
-	// House block style (see docs/internal/tui-design-language.md "Blockiness"):
-	// a bare presence marker is a square, not a circle. `▪` = present/on/done,
-	// `▫` = shadowed/auto. Kept distinct from the `■`/`□` checkbox squares.
 	"status.enabled": "▪",
 	"status.running": "◐",
-	// ◦ pairs with the ● active mark as its unfilled state. The former ◌
-	// (U+25CC DOTTED CIRCLE) is the combining-mark placeholder glyph and
-	// reads as a rendering artifact in many fonts.
 	"status.connecting": "◦",
 	"status.active": "●",
 	"status.shadowed": "▫",
-	// ∎ (U+220E) keeps the house blockiness while staying narrow-safe; the
-	// former ⏹ carries emoji presentation and rendered two cells wide.
 	"status.aborted": "∎",
 	"status.done": "▪",
-	// Navigation
 	"nav.cursor": "›",
 	"nav.selected": "›",
 	"nav.expand": "▸",
@@ -267,20 +228,17 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"nav.back": "⟵",
 	"nav.prev": "◂",
 	"nav.next": "▸",
-	// Tree
 	"tree.branch": "├─",
 	"tree.last": "└─",
 	"tree.vertical": "│",
 	"tree.horizontal": "─",
 	"tree.hook": "└",
-	// Box (rounded)
 	"boxRound.topLeft": "╭",
 	"boxRound.topRight": "╮",
 	"boxRound.bottomLeft": "╰",
 	"boxRound.bottomRight": "╯",
 	"boxRound.horizontal": "─",
 	"boxRound.vertical": "│",
-	// Box (sharp)
 	"boxSharp.topLeft": "┌",
 	"boxSharp.topRight": "┐",
 	"boxSharp.bottomLeft": "└",
@@ -292,7 +250,6 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"boxSharp.teeUp": "┴",
 	"boxSharp.teeRight": "├",
 	"boxSharp.teeLeft": "┤",
-	// Separators (powerline-ish, but pure Unicode)
 	"sep.powerline": "▕",
 	"sep.powerlineThin": "┆",
 	"sep.powerlineLeft": "▶",
@@ -306,7 +263,6 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"sep.dot": " · ",
 	"sep.slash": " / ",
 	"sep.pipe": " │ ",
-	// Icons. The DEFAULT (non-Nerd-Font) map is deliberately icon-light: veyyon's status
 	"icon.model": "",
 	"icon.plan": "",
 	"icon.prewalk": "",
@@ -316,7 +272,6 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.folder": "",
 	"icon.worktree": "◫",
 	"icon.search": "⌕",
-	// Ephemeral mark: the house "shadowed" square (see status.shadowed). The old 🗑 read as "this session is garbage"; its ◌ replacement (U+25CC DOTTED CIRCLE)
 	"icon.scratchFolder": "▫",
 	"icon.file": "▤",
 	"icon.git": "",
@@ -329,8 +284,6 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.pi": "",
 	"icon.ghost": "",
 	"icon.agents": "",
-	// Unread agent-to-agent messages waiting on a roster row. `✉` is in every
-	// broad monospace face, unlike the `⧉` this row used to hard-code inline.
 	"icon.unread": "✉",
 	"icon.job": "",
 	"icon.cache": "",
@@ -355,11 +308,8 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.extensionPrompt": "¶",
 	"icon.extensionContextFile": "",
 	"icon.extensionInstruction": "",
-	// STT
 	"icon.mic": "",
-	// Compaction divider
 	"icon.camera": "",
-	// Thinking levels: an eighth-block level gauge (▁▂▃▅▆█), so reasoning effort reads as rising magnitude rather than as filling quadrant circles. The
 	"thinking.minimal": "min",
 	"thinking.low": "low",
 	"thinking.medium": "med",
@@ -367,32 +317,21 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"thinking.xhigh": "xhigh",
 	"thinking.max": "max",
 	"thinking.autoPending": "◐",
-	// Checkboxes. `progress` sits in the same Geometric Shapes block and the same East Asian width class as the other two, so a terminal that widens `■`
 	"checkbox.checked": "■",
 	"checkbox.unchecked": "□",
 	"checkbox.progress": "◧",
-	// Radio (single-choice): squared to match the house block style, and kept
-	// visually distinct from the `■`/`□` checkbox — `▣` is a square-in-square so
-	// a selected radio never reads as a checked box.
 	"radio.selected": "▣",
 	"radio.unselected": "□",
-	// Formatting
 	"format.bullet": "•",
 	"format.dash": "—",
 	"format.bracketLeft": "⟦",
 	"format.bracketRight": "⟧",
-	// Markdown
 	"md.quoteBorder": "▏",
 	"md.hrChar": "─",
 	"md.bullet": "•",
 	"md.colorSwatch": "■",
-	// Advisor note rail (heavier than md.quoteBorder so notes read as a distinct voice)
 	"advisor.rail": "▎",
-	// The tool block's rail. One cell, lighter than `advisor.rail`: a note speaks once
-	// and a tool block is the most repeated object in a session, so its rail has to
-	// carry the block's colour without becoming the loudest column on the screen.
 	"block.rail": "▏",
-	// Language/file icons. EVERY ONE IS EMPTY, AND THAT IS THE VALUE. There is no Nerd Font here, and the honest set of one-cell glyphs that read as
 	"lang.default": "",
 	"lang.typescript": "",
 	"lang.javascript": "",
@@ -430,7 +369,6 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"lang.pdf": "",
 	"lang.archive": "",
 	"lang.binary": "",
-	// Settings tabs Icon-light doctrine (see the icon block comment above): the category name
 	"tab.appearance": "",
 	"tab.model": "",
 	"tab.interaction": "",
@@ -443,12 +381,9 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"tab.memory": "",
 	"tab.tasks": "",
 	"tab.subagents": "",
-	// icon-light doctrine applies to Global too — the lone 🌐 emoji among ten
-	// bare labels read as a glitch, not an accent.
 	"tab.providers": "",
 	"tab.global": "",
 	"tab.experimental": "",
-	// Tool identity icons (per-tool signature glyph on the success header)
 	"tool.write": "❐",
 	"tool.edit": "✎",
 	"tool.bash": ">",
@@ -477,251 +412,130 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 };
 
 export const NERD_SYMBOLS: SymbolMap = {
-	// Status Indicators
-	// pick:  | alt:   
 	"status.success": "\uf00c",
-	// pick:  | alt:   
 	"status.error": "\uf00d",
-	// pick:  | alt:  
 	"status.warning": "\uf12a",
-	// pick:  | alt: 
 	"status.info": "\uf129",
-	// pick:  | alt:   
 	"status.pending": "\uf254",
-	// pick:  | alt:  
 	"status.disabled": "\uf05e",
-	// pick:  | alt:  
 	"status.enabled": "\uf111",
-	// pick:  | alt:   
 	"status.running": "\uf110",
 	"status.connecting": "\uf10c",
 	"status.active": "\uf111",
-	// pick:  (nf-fa-circle_o, pairs with status.enabled's nf-fa-circle) | alt: ◐ ◑
 	"status.shadowed": "\uf10c",
-	// pick:  | alt:  
 	"status.aborted": "\uf04d",
-	// pick: • | alt: ● ·
 	"status.done": "•",
-	// Navigation
-	// pick:  | alt:  
 	"nav.cursor": "\uf054",
-	// pick:  | alt:  
 	"nav.selected": "\uf178",
-	// pick:  | alt:  
 	"nav.expand": "\uf0da",
-	// pick:  | alt:  
 	"nav.collapse": "\uf0d7",
 	"nav.prev": "\uf0d9",
 	"nav.next": "\uf0da",
-	// pick:  | alt:  
 	"nav.back": "\uf060",
-	// Tree Connectors (same as unicode)
-	// pick: ├─ | alt: ├╴ ├╌ ╠═ ┣━
 	"tree.branch": "├─",
-	// pick: └─ | alt: └╴ └╌ ╚═ ┗━
 	"tree.last": "└─",
-	// pick: │ | alt: ┃ ║ ▏ ▕
 	"tree.vertical": "│",
-	// pick: ─ | alt: ━ ═ ╌ ┄
 	"tree.horizontal": "─",
-	// pick: └ | alt: ╰ ⎿ ↳
 	"tree.hook": "└",
-	// Box Drawing - Rounded (same as unicode)
-	// pick: ╭ | alt: ┌ ┏ ╔
 	"boxRound.topLeft": "╭",
-	// pick: ╮ | alt: ┐ ┓ ╗
 	"boxRound.topRight": "╮",
-	// pick: ╰ | alt: └ ┗ ╚
 	"boxRound.bottomLeft": "╰",
-	// pick: ╯ | alt: ┘ ┛ ╝
 	"boxRound.bottomRight": "╯",
-	// pick: ─ | alt: ━ ═ ╌
 	"boxRound.horizontal": "─",
-	// pick: │ | alt: ┃ ║ ▏
 	"boxRound.vertical": "│",
-	// Box Drawing - Sharp (same as unicode)
-	// pick: ┌ | alt: ┏ ╭ ╔
 	"boxSharp.topLeft": "┌",
-	// pick: ┐ | alt: ┓ ╮ ╗
 	"boxSharp.topRight": "┐",
-	// pick: └ | alt: ┗ ╰ ╚
 	"boxSharp.bottomLeft": "└",
-	// pick: ┘ | alt: ┛ ╯ ╝
 	"boxSharp.bottomRight": "┘",
-	// pick: ─ | alt: ━ ═ ╌
 	"boxSharp.horizontal": "─",
-	// pick: │ | alt: ┃ ║ ▏
 	"boxSharp.vertical": "│",
-	// pick: ┼ | alt: ╋ ╬ ┿
 	"boxSharp.cross": "┼",
-	// pick: ┬ | alt: ╦ ┯ ┳
 	"boxSharp.teeDown": "┬",
-	// pick: ┴ | alt: ╩ ┷ ┻
 	"boxSharp.teeUp": "┴",
-	// pick: ├ | alt: ╠ ┝ ┣
 	"boxSharp.teeRight": "├",
-	// pick: ┤ | alt: ╣ ┥ ┫
 	"boxSharp.teeLeft": "┤",
-	// Separators - Nerd Font specific
-	// pick:  | alt:   
 	"sep.powerline": "\ue0b0",
-	// pick:  | alt:  
 	"sep.powerlineThin": "\ue0b1",
-	// pick:  | alt:  
 	"sep.powerlineLeft": "\ue0b0",
-	// pick:  | alt:  
 	"sep.powerlineRight": "\ue0b2",
-	// pick:  | alt: 
 	"sep.powerlineThinLeft": "\ue0b1",
-	// pick:  | alt: 
 	"sep.powerlineThinRight": "\ue0b3",
-	// pick: █ | alt: ▓ ▒ ░ ▉ ▌
 	"sep.block": "█",
-	// pick: space | alt: ␠ ·
 	"sep.space": " ",
-	// pick: > | alt: › » ▸
 	"sep.asciiLeft": ">",
-	// pick: < | alt: ‹ « ◂
 	"sep.asciiRight": "<",
-	// pick: · | alt: • ⋅
 	"sep.dot": " · ",
-	// pick:  | alt: / ∕ ⁄
 	"sep.slash": "\ue0bb",
-	// pick:  | alt: │ ┃ |
 	"sep.pipe": "\ue0b3",
-	// Icons - Nerd Font specific
-	// pick:  | alt:   ◆
 	"icon.model": "\uec19",
-	// pick:  | alt:  
 	"icon.plan": "\uf2d2",
 	"icon.prewalk": "\uf29d",
-	// pick:  (nf-fa-bullseye) | alt:  (nf-md-target) ◎ ⌖
 	"icon.goal": "\uf140",
-	// pick:  (nf-fa-pause) | alt: ⏸ ||
 	"icon.pause": "\uf04c",
-	// pick: ↻ | alt: ⟳
 	"icon.loop": "\uf021",
-	// pick:  | alt:  
 	"icon.folder": "\uf115",
 	"icon.search": "\uf002",
-	// pick:  | alt:
 	"icon.scratchFolder": "\uf014",
-	// pick: nf-fa-sitemap | alt: nf-cod-list_tree
 	"icon.worktree": "\uf0e8",
-	// pick:  | alt:  
 	"icon.file": "\uf15b",
-	// pick:  | alt:  ⎇
 	"icon.git": "\uf1d3",
-	// pick:  | alt:  ⎇
 	"icon.branch": "\uf126",
-	// pick:  (nf-cod-git_pull_request) | alt:  (nf-oct-git_pull_request)
 	"icon.pr": "\uea64",
-	// pick:  | alt: ⊛ ◍ 
 	"icon.tokens": "\ue26b",
-	// pick:  | alt: ◫ ▦
 	"icon.context": "\ue70f",
-	// pick:  | alt: $ ¢
 	"icon.cost": "\uf155",
-	// pick:  | alt: ◷ ◴
 	"icon.time": "\uf017",
-	// pick:  | alt: π ∏ ∑
 	"icon.pi": "\ue22c",
-	// pick: 󰊠 (nf-md-ghost) | alt:
 	"icon.ghost": "\u{f02a0}",
-	// pick:  | alt: 
 	"icon.agents": "\uf0c0",
 	"icon.unread": "\uf0e0",
-	// pick:  (nf-fa-gear) | alt:
 	"icon.job": "\uf013",
-	// pick:  | alt:  
 	"icon.cache": "\uf1c0",
-	// pick:  (fa-ban) | alt: ⊘
 	"icon.cacheMiss": "\uf05e",
-	// pick:  | alt:  →
 	"icon.input": "\uf090",
-	// pick:  | alt:  →
 	"icon.output": "\uf08b",
-	// pick:  (nf-fa-tachometer) | alt:   ↬
 	"icon.throughput": "\uf0e4",
-	// pick:  | alt:  
 	"icon.host": "\uf109",
 	"icon.profile": "",
-	// pick:  | alt: 
-	// pick:  | alt:  
 	"icon.session": "\uf550",
-	// pick:  | alt: 
 	"icon.package": "\uf487",
-	// pick:  | alt:  
 	"icon.warning": "\uf071",
-	// pick:  | alt:  ↺
 	"icon.rewind": "\uf0e2",
-	// pick: 󰁨 | alt:   
 	"icon.auto": "\u{f06e4}",
 	"icon.fast": "\uf0e7",
 	"icon.extensionSkill": "\uf0eb",
-	// pick:  | alt:  
 	"icon.extensionTool": "\uf0ad",
-	// pick:  | alt: 
 	"icon.extensionSlashCommand": "\uf120",
-	// pick:  | alt:  
 	"icon.extensionMcp": "\uf1e6",
-	// pick:  | alt:  
 	"icon.extensionRule": "\uf0e3",
-	// pick:  | alt: 
 	"icon.extensionHook": "\uf0c1",
-	// pick:  | alt:  
 	"icon.extensionPrompt": "\uf075",
-	// pick:  | alt:  
 	"icon.extensionContextFile": "\uf0f6",
-	// pick:  | alt:  
 	"icon.extensionInstruction": "\uf02d",
-	// STT - fa-microphone
 	"icon.mic": "\uf130",
-	// Compaction divider - fa-camera-retro
 	"icon.camera": "\uf083",
-	// Thinking levels — increasing circle slices, with fire reserved for max.
 	"thinking.minimal": "\u{F0A9E} min",
 	"thinking.low": "\u{F0A9F} low",
 	"thinking.medium": "\u{F0AA1} med",
 	"thinking.high": "\u{F0AA3} high",
 	"thinking.xhigh": "\u{F0AA5} xhi",
 	"thinking.max": "\u{F06D} max",
-	// Auto mode uses shuffle until the model resolves its thinking level.
 	"thinking.autoPending": "\u{F074}",
-	// Checkboxes
-	// pick:  | alt:  
 	"checkbox.checked": "\uf14a",
-	// pick:  | alt: 
 	"checkbox.unchecked": "\uf096",
-	// pick:  (nf-fa-minus_square, the conventional indeterminate box) | alt:
 	"checkbox.progress": "\uf146",
-	// Radio (single-choice)
-	// pick:  (fa-dot-circle-o) | alt:  ◉
 	"radio.selected": "\uf192",
-	// pick:  (fa-circle-o) | alt:  o
 	"radio.unselected": "\uf10c",
-	// pick:  | alt:   •
 	"format.bullet": "\uf111",
-	// pick: – | alt: — ― -
 	"format.dash": "–",
-	// pick: ⟨ | alt: [ ⟦
 	"format.bracketLeft": "⟨",
-	// pick: ⟩ | alt: ] ⟧
 	"format.bracketRight": "⟩",
-	// Markdown-specific
-	// pick: │ | alt: ┃ ║
 	"md.quoteBorder": "│",
-	// pick: ─ | alt: ━ ═
 	"md.hrChar": "─",
-	// pick:  | alt:  •
 	"md.bullet": "\uf111",
-	// pick: ■ | alt:  (U+F096)
 	"md.colorSwatch": "■",
-	// pick: ▎ | alt: ┃ │
 	"advisor.rail": "▎",
-	// pick: ▏ | alt: │ ▎
 	"block.rail": "▏",
-	// Language icons (nerd font devicons)
 	"lang.default": "",
 	"lang.typescript": "\u{E628}",
 	"lang.javascript": "\u{E60C}",
@@ -759,15 +573,11 @@ export const NERD_SYMBOLS: SymbolMap = {
 	"lang.pdf": "\u{F0226}",
 	"lang.archive": "\u{F187}",
 	"lang.binary": "\u{F019A}",
-	// Settings tab icons
 	"tab.appearance": "󰃣",
 	"tab.model": "󰚩",
 	"tab.interaction": "󰌌",
-	// nf-fa-tachometer: the gauge, the same glyph icon.throughput already uses for
-	// "how much is being consumed". Single-cell like every other tab glyph.
 	"tab.resources": "\uf0e4",
 	"tab.context": "󰘸",
-	// mdi-gavel: rules are the things that stop the run, not another document.
 	"tab.rules": "\u{F0A7C}",
 	"tab.files": "󰈔",
 	"tab.shell": "󰆍",
@@ -776,12 +586,8 @@ export const NERD_SYMBOLS: SymbolMap = {
 	"tab.tasks": "󰐱",
 	"tab.subagents": "󰡐",
 	"tab.providers": "󰖟",
-	// mdi-earth: single-cell like every other tab glyph — the emoji 🌐 was the
-	// one double-width cell in the column and broke label alignment.
 	"tab.global": "\u{F01E7}",
-	// mdi-flask: the experimental tab's beaker, single-cell like the rest.
 	"tab.experimental": "\u{F0093}",
-	// Tool identity icons (per-tool signature glyph on the success header)
 	"tool.write": "\uEA7F",
 	"tool.edit": "\uEA73",
 	"tool.bash": "\uEBCA",
@@ -810,7 +616,6 @@ export const NERD_SYMBOLS: SymbolMap = {
 };
 
 export const ASCII_SYMBOLS: SymbolMap = {
-	// Status Indicators
 	"status.success": "[ok]",
 	"status.error": "[!!]",
 	"status.warning": "[!]",
@@ -824,7 +629,6 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"status.shadowed": "[/]",
 	"status.aborted": "[-]",
 	"status.done": "*",
-	// Navigation
 	"nav.cursor": ">",
 	"nav.selected": "->",
 	"nav.expand": "+",
@@ -832,20 +636,17 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"nav.back": "<-",
 	"nav.prev": "<",
 	"nav.next": ">",
-	// Tree Connectors
 	"tree.branch": "|--",
 	"tree.last": "'--",
 	"tree.vertical": "|",
 	"tree.horizontal": "-",
 	"tree.hook": "`-",
-	// Box Drawing - Rounded (ASCII fallback)
 	"boxRound.topLeft": "+",
 	"boxRound.topRight": "+",
 	"boxRound.bottomLeft": "+",
 	"boxRound.bottomRight": "+",
 	"boxRound.horizontal": "-",
 	"boxRound.vertical": "|",
-	// Box Drawing - Sharp (ASCII fallback)
 	"boxSharp.topLeft": "+",
 	"boxSharp.topRight": "+",
 	"boxSharp.bottomLeft": "+",
@@ -857,7 +658,6 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"boxSharp.teeUp": "+",
 	"boxSharp.teeRight": "+",
 	"boxSharp.teeLeft": "+",
-	// Separators
 	"sep.powerline": ">",
 	"sep.powerlineThin": ">",
 	"sep.powerlineLeft": ">",
@@ -871,7 +671,6 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"sep.dot": " - ",
 	"sep.slash": " / ",
 	"sep.pipe": " | ",
-	// Icons
 	"icon.model": "[M]",
 	"icon.plan": "plan",
 	"icon.prewalk": "prewalk",
@@ -917,11 +716,8 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"icon.extensionPrompt": "PR",
 	"icon.extensionContextFile": "CF",
 	"icon.extensionInstruction": "IN",
-	// STT
 	"icon.mic": "MIC",
-	// Compaction divider
 	"icon.camera": "[o]",
-	// Thinking Levels
 	"thinking.minimal": "[min]",
 	"thinking.low": "[low]",
 	"thinking.medium": "[med]",
@@ -929,11 +725,8 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"thinking.xhigh": "[xhi]",
 	"thinking.max": "[max]",
 	"thinking.autoPending": "[~]",
-	// Checkboxes
 	"checkbox.checked": "[x]",
 	"checkbox.unchecked": "[ ]",
-	// Three columns like its siblings, so the ASCII board's content column does
-	// not shift when a task starts.
 	"checkbox.progress": "[~]",
 	"radio.selected": "(o)",
 	"radio.unselected": "( )",
@@ -941,14 +734,12 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"format.dash": "-",
 	"format.bracketLeft": "[",
 	"format.bracketRight": "]",
-	// Markdown-specific
 	"md.quoteBorder": "|",
 	"md.hrChar": "-",
 	"md.bullet": "*",
 	"md.colorSwatch": "[]",
 	"advisor.rail": "|",
 	"block.rail": "|",
-	// Language icons (ASCII uses abbreviations)
 	"lang.default": "code",
 	"lang.typescript": "ts",
 	"lang.javascript": "js",
@@ -986,7 +777,6 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"lang.pdf": "pdf",
 	"lang.archive": "zip",
 	"lang.binary": "bin",
-	// Settings tab icons
 	"tab.appearance": "[A]",
 	"tab.model": "[M]",
 	"tab.interaction": "[I]",
@@ -1002,7 +792,6 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"tab.providers": "[P]",
 	"tab.global": "[G]",
 	"tab.experimental": "[E]",
-	// Tool identity icons (per-tool signature glyph on the success header)
 	"tool.write": "+f",
 	"tool.edit": "~",
 	"tool.bash": "$",
@@ -1040,8 +829,6 @@ export type SpinnerType = "status" | "activity" | "thinking";
 
 export const SPINNER_FRAMES: Record<SymbolPreset, Record<SpinnerType, string[]>> = {
 	unicode: {
-		// The breathing pixel: the sun's intensity ramp inhaling and exhaling —
-		// the brand compressed into one quiet cell.
 		status: ["·", ":", "░", "▒", "▓", "█", "▓", "▒", "░", ":"],
 		activity: ["·", ":", "░", "▒", "▓", "█", "▓", "▒", "░", ":"],
 		thinking: ["✻", "✼", "❉", "❊", "✺", "✹", "✸", "✶"],
@@ -1054,17 +841,11 @@ export const SPINNER_FRAMES: Record<SymbolPreset, Record<SpinnerType, string[]>>
 	ascii: {
 		status: ["|", "/", "-", "\\"],
 		activity: ["-", "\\", "|", "/"],
-		// Single frame: consumers skip the animation timer entirely for a
-		// one-frame set, so ASCII terminals get a static marker, not churn.
 		thinking: ["*"],
 	},
 };
 
-/** The same ramp one ink level shallower. The activity ramp peaks on a full cell (`█`) once a cycle. In the status line */
 export function spinnerRampOneLevelShallower(frames: readonly string[]): string[] {
-	// The mirror runs over indices 1..n-1, so its centre is n/2 and only an
-	// even-length ramp has one. A frame appearing twice at the centre is not a
-	// peak, so `frames[peak]` must be unique for the shape to be a rise and fall.
 	if (frames.length < 4 || frames.length % 2 !== 0) return frames.slice();
 	const peak = frames.length / 2;
 	if (frames.filter(frame => frame === frames[peak]).length !== 1) return frames.slice();
@@ -1074,14 +855,12 @@ export function spinnerRampOneLevelShallower(frames: readonly string[]): string[
 	return frames.filter((_, i) => i !== peak && i !== peak - 1);
 }
 
-/** The glyphs a progress, usage or context bar is drawn from, per preset. Sub-cell precision is a GLYPH capability, so it belongs to the same preset */
 export const BAR_RAMPS: Record<SymbolPreset, SubCellBarRamp> = {
 	unicode: SUB_CELL_BAR_RAMP,
 	nerd: SUB_CELL_BAR_RAMP,
 	ascii: { full: "#", track: "-", partials: [] },
 };
 
-/** Shape accepted by `themeJson.symbols.spinnerFrames`. A flat array applies to the `status` and `activity` spinners; an object lets a theme override */
 export type SpinnerFramesOverride = string[] | { status?: string[]; activity?: string[]; thinking?: string[] };
 
 export function normalizeSpinnerFramesOverride(

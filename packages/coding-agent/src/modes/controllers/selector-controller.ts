@@ -2,8 +2,6 @@ import { ThinkingLevel } from "@veyyon/agent-core";
 import type { CredentialHealthResult, UsageReport } from "@veyyon/ai";
 import type { InstrumentationLevel } from "@veyyon/ai/instrumentation";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
-// The derived provider set from the registry that derives it (164 modules) rather than the
-// barrel (346).
 import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai/registry/derived";
 import type { Component, OverlayHandle } from "@veyyon/tui";
 import { Loader, Spacer, setTuiTight, Text } from "@veyyon/tui";
@@ -25,7 +23,6 @@ import {
 } from "../../config/model-resolver";
 import { DEFAULT_MODEL_SLOT, getRoleInfo, isDefaultModelSlot } from "../../config/model-roles";
 import { applySamplingKnob, optionalNumber, toNumberOrUndefined } from "../../config/optional-number";
-// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
 import { disableProvider, enableProvider } from "../../discovery";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
@@ -97,12 +94,6 @@ import { UserMessageSelectorComponent } from "../components/user-message-selecto
 import type { SessionObserverRegistry } from "../session-observer-registry";
 import { buildCopyTargets } from "../utils/copy-targets";
 
-/**
- * The slice of the interactive context this uses: 33 members of the 215
- * `InteractiveModeContext` requires. Still a slice, and naming it is what lets a
- * test construct one without the `as unknown as InteractiveModeContext` cast the
- * full interface forces (see `CollabHostContext`).
- */
 export type SelectorControllerContext = Pick<
 	InteractiveModeContext,
 	| "applyCwdChange"
@@ -148,32 +139,22 @@ export type SelectorControllerContext = Pick<
 
 const MANUAL_LOGIN_TIP = "Tip: You can complete pairing with /login <redirect URL>.";
 
-/** Probe cache for an open account manager card. */
 interface AccountProbeCache {
 	health: Map<number, CredentialHealthResult>;
 	usage: UsageReport[] | null;
 }
 
-/** Result of an interactive login flow. */
 type LoginOutcome = "stored" | "cancelled" | "failed";
 
 export class SelectorController {
 	constructor(private ctx: SelectorControllerContext) {}
 
-	/** Restore keyboard focus to active editor component. */
 	focusActiveEditorArea(): void {
 		const visible = this.ctx.editorContainer.children[0] ?? this.ctx.editor;
 		this.ctx.ui.setFocus(visible);
 	}
 
-	/**
-	 * Shows a selector component in place of the editor.
-	 * @param create Factory that receives a `done` callback and returns the component and focus target
-	 */
 	showSelector(create: (done: () => void) => { component: Component; focus: Component }): void {
-		// Re-entrant guard: a selection path and a cancel path may both call
-		// `done()` (or a component may fire both), so the editor is restored
-		// exactly once instead of clearing and re-adding it twice.
 		let closed = false;
 		const done = () => {
 			if (closed) return;
@@ -189,10 +170,6 @@ export class SelectorController {
 		this.ctx.ui.requestRender();
 	}
 
-	/**
-	 * Shows a floating ModalShell picker as a fullscreen overlay (clear underpaint).
-	 * Prefer this over {@link showSelector} for structure-system pickers.
-	 */
 	showModalSelector(
 		create: (done: () => void) => {
 			component: Component & { setOnRequestRender?: (cb: () => void) => void; dispose?: () => void };
@@ -200,17 +177,8 @@ export class SelectorController {
 		},
 	): void {
 		let overlayHandle: OverlayHandle | undefined;
-		// Re-entrant guard + early-close handling. `done()` may fire more than
-		// once (a select path and a cancel path can race), so the overlay must
-		// hide exactly once. It may also fire synchronously inside `create()`,
-		// before `showOverlay` has returned a handle to hide; in that case we
-		// record the request and run the teardown right after the handle exists,
-		// so the overlay never gets stranded open (Law 10: no silent no-op).
 		let closed = false;
 		let closeRequestedEarly = false;
-		// Assigned by `create` below, and read by a `done` that can outlive this
-		// call: the card is what registered with the shared clock, so it is what
-		// has to be told the card is gone.
 		let card: { dispose?: () => void } | undefined;
 		const done = () => {
 			if (closed) return;
@@ -220,9 +188,6 @@ export class SelectorController {
 			}
 			closed = true;
 			overlayHandle.hide();
-			// Everything the card registered with the shared clock goes with it: a
-			// pointer band still travelling when Escape landed is ticking against a
-			// component nobody will paint again.
 			card?.dispose?.();
 			this.focusActiveEditorArea();
 			this.ctx.ui.requestRender();
@@ -249,23 +214,12 @@ export class SelectorController {
 		Promise.all([
 			getAvailableThemes(),
 			resolveAvailablePersonalities({ cwd: getProjectDir() }),
-			// Asked BEFORE the panel is built: the rollback row is offered only on
-			// an install that can actually perform one, and a source checkout
-			// cannot. Showing it there would put a row in front of the operator
-			// whose only outcome is a refusal.
 			isRollbackSupported(),
 		]).then(([availableThemes, availablePersonalities, rollbackSupported]) => {
-			// Fullscreen settings editor on the alternate screen: the overlay
-			// enables mouse tracking (click/hover/wheel) for its lifetime and
-			// the transcript stays untouched underneath.
 			let overlayHandle: OverlayHandle | undefined;
-			// Declared before `done` closes over it: the card is constructed with
-			// callbacks that can reach `done`, so a `const` below this point would
-			// be a temporal-dead-zone throw on a close that races construction.
 			let selector: SettingsSelectorComponent | undefined;
 			const done = () => {
 				overlayHandle?.hide();
-				// Everything the card registered with the shared clock goes with it.
 				selector?.dispose();
 				this.focusActiveEditorArea();
 				this.ctx.ui.requestRender();
@@ -289,10 +243,6 @@ export class SelectorController {
 				{
 					onChange: (id, value) => this.handleSettingChange(id, value),
 					onOpenUrl: url => openPath(url),
-					// Supplying this is what makes the "Roll back version" row appear.
-					// The install runs AFTER the overlay is torn down, because it
-					// prints progress and can fail with a message worth reading, none
-					// of which survives painting under a screen about to be restored.
 					onRollback: rollbackSupported ? version => rollbackToVersion(version) : undefined,
 					onError: message => this.ctx.showWarning(message),
 					onThemePreview: async themeName => {
@@ -304,7 +254,6 @@ export class SelectorController {
 						}
 					},
 					onStatusLinePreview: previewSettings => {
-						// Update status line with preview settings
 						this.ctx.statusLine.updateSettings({
 							preset: settings.get("statusLine.preset"),
 							leftSegments: settings.get("statusLine.leftSegments"),
@@ -319,8 +268,6 @@ export class SelectorController {
 						this.ctx.ui.requestRender();
 					},
 					getStatusLinePreview: () => {
-						// Preview the quiet composer zones (what the operator actually sees),
-						// two rows: location above, capability below.
 						const width = this.ctx.editor.getTopBorderAvailableWidth(this.ctx.ui.terminal.columns);
 						const { locationLine, capabilityLine } = this.ctx.statusLine.renderQuietLines(width);
 						return `${locationLine}\n${capabilityLine}`;
@@ -334,7 +281,6 @@ export class SelectorController {
 					},
 					onCancel: () => {
 						done();
-						// Restore status line to saved settings
 						this.ctx.statusLine.updateSettings({
 							preset: settings.get("statusLine.preset"),
 							leftSegments: settings.get("statusLine.leftSegments"),
@@ -362,17 +308,6 @@ export class SelectorController {
 		});
 	}
 
-	/**
-	 * Fullscreen `/advisor configure` overlay: edit a `WATCHDOG.yml` advisor roster
-	 * and apply it to the session already on screen.
-	 *
-	 * The overlay owns scope switching, so the host seeds the project doc and answers
-	 * `loadDoc` when the user moves between project and user level. `save` writes the
-	 * one file that was edited, then re-discovers the MERGED project+user roster and
-	 * hands it to `applyAdvisorConfigs`, so an edit lands in the running conversation
-	 * rather than at the next launch, and a project advisor that shadows a user one of
-	 * the same slug keeps shadowing it after the write.
-	 */
 	async showAdvisorConfigure(): Promise<void> {
 		const dirs = {
 			projectDir: this.ctx.sessionManager.getCwd(),
@@ -463,7 +398,6 @@ export class SelectorController {
 		});
 	}
 
-	/** Show thinking effort selector. */
 	showThinkingSelector(): void {
 		const model = this.ctx.session.model;
 		if (!hasConfigurableThinkingEffort(model)) {
@@ -487,7 +421,6 @@ export class SelectorController {
 		});
 	}
 
-	/** Show generic subcommand picker. */
 	showSubcommandPicker(
 		commandName: string,
 		subcommands: readonly SubcommandDef[],
@@ -507,12 +440,8 @@ export class SelectorController {
 		});
 	}
 
-	/** Show Extension Control Center dashboard. */
 	async showExtensionsDashboard(): Promise<void> {
 		const dashboard = await ExtensionDashboard.create(getProjectDir(), this.ctx.settings, this.ctx.ui.terminal.rows);
-		// Fullscreen dashboard on the alternate screen (the /settings idiom): the
-		// overlay borrows the terminal's alt buffer and enables mouse tracking for
-		// its lifetime, leaving the transcript untouched underneath.
 		const overlay = this.ctx.ui.showOverlay(dashboard, {
 			width: "100%",
 			maxHeight: "100%",
@@ -522,8 +451,6 @@ export class SelectorController {
 		});
 		dashboard.onClose = () => {
 			overlay.hide();
-			// The list band and the tab band live on the shared clock; hiding the overlay does not
-			// tell them that.
 			dashboard.dispose();
 			this.focusActiveEditorArea();
 			this.ctx.ui.requestRender();
@@ -533,15 +460,12 @@ export class SelectorController {
 		});
 	}
 
-	/** Show Agent Control Center dashboard. */
 	showAgentsDashboard(
 		observers: SessionObserverRegistry,
 		options?: { requireContent?: boolean; processScope?: boolean },
 	): void {
 		const dashboard = new AgentDashboard({
 			terminalHeight: this.ctx.ui.terminal.rows,
-			// The comms stream expands a folded message with the same key the
-			// transcript expands a truncated tool result with.
 			expandKeys: this.ctx.keybindings.getKeys("app.tools.expand"),
 			hubKeys: [
 				...this.ctx.keybindings.getKeys("app.agents.hub"),
@@ -552,9 +476,6 @@ export class SelectorController {
 			observers,
 			showModelBadge: settings.get("subagent.showResolvedModelBadge"),
 			sessionFile: this.ctx.sessionManager.getSessionFile() ?? null,
-			// The roster is this conversation's, not the process's. Without it a
-			// session resumed with `/resume` listed the subagents of every
-			// conversation the process had driven before it.
 			scope: this.ctx.sessionManager.getSessionId(),
 			processScope: options?.processScope,
 			focusAgent: id => this.ctx.focusAgentSession(id),
@@ -564,9 +485,6 @@ export class SelectorController {
 			cwd: this.ctx.sessionManager.getCwd(),
 			hideThinkingBlock: () => this.ctx.effectiveHideThinkingBlock,
 			proseOnlyThinking: () => this.ctx.proseOnlyThinking,
-			// The viewer parses a subagent's or advisor's persisted `.jsonl`, which
-			// keeps raw handles; this hands it the live session's codec so the one
-			// display outside the argot wire stops showing them.
 			expandArgot: entries => this.ctx.session.expandArgotEntries(entries),
 		});
 		dashboard.onRequestRender = () => {
@@ -574,10 +492,6 @@ export class SelectorController {
 		};
 
 		const show = () => {
-			// Fullscreen dashboard on the alternate screen (the /settings idiom): the
-			// overlay borrows the terminal's alt buffer and enables mouse tracking for
-			// its lifetime, leaving the transcript untouched underneath. The card
-			// itself floats within this via ModalShell LARGE (see agent-dashboard.ts).
 			const overlay = this.ctx.ui.showOverlay(dashboard, {
 				width: "100%",
 				maxHeight: "100%",
@@ -586,9 +500,6 @@ export class SelectorController {
 				fullscreen: true,
 			});
 			dashboard.onClose = () => {
-				// The card subscribes to the process-global registry and bus; without
-				// this it would keep rebuilding a layout nobody is looking at, once per
-				// agent event and once per message, for the rest of the session.
 				dashboard.dispose();
 				overlay.hide();
 				this.focusActiveEditorArea();
@@ -610,9 +521,7 @@ export class SelectorController {
 		show();
 	}
 
-	/** Handle setting change from selector. */
 	handleSettingChange(id: string, value: unknown): void | Promise<void> {
-		// Discovery provider toggles
 		if (id.startsWith("discovery.")) {
 			const providerId = id.replace("discovery.", "");
 			if (value) {
@@ -623,12 +532,6 @@ export class SelectorController {
 			return;
 		}
 
-		// Auth storage and the model registry capture the profile-sharing backing
-		// store at startup. Persisting a different posture without replacing both
-		// atomically would leave the UI claiming one policy while dispatch still
-		// reads the old store. Begin teardown synchronously (shutdown marks the
-		// context as shutting down before its first await), making restart the
-		// explicit dispatch barrier.
 		if (id === "profileSharing") {
 			this.ctx.showWarning(
 				"Credential sharing changed. Restart required; this session is shutting down before further model dispatch.",
@@ -641,10 +544,6 @@ export class SelectorController {
 		const frozen = frozenGateNotice(id);
 		if (frozen !== undefined) this.ctx.showWarning(frozen);
 
-		// Secret settings own live process state, not only persisted configuration.
-		// Return the coordinator-backed transition rather than dropping its
-		// promise. Rapid toggles then retain initiation order and callers that can
-		// await the setting side effect observe the committed runtime.
 		if (id.startsWith("secrets.")) {
 			return this.ctx.session.refreshSecrets().catch(err => {
 				this.ctx.showError(`Failed to apply "${id}" to the secret runtime: ${errorMessage(err)}`);
@@ -652,7 +551,6 @@ export class SelectorController {
 		}
 
 		switch (id) {
-			// Session-managed settings (not in SettingsManager)
 			case "autoCompact":
 				this.ctx.session.setAutoCompactionEnabled(value as boolean);
 				this.ctx.statusLine.setAutoCompactEnabled(value as boolean);
@@ -675,15 +573,11 @@ export class SelectorController {
 				this.ctx.statusLine.invalidate();
 				this.ctx.updateEditorBorderColor();
 				break;
-			// `personality` needs no arm of its own: it is a registered prompt gate, and the
-			// rebuild above covers it. Kept out of the switch rather than left as an empty case
-			// so there is nothing to read that looks like it still does the work.
 
 			case "autocompleteMaxVisible":
 				this.ctx.editor.setAutocompleteMaxVisible(typeof value === "number" ? value : Number(value));
 				break;
 
-			// Settings with UI side effects
 			case "showImages":
 				for (const child of this.ctx.chatContainer.children) {
 					if (child instanceof ToolExecutionComponent) {
@@ -698,9 +592,6 @@ export class SelectorController {
 						child.setHideThinkingBlock(this.ctx.effectiveHideThinkingBlock);
 					}
 				}
-				// Full clear + replay so blocks frozen in committed scrollback on
-				// ED3-risk terminals retire their stale snapshots too (see
-				// InputController.toggleThinkingBlockVisibility).
 				this.ctx.ui.resetDisplay();
 				break;
 			case "proseOnlyThinking":
@@ -716,16 +607,10 @@ export class SelectorController {
 				this.ctx.session.agent.hideThinkingSummary = value as boolean;
 				break;
 			case "display.cacheMissMarker":
-				// Rebuild re-runs the usage-based detection under the new setting so
-				// markers appear/disappear; full reset retires any already committed
-				// to native scrollback (mirrors hideThinking).
 				this.ctx.rebuildChatFromMessages();
 				this.ctx.ui.resetDisplay();
 				break;
 			case "display.collapseCompacted":
-				// Rebuild swaps between the collapsed tail and the full inline
-				// history; full reset retires blocks already committed to native
-				// scrollback (mirrors cacheMissMarker).
 				this.ctx.rebuildChatFromMessages();
 				this.ctx.ui.resetDisplay();
 				break;
@@ -744,8 +629,6 @@ export class SelectorController {
 				break;
 
 			case "tui.renderMermaid":
-				// The prompt rebuild is the registry's, above. What is left here is the part that
-				// is genuinely about the TUI: the renderer switch and retiring committed blocks.
 				setMarkdownMermaidRendering(value as boolean);
 				this.ctx.rebuildChatFromMessages();
 				this.ctx.ui.resetDisplay();
@@ -786,9 +669,6 @@ export class SelectorController {
 				break;
 			}
 			case "git.enabled":
-			// The composer reads `statusLine.enabled` on each render, so applying it is a
-			// render request; it is here so the row appears or disappears under the open
-			// settings screen rather than on the next unrelated frame.
 			case "statusLine.enabled":
 			case "statusLinePreset":
 			case "statusLine.preset":
@@ -826,7 +706,6 @@ export class SelectorController {
 				break;
 			}
 
-			// Provider settings - update runtime preferences
 			case "providers.webSearch":
 				if (typeof value === "string" && isSearchProviderPreference(value)) {
 					setPreferredSearchProvider(value);
@@ -843,13 +722,9 @@ export class SelectorController {
 				}
 				break;
 
-			// MCP update injection - live subscribe/unsubscribe
 			case "mcp.notifications":
 				this.ctx.mcpManager?.setNotificationsEnabled(value as boolean);
 				break;
-
-			// All other settings are handled by the definitions (get/set on SettingsManager)
-			// No additional side effects needed
 		}
 	}
 
@@ -857,7 +732,6 @@ export class SelectorController {
 		this.#showModelPicker(options?.temporaryOnly === true);
 	}
 
-	/** Report theme reload outcome. */
 	#surfaceThemeResult(result: ThemeLoadResult, attempted: string): void {
 		if (result.success) return;
 		const detail = result.error ? `: ${result.error}` : "";
@@ -868,13 +742,10 @@ export class SelectorController {
 		);
 	}
 
-	/** Show session model picker. */
 	#showModelPicker(temporaryOnly: boolean): void {
 		const currentContextTokens = this.ctx.session.getContextUsage()?.tokens ?? 0;
 		const current = this.ctx.session.model;
 		let overlayHandle: OverlayHandle | undefined;
-		// The card holds a pointer band on the shared motion clock; hiding an overlay only stops
-		// painting it. The show site created the card, so the show site hands it back.
 		let picker: ModelPickerComponent | undefined;
 		let closed = false;
 		const done = () => {
@@ -920,7 +791,6 @@ export class SelectorController {
 				currentSelector: current ? `${current.provider}/${current.id}` : undefined,
 			},
 		);
-		// Fullscreen host; ModelPicker paints a floating ModalShell medium card.
 		overlayHandle = this.ctx.ui.showOverlay(picker, {
 			anchor: "top-left",
 			width: "100%",
@@ -932,15 +802,12 @@ export class SelectorController {
 		this.ctx.ui.requestRender();
 	}
 
-	/** Show fullscreen model hub overlay. */
 	#showModelHub(hubOptions: { initialProviderId?: string }): void {
 		const currentContextTokens = this.ctx.session.getContextUsage()?.tokens ?? 0;
 		let overlayHandle: OverlayHandle | undefined;
 		let hub: ModelHubComponent | undefined;
 		let closed = false;
 		const done = () => {
-			// Re-entrant guard: cancel paths (Esc, login forward) may race;
-			// the overlay must hide exactly once.
 			if (closed) return;
 			closed = true;
 			hub?.dispose();
@@ -1040,10 +907,7 @@ export class SelectorController {
 		this.ctx.ui.requestRender();
 	}
 
-	/** /login round-trip for a locked provider; reopen the hub on that provider only after a successful login. */
 	async #loginThenReopenModelHub(providerId: string): Promise<void> {
-		// The hub replaces the screen, so it opens only on a login that has
-		// something new to show. A failure leaves its error readable instead.
 		if ((await this.#handleOAuthLogin(providerId)) === "stored") {
 			this.#showModelHub({ initialProviderId: providerId });
 		}
@@ -1067,7 +931,6 @@ export class SelectorController {
 				async entryId => {
 					const result = await this.ctx.session.branch(entryId);
 					if (result.cancelled) {
-						// Hook cancelled the branch
 						done();
 						this.ctx.ui.requestRender();
 						return;
@@ -1095,14 +958,9 @@ export class SelectorController {
 		}
 
 		let overlayHandle: OverlayHandle | undefined;
-		// Declared before `done` closes over it, for the same reason the shared
-		// modal helper does: the card is constructed with callbacks that reach
-		// `done`, so a close racing construction must not read it too early.
 		let selector: CopySelectorComponent | undefined;
 		const done = () => {
 			overlayHandle?.hide();
-			// The card's pointer band lives on the shared clock; hiding the overlay
-			// does not tell it that.
 			selector?.dispose();
 			this.ctx.ui.requestRender();
 		};
@@ -1142,17 +1000,14 @@ export class SelectorController {
 				tree,
 				realLeafId,
 				async entryId => {
-					// Selecting the current leaf is a no-op (already there)
 					if (entryId === realLeafId) {
 						done();
 						this.ctx.showStatus("Already at this point");
 						return;
 					}
 
-					// Ask about summarization
 					done(); // Close selector first
 
-					// Loop until user makes a complete choice or cancels to tree
 					let wantsSummary = false;
 					let customInstructions: string | undefined;
 
@@ -1166,7 +1021,6 @@ export class SelectorController {
 						]);
 
 						if (summaryChoice === undefined) {
-							// User pressed escape - re-show tree selector
 							this.showTreeSelector();
 							return;
 						}
@@ -1176,16 +1030,13 @@ export class SelectorController {
 						if (summaryChoice === "Summarize with custom prompt") {
 							customInstructions = await this.ctx.showHookEditor("Custom summarization instructions");
 							if (customInstructions === undefined) {
-								// User cancelled - loop back to summary selector
 								continue;
 							}
 						}
 
-						// User made a complete choice
 						break;
 					}
 
-					// Set up escape handler and loader if summarizing
 					let summaryLoader: Loader | undefined;
 					const originalOnEscape = this.ctx.editor.onEscape;
 
@@ -1212,7 +1063,6 @@ export class SelectorController {
 						});
 
 						if (result.aborted) {
-							// Summarization aborted - re-show tree selector
 							this.ctx.showStatus("Branch summarization cancelled");
 							this.showTreeSelector();
 							return;
@@ -1222,8 +1072,6 @@ export class SelectorController {
 							return;
 						}
 
-						// Update UI — rebuild the display transcript for the new leaf (the
-						// context from navigateTree is the LLM context, not the transcript).
 						this.ctx.renderInitialMessages({ clearTerminalHistory: true });
 						await this.ctx.reloadTodos();
 						if (result.editorText && !this.ctx.editor.getText().trim()) {
@@ -1259,9 +1107,6 @@ export class SelectorController {
 			this.ctx.sessionManager.getCwd(),
 			this.ctx.sessionManager.getSessionDir(),
 		);
-		// Always open in current-folder scope; the empty-state hint in SessionList
-		// invites the user to Tab into all-projects rather than silently surfacing
-		// every project's history when the cwd has nothing to resume. See #3099.
 		const historyStorage = this.ctx.historyStorage;
 		const historyMatcher = historyStorage ? (query: string) => historyStorage.matchingSessionIds(query) : undefined;
 		let overlayHandle: OverlayHandle | undefined;
@@ -1280,9 +1125,6 @@ export class SelectorController {
 				done();
 			},
 			() => {
-				// Release the alt buffer before teardown: shutdown() awaits flush/save/
-				// dispose/drain before stop() leaves the alt screen, so without this the
-				// fullscreen picker would freeze on screen for that window on Ctrl+C.
 				done();
 				void this.ctx.shutdown();
 			},
@@ -1355,11 +1197,6 @@ export class SelectorController {
 		this.ctx.clearTransientSessionUi();
 
 		const previousCwd = this.ctx.sessionManager.getCwd();
-		// A session handed off by `/new` is still alive in this process, so resume
-		// the OBJECT rather than its file: its turn keeps streaming into the view
-		// it left, and the session being displayed now takes its place in the
-		// background. Replaying the transcript here would rebuild a running turn
-		// as finished text and leave the live session unreachable.
 		const live = BackgroundSessions.global().take(sessionPath);
 		if (live) {
 			const liveCwd = live.sessionManager.getCwd();
@@ -1375,20 +1212,15 @@ export class SelectorController {
 			return;
 		}
 
-		// Switch session via AgentSession (emits hook and tool session events). The
-		// SessionManager adopts the resumed session's own cwd when it differs.
 		await this.ctx.session.switchSession(sessionPath);
 		const newCwd = this.ctx.sessionManager.getCwd();
 		const movedProject = normalizePathForComparison(newCwd) !== normalizePathForComparison(previousCwd);
 		if (movedProject) {
-			// Resumed a session from another project: re-point the process and every
-			// cwd-derived cache at it before rendering.
 			await this.ctx.applyCwdChange(newCwd);
 		}
 		this.#refreshSessionTerminalTitle();
 		this.ctx.updateEditorBorderColor();
 
-		// Clear and re-render the chat
 		this.ctx.renderInitialMessages({ clearTerminalHistory: true });
 		await this.ctx.reloadTodos();
 		this.ctx.showStatus(movedProject ? `Resumed session in ${shortenPath(newCwd)}` : "Resumed session");
@@ -1401,7 +1233,6 @@ export class SelectorController {
 			return;
 		}
 
-		// Check if session file exists (may not exist for brand new sessions)
 		const storage = new FileSessionStorage();
 		const fileExists = await storage.exists(sessionFile);
 		if (!fileExists) {
@@ -1424,18 +1255,13 @@ export class SelectorController {
 			return;
 		}
 
-		// Delete the session file and artifacts directory
 		await storage.deleteSessionWithArtifacts(sessionFile);
 
-		// Show session selector
 		this.ctx.showStatus("Session deleted");
 		await this.showSessionSelector();
 	}
 
-	/** Run OAuth login flow for provider. */
 	async #handleOAuthLogin(providerId: string): Promise<LoginOutcome> {
-		// `formatProviderName`, not the raw slug: the account card, the model hub and the footline all
-		// name this provider the same way, and a login is where the operator meets it first.
 		const providerLabel = formatProviderName(providerId);
 		this.ctx.showStatus(`Logging in to ${providerLabel}…`);
 		const manualInput = this.ctx.oauthManualInput;
@@ -1454,8 +1280,6 @@ export class SelectorController {
 			this.ctx.ui,
 			providerId,
 			(_success, message) => {
-				// Fires on Esc: unblock the editor immediately; the aborted flow's
-				// rejection settles the awaited login below.
 				restoreEditor();
 				if (message) this.ctx.showStatus(message);
 			},
@@ -1474,16 +1298,11 @@ export class SelectorController {
 			const identity = await this.ctx.session.modelRegistry.authStorage.login(providerId as OAuthProvider, {
 				signal: dialog.signal,
 				onAuth: (info: { url: string; launchUrl?: string; instructions?: string }) => {
-					// The dialog renders the full URL (SSH-safe copy target) and
-					// opens the browser best-effort.
 					dialog.showAuth(info.url, info.instructions, info.launchUrl);
 					if (useManualInput) {
 						dialog.showProgress(MANUAL_LOGIN_TIP);
 					}
 				},
-				// The whole prompt, not two of its fields: the flow that asks declares whether the answer
-				// is a credential (`secret`), and the dialog masks the input from that rather than
-				// guessing from the message text.
 				onPrompt: (prompt: { message: string; placeholder?: string; secret?: boolean }) =>
 					dialog.showPrompt(prompt),
 				onProgress: (message: string) => {
@@ -1491,21 +1310,12 @@ export class SelectorController {
 				},
 				onManualCodeInput: useManualInput ? () => manualInput.waitForInput(providerId) : undefined,
 				onSuccessPage: (url: string) => {
-					// Device-code/paste flows (grok, Copilot, Kimi) get no browser
-					// redirect of their own; open the freshly-served branded success
-					// page so every provider ends on the same "Signed in" screen.
 					openPath(url);
 				},
 			});
 			this.ctx.session.modelRegistry.refreshInBackground();
-			// Naming happens here, while the operator still knows which account this was. Doing it from
-			// the account card instead asks them to recognize it later, among the others, which is the
-			// moment the name would have helped.
 			const accountName = await this.#offerAccountName(dialog, providerId, providerLabel, identity?.credentialId);
 			const block = new TranscriptBlock();
-			// Name the account (and Anthropic organization) that was stored so a
-			// login that lands on an unintended account/subscription is visible
-			// immediately instead of silently replacing an existing registration.
 			const whoBase = identity?.type === "oauth" ? (identity.email ?? identity.accountId) : undefined;
 			const whoOrg = identity?.type === "oauth" ? (identity.orgName ?? identity.orgId) : undefined;
 			const who = whoBase ? ` as ${whoBase}${whoOrg ? ` (${whoOrg})` : ""}` : whoOrg ? ` as ${whoOrg}` : "";
@@ -1525,8 +1335,6 @@ export class SelectorController {
 			return "stored";
 		} catch (error: unknown) {
 			if (dialog.signal.aborted) {
-				// User-cancelled: the dialog already restored the editor and
-				// surfaced "Login cancelled".
 				return "cancelled";
 			}
 			this.ctx.showError(`Login failed: ${errorMessage(error)}`);
@@ -1539,15 +1347,12 @@ export class SelectorController {
 		}
 	}
 
-	/** Prompt to assign an optional label to a stored account. */
 	async #offerAccountName(
 		dialog: LoginDialogComponent,
 		providerId: string,
 		providerLabel: string,
 		credentialId: number | undefined,
 	): Promise<string | undefined> {
-		// No row id means the store could not say which row it wrote, and naming the wrong sibling is
-		// worse than not asking.
 		if (credentialId === undefined) return undefined;
 		const authStorage = this.ctx.session.modelRegistry.authStorage;
 		if (authStorage.listStoredCredentials(providerId).length < 2) return undefined;
@@ -1562,7 +1367,6 @@ export class SelectorController {
 		return name;
 	}
 
-	/** Remove credential and notify status. */
 	async #handleCredentialLogout(providerId: string, credentialId: number, label: string): Promise<void> {
 		const providerLabel = formatProviderName(providerId);
 		try {
@@ -1595,7 +1399,6 @@ export class SelectorController {
 		}
 	}
 
-	/** Show login selector or start login for provider. */
 	async showLogin(providerId?: string): Promise<void> {
 		if (providerId) {
 			if ((await this.#handleOAuthLogin(providerId)) === "stored") await this.showAccountManager(providerId);
@@ -1604,7 +1407,6 @@ export class SelectorController {
 		await this.showAccountManager();
 	}
 
-	/** Show logout selector or log out of provider. */
 	async showLogout(providerId?: string): Promise<void> {
 		const authStorage = this.ctx.session.modelRegistry.authStorage;
 		try {
@@ -1630,7 +1432,6 @@ export class SelectorController {
 		await this.showAccountManager();
 	}
 
-	/** Show fullscreen account manager overlay. */
 	async showAccountManager(providerId?: string): Promise<void> {
 		const authStorage = this.ctx.session.modelRegistry.authStorage;
 		const sessionId = this.ctx.session.sessionId;
@@ -1665,8 +1466,6 @@ export class SelectorController {
 							`${row.providerLabel}: now using ${accountDisplayLabel(row)} everywhere on this machine`,
 						);
 					} else {
-						// The credential vanished between render and keypress (a peer logged it out).
-						// Say so; a silent no-op reads as the key being broken.
 						this.ctx.showWarning(`${row.providerLabel}: that account is no longer stored`);
 					}
 					reload();
@@ -1696,10 +1495,6 @@ export class SelectorController {
 				},
 				onLogout: row => {
 					void (async () => {
-						// ONE reporter for a removal, whichever surface asked. The card used to say
-						// "logged out of X" in a status line and stop there, which drops the two facts a
-						// logout has to carry: which file the credential left, and whether the provider
-						// is still authenticated by an env variable this cannot touch.
 						await this.#handleCredentialLogout(row.provider, row.credentialId, accountDisplayLabel(row));
 						reload();
 					})();
@@ -1714,10 +1509,6 @@ export class SelectorController {
 				},
 				onClearRateLimitBlock: row => {
 					authStorage.clearCredentialBlocks(row.provider, row.credentialId);
-					// Re-probe the one account, so the row's countdown is replaced by what the provider
-					// says now rather than by an empty space this cleared. Lifting a block that really
-					// is still in force therefore shows it again, which is the honest outcome: the
-					// operator asked whether the provider still refuses, and the provider answered.
 					void this.#probeAccountHealth(
 						() => manager,
 						() => closed,
@@ -1758,30 +1549,10 @@ export class SelectorController {
 		);
 	}
 
-	/**
-	 * `a` / `+ add another …` from the account card: log in, then come back to the card on the
-	 * provider the login was started from.
-	 *
-	 * Reopened after a CANCELLED login too, not just a successful one, because escape unwinds one
-	 * level: the login is what the user opened from the card, so abandoning it must return them to
-	 * the card rather than to the composer. Reopening rebuilds the inventory from the store, which
-	 * is what makes a freshly added account visible in the row list the user is already looking at
-	 * instead of only on the next `/account`.
-	 *
-	 * The new credential is deliberately NOT made the serving account. With load balancing off, the
-	 * selected credential decides what gets spent, and a login is not a request to move the
-	 * session's traffic; the card shows the new row and `enter` moves traffic when the user says so.
-	 */
 	async #loginThenReopenAccountManager(providerId: string): Promise<void> {
-		// Cancelling unwinds one level: the card offered the login, so the card is
-		// where escape belongs. A FAILURE does not, because the card is a
-		// fullscreen overlay and reopening it draws straight over the error
-		// `#handleOAuthLogin` just printed — which is how a rejected API key read
-		// as "Validating…" and then the same card, with no account and no reason.
 		if ((await this.#handleOAuthLogin(providerId)) !== "failed") await this.showAccountManager(providerId);
 	}
 
-	/** Probe health and usage for accounts in account manager. */
 	async #probeAccountHealth(
 		getManager: () => AccountManagerComponent | undefined,
 		isClosed: () => boolean,
@@ -1806,10 +1577,6 @@ export class SelectorController {
 		if (isClosed()) return;
 		const manager = getManager();
 		if (!manager) return;
-		// ACCUMULATED for the life of this card, because a scoped probe answers for one credential
-		// while the inventory underneath it is rebuilt from the store every time. Without this,
-		// refreshing one row would blank the health mark on every other row that had already been
-		// probed: a card that had answered for nine accounts would answer for one.
 		for (const result of health) probes.health.set(result.id, result);
 		if (usage) probes.usage = usage;
 		let inventory = applyCredentialHealth(await loadAccountInventory(authStorage, { sessionId }), [
@@ -1871,7 +1638,6 @@ export class SelectorController {
 		const message = describeRedeemOutcome(outcome, account.label);
 		if (outcome.ok) {
 			this.ctx.showStatus(message);
-			// Refresh the status-line usage so the freshly-reset window shows.
 			this.ctx.statusLine.invalidate();
 			this.ctx.ui.requestRender();
 		} else {
