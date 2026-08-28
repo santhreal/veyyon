@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Changed
+- Extracted `BeamMemory` class from `beam/index.ts` barrel into `beam/beam-memory.ts` (297 lines).
 - Verbose inline comments stripped from `beam/recall.ts`, `beam/consolidate.ts`, `beam/store.ts`, `mcp-tools.ts`, and `embeddings.ts`.
 
 - `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
