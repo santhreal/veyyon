@@ -67,51 +67,53 @@ export interface FlagDescriptor<K extends "string" | "boolean" | "integer" = "st
 	kind: K;
 	description?: string;
 	char?: string;
-	default?: K extends "boolean" ? boolean : K extends "integer" ? number : string;
-	required?: boolean;
+	default?: unknown;
 	multiple?: boolean;
-	options?: string[];
-	aliases?: string[];
+	options?: readonly string[];
+	required?: boolean;
+	aliases?: readonly string[];
 }
 
 export interface ArgDescriptor {
+	kind: "string";
 	description?: string;
 	required?: boolean;
 	multiple?: boolean;
-	options?: string[];
+	options?: readonly string[];
 }
 
 interface FlagInput {
 	description?: string;
 	char?: string;
-	required?: boolean;
+	default?: unknown;
 	multiple?: boolean;
-	options?: string[];
-	aliases?: string[];
+	options?: readonly string[];
+	required?: boolean;
+	aliases?: readonly string[];
 }
 
 interface ArgInput {
 	description?: string;
 	required?: boolean;
 	multiple?: boolean;
-	options?: string[];
+	options?: readonly string[];
 }
 
 export const Flags = {
-	string(opts: FlagInput & { default?: string } = {}): FlagDescriptor<"string"> {
-		return { kind: "string", ...opts };
+	string<T extends FlagInput>(opts?: T): FlagDescriptor<"string"> & T {
+		return { kind: "string" as const, ...opts } as FlagDescriptor<"string"> & T;
 	},
-	boolean(opts: FlagInput & { default?: boolean } = {}): FlagDescriptor<"boolean"> {
-		return { kind: "boolean", ...opts };
+	boolean<T extends FlagInput>(opts?: T): FlagDescriptor<"boolean"> & T {
+		return { kind: "boolean" as const, ...opts } as FlagDescriptor<"boolean"> & T;
 	},
-	integer(opts: FlagInput & { default?: number } = {}): FlagDescriptor<"integer"> {
-		return { kind: "integer", ...opts };
+	integer<T extends FlagInput & { default?: number }>(opts?: T): FlagDescriptor<"integer"> & T {
+		return { kind: "integer" as const, ...opts } as FlagDescriptor<"integer"> & T;
 	},
 };
 
 export const Args = {
-	string(opts: ArgInput = {}): ArgDescriptor {
-		return opts;
+	string<T extends ArgInput>(opts?: T): ArgDescriptor & T {
+		return { kind: "string" as const, ...opts } as ArgDescriptor & T;
 	},
 };
 
@@ -147,6 +149,7 @@ export interface CommandCtor {
 	hidden?: boolean;
 	devTool?: boolean;
 	strict?: boolean;
+	aliases?: string[];
 	flags?: Record<string, FlagDescriptor>;
 	args?: Record<string, ArgDescriptor>;
 	examples?: string[];
