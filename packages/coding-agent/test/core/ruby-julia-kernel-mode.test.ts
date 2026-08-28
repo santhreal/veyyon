@@ -26,13 +26,14 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { EDITING_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/editing";
+import { juliaBackend, rubyBackend } from "@veyyon/coding-agent/eval";
 import { disposeAllJuliaKernelSessions, executeJulia } from "@veyyon/coding-agent/eval/jl/executor";
 import { JuliaKernel } from "@veyyon/coding-agent/eval/jl/kernel";
 import { disposeAllRubyKernelSessions, executeRuby } from "@veyyon/coding-agent/eval/rb/executor";
 import { RubyKernel } from "@veyyon/coding-agent/eval/rb/kernel";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { TempDir } from "@veyyon/utils";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
-
 // The executors open `AgentStorage`, which resolves under the ACTIVE PROFILE's agent dir, so without
 // this the suite writes into the developer's real `~/.veyyon` and trips the real-data tripwire.
 useIsolatedAgentDir();
@@ -233,11 +234,38 @@ describe("the settings behind the mode", () => {
 	 * would support `per-call` and no operator could ever select it.
 	 */
 	it("is read by each backend, so setting it reaches the executor", async () => {
-		const dir = path.join(import.meta.dir, "../../src/eval");
-		const ruby = await Bun.file(path.join(dir, "rb/index.ts")).text();
-		const julia = await Bun.file(path.join(dir, "jl/index.ts")).text();
+		using tempDir = TempDir.createSync("@veyyon-rb-jl-kernel-mode-backend-");
+		const lifecycle = stubKernels();
 
-		expect(ruby).toContain('readSetting<RubyExecutorOptions["kernelMode"]>(opts.session, "ruby.kernelMode")');
-		expect(julia).toContain('readSetting<JuliaExecutorOptions["kernelMode"]>(opts.session, "julia.kernelMode")');
+		const rubySession = {
+			cwd: tempDir.path(),
+			settings: { get: (key: string) => (key === "ruby.kernelMode" ? "per-call" : undefined) },
+		} as unknown as ToolSession;
+		const juliaSession = {
+			cwd: tempDir.path(),
+			settings: { get: (key: string) => (key === "julia.kernelMode" ? "per-call" : undefined) },
+		} as unknown as ToolSession;
+
+		await rubyBackend.execute("1 + 1", {
+			cwd: tempDir.path(),
+			sessionId: "test-ruby",
+			sessionFile: undefined,
+			kernelOwnerId: undefined,
+			session: rubySession,
+			reset: false,
+			onChunk: () => {},
+		});
+		expect(lifecycle.shutdowns).toBe(1);
+
+		await juliaBackend.execute("1 + 1", {
+			cwd: tempDir.path(),
+			sessionId: "test-julia",
+			sessionFile: undefined,
+			kernelOwnerId: undefined,
+			session: juliaSession,
+			reset: false,
+			onChunk: () => {},
+		});
+		expect(lifecycle.shutdowns).toBe(2);
 	});
 });
