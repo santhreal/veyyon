@@ -102,6 +102,7 @@ import {
 } from "../../session/background-sessions";
 import type { CompactMode } from "../../session/compact-modes";
 import { HistoryStorage } from "../../session/history-storage";
+import { setImageDisplayProbe } from "../../session/image-visibility";
 import type { SessionContext } from "../../session/session-context";
 import { getRecentSessions } from "../../session/session-listing";
 import type { SessionManager } from "../../session/session-manager";
@@ -673,6 +674,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		// capability (`TERMINAL.textSizing` defaults on for Kitty) so it stays off
 		// unless the user opts in, and never emits raw escapes on other terminals.
 		setTerminalTextSizing(settings.get("tui.textSizing") && TERMINAL.textSizing);
+		// The session states to the model whether a picture reached the screen, and it
+		// cannot read a terminal to find out. This is the terminal answering: a
+		// graphics protocol means the picture is drawn, and a front end that draws no
+		// pictures — a piped `-p` run, an rpc client — installs nothing and the
+		// session says so.
+		setImageDisplayProbe(() => TERMINAL.imageProtocol !== null);
 		this.chatContainer = new TranscriptContainer();
 		this.#transcriptComposer = new TranscriptComposer({
 			chatContainer: this.chatContainer,

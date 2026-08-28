@@ -317,7 +317,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/tools/browser/tab-worker-entry.ts",
 	"packages/coding-agent/src/tools/irc-render.ts",
 	"packages/coding-agent/src/tools/result-notice.ts",
-	"packages/coding-agent/src/tui/width-aware-text.ts",
 	"packages/coding-agent/src/web/scrapers/choosealicense.ts",
 	"packages/coding-agent/src/web/scrapers/cisa-kev.ts",
 	"packages/coding-agent/src/web/scrapers/clojars.ts",

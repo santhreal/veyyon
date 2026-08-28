@@ -158,19 +158,20 @@ describe("the facade's module graph", () => {
 	}
 
 	/**
-	 * The one runtime TUI edge in the facade's own graph, pinned by exact equality
-	 * so a second one turns this red.
+	 * Runtime TUI edges in the facade's own graph, pinned by exact equality so a
+	 * new one turns this red. The list is empty and shrink-only: an entry leaves
+	 * when the edge is gone, and none is added.
 	 *
-	 * `session/image-visibility.ts` reads `TERMINAL.imageProtocol` to decide
-	 * whether a picture a tool produced reached the screen, and the session records
-	 * that decision because a tool result's text depends on it. Removing the edge
-	 * means the protocol arrives as a value the session is told rather than one it
-	 * reads from a rendering singleton. Shrink-only: an entry leaves this list when
-	 * the edge is gone, and none is added.
+	 * `session/image-visibility.ts` held the last one. It read
+	 * `TERMINAL.imageProtocol` to decide whether a picture a tool produced reached
+	 * the screen; now the front end installs that answer through
+	 * `setImageDisplayProbe`, so the capability arrives as a value the session is
+	 * told rather than one it reads out of a rendering singleton, and a client that
+	 * draws no pictures gets the truthful sentence instead of a terminal's.
 	 */
-	const LEGACY_TUI_EDGES = ["packages/coding-agent/src/session/image-visibility.ts -> @veyyon/tui"];
+	const LEGACY_TUI_EDGES: string[] = [];
 
-	it("names no terminal module, and no TUI package beyond the recorded edge", () => {
+	it("names no terminal module, and no TUI package", () => {
 		const offenders: string[] = [];
 		for (const file of facadeOwnGraph()) {
 			for (const specifier of valueImportSpecifiers(file)) {

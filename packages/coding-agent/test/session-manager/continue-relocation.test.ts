@@ -6,9 +6,9 @@ import * as path from "node:path";
 import type { SessionHeader } from "@veyyon/coding-agent/session/session-entries";
 import { loadEntriesFromFile } from "@veyyon/coding-agent/session/session-loader";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { getTerminalId } from "@veyyon/tui";
 import { getTerminalSessionsDir, setAgentDir } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
+import { getTerminalId } from "@veyyon/utils/ttyid";
 import { makeAssistantMessage } from "./helpers";
 
 function getHeader(entries: unknown[]): SessionHeader | undefined {

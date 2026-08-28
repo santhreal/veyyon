@@ -32,7 +32,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
-import { forgetImageDisplays } from "@veyyon/coding-agent/session/image-visibility";
+import { forgetImageDisplays, setImageDisplayProbe } from "@veyyon/coding-agent/session/image-visibility";
 import { convertToLlm, replaceLlmImagesWithText } from "@veyyon/coding-agent/session/messages";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
@@ -138,6 +138,12 @@ beforeAll(async () => {
 	await Settings.init({ inMemory: true });
 	await initTheme(false);
 	originalProtocol = TERMINAL.imageProtocol;
+	// Every case here is about a TERMINAL, so it answers the way the terminal front
+	// end answers: the session is told what draws pictures, it does not read a
+	// renderer to find out. That the terminal really installs this expression is
+	// proven by driving the front end, in
+	// `only-the-front-end-says-whether-a-picture-reached-the-screen.test.ts`.
+	setImageDisplayProbe(() => TERMINAL.imageProtocol !== null);
 });
 
 afterEach(() => {
@@ -148,6 +154,7 @@ afterEach(() => {
 
 afterAll(() => {
 	setTerminalImageProtocol(originalProtocol);
+	setImageDisplayProbe(undefined);
 	restoreSettingsTestState(settingsState);
 	settingsState = undefined;
 });
