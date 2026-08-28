@@ -63,7 +63,7 @@ import {
 import { loadPromptTemplates as loadPromptTemplatesInternal, type PromptTemplate } from "./config/prompt-templates";
 import { buildServiceTierByFamily } from "./config/service-tier";
 import { Settings, type SkillsSettings } from "./config/settings";
-import { CursorExecHandlers, cursorContextFileRules, usesCursorRuleDelivery } from "./cursor";
+import { CursorExecHandlers } from "./cursor";
 import { TtsrManager } from "./export/ttsr";
 import { DEFAULT_PLAN_FILE_URL } from "./plan-mode/plan-file-url";
 import { resolveGateInputs, resolveIntentField } from "./system-prompt-builder/gate-inputs";
@@ -3767,13 +3767,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				agentDir,
 				resolvedCustomPrompt: options.customSystemPrompt,
 				skills: promptSkills,
-				// Cursor's server replaces client system-prompt blobs with its own canned prompt,
-				// so on cursor-agent models the operator's layers travel as requestContext rules
-				// (the `cursorRulesResolver` below) and NOTHING inlines here: a repository file may
-				// not configure the agent, and inlining the operator's files too would deliver
-				// them twice. `[]` is the deliberate "resolved to nothing"
-				// `BuildSystemPromptOptions.contextFiles` documents, not a discovery miss.
-				contextFiles: usesCursorRuleDelivery(agent?.state.model ?? model) ? [] : promptContextFiles,
+				// Every api inlines the operator's layers here, cursor-agent included. Cursor's
+				// server discards the client's system-prompt BLOBS, but the assembled prompt
+				// still reaches the model as the session rule the provider builds from it, so
+				// the context block travels with it. Routing the files through a second,
+				// scope-filtered channel instead is what dropped the project layer on that one
+				// api while every other api rendered it.
+				contextFiles: promptContextFiles,
 				tools: promptTools,
 				toolNames,
 				rules: promptRulebookRules,
@@ -4123,10 +4123,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				});
 			},
 			cursorExecHandlers,
-			// Reads the live `promptContextFiles` binding at turn time, so a `/reload` or
-			// `/move` reaches the next Cursor request. Composition policy (operator scopes
-			// only, repository files never) lives in `cursorContextFileRules`.
-			cursorRulesResolver: () => cursorContextFileRules(promptContextFiles),
 			transformToolCallArguments: (args, toolName) => {
 				// `display` is what an operator reads and what the session records;
 				// `execution` is what the tool runs with. They diverge on exactly one thing

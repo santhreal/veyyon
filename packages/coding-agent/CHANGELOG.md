@@ -57,6 +57,7 @@
 
 ### Fixed
 
+- A `cursor-agent` model receives the repository's own `AGENTS.md` and every other project-level instruction file again: the assembled prompt was blanked for that api and the replacement channel carried only global and profile scopes, so the project layer reached the model on no channel at all.
 - A personality named after a property JavaScript objects inherit, such as `toString` or `constructor`, is reported as unknown and falls back to the default like any other unrecognized name; the built-in catalog was indexed without an own-property check, so those names resolved to a function, the system prompt build failed silently, and the default was substituted with no warning and any `personality/default.md` override ignored.
 - A personality spec can no longer spell a prompt tag such as `<critical>` and have it render as prompt structure; only `<personality>` was neutralized before, and a project's `.veyyon/personalities` file, which arrives with a cloned repository and outranks the user's own, is injected into every request.
 - `plugin install <name>@<marketplace> --dry-run` no longer performs the install: the marketplace branch never read the flag, so it fetched the plugin, wrote the cache and both registries, and reported a completed install; it now resolves the version from the catalog and writes nothing.

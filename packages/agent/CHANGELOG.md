@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `AgentOptions.cursorRulesResolver` is removed: an agent no longer supplies a second, per-api rule channel beside its system prompt.
+
 ### Added
 
 - A ChatGPT OAuth (Codex) session compacts server-side via the Responses compaction endpoint, preserving encrypted reasoning state.
