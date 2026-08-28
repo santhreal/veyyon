@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { $which, errorMessage, logger } from "@veyyon/utils";
 import type { ContainerProgramContext, ProgramFile, StagedProgram }  from "../engine/container-program"
@@ -15,6 +16,8 @@ import type {
 	PreflightVerdict,
 } from "../engine/contracts";
 import { veyBinaryPath } from "../engine/package-paths";
+import { decideAuthSeed, probeCredentialStore } from "../engine/auth-seed";
+import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../engine/auth-preflight";
 
 /** Where the staged omp files land inside a task container. */
 const CONTAINER_DIR = "/opt/omp-assets";
@@ -25,6 +28,29 @@ const CONTAINER_DIR = "/opt/omp-assets";
  * is writable and is discarded with the container.
  */
 const SESSION_DIR = "/tmp/omp-sessions";
+
+/**
+ * Candidate omp auth DB paths on the host, in priority order. omp is the upstream
+ * veyyon forks from, so its own store at `~/.omp/agent/agent.db` is checked first,
+ * then the veyyon shared-auth stores that hold the same credential shape.
+ */
+const OMP_AUTH_DB_SOURCES = [
+	path.join(os.homedir(), ".omp", "agent", "agent.db"),
+	...AUTH_DB_SOURCES,
+];
+
+/**
+ * Resolve a host auth DB that can serve the run, or null when none exists.
+ * Reads the same decision the veyyon harness makes, against omp's candidate list.
+ */
+function resolveOmpAuthDb(): string | null {
+	const mtimeOf = (p: string): number | undefined =>
+		fs.existsSync(p) ? fs.statSync(p).mtimeMs : undefined;
+	const decision = decideAuthSeed(OMP_AUTH_DB_SOURCES, OMP_AUTH_DB_SOURCES[0], mtimeOf, probeCredentialStore);
+	if (decision.kind === "missing") return null;
+	return decision.source;
+}
+
 
 /** Provider keys the container may reach. */
 const ALLOWED_DOMAINS: readonly string[] = [
@@ -139,18 +165,27 @@ function buildModelsYml(refreshJson: string, modelSelector: string, apiKey: stri
  * startup, including the context window the model was loaded with, and every vendor base
  * URL this builder knows is wrong for it.
  */
-function ompModelsYml(model: string, apiKey: string, options: Readonly<Record<string, unknown>>): string | null {
-	if (!apiKey || isLocalInferenceModel(model)) return null;
+function ompModelsYml(
+	model: string,
+	apiKey: string,
+	options: Readonly<Record<string, unknown>>,
+): string | null {
+	if (isLocalInferenceModel(model)) return null;
 	const flag = options.binary ?? options["vey-binary"];
 	const candidate = typeof flag === "string" ? path.resolve(flag) : veyBinaryPath();
 	const veyBinary = fs.existsSync(candidate) ? candidate : null;
 	if (!veyBinary) return null;
 	const provider = parseModelId(model).provider;
+	// `vey models refresh` reads OAuth credentials from the host auth DB, so it works
+	// without an API key env var. The env var is set only when a key was resolved.
+	const refreshEnv = apiKey
+		? { ...process.env, [authEnvVarFor(model)]: apiKey }
+		: process.env;
 	try {
 		const refreshOutput = execFileSync(veyBinary, ["models", "refresh", provider, "--json"], {
 			encoding: "utf8",
 			timeout: 30_000,
-			env: { ...process.env, [authEnvVarFor(model)]: apiKey },
+			env: refreshEnv,
 		});
 		return buildModelsYml(refreshOutput, model, apiKey);
 	} catch (err) {
@@ -187,12 +222,13 @@ export class OmpAdapter implements HarnessAdapter {
 	} as const;
 
 	/**
-	 * The one declaration of an omp trial: the compiled binary, the provider key, the
+	 * The one declaration of an omp trial: the compiled binary, the auth credential, the
 	 * optional static catalog, the headless invocation and where its transcripts land.
 	 *
 	 * Pier and Harbor both stage this and both hand it to the same executor, so an asset this
-	 * names is an asset the container agent reads. The provider key travels in `omp.env`,
-	 * never on the command line.
+	 * names is an asset the container agent reads. Auth is either an API key in `omp.env`
+	 * (never on the command line) or an OAuth credential store staged as `auth-agent.db`,
+	 * copied to ~/.omp/agent/agent.db by the setup step.
 	 */
 	containerProgram(context: ContainerProgramContext): StagedProgram {
 		const options = context.options;
@@ -202,9 +238,12 @@ export class OmpAdapter implements HarnessAdapter {
 		const binary = resolveOmpBinary(options);
 		const modelsYml = ompModelsYml(model, apiKey, options);
 		const localEndpoint = containerLocalEndpointEnv(model);
+		const authDb = resolveOmpAuthDb();
 
 		const files: ProgramFile[] = [];
 		if (binary) files.push({ file: "omp", source: { copy: binary }, mode: 0o755 });
+		// When an API key is resolved, it travels in omp.env. When auth is OAuth from
+		// the auth DB, the env lines are empty — omp reads the token from ~/.omp/agent.
 		const envLines = [`${authEnvVar}=${apiKey}`, `OPENCODE_API_KEY=${apiKey}`];
 		for (const [key, value] of Object.entries(localEndpoint ?? {})) envLines.push(`${key}=${value}`);
 		files.push({
@@ -213,6 +252,7 @@ export class OmpAdapter implements HarnessAdapter {
 			mode: 0o600,
 		});
 		if (modelsYml) files.push({ file: "models.yml", source: { text: modelsYml } });
+		if (authDb) files.push({ file: "auth-agent.db", source: { copy: authDb }, mode: 0o600 });
 
 		return {
 			program: {
@@ -223,11 +263,13 @@ export class OmpAdapter implements HarnessAdapter {
 					{ file: "omp", dest: `${CONTAINER_DIR}/omp`, mode: "0755" },
 					{ file: "omp.env", dest: `${CONTAINER_DIR}/omp.env`, mode: "0600" },
 					{ file: "models.yml", dest: `${CONTAINER_DIR}/models.yml`, optional: true },
+					{ file: "auth-agent.db", dest: `${CONTAINER_DIR}/auth-agent.db`, mode: "0600", optional: true },
 				],
 				binaryAsset: "omp",
 				setup: [
 					`mkdir -p ${SESSION_DIR} ~/.omp/agent`,
 					`if [ -f ${CONTAINER_DIR}/models.yml ]; then cp ${CONTAINER_DIR}/models.yml ~/.omp/agent/models.yml; fi`,
+					`if [ -f ${CONTAINER_DIR}/auth-agent.db ]; then cp ${CONTAINER_DIR}/auth-agent.db ~/.omp/agent/agent.db; fi`,
 				],
 				// --mode json streams NDJSON events (thinking deltas, tool calls, text) to
 				// stdout instead of buffering the result until exit, so a long trial is
@@ -263,9 +305,22 @@ export class OmpAdapter implements HarnessAdapter {
 		const model = typeof options.model === "string" ? options.model : this.defaultModel;
 		const authEnvVar = authEnvVarFor(model);
 		// A locally served endpoint authenticates nothing, so a key it never reads is not a
-		// requirement a run can be missing.
+		// requirement a run can be missing. An API key is also not required when a host auth
+		// DB holds an OAuth credential for the model's provider — omp reads it from
+		// ~/.omp/agent/agent.db inside the container.
 		if (!isLocalInferenceModel(model) && !resolveApiKey(options, authEnvVar)) {
-			missing.push(`omp requires an API key for ${model}; set $${authEnvVar} or pass --omp-api-key <key>`);
+			const authDb = resolveOmpAuthDb();
+			if (!authDb) {
+				missing.push(
+					`omp requires auth for ${model}; set $${authEnvVar}, pass --omp-api-key <key>, or log in with: omp /login`,
+				);
+			} else {
+				try {
+					await requireStagedAuthCanServeToken(model, true, authDb);
+				} catch (err) {
+					missing.push(`staged auth DB at ${authDb}: ${errorMessage(err)} (log in first with: omp /login)`);
+				}
+			}
 		}
 
 		// A locally served endpoint the container cannot reach fails every trial the same
@@ -296,7 +351,12 @@ export class OmpAdapter implements HarnessAdapter {
 
 		const authEnvVar = authEnvVarFor(context.model);
 		if (!isLocalInferenceModel(context.model) && !resolveApiKey(context.args, authEnvVar)) {
-			errors.push(`omp requires an API key for ${context.model}; set $${authEnvVar} or pass --omp-api-key <key>`);
+			const authDb = resolveOmpAuthDb();
+			if (!authDb) {
+				errors.push(
+					`omp requires auth for ${context.model}; set $${authEnvVar}, pass --omp-api-key <key>, or log in with: omp /login`,
+				);
+			}
 		}
 
 		return { valid: errors.length === 0, errors, warnings };
