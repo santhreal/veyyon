@@ -1,71 +1,22 @@
 /**
- * An unchanged frame must never emit erase escape sequences or printable text bytes.
+ * A frame identical to the one on screen writes nothing.
  *
- * WHY THIS SUITE EXISTS:
- * When an identical frame re-renders (a scheduled tick, an external requestRender,
- * an in-flight overlay, or a virtualized scroll state where content did not change),
- * the differential renderer should detect that zero visual rows changed and emit
- * nothing (or at most hardware cursor positioning bytes).
+ * WHY THIS SUITE EXISTS: a scheduled tick, an external render request, an open overlay or a
+ * frozen scroll view produced a frame the diff never got to see, because the repaint span was
+ * widened to the whole viewport before anything was compared. The result was an erase and a
+ * reprint of every row to arrive back at the bytes already there — a full-screen strobe with no
+ * visible change behind it.
  *
- * ROOT CAUSE IN packages/tui/src/tui.ts:
- * 1. Line 4345: `repaintVirtualScrollInPlace: hasVisibleOverlay || virtualScrollSlice`
- * 2. Line 5250: `const inPlaceRewrite = repaintVirtualScrollInPlace || scroll !== 0;`
- * 3. Line 5253: `let firstChanged = forceWindowRewrite || inPlaceRewrite ? 0 : -1;`
- *               `let lastChanged = forceWindowRewrite || inPlaceRewrite ? height - 1 : -1;`
- * 4. Line 5296: When `inPlaceRewrite` is true, every row `0..height-1` is rewritten with
- *    `\x1b[K` (erase to end of line) and printable character bytes on every single frame,
- *    even when the entire window is 100% identical to the previous frame.
- * 5. Line 5271: `buffer += \x1b[${height - 1}A\r` moves the cursor to the top row and sweeps
- *    down, causing visible full-screen flashing / strobe across the entire terminal.
+ * WHAT IT CLOSES: a redundant repaint on an identical frame under an overlay, under an active
+ * virtual-scroll slice, and on an idle render request against unchanged content.
  *
- * WHAT THIS SUITE CLOSES:
- * - Redundant erase/printable emission on identical frames during active overlays.
- * - Redundant full-screen row rewrites when virtual scroll position is unchanged.
- * - Redundant paints triggered by external `requestRender(false)` when content is identical.
+ * WHAT IT DOES NOT CATCH: a frame that differs by one cell, which is the neighbouring suite's
+ * subject, and the cursor bytes a render is still entitled to write.
  */
 
-import { describe, expect, it, spyOn } from "bun:test";
-import { StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
+import { describe, expect, it } from "bun:test";
+import { createFrameRecorder, StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, TUI } from "@veyyon/tui/tui";
-
-const ERASE_LINE_REGEX = /\x1b\[[0-2]?K/g;
-const ERASE_DISPLAY_REGEX = /\x1b\[[0-3]?J/g;
-
-interface RecordedFrame {
-	index: number;
-	raw: string;
-	byteLength: number;
-	eraseLineSequences: number;
-	eraseDisplaySequences: number;
-	viewport: string[];
-}
-function createFrameRecorder(term: VirtualTerminal) {
-	const frames: RecordedFrame[] = [];
-	let currentBuffer = "";
-	const originalWrite = term.write.bind(term);
-	spyOn(term, "write").mockImplementation((data: string) => {
-		currentBuffer += data;
-		originalWrite(data);
-	});
-	const recordFrame = (): RecordedFrame => {
-		const raw = currentBuffer;
-		currentBuffer = "";
-		const eraseLineMatches = raw.match(ERASE_LINE_REGEX);
-		const eraseDisplayMatches = raw.match(ERASE_DISPLAY_REGEX);
-		const frame: RecordedFrame = {
-			index: frames.length,
-			raw,
-			byteLength: Buffer.byteLength(raw, "utf8"),
-			eraseLineSequences: eraseLineMatches ? eraseLineMatches.length : 0,
-			eraseDisplaySequences: eraseDisplayMatches ? eraseDisplayMatches.length : 0,
-			viewport: term.getViewport(),
-		};
-		frames.push(frame);
-		return frame;
-	};
-
-	return { frames, recordFrame };
-}
 
 class StaticContentComponent implements Component {
 	constructor(private readonly lines: readonly string[]) {}
@@ -99,19 +50,19 @@ describe("an identical frame never emits erase or printable bytes", () => {
 
 		tui.start();
 		await scheduler.drain(term);
-		const frame0 = recorder.recordFrame();
+		const frame0 = recorder.collectFrame();
 		expect(frame0.byteLength).toBeGreaterThan(0);
 
 		// Frame 1: Mount the overlay
 		tui.showOverlay(overlay, { width: 32, maxHeight: 3, anchor: "center" });
 		await scheduler.drain(term);
-		const frame1 = recorder.recordFrame();
+		const frame1 = recorder.collectFrame();
 		expect(frame1.byteLength).toBeGreaterThan(0);
 
 		// Frame 2: Trigger a re-render where NOTHING has changed
 		tui.requestRender();
 		await scheduler.drain(term);
-		const frame2 = recorder.recordFrame();
+		const frame2 = recorder.collectFrame();
 
 		// Defect check: Frame 2 is byte-for-byte visually identical to Frame 1.
 		expect(frame2.viewport).toEqual(frame1.viewport);
@@ -119,7 +70,7 @@ describe("an identical frame never emits erase or printable bytes", () => {
 		// Contract: An identical frame must NOT emit full-window row erases or text rewrites.
 		// On current main, lines 4345 and 5250 force inPlaceRewrite = true whenever an overlay is visible,
 		// causing it to emit height (10) \x1b[K erases and rewrite all 10 lines.
-		expect(frame2.eraseLineSequences).toBe(0);
+		expect(frame2.eraseLineCount).toBe(0);
 		expect(frame2.byteLength).toBe(0);
 	});
 
@@ -137,17 +88,17 @@ describe("an identical frame never emits erase or printable bytes", () => {
 
 		tui.start();
 		await scheduler.drain(term);
-		const initialFrame = recorder.recordFrame();
+		const initialFrame = recorder.collectFrame();
 		expect(initialFrame.byteLength).toBeGreaterThan(0);
 
 		// Subsequent idle requestRender
 		tui.requestRender();
 		await scheduler.drain(term);
-		const idleFrame = recorder.recordFrame();
+		const idleFrame = recorder.collectFrame();
 
 		expect(idleFrame.viewport).toEqual(initialFrame.viewport);
-		expect(idleFrame.eraseLineSequences).toBe(0);
-		expect(idleFrame.eraseDisplaySequences).toBe(0);
+		expect(idleFrame.eraseLineCount).toBe(0);
+		expect(idleFrame.eraseDisplayCount).toBe(0);
 		expect(idleFrame.byteLength).toBe(0);
 	});
 
@@ -169,22 +120,22 @@ describe("an identical frame never emits erase or printable bytes", () => {
 		// Enable scroll isolation and scroll back into history (virtual scroll active)
 		tui.setScrollIsolation(true);
 		await scheduler.drain(term);
-		recorder.recordFrame();
+		recorder.collectFrame();
 
 		const scrolled = tui.scrollByRows(-3);
 		expect(scrolled).toBe(true);
 		await scheduler.drain(term);
-		const scrolledFrame = recorder.recordFrame();
+		const scrolledFrame = recorder.collectFrame();
 		expect(scrolledFrame.byteLength).toBeGreaterThan(0);
 
 		// Subsequent idle requestRender while scrolled into history
 		tui.requestRender();
 		await scheduler.drain(term);
-		const idleFrozenFrame = recorder.recordFrame();
+		const idleFrozenFrame = recorder.collectFrame();
 
 		// Contract: Viewport is unchanged, so 0 erase sequences and 0 bytes must be emitted
 		expect(idleFrozenFrame.viewport).toEqual(scrolledFrame.viewport);
-		expect(idleFrozenFrame.eraseLineSequences).toBe(0);
+		expect(idleFrozenFrame.eraseLineCount).toBe(0);
 		expect(idleFrozenFrame.byteLength).toBe(0);
 	});
 });
