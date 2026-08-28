@@ -1483,16 +1483,42 @@ export class Settings {
 	 * instance owns.
 	 */
 	#migrateRawSettings(raw: RawSettings): RawSettings {
-		// Both spellings of a key mean the same thing, and only the nested one used
-		// to be readable. Runs FIRST so every migration below sees one shape.
 		this.#expandDottedSettingKeys(raw);
 
+		this.#migrateQueueMode(raw);
+		this.#migrateChangelogKeys(raw);
+		this.#migrateAskTimeout(raw);
+		this.#migrateCompactionThreshold(raw);
+		this.#migrateTheme(raw);
+		this.#migrateTaskSettings(raw);
+		this.#migrateEditSettings(raw);
+		this.#migrateCompactionStrategy(raw);
+		this.#migrateCycleOrder(raw);
+		this.#migrateSnapcompact(raw);
+		this.#migrateInlineToolDescriptors(raw);
+		this.#migrateStatusLine(raw);
+		this.#migrateProviders(raw);
+		this.#migrateCodexResets(raw);
+		this.#migrateMemoryBackend(raw);
+		this.#migrateHindsight(raw);
+		this.#migratePowerSettings(raw);
+		this.#migrateSearchSettings(raw);
+		this.#migrateTierSettings(raw);
+		this.#migrateArgotSettings(raw);
+		this.#migrateSubagentSettings(raw);
+
+		return raw;
+	}
+
+	#migrateQueueMode(raw: RawSettings): void {
 		// queueMode -> steeringMode
 		if ("queueMode" in raw && !("steeringMode" in raw)) {
 			raw.steeringMode = raw.queueMode;
 			delete raw.queueMode;
 		}
+	}
 
+	#migrateChangelogKeys(raw: RawSettings): void {
 		// lastChangelogVersion moved out of config.yml into the
 		// <agentDir>/last-changelog-version marker file so version bumps no
 		// longer dirty user-tracked configs. Capture for marker seeding (see
@@ -1509,7 +1535,9 @@ export class Settings {
 		// behavior left to control. Drop it rather than leave a toggle that does
 		// nothing; `startup.updateNotice` governs the line that replaced it.
 		delete raw.collapseChangelog;
+	}
 
+	#migrateAskTimeout(raw: RawSettings): void {
 		// ask.timeout: ms -> seconds, guessed from the magnitude of the value.
 		//
 		// Every other migration here is a fixed point: re-running it on its own
@@ -1533,7 +1561,9 @@ export class Settings {
 				this.#reportAskTimeoutRewrite(oldValue, converted);
 			}
 		}
+	}
 
+	#migrateCompactionThreshold(raw: RawSettings): void {
 		// compaction.thresholdTokens / compaction.thresholdPercent -> compaction.threshold
 		//
 		// Two keys wrote one axis with an invisible precedence. Fold them into the one
@@ -1561,20 +1591,9 @@ export class Settings {
 			delete compaction.thresholdTokens;
 			delete compaction.thresholdPercent;
 		}
+	}
 
-		// Optional numeric settings once stored `-1` to mean "unset", which made -1
-		// unreachable as a real value: `presencePenalty: -1` is a penalty the
-		// provider accepts, and it could not be configured. Unset is an ABSENT key
-		// now, so the old sentinel is dropped — in every prior version it meant
-		// exactly this, so nothing a user chose is lost.
-		//
-		// ONCE, and only in the config this instance owns. This is the one
-		// migration here that cannot tell its input apart from a legitimate current
-		// value, so re-running it would delete a `-1` the user typed on purpose (it
-		// deleted one within a minute of the change landing, in dogfooding). The
-		// stamp records that it ran; a project file or a `--config` overlay is
-		// hand-written against the current docs, so a `-1` there is a value.
-
+	#migrateTheme(raw: RawSettings): void {
 		// Migrate old flat "theme" string to nested theme.dark/theme.light
 		if (typeof raw.theme === "string") {
 			const oldTheme = raw.theme;
@@ -1587,7 +1606,9 @@ export class Settings {
 				raw.theme = { [slot]: oldTheme };
 			}
 		}
+	}
 
+	#migrateTaskSettings(raw: RawSettings): void {
 		// task.isolation.enabled (boolean) -> task.isolation.mode (enum)
 		const taskObj = raw.task as Record<string, unknown> | undefined;
 		const isolationObj = taskObj?.isolation as Record<string, unknown> | undefined;
@@ -1631,17 +1652,9 @@ export class Settings {
 				isolationObj.mode = mapped;
 			}
 		}
+	}
 
-		// task.* / modelRoles.task -> the subagent.* settings area.
-		//
-		// Everything about spawned agents used to be spread across `task.*`
-		// operational keys, `subagent.model` under Models, `modelRoles.task` in the
-		// role table, and two UI-less maps (`task.agentModelOverrides`,
-		// `task.disabledAgents`). This rewrites the old keys onto the one section so
-		// the file has a single owner per value — no dual-read, which is how the
-		// precedence tangle grew in the first place.
-		this.#migrateSubagentSettings(raw);
-
+	#migrateEditSettings(raw: RawSettings): void {
 		// edit.mode: removed "atom" and "vim" variants map back to "hashline"
 		const editObj = raw.edit as Record<string, unknown> | undefined;
 		if (editObj) {
@@ -1672,7 +1685,9 @@ export class Settings {
 			raw.edit = editRoot;
 		}
 		if (editObj) delete editObj.critiqueCodeMutations;
-		delete raw["edit.critiqueCodeMutations"];
+	}
+
+	#migrateCompactionStrategy(raw: RawSettings): void {
 		// compaction.strategy: collapse every legacy strategy to summary; off also disables compaction.
 		const compactionObj = raw.compaction as Record<string, unknown> | undefined;
 		const migrateStrategy = (current: unknown): CompactionStrategySetting | undefined => {
@@ -1718,20 +1733,26 @@ export class Settings {
 				}
 			}
 		}
+	}
 
+	#migrateCycleOrder(raw: RawSettings): void {
 		// cycleOrder: drop legacy default pseudo-role from ctrl+p order.
 		const cycleOrder = raw.cycleOrder;
 		if (Array.isArray(cycleOrder)) {
 			raw.cycleOrder = cycleOrder.filter(role => role !== "default");
 		}
+	}
 
+	#migrateSnapcompact(raw: RawSettings): void {
 		// The snapcompact image-archive engine was removed; drop any persisted
 		// snapcompact.* settings so schema validation does not trip on stale keys.
 		delete raw.snapcompact;
 		for (const key of Object.keys(raw)) {
 			if (key.startsWith("snapcompact.")) delete raw[key];
 		}
+	}
 
+	#migrateInlineToolDescriptors(raw: RawSettings): void {
 		// inlineToolDescriptors: boolean -> enum (auto | on | off). The old
 		// `true`/`false` mapped directly onto inline-on/inline-off, so preserve
 		// the user's explicit choice; new installs get the `auto` default that
@@ -1739,7 +1760,9 @@ export class Settings {
 		if (typeof raw.inlineToolDescriptors === "boolean") {
 			raw.inlineToolDescriptors = raw.inlineToolDescriptors ? "on" : "off";
 		}
+	}
 
+	#migrateStatusLine(raw: RawSettings): void {
 		// statusLine: rename "plan_mode" segment to "mode"
 		const statusLineObj = raw.statusLine as Record<string, unknown> | undefined;
 		if (statusLineObj) {
@@ -1755,7 +1778,9 @@ export class Settings {
 				delete segmentOptions.plan_mode;
 			}
 		}
+	}
 
+	#migrateProviders(raw: RawSettings): void {
 		// providers.parallelFetch (boolean) replaced by the providers.fetch reader
 		// priority enum. The new default ("auto") supersedes both old values —
 		// Parallel is now a deep fallback in the auto chain rather than the first
@@ -1766,7 +1791,9 @@ export class Settings {
 			delete providersObj.parallelFetch;
 		}
 		delete raw["providers.parallelFetch"];
+	}
 
+	#migrateCodexResets(raw: RawSettings): void {
 		// codexResets.autoRedeem: boolean -> tri-state enum.
 		// Existing explicit false keeps the old "do not run" behavior; missing
 		// config now falls through to the new "unset" default, which asks before
@@ -1775,7 +1802,9 @@ export class Settings {
 		if (codexResetsObj && typeof codexResetsObj.autoRedeem === "boolean") {
 			codexResetsObj.autoRedeem = codexResetsObj.autoRedeem ? "yes" : "no";
 		}
+	}
 
+	#migrateMemoryBackend(raw: RawSettings): void {
 		// Map legacy `memories.enabled` boolean to the explicit `memory.backend`
 		// enum if the latter hasn't been set yet. Idempotent: subsequent
 		// migrations are no-ops once memory.backend is materialised.
@@ -1800,7 +1829,9 @@ export class Settings {
 			raw.mnemopi = raw.mnemosyne;
 			delete raw.mnemosyne;
 		}
+	}
 
+	#migrateHindsight(raw: RawSettings): void {
 		// hindsight: dynamicBankId/agentName -> scoping enum + bankId
 		// - dynamicBankId=true  → scoping="per-project" (closest semantic match;
 		//   the legacy `agent::project::channel::user` tuple was per-project in
@@ -1830,7 +1861,9 @@ export class Settings {
 				delete hindsightObj.agentName;
 			}
 		}
+	}
 
+	#migratePowerSettings(raw: RawSettings): void {
 		// power.preventIdleSleep / power.preventSystemSleep / power.declareUserActive
 		// / power.preventDisplaySleep (four booleans) → power.sleepPrevention enum.
 		// The enum is cumulative: each level adds the flags of all lower levels.
@@ -1871,7 +1904,9 @@ export class Settings {
 			delete raw["power.declareUserActive"];
 			delete raw["power.preventDisplaySleep"];
 		}
+	}
 
+	#migrateSearchSettings(raw: RawSettings): void {
 		// Migration for renamed settings grep.* and glob.* from search.* and find.*:
 		// 1. Nested settings: find -> glob, search -> grep (per-property merge to avoid clobbering)
 		const ensureRawObject = (key: "glob" | "grep"): Record<string, unknown> => {
@@ -1994,7 +2029,9 @@ export class Settings {
 		// edit.mode === "hashline"; the separate read toggle only ever produced
 		// the incoherent "hashline edits without addressable anchors" state.
 		delete raw.readHashLines;
+	}
 
+	#migrateTierSettings(raw: RawSettings): void {
 		// serviceTier (single enum with scoped openai-only/claude-only sentinels)
 		// → per-family tier.openai/tier.anthropic/tier.google; serviceTierSubagent
 		// → tier.subagent; serviceTierAdvisor → tier.advisor. `fastModeScope` is
@@ -2041,7 +2078,9 @@ export class Settings {
 		}
 		if (tierTouched) raw.tier = tierObj;
 		delete raw.fastModeScope;
+	}
 
+	#migrateArgotSettings(raw: RawSettings): void {
 		// argot.models / argot.disableAboveTokens -> argot.encode.*
 		//
 		// The two keys that gate ENCODING are grouped under the sub-feature they
@@ -2084,8 +2123,6 @@ export class Settings {
 				delete argotObj[key];
 			}
 		}
-
-		return raw;
 	}
 
 	/**
