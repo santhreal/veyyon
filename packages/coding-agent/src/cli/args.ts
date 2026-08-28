@@ -180,7 +180,7 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 		} else {
 			const booleanField = BOOLEAN_FLAGS[arg];
 			if (booleanField !== undefined) {
-				(result as Record<string, unknown>)[booleanField] = true;
+				(result as unknown as Record<string, unknown>)[booleanField] = true;
 			} else if (arg.startsWith("@")) {
 				let filePath = arg.slice(1);
 				if (filePath.startsWith('"') && filePath.endsWith('"') && filePath.length > 1) {
