@@ -138,6 +138,8 @@ export const FORWARD_ENV_DENYLIST = new Set([
 	"VEYYON_TOOL_BRIDGE_TOKEN",
 	"VEYYON_TOOL_BRIDGE_SESSION",
 	"VEYYON_EVAL_LOCAL_ROOTS",
+	"VEYYON_AUTH_BROKER_URL",
+	"VEYYON_AUTH_BROKER_TOKEN",
 ]);
 
 /**
@@ -173,6 +175,11 @@ export function buildHarborEnv(
 	// Drop any stale VEYYON_BENCH_FORWARD_ENV inherited from the caller's shell before
 	// the agent-type early return, so it never leaks (incl. into the dry-run dump).
 	delete env.VEYYON_BENCH_FORWARD_ENV;
+	// The auth broker runs on the host's loopback. Containers cannot reach it
+	// and must route through the gateway instead, so leaking the broker URL
+	// and token makes the in-container veyvon try 127.0.0.1:8765 and fail.
+	delete env.VEYYON_AUTH_BROKER_URL;
+	delete env.VEYYON_AUTH_BROKER_TOKEN;
 	if (!binding) return env;
 	const prepend = (k: string, v: string): void => {
 		env[k] = env[k] ? `${v}:${env[k]}` : v;

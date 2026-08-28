@@ -56,3 +56,6 @@ All notable changes to `@veyyon/evals` will be documented in this file.
 - The omp harness mounts the host's `~/node_modules` into the container at `/opt/omp-assets/node_modules`, so the omp binary can resolve its external dependencies (`@oh-my-pi/pi-natives`, `turndown`, etc.).
 - The omp harbor binding declares `authGateway: true`, so the compose overlay includes `extra_hosts: host.docker.internal:host-gateway` for omp runs.
 - The Harbor compose overlay supports `cfg.extraVolumes` for harness-specific bind mounts in addition to source-tree mounts.
+- The Harbor backend strips `VEYYON_AUTH_BROKER_URL` and `VEYYON_AUTH_BROKER_TOKEN` from the subprocess environment and the forward-env denylist, so the host's loopback broker address does not leak into containers that can only reach the gateway at `host.docker.internal:4000`.
+- The omp harness uses the gateway bearer token as the `apiKey` in `models.yml` when routing through the gateway, so omp sends an authorized request instead of `no-auth` and getting 401.
+- The Harbor backend passes `gatewayToken` through to the harness staging options, so a harness with a `containerProgram` (omp) receives the gateway token alongside the gateway URL.

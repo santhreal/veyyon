@@ -348,7 +348,7 @@ export class HarborBackend implements ExecutionBackend {
 			if (!armHarness.containerProgram) continue;
 			stageHarnessProgram(armHarness, programDirFor(harborProgramRoot(runDir), armHarness.id, variant.name), {
 				model: resolveTrialModel(variant, armHarness, context).id,
-				options: { ...context.options, gatewayUrl: DOCKER_GATEWAY_URL },
+			options: { ...context.options, gatewayUrl: DOCKER_GATEWAY_URL, gatewayToken: process.env.DOCKER_GATEWAY_TOKEN ?? context.options?.gatewayToken },
 			});
 		}
 	}
