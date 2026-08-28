@@ -150,6 +150,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/agent/src/agent-loop-context.ts",
 	"packages/agent/src/agent-loop-snapshots.ts",
 	"packages/agent/src/agent-loop-stream.ts",
+	"packages/agent/src/compaction/compaction-helpers.ts",
 	"packages/agent/src/compaction/legacy-provider-native.ts",
 	"packages/agent/src/compaction/remote-compaction-entry.ts",
 	"packages/agent/src/tool-result-never-ran.ts",
