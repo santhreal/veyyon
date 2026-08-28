@@ -7,10 +7,10 @@ import {
 	collectEmittedText,
 	type EncodeHeadroom,
 	encodeHeadroom,
-	type SessionUsage,
 	systemPromptTeachesArgot,
-	tallyUsage,
-} from "../aggregate/index";
+} from "../aggregate/encode-probe";
+import { type SessionUsage } from "../aggregate/types";
+import { tallyUsage } from "../aggregate/usage";
 
 export interface ParsedSessionUsage {
 	usage: SessionUsage;

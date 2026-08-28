@@ -18,7 +18,7 @@ import {
 } from "../../../engine/arm-attachments";
 import { promptOverrideIdError } from "../../../engine/prompt-overrides";
 import { armsDir } from "../../../engine/package-paths";
-import { effectiveTemperature, PINNED_TEMPERATURE } from "../aggregate/index";
+import { effectiveTemperature, PINNED_TEMPERATURE } from "../aggregate/merge";
 import { type ArmAttachmentValues, computeArmFingerprint, findZeroIvCollisions } from "../arm-fingerprint";
 import { encodeArmModelMismatch, isEncodeArm, mistypedArmSettings, unknownArmSettings } from "../treatment-guard";
 import {

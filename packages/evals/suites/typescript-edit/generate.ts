@@ -27,7 +27,7 @@ import { diffLines } from "diff";
 import Handlebars from "handlebars";
 import { type FlagGrammar, flagCount, flagNumber, flagText, parseFlags } from "../../engine/flag-grammar";
 import { formatContent } from "./formatter";
-import { allMutations, type Mutation, type MutationInfo, mutationCategoryMap } from "./mutations/index";
+import { allMutations, type Mutation, type MutationInfo, mutationCategoryMap } from "./mutations/registry";
 import { typescriptEditFixturesArchive } from "./paths";
 import { typescriptEditSuitePrompts } from "./prompts/registry";
 

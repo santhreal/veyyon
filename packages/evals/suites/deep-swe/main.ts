@@ -15,7 +15,7 @@ import type {
 	TrialUsage,
 } from "../../engine/contracts";
 import { comparisonTaskListPath, resolvePackagePath, taskCorpusDir, taskListsDir } from "../../engine/package-paths";
-import { parseTaskListProvenance } from "./aggregate/index";
+import { parseTaskListProvenance } from "./aggregate/merge";
 import { resolveBinaryPin } from "./binary-pin";
 import { reaggregate } from "./runner/executor";
 import { checkBinaryBuildNeeded } from "./runner/preflight";

@@ -20,7 +20,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import { emptyArmResult } from "../../../suites/deep-swe/aggregate/index";
+import { emptyArmResult } from "../../../suites/deep-swe/aggregate/empty-result";
 import { renderReport } from "../../../suites/deep-swe/aggregate/report-render";
 import { summarizeCell } from "../../../suites/deep-swe/aggregate/stats";
 import type { ArmResult } from "../../../suites/deep-swe/aggregate/types";

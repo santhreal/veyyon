@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { emptyArmResult } from "../../../suites/deep-swe/aggregate/index";
+import { emptyArmResult } from "../../../suites/deep-swe/aggregate/empty-result";
 import { renderPromptCacheInvalidationSection } from "../../../suites/deep-swe/aggregate/report-render";
 import type { ArmResult } from "../../../suites/deep-swe/aggregate/types";
 

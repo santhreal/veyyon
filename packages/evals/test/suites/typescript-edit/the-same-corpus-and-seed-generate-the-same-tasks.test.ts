@@ -18,7 +18,7 @@ import {
 	filterFiles,
 	generateCases,
 } from "../../../suites/typescript-edit/generate";
-import { allMutations } from "../../../suites/typescript-edit/mutations/index";
+import { allMutations } from "../../../suites/typescript-edit/mutations/registry";
 import { loadTasksFromDir } from "../../../suites/typescript-edit/tasks";
 
 const FIXTURE_FILE_1 = `
