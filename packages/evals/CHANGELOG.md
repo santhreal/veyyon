@@ -48,3 +48,4 @@ All notable changes to `@veyyon/evals` will be documented in this file.
 - `Handlebars.compile` in `suites/typescript-edit/argot-bench.ts` and `generate.ts` receives the prompt text (`.text`) instead of the `PromptEntry` object, fixing an import-time crash.
 - The entry-point flag-refusal sweep scans the package root instead of the removed `src/` directory, and the one-flag-grammar test no longer references the retired deep-swe runner entry point.
 - The Harbor backend skips source-tree mount preparation when `VEYYON_BENCH_BINARY_X64` or `VEYYON_BENCH_BINARY_ARM64` is set, so a pinned-binary run does not fail on a compose overlay the binary mode never uses.
+- The Harbor compose overlay targets the `main` service that harbor's build template defines, not a non-existent `task` service, so `docker compose build` no longer fails with "service has neither an image nor a build context".

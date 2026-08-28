@@ -278,6 +278,7 @@
 - `Handlebars.compile` in `suites/typescript-edit/argot-bench.ts` and `generate.ts` receives the prompt text (`.text`) instead of the `PromptEntry` object, fixing an import-time crash.
 - The entry-point flag-refusal sweep scans the package root instead of the removed `src/` directory, and the one-flag-grammar test no longer references the retired deep-swe runner entry point.
 - The Harbor backend skips source-tree mount preparation when `VEYYON_BENCH_BINARY_X64` or `VEYYON_BENCH_BINARY_ARM64` is set, so a pinned-binary run does not fail on a compose overlay the binary mode never uses.
+- The Harbor compose overlay targets the `main` service that harbor's build template defines, not a non-existent `task` service, so `docker compose build` no longer fails with "service has neither an image nor a build context".
 - A wide line clipped in the unseen-line reveal is cut at a code point rather than a UTF-16 code unit, so an emoji or rare CJK character sitting at the column limit is no longer split into an invalid lone surrogate.
 - Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
 - A load failure carries `code: "VEYYON_NATIVE_ADDON_UNAVAILABLE"`, exported as `NATIVE_ADDON_UNAVAILABLE_CODE` with `isNativeAddonUnavailable` from `@veyyon/natives/loader-state`, so a caller that catches a native call can tell an unavailable addon from a scan that found nothing.
