@@ -342,6 +342,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/session/side-complete.ts",
 	"packages/coding-agent/src/slash-commands/bare-subcommand.ts",
 	"packages/coding-agent/src/stt/asr-worker.ts",
+	"packages/coding-agent/src/task/executor-helpers.ts",
 	"packages/coding-agent/src/tools/browser/handle-release.ts",
 	"packages/coding-agent/src/tools/browser/tab-worker-entry.ts",
 	"packages/coding-agent/src/tools/fetch-helpers.ts",

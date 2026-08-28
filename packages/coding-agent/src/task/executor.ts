@@ -3,10 +3,9 @@ import path from "node:path";
 import type { AgentEvent, AgentIdentity, AgentTelemetryConfig } from "@veyyon/agent-core";
 import { recordHandoff, resolveTelemetry } from "@veyyon/agent-core";
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
-import type { Api, Model, ServiceTierByFamily, Usage } from "@veyyon/ai";
+import type { ServiceTierByFamily, Usage } from "@veyyon/ai";
 import { emptyUsage } from "@veyyon/catalog/models";
 import {
-	collapseWhitespace,
 	errorMessage,
 	getSessionsDir,
 	isRecord,
@@ -26,7 +25,6 @@ import { ModelRegistry } from "../config/model-registry";
 import {
 	formatModelSelectorValue,
 	formatModelStringWithRouting,
-	resolveModelOverride,
 	resolveModelOverrideWithAuthFallback,
 } from "../config/model-resolver";
 import type { PromptTemplate } from "../config/prompt-templates";
@@ -72,6 +70,22 @@ import { ToolAbortError } from "../tools/tool-errors";
 import type { EventBus } from "../utils/event-bus";
 import { buildNamedToolChoice } from "../utils/tool-choice";
 import type { WorkspaceTree } from "../workspace-tree";
+import {
+	BUDGET_STOP_GRACE_REQUESTS,
+	buildBudgetNotice,
+	countNewlines,
+	formatSalvageSnippet,
+	getReportFindingKey,
+	installSubagentRetryFallbackChain,
+	isAgentEvent,
+	MCP_CALL_TIMEOUT_MS,
+	normalizeModelPatterns,
+	resolveEffectiveSubagentThinkingLevel,
+	resolveSubagentRetryFallbackCandidates,
+	SOFT_REQUEST_BUDGET,
+	SUBAGENT_RETRY_FALLBACK_ROLE_PREFIX,
+	withAbortTimeout,
+} from "./executor-helpers";
 import { type AutoloadSkillPlan, settleAutoloadSkills } from "./inherited-collections";
 import { generateTaskLabel } from "./label";
 import {
@@ -97,188 +111,12 @@ import {
 } from "./types";
 import { arrayValuedLabels, assembleYieldResult } from "./yield-assembly";
 
-export type { YieldItem } from "./types";
-
-function countNewlines(text: string): number {
-	let count = 0;
-	for (let i = 0; i < text.length; i++) {
-		if (text.charCodeAt(i) === 0x0a) count++;
-	}
-	return count;
-}
-
-const MCP_CALL_TIMEOUT_MS = 60_000;
-
-export const SOFT_REQUEST_BUDGET: Record<string, number> = {
-	scout: 100,
-	sonic: 100,
-	default: 200,
-};
-
-export const BUDGET_STOP_GRACE_REQUESTS = 5;
-
-export function buildBudgetNotice(requests: number, budget: number): string {
-	return `[budget notice] You have used ${requests} requests in this run (soft budget: ${budget}). Wrap up now: finish the current step and yield your final report. At ${Math.ceil(budget * 1.5)} requests the run is force-stopped and you will be asked to yield whatever you have.`;
-}
-
-function formatSalvageSnippet(text: string, maxLength = 500): string {
-	return truncate(collapseWhitespace(text), maxLength);
-}
-
-export function resolveEffectiveSubagentThinkingLevel(
-	explicitThinkingLevel: boolean,
-	resolvedThinkingLevel: ConfiguredThinkingLevel | undefined,
-	configuredThinkingLevel: ConfiguredThinkingLevel | undefined,
-): ConfiguredThinkingLevel | undefined {
-	return explicitThinkingLevel ? resolvedThinkingLevel : (configuredThinkingLevel ?? resolvedThinkingLevel);
-}
-
-const agentEventTypes = new Set<AgentEvent["type"]>([
-	"agent_start",
-	"agent_end",
-	"turn_start",
-	"turn_end",
-	"message_start",
-	"message_update",
-	"message_end",
-	"tool_execution_start",
-	"tool_execution_update",
-	"tool_execution_end",
-]);
-
-const isAgentEvent = (event: AgentSessionEvent): event is AgentEvent =>
-	agentEventTypes.has(event.type as AgentEvent["type"]);
-
-function normalizeModelPatterns(value: string | string[] | undefined): string[] {
-	if (!value) return [];
-	if (Array.isArray(value)) {
-		return value.map(entry => entry.trim()).filter(Boolean);
-	}
-	return value
-		.split(",")
-		.map(entry => entry.trim())
-		.filter(Boolean);
-}
-
-const SUBAGENT_RETRY_FALLBACK_ROLE_PREFIX = "subagent:";
-
-interface SubagentRetryFallbackCandidate {
-	model: Model<Api>;
-	selector: string;
-}
-
-function resolveSubagentRetryFallbackCandidates(
-	modelPatterns: string[],
-	modelRegistry: ModelRegistry,
-	settings: Settings,
-): SubagentRetryFallbackCandidate[] {
-	const candidates: SubagentRetryFallbackCandidate[] = [];
-	const seen = new Set<string>();
-	for (const pattern of modelPatterns) {
-		const resolved = resolveModelOverride([pattern], modelRegistry, settings);
-		if (!resolved.model) continue;
-		const selector = resolved.explicitThinkingLevel
-			? formatModelSelectorValue(formatModelStringWithRouting(resolved.model), resolved.thinkingLevel)
-			: formatModelStringWithRouting(resolved.model);
-		if (seen.has(selector)) continue;
-		seen.add(selector);
-		candidates.push({ model: resolved.model, selector });
-	}
-	return candidates;
-}
-
-function installSubagentRetryFallbackChain(args: {
-	settings: Settings;
-	id: string;
-	candidates: SubagentRetryFallbackCandidate[];
-	model: Model<Api> | undefined;
-	authFallbackUsed: boolean;
-}): string | undefined {
-	const { settings, id, candidates, model, authFallbackUsed } = args;
-	if (!model || authFallbackUsed || candidates.length <= 1) return undefined;
-
-	const selectedIndex = candidates.findIndex(
-		candidate => candidate.model.provider === model.provider && candidate.model.id === model.id,
-	);
-	if (selectedIndex < 0) return undefined;
-	const fallbackSelectors = candidates.slice(selectedIndex + 1).map(candidate => candidate.selector);
-	if (fallbackSelectors.length === 0) return undefined;
-
-	const role = `${SUBAGENT_RETRY_FALLBACK_ROLE_PREFIX}${id}`;
-	const modelRoles: Record<string, string> = {};
-	const existingRoles = settings.getModelRoles();
-	for (const existingRole in existingRoles) {
-		const selector = existingRoles[existingRole];
-		if (selector) {
-			modelRoles[existingRole] = selector;
-		}
-	}
-	modelRoles[role] = candidates[selectedIndex].selector;
-	settings.override("modelRoles", modelRoles);
-	const fallbackChains: Record<string, string[]> = {
-		[role]: fallbackSelectors,
-	};
-	const existingFallbackChains = settings.get("retry.fallbackChains");
-	for (const existingRole in existingFallbackChains) {
-		if (existingRole !== role) {
-			fallbackChains[existingRole] = existingFallbackChains[existingRole];
-		}
-	}
-	settings.override("retry.fallbackChains", fallbackChains);
-	return role;
-}
-
-function withAbortTimeout<T>(
-	promise: Promise<T>,
-	timeoutMs: number,
-	signal?: AbortSignal,
-	timeoutController?: AbortController,
-): Promise<T> {
-	if (signal?.aborted) {
-		return Promise.reject(new ToolAbortError());
-	}
-
-	const { promise: wrappedPromise, resolve, reject } = Promise.withResolvers<T>();
-	let settled = false;
-	const timeoutId = setTimeout(() => {
-		if (settled) return;
-		settled = true;
-		timeoutController?.abort(new DOMException(`MCP tool call timed out after ${timeoutMs}ms`, "TimeoutError"));
-		reject(new Error(`MCP tool call timed out after ${timeoutMs}ms`));
-	}, timeoutMs);
-
-	const onAbort = () => {
-		if (settled) return;
-		settled = true;
-		clearTimeout(timeoutId);
-		timeoutController?.abort();
-		reject(new ToolAbortError());
-	};
-
-	if (signal) {
-		signal.addEventListener("abort", onAbort, { once: true });
-	}
-
-	promise.then(resolve, reject).finally(() => {
-		if (signal) signal.removeEventListener("abort", onAbort);
-		clearTimeout(timeoutId);
-	});
-
-	return wrappedPromise;
-}
-
-function getReportFindingKey(value: unknown): string | null {
-	if (!isRecord(value)) return null;
-	const title = typeof value.title === "string" ? value.title : null;
-	const filePath = typeof value.file_path === "string" ? value.file_path : null;
-	const lineStart = typeof value.line_start === "number" ? value.line_start : null;
-	const lineEnd = typeof value.line_end === "number" ? value.line_end : null;
-	const priority = typeof value.priority === "string" ? value.priority : null;
-	if (!title || !filePath || lineStart === null || lineEnd === null) {
-		return null;
-	}
-	return `${filePath}:${lineStart}:${lineEnd}:${priority ?? ""}:${title}`;
-}
+export {
+	BUDGET_STOP_GRACE_REQUESTS,
+	buildBudgetNotice,
+	resolveEffectiveSubagentThinkingLevel,
+	SOFT_REQUEST_BUDGET,
+} from "./executor-helpers";
 
 export interface ExecutorOptions {
 	cwd: string;

@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- 16 utility functions and types extracted from `task/executor.ts` (2,671→2,509 lines) into `task/executor-helpers.ts`.
 - 23 type definitions extracted from `git.ts` (1,963→1,863 lines) into `git-helpers.ts`.
 - 71 free helper functions, types, and constants extracted from `read.ts` (3,697→2,966 lines) into `read-helpers.ts`.
 - 40 free helper functions, types, and constants extracted from `fetch.ts` (2,001→1,574 lines) into `fetch-helpers.ts`.
