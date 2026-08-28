@@ -87,6 +87,7 @@
 - The browser tab worker and supervisor state why each teardown step and each optional probe discards its failure; behavior is unchanged.
 - The browser tab worker and supervisor reach `bestEffort` and `optionalResult` through `@veyyon/utils/discarded-fault` rather than the package barrel; behavior is unchanged.
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
+- The legacy Pi bundled-module generator states which package roots a compatibility shim serves, so the compiled-mode override sweep derives that set instead of carrying its own copy; behavior is unchanged.
 - A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
 - Compaction imports `ProviderHttpError` from its owning module rather than the `@veyyon/ai/error` barrel, cutting 14 modules off the engine's load graph with no change in behavior.
 - Streaming `message_update` snapshots share tool-call arguments by reference instead of deep-cloning them on every delta, cutting a large structured tool call's per-delta snapshot cost from ~0.5 s to ~8 ms, while terminal messages and the authoritative tool call a `toolcall_end` carries keep the sanitizing deep clone.
@@ -104,6 +105,7 @@
 - `withAuth` imports the two error classes it throws from their owning modules instead of the `@veyyon/ai/error` barrel, so a consumer of the auth-retry wrapper no longer loads the provider-error registry and every error domain behind it; behavior is unchanged.
 - Source-path comments in `constants.ts` and `generate.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - The four private benchmark and simulation packages are one package, `@veyyon/bench`: `@veyyon/deepswe-bench` is `src/deepswe/`, `@veyyon/metaharness` is `src/metaharness/`, `@veyyon/simulations` is `src/simulations/` and `@veyyon/typescript-edit-benchmark` is `src/typescript-edit/`, under one manifest, one tsconfig and one bunfig.
+- The benchmark sources call `clamp`, `errorMessage` and `isRecord` from `@veyyon/utils` where they had hand-inlined those idioms. The four merged packages kept their sources at their package roots, which the workspace source-ownership locks never walked, so nine sites in `src/deepswe/` and `src/metaharness/` had drifted; moving them under `src/` brought them into scope.
 - The shared React tool-call renderers are `src/tool-render/lib` here instead of the separate `@veyyon/tool-render` package; the rendered output, the `<vey-tool-view>` web component and the HTML session export bundle are unchanged.
 - `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
@@ -122,6 +124,8 @@
 
 ### Fixed
 
+- A submission arriving in the tick after the terminal asks for input is no longer dropped, and loop mode's auto-submit timer no longer arms a tick late: the goal-mode exit check ran as an `await` on every turn, and an `async` guard that returns early still yields before the input callback is installed.
+- An extension published against the old `@veyyon/tui` barrel loads again. Moving the width, key, mouse, motion, LaTeX, fuzzy and paint primitives to `@veyyon/utils` removed them from that barrel, so a plugin importing `visibleWidth` or `Key` from `@earendil-works/pi-tui` failed at import time and its whole extension went inactive; the bare tui package root now resolves to a compatibility surface carrying the renderer plus every module the barrel dropped.
 - A model selector that names a provider and no model (`openai/`, `openai/:high`) is rejected where it is written instead of parsing to a model id of the empty string, which every caller then carried until a lookup failed somewhere else.
 - A personality named after a property JavaScript objects inherit, such as `toString` or `constructor`, is reported as unknown and falls back to the default like any other unrecognized name; the built-in catalog was indexed without an own-property check, so those names resolved to a function, the system prompt build failed silently, and the default was substituted with no warning and any `personality/default.md` override ignored.
 - A personality spec can no longer spell a prompt tag such as `<critical>` and have it render as prompt structure; only `<personality>` was neutralized before, and a project's `.veyyon/personalities` file, which arrives with a cloned repository and outranks the user's own, is injected into every request.
