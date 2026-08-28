@@ -82,7 +82,7 @@ describe("a frame that paints nothing never moves the physical cursor", () => {
 				recorder.collectFrame();
 
 				const overlay = new CursorOverlay(Array.from({ length: height }, (_, i) => `OV_SENTINEL_${i}`));
-				tui.showOverlay(overlay, { row: 0, col: 0, width: 30, height });
+				tui.showOverlay(overlay, { row: 0, col: 0, width: 30 });
 				tui.setFocus(overlay);
 				tui.requestRender();
 				await scheduler.drain(term);
@@ -130,7 +130,7 @@ describe("a frame that paints nothing never moves the physical cursor", () => {
 		await scheduler.drain(term);
 
 		const overlay = new CursorOverlay(["OV_SENTINEL_0", "OV_SENTINEL_1", "OV_SENTINEL_2", "OV_SENTINEL_3"]);
-		const handle = tui.showOverlay(overlay, { row: 0, col: 0, width: 30, height: 4 });
+		const handle = tui.showOverlay(overlay, { row: 0, col: 0, width: 30 });
 		tui.setFocus(overlay);
 		tui.requestRender();
 		await scheduler.drain(term);
