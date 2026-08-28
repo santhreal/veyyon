@@ -300,6 +300,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/eval/rb/prelude.ts",
 	"packages/coding-agent/src/eval/session-id.ts",
 	"packages/coding-agent/src/export/redact-snapshot.ts",
+	"packages/coding-agent/src/extensibility/legacy-pi-coding-agent-shim-helpers.ts",
 	"packages/coding-agent/src/extensibility/plugins/marketplace/factory.ts",
 	"packages/coding-agent/src/extensibility/plugins/runtime-config.ts",
 	"packages/coding-agent/src/extensibility/session-handler-types.ts",

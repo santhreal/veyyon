@@ -45,17 +45,17 @@ import type { Skill } from "./skills";
 import { loadSkillsFromDir } from "./skills";
 import { Type } from "./typebox";
 
-const LEGACY_BUILTIN_TOOL_MARKER = "__veyyonLegacyBuiltinTool";
-const LEGACY_CODING_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
-const LEGACY_READ_ONLY_TOOL_NAMES = ["read", "grep", "find", "ls"] as const;
+export const LEGACY_BUILTIN_TOOL_MARKER = "__veyyonLegacyBuiltinTool";
+export const LEGACY_CODING_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
+export const LEGACY_READ_ONLY_TOOL_NAMES = ["read", "grep", "find", "ls"] as const;
 
-type LegacyCodingToolName = (typeof LEGACY_CODING_TOOL_NAMES)[number];
-type LegacyRegistryToolName = LegacyCodingToolName | "grep" | "glob";
-type LegacyBuiltinToolDefinition = ToolDefinition & { [LEGACY_BUILTIN_TOOL_MARKER]: true };
+export type LegacyCodingToolName = (typeof LEGACY_CODING_TOOL_NAMES)[number];
+export type LegacyRegistryToolName = LegacyCodingToolName | "grep" | "glob";
+export type LegacyBuiltinToolDefinition = ToolDefinition & { [LEGACY_BUILTIN_TOOL_MARKER]: true };
 
-type LegacySettingOverrides = Partial<Record<SettingPath, unknown>>;
+export type LegacySettingOverrides = Partial<Record<SettingPath, unknown>>;
 
-interface LegacyThemeLike {
+export interface LegacyThemeLike {
 	fg(color: string, text: string): string;
 	bold(text: string): string;
 }
@@ -114,18 +114,18 @@ export interface LsToolOptions {
 	operations?: LsOperations;
 }
 
-const legacyBashSchema = Type.Object({
+export const legacyBashSchema = Type.Object({
 	command: Type.String({ description: "Bash command to execute" }),
 	timeout: Type.Optional(Type.Number({ description: "Timeout in seconds" })),
 });
 
-const legacyReadSchema = Type.Object({
+export const legacyReadSchema = Type.Object({
 	path: Type.String({ description: "Path to read" }),
 	offset: Type.Optional(Type.Number({ description: "1-based line offset" })),
 	limit: Type.Optional(Type.Number({ description: "Maximum lines to read" })),
 });
 
-const legacyGrepSchema = Type.Object({
+export const legacyGrepSchema = Type.Object({
 	pattern: Type.String({ description: "Search pattern" }),
 	path: Type.Optional(Type.String({ description: "Directory or file to search" })),
 	glob: Type.Optional(Type.String({ description: "Glob filter" })),
@@ -134,18 +134,18 @@ const legacyGrepSchema = Type.Object({
 	context: Type.Optional(Type.Number({ description: "Context lines" })),
 });
 
-const legacyFindSchema = Type.Object({
+export const legacyFindSchema = Type.Object({
 	pattern: Type.String({ description: "Glob pattern to match files" }),
 	path: Type.Optional(Type.String({ description: "Directory to search" })),
 	limit: Type.Optional(Type.Number({ description: "Maximum results" })),
 });
 
-const legacyLsSchema = Type.Object({
+export const legacyLsSchema = Type.Object({
 	path: Type.Optional(Type.String({ description: "Directory to list" })),
 	limit: Type.Optional(Type.Number({ description: "Maximum entries" })),
 });
 
-function markToolDefinition<TParams extends TSchema, TDetails>(
+export function markToolDefinition<TParams extends TSchema, TDetails>(
 	tool: ToolDefinition<TParams, TDetails>,
 ): ToolDefinition<TParams, TDetails> {
 	Object.defineProperty(tool, LEGACY_TOOL_DEFINITION_MARKER, {
@@ -157,7 +157,7 @@ function markToolDefinition<TParams extends TSchema, TDetails>(
 	return tool;
 }
 
-function legacyToolSession(cwd: string, settingOverrides?: LegacySettingOverrides): ToolSession {
+export function legacyToolSession(cwd: string, settingOverrides?: LegacySettingOverrides): ToolSession {
 	return {
 		cwd,
 		hasUI: false,
@@ -167,7 +167,7 @@ function legacyToolSession(cwd: string, settingOverrides?: LegacySettingOverride
 	};
 }
 
-function createRegistryTool(
+export function createRegistryTool(
 	cwd: string,
 	name: LegacyRegistryToolName,
 	settingOverrides?: LegacySettingOverrides,
@@ -189,7 +189,7 @@ function createRegistryTool(
 	}
 }
 
-async function executeBuiltinTool(
+export async function executeBuiltinTool(
 	cwd: string,
 	name: LegacyCodingToolName,
 	toolCallId: string,
@@ -201,7 +201,7 @@ async function executeBuiltinTool(
 	return tool.execute(toolCallId, params, signal, onUpdate);
 }
 
-function legacyBuiltinTool(cwd: string, name: LegacyCodingToolName): ToolDefinition {
+export function legacyBuiltinTool(cwd: string, name: LegacyCodingToolName): ToolDefinition {
 	const tool = createRegistryTool(cwd, name);
 	const definition: LegacyBuiltinToolDefinition = {
 		name: tool.name,
@@ -218,54 +218,54 @@ function legacyBuiltinTool(cwd: string, name: LegacyCodingToolName): ToolDefinit
 	return markToolDefinition(definition);
 }
 
-function stringField(value: unknown, key: string): string | undefined {
+export function stringField(value: unknown, key: string): string | undefined {
 	if (value === null || typeof value !== "object") return undefined;
 	const field = Reflect.get(value, key);
 	return typeof field === "string" ? field : undefined;
 }
 
-function numberField(value: unknown, key: string): number | undefined {
+export function numberField(value: unknown, key: string): number | undefined {
 	if (value === null || typeof value !== "object") return undefined;
 	const field = Reflect.get(value, key);
 	return typeof field === "number" ? field : undefined;
 }
 
-function booleanField(value: unknown, key: string): boolean | undefined {
+export function booleanField(value: unknown, key: string): boolean | undefined {
 	if (value === null || typeof value !== "object") return undefined;
 	const field = Reflect.get(value, key);
 	return typeof field === "boolean" ? field : undefined;
 }
 
-function isLegacyThemeLike(value: unknown): value is LegacyThemeLike {
+export function isLegacyThemeLike(value: unknown): value is LegacyThemeLike {
 	if (value === null || typeof value !== "object") return false;
 	return typeof Reflect.get(value, "fg") === "function" && typeof Reflect.get(value, "bold") === "function";
 }
 
-function renderTheme(second: unknown, third: unknown): LegacyThemeLike | undefined {
+export function renderTheme(second: unknown, third: unknown): LegacyThemeLike | undefined {
 	if (isLegacyThemeLike(second)) return second;
 	if (isLegacyThemeLike(third)) return third;
 	return undefined;
 }
 
-function themedTitle(theme: LegacyThemeLike | undefined, title: string): string {
+export function themedTitle(theme: LegacyThemeLike | undefined, title: string): string {
 	return theme ? theme.fg("toolTitle", theme.bold(title)) : title;
 }
 
-function themedMuted(theme: LegacyThemeLike | undefined, text: string): string {
+export function themedMuted(theme: LegacyThemeLike | undefined, text: string): string {
 	return theme ? theme.fg("toolOutput", text) : text;
 }
 
-function textResult(result: AgentToolResult<unknown> | undefined): string {
+export function textResult(result: AgentToolResult<unknown> | undefined): string {
 	return result?.content.find(block => block.type === "text")?.text ?? "";
 }
 
-function legacyRenderResult(result: AgentToolResult<unknown>, _options: unknown, themeArg: unknown): Text {
+export function legacyRenderResult(result: AgentToolResult<unknown>, _options: unknown, themeArg: unknown): Text {
 	const theme = renderTheme(themeArg, undefined);
 	const output = textResult(result);
 	return new Text(output ? `\n${themedMuted(theme, output)}` : "", 0, 0);
 }
 
-function lineRangePath(readPath: string, offset: number | undefined, limit: number | undefined): string {
+export function lineRangePath(readPath: string, offset: number | undefined, limit: number | undefined): string {
 	if (offset === undefined && limit === undefined) return readPath;
 	const start = Math.max(1, Math.floor(offset ?? 1));
 	if (limit === undefined) return `${readPath}:${start}`;
@@ -273,22 +273,22 @@ function lineRangePath(readPath: string, offset: number | undefined, limit: numb
 	return `${readPath}:${start}-${end}`;
 }
 
-function joinLegacyGlob(searchPath: string, pattern: string): string {
+export function joinLegacyGlob(searchPath: string, pattern: string): string {
 	if (path.isAbsolute(pattern)) return pattern;
 	if (!searchPath || searchPath === ".") return pattern;
 	return path.join(searchPath, pattern);
 }
 
-function normalizeLegacyLimit(limit: number | undefined, fallback: number): number {
+export function normalizeLegacyLimit(limit: number | undefined, fallback: number): number {
 	if (limit === undefined || !Number.isFinite(limit)) return fallback;
 	return Math.max(1, Math.floor(limit));
 }
 
-function appendStatus(text: string, status: string): string {
+export function appendStatus(text: string, status: string): string {
 	return text ? `${text}\n\n${status}` : status;
 }
 
-function legacyBashSnapshot(output: string): { text: string; details?: { truncation: TruncationResult } } {
+export function legacyBashSnapshot(output: string): { text: string; details?: { truncation: TruncationResult } } {
 	const truncation = truncateTail(output, { maxLines: DEFAULT_MAX_LINES, maxBytes: DEFAULT_MAX_BYTES });
 	if (!truncation.truncated) {
 		return { text: truncation.content };
@@ -304,7 +304,7 @@ function legacyBashSnapshot(output: string): { text: string; details?: { truncat
 	};
 }
 
-async function executeLegacyBashOperations(
+export async function executeLegacyBashOperations(
 	operations: BashOperations,
 	spawn: BashSpawnContext,
 	timeout: number | undefined,
@@ -595,502 +595,19 @@ export function createLsTool(cwd: string, options?: LsToolOptions): ToolDefiniti
 	return createLsToolDefinition(cwd, options);
 }
 
-export function createCodingTools(cwd: string): ToolDefinition[] {
-	return LEGACY_CODING_TOOL_NAMES.map(name => legacyBuiltinTool(cwd, name));
-}
-
-export function createReadOnlyTools(cwd: string): ToolDefinition[] {
-	return LEGACY_READ_ONLY_TOOL_NAMES.map(name => {
-		if (name === "read") return createReadTool(cwd);
-		if (name === "grep") return createGrepTool(cwd);
-		if (name === "find") return createFindTool(cwd);
-		return createLsTool(cwd);
-	});
-}
-
-export const SettingsManager = {
-	create(cwd: string, agentDir?: string): Promise<Settings> {
-		return Settings.init({ cwd, agentDir });
-	},
-
-	inMemory(): Settings {
-		return Settings.isolated();
-	},
-} as const;
-
-export type ResourceDiagnostic = {
-	type: "error" | "warning" | "info";
-	message: string;
-	path?: string;
-};
-
-export interface AgentsFile {
-	path: string;
-	content: string;
-}
-
-export interface Theme {
-	name: string;
-}
-
-export interface DefaultResourceLoaderOptions {
-	cwd?: string;
-	agentDir?: string;
-	settingsManager?: Settings | Promise<Settings>;
-	eventBus?: EventBus;
-	additionalExtensionPaths?: string[];
-	additionalSkillPaths?: string[];
-	additionalPromptTemplatePaths?: string[];
-	additionalThemePaths?: string[];
-	extensionFactories?: ExtensionFactory[];
-	noExtensions?: boolean;
-	noSkills?: boolean;
-	noPromptTemplates?: boolean;
-	noThemes?: boolean;
-	noContextFiles?: boolean;
-	systemPrompt?: string;
-	appendSystemPrompt?: string | string[];
-	extensionsOverride?: (base: LoadExtensionsResult) => LoadExtensionsResult;
-	skillsOverride?: (base: { skills: Skill[]; diagnostics: ResourceDiagnostic[] }) => {
-		skills: Skill[];
-		diagnostics: ResourceDiagnostic[];
-	};
-	promptsOverride?: (base: { prompts: PromptTemplate[]; diagnostics: ResourceDiagnostic[] }) => {
-		prompts: PromptTemplate[];
-		diagnostics: ResourceDiagnostic[];
-	};
-	themesOverride?: (base: { themes: Theme[]; diagnostics: ResourceDiagnostic[] }) => {
-		themes: Theme[];
-		diagnostics: ResourceDiagnostic[];
-	};
-	agentsFilesOverride?: (base: { agentsFiles: AgentsFile[] }) => { agentsFiles: AgentsFile[] };
-	systemPromptOverride?: (base: string | undefined) => string | undefined;
-	appendSystemPromptOverride?: (base: string[]) => string[];
-}
-
-export interface ResourceLoader {
-	getExtensions(): LoadExtensionsResult;
-	getSkills(): { skills: Skill[]; diagnostics: ResourceDiagnostic[] };
-	getPrompts(): { prompts: PromptTemplate[]; diagnostics: ResourceDiagnostic[] };
-	getThemes(): { themes: Theme[]; diagnostics: ResourceDiagnostic[] };
-	getAgentsFiles(): { agentsFiles: AgentsFile[] };
-	getSystemPrompt(): string | undefined;
-	getAppendSystemPrompt(): string[];
-	reload(): Promise<void>;
-	readonly __veyyonLegacyPiLoader?: true;
-}
-
-interface ResolvedLoaderState {
-	cwd: string;
-	agentDir: string;
-	settingsPromise?: Promise<Settings>;
-	eventBus: EventBus;
-	extensionFactories: ExtensionFactory[];
-	noExtensions: boolean;
-	additionalExtensionPaths: string[];
-	additionalSkillPaths: string[];
-	additionalPromptTemplatePaths: string[];
-}
-
-interface AdditionalSkillLoadResult {
-	skills: Skill[];
-	diagnostics: ResourceDiagnostic[];
-}
-
-interface AdditionalPromptLoadResult {
-	prompts: PromptTemplate[];
-	diagnostics: ResourceDiagnostic[];
-}
-
-export class DefaultResourceLoader implements ResourceLoader {
-	readonly __veyyonLegacyPiLoader = true as const;
-	#state: ResolvedLoaderState;
-	#options: DefaultResourceLoaderOptions;
-	#extensionsResult: LoadExtensionsResult = {
-		extensions: [],
-		errors: [],
-		withheld: [],
-		runtime: new ExtensionRuntime(),
-	};
-	#skills: Skill[] = [];
-	#skillDiagnostics: ResourceDiagnostic[] = [];
-	#prompts: PromptTemplate[] = [];
-	#promptDiagnostics: ResourceDiagnostic[] = [];
-	#themes: Theme[] = [];
-	#themeDiagnostics: ResourceDiagnostic[] = [];
-	#agentsFiles: AgentsFile[] = [];
-	#systemPrompt: string | undefined;
-	#appendSystemPrompt: string[] = [];
-	#loaded = false;
-
-	constructor(options: DefaultResourceLoaderOptions = {}) {
-		this.#options = options;
-		const cwd = options.cwd ?? getProjectDir();
-		const agentDir = options.agentDir ?? getAgentDir();
-		this.#state = {
-			cwd,
-			agentDir,
-			settingsPromise: options.settingsManager ? Promise.resolve(options.settingsManager) : undefined,
-			eventBus: options.eventBus ?? new EventBus(),
-			extensionFactories: options.extensionFactories ?? [],
-			noExtensions: options.noExtensions ?? false,
-			additionalExtensionPaths: options.additionalExtensionPaths ?? [],
-			additionalSkillPaths: options.additionalSkillPaths ?? [],
-			additionalPromptTemplatePaths: options.additionalPromptTemplatePaths ?? [],
-		};
-	}
-
-	getExtensions(): LoadExtensionsResult {
-		return this.#extensionsResult;
-	}
-
-	getSkills(): { skills: Skill[]; diagnostics: ResourceDiagnostic[] } {
-		return { skills: this.#skills, diagnostics: this.#skillDiagnostics };
-	}
-
-	getPrompts(): { prompts: PromptTemplate[]; diagnostics: ResourceDiagnostic[] } {
-		return { prompts: this.#prompts, diagnostics: this.#promptDiagnostics };
-	}
-
-	getThemes(): { themes: Theme[]; diagnostics: ResourceDiagnostic[] } {
-		return { themes: this.#themes, diagnostics: this.#themeDiagnostics };
-	}
-
-	getAgentsFiles(): { agentsFiles: AgentsFile[] } {
-		return { agentsFiles: this.#agentsFiles };
-	}
-
-	getSystemPrompt(): string | undefined {
-		return this.#systemPrompt;
-	}
-
-	getAppendSystemPrompt(): string[] {
-		return this.#appendSystemPrompt;
-	}
-
-	async reload(): Promise<void> {
-		const { cwd, agentDir } = this.#state;
-		const options = this.#options;
-
-		let settingsPromise = this.#state.settingsPromise;
-		if (!settingsPromise) {
-			settingsPromise = Settings.init({ cwd, agentDir });
-			this.#state.settingsPromise = settingsPromise;
-		}
-		const settings = await settingsPromise;
-
-		const [extensionsResult, skillsBase, additionalSkills, prompts, additionalPrompts, agentsFiles] =
-			await Promise.all([
-				this.#loadExtensions(settings),
-				options.noSkills
-					? Promise.resolve({ skills: [], warnings: [] })
-					: discoverSkills(cwd, agentDir, {
-							...settings.getGroup("skills"),
-							disabledExtensions: settings.get("disabledExtensions") ?? [],
-						}),
-				this.#loadAdditionalSkills(),
-				options.noPromptTemplates ? Promise.resolve([]) : discoverPromptTemplates(cwd, agentDir),
-				this.#loadAdditionalPromptTemplates(),
-				options.noContextFiles ? Promise.resolve([]) : discoverContextFiles(cwd, agentDir),
-			]);
-
-		this.#extensionsResult = options.extensionsOverride
-			? options.extensionsOverride(extensionsResult)
-			: extensionsResult;
-
-		const skillsBaseResult = {
-			skills: [...skillsBase.skills, ...additionalSkills.skills],
-			diagnostics: [
-				...skillsBase.warnings.map(w => ({
-					type: "warning" as const,
-					message: w.message,
-					path: w.skillPath,
-				})),
-				...additionalSkills.diagnostics,
-			],
-		};
-		const skillsFinal = options.skillsOverride ? options.skillsOverride(skillsBaseResult) : skillsBaseResult;
-		this.#skills = skillsFinal.skills;
-		this.#skillDiagnostics = skillsFinal.diagnostics;
-
-		const promptsBase = {
-			prompts: [...prompts, ...additionalPrompts.prompts],
-			diagnostics: additionalPrompts.diagnostics,
-		};
-		const promptsFinal = options.promptsOverride ? options.promptsOverride(promptsBase) : promptsBase;
-		this.#prompts = promptsFinal.prompts;
-		this.#promptDiagnostics = promptsFinal.diagnostics;
-
-		const themesBase = { themes: [] as Theme[], diagnostics: [] as ResourceDiagnostic[] };
-		const themesFinal = options.themesOverride ? options.themesOverride(themesBase) : themesBase;
-		this.#themes = themesFinal.themes;
-		this.#themeDiagnostics = themesFinal.diagnostics;
-
-		const agentsFilesBase = { agentsFiles };
-		const agentsFilesFinal = options.agentsFilesOverride
-			? options.agentsFilesOverride(agentsFilesBase)
-			: agentsFilesBase;
-		this.#agentsFiles = agentsFilesFinal.agentsFiles;
-
-		const baseSystemPrompt = options.systemPrompt;
-		this.#systemPrompt = options.systemPromptOverride
-			? options.systemPromptOverride(baseSystemPrompt)
-			: baseSystemPrompt;
-
-		const appendSource = options.appendSystemPrompt;
-		const baseAppend =
-			typeof appendSource === "string" ? [appendSource] : Array.isArray(appendSource) ? appendSource : [];
-		this.#appendSystemPrompt = options.appendSystemPromptOverride
-			? options.appendSystemPromptOverride(baseAppend)
-			: baseAppend;
-
-		this.#loaded = true;
-	}
-
-	async #loadExtensions(settings: Settings): Promise<LoadExtensionsResult> {
-		const { cwd, agentDir, noExtensions, additionalExtensionPaths, extensionFactories, eventBus } = this.#state;
-
-		if (noExtensions && additionalExtensionPaths.length === 0 && extensionFactories.length === 0) {
-			return { extensions: [], errors: [], withheld: [], runtime: new ExtensionRuntime() };
-		}
-
-		const paths = await discoverSessionExtensionPaths(
-			{
-				disableExtensionDiscovery: noExtensions,
-				additionalExtensionPaths,
-			},
-			cwd,
-			settings,
-			agentDir,
-		);
-
-		const result = await loadExtensions(paths, cwd, eventBus, undefined, {
-			agentDir,
-			configuredPaths: [...additionalExtensionPaths, ...(settings.get("extensions") ?? [])],
-		});
-		for (let i = 0; i < extensionFactories.length; i++) {
-			const loaded = await loadExtensionFromFactory(
-				extensionFactories[i],
-				cwd,
-				eventBus,
-				result.runtime,
-				`<inline-loader-${i}>`,
-			);
-			result.extensions.push(loaded);
-		}
-		return result;
-	}
-
-	async #loadAdditionalSkills(): Promise<AdditionalSkillLoadResult> {
-		const skills: Skill[] = [];
-		const diagnostics: ResourceDiagnostic[] = [];
-
-		for (const resourcePath of this.#state.additionalSkillPaths) {
-			const resolvedPath = path.isAbsolute(resourcePath)
-				? resourcePath
-				: path.resolve(this.#state.cwd, resourcePath);
-			const skillDir =
-				path.basename(resolvedPath).toLowerCase() === "skill.md" ? path.dirname(resolvedPath) : resolvedPath;
-			try {
-				const result = await loadSkillsFromDir({
-					dir: skillDir,
-					source: "legacy-resource-loader",
-				});
-				for (let si = 0; si < result.skills.length; si++) skills.push(result.skills[si]!);
-				diagnostics.push(
-					...result.warnings.map(w => ({
-						type: "warning" as const,
-						message: w.message,
-						path: w.skillPath,
-					})),
-				);
-			} catch (err) {
-				diagnostics.push({
-					type: "warning",
-					message: `Failed to load additional skill path: ${errorMessage(err)}`,
-					path: resolvedPath,
-				});
-			}
-		}
-
-		return { skills, diagnostics };
-	}
-
-	async #loadAdditionalPromptTemplates(): Promise<AdditionalPromptLoadResult> {
-		const prompts: PromptTemplate[] = [];
-		const diagnostics: ResourceDiagnostic[] = [];
-
-		for (const resourcePath of this.#state.additionalPromptTemplatePaths) {
-			const resolvedPath = path.isAbsolute(resourcePath)
-				? resourcePath
-				: path.resolve(this.#state.cwd, resourcePath);
-			const files: string[] = [];
-			try {
-				const stat = await fs.stat(resolvedPath);
-				if (stat.isDirectory()) {
-					const glob = new Bun.Glob("**/*.md");
-					for await (const entry of glob.scan({ cwd: resolvedPath, absolute: false, onlyFiles: true })) {
-						files.push(path.join(resolvedPath, entry));
-					}
-					files.sort();
-				} else if (resolvedPath.toLowerCase().endsWith(".md")) {
-					files.push(resolvedPath);
-				} else {
-					diagnostics.push({
-						type: "warning",
-						message: "Additional prompt template path is neither a directory nor a Markdown file",
-						path: resolvedPath,
-					});
-				}
-			} catch (err) {
-				diagnostics.push({
-					type: "warning",
-					message: `Failed to inspect additional prompt template path: ${errorMessage(err)}`,
-					path: resolvedPath,
-				});
-				continue;
-			}
-
-			for (const filePath of files) {
-				try {
-					const raw = await Bun.file(filePath).text();
-					const { frontmatter, body } = parseFrontmatter(raw);
-					const rawDescription = frontmatter.description;
-					let description = typeof rawDescription === "string" ? rawDescription : "";
-					if (!description) {
-						const firstLine = body.split("\n").find(line => line.trim());
-						if (firstLine) {
-							description = firstLine.slice(0, 60);
-							if (firstLine.length > 60) {
-								description += "...";
-							}
-						}
-					}
-
-					const source = "(legacy-resource-loader)";
-					prompts.push({
-						name: path.basename(filePath, path.extname(filePath)),
-						description: description ? `${description} ${source}` : source,
-						content: body,
-						source,
-					});
-				} catch (err) {
-					diagnostics.push({
-						type: "warning",
-						message: `Failed to load additional prompt template: ${errorMessage(err)}`,
-						path: filePath,
-					});
-				}
-			}
-		}
-
-		return { prompts, diagnostics };
-	}
-
-	get loaded(): boolean {
-		return this.#loaded;
-	}
-
-	__getResolverState(): {
-		cwd: string;
-		agentDir: string;
-		settingsPromise?: Promise<Settings>;
-		eventBus: EventBus;
-		extensionsResult: LoadExtensionsResult;
-		skills: Skill[];
-		prompts: PromptTemplate[];
-		agentsFiles: AgentsFile[];
-		systemPrompt: string | undefined;
-		appendSystemPrompt: string[];
-		extensionFactories: ExtensionFactory[];
-	} {
-		return {
-			cwd: this.#state.cwd,
-			agentDir: this.#state.agentDir,
-			settingsPromise: this.#state.settingsPromise,
-			eventBus: this.#state.eventBus,
-			extensionsResult: this.#extensionsResult,
-			skills: this.#skills,
-			prompts: this.#prompts,
-			agentsFiles: this.#agentsFiles,
-			systemPrompt: this.#systemPrompt,
-			appendSystemPrompt: this.#appendSystemPrompt,
-			extensionFactories: this.#state.extensionFactories,
-		};
-	}
-}
-
-export type LegacyPiCreateAgentSessionOptions = CreateAgentSessionOptions & {
-	resourceLoader?: ResourceLoader;
-};
-
-export async function createAgentSession(
-	options: LegacyPiCreateAgentSessionOptions = {},
-): Promise<CreateAgentSessionResult> {
-	const loader = options.resourceLoader;
-	if (!loader) {
-		return ompCreateAgentSession(options);
-	}
-
-	if (loader instanceof DefaultResourceLoader && !loader.loaded) {
-		await loader.reload();
-	}
-
-	const state =
-		loader instanceof DefaultResourceLoader
-			? loader.__getResolverState()
-			: {
-					cwd: options.cwd ?? getProjectDir(),
-					agentDir: options.agentDir ?? getAgentDir(),
-					settingsPromise: undefined,
-					eventBus: undefined,
-					extensionsResult: loader.getExtensions(),
-					skills: loader.getSkills().skills,
-					prompts: loader.getPrompts().prompts,
-					agentsFiles: loader.getAgentsFiles().agentsFiles,
-					systemPrompt: loader.getSystemPrompt(),
-					appendSystemPrompt: loader.getAppendSystemPrompt(),
-					extensionFactories: [] as ExtensionFactory[],
-				};
-
-	const { resourceLoader: _, ...rest } = options;
-	const forwarded: CreateAgentSessionOptions = {
-		...rest,
-		cwd: rest.cwd ?? state.cwd,
-		agentDir: rest.agentDir ?? state.agentDir,
-	};
-
-	if (rest.eventBus === undefined && state.eventBus !== undefined) {
-		forwarded.eventBus = state.eventBus;
-	}
-	if (rest.settings === undefined && rest.settingsManager === undefined && state.settingsPromise !== undefined) {
-		forwarded.settingsManager = state.settingsPromise;
-	}
-
-	if (rest.preloadedExtensions === undefined && rest.preloadedExtensionPaths === undefined) {
-		forwarded.preloadedExtensions = state.extensionsResult;
-	}
-
-	if (rest.skills === undefined) {
-		forwarded.skills = state.skills;
-	}
-	if (rest.promptTemplates === undefined) {
-		forwarded.promptTemplates = state.prompts;
-	}
-	if (rest.contextFiles === undefined) {
-		forwarded.contextFiles = state.agentsFiles;
-	}
-
-	if (rest.systemPrompt === undefined && state.systemPrompt !== undefined) {
-		forwarded.systemPrompt = state.systemPrompt;
-	}
-	if (rest.appendSystemPrompt === undefined && state.appendSystemPrompt.length > 0) {
-		forwarded.appendSystemPrompt = state.appendSystemPrompt.join("\n\n");
-	}
-
-	return ompCreateAgentSession(forwarded);
-}
-
-export * from "../index";
-export { formatBytes as formatSize } from "../tools/render-utils";
-export { Type } from "./typebox";
+// circular import: functions moved to helpers
+export {
+	createCodingTools,
+	createReadOnlyTools,
+	SettingsManager,
+	DefaultResourceLoader,
+	createAgentSession,
+} from "./legacy-pi-coding-agent-shim-helpers";
+export type {
+	ResourceDiagnostic,
+	AgentsFile,
+	Theme,
+	DefaultResourceLoaderOptions,
+	ResourceLoader,
+	LegacyPiCreateAgentSessionOptions,
+} from "./legacy-pi-coding-agent-shim-helpers";

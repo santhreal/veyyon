@@ -445,6 +445,7 @@
 - Free functions, types, and constants extracted from `secrets/secret-command.ts` (1151→897 lines) into `secrets/secret-command-helpers.ts`.
 
 - Free functions, types, and constants extracted from `secrets/audit.ts` (1,108→637 lines) into `secrets/audit-helpers.ts`.
+- Free functions, types, and constants extracted from `extensibility/legacy-pi-coding-agent-shim.ts` (1,096→600 lines) into `extensibility/legacy-pi-coding-agent-shim-helpers.ts`.
 ### Added
 
 - Esc pressed twice within half a second over a composer holding text discards the draft; undo brings it back, and a single Esc still leaves the draft alone.
