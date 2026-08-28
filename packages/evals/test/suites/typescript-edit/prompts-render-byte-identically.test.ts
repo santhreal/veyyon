@@ -12,20 +12,13 @@ import { describe, expect, it } from "bun:test";
 import Handlebars from "handlebars";
 import { buildPrompt, type FileEntry } from "../../../suites/typescript-edit/generate";
 import type { Mutation, MutationInfo } from "../../../suites/typescript-edit/mutations/registry";
-import forcedAdoptionPromptText from "../../../suites/typescript-edit/prompts/argot-forced-adoption.md" with {
-	type: "text",
-};
-import sigilEmissionPromptText from "../../../suites/typescript-edit/prompts/argot-sigil-emission.md" with {
-	type: "text",
-};
-import reproBarrelPromptText from "../../../suites/typescript-edit/prompts/repro-barrel-reexport.md" with {
-	type: "text",
-};
-import reproFeaturePromptText from "../../../suites/typescript-edit/prompts/repro-new-feature.md" with { type: "text" };
+import { typescriptEditSuitePrompts } from "../../../suites/typescript-edit/prompts/registry";
 
 describe("prompts render byte-identically", () => {
 	it("renders repro-barrel-reexport template byte-identically", () => {
-		const template = Handlebars.compile(reproBarrelPromptText, { noEscape: true });
+		const template = Handlebars.compile(typescriptEditSuitePrompts.require("repro-barrel-reexport").text, {
+			noEscape: true,
+		});
 		const rendered = template({
 			pkg: "@veyyon/wire",
 			deepPath: "src/internal/pool",
@@ -43,7 +36,9 @@ describe("prompts render byte-identically", () => {
 	});
 
 	it("renders repro-new-feature template byte-identically", () => {
-		const template = Handlebars.compile(reproFeaturePromptText, { noEscape: true });
+		const template = Handlebars.compile(typescriptEditSuitePrompts.require("repro-new-feature").text, {
+			noEscape: true,
+		});
 		const rendered = template({
 			pkg: "@veyyon/wire",
 			deepPath: "src/internal/pool",
@@ -60,7 +55,9 @@ describe("prompts render byte-identically", () => {
 	});
 
 	it("renders argot-sigil-emission template byte-identically", () => {
-		const template = Handlebars.compile(sigilEmissionPromptText, { noEscape: true });
+		const template = Handlebars.compile(typescriptEditSuitePrompts.require("argot-sigil-emission").text, {
+			noEscape: true,
+		});
 		const rendered = template({
 			repetitions: 5,
 			token: "§kx7qz",
@@ -73,7 +70,9 @@ describe("prompts render byte-identically", () => {
 	});
 
 	it("renders argot-forced-adoption template byte-identically", () => {
-		const template = Handlebars.compile(forcedAdoptionPromptText, { noEscape: true });
+		const template = Handlebars.compile(typescriptEditSuitePrompts.require("argot-forced-adoption").text, {
+			noEscape: true,
+		});
 		const expansions = ["https://registry.npmjs.org", "@veyyon/utils", "https://rubygems.org/api/v1/gems"];
 		const teaching = "PREAMBLE_TEXT\n\nVOCABULARY_FRAGMENT";
 		const rendered = template({
