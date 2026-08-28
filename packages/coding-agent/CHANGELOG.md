@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- 6 type definitions and constants extracted from `session/session-manager.ts` (2,129→2,062 lines) into `session/session-manager-helpers.ts`.
 - 21 type definitions, constants, and utility classes extracted from `modes/controllers/mcp-command-controller.ts` (2,074→1,927 lines) into `modes/controllers/mcp-command-controller-helpers.ts`.
 - 77 type definitions, constants, and interfaces extracted from `session/agent-session.ts` (15,733→15,220 lines) into `session/agent-session-helpers.ts`.
 - 24 rendering utility functions extracted from `modes/controllers/command-controller.ts` (1,774→1,258 lines) into `modes/controllers/command-controller-helpers.ts`.

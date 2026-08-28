@@ -86,6 +86,12 @@ import {
 } from "./session-lifecycle";
 import { findMostRecentSession, listAllSessions, listSessions, type SessionInfo } from "./session-listing";
 import { loadEntriesFromFile, readTitleSlotFromFile, resolveBlobRefsInEntries } from "./session-loader";
+import {
+	CHUNK_TARGET_CHARS,
+	type DiskQueueOptions,
+	type SessionManagerNoticeOptions,
+	type SessionManagerStateSnapshot,
+} from "./session-manager-helpers";
 import { generateId, migrateToCurrentVersion } from "./session-migrations";
 import {
 	computeDefaultSessionDir,
@@ -104,64 +110,12 @@ import {
 } from "./session-storage";
 import { type SessionTitleUpdate, serializeTitleSlot } from "./session-title-slot";
 
-const CHUNK_TARGET_CHARS = 1 << 20;
+export {
+	cleanupEmptyMoveSession,
+	type ReadonlySessionManager,
+	type SessionManagerNoticeOptions,
+} from "./session-manager-helpers";
 
-export type ReadonlySessionManager = Pick<
-	SessionManager,
-	| "getCwd"
-	| "getSessionDir"
-	| "getSessionId"
-	| "getSessionFile"
-	| "getSessionName"
-	| "getArtifactsDir"
-	| "getArtifactManager"
-	| "allocateArtifactPath"
-	| "saveArtifact"
-	| "getArtifactPath"
-	| "getLeafId"
-	| "getLeafEntry"
-	| "getEntry"
-	| "getLabel"
-	| "getBranch"
-	| "getHeader"
-	| "getEntries"
-	| "getLifecycleState"
-	| "getEntriesThroughCheckpoint"
-	| "getTree"
-	| "getUsageStatistics"
-	| "putBlob"
-	| "putBlobSync"
->;
-
-export interface SessionManagerNoticeOptions {
-	operatorNotices?: OperatorNotices;
-	instrumentation?: InstrumentationLevel;
-}
-
-interface SessionManagerStateSnapshot {
-	cwd: string;
-	sessionDir: string;
-	sessionId: string;
-	sessionName: string | undefined;
-	titleSource: SessionTitleSource | undefined;
-	sessionFile: string | undefined;
-	titleUpdatedAt: string;
-	hasTitleSlot: boolean;
-	onDisk: boolean;
-	needsRewrite: boolean;
-	draftOnlySessionCleanupArmed: boolean;
-	nextSequence: number;
-	lifecycleStarted: boolean;
-	lifecycleEnded: boolean;
-	header: SessionHeader;
-	entries: SessionEntry[];
-}
-
-interface DiskQueueOptions {
-	ignorePriorError?: boolean;
-	ignoreEpoch?: boolean;
-	epoch?: number;
-}
 export class SessionManager {
 	#cwd: string;
 	#sessionDir: string;
@@ -2104,26 +2058,5 @@ export class SessionManager {
 
 	static listAll(storage: SessionStorage = new FileSessionStorage()): Promise<SessionInfo[]> {
 		return listAllSessions(storage);
-	}
-}
-
-export async function cleanupEmptyMoveSession(
-	sessionManager: SessionManager,
-	movedFromEmptySessionFile: string | undefined,
-): Promise<void> {
-	const sessionFile = sessionManager.getSessionFile();
-	if (!sessionFile || !movedFromEmptySessionFile) return;
-	if (path.resolve(sessionFile) !== path.resolve(movedFromEmptySessionFile)) return;
-	const entries = sessionManager.getEntries();
-	const hasRealMessages = entries.some(
-		e => e.type === "message" && (e.message.role === "user" || e.message.role === "assistant"),
-	);
-	if (hasRealMessages) return;
-
-	if (await sessionManager.holdsForeignEntries()) return;
-	try {
-		await sessionManager.dropSession(sessionFile);
-	} catch (err) {
-		logger.warn("Failed to clean up empty move session", { sessionFile, error: String(err) });
 	}
 }
