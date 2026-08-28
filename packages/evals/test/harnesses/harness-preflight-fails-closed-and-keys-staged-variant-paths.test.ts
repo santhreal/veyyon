@@ -167,9 +167,11 @@ describe("harness preflight fails closed and keys staged variant paths", () => {
 		const registeredHarnesses = harnesses.list();
 
 		for (const harness of registeredHarnesses) {
-			// Pass options pointing to nonexistent paths or empty configurations
+			// Every path names a flag its adapter declares. An undeclared `binary` key was
+			// ignored, so the veyyon refusal came from whatever the machine happened to lack
+			// rather than from the missing build this case names.
 			const emptyOptions: Record<string, unknown> = {
-				binary: path.join(scratchDir, "nonexistent", "vey"),
+				"vey-binary": path.join(scratchDir, "nonexistent", "vey"),
 				"auth-db": path.join(scratchDir, "nonexistent", "agent.db"),
 				"omp-binary": path.join(scratchDir, "nonexistent", "omp"),
 				"omp-api-key": undefined,

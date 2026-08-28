@@ -117,7 +117,7 @@ URL selectors are parsed separately in `packages/coding-agent/src/tools/fetch.ts
   - `rootLimit = null`
   - `lineCap = limit` when a line selector was present, else unlimited at this layer
 - `buildDirectoryTree()` sorts siblings by recency, shows file sizes and relative ages, and may mark `limits.resultLimit` when the tree truncates.
-- Empty directories render as `(empty directory)`.
+- Empty directories render as `(empty directory)`. A directory that cannot be scanned refuses with its errno instead, so an unreadable directory is never reported as an empty one.
 
 ### Archives
 - Supported archive containers: `.tar`, `.tar.gz`, `.tgz`, `.zip`.

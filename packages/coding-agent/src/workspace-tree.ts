@@ -50,6 +50,12 @@ export interface BuildWorkspaceTreeOptions {
  * shown, .gitignore is not consulted, and the standard non-source directories
  * (`node_modules`, `.git`, build outputs, caches…) are pruned by the native
  * walker. Used by the read tool's directory-listing path.
+ *
+ * A scan that fails refuses unless the directory is simply not there. This
+ * answers a directory the caller asked to see, so reporting one that nothing
+ * could be read out of as empty states something false about the tree.
+ * `buildWorkspaceTree` below degrades instead, because it fills a block of the
+ * system prompt that no one asked for.
  */
 export async function buildDirectoryTree(cwd: string, options: BuildDirectoryTreeOptions = {}): Promise<DirectoryTree> {
 	const rootPath = path.resolve(cwd);
@@ -75,7 +81,7 @@ export async function buildDirectoryTree(cwd: string, options: BuildDirectoryTre
 			ageMode: "relative",
 		});
 	} catch (error) {
-		refuseWithoutAddon(error);
+		if (!isAbsentDirectory(error)) throw error;
 		return emptyTree(rootPath);
 	}
 }
@@ -158,7 +164,7 @@ export async function buildTopLevelDirectoryListing(
 			omittedTopLevel: omitted,
 		};
 	} catch (error) {
-		refuseWithoutAddon(error);
+		if (!isAbsentDirectory(error)) throw error;
 		return { ...emptyTree(rootPath), omittedTopLevel: 0 };
 	}
 }
@@ -410,6 +416,19 @@ function formatLines(lines: readonly RenderedLine[]): string {
  */
 function refuseWithoutAddon(error: unknown): void {
 	if (isNativeAddonUnavailable(error)) throw error;
+}
+
+/**
+ * Whether a scan failure means the directory is not there.
+ *
+ * A directory that does not exist has no entries, so an empty tree states the
+ * truth about it. Every other failure — an addon that will not load, a
+ * directory this process cannot open — produced no information at all, and
+ * answering `empty` for one of those reports a full directory as an empty one.
+ */
+function isAbsentDirectory(error: unknown): boolean {
+	if (typeof error !== "object" || error === null || !("code" in error)) return false;
+	return error.code === "ENOENT";
 }
 
 function emptyTree(rootPath: string): DirectoryTree {
