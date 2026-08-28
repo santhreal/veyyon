@@ -404,6 +404,22 @@ it: you are. Run it locally, plus `render-regressions.test.ts`,
 before changing ledger math, emitters, or the seam. A change that passes one
 terminal and one seed is not verified.
 
+### What proves a split of the engine changed no bytes
+
+`tui.ts` was 5415 lines and is now ten modules under `packages/tui/src/core/`.
+The evidence that the move emitted the same bytes is the corpus already here:
+`render-regressions.test.ts` and `render-stress-oracles.test.ts` assert exact
+emitted ANSI against a `VirtualTerminal`, and they passed against the split
+engine without a byte changing in either file. A pass there is a stronger claim
+than a golden capture of a handful of sequences, because the corpus covers the
+op orders and terminal shapes that produced each of the regressions it is named
+for, and its expectations were written before the split rather than recorded
+from it.
+
+There is no separate golden file for the split, and there will not be one. A
+golden captured from the post-split engine records whatever the engine does,
+including a defect, and a golden captured before it cannot be captured now.
+
 ---
 
 ## 7. Capability probes & stdin reassembly
@@ -638,4 +654,4 @@ thumb) and the attributes the terminal presents, through
 `VirtualTerminal#getViewportRowFaintColumns`. A byte assertion alone would still
 pass if a later reset in the same row cancelled the dim.
 
-*Verified against `23e2a7938b9f` on 2026-08-28.*
+*Verified against `98f3a1c2be06` on 2026-08-28.*
