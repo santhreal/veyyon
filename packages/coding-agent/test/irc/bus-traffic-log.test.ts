@@ -4,7 +4,7 @@
  * WHY IT EXISTS. Mailboxes are queues: `wait`, `inbox` and the live hand-off
  * each REMOVE the message they consume, so a surface reading mailboxes sees
  * only undelivered backlog, which on a healthy run is nothing at all. The
- * Comms view of the Agent Control Center needs the opposite -- everything that
+ * Comms view of the subagent dashboard needs the opposite -- everything that
  * was said, including what failed to land -- so the bus keeps a log that
  * delivery does not erase and streams each line to whoever is watching.
  *

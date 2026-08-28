@@ -612,7 +612,7 @@ const PLAN_DECISION_TOOLS = new Set<string>([TOOL.ask, TOOL.resolve]);
 /**
  * Mutating tool results (`bash`/`eval`/`edit`/`write`/`ast_edit`) without the
  * agent touching the `todo` tool that trip the mid-run reconciliation nudge.
- * Read-only exploration (grep/read/glob/lsp) never ticks this: an agent
+ * Read-only exploration (search/read/lsp) never ticks this: an agent
  * researching for a long stretch has nothing to flip. Picked so a normal
  * fix-verify loop (~3-6 mutations) never sees the nudge, but a sustained run
  * of landed work without flipping any todos does. Without this nudge, long
@@ -3557,7 +3557,7 @@ export class AgentSession {
 	 * The registry is process-global and, until this existed, nothing ever told
 	 * it that a conversation had ended. `/new` and `/resume` swap the transcript
 	 * under the same `AgentSession`, so every subagent of the previous
-	 * conversation stayed registered: the Agent Control Center listed them, `irc
+	 * conversation stayed registered: the subagent dashboard listed them, `irc
 	 * list` offered them as peers, and messaging one woke an agent whose replies
 	 * were written into a transcript the operator had already left. That is the
 	 * "agents from other sessions" symptom, and it is a leak as much as a
@@ -8765,7 +8765,7 @@ export class AgentSession {
 	/**
 	 * Expand argot handles across transcript entries a viewer parsed off disk.
 	 *
-	 * The Agent Control Center reads a subagent's or advisor's session file
+	 * The subagent dashboard reads a subagent's or advisor's session file
 	 * directly, so it never passes through `buildDisplaySessionContext`. It gets
 	 * the same codec through this accessor rather than reaching for `#argot`.
 	 */
@@ -9327,6 +9327,12 @@ export class AgentSession {
 		// sentence sent the model at an agent the spawn path then refused.
 		const subagentNames = enabledSubagentNames(this.#toolRegistry.get(TOOL.task));
 		const researchAgent = preferredSubagentName(subagentNames, "scout"); // not-a-tool-name: agent ids
+		const activeToolNames = new Set(this.agent.state.tools.map(tool => tool.name));
+		const workspaceDiscoveryTools =
+			[TOOL.search, TOOL.read]
+				.filter(name => activeToolNames.has(name))
+				.map(name => `\`${name}\``)
+				.join(", ") || "the available read-only tools";
 		const content = prompt.render(planModePrompts["plan-mode/active"].text, {
 			planFilePath: displayPlanPath,
 			planExists,
@@ -9334,6 +9340,7 @@ export class AgentSession {
 			// that survives is exactly the prose there is a name for.
 			canDelegate: researchAgent !== undefined,
 			researchAgent,
+			workspaceDiscoveryTools,
 			askToolName: TOOL.ask,
 			writeToolName: TOOL.write,
 			editToolName: TOOL.edit,
@@ -9953,11 +9960,16 @@ export class AgentSession {
 			// Auto-read @filepath mentions
 			const fileMentions = extractFileMentions(expandedText);
 			if (fileMentions.length > 0) {
-				const fileMentionMessages = await generateFileMentionMessages(fileMentions, this.sessionManager.getCwd(), {
-					autoResizeImages: this.settings.get("images.autoResize"),
-					useHashLines: resolveFileDisplayMode(this).hashLines,
-					snapshotStore: getFileSnapshotStore(this),
-				});
+				const fileMentionMessages = await generateFileMentionMessages(
+					fileMentions,
+					this.sessionManager.getCwd(),
+					this,
+					{
+						autoResizeImages: this.settings.get("images.autoResize"),
+						useHashLines: resolveFileDisplayMode(this).hashLines,
+						snapshotStore: getFileSnapshotStore(this),
+					},
+				);
 				for (const fileMentionMessage of fileMentionMessages) {
 					messages.push(await this.#normalizeAgentMessageImages(fileMentionMessage));
 				}

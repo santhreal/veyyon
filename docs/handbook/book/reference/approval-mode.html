@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ad3c1da7.js";
+            window.path_to_searchindex_js = "../searchindex-bf437372.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -242,7 +242,7 @@ opts out of all permission and so opts out of this too.</p>
 directory but reaching outside it through a symlink is still outside, and a path
 that cannot be resolved at all is treated as outside rather than assumed safe.</p>
 <p>Every tool that reads or writes files takes part: <code>read</code>, <code>write</code>, <code>edit</code>,
-<code>ast_edit</code>, <code>grep</code>, <code>glob</code>, <code>ast_grep</code>, <code>inspect_image</code>, and <code>set_cwd</code>.</p>
+<code>ast_edit</code>, <code>search</code>, <code>inspect_image</code>, and <code>set_cwd</code>.</p>
 <p><code>set_cwd</code> is on that list for a reason worth stating. It changes the working
 directory, so an unbounded <code>set_cwd</code> would be a way to erase the boundary rather
 than obey it: re-root to the parent, and every later write is inside the new root

@@ -30,8 +30,6 @@ Register renderers in `RENDERERS` in `registry.ts` under their wire tool names. 
 Tool aliases map legacy names to current renderers:
 - `puppeteer` → `browser`
 - `apply_patch` → `edit`
-- `find` → `glob`
-- `search` → `grep`
 - `js`, `python`, `notebook` → `eval`
 - `await`, `poll`, `cancel_job` → `job`
 

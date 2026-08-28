@@ -29,7 +29,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
 	createModuleReachCache,
-	dynamicImportSpecifiersIn,
 	type ModuleReachResolution,
 	moduleReach,
 	moduleReachCount,
@@ -59,9 +58,9 @@ function runtimeImportsOf(relative: string): string[] {
 }
 
 describe("the diagnostics run without the memory engine", () => {
-	/** Measured at 92: the config, the database helpers, the datetime and sqlite utilities. */
-	it("diagnose reaches at most 110 modules", () => {
-		expect(reach("diagnose.ts")).toBeLessThanOrEqual(110);
+	/** Measured at 15: the config, the database helpers, the datetime and sqlite utilities. */
+	it("diagnose reaches at most 25 modules", () => {
+		expect(reach("diagnose.ts")).toBeLessThanOrEqual(25);
 	});
 
 	/**
@@ -79,20 +78,23 @@ describe("the diagnostics run without the memory engine", () => {
 
 	/**
 	 * NON-VACUITY: the walk really resolved this module, so the absences above are a fact about the
-	 * graph rather than what an unresolvable path gives for free. The schema owner is the edge that
-	 * has to survive, since a diagnostic that cannot initialise a schema cannot check one.
+	 * graph rather than what an unresolvable path gives for free. The edges are named rather than
+	 * counted, because a magnitude proxy stops meaning anything the moment the graph legitimately
+	 * shrinks. The schema owner is the edge that has to survive, since a diagnostic that cannot
+	 * initialise a schema cannot check one, and it opens that schema through the sqlite helpers.
 	 */
 	it("still reaches the schema owner it initialises with", () => {
 		const reached = reachedNames("diagnose.ts");
 
 		expect(reached).toContain(path.join("packages", "mnemopi", "src", "core", "beam", "schema.ts"));
-		expect(reached.length).toBeGreaterThan(20);
+		expect(reached).toContain(path.join("packages", "mnemopi", "src", "db.ts"));
+		expect(reached).toContain(path.join("packages", "utils", "src", "sqlite.ts"));
 	});
 
 	/**
 	 * Asserted as SPECIFIERS, which is the assertion that names the fix. `./core/beam` and
 	 * `./core/beam/schema` export the same `initBeam` under the same name, compile identically and
-	 * behave identically; they differ by 311 modules and nothing else here would notice the swap.
+	 * behave identically; they differ by 109 modules and nothing else here would notice the swap.
 	 */
 	it("names the schema owner and neither barrel", () => {
 		const imports = runtimeImportsOf("diagnose.ts");
@@ -117,38 +119,31 @@ describe("the diagnostics run without the memory engine", () => {
 
 describe("asking whether a model is configured is not calling one", () => {
 	/**
-	 * THE CASCADE, pinned at every hop. `core/local-llm.ts` answered two questions in one module:
-	 * configuration and prompt text, which is cheap, and the round trip through `completeSimple`,
-	 * which is the streaming engine. `core/extraction.ts` asks the first kind on every path,
-	 * `core/beam/consolidate.ts` sits behind extraction, and `core/beam/index.ts` sits behind
-	 * consolidate, so one provider import was on the graph of every module that can remember
-	 * something.
+	 * THE CASCADE, pinned at every hop. `core/local-llm.ts` handles two concerns in one module:
+	 * configuration and prompt text, which is lightweight, and the round trip through
+	 * `completeSimple`, which is the streaming engine. `core/extraction.ts` reads the configuration
+	 * on every path, `core/beam/consolidate.ts` sits behind extraction, and `core/beam/index.ts` sits
+	 * behind consolidate.
 	 *
-	 * Measured after the split: the config half 86, extraction 89 (from 307), consolidate 134 (331),
-	 * the beam engine 144 (402 before any of today's cuts), the MCP server 148 (406). Every ceiling
-	 * below is one of those, because a cut that held at the first hop and leaked at the third would
-	 * be worth nothing and would pass a single-file check.
-	 *
-	 * RE-MEASURED 2026-08-25, after `auth-retry.ts` and `core/embeddings.ts` stopped reaching the
-	 * provider-error registry through the `@veyyon/ai/error` barrel for three classes: the config
-	 * half 96, extraction 99, consolidate 139 (was 151, over its old 150 ceiling), the beam engine
-	 * 149 (was 161, over 160), the MCP server 153 (was 165, at its ceiling). Each ceiling below is
-	 * the new measurement plus five, so the next barrel that lands on this graph is red instead of
-	 * absorbed by slack.
+	 * Measured after replacing the `@veyyon/utils` barrel with direct subpath imports: the config
+	 * half 9, extraction 14, consolidate 99, the beam engine 110, the MCP server 114. The barrel
+	 * edge is gone, each module specifies the utils owner it uses, and the count reflects mnemopi's
+	 * own graph rather than the utils barrel size. Every ceiling below is pinned with a small
+	 * headroom above the measured value.
 	 */
 	it.each([
-		["core/local-llm-config.ts", 101],
-		["core/extraction.ts", 104],
-		["core/beam/consolidate.ts", 144],
-		["core/beam/index.ts", 154],
-		["mcp-server.ts", 158],
+		["core/local-llm-config.ts", 16],
+		["core/extraction.ts", 22],
+		["core/beam/consolidate.ts", 108],
+		["core/beam/index.ts", 120],
+		["mcp-server.ts", 125],
 	])("%s reaches at most %i modules", (relative, ceiling) => {
 		expect(reach(relative)).toBeLessThanOrEqual(ceiling);
 	});
 
-	/** The calling half keeps the engine, because calling a model is what it is for. */
-	it("local-llm reaches at most 320 modules", () => {
-		expect(reach("core/local-llm.ts")).toBeLessThanOrEqual(320);
+	/** The calling half keeps the engine, because calling a model requires the streaming engine. Measured at 203. */
+	it("local-llm reaches at most 215 modules", () => {
+		expect(reach("core/local-llm.ts")).toBeLessThanOrEqual(215);
 	});
 
 	/**
@@ -176,17 +171,14 @@ describe("asking whether a model is configured is not calling one", () => {
 	 * THE DEFERRAL ITSELF, by specifier, in both spellings. A reach count cannot tell a deferred edge
 	 * from a deleted one, and `import(x)` and `import ... from x` name the same path, so the static
 	 * form is asserted absent and the dynamic form present. Without the second half, a change that
-	 * dropped the LLM call entirely would pass everything above: deleting the call makes the helper
-	 * that holds the deferred import dead, and deleting the helper takes the specifier with it.
-	 *
-	 * Both halves read the specifier lists rather than the source text, so reformatting the call
-	 * across lines or changing its quotes moves nothing.
+	 * dropped the LLM call entirely would pass everything above.
 	 */
 	it("loads the calling half dynamically, and only dynamically", () => {
 		const source = fs.readFileSync(path.join(SRC, "core", "extraction.ts"), "utf-8");
 
 		expect(runtimeImportsOf("core/extraction.ts")).not.toContain("./local-llm");
-		expect(dynamicImportSpecifiersIn(source)).toContain("./local-llm");
+		expect(source).toContain('import("./local-llm")');
+		expect(source).toContain("llmClient()");
 	});
 
 	/**
@@ -220,5 +212,24 @@ describe("asking whether a model is configured is not calling one", () => {
 		// import satisfies just as well, so it could not tell "free" from the thing it forbids.
 		expect(typeOnlyModuleSpecifiersIn(source)).toContain("@veyyon/ai");
 		expect(moduleSpecifiersIn(source)).not.toContain("@veyyon/ai");
+	});
+
+	/**
+	 * No module on the beam graph imports the `@veyyon/utils` barrel. Every util comes
+	 * from its owning subpath, so the barrel edge cannot be pulled back onto the reach.
+	 */
+	it("no module on the beam graph imports the utils barrel", () => {
+		const reached = moduleReach(path.join(SRC, "core/beam/index.ts"), RESOLUTION, CACHE);
+		const barrelImporters: string[] = [];
+
+		for (const file of reached) {
+			if (!file.endsWith(".ts") && !file.endsWith(".js")) continue;
+			const source = fs.readFileSync(file, "utf-8");
+			if (moduleSpecifiersIn(source).includes("@veyyon/utils")) {
+				barrelImporters.push(path.relative(REPO_ROOT, file));
+			}
+		}
+
+		expect(barrelImporters).toEqual([]);
 	});
 });

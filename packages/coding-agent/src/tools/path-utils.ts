@@ -323,6 +323,8 @@ export function isLineInRanges(lineNumber: number, ranges: readonly LineRange[])
  */
 export const splitPathAndSel: (rawPath: string) => { path: string; sel?: string } = splitReadSelector;
 
+class PathLengthLimitError extends Error {}
+
 /**
  * Three-way probe for whether the exact filesystem entry named by `filePath`
  * exists. `stat` (used earlier) failed for reasons other than "no such file"
@@ -333,7 +335,13 @@ export const splitPathAndSel: (rawPath: string) => { path: string; sel?: string 
  * `"unknown"` so callers keep the raw path instead of guessing.
  */
 export async function probeLiteralPathExists(filePath: string, cwd: string): Promise<"exists" | "missing" | "unknown"> {
-	const resolved = resolveReadPath(filePath, cwd);
+	let resolved: string;
+	try {
+		resolved = resolveReadPath(filePath, cwd);
+	} catch (err) {
+		if (err instanceof PathLengthLimitError) return "missing";
+		throw err;
+	}
 	try {
 		await fs.promises.lstat(resolved);
 		return "exists";
@@ -530,7 +538,7 @@ function assertPathLengthWithinLimits(original: string, resolved: string): void 
 	for (const component of resolved.split(/[/\\]/)) {
 		const bytes = Buffer.byteLength(component, "utf8");
 		if (bytes > MAX_PATH_COMPONENT_BYTES) {
-			throw new Error(
+			throw new PathLengthLimitError(
 				`Path component is ${bytes} bytes, over the ${MAX_PATH_COMPONENT_BYTES}-byte filename limit, ` +
 					`in ${JSON.stringify(original)}. Shorten the name ${JSON.stringify(
 						`${component.slice(0, 40)}…`,
@@ -543,7 +551,7 @@ function assertPathLengthWithinLimits(original: string, resolved: string): void 
 	if (process.platform === "win32") return;
 	const totalBytes = Buffer.byteLength(resolved, "utf8");
 	if (totalBytes > MAX_PATH_TOTAL_BYTES) {
-		throw new Error(
+		throw new PathLengthLimitError(
 			`Path is ${totalBytes} bytes, over the ${MAX_PATH_TOTAL_BYTES}-byte total path limit, ` +
 				`starting from ${JSON.stringify(original.slice(0, 60))}. Use a shorter directory or filename.`,
 		);
@@ -696,8 +704,8 @@ export function isReadableUrlPath(value: string): boolean {
  * The literal base directory a glob/search pattern descends from — the longest
  * leading path segment run that contains no glob metacharacter (`*?[{`).
  *
- * This is what the cwd boundary checks for a search tool (`grep`/`glob`/
- * `ast_grep`): the pattern names a scope, and the scope's fixed root is what
+ * This is what the cwd boundary checks for each search mode (text, files, and
+ * structure): the pattern names a scope, and the scope's fixed root is what
  * decides whether the search reaches outside cwd. `src/**\/*.ts` bases at `src`,
  * `/etc/**` at `/etc`, a plain `/etc/passwd` (no metachar) is its own base, and
  * a bare `*.ts` or `**\/x` bases at `""` (an empty string meaning "starts at
@@ -853,9 +861,10 @@ function parseStringEncodedPathArray(input: string): string[] | null {
  * Delimited single strings (`"a.ts b.ts"`) are left for
  * {@link expandDelimitedPathEntries} to split.
  */
-export function toPathList(input: string | string[] | undefined): string[] {
+export function toPathList(input: unknown): string[] {
 	if (typeof input === "string") return parseStringEncodedPathArray(input) ?? [input];
-	return input ?? [];
+	if (Array.isArray(input)) return input.filter((entry): entry is string => typeof entry === "string");
+	return [];
 }
 
 const GLOB_PATH_CHARS = ["*", "?", "[", "{"] as const;
@@ -893,7 +902,7 @@ function hasTopLevelPathDelimiter(entry: string): boolean {
 	return false;
 }
 
-function splitTopLevelDelimitedPath(entry: string, mode: DelimitedPathSplitMode): string[] {
+export function splitTopLevelDelimitedPath(entry: string, mode: DelimitedPathSplitMode): string[] {
 	const parts: string[] = [];
 	let braceDepth = 0;
 	let start = 0;
@@ -925,6 +934,39 @@ function splitTopLevelDelimitedPath(entry: string, mode: DelimitedPathSplitMode)
 	}
 	parts.push(entry.slice(start));
 	return parts;
+}
+
+/**
+ * Conservative synchronous path list parser for approval / cwd-boundary preflight.
+ * Normalizes JSON-encoded arrays, direct arrays, and delimited path strings
+ * (semicolon, comma, whitespace) while respecting glob braces and protecting URLs.
+ */
+export function parseApprovalPathList(input: unknown): string[] {
+	const rawList = toPathList(input);
+	const targets: string[] = [];
+	for (const raw of rawList) {
+		if (typeof raw !== "string") continue;
+		const trimmed = raw.trim();
+		if (trimmed.length === 0) continue;
+		// Split documented top-level semicolons first so compound entries like
+		// `https://example/x;/etc/**` or `local://x;/etc` don't hide the physical peer.
+		const semicolonParts = splitTopLevelDelimitedPath(trimmed, "semicolon");
+		for (const semiPart of semicolonParts) {
+			const semiTrimmed = normalizePathLikeInput(semiPart);
+			if (semiTrimmed.length === 0) continue;
+			if (isReadableUrlPath(semiTrimmed) || isInternalUrlPath(semiTrimmed) || pathTargetsSsh(semiTrimmed)) {
+				targets.push(semiTrimmed);
+				continue;
+			}
+			const mixedParts = splitTopLevelDelimitedPath(semiTrimmed, "mixed");
+			for (const part of mixedParts) {
+				const partTrimmed = normalizePathLikeInput(part);
+				if (partTrimmed.length === 0) continue;
+				targets.push(partTrimmed);
+			}
+		}
+	}
+	return targets;
 }
 
 function getDelimitedCandidates(entry: string, mode: DelimitedPathSplitMode): string[] | null {
@@ -959,7 +1001,9 @@ function probeLiteralExistsSync(filePath: string, cwd: string): boolean {
 		fs.lstatSync(resolveReadPath(filePath, cwd));
 		return true;
 	} catch (err) {
-		if (isMissingPath(err)) return false;
+		// A path over the byte limit cannot name an existing entry, so it does
+		// not get the "not missing means it exists" answer below.
+		if (err instanceof PathLengthLimitError || isMissingPath(err)) return false;
 		return true;
 	}
 }
@@ -969,7 +1013,7 @@ async function probeLiteralExistsAsync(filePath: string, cwd: string): Promise<b
 		await fs.promises.lstat(resolveReadPath(filePath, cwd));
 		return true;
 	} catch (err) {
-		if (isMissingPath(err) || isEnoent(err)) return false;
+		if (err instanceof PathLengthLimitError || isMissingPath(err) || isEnoent(err)) return false;
 		return true;
 	}
 }
@@ -982,7 +1026,7 @@ function probePartResolvesSync(entry: string, cwd: string, splitter: PathEntrySp
 		fs.statSync(resolveToCwd(basePath, cwd));
 		return true;
 	} catch (err) {
-		if (isMissingPath(err)) return false;
+		if (err instanceof PathLengthLimitError || isMissingPath(err)) return false;
 		// Anything that is not "missing" answers the question this probe asks:
 		// the part IS on disk, it just cannot be stat'd from here. EACCES is the
 		// ordinary case — statting `/root/secret` needs execute on a parent this
@@ -1001,7 +1045,7 @@ async function probePartResolvesAsync(entry: string, cwd: string, splitter: Path
 		await fs.promises.stat(resolveToCwd(basePath, cwd));
 		return true;
 	} catch (err) {
-		if (isEnoent(err) || isMissingPath(err)) return false;
+		if (err instanceof PathLengthLimitError || isEnoent(err) || isMissingPath(err)) return false;
 		// See `probePartResolvesSync`: not-missing means it exists but is not
 		// stat-able from here, which is an answer, not a failure.
 		return true;
@@ -1420,7 +1464,7 @@ export async function resolveExplicitFindPatterns(
  * Result of partitioning a list of user-supplied paths/globs into entries whose
  * base directory currently exists on disk versus those that do not.
  *
- * Used by multi-path tools (search, find, ast_grep, ast_edit) to tolerate one
+ * Used by multi-path search modes and `ast_edit` to tolerate one
  * or more missing entries in a multi-path call: the surviving entries should
  * still be searched, with the missing entries surfaced as a non-fatal warning.
  */

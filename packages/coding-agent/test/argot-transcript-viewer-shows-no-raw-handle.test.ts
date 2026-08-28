@@ -1,5 +1,5 @@
 /**
- * WHY: the Agent Control Center's read-only transcript viewer was the one
+ * WHY: the subagent dashboard's read-only transcript viewer was the one
  * display in the product that showed the model's raw `§handle` text. Every
  * other human-facing surface goes through `argot-wire.ts`, but this viewer
  * parses a subagent's or advisor's persisted `.jsonl` itself — precisely

@@ -70,6 +70,15 @@ Pipe handles through stage helpers to build an acyclic dependency graph:
 - **Acyclic only.** A node never waits on its own descendant.
 </dag>
 {{/if}}
+{{#if pyWorkspace}}
+<workspace>
+Use the persistent Python kernel as your working data environment:
+- **Retain large results in variables.** Store raw `tool.*` outputs (large file reads, command outputs, search results) in top-level variables rather than dumping raw payloads to display.
+- **Inspect and transform in-kernel.** Slice, filter, search, regex-match, and parse data with Python expressions and standard library modules directly.
+- **Define reusable helpers.** Write helper functions for repeated repository queries, multi-file transformations, or batch checks, and reuse them across subsequent cells.
+- **Display only compact conclusions.** Print or `display()` structured summaries, diffs, or exact answers; keep intermediate bulk data inside kernel memory.
+</workspace>
+{{/if}}
 
 <critical>
 Prior top-level names (`data`, `sessions`, helpers, imports) survive into the next eval call — reuse them; NEVER re-import, re-require, or re-declare a helper. Re-read a file only if it may have changed since the last read. Re-run setup only after `reset`, a crash, or a `NameError`/`ReferenceError`.

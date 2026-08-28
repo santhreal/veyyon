@@ -222,6 +222,35 @@ describe("memory provider boundary", () => {
 		expect(stageOnePayload).toContain('\\"role\\":\\"assistant\\",\\"text\\":\\"safe answer\\"');
 	});
 
+	test("retains canonical search results in the Stage 1 memory input", async () => {
+		// WHY: unified search replaced the model-facing `grep` tool, but the rollout
+		// projector still allowlisted only the retired name and silently discarded
+		// every canonical search result. This drives the production Stage 1 path;
+		// it does not assert which search findings the memory model chooses to keep.
+		const fixture = await createFixture();
+		await writeRollout(fixture, "search-result", [
+			{ role: "toolResult", toolName: "search", content: [{ type: "text", text: "canonical search finding" }] },
+			{ role: "toolResult", toolName: "write", content: [{ type: "text", text: "excluded write payload" }] },
+		]);
+		let stageOnePayload = "";
+		vi.spyOn(ai, "completeSimple").mockImplementation(
+			async (_model: Model, context: Context, options?: SimpleStreamOptions) => {
+				await resolveApiKey(options?.apiKey);
+				if (isStageOne(context)) {
+					stageOnePayload = JSON.stringify(context);
+					return successfulStageOne("search-result") as never;
+				}
+				return successfulPhaseTwo as never;
+			},
+		);
+
+		start(fixture);
+		await settle(fixture);
+		expect(stageOnePayload).toContain("canonical search finding");
+		expect(stageOnePayload).toContain('\\"toolName\\":\\"search\\"');
+		expect(stageOnePayload).not.toContain("excluded write payload");
+	});
+
 	test("obfuscates complete secrets before head-tail token truncation can expose fragments", async () => {
 		// Why: an exact-match sanitizer cannot recognize a prefix after truncation has already split the secret.
 		const fixture = await createFixture({ "memories.phase1InputTokenLimit": 12 });

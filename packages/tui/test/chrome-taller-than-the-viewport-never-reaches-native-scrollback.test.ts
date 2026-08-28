@@ -23,7 +23,7 @@
  * WHAT IT DOES NOT CATCH. It asserts where rows LAND, not how many bytes it
  * took to get them there: an engine that repainted the window every frame
  * without ever erasing would pass this and still be slow. Byte budgets are
- * `packages/bench/src/simulations/paint-sim`. It drives one width, no images, no
+ * `packages/simulations/src/paint-sim`. It drives one width, no images, no
  * overlays, and no multiplexer pane, where ED3 is refused for other reasons and
  * the repair contract differs.
  */

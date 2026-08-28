@@ -21,13 +21,14 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isMissingPath } from "@veyyon/utils";
+import { isMissingPath, isRecord } from "@veyyon/utils";
 import {
 	expandDelimitedPathEntriesSync,
 	globSearchBase,
 	isInternalUrlPath,
 	isPathWithinCwd,
 	isReadableUrlPath,
+	parseApprovalPathList,
 	pathTargetsSsh,
 	resolveToCwd,
 } from "./path-utils";
@@ -116,34 +117,35 @@ function isNonFilesystemTarget(rawPath: string): boolean {
 }
 
 /**
- * Filesystem targets for a SEARCH tool (`grep` / `glob` / `ast_grep`), which all
- * take a semicolon-delimited `path` of directories/globs to search. A search
- * reads file contents or directory listings under each pattern's base directory,
- * so an out-of-cwd base must be gated the same as a point read (the user policy
- * is that all non-yolo out-of-cwd filesystem access prompts). Each entry reduces
- * to its {@link globSearchBase} — the fixed root the glob descends from — except
- * a non-filesystem entry (URL / ssh / internal scheme), which is passed through
- * verbatim so the boundary skips it. A bare `*.ts` bases at cwd (in-bounds).
- * Shared by all three tools so the split-and-base rule lives in ONE place.
+ * Filesystem targets for unified workspace search.
+ *
+ * The canonical search tool passes a semicolon-delimited `path` containing
+ * directories or globs. Search reads file contents or directory listings under
+ * each pattern's base directory, so an out-of-cwd base is gated like a point
+ * read. Each entry reduces to its {@link globSearchBase}, except a URL, SSH
+ * target, or internal scheme, which passes through so the boundary can skip it.
+ * A bare `*.ts` bases at cwd.
  */
 export function searchPathFilesystemTargets(args: unknown, cwd = process.cwd()): string[] {
-	// `grep` documents `path` but its approval also accepts a legacy `paths`
-	// (string or array); mirror that breadth so a search cannot under-report.
-	if (!args || typeof args !== "object") return [];
-	// Selected by VALUE, not by key presence. `"path" in args` is true for a key
-	// carrying null (or any non-path value), and keying off presence let such a
-	// key suppress `paths` entirely — the under-report this breadth exists to
-	// prevent. No shipped tool reads `paths` in its execute path today, so this
-	// is the boundary keeping its stated contract rather than a live hole.
-	const direct = "path" in args ? args.path : undefined;
-	const legacy = "paths" in args ? args.paths : undefined;
-	const raw = typeof direct === "string" || Array.isArray(direct) ? direct : legacy;
-	const entries: string[] = [];
-	if (typeof raw === "string") entries.push(raw);
-	else if (Array.isArray(raw)) {
-		for (const item of raw) if (typeof item === "string") entries.push(item);
+	// Accepts either the whole tool argument record or one already-extracted
+	// path value, because the unified search tool selects the field itself
+	// (`input` for a file search, `path` for text and structure).
+	let raw: unknown = args;
+	if (isRecord(args)) {
+		// Selected by VALUE, not by key presence. `"path" in args` is true for a
+		// key carrying null (or any non-path value), and keying off presence let
+		// such a key suppress the legacy `paths` entirely — the under-report this
+		// breadth exists to prevent. `paths` (string or array) is still honored
+		// because the retired grep approval accepted it.
+		const direct = args.type === "files" && args.input !== undefined ? args.input : args.path;
+		const fallback = args.input !== undefined ? args.input : args.paths;
+		raw = typeof direct === "string" || Array.isArray(direct) ? direct : fallback;
 	}
+	const entries = parseApprovalPathList(raw);
 	if (entries.length === 0) return [];
+	// A delimited entry that names one real file keeps its delimiters, so a
+	// filename containing a space or a semicolon is not split into two bogus
+	// targets. Everything else fans out before the boundary reduces it.
 	const expanded = expandDelimitedPathEntriesSync(entries, cwd);
 	const targets: string[] = [];
 	for (const entry of expanded) {

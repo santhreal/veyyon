@@ -383,7 +383,7 @@ function resolveApprovalInner(
 			override: false,
 			reason: options?.planModeActive
 				? "Plan mode: mutating tools are blocked (draft the plan via local:// plan files only)."
-				: "Plan autonomy: non-mutating tools only (read/search/grep/lsp). Raise autonomy to ask or higher to mutate.",
+				: "Plan autonomy: non-mutating tools only (read/search/lsp). Raise autonomy to ask or higher to mutate.",
 		};
 	}
 

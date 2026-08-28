@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ad3c1da7.js";
+            window.path_to_searchindex_js = "../searchindex-bf437372.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -211,7 +211,7 @@ below.</p>
 <tr><th>Tier</th><th>Examples</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>read</strong></td><td><code>read</code>, <code>grep</code>, <code>glob</code>, listing</td></tr>
+<tr><td><strong>read</strong></td><td><code>read</code>, <code>search</code>, listing</td></tr>
 <tr><td><strong>write</strong></td><td><code>edit</code>, <code>write</code></td></tr>
 <tr><td><strong>exec</strong></td><td><code>bash</code> and other command execution</td></tr>
 </tbody>
@@ -297,7 +297,7 @@ a rung whose entire promise is that it does not prompt cannot be stopping an ins
 typed. To turn the floor off on <code>yolo</code>, set <code>tools.approval.bash</code> to <code>allow</code>; below <code>yolo</code> an
 <code>allow</code> is outranked by the guard, and <code>deny</code> is a hard block on every rung.</p>
 <p>Separately, the bash interceptor (<code>bashInterceptor.enabled</code>, default off) blocks shell
-commands that duplicate dedicated tools, so the model uses <code>read</code>/<code>grep</code>/<code>glob</code>
+commands that duplicate dedicated tools, so the model reaches for <code>read</code>/<code>search</code>
 instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in <code>bashInterceptor.patterns</code>.</p>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>

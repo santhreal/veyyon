@@ -32,7 +32,7 @@ const packagesRoot = path.join(repoRoot, "packages");
 /**
  * Tracked TypeScript under `prefix`, listed from git rather than walked.
  *
- * Walking is wrong here for two reasons that both bite. `packages/bench/src/deepswe/repo-cache` holds several
+ * Walking is wrong here for two reasons that both bite. `packages/evals/datasets/repo-cache` holds several
  * gigabytes of cloned upstream repositories, each with its own `src/**\/index.ts` files that have nothing
  * to do with this convention, and those clones contain dangling symlinks that make a plain `statSync`
  * walk throw outright. Git's list is the source tree by definition, so vendored, cached and generated

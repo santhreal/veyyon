@@ -217,7 +217,6 @@ export const fastWorkspacePackages = [
 	"packages/stats",
 	"packages/tool-render",
 	"packages/swarm-extension",
-	"packages/bench/src/deepswe",
 	// mnemopi ran in NO CI job until this entry existed. It sat in
 	// `localOnlyWorkspacePackages` below, excluded as a whole package because "its
 	// embedding suites depend on a ~270MB fastembed model absent from CI runners".
@@ -240,7 +239,7 @@ export const fastWorkspacePackages = [
 	// Simulations drive a real AgentSession but need no native artifact, so they
 	// stay in the fast workspace job. Their 300ms watchdogs run sequentially
 	// inside the package through `workspaceTestParallelism` below.
-	"packages/bench/src/simulations",
+	"packages/simulations",
 ];
 
 // These suites cover the native package, TUI/browser-ish behavior, local servers,
@@ -249,11 +248,10 @@ export const fastWorkspacePackages = [
 export const nativeAndIntegrationPackages = [
 	"packages/natives",
 	"packages/tui",
-	"packages/bench/src/typescript-edit",
 	// Same omission as above. These two belong in this bucket rather than the fast
-	// one for the reason the comment gives: metaharness starts local servers and
-	// collab-web is browser-ish.
-	"packages/bench/src/metaharness",
+	// one for the reason the comment gives: evals starts local servers and drives
+	// agent sessions against benchmark fixtures, and collab-web is browser-ish.
+	"packages/evals",
 	"packages/collab-web",
 ];
 
@@ -306,11 +304,14 @@ export const workspaceTestPackages = [
 export const repoScriptTests = [
 	"scripts/a-generated-doc-says-so-on-its-first-line.test.ts",
 	"scripts/a-local-action-is-called-with-everything-it-requires.test.ts",
+	"scripts/a-module-is-imported-at-the-top-of-its-file.test.ts",
 	"scripts/a-package-is-added-only-when-an-existing-one-cannot-serve.test.ts",
 	"scripts/a-shipped-module-arrives-with-a-test-that-names-it.test.ts",
+	"scripts/a-suite-is-named-for-the-behavior-it-defends.test.ts",
 	"scripts/a-test-proves-behavior-not-that-a-spy-was-called.test.ts",
 	"scripts/a-production-site-deploy-has-one-owner.test.ts",
 	"scripts/a-third-party-action-is-pinned-in-one-place.test.ts",
+	"scripts/a-type-is-named-not-derived-from-a-function.test.ts",
 	"scripts/ci-concurrency.test.ts",
 	"scripts/ci-test-partitioning-preserves-global-state-isolation.test.ts",
 	"scripts/simulation-watchdogs-do-not-run-under-test-fanout.test.ts",
@@ -462,6 +463,7 @@ export const repoScriptTests = [
 	// landed on disk unwired, which for a scan-the-whole-tree gate means the rule
 	// it enforces stops being enforced the moment nobody reruns it by hand.
 	"scripts/an-off-screen-raster-never-enters-assets.test.ts",
+	"scripts/one-owner-answers-a-command-lookup.test.ts",
 ];
 
 /**
@@ -609,35 +611,11 @@ const workspacePackageExtraArgs: Record<string, string[]> = {
 };
 
 const workspacePackageParallelism: Readonly<Record<string, number>> = {
-	"packages/bench/src/simulations": 1,
+	"packages/simulations": 1,
 };
 
 export function workspaceTestParallelism(pkg: string, requested: number): number {
 	return workspacePackageParallelism[pkg] ?? requested;
-}
-
-/**
- * A bucket entry names a directory to test; it is not always a package root. The
- * four benchmark harnesses share one manifest (`packages/bench`) and one
- * `bunfig.toml`, so a command whose cwd were the subtree would read no bunfig at
- * all and run with none of the preloads that config carries. The cwd is therefore
- * the enclosing package and the subtree becomes bun's positional path filter,
- * which keeps every per-entry knob (`workspacePackageParallelism`,
- * `workspacePackageExtraArgs`) keyed on the entry as written.
- *
- * Resolved by walking up to the nearest `package.json` rather than by counting
- * path segments, because `python/veybot/web` is three deep and `packages/ai` is
- * two.
- */
-export function workspaceTestScope(dir: string): { cwd: string; filter?: string } {
-	const segments = dir.split("/");
-	for (let end = segments.length; end > 0; end -= 1) {
-		const candidate = segments.slice(0, end).join("/");
-		if (!nodeFs.existsSync(path.join(repoRoot, candidate, "package.json"))) continue;
-		const filter = segments.slice(end).join("/");
-		return filter === "" ? { cwd: candidate } : { cwd: candidate, filter };
-	}
-	return { cwd: dir };
 }
 
 function workspaceTestCommand(
@@ -650,10 +628,9 @@ function workspaceTestCommand(
 	// bucket asks for it because those suites load the native addon and browser-ish
 	// modules; without it a fat single invocation can OOM-kill (reported as exit 137).
 	const perPackageArgs = workspacePackageExtraArgs[pkg] ?? [];
-	const scope = workspaceTestScope(pkg);
 	return {
 		label: pkg,
-		cwd: scope.cwd,
+		cwd: pkg,
 		command: [
 			"bun",
 			"test",
@@ -662,7 +639,6 @@ function workspaceTestCommand(
 			`--parallel=${workspaceTestParallelism(pkg, parallel)}`,
 			...perPackageArgs,
 			...extraArgs,
-			...(scope.filter === undefined ? [] : [scope.filter]),
 		],
 	};
 }

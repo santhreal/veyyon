@@ -1,6 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { batched, clampLow, logger } from "@veyyon/utils";
+import { batched } from "@veyyon/utils/array";
+import * as logger from "@veyyon/utils/logger";
+import { clampLow } from "@veyyon/utils/math";
 import {
 	shmrBatchSize,
 	shmrHarmonyThreshold,

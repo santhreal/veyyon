@@ -6,7 +6,7 @@
  * capability one is the file as discovery loads it (whole markdown `content`, `path`,
  * `level`); the extensibility one is the session-facing summary (`description`, `filePath`,
  * `baseDir`, `source`). `@veyyon/coding-agent` served the summary, while
- * `@veyyon/coding-agent/discovery` and `@veyyon/coding-agent/capability/skill` served the
+ * `@veyyon/coding-agent/discovery` and `@veyyon/coding-agent/discovery/capability/skill` served the
  * record, so code touching nothing but `name`/`_source` type-checked against either and could
  * read the wrong provenance with no error anywhere. The discovery record is now
  * `DiscoveredSkill`, named the way `capability/tool.ts` names `DiscoveredCustomTool`.

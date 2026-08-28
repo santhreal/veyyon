@@ -14,7 +14,7 @@
  * WHAT IT DOES NOT CATCH. This pins the wording, not the wiring: that the
  * session actually stamps `mode: "continue"` on the continuation's events, and
  * `retry` on the ladder's, is driven end to end in
- * `packages/bench/src/simulations/turn-sim/unreplayable-batch-continue.test.ts`.
+ * `packages/simulations/src/turn-sim/unreplayable-batch-continue.test.ts`.
  *
  * The two maps below are `Record<RetryRecoveryMode, string>`, so a third
  * recovery kind fails the type check until someone decides what it is called,

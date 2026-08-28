@@ -51,6 +51,12 @@
 
 - Added shared collab live-session wire contracts for the host CLI and browser guest client.
 
+## [1.2.0] - 2026-08-23
+
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
+
 ## [1.0.47] - 2026-08-13
 
 ### Added

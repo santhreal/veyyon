@@ -1,0 +1,269 @@
+/**
+ * WHY: the harbor backend hardcoded the `veyyon` harness and its `agent/veyyon.txt`
+ * log path in multiple places, preventing other harness adapters from running on
+ * harbor even though the harness registry modeled backend bindings. A harness with
+ * no harbor binding was either silently assumed to be veyyon or broke with an opaque
+ * failure.
+ *
+ * The class this closes: execution backends bypassing the harness registry and
+ * hardcoding one specific agent or log path. The registry sweep asserts that every
+ * harness declaring a harbor binding produces an agent name and log path, that any
+ * harness lacking a harbor binding is rejected by name listing available harbor-capable
+ * harnesses, and that the exported helper is the single authority on log path shape.
+ *
+ * What it does not catch: container-internal behavior of a third-party agent runner
+ * inside the harbor task container.
+ */
+
+import { describe, expect, it } from "bun:test";
+import { buildHarborEnv, type Config } from "../../backends/harbor/config";
+import { buildHarborArgs } from "../../backends/harbor/launch-args";
+import { HarborBindingNotFoundError, harborAgentLogPath, requireHarborBinding } from "../../backends/harbor/main";
+import { agentLabel } from "../../backends/harbor/ui";
+import type { HarnessAdapter, HarnessCapabilities, PreflightVerdict } from "../../engine/contracts";
+import { harnesses } from "../../engine/loaded-members";
+
+/** A runner config with every field the frame and the env builder read. */
+function mockRunnerConfig(): Config {
+	return {
+		agent: "veyyon",
+		install: "source",
+		version: null,
+		tarball: null,
+		thinking: null,
+		compactionThreshold: null,
+		agentArgs: ["--flag"],
+		webSearch: false,
+		gateway: true,
+		gatewayUrl: "http://127.0.0.1:4000",
+		gatewayToken: "token-1",
+		envType: "docker" as const,
+		env: {},
+		extraVolumes: [],
+		models: ["test/model"],
+		tasks: 1,
+		dataset: "ds",
+		concurrency: 1,
+		attempts: 1,
+		jobsDir: "/runs",
+		jobName: "j1",
+		build: false,
+		dryRun: false,
+		cleanup: false,
+		cleanupForce: false,
+		hostNetwork: false,
+		resume: null,
+		filterErrorTypes: [],
+		passthrough: [],
+		binaryArm64: null,
+		binaryX64: null,
+		providers: [],
+		include: [],
+		exclude: [],
+		allowHosts: [],
+		timeoutMultiplier: 1,
+		yes: false,
+	};
+}
+
+describe("a harbor harness resolves its agent name and log path from the registry", () => {
+	it("every harness declaring a harbor binding produces a resolvable agent name and log path", () => {
+		const allHarnesses = harnesses.list();
+		expect(allHarnesses.length).toBeGreaterThan(0);
+
+		const harborBound = allHarnesses.filter(h => Boolean(h.backends.harbor));
+		expect(harborBound.length).toBeGreaterThanOrEqual(1);
+
+		for (const harness of harborBound) {
+			const binding = requireHarborBinding(harness);
+			expect(binding).toBeDefined();
+			expect(typeof binding.agentName).toBe("string");
+			expect(binding.agentName!.trim().length).toBeGreaterThan(0);
+
+			const logPathFromHarness = harborAgentLogPath(harness);
+			expect(logPathFromHarness).toBe(`agent/${binding.agentName}.txt`);
+
+			const logPathFromName = harborAgentLogPath(binding.agentName!);
+			expect(logPathFromName).toBe(`agent/${binding.agentName}.txt`);
+		}
+	});
+
+	it("a harness without a harbor binding is rejected by name with harbor-capable ids", () => {
+		const allHarnesses = harnesses.list();
+		const unbound = allHarnesses.filter(h => !h.backends.harbor);
+		expect(unbound.length).toBeGreaterThan(0);
+
+		const harborCapableNames = allHarnesses.filter(h => Boolean(h.backends.harbor)).map(h => h.id);
+
+		for (const harness of unbound) {
+			expect(() => requireHarborBinding(harness, harborCapableNames)).toThrow(HarborBindingNotFoundError);
+
+			try {
+				requireHarborBinding(harness, harborCapableNames);
+				expect.unreachable("requireHarborBinding should have thrown");
+			} catch (err) {
+				expect(err).toBeInstanceOf(HarborBindingNotFoundError);
+				const error = err as HarborBindingNotFoundError;
+				expect(error.name).toBe("HarborBindingNotFoundError");
+				expect(error.harnessName).toBe(harness.id);
+				expect(error.message).toContain(harness.id);
+				for (const capableId of harborCapableNames) {
+					expect(error.message).toContain(capableId);
+				}
+				expect(error.harborCapableHarnesses).toEqual(expect.arrayContaining(harborCapableNames));
+			}
+		}
+	});
+
+	it("the log-path helper is the single producer of agent/<name>.txt", () => {
+		expect(harborAgentLogPath("veyyon")).toBe("agent/veyyon.txt");
+		expect(harborAgentLogPath("oracle")).toBe("agent/oracle.txt");
+		expect(harborAgentLogPath("nop")).toBe("agent/nop.txt");
+		expect(harborAgentLogPath("custom_agent")).toBe("agent/custom_agent.txt");
+
+		const veyyon = harnesses.require("veyyon");
+		expect(harborAgentLogPath(veyyon)).toBe("agent/veyyon.txt");
+	});
+
+	it("adding a harness with a harbor binding and no agent name turns the validation red", () => {
+		const emptyCapabilities: HarnessCapabilities = {
+			replay: false,
+			compaction: false,
+			armAttachments: false,
+			promptOverrides: false,
+		};
+
+		const invalidHarness: HarnessAdapter = {
+			id: "invalid-harbor-agent",
+			displayName: "Invalid Harbor Agent",
+			description: "Harness with an empty harbor binding",
+			flags: [],
+			defaultModel: null,
+			capabilities: emptyCapabilities,
+			backends: {
+				harbor: {
+					agentName: "",
+				},
+			},
+			async preflight(): Promise<PreflightVerdict> {
+				return { ok: true };
+			},
+			async stageAssets(): Promise<void> {},
+		};
+
+		expect(() => requireHarborBinding(invalidHarness)).toThrow(/declares a harbor backend binding with no agentName/);
+
+		const missingAgentNameHarness: HarnessAdapter = {
+			id: "missing-agent-name",
+			displayName: "Missing Agent Name",
+			description: "Harness with undefined agentName in harbor binding",
+			flags: [],
+			defaultModel: null,
+			capabilities: emptyCapabilities,
+			backends: {
+				harbor: {},
+			},
+			async preflight(): Promise<PreflightVerdict> {
+				return { ok: true };
+			},
+			async stageAssets(): Promise<void> {},
+		};
+
+		expect(() => requireHarborBinding(missingAgentNameHarness)).toThrow(
+			/declares a harbor backend binding with no agentName/,
+		);
+	});
+
+	it("buildHarborArgs resolves agent import path or name from the harness registry", () => {
+		const veyyonArgs = buildHarborArgs(
+			{
+				jobsDir: "/runs/jobs",
+				jobName: "job-veyyon",
+				agent: "veyyon",
+			},
+			harnesses,
+		);
+		expect(veyyonArgs).toContain("--agent");
+		expect(veyyonArgs).toContain("veyyon_local:VeyyonLocal");
+
+		const oracleArgs = buildHarborArgs(
+			{
+				jobsDir: "/runs/jobs",
+				jobName: "job-oracle",
+				agent: "oracle",
+			},
+			harnesses,
+		);
+		expect(oracleArgs).toContain("-a");
+		expect(oracleArgs).toContain("oracle");
+		expect(oracleArgs).not.toContain("--agent");
+	});
+
+	it("buildHarborEnv produces agent env only for harbor-bound harnesses", () => {
+		const mockConfig = mockRunnerConfig();
+
+		const env = buildHarborEnv(
+			mockConfig,
+			"/path/to/models.yaml",
+			null,
+			"1.0.0",
+			null,
+			harnesses.require(mockConfig.agent).backends.harbor,
+		);
+		expect(env.VEYYON_BENCH_INSTALL).toBe("source");
+		expect(env.VEYYON_BENCH_AGENT_ARGS).toBe('["--flag"]');
+		expect(env.VEYYON_BENCH_GATEWAY).toBe("1");
+
+		// factory reaches pier only, so harbor's agent channel stays silent for it.
+		const unboundEnv = buildHarborEnv({ ...mockConfig, agent: "factory" }, "/path/to/models.yaml", null, "1.0.0");
+		expect(unboundEnv.VEYYON_BENCH_INSTALL).toBeUndefined();
+		expect(unboundEnv.VEYYON_BENCH_AGENT_ARGS).toBeUndefined();
+		expect(unboundEnv.VEYYON_BENCH_GATEWAY).toBeUndefined();
+
+		// omp is harbor-bound and routes through the auth gateway, so the agent
+		// channel announces the gateway with URL and token.
+		const programEnv = buildHarborEnv(
+			{ ...mockConfig, agent: "omp" },
+			"/path/to/models.yaml",
+			null,
+			"1.0.0",
+			null,
+			harnesses.require("omp").backends.harbor,
+		);
+		expect(programEnv.VEYYON_BENCH_AGENT_ARGS).toBe('["--flag"]');
+		expect(programEnv.VEYYON_BENCH_GATEWAY).toBe("1");
+		expect(programEnv.VEYYON_BENCH_GATEWAY_URL).toBe("http://127.0.0.1:4000");
+		expect(programEnv.VEYYON_BENCH_GATEWAY_TOKEN).toBe("token-1");
+	});
+
+	it("the progress frame labels whichever harness the run drove", () => {
+		const base: Config = { ...mockRunnerConfig(), agentArgs: [] };
+
+		for (const harness of harnesses.list()) {
+			const binding = harness.backends.harbor;
+			if (!binding) continue;
+			const label = agentLabel({ ...base, agent: harness.id }, binding);
+			expect(label.startsWith(harness.id)).toBe(true);
+			// The install mode describes source this repository mounts or packs, so it belongs on the
+			// frame only for a harness whose binding asks for one of those.
+			const built = binding.sourceMount === true || binding.localTarball === true;
+			expect(label.includes(`(${base.install})`)).toBe(built);
+		}
+	});
+
+	it("states the install mode for a mounted or packed harness and for no other", () => {
+		const base: Config = { ...mockRunnerConfig(), agent: "contender", agentArgs: [] };
+
+		expect(agentLabel(base, { sourceMount: true })).toBe("contender (source)");
+		expect(agentLabel(base, { localTarball: true })).toBe("contender (source)");
+		expect(agentLabel(base, { agentName: "contender" })).toBe("contender");
+		expect(agentLabel(base, undefined)).toBe("contender");
+	});
+
+	it("states the agent args of any harness, not only the built-in one", () => {
+		const withArgs = { ...mockRunnerConfig(), agent: "oracle", agentArgs: ["--flag", "value"] };
+
+		expect(agentLabel(withArgs, undefined)).toBe("oracle [--flag value]");
+		expect(agentLabel({ ...withArgs, agentArgs: [] }, undefined)).toBe("oracle");
+	});
+});

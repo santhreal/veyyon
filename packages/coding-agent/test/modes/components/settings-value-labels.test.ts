@@ -5,7 +5,7 @@
  * displayed and the value it stored. For a duration setting those are not the same
  * thing, so every row backed by a millisecond count showed the count. `Max Subagent
  * Runtime` rendered `0` while its own option list called that `Unlimited`, and the
- * auto-close budgets rendered `300000` and `1800000`. The labels existed the whole
+ * prune budgets rendered `300000` and `1800000`. The labels existed the whole
  * time and only the submenu ever showed them, so the panel an operator scans read as
  * raw numbers while the picker behind it read as English.
  *
@@ -80,30 +80,30 @@ function overlayOwnedBudget(ms: number): { agentDir: string; cwd: string; config
 	const overlay = path.join(root, "overlay.yml");
 	fs.mkdirSync(agentDir, { recursive: true });
 	fs.mkdirSync(cwd, { recursive: true });
-	fs.writeFileSync(overlay, YAML.stringify({ subagent: { autoClose: { parkedMs: ms } } }));
+	fs.writeFileSync(overlay, YAML.stringify({ subagent: { prune: { afterMs: ms } } }));
 	return { agentDir, cwd, configFiles: [overlay] };
 }
 
 describe("settings rows show option labels, not stored values", () => {
 	/**
-	 * The two auto-close budgets are the rows this was found on. At their defaults they
+	 * The two prune budgets are the rows this was found on. At their defaults they
 	 * must read as durations; the millisecond counts are what the operator should never
 	 * have to see.
 	 */
-	it("renders the auto-close budgets as durations", () => {
+	it("renders the prune budgets as durations", () => {
 		const panel = subagentsPanel();
 
-		expect(panel).toContain("Close After");
-		expect(panel).toContain("5 minutes");
-		expect(panel).toContain("30 minutes");
-		expect(panel).not.toContain("300000");
-		expect(panel).not.toContain("1800000");
+		expect(panel).toContain("Prune After");
+		expect(panel).toContain("1 hour");
+		expect(panel).toContain("2 hours");
+		expect(panel).not.toContain("3600000");
+		expect(panel).not.toContain("7200000");
 	});
 
 	/**
 	 * A zero that the option list names is the worst case for a raw-value row, because
 	 * `0` looks like a real answer and quietly means the opposite of one. `Max Subagent
-	 * Runtime` is that row, and it predates the auto-close settings entirely.
+	 * Runtime` is that row, and it predates the prune settings entirely.
 	 */
 	it("renders a named zero by its label", () => {
 		const panel = subagentsPanel();
@@ -118,7 +118,7 @@ describe("settings rows show option labels, not stored values", () => {
 	 * which is exactly when they are looking at it.
 	 */
 	it("labels a configured value, not only the default", async () => {
-		await Settings.instance.set("subagent.autoClose.parkedMs", 3_600_000);
+		await Settings.instance.set("subagent.prune.afterMs", 3_600_000);
 
 		const panel = subagentsPanel();
 
@@ -130,14 +130,14 @@ describe("settings rows show option labels, not stored values", () => {
 	 * The label is display only. This is the regression that would matter most: if the
 	 * mapping reached the store, the setting would hold a string like "5 minutes" and
 	 * every consumer doing millisecond arithmetic on it would produce NaN deadlines,
-	 * which read as "never expire" and would silently disable closing altogether.
+	 * which read as "never expire" and would silently disable pruning altogether.
 	 */
 	it("keeps the stored value numeric while showing a label", () => {
 		subagentsPanel();
 
-		const stored = Settings.instance.get("subagent.autoClose.waitingMs");
+		const stored = Settings.instance.get("subagent.prune.waitingAfterMs");
 		expect(typeof stored).toBe("number");
-		expect(stored).toBe(1_800_000);
+		expect(stored).toBe(7_200_000);
 	});
 
 	/**
@@ -146,7 +146,7 @@ describe("settings rows show option labels, not stored values", () => {
 	 * would hide a setting that is genuinely in effect.
 	 */
 	it("falls back to the raw value when no option matches", async () => {
-		await Settings.instance.set("subagent.autoClose.parkedMs", 111_000);
+		await Settings.instance.set("subagent.prune.afterMs", 111_000);
 
 		expect(subagentsPanel()).toContain("111000");
 	});
@@ -184,38 +184,38 @@ describe("settings rows show option labels, not stored values", () => {
 });
 
 /**
- * The Auto Close group hides its timers when nothing closes.
+ * The Prune group hides its timers when nothing prunes.
  *
  * WHY THIS EXISTS. A duration row that is visible but inert is worse than no row:
- * the operator reads "Close After: 5 minutes" next to a switch they just turned off
+ * the operator reads "Prune After: 5 minutes" next to a switch they just turned off
  * and has no way to tell which one is telling the truth. So the two budgets are
  * conditional on the switch, the way Block On Cache Rejection is conditional on
  * reporting. The switch itself always stays, because a group that disappeared
  * entirely would leave no way back on.
  */
-describe("the Auto Close group follows its own switch", () => {
+describe("the Prune group follows its own switch", () => {
 	/** On: the switch and both budgets. */
-	it("shows both budgets while auto-close is enabled", () => {
+	it("shows both budgets while prune is enabled", () => {
 		const panel = subagentsPanel();
 
-		expect(panel).toContain("Close Parked Subagents");
-		expect(panel).toContain("Close After");
-		expect(panel).toContain("Close After (Waiting)");
+		expect(panel).toContain("Prune Parked Subagents");
+		expect(panel).toContain("Prune After");
+		expect(panel).toContain("Prune After While Waiting");
 	});
 
 	/** Off: the switch alone, so no inert timer is left claiming a schedule. */
-	it("hides both budgets while auto-close is disabled", async () => {
-		await Settings.instance.set("subagent.autoClose.enabled", false);
+	it("hides both budgets while prune is disabled", async () => {
+		await Settings.instance.set("subagent.prune.enabled", false);
 
 		const panel = subagentsPanel();
 
-		expect(panel).toContain("Close Parked Subagents");
-		expect(panel).not.toContain("Close After");
+		expect(panel).toContain("Prune Parked Subagents");
+		expect(panel).not.toContain("Prune After");
 	});
 });
 
 /**
- * Stage one of the park/close lifecycle is reachable at all.
+ * Stage one of the park/prune lifecycle is reachable at all.
  *
  * WHY THIS EXISTS. `subagent.idleTtlMs` decides when a finished subagent releases
  * its session, it carries a `ui` block with a tab, a group, a label and a
@@ -228,14 +228,12 @@ describe("the Auto Close group follows its own switch", () => {
  * It is asserted through the rendered panel rather than through the def list because
  * the def list is what was already lying: the schema entry existed the whole time.
  */
-describe("stage one of the park/close lifecycle is on the settings screen", () => {
-	it("renders the Park After row as a duration beside the close budgets", () => {
+describe("stage one of the park/prune lifecycle is on the settings screen", () => {
+	it("renders the Park After row as a duration beside the prune budgets", () => {
 		const panel = subagentsPanel();
 
 		expect(panel).toContain("Park After");
-		// Its default is the same 5 minutes as the quiet close budget, so the row is
-		// only proved present by the label appearing twice, once per row.
-		expect(panel.match(/5 minutes/g)?.length).toBe(2);
+		expect(panel).toContain("5 minutes");
 		expect(panel).not.toContain("300000");
 	});
 
@@ -265,13 +263,13 @@ describe("stage one of the park/close lifecycle is on the settings screen", () =
 /**
  * The search result list is a SECOND render path, built by `#setSearchQuery` into its
  * own `SettingsList`, and it is the path an operator reaches these rows by most of
- * the time: typing "close" is faster than finding the Subagents tab. Both paths build
+ * the time: typing "prune" is faster than finding the Subagents tab. Both paths build
  * their rows through `#defToItem`, so the labeller reaches search today, but nothing
  * held that: a search-specific item builder would regress it while every tab-panel
  * assertion above stayed green.
  */
 describe("search results are labelled too", () => {
-	it("shows the close budget as a duration in a search result row", () => {
+	it("shows the prune budget as a duration in a search result row", () => {
 		const component = new SettingsSelectorComponent(
 			{
 				availableThinkingLevels: [],
@@ -285,11 +283,11 @@ describe("search results are labelled too", () => {
 		);
 		component.openTab("subagents");
 		// A printable keystroke is what opens the cross-tab search.
-		component.handleInput("close after");
+		component.handleInput("prune after");
 		const panel = component.render(100).map(stripVTControlCharacters).join("\n");
 
-		expect(panel).toContain("Close After");
-		expect(panel).toContain("5 minutes");
-		expect(panel).not.toContain("300000");
+		expect(panel).toContain("Prune After");
+		expect(panel).toContain("1 hour");
+		expect(panel).not.toContain("3600000");
 	});
 });

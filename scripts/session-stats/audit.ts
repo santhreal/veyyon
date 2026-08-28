@@ -286,8 +286,12 @@ function argSummary(name: string, args: Record<string, unknown> | undefined): st
 			return clip(pick("path", "file_path", "input"), 80);
 		case "bash":
 			return clip(pick("command", "cmd"), 80);
-		case "search":
-			return clip(pick("pattern"), 60);
+		case "search": {
+			const type = pick("type");
+			const input = pick("input");
+			const scope = pick("path");
+			return clip([type, input, scope ? `in ${scope}` : ""].filter(Boolean).join(" "), 80);
+		}
 		case "find":
 			return clip(JSON.stringify(args.paths ?? args.pattern ?? ""), 60);
 		case "task": {

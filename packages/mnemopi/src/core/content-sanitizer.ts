@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { atomicWriteFileSync } from "@veyyon/utils";
+import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
 import { hermesRoot } from "../config";
 
 export const SIZE_HARD_CAP = 1_000_000;

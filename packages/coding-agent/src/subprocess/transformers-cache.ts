@@ -1,3 +1,4 @@
+import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getTinyModelsCacheDir } from "@veyyon/utils";
@@ -49,7 +50,7 @@ export async function transformersRepoCacheState(
 	let downloaded = false;
 	for (const entry of entries) {
 		const full = path.join(repoDir, entry);
-		let stat: Awaited<ReturnType<typeof fs.stat>>;
+		let stat: Stats;
 		try {
 			stat = await fs.stat(full);
 		} catch {

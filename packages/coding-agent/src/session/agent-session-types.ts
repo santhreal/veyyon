@@ -335,7 +335,7 @@ export interface AgentSessionConfig {
 	 * Full advisor toolset, pre-built in `createAgentSession` against a distinct,
 	 * advisor-scoped `ToolSession` (its own `-advisor` session/agent id) so the
 	 * advisor's tool state stays isolated from the primary. The advisor is a full
-	 * agent; its config `tools` selects a subset (default read/grep/glob). Undefined
+	 * agent; its config `tools` selects a subset (default read/search). Undefined
 	 * when the advisor is disabled.
 	 */
 	advisorTools?: AgentTool[];

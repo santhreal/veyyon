@@ -67,11 +67,13 @@ function readTurn(path: string, text: string): ToolCallLoopTurn {
 
 /**
  * `threshold: 99` keeps the identical-argument counter out of the way; every
- * detection below therefore comes from the read-subsumption streak, which trips at
- * its default of two consecutive fully-covered reads.
+ * detection below therefore comes from the read-subsumption streak. That streak's
+ * length is pinned here rather than taken from the default, because this suite is
+ * about which ranges count as covered, and it must not go red when the default
+ * number of covered reads before steering is retuned.
  */
 function freshGuard(): ToolCallLoopGuard {
-	return new ToolCallLoopGuard({ threshold: 99, exemptTools: [] });
+	return new ToolCallLoopGuard({ threshold: 99, readSubsumptionThreshold: 2, exemptTools: [] });
 }
 
 describe("multi-range read subsumption", () => {

@@ -4,29 +4,12 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-28
+
 ### Fixed
 
 - A numeric-keyed body whose values are `true`, `false` or `null` keeps its `N:` keys instead of being stripped as read-tool output.
 - A wide line clipped in the unseen-line reveal is cut at a code point rather than a UTF-16 code unit, so an emoji or rare CJK character sitting at the column limit is no longer split into an invalid lone surrogate.
-
-## [1.2.0] - 2026-08-23
-
-### Breaking Changes
-
-- The minimum supported Bun runtime is now 1.4.0.
-
-### Added
-
-- `Snapshot.clippedLines` and `SnapshotStore.recordClippedLines` record the lines a producer showed only a prefix of, so the patcher can tell a clipped line from one that was never rendered at all. A store implemented outside this package must add the method.
-- `editRewritesItsAnchor` and `collectRewrittenAnchorLines` answer whether an edit replaces the bytes of the lines it anchors on, beside `collectEditAnchorLines`, which already owned which lines an edit set anchors against.
-
-### Changed
-
-- Applying a patch no longer builds a per-line origin table nothing read, cutting the cost of a single edit by 36% on a 100,000-line file and 22% on a 1,000,000-line one. Output is byte-identical.
-
-### Fixed
-
-- A pure insertion may anchor a line a producer displayed but clipped at its per-line column cap. Such a line is deliberately kept out of the seen-line set, because an edit that rewrites bytes nobody read is the mistake the set exists to stop — but the guard refused `INS.PRE` and `INS.POST` there too, and those leave the anchored line byte-identical and use it only as a position, which is what the content tag certifies. Adding one line beside a multi-kilobyte row therefore required reading that whole row back with `:raw` first. Every destructive form (`SWAP`, `DEL`, and the `.BLK` variants) on a clipped line is still refused, and a line never rendered at all — an elided body, a folded summary row, a line outside the read range — is still refused for every form including an insertion, since without even a prefix there is nothing to identify.
 
 ## [16.5.0] - 2026-07-13
 
@@ -391,6 +374,25 @@ All notable changes to this package will be documented in this file.
 - Fixed repeated patch application mutating cached `after_anchor` edits between target snapshots
 - Fixed multi-section patching to preflight write policies and reject duplicate canonical targets before any section is committed
 - Fixed mixed line-ending restoration to preserve the first newline style instead of rewriting ties to LF
+
+## [1.2.0] - 2026-08-23
+
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
+
+### Added
+
+- `Snapshot.clippedLines` and `SnapshotStore.recordClippedLines` record the lines a producer showed only a prefix of, so the patcher can tell a clipped line from one that was never rendered at all. A store implemented outside this package must add the method.
+- `editRewritesItsAnchor` and `collectRewrittenAnchorLines` answer whether an edit replaces the bytes of the lines it anchors on, beside `collectEditAnchorLines`, which already owned which lines an edit set anchors against.
+
+### Changed
+
+- Applying a patch no longer builds a per-line origin table nothing read, cutting the cost of a single edit by 36% on a 100,000-line file and 22% on a 1,000,000-line one. Output is byte-identical.
+
+### Fixed
+
+- A pure insertion may anchor a line a producer displayed but clipped at its per-line column cap. Such a line is deliberately kept out of the seen-line set, because an edit that rewrites bytes nobody read is the mistake the set exists to stop — but the guard refused `INS.PRE` and `INS.POST` there too, and those leave the anchored line byte-identical and use it only as a position, which is what the content tag certifies. Adding one line beside a multi-kilobyte row therefore required reading that whole row back with `:raw` first. Every destructive form (`SWAP`, `DEL`, and the `.BLK` variants) on a clipped line is still refused, and a line never rendered at all — an elided body, a folded summary row, a line outside the read range — is still refused for every form including an insertion, since without even a prefix there is nothing to identify.
 
 ## [1.0.47] - 2026-08-13
 

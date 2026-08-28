@@ -194,8 +194,8 @@ describe("SearchToolBm25Tool", () => {
 
 	it("discovers built-in tools when using the new tools.discoveryMode=all setting", async () => {
 		const builtinTools: DiscoverableTool[] = [
-			builtinTool("glob", "Find files and directories matching a glob pattern"),
-			builtinTool("grep", "Search file contents using ripgrep"),
+			builtinTool("debug", "Inspect and debug code execution with breakpoints and stack traces"),
+			builtinTool("lsp", "Query LSP for diagnostics and symbols"),
 		];
 		const allTools = [...discoverableTools, ...builtinTools];
 		const session = createSession(discoverableTools, {
@@ -204,9 +204,9 @@ describe("SearchToolBm25Tool", () => {
 		});
 		const tool = new SearchToolBm25Tool(session);
 
-		const result = await tool.execute("call-builtin", { query: "find files" });
+		const result = await tool.execute("call-builtin", { query: "debug code" });
 		const names = result.details?.tools.map(t => t.name) ?? [];
-		expect(names).toContain("glob");
+		expect(names).toContain("debug");
 	});
 });
 
@@ -218,25 +218,25 @@ describe("renderSearchToolBm25Description", () => {
 	it("lists discoverable built-in tool names alphabetically without leaking them into the MCP server line", () => {
 		const rendered = renderSearchToolBm25Description([
 			builtinTool("write", "Create or overwrite a file"),
-			builtinTool("glob", "Find files by name"),
-			builtinTool("grep", "Search file contents"),
+			builtinTool("debug", "Debug code"),
+			builtinTool("lsp", "Query language server"),
 			mcpTool("mcp__github_create_issue", "github", "create_issue", "Create a GitHub issue", ["owner"]),
 			mcpTool("mcp__slack_post_message", "slack", "post_message", "Post a message to Slack", ["channel"]),
 		]);
 
 		// Built-in names are present verbatim, alphabetically ordered, on their own line.
 		expect(lineWith(rendered, "Discoverable built-in tools:")).toBe(
-			"Discoverable built-in tools: glob, grep, write.",
+			"Discoverable built-in tools: debug, lsp, write.",
 		);
 
 		// Built-in names must not bleed into the MCP server-summary line.
 		const mcpLine = lineWith(rendered, "Discoverable MCP servers");
 		expect(mcpLine).toBe("Discoverable MCP servers in this session: github (1 tool), slack (1 tool).");
 		expect(mcpLine).not.toContain("write");
-		expect(mcpLine).not.toContain("glob");
+		expect(mcpLine).not.toContain("debug");
 		expect(rendered).toContain(
 			"Discoverable MCP servers in this session: github (1 tool), slack (1 tool).\n" +
-				"Discoverable built-in tools: glob, grep, write.\n" +
+				"Discoverable built-in tools: debug, lsp, write.\n" +
 				"Total discoverable tools available: 5.",
 		);
 	});
@@ -255,7 +255,7 @@ describe("renderSearchToolBm25Description", () => {
 	it("keeps built-ins counted in the total discoverable tools line", () => {
 		const rendered = renderSearchToolBm25Description([
 			builtinTool("write", "Create or overwrite a file"),
-			builtinTool("glob", "Find files by name"),
+			builtinTool("debug", "Debug code"),
 			mcpTool("mcp__slack_post_message", "slack", "post_message", "Post a message to Slack", ["channel"]),
 		]);
 

@@ -27,7 +27,7 @@
  * and every trial in the arm hard-errored at zero output tokens. The id space is only
  * complete where every registry is known, so refusal lives in the two places that know
  * it: the bench runner, before a container starts and before quota is spent
- * (`packages/bench/src/deepswe/arm-prompts.ts`), and the application's own complete
+ * (`packages/evals/src/suites/deep-swe/arm-prompts.ts`), and the application's own complete
  * registry list at prompt-assembly time (`packages/coding-agent/src/prompts/all-registries.ts`).
  * {@link unclaimedEvalPromptOverrideIds} is what those layers read.
  */

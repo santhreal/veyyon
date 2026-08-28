@@ -1,5 +1,5 @@
 /**
- * Run the grep tool standalone and show exactly what the agent would see.
+ * Run the standalone native text-search probe.
  */
 import { GrepOutputMode } from "@veyyon/natives";
 import { Args, Command, Flags } from "@veyyon/utils/cli";
@@ -7,7 +7,7 @@ import { type GrepCommandArgs, runGrepCommand } from "../cli/grep-cli";
 import { initTheme } from "../theme/theme";
 
 export default class Grep extends Command {
-	static description = "Run the grep tool standalone and show exactly what the agent would see";
+	static description = "Run the standalone native text-search probe";
 
 	static devTool = true;
 

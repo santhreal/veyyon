@@ -25,7 +25,7 @@
  *
  * WHAT THIS DOES NOT COVER: whether a given turn is actually resampled. That also
  * depends on the retry budget and on whether the turn carries a tool call, which
- * makes replay unsafe. `packages/bench/src/simulations/turn-sim/provider-error-taxonomy.test.ts`
+ * makes replay unsafe. `packages/simulations/src/turn-sim/provider-error-taxonomy.test.ts`
  * drives that end to end through a real session.
  */
 import { describe, expect, it } from "bun:test";

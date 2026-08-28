@@ -11,11 +11,12 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type * as updateCliModule from "../../src/cli/update-cli";
 import { initTheme } from "../../src/theme/theme";
 import { enterTempHome, type TempHome } from "../helpers/temp-home";
 
-let refreshCompletionsForInstalledBinary: typeof import("../../src/cli/update-cli").refreshCompletionsForInstalledBinary;
-let updateViaSourceAt: typeof import("../../src/cli/update-cli").updateViaSourceAt;
+let refreshCompletionsForInstalledBinary: typeof updateCliModule.refreshCompletionsForInstalledBinary;
+let updateViaSourceAt: typeof updateCliModule.updateViaSourceAt;
 
 beforeAll(async () => {
 	// `theme` is a mutable global assigned by initTheme(); production initializes

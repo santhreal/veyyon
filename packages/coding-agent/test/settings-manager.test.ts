@@ -1012,7 +1012,7 @@ describe("Settings", () => {
 			expect(fs.readFileSync(path.join(agentDir, "last-changelog-version"), "utf8")).toBe("0.41.0");
 		});
 
-		it("migrates legacy find and search settings to glob and grep", async () => {
+		it("keeps unified context values while dropping a stale enable key", async () => {
 			await writeSettings({
 				find: { enabled: false },
 				search: {
@@ -1024,13 +1024,15 @@ describe("Settings", () => {
 
 			const settings = await Settings.init({ cwd: projectDir, agentDir });
 
-			expect(settings.get("glob.enabled")).toBe(false);
-			expect(settings.get("grep.enabled")).toBe(false);
-			expect(settings.get("grep.contextBefore")).toBe(2);
-			expect(settings.get("grep.contextAfter")).toBe(5);
+			expect(settings.get("search.contextBefore")).toBe(2);
+			expect(settings.get("search.contextAfter")).toBe(5);
+			settings.set("display.showTokenUsage", true);
+			await settings.flush();
+			const onDisk = await readSettings();
+			expect(onDisk.search).toEqual({ contextBefore: 2, contextAfter: 5 });
 		});
 
-		it("migrates flat legacy find and search settings keys to nested glob and grep", async () => {
+		it("expands flat unified context settings into the canonical nested surface", async () => {
 			await writeSettings({
 				"find.enabled": false,
 				"search.enabled": false,
@@ -1040,13 +1042,11 @@ describe("Settings", () => {
 
 			const settings = await Settings.init({ cwd: projectDir, agentDir });
 
-			expect(settings.get("glob.enabled")).toBe(false);
-			expect(settings.get("grep.enabled")).toBe(false);
-			expect(settings.get("grep.contextBefore")).toBe(2);
-			expect(settings.get("grep.contextAfter")).toBe(5);
+			expect(settings.get("search.contextBefore")).toBe(2);
+			expect(settings.get("search.contextAfter")).toBe(5);
 		});
 
-		it("does not clobber existing glob/grep settings when migrating legacy find/search ones", async () => {
+		it("drops every retired per-engine and unified enable setting", async () => {
 			await writeSettings({
 				find: { enabled: false },
 				glob: { enabled: true },
@@ -1059,9 +1059,14 @@ describe("Settings", () => {
 			});
 
 			const settings = await Settings.init({ cwd: projectDir, agentDir });
+			settings.set("display.showTokenUsage", true);
+			await settings.flush();
+			const onDisk = await readSettings();
 
-			expect(settings.get("glob.enabled")).toBe(true);
-			expect(settings.get("grep.enabled")).toBe(true);
+			expect("find" in onDisk).toBe(false);
+			expect("glob" in onDisk).toBe(false);
+			expect("grep" in onDisk).toBe(false);
+			expect("search" in onDisk).toBe(false);
 		});
 
 		it("migrates legacy tool names in persisted essential overrides", async () => {
@@ -1072,7 +1077,7 @@ describe("Settings", () => {
 
 			const settings = await Settings.init({ cwd: projectDir, agentDir });
 
-			expect(settings.get("tools.essentialOverride")).toEqual(["read", "glob", "grep"]);
+			expect(settings.get("tools.essentialOverride")).toEqual(["read", "search"]);
 		});
 
 		it("migrates from settings.json containing comments", async () => {

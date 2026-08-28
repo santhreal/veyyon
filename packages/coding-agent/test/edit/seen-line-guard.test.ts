@@ -9,7 +9,7 @@ import { DEFAULT_MAX_BYTES } from "@veyyon/coding-agent/session/streaming-output
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import { removeWithRetries } from "@veyyon/utils";
-import { GrepTool } from "../../src/tools/grep";
+import { SearchTool } from "../../src/tools/search";
 
 function createSession(cwd: string): ToolSession {
 	return {
@@ -189,7 +189,11 @@ describe("read → edit seen-line guard", () => {
 		const tag = store.record(canonicalSnapshotKey(file), content, [4]);
 
 		const read = await new ReadTool(session).execute("r1", { path: `${file}:raw:1-1,3-3` });
-		expect(resultText(read)).toBe("");
+		// Line 1 alone is over the budget, so the range shows nothing and says so
+		// rather than returning a silent empty window.
+		const text = resultText(read);
+		expect(text).toContain("[Line 1 is 50.0KB, over the 50.0KB output budget; nothing shown for this range]");
+		expect(text).not.toContain("xxx");
 
 		const seen = store.byHash(canonicalSnapshotKey(file), tag)?.seenLines;
 		expect(seen?.has(1)).toBe(false);
@@ -512,7 +516,7 @@ describe("search → edit seen-line guard", () => {
 			getArtifactsDir: () => path.join(cwd, "artifacts"),
 			allocateOutputArtifact: async () => ({ id: "artifact-1", path: path.join(cwd, "artifact-1.log") }),
 			// Zero context so the seen set is exactly the matched lines.
-			settings: Settings.isolated({ "grep.contextBefore": 0, "grep.contextAfter": 0 }),
+			settings: Settings.isolated({ "search.contextBefore": 0, "search.contextAfter": 0 }),
 			enableLsp: false,
 		} as ToolSession;
 	}
@@ -523,7 +527,7 @@ describe("search → edit seen-line guard", () => {
 		await Bun.write(file, `${lines.join("\n")}\n`);
 		const session = searchSession(tmpDir);
 
-		const search = await new GrepTool(session).execute("s1", { pattern: "NEEDLE", path: file });
+		const search = await new SearchTool(session).execute("s1", { type: "text", input: "NEEDLE", path: file });
 		const tag = tagFromOutput(resultText(search));
 
 		const seen = getFileSnapshotStore(session).byHash(canonicalSnapshotKey(file), tag)?.seenLines;
@@ -541,7 +545,7 @@ describe("search → edit seen-line guard", () => {
 		await Bun.write(file, `${lines.join("\n")}\n`);
 		const session = searchSession(tmpDir);
 
-		const search = await new GrepTool(session).execute("s1", { pattern: "NEEDLE", path: file });
+		const search = await new SearchTool(session).execute("s1", { type: "text", input: "NEEDLE", path: file });
 		const tag = tagFromOutput(resultText(search));
 
 		await expect(executeHashlineSingle(execOptions(`[code.txt#${tag}]\nSWAP 8.=8:\n+X`, session))).rejects.toThrow(

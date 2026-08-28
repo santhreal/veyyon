@@ -2033,12 +2033,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			runtime.ctx.editor.setText("");
 		},
 	},
-	"process-manager": {
-		handleTui: (_command, runtime) => {
-			runtime.ctx.showAgentsDashboard({ processScope: true });
-			runtime.ctx.editor.setText("");
-		},
-	},
 	branch: {
 		handleTui: (_command, runtime) => {
 			if (settings.get("doubleEscapeAction") === "tree") {
@@ -2952,8 +2946,6 @@ export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> 
 	cwd: "workspace",
 	tools: "workspace",
 	agents: "workspace",
-	// Beside `/agents`: the same roster, opened across every conversation this process is running.
-	"process-manager": "workspace",
 	jobs: "workspace",
 	usage: "workspace",
 	// Beside `/usage`: both answer "what has this cost", one inline and one in a browser.

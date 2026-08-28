@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ad3c1da7.js";
+            window.path_to_searchindex_js = "../searchindex-bf437372.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -206,7 +206,7 @@ it as the boundary.</p>
 <h2 id="tool-tiers"><a class="header" href="#tool-tiers">Tool tiers</a></h2>
 <p>Every tool belongs to one of three tiers, ordered by how much it can change:</p>
 <ul>
-<li><strong>read</strong> looks but does not touch: <code>read</code>, <code>grep</code>, <code>glob</code>, and directory listing.</li>
+<li><strong>read</strong> looks but does not touch: <code>read</code>, <code>search</code>, and directory listing.</li>
 <li><strong>write</strong> changes files: <code>edit</code> and <code>write</code>.</li>
 <li><strong>exec</strong> runs commands: <code>bash</code> and anything else that executes a program.</li>
 </ul>
@@ -256,7 +256,7 @@ it is outside, even though the tier is the same.</p>
 entirely inside the working directory that reaches outside it through a symlink counts
 as outside. A path that cannot be resolved at all also counts as outside, because
 treating an unreadable path as safe is the assumption you least want to be wrong about.</p>
-<p>These tools take part: <code>read</code>, <code>write</code>, <code>edit</code>, <code>ast_edit</code>, <code>grep</code>, <code>glob</code>, <code>ast_grep</code>,
+<p>These tools take part: <code>read</code>, <code>write</code>, <code>edit</code>, <code>ast_edit</code>, <code>search</code>,
 <code>inspect_image</code>, and <code>set_cwd</code>.</p>
 <p><code>set_cwd</code> is on that list because it changes the working directory itself. If it were
 not bound, you could move the boundary instead of obeying it: re-root to the parent

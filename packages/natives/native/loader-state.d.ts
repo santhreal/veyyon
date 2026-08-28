@@ -223,14 +223,18 @@ export function staleAddonMessage(stale: StaleAddon, version: string): string;
 export function repoSlugFromRepositoryUrl(raw: string | null | undefined): string;
 
 /**
- * Whether a candidate failed because it is not there or because it is broken.
+ * Whether a candidate failed because it is not there, because the host
+ * environment cannot load it, or because it is broken.
  *
- * `absent` is an ordinary probe result and the loop moves on quietly; `broken`
- * means a file exists where the addon should be and cannot be loaded, which is
- * announced. The two used to be indistinguishable, which is how a corrupt binary
- * read as "not installed".
+ * `absent` is an ordinary probe result and the loop moves on quietly;
+ * `incompatible` means the file exists but the host's C library is too old
+ * (GLIBC/GLIBCXX version mismatch), which is an environment limitation, not
+ * a stale rebuild — the warning is suppressed; `broken` means a file exists
+ * where the addon should be and cannot be loaded for any other reason, which
+ * is announced. The three used to be indistinguishable, which is how a
+ * corrupt binary read as "not installed".
  */
-export function classifyCandidateFailure(error: unknown): "absent" | "broken";
+export function classifyCandidateFailure(error: unknown): "absent" | "incompatible" | "broken";
 
 /** The warning printed when a present addon is skipped, kept beside the classification. */
 export function brokenAddonSkippedMessage(skipped: { candidate: string; reason: string }): string;
@@ -249,6 +253,23 @@ export function loadFirstUsableAddon(input: {
 	onBrokenAddon?: (skipped: { candidate: string; reason: string }) => void;
 	initialErrors?: string[];
 }): { bindings?: Record<string, unknown>; candidate?: string; errors: string[] };
+
+/**
+ * The `code` stamped on every failure that means this process has no usable
+ * native addon: no `.node` on any candidate path, a GLIBC too old for the one
+ * that shipped, or a copy built for another release.
+ */
+export const NATIVE_ADDON_UNAVAILABLE_CODE: "VEYYON_NATIVE_ADDON_UNAVAILABLE";
+
+/** Stamp {@link NATIVE_ADDON_UNAVAILABLE_CODE} on a load failure and return the same error. */
+export function markNativeAddonUnavailable(error: unknown): unknown;
+
+/**
+ * True when the native addon could not be loaded at all, so a result derived
+ * from a native call carries no information and must never be reported as a
+ * finding.
+ */
+export function isNativeAddonUnavailable(error: unknown): boolean;
 
 /** The loaded bindings, loading them on first call and once only. */
 export function native(): Record<string, unknown>;

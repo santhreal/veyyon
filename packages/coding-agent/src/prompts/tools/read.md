@@ -13,7 +13,7 @@ Read files, directories (optionally bounded by `depth`/`limit`), archives, SQLit
 
 ## Selectors
 
-- _(none)_ — parseable code → structural summary; other files → from start (up to {{DEFAULT_LIMIT}} lines).
+- _(none)_ — parseable code → structural summary; other files → from start (up to {{DEFAULT_LIMIT}} lines or the output budget).
 - `:50` / `:50-` — from line 50 onward.
 - `:50-200` — lines 50–200 inclusive.
 - `:50+150` — 150 lines from 50.
@@ -27,7 +27,7 @@ A bounded range is padded with up to 1 line before (when you constrain the start
 
 # Files
 
-- Directory → depth-limited dirent listing (`depth`, `limit`). Reading the session working directory root with neither returns a concise top-level listing with per-subdirectory entry counts; pass `depth: 2` there for the recursive listing.
+- Directory → top-level listing with per-subdirectory entry counts. `depth: 2` recurses one level, `limit` caps entries; both are honored in full when named.
 {{#if IS_HL_MODE}}
 - File + selector → filename-only snapshot header + numbered lines: `[foo.ts#1A2B]` then `41:def alpha():`. Copy `[FILENAME#TAG]` for anchored edits; ops use bare line numbers. NEVER fabricate the tag.
 - A file that ends in a newline shows one extra numbered line with an empty body (a 2-line file `x\ny\n` reads as `1:x`, `2:y`, `3:`). That final empty line is not content: it marks the trailing newline and is the anchor you insert after to append at end of file.
@@ -74,7 +74,7 @@ For `.sqlite`, `.sqlite3`, `.db`, `.db3`:
 
 All URI schemes take the same line selectors. `artifact://<id>` recovers spilled output; large artifacts block unbounded `:raw`, so page with `artifact://<id>:N-M` / `artifact://<id>:raw:N-M` and use the reported artifact file path for search/copy workflows.
 
-`ssh://host/<absolute-path>` reads a remote text file (UTF-8, ≤ 1 MiB) or lists a directory one level deep, on a configured SSH host or `~/.ssh/config` alias; `ssh://host/` lists the remote root and bare `ssh://` lists the hosts. Remote files are also writable via `write` and searchable via `grep`; a directory only lists, so `grep` refuses one and `write` refuses to overwrite one. Percent-encode a literal `:`, `?`, or `#` in the path (`%3A`/`%3F`/`%23`), since a trailing `:sel` is read as a line selector. Requires a POSIX login shell; a Windows host or a non-POSIX shell (fish, csh/tcsh) is rejected, so use the `ssh` tool there.
+`ssh://host/<absolute-path>` reads a remote text file (UTF-8, ≤ 1 MiB) or lists a directory one level deep, on a configured SSH host or `~/.ssh/config` alias; `ssh://host/` lists the remote root and bare `ssh://` lists the hosts. Remote files are also writable via `write` and searchable via `search` with `type: "text"`; a directory only lists, so text search refuses one and `write` refuses to overwrite one. Percent-encode a literal `:`, `?`, or `#` in the path (`%3A`/`%3F`/`%23`), since a trailing `:sel` is read as a line selector. Requires a POSIX login shell; a Windows host or a non-POSIX shell (fish, csh/tcsh) is rejected, so use the `ssh` tool there.
 
 <critical>
 - Summary footer names elided ranges? Re-issue ONLY those ranges. NEVER guess `..`/`…` content.

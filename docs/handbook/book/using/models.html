@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ad3c1da7.js";
+            window.path_to_searchindex_js = "../searchindex-bf437372.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -319,14 +319,14 @@ harness:
   profiles:
     "openai/gpt-4.1":
       repair: true
-      tools: ["read", "edit", "grep", "bash", "write"]
+      tools: ["read", "edit", "search", "bash", "write"]
       promptSectionOrder: ["tool-policy", "delivery-contract"]
 </code></pre>
 <pre><code class="language-yaml"># harness-profiles.yml
 profiles:
   "openai/gpt-4.1":
     repair: true
-    tools: ["read", "edit", "grep", "bash", "write"]
+    tools: ["read", "edit", "search", "bash", "write"]
     promptSectionOrder: ["tool-policy", "delivery-contract"]
 </code></pre>
 <p>Keys: exact <code>provider/model-id</code> or <code>provider/*</code>. See <a href="../repair/per-model.html">Per-model repair posture</a>.</p>

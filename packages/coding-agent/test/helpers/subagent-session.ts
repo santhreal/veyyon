@@ -18,6 +18,7 @@
  */
 import { vi } from "bun:test";
 import type { Api, AssistantMessage, Model } from "@veyyon/ai";
+import type { LoadExtensionsResult } from "@veyyon/coding-agent/extensibility/extensions/types";
 import type { Skill } from "@veyyon/coding-agent/extensibility/skills";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent, PromptOptions } from "@veyyon/coding-agent/session/agent-session-types";
@@ -342,8 +343,7 @@ export function yieldRejectedEvent(data: unknown, toolCallId = "tool-yield-rejec
 export function createSessionResult(session: AgentSession): CreateAgentSessionResult {
 	return {
 		session,
-		extensionsResult:
-			{} as unknown as import("@veyyon/coding-agent/extensibility/extensions/types").LoadExtensionsResult,
+		extensionsResult: {} as unknown as LoadExtensionsResult,
 		setToolUIContext: () => {},
 		eventBus: new EventBus(),
 	};

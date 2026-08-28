@@ -518,17 +518,28 @@ async function spillLargeResultToArtifact(
 		});
 	}
 
+	// The threshold is the budget, not only the trigger. A spilled result kept
+	// `artifactHeadBytes + artifactTailBytes` inline whatever the threshold said, so
+	// `tools.artifactSpillThreshold: 8` and `: 200` both delivered 39.8KB of a 404KB
+	// result: the setting wrote an artifact sooner and cost a request exactly the same.
+	// The head and tail settings now shape the window INSIDE the budget, keeping their
+	// ratio, and the elided bytes stay recoverable through the artifact either way.
+	const windowBytes = Math.min(headBytes + tailBytes, threshold);
+	const keptHeadBytes =
+		headBytes > 0 ? Math.max(Math.floor((windowBytes * headBytes) / (headBytes + tailBytes)), 1) : 0;
+	const keptTailBytes = Math.max(windowBytes - keptHeadBytes, 1);
+
 	// Truncate: middle elision when a head budget is configured, otherwise tail-only.
 	const useMiddle = headBytes > 0;
 	const truncated = useMiddle
 		? truncateMiddle(fullText, {
-				maxBytes: headBytes + tailBytes,
+				maxBytes: keptHeadBytes + keptTailBytes,
 				maxLines: tailLines * 2,
-				maxHeadBytes: headBytes,
+				maxHeadBytes: keptHeadBytes,
 				maxHeadLines: tailLines,
 			})
 		: truncateTail(fullText, {
-				maxBytes: tailBytes,
+				maxBytes: keptTailBytes,
 				maxLines: tailLines,
 			});
 
@@ -563,7 +574,7 @@ async function spillLargeResultToArtifact(
 			totalBytes: truncated.totalBytes,
 			outputLines,
 			outputBytes,
-			maxBytes: headBytes + tailBytes,
+			maxBytes: keptHeadBytes + keptTailBytes,
 			headRange: headLines > 0 ? { start: 1, end: headLines } : undefined,
 			tailRange:
 				tailLineCount > 0
@@ -582,7 +593,7 @@ async function spillLargeResultToArtifact(
 			totalBytes: truncated.totalBytes,
 			outputLines,
 			outputBytes,
-			maxBytes: tailBytes,
+			maxBytes: keptTailBytes,
 			shownRange: { start: shownStart, end: truncated.totalLines },
 			artifactId,
 		};

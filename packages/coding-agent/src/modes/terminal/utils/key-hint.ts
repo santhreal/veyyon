@@ -5,7 +5,7 @@
  * have. Keybindings are remappable, so a hint written out as a literal is right
  * until somebody edits `keybindings.yml` and then quietly wrong, in the surface
  * whose job is telling them which key to press. That went wrong three times over
- * for one gesture: the Agent Control Center's footer chip and fold line both said
+ * for one gesture: the subagent dashboard's footer chip and fold line both said
  * `ctrl+o`, and the rule-injection notice said `(ctrl+o to expand)` in three
  * places, all for `app.tools.expand`, which the handlers were reading properly the
  * whole time.

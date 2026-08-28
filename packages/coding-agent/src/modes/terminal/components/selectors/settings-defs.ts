@@ -251,7 +251,7 @@ const CONDITIONS: Record<string, () => boolean> = {
 	cacheRejectionReported: () => whenSettingsSay(() => Settings.instance.get("cache.reportRejection") === true),
 	// Both close budgets are meaningless while nothing closes, and a visible timer
 	// that does not run reads as a bug in the feature rather than an off switch.
-	subagentAutoCloseEnabled: () => whenSettingsSay(() => Settings.instance.get("subagent.autoClose.enabled") === true),
+	subagentPruneEnabled: () => whenSettingsSay(() => Settings.instance.get("subagent.prune.enabled") === true),
 	// Isolation ships off, and the merge strategy and commit style only describe
 	// how an isolated run's changes come back. Shown while no backend is selected
 	// they are two choices with no case where either applies.

@@ -68,6 +68,8 @@ import type { MCPManager } from "./mcp";
 import type { PrintModeOptions } from "./modes/print-mode";
 import { CURRENT_SETUP_VERSION, resolveOnboardingGeneration } from "./modes/setup-version";
 import { setLaunchTip, updateInstalledTip } from "./modes/terminal/components/dialogs/launch-tip";
+import type * as firstFrameModule from "./modes/terminal/first-frame";
+import type * as interactiveModeModule from "./modes/terminal/interactive-mode";
 import type { InteractiveMode } from "./modes/terminal/interactive-mode";
 import type { SubmittedUserInput } from "./modes/terminal/types";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
@@ -86,7 +88,7 @@ import { executeBuiltinSlashCommand } from "./slash-commands/builtin-registry";
 import { shouldShowStartupSplash } from "./startup-splash";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";
 import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
-import { resolveSubagentAutoCloseBudget, resolveSubagentIdleTtlMs } from "./task/subagent-settings";
+import { resolveSubagentIdleTtlMs, resolveSubagentPruneBudget } from "./task/subagent-settings";
 import { initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
 import { initTheme, stopThemeWatcher } from "./theme/theme";
 import type { LspStartupServerInfo } from "./tools";
@@ -229,7 +231,7 @@ export async function readStdinWithFirstByteBound(
 			const next = reader.read();
 			// Only the FIRST read races the deadline. `Promise.race` leaves the losing timer pending, so it
 			// is cleared explicitly rather than left to keep the process alive.
-			let timer: ReturnType<typeof setTimeout> | undefined;
+			let timer: NodeJS.Timeout | undefined;
 			const result =
 				chunks.length === 0
 					? await Promise.race([
@@ -503,16 +505,16 @@ export function createAcpSessionFactory(args: AcpSessionFactoryOptions): AcpSess
 	};
 }
 
-let interactiveModeLoad: Promise<typeof import("./modes/terminal/interactive-mode")> | undefined;
+let interactiveModeLoad: Promise<typeof interactiveModeModule> | undefined;
 
-function loadInteractiveMode(): Promise<typeof import("./modes/terminal/interactive-mode")> {
+function loadInteractiveMode(): Promise<typeof interactiveModeModule> {
 	interactiveModeLoad ??= import("./modes/terminal/interactive-mode");
 	return interactiveModeLoad;
 }
 
-let firstFrameLoad: Promise<typeof import("./modes/terminal/first-frame")> | undefined;
+let firstFrameLoad: Promise<typeof firstFrameModule> | undefined;
 
-function loadFirstFrame(): Promise<typeof import("./modes/terminal/first-frame")> {
+function loadFirstFrame(): Promise<typeof firstFrameModule> {
 	firstFrameLoad ??= import("./modes/terminal/first-frame");
 	return firstFrameLoad;
 }
@@ -1879,11 +1881,14 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 				settings: settingsInstance,
 				enableLsp: sessionOptions.enableLsp ?? true,
 			}),
-			resolveSubagentIdleTtlMs(settingsInstance),
-			// The operator's current close budgets, so a ref revived from disk rejoins the
-			// close stage instead of staying listed for the rest of the session. Read here
-			// rather than defaulted in the manager because this is where the settings are.
-			resolveSubagentAutoCloseBudget(settingsInstance),
+			() => resolveSubagentIdleTtlMs(settingsInstance),
+			// The operator's close budgets, so a ref restored from disk or revived
+			// rejoins the close stage instead of staying listed for the rest of the
+			// session. Read through a function rather than snapshotted here, so a
+			// change in /settings governs every agent adopted after it; the deadlines
+			// already armed keep the budget they were armed with until their next
+			// status change re-derives them.
+			() => resolveSubagentPruneBudget(settingsInstance),
 		);
 		if (parsedArgs.apiKey && !sessionOptions.model && session.model) {
 			authStorage.setRuntimeApiKey(session.model.provider, parsedArgs.apiKey);

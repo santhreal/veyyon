@@ -5,6 +5,11 @@
 ### Changed
 
 - Source-path comments in `constants.ts` and `generate.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
+## [1.3.0] - 2026-08-28
+
+### Changed
+
+- The dictionary generator and its constants name the `packages/evals/datasets/dicts/` corpus path instead of the retired deepswe-bench path. No behavior change.
 
 ## [1.2.0] - 2026-08-23
 

@@ -1686,6 +1686,20 @@ export class Settings {
 			setNew([next], take(["task", legacy]));
 		}
 
+		// The close stage became the PRUNE stage, and the keys moved with it. "Close"
+		// read as the opposite of park, when the two are consecutive stages of one
+		// lifecycle: parking releases the session and keeps the row, pruning drops the
+		// row. The container is deleted with the leaves so a migrated file carries no
+		// empty `subagent.autoClose` block.
+		for (const [legacy, next] of [
+			["enabled", "enabled"],
+			["parkedMs", "afterMs"],
+			["waitingMs", "waitingAfterMs"],
+		] as const) {
+			setNew(["prune", next], take(["subagent", "autoClose", legacy]));
+		}
+		if (read(["subagent", "autoClose"]) !== undefined) deleteByPath(raw, ["subagent", "autoClose"]);
+
 		// The old depth counted the root as level 1. The replacement counts only
 		// nested subagent levels, so old 1 becomes new 0. Old 0 disabled even the
 		// root task tool; preserve that behavior through the dedicated master
@@ -2168,93 +2182,18 @@ export class Settings {
 			delete raw["power.preventDisplaySleep"];
 		}
 
-		// Migration for renamed settings grep.* and glob.* from search.* and find.*:
-		// 1. Nested settings: find -> glob, search -> grep (per-property merge to avoid clobbering)
-		const ensureRawObject = (key: "glob" | "grep"): Record<string, unknown> => {
-			const current = raw[key];
-			if (isRecord(current)) {
-				return current;
-			}
-			const created: Record<string, unknown> = {};
-			raw[key] = created;
-			return created;
-		};
-
-		if ("find" in raw) {
-			const findObj = raw.find;
-			if (isRecord(findObj)) {
-				const globObj = ensureRawObject("glob");
-				const findKeys: Array<"enabled"> = ["enabled"];
-				for (const key of findKeys) {
-					if (key in findObj && !(key in globObj)) {
-						globObj[key] = findObj[key];
-					}
-				}
-			}
-			delete raw.find;
-		}
-
-		if ("search" in raw) {
-			const searchObj = raw.search;
-			if (isRecord(searchObj)) {
-				const grepObj = ensureRawObject("grep");
-				const searchKeys: Array<"enabled" | "contextBefore" | "contextAfter"> = [
-					"enabled",
-					"contextBefore",
-					"contextAfter",
-				];
-				for (const key of searchKeys) {
-					if (key in searchObj && !(key in grepObj)) {
-						grepObj[key] = searchObj[key];
-					}
-				}
-			}
-			delete raw.search;
-		}
-
-		// 2. Flat settings keys: map them to the proper nested target so get/set resolves them correctly
-		if ("find.enabled" in raw) {
-			const globObj = ensureRawObject("glob");
-			if (!("enabled" in globObj)) {
-				globObj.enabled = raw["find.enabled"];
-			}
-			delete raw["find.enabled"];
-		}
-		if ("search.enabled" in raw) {
-			const grepObj = ensureRawObject("grep");
-			if (!("enabled" in grepObj)) {
-				grepObj.enabled = raw["search.enabled"];
-			}
-			delete raw["search.enabled"];
-		}
-		if ("search.contextBefore" in raw) {
-			const grepObj = ensureRawObject("grep");
-			if (!("contextBefore" in grepObj)) {
-				grepObj.contextBefore = raw["search.contextBefore"];
-			}
-			delete raw["search.contextBefore"];
-		}
-		if ("search.contextAfter" in raw) {
-			const grepObj = ensureRawObject("grep");
-			if (!("contextAfter" in grepObj)) {
-				grepObj.contextAfter = raw["search.contextAfter"];
-			}
-			delete raw["search.contextAfter"];
-		}
-
-		// 3. Tool-name arrays use wire IDs too. Preserve user overrides across
-		// the rename without duplicating entries if they already added grep/glob.
+		// Tool-name arrays use canonical wire IDs and remain deduplicated.
 		const migrateToolNameList = (names: unknown): unknown => {
 			if (!Array.isArray(names)) return names;
 			const out: unknown[] = [];
 			const seen = new Set<string>();
 			for (const name of names) {
-				const migrated = typeof name === "string" ? normalizeToolName(name) : name;
-				if (typeof migrated === "string") {
-					if (seen.has(migrated)) continue;
-					seen.add(migrated);
+				const normalized = typeof name === "string" ? normalizeToolName(name) : name;
+				if (typeof normalized === "string") {
+					if (seen.has(normalized)) continue;
+					seen.add(normalized);
 				}
-				out.push(migrated);
+				out.push(normalized);
 			}
 			return out;
 		};
@@ -2279,13 +2218,45 @@ export class Settings {
 			delete raw["tools.essentialOverride"];
 		}
 
-		// Also clean up any empty nested objects we might have created or left behind
-		if (raw.glob && typeof raw.glob === "object" && Object.keys(raw.glob).length === 0) {
-			delete raw.glob;
+		// Retired per-engine enable flags no longer control the canonical search
+		// tool, which is part of the default inventory. Preserve only the text
+		// context settings; canonical values win when both generations exist.
+		const legacySetting = (section: string, key: string): unknown => {
+			const nested = raw[section];
+			if (isRecord(nested) && key in nested) return nested[key];
+			return raw[`${section}.${key}`];
+		};
+		const legacyContextBefore = legacySetting("grep", "contextBefore");
+		const legacyContextAfter = legacySetting("grep", "contextAfter");
+		const searchObj = isRecord(raw.search) ? raw.search : {};
+		delete searchObj.enabled;
+		if (
+			!("contextBefore" in searchObj) &&
+			typeof raw["search.contextBefore"] !== "number" &&
+			typeof legacyContextBefore === "number"
+		) {
+			searchObj.contextBefore = legacyContextBefore;
 		}
-		if (raw.grep && typeof raw.grep === "object" && Object.keys(raw.grep).length === 0) {
-			delete raw.grep;
+		if (
+			!("contextAfter" in searchObj) &&
+			typeof raw["search.contextAfter"] !== "number" &&
+			typeof legacyContextAfter === "number"
+		) {
+			searchObj.contextAfter = legacyContextAfter;
 		}
+		if (Object.keys(searchObj).length > 0) raw.search = searchObj;
+		else delete raw.search;
+		delete raw["search.enabled"];
+		delete raw.find;
+		delete raw.glob;
+		delete raw.grep;
+		delete raw.astGrep;
+		delete raw["find.enabled"];
+		delete raw["glob.enabled"];
+		delete raw["grep.enabled"];
+		delete raw["grep.contextBefore"];
+		delete raw["grep.contextAfter"];
+		delete raw["astGrep.enabled"];
 		// readHashLines: removed. Hashline anchors are now driven solely by
 		// edit.mode === "hashline"; the separate read toggle only ever produced
 		// the incoherent "hashline edits without addressable anchors" state.
