@@ -11,6 +11,7 @@
 - A turn-ending provider error too long to render inline now reports how many lines were dropped instead of ending without a trace.
 - The installer asks what is already installed before downloading, so a machine already on the released version finishes in seconds instead of fetching the whole binary to discard it.
 - The installer repairs an install whose binary was replaced since it was written — a local build copied over it, or a write interrupted mid-swap — by moving that file aside and installing, instead of refusing and leaving the machine on the old version; a file at a path the installer has never installed to is still refused untouched.
+- A completed goal now reports the tokens the turn that completed it spent after the `goal` tool ran, including a subagent that returned in the same batch, instead of stopping its count at the tool call.
 
 ## [1.3.0] - 2026-08-28
 
