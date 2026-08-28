@@ -700,11 +700,10 @@ const subagentsSegment: StatusLineSegment = {
 /**
  * Conversations running with nothing drawing them.
  *
- * The only continuous signal that a handed-off `/new` is still spending. A
- * subagent is at least visible in the transcript that spawned it; a
- * backgrounded conversation has no surface at all until `/process-manager`
- * opens one, so a count that is only correct while a card is open is not a
- * count of anything. Hidden at zero, like every other conditional segment.
+ * The only signal that a handed-off `/new` is still spending. A subagent is at
+ * least visible in the transcript that spawned it; a backgrounded conversation
+ * has no surface at all, so this count is the whole of what an operator can see
+ * about it. Hidden at zero, like every other conditional segment.
  */
 const backgroundSegment: StatusLineSegment = {
 	id: "background",

@@ -460,8 +460,12 @@ export const INTERACTION_SETTINGS = {
 	 * is what an operator reaching for a clean prompt expects, and it is the
 	 * behavior `/new` had before a background conversation was possible at all.
 	 * Turning it on keeps the old turn running and is the deliberate choice:
-	 * the status line counts the background conversation and
-	 * `/process-manager` opens it.
+	 * the status line counts the background conversation, which is the only
+	 * surface it has.
+	 *
+	 * A change takes effect on the next launch, not in the running session, so
+	 * the description says so rather than letting the next `/new` disagree with
+	 * the value on screen (issue #928).
 	 */
 	"session.newKeepsBackground": {
 		type: "boolean",
@@ -471,7 +475,7 @@ export const INTERACTION_SETTINGS = {
 			group: "Session",
 			label: "/new Keeps The Old Session",
 			description:
-				"On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations and /process-manager opens them. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen.",
+				"Requires a restart: switching this on or off changes nothing in the running session. On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen.",
 		},
 	},
 

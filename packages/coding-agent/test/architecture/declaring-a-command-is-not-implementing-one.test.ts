@@ -172,12 +172,7 @@ describe("the split kept one set of commands", () => {
 	 *     MCP server it names) is withheld until the operator decides, and a refusal with no way to
 	 *     answer it inside the session is a dead end: the CLI `veyyon trust` needs a shell, which a
 	 *     running TUI does not have.
-	 *   - UP to 74: `/process-manager` was added. It opens the Agent Control Center at process
-	 *     scope, so a conversation `/new` left running in the background is reachable from the
-	 *     session that replaced it. `/agents` opens the same card on the current conversation,
-	 *     and `a` toggles between them; the separate command exists because the question "is
-	 *     this process spending anywhere" cannot be answered from the screen you are on.
-	 *   - UP to 75: `/advisor` was added. The advisor subsystem shipped complete — a roster loaded
+	 *   - UP to 74: `/advisor` was added. The advisor subsystem shipped complete — a roster loaded
 	 *     from `WATCHDOG.yml`, per-advisor models, tools and instructions, `getAdvisorStats`,
 	 *     `formatAdvisorStatus`, `formatAdvisorHistoryAsText`, and a full-screen roster editor with
 	 *     its own tests — and nothing in the product reached any of it. The three handlers behind it
@@ -186,7 +181,7 @@ describe("the split kept one set of commands", () => {
 	 *     makes the editor reachable and those handlers report the running session.
 	 */
 	it("there are the 75 builtins the declarations hold", () => {
-		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(75);
+		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(74);
 	});
 
 	/**
