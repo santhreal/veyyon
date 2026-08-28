@@ -288,7 +288,7 @@ describe("the naming module has one owner", () => {
 	 *
 	 * Other `.jsonl` files exist and are deliberately NOT this one, each checked the same way: `collab/guest.ts`
 	 * writes a room replica under the collab dir, `autoresearch` names a legacy artifact it cleans out of a work
-	 * dir, and `@veyyon/metaharness` writes job records. `debug/` is left out of the scan for a different
+	 * dir, and `@veyyon/bench` writes job records. `debug/` is left out of the scan for a different
 	 * reason: `report-bundle.ts` declares `session.jsonl` as a fixed ENTRY NAME inside a debug bundle, so every
 	 * bundle has the same layout whatever session produced it. That is a name for a place in an archive, not the
 	 * extension a scanner matches.

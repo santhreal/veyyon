@@ -26,6 +26,9 @@ const REPO_ROOT = path.resolve(import.meta.dir, "..");
 /** This file lists unnamed modules by path, so counting itself would mark every one of them named. */
 const SELF = path.join("scripts", "a-shipped-module-arrives-with-a-test-that-names-it.test.ts");
 
+/** Directory names the walk never enters: foreign trees, build output, benchmark artifacts. */
+const SKIP_DIRS = new Set(["node_modules", "dist", "target", "repo-cache", "runs", "deep-swe", "assets"]);
+
 function walk(dir: string, keep: (file: string) => boolean): string[] {
 	const found: string[] = [];
 	let entries: fs.Dirent[];
@@ -37,7 +40,7 @@ function walk(dir: string, keep: (file: string) => boolean): string[] {
 	for (const entry of entries) {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
-			if (entry.name === "node_modules") continue;
+			if (SKIP_DIRS.has(entry.name)) continue;
 			found.push(...walk(full, keep));
 		} else if (keep(full)) {
 			found.push(full);
@@ -68,14 +71,24 @@ function shippedModules(): string[] {
 	return files.map(file => path.relative(REPO_ROOT, file)).sort();
 }
 
-/** Every test file, which is what may name a module. */
+/**
+ * Every test file, which is what may name a module.
+ *
+ * Walked over the WHOLE package rather than its `test/` directory. While the walk
+ * was `<pkg>/test`, a suite sitting beside the module it tests counted for nothing
+ * -- and the four benchmark harnesses that merged into `@veyyon/bench` put most of
+ * their suites exactly there, so `aggregate.ts` read as unnamed while
+ * `aggregate.test.ts` sat next to it. `shippedModules` already excludes `.test.`
+ * files, so widening this cannot make a test file look like a shipped module.
+ */
 function testFiles(): string[] {
 	const files: string[] = [];
 	for (const pkg of packageDirs()) {
+		files.push(...walk(pkg, file => file.endsWith(".test.ts") || file.endsWith(".test.tsx")));
 		files.push(...walk(path.join(pkg, "test"), file => file.endsWith(".ts")));
 	}
 	files.push(...walk(path.join(REPO_ROOT, "scripts"), file => file.endsWith(".test.ts")));
-	return files.map(file => path.relative(REPO_ROOT, file)).filter(file => file !== SELF);
+	return [...new Set(files.map(file => path.relative(REPO_ROOT, file)))].filter(file => file !== SELF);
 }
 
 const QUOTED_PATH = /['"`]([^'"`\n]*\/[^'"`\n]*)['"`]/g;
@@ -145,6 +158,15 @@ function unnamedModules(): string[] {
 /**
  * Shrink-only. Remove an entry when the module gains a test. Adding one records that a shipped
  * module ships with no test naming it, which should be rare enough to argue about in review.
+ *
+ * Four entries were added when `testFiles` widened from `<pkg>/test` to the whole package:
+ * `bench/src/deepswe/online-codec-ceiling.ts` and `bench/src/metaharness/scripts/trace-report.ts`
+ * were not under a `src/` tree before the benchmark packages merged, so they were never scanned at
+ * all; `bench/src/typescript-edit/formatter.ts` and `.../mutations.ts` were scanned but credited by
+ * the raw-substring route, which matched the bare words "formatter" and "mutations" anywhere in the
+ * corpus. Their keys are now `typescript-edit/formatter` and `typescript-edit/mutations`, which
+ * nothing says by accident. Thirteen entries came out in the same change, because a suite sitting
+ * beside the module it tests now counts.
  */
 const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/agent/src/compaction/legacy-provider-native.ts",
@@ -159,7 +181,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/error/domains/request.ts",
 	"packages/ai/src/providers/anthropic-messages-server-schema.ts",
 	"packages/ai/src/providers/grammar.ts",
-	"packages/ai/src/providers/openai-anthropic-shim.ts",
 	"packages/ai/src/providers/openai-chat-server-schema.ts",
 	"packages/ai/src/providers/openai-responses-server-schema.ts",
 	"packages/ai/src/providers/synthetic.ts",
@@ -172,7 +193,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/registry/mistral.ts",
 	"packages/ai/src/registry/oauth/device-code.ts",
 	"packages/ai/src/registry/oauth/pkce.ts",
-	"packages/ai/src/registry/oauth/success-page.ts",
 	"packages/ai/src/registry/oauth/wafer.ts",
 	"packages/ai/src/registry/openai-codex-device.ts",
 	"packages/ai/src/registry/parallel.ts",
@@ -203,6 +223,13 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/utils/schema/strict-tool-validation.ts",
 	"packages/ai/src/utils/schema/zod-decontaminate.ts",
 	"packages/ai/src/utils/sdk-stream-timeout.ts",
+	"packages/bench/src/deepswe/online-codec-ceiling.ts",
+	"packages/bench/src/metaharness/scripts/trace-report.ts",
+	"packages/bench/src/typescript-edit/edit-prompt-bench.ts",
+	"packages/bench/src/typescript-edit/formatter.ts",
+	"packages/bench/src/typescript-edit/goal-budget-context-bench.ts",
+	"packages/bench/src/typescript-edit/in-process-client.ts",
+	"packages/bench/src/typescript-edit/mutations.ts",
 	"packages/catalog/src/discovery/devin-gen/buf/validate/validate_pb.ts",
 	"packages/catalog/src/discovery/devin-gen/exa/analytics_pb/analytics_pb.ts",
 	"packages/catalog/src/discovery/devin-gen/exa/auto_cascade_common_pb/auto_cascade_common_pb.ts",
@@ -250,17 +277,11 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/commit/pipeline.ts",
 	"packages/coding-agent/src/config/dialect-format.ts",
 	"packages/coding-agent/src/config/settings-domains/interaction.ts",
-	"packages/coding-agent/src/config/settings-domains/tasks.ts",
 	"packages/coding-agent/src/debug/remote-debugger.ts",
 	"packages/coding-agent/src/discovery/windsurf.ts",
 	"packages/coding-agent/src/edit/hashline/params.ts",
 	"packages/coding-agent/src/eval/agent-bridge-name.ts",
-	"packages/coding-agent/src/eval/completion-bridge.ts",
-	"packages/coding-agent/src/eval/jl/prelude.ts",
-	"packages/coding-agent/src/eval/js/shared/prelude.ts",
-	"packages/coding-agent/src/eval/py/prelude.ts",
 	"packages/coding-agent/src/eval/py/session-namespace.ts",
-	"packages/coding-agent/src/eval/rb/prelude.ts",
 	"packages/coding-agent/src/eval/session-id.ts",
 	"packages/coding-agent/src/export/markit/converters/docx.ts",
 	"packages/coding-agent/src/export/markit/converters/epub.ts",
@@ -269,7 +290,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/extensibility/plugins/marketplace/factory.ts",
 	"packages/coding-agent/src/extensibility/plugins/runtime-config.ts",
 	"packages/coding-agent/src/extensibility/session-handler-types.ts",
-	"packages/coding-agent/src/internal-urls/agent-protocol.ts",
 	"packages/coding-agent/src/internal-urls/relative-path.ts",
 	"packages/coding-agent/src/internal-urls/veyyon-protocol.ts",
 	"packages/coding-agent/src/lsp/clients/lsp-linter-client.ts",
@@ -282,7 +302,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/modes/terminal/components/chrome/overlay-box.ts",
 	"packages/coding-agent/src/modes/terminal/components/composer/keybinding-hints.ts",
 	"packages/coding-agent/src/modes/terminal/components/selectors/select-list-mouse-routing.ts",
-	"packages/coding-agent/src/modes/terminal/components/transcript/advisor-message.ts",
 	"packages/coding-agent/src/modes/terminal/setup-wizard/scenes/outro.ts",
 	"packages/coding-agent/src/modes/terminal/setup-wizard/scenes/wizard-list.ts",
 	"packages/coding-agent/src/modes/terminal/skill-command.ts",
@@ -322,19 +341,13 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/web/search/providers/jina.ts",
 	"packages/coding-agent/src/web/search/providers/synthetic.ts",
 	"packages/collab-web/src/lib/use-guest.ts",
-	"packages/metaharness/src/bench-report.ts",
-	"packages/metaharness/src/launch-args.ts",
 	"packages/mnemopi/src/util/ids.ts",
-	"packages/simulations/src/turn-sim/invariants.ts",
 	"packages/stats/src/client/components/range-meta.ts",
 	"packages/stats/src/client/data/charts.ts",
 	"packages/stats/src/client/data/useHashRoute.ts",
 	"packages/stats/src/client/data/useResource.ts",
 	"packages/tui/src/components/cancellable-loader.ts",
 	"packages/tui/src/components/settings-search.ts",
-	"packages/typescript-edit-benchmark/src/edit-prompt-bench.ts",
-	"packages/typescript-edit-benchmark/src/goal-budget-context-bench.ts",
-	"packages/typescript-edit-benchmark/src/in-process-client.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/ansi.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/canvas.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/class-diagram.ts",

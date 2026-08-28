@@ -11,7 +11,7 @@ import { workspaceTestParallelism } from "./ci-test-ts";
 
 describe("workspace package test parallelism", () => {
 	it("keeps simulations sequential without slowing unrelated packages", () => {
-		expect(workspaceTestParallelism("packages/simulations", 8)).toBe(1);
+		expect(workspaceTestParallelism("packages/bench/src/simulations", 8)).toBe(1);
 		expect(workspaceTestParallelism("packages/ai", 8)).toBe(8);
 		expect(workspaceTestParallelism("packages/tui", 4)).toBe(4);
 	});

@@ -214,7 +214,7 @@ export interface GeneratedDict {
 	 * handles and 314 tokens, it saved 3,202 output tokens in total, and it cost
 	 * 2,404,926 input tokens to carry: 751 input tokens per output token saved,
 	 * against a break-even near 5. Eighteen of the 49 handles were never emitted
-	 * once. See `packages/deepswe-bench/measure-retype-likelihood.ts`, which
+	 * once. See `packages/bench/src/deepswe/measure-retype-likelihood.ts`, which
 	 * produces those figures from real transcripts.
 	 *
 	 * The number is deliberately a HORIZON rather than a verdict, because the
@@ -350,7 +350,7 @@ function lineStructureCandidates(rawLine: string, trimmed: string, previousLine:
  * whole dictionary depends on the channel, and a dictionary rides the system
  * prompt every turn either way.
  *
- * The split is therefore not assumed. `packages/deepswe-bench/measure-channel-split.ts`
+ * The split is therefore not assumed. `packages/bench/src/deepswe/measure-channel-split.ts`
  * reads real recorded transcripts and sorts every emitted newline-plus-indentation
  * run into the channel it was written into; over 307 transcripts and 23,467
  * assistant turns, 41.76% landed inside tool-call arguments. That share is

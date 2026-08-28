@@ -47,7 +47,7 @@
  * of one past it reaches a message whose role is `toolResult` by construction.
  * The other nine are killed, including every arm of the slice. And that the rule
  * matches the loop's REAL bytes is proved in
- * `packages/simulations/src/turn-sim/unreplayable-batch-continue.test.ts`,
+ * `packages/bench/src/simulations/turn-sim/unreplayable-batch-continue.test.ts`,
  * whose resume row reads a placeholder the agent loop actually wrote.
  */
 import { expect, it } from "bun:test";

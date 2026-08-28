@@ -324,16 +324,16 @@ describe("testFilesUnder", () => {
 
 	/**
 	 * Gitignored subtrees are not ours to check. This is not a tidiness rule: the
-	 * gitignored `packages/deepswe-bench/repo-cache` holds CLONED EXTERNAL REPOSITORIES
+	 * gitignored `packages/bench/src/deepswe/repo-cache` holds CLONED EXTERNAL REPOSITORIES
 	 * with 3,332 `.test.ts` files in them, more than twice the entire veyyon suite. A walk
 	 * that entered it would spend hours running other projects' tests and report their
 	 * leaks as ours, and the nightly sweep would time out before reaching our own code.
 	 */
 	it("does not walk into gitignored directories", () => {
-		const cache = path.join(REPO_ROOT, "packages/deepswe-bench/repo-cache");
+		const cache = path.join(REPO_ROOT, "packages/bench/src/deepswe/repo-cache");
 		if (!existsSync(cache)) return;
 
-		const files = testFilesUnder(REPO_ROOT, "packages/deepswe-bench");
+		const files = testFilesUnder(REPO_ROOT, "packages/bench/src/deepswe");
 
 		expect(files.some(file => file.includes("repo-cache"))).toBe(false);
 	});

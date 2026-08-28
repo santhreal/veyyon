@@ -182,7 +182,7 @@ remote_tree() { printf '%s/%s' "${REMOTE_HOME}" "${REMOTE_TREE_REL}"; }
 # The grep is the safety rail, not tidiness. `git ls-files --others --ignored`
 # reports a wholly ignored directory as one collapsed entry and ignores the
 # pathspec when it does, so an unfiltered list offers to re-include
-# packages/deepswe-bench/repo-cache, which is thousands of cloned repositories. Only
+# packages/bench/src/deepswe/repo-cache, which is thousands of cloned repositories. Only
 # a regular file directly under some packages/<one>/src/ is ever put back.
 remote_generated_sources_filter() {
 	local out

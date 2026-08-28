@@ -4,7 +4,7 @@
  * WHY THIS SUITE EXISTS. Four directories at the root hold output rather than source: `runs/` (the
  * default artifact sink for the benchmark harnesses), `website-get/` (staged by `website/build.mjs`
  * and deployed to get.veyyon.dev), `relative-cache/` (a Bun cache pile), and
- * `packages/deepswe-bench/{runs,repo-cache}` (trial output and cloned task repos, several gigabytes).
+ * `packages/bench/src/deepswe/{runs,repo-cache}` (trial output and cloned task repos, several gigabytes).
  * None of them is source, and each looks exactly like source to anyone reading `ls`.
  *
  * The failure this guards is a directory quietly becoming tracked. `relative-cache/` had no ignore
@@ -30,8 +30,12 @@ const GENERATED: ReadonlyArray<{ dir: string; ignoreEntry: string; why: string }
 	{ dir: "runs", ignoreEntry: "/runs/", why: "default artifact sink for the benchmark harnesses" },
 	{ dir: "website-get", ignoreEntry: "/website-get/", why: "staged by website/build.mjs, deployed to get.veyyon.dev" },
 	{ dir: "relative-cache", ignoreEntry: "relative-cache/", why: "Bun cache pile written at the repo root" },
-	{ dir: "packages/deepswe-bench/runs", ignoreEntry: "runs/", why: "benchmark trial output" },
-	{ dir: "packages/deepswe-bench/repo-cache", ignoreEntry: "repo-cache/", why: "cloned upstream task repositories" },
+	{ dir: "packages/bench/src/deepswe/runs", ignoreEntry: "runs/", why: "benchmark trial output" },
+	{
+		dir: "packages/bench/src/deepswe/repo-cache",
+		ignoreEntry: "repo-cache/",
+		why: "cloned upstream task repositories",
+	},
 ];
 
 function trackedFileCount(dir: string): number {
@@ -42,7 +46,7 @@ function trackedFileCount(dir: string): number {
 
 /** The ignore file that is expected to carry an entry, since deepswe-bench has its own. */
 function ignoreFileFor(dir: string): string {
-	return dir.startsWith("packages/deepswe-bench/") ? "packages/deepswe-bench/.gitignore" : ".gitignore";
+	return dir.startsWith("packages/bench/src/deepswe/") ? "packages/bench/src/deepswe/.gitignore" : ".gitignore";
 }
 
 describe("generated directories at the root", () => {

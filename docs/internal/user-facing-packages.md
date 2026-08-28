@@ -35,13 +35,13 @@ Sources: [`packages/stats/README.md`](../../packages/stats/README.md), [`package
 - Outputs: dashboard metrics and API endpoints including `/api/stats`, `/api/stats/models`, `/api/stats/folders`, `/api/stats/timeseries`, and `/api/sync`.
 - Side effects/limits: syncs session files before output; long-running dashboard stops on `Ctrl+C` and closes the stats database.
 
-### `packages/typescript-edit-benchmark`: TypeScript edit benchmark
+### `packages/bench/src/typescript-edit`: TypeScript edit benchmark
 
-Sources: [`packages/typescript-edit-benchmark/package.json`](../../packages/typescript-edit-benchmark/package.json), [`packages/typescript-edit-benchmark/src/generate.ts`](../../packages/typescript-edit-benchmark/src/generate.ts), [`packages/typescript-edit-benchmark/src/tasks.ts`](../../packages/typescript-edit-benchmark/src/tasks.ts), [`packages/typescript-edit-benchmark/src/verify.ts`](../../packages/typescript-edit-benchmark/src/verify.ts), [`packages/typescript-edit-benchmark/src/in-process-client.ts`](../../packages/typescript-edit-benchmark/src/in-process-client.ts).
+Sources: [`packages/bench/package.json`](../../packages/bench/package.json), [`packages/bench/src/typescript-edit/generate.ts`](../../packages/bench/src/typescript-edit/generate.ts), [`packages/bench/src/typescript-edit/tasks.ts`](../../packages/bench/src/typescript-edit/tasks.ts), [`packages/bench/src/typescript-edit/verify.ts`](../../packages/bench/src/typescript-edit/verify.ts), [`packages/bench/src/typescript-edit/in-process-client.ts`](../../packages/bench/src/typescript-edit/in-process-client.ts).
 
-There is no package README at this path today; the manifest and source headers are the cited package-local sources.
+There is no README at this path today; the bench manifest and the source headers are the cited package-local sources.
 
-- Package: private `@veyyon/typescript-edit-benchmark`; library only (no `bin` entry: the benchmark runner lives in `packages/metaharness/adapters/edit/{cli,runner}.ts` and imports this package).
+- Package: a subtree of private `@veyyon/bench`; library only (no `bin` entry of its own: the benchmark runner lives in `packages/bench/src/metaharness/adapters/edit/{cli,runner}.ts` and imports it by relative path).
 - Feature: fixture generation, task loading, and verification for benchmarking coding-agent edit precision on TypeScript source-code mutations.
 - Modules: `generate.ts` builds fixtures by mutating a TypeScript repo (difficulty modes easy/medium/hard/nightmare; root script `bench:gen-fixtures`), `mutations.ts` defines the mutation catalog, `tasks.ts` loads tasks from a fixtures directory or `fixtures.tar.gz`, `verify.ts` compares output against expected files byte-for-byte (with format-equivalence and indent scoring), `in-process-client.ts` runs `AgentSession`s in-process to avoid per-task CLI startup cost, `formatter.ts`/`shared.ts` are support code.
 - CLI (via the metaharness edit adapter): `--model` and `--output` (required), `--tasks <ids>`, `--max-tasks` (default 80), `--task-concurrency` (default 32), `--runs`, `--list`.
@@ -49,4 +49,4 @@ There is no package README at this path today; the manifest and source headers a
 - Outputs: JSON result snapshots written to the adapter's `--output` path, plus conversation dumps in a sibling `result.dump/` directory.
 - Side effects/limits: extracts fixture archives to temp space and runs agent sessions against copied fixture inputs.
 
-*Verified against `72090e75` on 2026-07-20.*
+*Verified against `ddff33431f94` on 2026-08-28.*

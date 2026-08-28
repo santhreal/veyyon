@@ -78,7 +78,7 @@ export const GENERATOR_REVISION: number = 3;
  * assumes it never does. Neither is true, so the cost is the weighted mix, and
  * this is the weight.
  *
- * MEASURED, not chosen. `packages/deepswe-bench/measure-channel-split.ts` reads
+ * MEASURED, not chosen. `packages/bench/src/deepswe/measure-channel-split.ts` reads
  * recorded veyyon transcripts and sorts every emitted newline-plus-indentation run
  * into the channel it was really written into. Over 307 transcripts and 23,467
  * assistant turns (25,245 tool calls, 18,980 thinking parts, 811 text parts), of

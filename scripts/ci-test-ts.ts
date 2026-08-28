@@ -217,7 +217,7 @@ export const fastWorkspacePackages = [
 	"packages/stats",
 	"packages/tool-render",
 	"packages/swarm-extension",
-	"packages/deepswe-bench",
+	"packages/bench/src/deepswe",
 	// mnemopi ran in NO CI job until this entry existed. It sat in
 	// `localOnlyWorkspacePackages` below, excluded as a whole package because "its
 	// embedding suites depend on a ~270MB fastembed model absent from CI runners".
@@ -240,7 +240,7 @@ export const fastWorkspacePackages = [
 	// Simulations drive a real AgentSession but need no native artifact, so they
 	// stay in the fast workspace job. Their 300ms watchdogs run sequentially
 	// inside the package through `workspaceTestParallelism` below.
-	"packages/simulations",
+	"packages/bench/src/simulations",
 ];
 
 // These suites cover the native package, TUI/browser-ish behavior, local servers,
@@ -249,11 +249,11 @@ export const fastWorkspacePackages = [
 export const nativeAndIntegrationPackages = [
 	"packages/natives",
 	"packages/tui",
-	"packages/typescript-edit-benchmark",
+	"packages/bench/src/typescript-edit",
 	// Same omission as above. These two belong in this bucket rather than the fast
 	// one for the reason the comment gives: metaharness starts local servers and
 	// collab-web is browser-ish.
-	"packages/metaharness",
+	"packages/bench/src/metaharness",
 	"packages/collab-web",
 ];
 
@@ -608,11 +608,35 @@ const workspacePackageExtraArgs: Record<string, string[]> = {
 };
 
 const workspacePackageParallelism: Readonly<Record<string, number>> = {
-	"packages/simulations": 1,
+	"packages/bench/src/simulations": 1,
 };
 
 export function workspaceTestParallelism(pkg: string, requested: number): number {
 	return workspacePackageParallelism[pkg] ?? requested;
+}
+
+/**
+ * A bucket entry names a directory to test; it is not always a package root. The
+ * four benchmark harnesses share one manifest (`packages/bench`) and one
+ * `bunfig.toml`, so a command whose cwd were the subtree would read no bunfig at
+ * all and run with none of the preloads that config carries. The cwd is therefore
+ * the enclosing package and the subtree becomes bun's positional path filter,
+ * which keeps every per-entry knob (`workspacePackageParallelism`,
+ * `workspacePackageExtraArgs`) keyed on the entry as written.
+ *
+ * Resolved by walking up to the nearest `package.json` rather than by counting
+ * path segments, because `python/veybot/web` is three deep and `packages/ai` is
+ * two.
+ */
+export function workspaceTestScope(dir: string): { cwd: string; filter?: string } {
+	const segments = dir.split("/");
+	for (let end = segments.length; end > 0; end -= 1) {
+		const candidate = segments.slice(0, end).join("/");
+		if (!nodeFs.existsSync(path.join(repoRoot, candidate, "package.json"))) continue;
+		const filter = segments.slice(end).join("/");
+		return filter === "" ? { cwd: candidate } : { cwd: candidate, filter };
+	}
+	return { cwd: dir };
 }
 
 function workspaceTestCommand(
@@ -625,9 +649,10 @@ function workspaceTestCommand(
 	// bucket asks for it because those suites load the native addon and browser-ish
 	// modules; without it a fat single invocation can OOM-kill (reported as exit 137).
 	const perPackageArgs = workspacePackageExtraArgs[pkg] ?? [];
+	const scope = workspaceTestScope(pkg);
 	return {
 		label: pkg,
-		cwd: pkg,
+		cwd: scope.cwd,
 		command: [
 			"bun",
 			"test",
@@ -636,6 +661,7 @@ function workspaceTestCommand(
 			`--parallel=${workspaceTestParallelism(pkg, parallel)}`,
 			...perPackageArgs,
 			...extraArgs,
+			...(scope.filter === undefined ? [] : [scope.filter]),
 		],
 	};
 }

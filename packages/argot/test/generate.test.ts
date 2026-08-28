@@ -943,7 +943,7 @@ describe("line structure is priced on the measured mix of channels", () => {
 	// nobody had measured, and the escaped-only price silently assumed the split
 	// was 100/0.
 	//
-	// It is now measured rather than assumed. `packages/deepswe-bench/measure-channel-split.ts`
+	// It is now measured rather than assumed. `packages/bench/src/deepswe/measure-channel-split.ts`
 	// reads recorded transcripts and sorts every emitted newline-plus-indentation
 	// run into the channel it was written into: over 307 transcripts and 23,467
 	// assistant turns, 41.76% were inside tool-call arguments. `emittedTokenCost`

@@ -53,7 +53,7 @@ const REPO_ROOT = path.resolve(import.meta.dir, "../../../..");
  *
  * `minPrompts` is per owner because the registries are not the same size: a shared floor
  * would have to be the smallest one, and would then stop guarding the large registries
- * against losing most of their rows. `@veyyon/metaharness` also owns a registry, and the
+ * against losing most of their rows. `@veyyon/bench` also owns a registry, and the
  * containment scan below covers it like everything else, but its set-equality and row
  * quality are checked in its own package: it is a private benchmark harness with no
  * exports map, so reaching it from here means a relative path into another package's
@@ -131,7 +131,7 @@ const REGISTRY_MODULES = new Set<string>([
 	// The coding agent's `.md` imports live in the row modules its registry aggregates, so the registry
 	// itself holds none and listing it here would fail the "listed but imports no markdown" check below.
 	...ROW_MODULES,
-	"packages/metaharness/adapters/edit/prompts/registry.ts",
+	"packages/bench/src/metaharness/adapters/edit/prompts/registry.ts",
 	"packages/coding-agent/src/discovery/builtin-rules/index.ts",
 	// The system prompt's STATEMENT registry, which registers the fragments one prompt is
 	// assembled from rather than whole prompts. Same contract, so the same exemption: the import
@@ -367,7 +367,8 @@ describe("a registry's directory is written down once", () => {
 		// found where it IS written, or the scan above proves nothing about uniqueness.
 		const found = (await packageSources()).filter(
 			source =>
-				!source.file.endsWith(".test.ts") && source.text.includes('"packages/metaharness/adapters/edit/prompts"'),
+				!source.file.endsWith(".test.ts") &&
+				source.text.includes('"packages/bench/src/metaharness/adapters/edit/prompts"'),
 		).length;
 
 		expect(found).toBe(1);
@@ -382,7 +383,7 @@ describe("no module outside a registry imports a prompt", () => {
 	 * narrower: it scanned two `src` trees and, within them, only flagged an import
 	 * whose resolved path landed INSIDE a registered prompts directory. Both narrowings
 	 * hid real cases. `packages/ai` shipped fourteen format guides next to the fourteen
-	 * dialect modules that imported them and `packages/metaharness` shipped three
+	 * dialect modules that imported them and `packages/bench/src/metaharness` shipped three
 	 * benchmark prompts the same way: model-facing text, unregistered, and invisible to
 	 * the check because their `.md` files were not under a prompts directory, so the
 	 * predicate that decided "is this a prompt" was "is it already registered". And
@@ -395,7 +396,7 @@ describe("no module outside a registry imports a prompt", () => {
 	 * with a reason each rather than a shape the predicate happens to let through.
 	 *
 	 * SCOPE, stated rather than left to be discovered: the scan reads `.ts` only.
-	 * `packages/metaharness/adapters/edit` also holds transpiled `.js` copies of its
+	 * `packages/bench/src/metaharness/adapters/edit` also holds transpiled `.js` copies of its
 	 * `.ts` sources, and those copies contain the pre-registry imports; they are dead
 	 * (nothing imports them) and duplicated source is its own defect, tracked in
 	 * BACKLOG.md rather than answered by a waiver here.

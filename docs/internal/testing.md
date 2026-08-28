@@ -57,8 +57,8 @@ one. If no boundary is available at all, the suite does not run. Read
 
 | Mode | Contents |
 | --- | --- |
-| `workspace` | Fast packages (hashline, wire, utils, catalog, ai, agent, argot, stats, tool-render, swarm-extension, deepswe-bench, mnemopi). Packages only: the script gates are their own bucket. |
-| `native` | natives, tui, typescript-edit-benchmark, metaharness, collab-web |
+| `workspace` | Fast packages (hashline, wire, utils, catalog, ai, agent, argot, stats, tool-render, swarm-extension, mnemopi) plus the `bench/src/deepswe` and `bench/src/simulations` subtrees. Packages only: the script gates are their own bucket. |
+| `native` | natives, tui, collab-web, plus the `bench/src/typescript-edit` and `bench/src/metaharness` subtrees |
 | `coding-agent-singleton` | Settings / global-state suites (one process; do not chunk) |
 | `coding-agent-ui` | TUI/interactive suites (chunk size 5; ghostty GC ceiling) |
 | `coding-agent-runtime` | Session, RPC, SDK, MCP, extensions |

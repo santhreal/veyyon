@@ -109,13 +109,13 @@ describe("the root bunfig's test discovery", () => {
 	 * that reads exactly like a real regression in a 29,000-test sweep.
 	 */
 	it("prunes the deepswe benchmark's cloned repositories", () => {
-		expect(rootBunfig).toContain("packages/deepswe-bench/repo-cache/**");
+		expect(rootBunfig).toContain("packages/bench/src/deepswe/repo-cache/**");
 	});
 
 	/** The package-local config has to prune them too, because a `bun test` run
 	 *  from inside that package never reads the root config at all. */
 	it("prunes them in the benchmark package's own config as well", () => {
-		const local = readFileSync(path.join(PACKAGES_DIR, "deepswe-bench/bunfig.toml"), "utf8");
+		const local = readFileSync(path.join(PACKAGES_DIR, "bench/bunfig.toml"), "utf8");
 
 		expect(local).toContain("repo-cache/**");
 		expect(local).toContain(TRIPWIRE);

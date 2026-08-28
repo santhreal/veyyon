@@ -1,0 +1,15 @@
+{
+	"extends": "../tsconfig.workspace.json",
+	"include": [
+		"src"
+	],
+	// `src/metaharness/web/` is the only browser tree here, and it needs the DOM lib.
+	// Declaring DOM for the whole package instead puts `Element`, `MessageEvent` and
+	// `ReadableStream` into every harness -- and through them into `@veyyon/ai` and
+	// `@veyyon/coding-agent`, which these harnesses import and which are written
+	// against the Node/Bun globals. That produced 200-plus errors in packages this
+	// one only consumes. So the browser tree checks under its own config.
+	"exclude": [
+		"src/metaharness/web"
+	]
+}
