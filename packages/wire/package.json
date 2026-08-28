@@ -47,6 +47,10 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts"
     },
+    "./presentation": {
+      "types": "./src/presentation/index.ts",
+      "import": "./src/presentation/index.ts"
+    },
     "./*": {
       "types": "./src/*.ts",
       "import": "./src/*.ts"

@@ -7,6 +7,8 @@
 - `@veyyon/tui` exports rendering only. The string, escape, keyboard, mouse, motion and layout-math primitives it also carried are now `@veyyon/utils` modules, imported by subpath: `@veyyon/utils/{ansi,autocomplete,bar,bracketed-paste,deccara,fuzzy,keybindings,keys,kill-ring,kitty-graphics,latex-block,latex-unicode,loop-watchdog,motion,mouse,padding,paint-columns,paint-ground,paint-surface,sgr,symbols,text-sizing,tight-mode,tmux,width,word-nav,wrap}`. The barrel re-exports none of them.
 - `MOTION` and the grow, hover, paint and settle curve tables are one module, `@veyyon/utils/motion`.
 - `EditorComponent` is `@veyyon/tui/components/editor-component`.
+- The render engine is `@veyyon/tui/core/*`: `component-types`, `container`, `cursor`, `image-budget`, `mouse-routing`, `overlay`, `renderer`, `scroll`, `terminal-session` and `tui`. `@veyyon/tui/tui` re-exports all of it, so an existing import path keeps resolving.
+- `TUI.overlayStack` is private. The overlay stack's behavior is `OverlayStack` in `@veyyon/tui/core/overlay`.
 
 ### Added
 

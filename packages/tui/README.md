@@ -543,8 +543,11 @@ interface Terminal {
 
 ## Utilities
 
+String and escape primitives are `@veyyon/utils` subpath modules, not `@veyyon/tui` exports.
+
 ```typescript
-import { Ellipsis, visibleWidth, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
+import { Ellipsis } from "@veyyon/natives";
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@veyyon/utils/width";
 
 // Get visible width of string (ignoring ANSI codes, uses Bun.stringWidth)
 const width = visibleWidth("\x1b[31mHello\x1b[0m"); // 5
@@ -569,7 +572,8 @@ When creating custom components, **each line returned by `render()` must not exc
 Use the key detection utilities to handle keyboard input:
 
 ```typescript
-import { Key, matchesKey, truncateToWidth } from "@veyyon/tui";
+import { Key, matchesKey } from "@veyyon/utils/keys";
+import { truncateToWidth } from "@veyyon/utils/width";
 import type { Component } from "@veyyon/tui";
 
 class MyInteractiveComponent implements Component {
@@ -605,7 +609,7 @@ class MyInteractiveComponent implements Component {
 Use the provided utilities to ensure lines fit:
 
 ```typescript
-import { visibleWidth, truncateToWidth } from "@veyyon/tui";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import type { Component } from "@veyyon/tui";
 
 class MyComponent implements Component {

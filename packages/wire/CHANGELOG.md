@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `@veyyon/wire/presentation` states the renderer contract: `PresentationContext`, the transcript, status, composer and overlay view-models, the `UIEvent` union and an abstract hex-colour theme. A renderer implementing it draws a session without importing coding-agent. The subpath adds no dependencies.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes
