@@ -11,7 +11,7 @@ import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
 import type { Theme } from "../modes/theme/theme";
-import { type OutputSummary, type TruncationResult, truncateMiddle, truncateTail } from "../session/streaming-output";
+import { countNewlines, type OutputSummary, type TruncationResult, truncateMiddle, truncateTail } from "../session/streaming-output";
 import { inlineBudgetFor } from "./output-artifact";
 import { wrapBrackets } from "./render-utils";
 import { renderError } from "./tool-errors";
@@ -28,14 +28,6 @@ export {
 
 import type { OutputMeta, TruncationMeta } from "./output-notice";
 import { formatFullOutputReference, formatOutputNotice, formatTruncationMetaNotice } from "./output-notice";
-
-function countNewlines(text: string): number {
-	let count = 0;
-	for (let i = 0; i < text.length; i++) {
-		if (text.charCodeAt(i) === 0x0a) count++;
-	}
-	return count;
-}
 
 export interface TruncationOptions {
 	direction: "head" | "tail" | "middle";

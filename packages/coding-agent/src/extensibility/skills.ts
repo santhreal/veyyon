@@ -14,14 +14,7 @@ import { compareSkillOrder, scanSkillsFromDir } from "../discovery/helpers";
 import { PROVIDER_ID as VEYYON_PLUGINS_SKILL_PROVIDER } from "../discovery/veyyon-plugins";
 import { skillsPrompts } from "../prompts/skills/rows";
 import type { SkillPromptDetails } from "../session/messages";
-
-function countNewlines(text: string): number {
-	let count = 0;
-	for (let i = 0; i < text.length; i++) {
-		if (text.charCodeAt(i) === 0x0a) count++;
-	}
-	return count;
-}
+import { countNewlines } from "../session/streaming-output";
 
 export { getActiveSkills, resetActiveSkillsForTests, setActiveSkills } from "./active-skills";
 

@@ -45,14 +45,6 @@ import {
 
 export type { YieldItem } from "./types";
 
-export function countNewlines(text: string): number {
-	let count = 0;
-	for (let i = 0; i < text.length; i++) {
-		if (text.charCodeAt(i) === 0x0a) count++;
-	}
-	return count;
-}
-
 export const MCP_CALL_TIMEOUT_MS = 60_000;
 
 export const SOFT_REQUEST_BUDGET: Record<string, number> = {
@@ -244,7 +236,7 @@ import { discoverAuthStorage } from "../session/auth-broker-config";
 import { rootBudgetGroupOwnerId, withInheritedBudgetGroup } from "../session/cpu-limit";
 import { SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../session/messages";
 import { SessionManager } from "../session/session-manager";
-import { truncateTail } from "../session/streaming-output";
+import { countNewlines, truncateTail } from "../session/streaming-output";
 import type { ToolSession } from "../tools";
 import { resolveEvalBackends } from "../tools/eval-backends";
 import { isIrcEnabled } from "../tools/irc";

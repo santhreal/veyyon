@@ -11,7 +11,7 @@ import { upsertStatusEvent } from "../eval/status-events";
 import type { EvalCellResult, EvalDisplayOutput, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "../eval/types";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import { toolsPrompts } from "../prompts/tools/rows";
-import { DEFAULT_MAX_BYTES, OutputSink, type OutputSummary, TailBuffer } from "../session/streaming-output";
+import { countNewlines, DEFAULT_MAX_BYTES, OutputSink, type OutputSummary, TailBuffer } from "../session/streaming-output";
 import { discoverAgents } from "../task/discovery";
 import { resolveSpawnPolicy } from "../task/spawn-policy";
 import { type EnabledSubagentCatalog, resolveEnabledSubagents } from "../task/subagent-settings";
@@ -27,14 +27,6 @@ import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "./output-me
 import { ToolAbortError, ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice, TOOL_TIMEOUTS } from "./tool-timeouts";
-
-function countNewlines(text: string): number {
-	let count = 0;
-	for (let i = 0; i < text.length; i++) {
-		if (text.charCodeAt(i) === 0x0a) count++;
-	}
-	return count;
-}
 
 export type EvalLanguageToken = "py" | "js" | "rb" | "jl";
 const EVAL_LANGUAGE_ORDER: readonly EvalLanguageToken[] = ["py", "js", "rb", "jl"];
