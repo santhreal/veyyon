@@ -1734,6 +1734,31 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		}
 	}
 
+	/**
+	 * Discard the draft, leaving it recoverable with undo.
+	 *
+	 * {@link setText} is a load: it replaces the buffer with text from elsewhere — shell
+	 * history, a resumed session — and drops an undo history that describes text the
+	 * buffer no longer holds. Discarding is an edit of what the operator typed, so it
+	 * records an undo state first and ctrl+z restores the draft like any other edit.
+	 */
+	discardDraft(): void {
+		if (this.#state.lines.length === 1 && this.#state.lines[0] === "") return;
+		this.#exitHistoryForEditing();
+		this.#recordUndoState();
+		this.#resetKillSequence();
+		this.#state.lines = [""];
+		this.#state.cursorLine = 0;
+		this.#setCursorCol(0);
+		this.#preferredVisualCol = null;
+		this.#scrollOffset = 0;
+		this.#volatileTextLen = 0;
+		this.#lastAction = null;
+		if (this.onChange) {
+			this.onChange("");
+		}
+	}
+
 	/** Code units of the current volatile speech-to-text preview (see {@link setVolatileText}). */
 	#volatileTextLen = 0;
 
