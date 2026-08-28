@@ -11,7 +11,7 @@ import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/modes/them
 import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
 import { TUI, visibleWidth } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 import { createToolExecution } from "./helpers/tool-execution";
 
 // The streaming edit preview is a fixed-height tail window ("cursor"): the last

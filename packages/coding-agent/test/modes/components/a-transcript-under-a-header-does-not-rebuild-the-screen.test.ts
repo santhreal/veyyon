@@ -56,9 +56,8 @@ import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type Component, CURSOR_MARKER, type Focusable, isInsideTerminalMultiplexer, TUI } from "@veyyon/tui";
-import { countDestructivePaints } from "../../../../tui/test/helpers/destructive-paints";
-import { settleFrames } from "../../../../tui/test/helpers/settle-frames";
-import { VirtualTerminal } from "../../../../tui/test/virtual-terminal";
+import { countDestructivePaints } from "@veyyon/tui/test-support";
+import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import { createToolExecution } from "../../helpers/tool-execution";
 
 const WIDTH = 100;

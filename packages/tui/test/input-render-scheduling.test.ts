@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, type RenderTimer, TUI } from "@veyyon/tui";
-import { VirtualTerminal } from "./virtual-terminal";
 
 class InputProbe implements Component {
 	constructor(private readonly events: string[]) {}

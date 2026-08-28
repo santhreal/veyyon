@@ -30,10 +30,10 @@
  *   scrambled button bits or negative coordinates from external multiplexers.
  */
 import { afterEach, describe, expect, it } from "bun:test";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 import type { Component } from "@veyyon/tui";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/tui/mouse";
 import { TUI } from "@veyyon/tui/tui";
-import { VirtualTerminal } from "./virtual-terminal";
 
 /** SGR left-button press report at 0-based (row, col). */
 function pressAt(row: number, col = 0): string {

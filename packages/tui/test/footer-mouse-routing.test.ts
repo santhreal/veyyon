@@ -12,10 +12,10 @@
  * keep ignoring clicks), and that transcript clicks are never routed.
  */
 import { afterEach, describe, expect, it } from "bun:test";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 import type { Component } from "@veyyon/tui";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/tui/mouse";
 import { TUI } from "@veyyon/tui/tui";
-import { VirtualTerminal } from "./virtual-terminal";
 
 /** A fixed-height block of transcript filler. */
 class Filler implements Component {

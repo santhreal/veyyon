@@ -7,8 +7,7 @@ import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/modes/them
 import { evalToolRenderer } from "@veyyon/coding-agent/tools/eval-render";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
 import { type Component, resetKeybindingsForTests, setKeybindings, TUI } from "@veyyon/tui";
-import { settleFrames } from "../../tui/test/helpers/settle-frames";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import { createToolExecution } from "./helpers/tool-execution";
 
 // Long, path-like output that wraps at the box's inner width — the case that

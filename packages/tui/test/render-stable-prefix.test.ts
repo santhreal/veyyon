@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, CURSOR_MARKER, type RenderStablePrefix, TUI } from "@veyyon/tui";
-import { StressRenderScheduler } from "./render-stress-scheduler";
-import { VirtualTerminal } from "./virtual-terminal";
 
 // Behavioral tests for the RenderStablePrefix engine seam: a component that
 // mutates its returned render array in place (instead of returning a fresh

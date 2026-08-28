@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
-import { VirtualTerminal } from "./virtual-terminal";
 
 class FocusToken implements Component, Focusable {
 	focused = false;

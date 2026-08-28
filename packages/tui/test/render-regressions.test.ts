@@ -1,5 +1,6 @@
 import "./warm-natives"; // load the native addon under the real platform before any process.platform mock
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import {
 	type Component,
 	CURSOR_MARKER,
@@ -8,8 +9,6 @@ import {
 	TERMINAL,
 	TUI,
 } from "@veyyon/tui";
-import { settleFrames } from "./helpers/settle-frames";
-import { VirtualTerminal } from "./virtual-terminal";
 
 // Ends this file's effect with this file: the flag is process-global and is read at
 // TUI construction, so leaving it set hands the rebuild path to every suite after

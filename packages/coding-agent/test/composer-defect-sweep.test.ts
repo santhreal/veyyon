@@ -29,7 +29,7 @@ import {
 	runComposerOracleScenario,
 	runnerOptionsToCorpusState,
 } from "./helpers/composer-oracle-runner";
-import { promoteFailingCaseToCorpus } from "./helpers/renderer-defect-corpus";
+import { promoteFailingCaseToCorpus } from "@veyyon/render-oracle";
 
 /** Supported mode configurations derived from source */
 interface ModeVariant {

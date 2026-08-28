@@ -40,7 +40,7 @@ import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import { TUI } from "@veyyon/tui";
 import { postmortem, setProfile, TempDir } from "@veyyon/utils";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 
 interface SpawnRecord {

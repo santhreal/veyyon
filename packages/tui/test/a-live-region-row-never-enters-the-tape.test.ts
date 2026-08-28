@@ -32,6 +32,7 @@
  * host defect and is defended where the host unmounts it.
  */
 import { describe, expect, test } from "bun:test";
+import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import {
 	type Component,
 	Container,
@@ -42,8 +43,6 @@ import {
 	TUI,
 } from "../src/index";
 import { countDestructivePaints } from "./helpers/destructive-paints";
-import { settleFrames } from "./helpers/settle-frames";
-import { VirtualTerminal } from "./virtual-terminal";
 
 const CHROME_MARKERS = [
 	"▌ Searching for aria project",
