@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "bun:test";
 import { LoopWatchdog } from "@veyyon/tui/loop-watchdog";
-import { currentLoopPhase, logger, popLoopPhase, pushLoopPhase, takeLoopPhaseProfile } from "@veyyon/utils"
+import { currentLoopPhase, logger, popLoopPhase, pushLoopPhase, takeLoopPhaseProfile } from "@veyyon/utils";
 
 /**
  * Contract: LoopWatchdog turns event-loop lag into exactly one
@@ -72,10 +72,7 @@ describe("LoopWatchdog", () => {
 		fireTick();
 
 		expect(warnSpy).toHaveBeenCalledTimes(1);
-		const [event, ctx] = warnSpy.mock.calls[0] as [
-			string,
-			{ blockedMs: number; phase: string; phaseMs: number },
-		];
+		const [event, ctx] = warnSpy.mock.calls[0] as [string, { blockedMs: number; phase: string; phaseMs: number }];
 		expect(event).toBe("ui.loop-blocked");
 		expect(ctx.phase).toBe("render");
 		expect(ctx.blockedMs).toBeGreaterThanOrEqual(20);

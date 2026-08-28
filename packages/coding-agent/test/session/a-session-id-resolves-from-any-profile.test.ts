@@ -19,10 +19,11 @@
  * proves the CLI passes the flag's value through unchanged, and nothing proves a
  * resumed foreign session keeps writing to its own profile's directory.
  */
+
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { resolveResumableSession } from "@veyyon/coding-agent/session/session-listing";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { __resetDirsFromEnvForTests, Snowflake } from "@veyyon/utils";

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type Component, type RenderTimer, TUI } from "@veyyon/tui";
-import { currentLoopPhase, popLoopPhase, takeLoopPhaseProfile } from "@veyyon/utils"
+import { currentLoopPhase, popLoopPhase, takeLoopPhaseProfile } from "@veyyon/utils";
 import { VirtualTerminal } from "./virtual-terminal";
 
 /**
