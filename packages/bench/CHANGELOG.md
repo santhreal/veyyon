@@ -12,6 +12,7 @@
 ### Changed
 
 - The four private benchmark and simulation packages are one package, `@veyyon/bench`: `@veyyon/deepswe-bench` is `src/deepswe/`, `@veyyon/metaharness` is `src/metaharness/`, `@veyyon/simulations` is `src/simulations/` and `@veyyon/typescript-edit-benchmark` is `src/typescript-edit/`, under one manifest, one tsconfig and one bunfig.
+- The benchmark sources call `clamp`, `errorMessage` and `isRecord` from `@veyyon/utils` where they had hand-inlined those idioms. The four merged packages kept their sources at their package roots, which the workspace source-ownership locks never walked, so nine sites in `src/deepswe/` and `src/metaharness/` had drifted; moving them under `src/` brought them into scope.
 
 ## [1.0.49] - 2026-08-14
 

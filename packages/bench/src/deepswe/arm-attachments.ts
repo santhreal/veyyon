@@ -24,6 +24,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isRecord } from "@veyyon/utils";
 import YAML from "yaml";
 import type { ArmInputs } from "./arm-fingerprint";
 
@@ -194,7 +195,7 @@ export function readArmAttachment(
 	} catch (err) {
 		return { error: `arm "${arm}" has invalid YAML in arms/${configArm}${kind.suffix}:\n${err}` };
 	}
-	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+	if (!isRecord(parsed)) {
 		return {
 			error:
 				`arm "${arm}" arms/${configArm}${kind.suffix} must be a mapping of ${kind.keyDescription}, ` +

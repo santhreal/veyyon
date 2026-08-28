@@ -11,7 +11,7 @@ import type { AgentMessage, ResolvedThinkingLevel, ThinkingLevel } from "@veyyon
 import type { Model, ToolExample } from "@veyyon/ai";
 import { formatSessionDumpText, RpcClient } from "@veyyon/coding-agent";
 import { formatHashlineHeader, InMemorySnapshotStore } from "@veyyon/hashline";
-import { estimateTokensFromText, prompt, splitTextLines } from "@veyyon/utils";
+import { errorMessage, estimateTokensFromText, prompt, splitTextLines } from "@veyyon/utils";
 import { diffLines } from "diff";
 import { formatDirectory } from "../../../typescript-edit/formatter";
 import { discoverSharedInfra, InProcessClient, type SharedInfra } from "../../../typescript-edit/in-process-client";
@@ -1341,7 +1341,7 @@ async function runSingleTask(
 			await client.dispose();
 		}
 	} catch (err) {
-		error = err instanceof Error ? err.message : String(err);
+		error = errorMessage(err);
 		await logEvent({ type: "error", error });
 	} finally {
 		const restoreEnvKey = (key: keyof typeof previousEnv) => {
@@ -1844,7 +1844,7 @@ async function runConcurrentBenchmarkRun(
 		onProgress?.({ taskId: item.task.id, runIndex: item.runIndex, status: "completed", result });
 		return { task: item.task, result };
 	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
+		const message = errorMessage(err);
 		const result = buildFailureResult(item, message);
 		onProgress?.({ taskId: item.task.id, runIndex: item.runIndex, status: "completed", result });
 		return { task: item.task, result };

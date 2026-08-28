@@ -44,7 +44,7 @@ import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 // arm names a real one. Read it directly rather than keeping a second list here
 // that would go stale the first time a setting is renamed.
 import { getEnumValues, getType, isSettingPath } from "@veyyon/coding-agent/config/settings-schema";
-import { readPipeText } from "@veyyon/utils";
+import { clamp, errorMessage, isRecord, readPipeText } from "@veyyon/utils";
 import YAML from "yaml";
 import {
 	type ArmResult,
@@ -484,7 +484,7 @@ function artifactPath(metadataValue: unknown, fallback: string, trialDir: string
 }
 
 function parsedNativeCompaction(value: unknown): NativeCompactionEvidence | null {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+	if (!isRecord(value)) return null;
 	const raw = value as Record<string, unknown>;
 	return {
 		native: raw.native === true,
@@ -760,7 +760,7 @@ function reaggregate(runDir: string): void {
 		try {
 			systemComparison = aggregateSystemComparison(comparisonTrialsFromArmResults(results), orderedTasks, model);
 		} catch (error) {
-			comparisonRejection = error instanceof Error ? error.message : String(error);
+			comparisonRejection = errorMessage(error);
 		}
 	}
 	fs.writeFileSync(
@@ -972,7 +972,7 @@ async function main(): Promise<void> {
 	try {
 		trialTimeoutOverrideSec = parseTrialTimeoutFlag(args["trial-timeout"]);
 	} catch (err) {
-		console.error(`error: ${err instanceof Error ? err.message : String(err)}`);
+		console.error(`error: ${errorMessage(err)}`);
 		process.exit(1);
 	}
 	let limit: number | undefined;
@@ -1090,7 +1090,7 @@ async function main(): Promise<void> {
 			const budget = parseTaskTimeBudget(fs.readFileSync(taskToml, "utf8"), task);
 			trialTimeouts.set(task, resolveTrialTimeout(budget, trialTimeoutOverrideSec));
 		} catch (err) {
-			console.error(`error: ${err instanceof Error ? err.message : String(err)}`);
+			console.error(`error: ${errorMessage(err)}`);
 			process.exit(1);
 		}
 	}
@@ -1259,7 +1259,7 @@ async function main(): Promise<void> {
 			console.error(`error: arm "${arm}" has invalid YAML in arms/${arm}.yml:\n${err}`);
 			process.exit(1);
 		}
-		if (config === null || typeof config !== "object" || Array.isArray(config)) {
+		if (!isRecord(config)) {
 			console.error(
 				`error: arm "${arm}" arms/${arm}.yml must be a mapping of setting -> value, ` +
 					`got ${Array.isArray(config) ? "a sequence" : typeof config}.`,
@@ -1407,7 +1407,7 @@ async function main(): Promise<void> {
 	// so a systematic config failure trips as soon as one full concurrent batch has
 	// all hard-errored, not after the whole queue drains.
 	const totalQueued = queue.length;
-	const canarySize = Math.max(1, Math.min(Math.max(1, jobParallel), totalQueued));
+	const canarySize = clamp(jobParallel, 1, Math.max(1, totalQueued));
 	let canaryTripped = false;
 
 	console.log(
@@ -1749,7 +1749,7 @@ async function main(): Promise<void> {
 		try {
 			systemComparison = aggregateSystemComparison(comparisonTrialsFromArmResults(results), tasks, model);
 		} catch (error) {
-			comparisonRejection = error instanceof Error ? error.message : String(error);
+			comparisonRejection = errorMessage(error);
 		}
 	}
 	fs.writeFileSync(

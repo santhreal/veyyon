@@ -23,6 +23,7 @@
  * none.
  */
 
+import { isRecord } from "@veyyon/utils";
 import { costShares, priceTokens, type RateCard, REFERENCE_RATE_CARD, type TokenMix } from "./cost-model";
 import {
 	type PrefixMass,
@@ -92,7 +93,7 @@ export const PREFIX_AFFECTING_SETTINGS: readonly string[] = [
 function settingAt(config: unknown, dotted: string): unknown {
 	let node: unknown = config;
 	for (const key of dotted.split(".")) {
-		if (node === null || typeof node !== "object" || Array.isArray(node)) return undefined;
+		if (!isRecord(node)) return undefined;
 		node = (node as Record<string, unknown>)[key];
 	}
 	return node;
