@@ -549,20 +549,6 @@ export function agentLoopDetailed(
  * Like {@link agentLoopDetailed} but built on top of
  * {@link agentLoopContinue}.
  */
-export function agentLoopContinueDetailed(
-	context: AgentContext,
-	config: AgentLoopConfig,
-	signal?: AbortSignal,
-	streamFn?: StreamFn,
-): {
-	readonly stream: EventStream<AgentEvent, AgentMessage[]>;
-	readonly detailed: () => Promise<AgentLoopDetailedResult>;
-} {
-	const capture = createDetailedCapture(config);
-	const stream = agentLoopContinue(context, capture.config, signal, streamFn);
-	return { stream, detailed: () => capture.detailed(stream) };
-}
-
 /**
  * Wire an `onRunEnd` telemetry hook onto `config` so the detailed helper can
  * capture the run summary without consuming the event stream. Preserves any

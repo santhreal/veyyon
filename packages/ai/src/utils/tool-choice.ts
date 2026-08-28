@@ -63,13 +63,3 @@ export function mapToOpenAIResponsesToolChoice(choice?: ToolChoice): OpenAIRespo
 }
 
 /** Map unified ToolChoice to Anthropic-compatible format. */
-export function mapToAnthropicToolChoice(choice?: ToolChoice): AnthropicToolChoice {
-	if (!choice) return undefined;
-	if (typeof choice === "string") {
-		if (choice === "required") return "any";
-		if (choice === "auto" || choice === "none" || choice === "any") return choice;
-		return undefined;
-	}
-	const name = extractFunctionName(choice);
-	return name ? { type: "tool", name } : undefined;
-}

@@ -602,10 +602,6 @@ export function normalizedTelemetryAgent(telemetry: AgentTelemetry | undefined):
 	return telemetry?.agent ? normalizeAgentIdentity(telemetry, telemetry.agent) : undefined;
 }
 
-export function recordTelemetryWarning(telemetry: AgentTelemetry | undefined, warning: AgentTelemetryWarning): void {
-	emitTelemetryWarning(telemetry, warning);
-}
-
 export function emitTelemetryWarning(telemetry: AgentTelemetry | undefined, warning: AgentTelemetryWarning): void {
 	const hook = telemetry?.config.onTelemetryWarning;
 	if (!hook) {

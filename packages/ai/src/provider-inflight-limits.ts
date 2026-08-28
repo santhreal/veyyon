@@ -4,10 +4,6 @@ export function configureProviderMaxInFlightRequests(limits: Record<string, numb
 	configuredLimits = limits ?? {};
 }
 
-export function configuredProviderMaxInFlightRequests(): Record<string, number> {
-	return configuredLimits;
-}
-
 export function resolveProviderInFlightLimit(
 	provider: string,
 	perCallLimits?: Record<string, number>,

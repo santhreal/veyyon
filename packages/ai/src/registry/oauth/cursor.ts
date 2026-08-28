@@ -149,12 +149,3 @@ function getTokenExpiry(token: string): number {
 	}
 	return Date.now() + 3600 * 1000;
 }
-
-export function isCursorTokenExpiringSoon(token: string, thresholdSeconds = 300): boolean {
-	const decoded = decodeJwtPayload<{ exp?: number }>(token);
-	if (!decoded) return true;
-	const currentTime = Math.floor(Date.now() / 1000);
-	// A token with no `exp` claim is treated as not expiring soon (NaN < n is false),
-	// matching the prior hand-rolled decode.
-	return (decoded.exp ?? Number.NaN) - currentTime < thresholdSeconds;
-}
