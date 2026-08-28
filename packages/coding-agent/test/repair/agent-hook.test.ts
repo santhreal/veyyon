@@ -2,7 +2,10 @@ import { describe, expect, it } from "bun:test";
 import type { AgentTool, AgentToolCall } from "@veyyon/agent-core";
 import { buildModel } from "@veyyon/catalog/build";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { createRepairToolCallArgumentsHook, formatUnrepairableToolError } from "@veyyon/coding-agent/repair/agent-hook";
+import {
+	createRepairToolCallArgumentsHook,
+	formatUnrepairableToolError,
+} from "@veyyon/coding-agent/tools/repair/agent-hook";
 
 const tool = {
 	name: "demo",

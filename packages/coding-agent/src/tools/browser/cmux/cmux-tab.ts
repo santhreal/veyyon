@@ -10,7 +10,7 @@ import type { ToolSession } from "../../index";
 import { resolveToCwd } from "../../path-utils";
 import { formatScreenshot } from "../../render-utils";
 import { ToolAbortError, ToolError, throwIfAborted } from "../../tool-errors";
-import { type AriaSnapshotOptions, buildAriaSnapshotScript } from "../aria/aria-snapshot";
+import { type AriaSnapshotOptions, buildAriaSnapshotScript } from "../aria-snapshot";
 import { DEFAULT_VIEWPORT } from "../launch";
 import { extractReadableFromHtml, type ReadableFormat } from "../readable";
 import {

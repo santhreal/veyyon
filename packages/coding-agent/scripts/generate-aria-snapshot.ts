@@ -2,7 +2,7 @@
 /**
  * Regenerates the committed browser asset
  *
- *   src/tools/browser/aria/aria-snapshot.bundle.txt   ← bundled CJS module
+ *   src/tools/browser/aria-snapshot.bundle.txt   ← bundled CJS module
  *
  * by fetching Playwright's injected ARIA-snapshot sources (pinned to
  * PLAYWRIGHT_TAG), wrapping them with a small entry, and bundling — all in a
@@ -24,7 +24,7 @@ import * as path from "node:path";
 const PLAYWRIGHT_TAG = "v1.61.0";
 const RAW_BASE = `https://raw.githubusercontent.com/microsoft/playwright/${PLAYWRIGHT_TAG}/packages`;
 
-const OUTPUT = path.join(import.meta.dir, "..", "src", "tools", "browser", "aria", "aria-snapshot.bundle.txt");
+const OUTPUT = path.join(import.meta.dir, "..", "src", "tools", "browser", "aria-snapshot.bundle.txt");
 
 // Upstream source path -> temp path (relative to the temp root).
 const VENDOR_FILES: Array<[string, string]> = [

@@ -5,8 +5,8 @@
  */
 import * as path from "node:path";
 import { parseFrontmatter, prompt } from "@veyyon/utils";
-import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import { loadCapability } from "../discovery";
+import { type SlashCommand, slashCommandCapability } from "../discovery/capability/slash-command";
 // Embed command markdown files at build time
 import { agentsPrompts } from "../prompts/agents/rows";
 

@@ -25,7 +25,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
+import { clearCache as clearFsCache } from "@veyyon/coding-agent/discovery/capability/fs";
 import { loadSkills } from "@veyyon/coding-agent/extensibility/skills";
 import { discoverSkills } from "@veyyon/coding-agent/sdk";
 import { removeWithRetries, setAgentDir } from "@veyyon/utils";

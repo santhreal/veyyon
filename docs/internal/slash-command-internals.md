@@ -5,12 +5,12 @@ This document describes how slash commands are discovered, deduplicated, surface
 ## Implementation files
 
 - [`src/extensibility/slash-commands.ts`](../../packages/coding-agent/src/extensibility/slash-commands.ts)
-- [`src/capability/slash-command.ts`](../../packages/coding-agent/src/capability/slash-command.ts)
+- [`src/discovery/capability/slash-command.ts`](../../packages/coding-agent/src/discovery/capability/slash-command.ts)
 - [`src/discovery/builtin.ts`](../../packages/coding-agent/src/discovery/builtin.ts)
 - [`src/discovery/claude.ts`](../../packages/coding-agent/src/discovery/claude.ts)
 - [`src/discovery/codex.ts`](../../packages/coding-agent/src/discovery/codex.ts)
 - [`src/discovery/claude-plugins.ts`](../../packages/coding-agent/src/discovery/claude-plugins.ts)
-- [`src/capability/index.ts`](../../packages/coding-agent/src/capability/index.ts)
+- [`src/discovery/capability/index.ts`](../../packages/coding-agent/src/discovery/capability/index.ts)
 - [`src/discovery/helpers.ts`](../../packages/coding-agent/src/discovery/helpers.ts)
 - [`src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts)
 - [`src/modes/interactive-mode.ts`](../../packages/coding-agent/src/modes/interactive-mode.ts)
@@ -329,4 +329,4 @@ hidden default dressed as one.
   - non-native commands: warning + fallback key/value parse
 - Extension/custom command handler exceptions are caught and reported via extension error channel (or logger fallback for custom commands without extension runner), and treated as handled (no unintended fallback execution).
 
-*Verified against `3fa88a60` on 2026-08-05.*
+*Verified against `632fd91c3b4e` on 2026-08-28.*

@@ -234,8 +234,8 @@ For robust MCP authoring in this codebase:
 - [`packages/coding-agent/src/mcp/tool-bridge.ts`](../../packages/coding-agent/src/mcp/tool-bridge.ts)
 - [`packages/coding-agent/src/modes/controllers/mcp-command-controller.ts`](../../packages/coding-agent/src/modes/controllers/mcp-command-controller.ts)
 - [`packages/coding-agent/src/mcp/manager.ts`](../../packages/coding-agent/src/mcp/manager.ts)
-- [`packages/coding-agent/src/capability/index.ts`](../../packages/coding-agent/src/capability/index.ts)
+- [`packages/coding-agent/src/discovery/capability/index.ts`](../../packages/coding-agent/src/discovery/capability/index.ts)
 - [`packages/coding-agent/src/config/resolve-config-value.ts`](../../packages/coding-agent/src/config/resolve-config-value.ts)
 - [`packages/coding-agent/src/mcp/loader.ts`](../../packages/coding-agent/src/mcp/loader.ts)
 
-*Verified against `434326200` on 2026-08-22.*
+*Verified against `632fd91c3b4e` on 2026-08-28.*

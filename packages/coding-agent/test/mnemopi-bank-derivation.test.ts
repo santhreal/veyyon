@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { computeMnemopiBankScope, extendRecallWithLegacyBanks } from "@veyyon/coding-agent/mnemopi/config";
+import { computeMnemopiBankScope, extendRecallWithLegacyBanks } from "@veyyon/coding-agent/memory/mnemopi/config";
 import { removeWithRetries, TempDir } from "@veyyon/utils";
 
 // Set up a fixture filesystem we can reuse across the two regression

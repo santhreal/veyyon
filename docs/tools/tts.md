@@ -4,8 +4,8 @@
 
 ## Source
 - Entry: `packages/coding-agent/src/tools/tts.ts`
-- Local voice catalog: `packages/coding-agent/src/tts/models.ts`
-- Local worker client: `packages/coding-agent/src/tts/tts-client.ts`
+- Local voice catalog: `packages/coding-agent/src/speech/tts/models.ts`
+- Local worker client: `packages/coding-agent/src/speech/tts/tts-client.ts`
 - Session injection: `packages/coding-agent/src/sdk.ts` (`speechgen.enabled`)
 
 ## Inputs

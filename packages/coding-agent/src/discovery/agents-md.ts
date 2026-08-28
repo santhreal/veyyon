@@ -6,9 +6,9 @@
  * like .codex/ or .gemini/, which are handled by their respective providers).
  */
 import * as path from "node:path";
-import { registerProvider } from "../capability";
-import { type ContextFile, contextFileCapability } from "../capability/context-file";
-import type { LoadContext, LoadResult } from "../capability/types";
+import { registerProvider } from "./capability";
+import { type ContextFile, contextFileCapability } from "./capability/context-file";
+import type { LoadContext, LoadResult } from "./capability/types";
 import { calculateDepth, createSourceMeta, readContextFile } from "./helpers";
 
 const PROVIDER_ID = "agents-md";

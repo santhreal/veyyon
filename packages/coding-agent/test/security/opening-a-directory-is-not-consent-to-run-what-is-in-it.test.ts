@@ -25,13 +25,11 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getCapability } from "../../src/capability";
-import type { MCPServer } from "../../src/capability/mcp";
-import type { LoadContext } from "../../src/capability/types";
+import { getCapability } from "../../src/discovery/capability";
+import type { MCPServer } from "../../src/discovery/capability/mcp";
+import type { LoadContext } from "../../src/discovery/capability/types";
 import { clearClaudePluginRootsCache, listClaudePluginRoots } from "../../src/discovery/helpers";
 import "../../src/discovery/claude-plugins";
-import { mcpCapability } from "../../src/capability/mcp";
-import { loadExtensions } from "../../src/extensibility/extensions/loader";
 import {
 	canonicalProjectRoot,
 	describeProjectExecutable,
@@ -40,7 +38,9 @@ import {
 	PROJECT_TRUST_STORE_VERSION,
 	ProjectTrust,
 	type ProjectTrustVerdict,
-} from "../../src/security/project-trust";
+} from "../../src/config/project-trust";
+import { mcpCapability } from "../../src/discovery/capability/mcp";
+import { loadExtensions } from "../../src/extensibility/extensions/loader";
 import { useTrackedTempDirFactory } from "../helpers/tracked-temp-dir";
 
 const makeTempDir = useTrackedTempDirFactory();

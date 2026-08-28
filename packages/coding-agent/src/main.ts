@@ -26,12 +26,12 @@ import {
 } from "@veyyon/utils";
 import { isSessionFileName } from "@veyyon/utils/session-file";
 import chalk from "chalk";
-import { reset as resetCapabilities } from "./capability";
 import { type Args, reportUnrecognizedFlags } from "./cli/args";
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from "./cli/exit-codes";
 import { applyExtensionFlags, type ExtensionFlagSink } from "./cli/extension-flags";
 import { processFileArguments } from "./cli/file-processor";
 import { buildInitialMessage } from "./cli/initial-message";
+import { takeStartupPrologue } from "./cli/prologue-handoff";
 import { selectSession } from "./cli/session-picker";
 import { announceAutoChdir, applySessionWorkdir, applyStartupCwd } from "./cli/startup-cwd";
 import { getLatestRelease, type ReleaseInfo, runAutoUpdate } from "./cli/update-cli";
@@ -52,6 +52,7 @@ import { DEFAULT_MODEL_SLOT } from "./config/model-roles";
 import { ModelsConfigFile } from "./config/models-config";
 import { getDefault, type SettingPath, Settings, settings } from "./config/settings";
 import { initializeWithSettings } from "./discovery";
+import { reset as resetCapabilities } from "./discovery/capability";
 import {
 	clearPluginRootsAndCaches,
 	injectPluginDirRoots,
@@ -87,7 +88,6 @@ import { formatNotice, OperatorNotices, stderrNoticeSink } from "./session/opera
 import { resolveResumableSession, type SessionInfo } from "./session/session-listing";
 import { SessionManager } from "./session/session-manager";
 import { executeBuiltinSlashCommand } from "./slash-commands/builtin-registry";
-import { takeStartupPrologue } from "./startup/prologue-handoff";
 import { shouldShowStartupSplash } from "./startup-splash";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";
 import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";

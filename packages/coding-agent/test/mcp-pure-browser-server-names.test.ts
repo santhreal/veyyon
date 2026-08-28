@@ -2,7 +2,7 @@
  * isBrowserMCPServer by known names.
  */
 import { describe, expect, it } from "bun:test";
-import type { SourceMeta } from "../src/capability/types";
+import type { SourceMeta } from "../src/discovery/capability/types";
 import { filterBrowserMCPServers, isBrowserMCPServer } from "../src/mcp/config";
 import type { MCPServerConfig } from "../src/mcp/types";
 

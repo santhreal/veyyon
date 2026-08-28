@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getActiveSkills } from "@veyyon/coding-agent/extensibility/skills";
 import { MCPManager } from "@veyyon/coding-agent/mcp/manager";
-import { getMemoryRoot } from "@veyyon/coding-agent/memories";
+import { getMemoryRoot } from "@veyyon/coding-agent/memory/local";
 import * as themeEngine from "@veyyon/coding-agent/modes/theme/theme";
 import { formatStatusIcon } from "@veyyon/coding-agent/tools/render-utils";
 import {
@@ -54,8 +54,8 @@ import { PACKAGES, RESOLUTION, reach, reachedNames, SRC } from "../helpers/modul
  *      setter, 285 modules. The caps now live in `@veyyon/ai/provider-inflight-limits`, which imports
  *      nothing; `stream.ts` re-exports the setter so no existing caller changed.
  *   2. `settings-domains/model.ts` imported `THINKING_EFFORTS` from the `@veyyon/ai` barrel, and
- *      `thinking.ts` did the same. The list is owned by `@veyyon/catalog/effort`, which imports
- *      nothing. `settings-schema.ts` went from 371 modules to 106 and `thinking.ts` from 346 to 6.
+ *      `thinking/index.ts` did the same. The list is owned by `@veyyon/catalog/effort`, which imports
+ *      nothing. `settings-schema.ts` went from 371 modules to 106 and `thinking/index.ts` from 346 to 6.
  *   3. `session/agent-storage.ts` imported the sqlite credential store through the `@veyyon/ai` barrel
  *      (345) rather than from `@veyyon/ai/auth-storage` (212), the module that defines it.
  *
@@ -305,7 +305,7 @@ describe("the settings schema and the thinking ladder", () => {
 	 * ladder are checked, because fixing one and leaving the other keeps the whole graph.
 	 */
 	it("reads the effort ladder from the module that owns it, not through a barrel", () => {
-		for (const file of ["config/settings-domains/model.ts", "thinking.ts"]) {
+		for (const file of ["config/settings-domains/model.ts", "thinking/index.ts"]) {
 			const imports = runtimeImportsOf(path.join(SRC, file));
 
 			expect(imports, `${file} should take THINKING_EFFORTS from @veyyon/catalog/effort`).toContain(
@@ -320,17 +320,17 @@ describe("the settings schema and the thinking ladder", () => {
 		const barrel = path.relative(PACKAGES, path.join(AI_SRC, "index.ts"));
 
 		expect(reachedNames("config/settings-schema.ts")).not.toContain(barrel);
-		expect(reachedNames("thinking.ts")).not.toContain(barrel);
+		expect(reachedNames("thinking/index.ts")).not.toContain(barrel);
 	});
 
 	/**
-	 * FLOOR, so the three ceilings above cannot pass by resolving nothing. `thinking.ts` genuinely
+	 * FLOOR, so the three ceilings above cannot pass by resolving nothing. `thinking/index.ts` genuinely
 	 * imports `@veyyon/agent-core`, `@veyyon/catalog/effort` and `@veyyon/catalog/model-thinking`, so a
 	 * working walk lands well above one.
 	 */
 	it("actually walks the graph it is measuring", () => {
-		expect(reach("thinking.ts")).toBeGreaterThan(3);
-		expect(reachedNames("thinking.ts")).toContain(
+		expect(reach("thinking/index.ts")).toBeGreaterThan(3);
+		expect(reachedNames("thinking/index.ts")).toContain(
 			path.relative(PACKAGES, path.join(PACKAGES, "catalog/src/effort.ts")),
 		);
 	});
@@ -714,7 +714,7 @@ describe("reading a local file does not load the MCP client, the skill loader or
 
 		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "mcp/manager.ts")));
 		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "extensibility/skills.ts")));
-		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "memories/index.ts")));
+		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "memory/local.ts")));
 	});
 
 	/**
@@ -847,14 +847,14 @@ describe("reading a local file does not load the MCP client, the skill loader or
 		expect(skill).not.toContain("../extensibility/skills");
 
 		const memory = runtimeImportsOf(path.join(SRC, "internal-urls/memory-protocol.ts"));
-		expect(memory).toContain("../memories/paths");
-		expect(memory).not.toContain("../memories");
+		expect(memory).toContain("../memory/paths");
+		expect(memory).not.toContain("../memory/local");
 	});
 
 	/**
 	 * The four leaves, each asserted to import NOTHING at runtime. That is what makes them leaves and it
 	 * is the whole reason they exist: a slot that imports the thing it holds is not a slot, it is the
-	 * thing. `memories/paths` is the exception at one import, `@veyyon/utils` for `getMemoriesDir`, and
+	 * thing. `memory/paths` is the exception at one import, `@veyyon/utils` for `getMemoriesDir`, and
 	 * its number says so.
 	 */
 	it("the four leaves import nothing at runtime", () => {
@@ -865,7 +865,7 @@ describe("reading a local file does not load the MCP client, the skill loader or
 		// the graph this file measures, and they are listed here so the assertion stays exact.
 		// `@veyyon/utils/dirs` (15) rather than the barrel (74), for `getMemoriesDir`. Safe to name directly
 		// since `dirs.ts` applies `$HOME/.env` itself; see `packages/utils/test/dotenv-*.test.ts`. 75 -> 18.
-		expect(runtimeImportsOf(path.join(SRC, "memories/paths.ts"))).toEqual(["node:path", "@veyyon/utils/dirs"]);
+		expect(runtimeImportsOf(path.join(SRC, "memory/paths.ts"))).toEqual(["node:path", "@veyyon/utils/dirs"]);
 
 		expect(reach("mcp/manager-instance.ts")).toBe(1);
 		expect(reach("extensibility/active-skills.ts")).toBe(1);
@@ -905,7 +905,7 @@ describe("reading a local file does not load the MCP client, the skill loader or
 	 */
 	it("the hyperlink formatter does not reach the memory consolidator", () => {
 		expect(reachedNames("tui/hyperlink.ts")).not.toContain(
-			path.relative(PACKAGES, path.join(SRC, "memories/index.ts")),
+			path.relative(PACKAGES, path.join(SRC, "memory/local.ts")),
 		);
 	});
 });
@@ -943,7 +943,7 @@ const LEAF_OWNERS: ReadonlyArray<
 > = [
 	["mcpManagerInstance", "mcp/manager-instance.ts", "mcp/manager.ts", 702],
 	["getActiveSkills", "extensibility/active-skills.ts", "extensibility/skills.ts", 366],
-	["getMemoryRoot", "memories/paths.ts", "memories/index.ts", 559],
+	["getMemoryRoot", "memory/paths.ts", "memory/local.ts", 559],
 	["formatStatusIcon", "tools/tool-ui-status.ts", "tools/render-utils.ts", 168],
 	// A THIRD SHAPE: a presentation LIST that sat with the thing it presents. The browse order is eight
 	// strings, and `builtin-registry.ts` declares every builtin command, so it imports every command
@@ -1009,7 +1009,7 @@ describe("a cheap value is owned by a leaf, and a file that wants only it names 
 		expect(runtimeImportsOf(path.join(SRC, "tools/tool-ui-status.ts"))).toEqual([]);
 		// `@veyyon/utils/dirs` (15) rather than the barrel (74), for `getMemoriesDir`. Safe to name directly
 		// since `dirs.ts` applies `$HOME/.env` itself; see `packages/utils/test/dotenv-*.test.ts`. 75 -> 18.
-		expect(runtimeImportsOf(path.join(SRC, "memories/paths.ts"))).toEqual(["node:path", "@veyyon/utils/dirs"]);
+		expect(runtimeImportsOf(path.join(SRC, "memory/paths.ts"))).toEqual(["node:path", "@veyyon/utils/dirs"]);
 	});
 
 	it.each(LEAF_OWNERS)(

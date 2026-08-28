@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { SttClient } from "@veyyon/coding-agent/stt/asr-client";
-import type { SttWorkerInbound, SttWorkerOutbound } from "@veyyon/coding-agent/stt/asr-protocol";
+import { SttClient } from "@veyyon/coding-agent/speech/stt/asr-client";
+import type { SttWorkerInbound, SttWorkerOutbound } from "@veyyon/coding-agent/speech/stt/asr-protocol";
 import { TinyTitleClient } from "@veyyon/coding-agent/tiny/title-client";
 import type { TinyTitleWorkerInbound, TinyTitleWorkerOutbound } from "@veyyon/coding-agent/tiny/title-protocol";
 

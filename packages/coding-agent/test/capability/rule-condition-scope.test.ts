@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseRuleConditionAndScope, type RuleFrontmatter } from "@veyyon/coding-agent/capability/rule";
+import { parseRuleConditionAndScope, type RuleFrontmatter } from "@veyyon/coding-agent/discovery/capability/rule";
 
 /**
  * parseRuleConditionAndScope turns raw rule frontmatter into the condition/scope a rule matches

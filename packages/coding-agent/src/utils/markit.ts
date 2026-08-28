@@ -2,7 +2,7 @@ import * as path from "node:path";
 import { isCancellation, untilAborted } from "@veyyon/utils/abortable";
 // Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import * as logger from "@veyyon/utils/logger";
-import type { ConversionResult, Markit, StreamInfo } from "../markit";
+import type { ConversionResult, Markit, StreamInfo } from "../export/markit";
 import { ToolAbortError, toolAbort } from "../tools/tool-errors";
 import {
 	type MarkitConversionCacheStatus,
@@ -68,7 +68,7 @@ let markit: () => Markit | Promise<Markit> = async () => {
 	// Lazy: keep the document engine (mammoth/mupdf) off the startup
 	// import graph — it loads only when a document is first converted.
 	installEmbeddedMupdfWasm();
-	const promise = import("../markit").then(({ Markit }) => {
+	const promise = import("../export/markit").then(({ Markit }) => {
 		const instance = new Markit();
 		markit = () => instance;
 		return instance;

@@ -6,7 +6,7 @@
 import { type Component, type OverlayHandle, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, getMCPConfigPath, getProjectDir, isAbortError } from "@veyyon/utils";
 import { replaceTabs } from "@veyyon/utils/wrap";
-import type { SourceMeta } from "../../capability/types";
+import type { SourceMeta } from "../../discovery/capability/types";
 import { expandEnvVarsDeep, unresolvedRefusedDownstream } from "../../discovery/env-expansion";
 import {
 	analyzeAuthError,

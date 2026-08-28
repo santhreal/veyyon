@@ -6,7 +6,7 @@ import * as path from "node:path";
 import type { ImageContent } from "@veyyon/ai";
 import { errorMessage, getProjectDir, isEnoent, readImageMetadata } from "@veyyon/utils";
 import chalk from "chalk";
-import { CONVERTIBLE_EXTENSIONS } from "../markit/convertible-extensions";
+import { CONVERTIBLE_EXTENSIONS } from "../export/markit/convertible-extensions";
 import { resolveReadPath } from "../tools/path-utils";
 import { formatBytes } from "../tools/render-utils";
 import { formatDimensionNote, resizeImage } from "../utils/image-resize";

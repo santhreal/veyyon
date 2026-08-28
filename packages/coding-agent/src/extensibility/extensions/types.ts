@@ -44,7 +44,7 @@ import type { BashResult } from "../../exec/bash-executor";
 import type { ExecOptions, ExecResult } from "../../exec/exec";
 import type * as PiCodingAgent from "../../index";
 import type { LocalProtocolOptions } from "../../internal-urls/local-protocol";
-import type { MemoryRuntimeContext } from "../../memory-backend";
+import type { MemoryRuntimeContext } from "../../memory/backend";
 import type { CustomEditor } from "../../modes/components/custom-editor";
 import type { Theme } from "../../modes/theme/theme";
 import type { CompactMode } from "../../session/compact-modes";

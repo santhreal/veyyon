@@ -10,7 +10,7 @@
   - `packages/coding-agent/src/ssh/connection-manager.ts`: master-connection reuse, host probing
   - `packages/coding-agent/src/ssh/sshfs-mount.ts`: optional `sshfs` mount side effect
   - `packages/coding-agent/src/discovery/ssh.ts`: discovers host configs
-  - `packages/coding-agent/src/capability/ssh.ts`: canonical host shape
+  - `packages/coding-agent/src/discovery/capability/ssh.ts`: canonical host shape
   - `packages/coding-agent/src/session/streaming-output.ts`: tail streaming, truncation, artifacts
   - `packages/coding-agent/src/tools/tool-timeouts.ts`: timeout clamp rules
   - `packages/utils/src/dirs.ts`: user/project ssh config paths

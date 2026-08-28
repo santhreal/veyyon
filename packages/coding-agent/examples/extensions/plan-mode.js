@@ -1,4 +1,4 @@
-import { Key } from "@veyyon/tui";
+import { Key } from "@veyyon/utils/keys";
 // Read-only tools for plan mode
 const PLAN_MODE_TOOLS = ["read", "bash", "search", "find"];
 // Full set of tools for normal mode

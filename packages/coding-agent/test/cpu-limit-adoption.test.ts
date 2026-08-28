@@ -84,7 +84,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getToolsDir } from "@veyyon/utils";
-import { DapClient } from "../src/dap/client";
+import { DapClient } from "../src/debug/dap/client";
 import { execCommand } from "../src/exec/exec";
 import { spawnObsidian } from "../src/internal-urls/vault-protocol";
 import { getOrCreateClient } from "../src/lsp/client";
@@ -99,8 +99,8 @@ import {
 	sessionCpuBudgetName,
 } from "../src/session/cpu-limit";
 import { disposeOwnedResources } from "../src/session/owned-resources";
-import { startRecording } from "../src/stt/recorder";
-import { playAudioFile } from "../src/tts/player";
+import { startRecording } from "../src/speech/stt/recorder";
+import { playAudioFile } from "../src/speech/tts/player";
 import * as git from "../src/utils/git";
 import { makeCgroupRoot, makeDelegatedParent, makeFakeHost, removeCgroupRoots } from "./helpers/fake-cgroup";
 

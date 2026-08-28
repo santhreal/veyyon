@@ -42,10 +42,10 @@ import {
 } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
 import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 import type { KnownApi } from "@veyyon/catalog/types";
-import type { ContextFile } from "@veyyon/coding-agent/capability/context-file";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { cursorContextFileRules, usesCursorRuleDelivery } from "@veyyon/coding-agent/cursor";
+import type { ContextFile } from "@veyyon/coding-agent/discovery/capability/context-file";
 import { createAgentSession, discoverContextFiles } from "@veyyon/coding-agent/sdk";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";

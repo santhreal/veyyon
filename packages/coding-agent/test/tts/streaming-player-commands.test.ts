@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { type StreamingPlayerLookup, streamingPlayerCommandsFor } from "@veyyon/coding-agent/tts/streaming-player";
+import {
+	type StreamingPlayerLookup,
+	streamingPlayerCommandsFor,
+} from "@veyyon/coding-agent/speech/tts/streaming-player";
 
 /**
  * streamingPlayerCommandsFor builds the ordered list of raw-PCM player commands the

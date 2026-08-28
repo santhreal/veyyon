@@ -9,7 +9,7 @@ import {
 	resolveTtsRepo,
 	resolveTtsVoice,
 	TTS_LOCAL_MODELS,
-} from "@veyyon/coding-agent/tts/models";
+} from "@veyyon/coding-agent/speech/tts/models";
 
 /**
  * The local TTS model registry maps a settings key (`tts.localModel`/`tts.localVoice`) to the concrete

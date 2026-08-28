@@ -9,9 +9,9 @@ It reflects the current implementation, including partial semantics and metadata
 
 ## Implementation files
 
-- [`packages/coding-agent/src/capability/rule.ts`](../../packages/coding-agent/src/capability/rule.ts)
-- [`packages/coding-agent/src/capability/rule-buckets.ts`](../../packages/coding-agent/src/capability/rule-buckets.ts)
-- [`packages/coding-agent/src/capability/index.ts`](../../packages/coding-agent/src/capability/index.ts)
+- [`packages/coding-agent/src/discovery/capability/rule.ts`](../../packages/coding-agent/src/discovery/capability/rule.ts)
+- [`packages/coding-agent/src/discovery/capability/rule-buckets.ts`](../../packages/coding-agent/src/discovery/capability/rule-buckets.ts)
+- [`packages/coding-agent/src/discovery/capability/index.ts`](../../packages/coding-agent/src/discovery/capability/index.ts)
 - [`packages/coding-agent/src/discovery/index.ts`](../../packages/coding-agent/src/discovery/index.ts)
 - [`packages/coding-agent/src/discovery/helpers.ts`](../../packages/coding-agent/src/discovery/helpers.ts)
 - [`packages/coding-agent/src/discovery/builtin.ts`](../../packages/coding-agent/src/discovery/builtin.ts)
@@ -295,4 +295,4 @@ Implications:
 3. Rule selection for `rule://` includes rulebook, always-apply, and registered TTSR rules (so a triggered TTSR rule can be re-read), but not rules that registered no condition and carry neither a description nor `alwaysApply`.
 4. Discovery warnings (`loadCapability("rules").warnings`) are produced but `createAgentSession` does not currently surface/log them in this path.
 
-*Verified against `dc3efeeef` on 2026-08-21.*
+*Verified against `632fd91c3b4e` on 2026-08-28.*

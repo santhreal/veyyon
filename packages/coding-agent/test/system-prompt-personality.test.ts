@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { resolveAvailablePersonalities } from "@veyyon/coding-agent/config/personality-resolver";
 import type { Personality } from "@veyyon/coding-agent/config/settings-schema";
-import { resolveAvailablePersonalities } from "@veyyon/coding-agent/personality/resolver";
 import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
 import { useTempHome } from "./helpers/temp-home";
 import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";

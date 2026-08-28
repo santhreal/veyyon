@@ -37,7 +37,7 @@ describe("license preservation", () => {
 				"docs/handbook/book/fonts/SOURCE-CODE-PRO-LICENSE.txt",
 				["Adobe Systems Incorporated", "SIL OPEN FONT LICENSE Version 1.1"],
 			],
-			["packages/coding-agent/src/markit/NOTICE", ["markit-ai", "@oharato/pdf2md-ts", "MIT License"]],
+			["packages/coding-agent/src/export/markit/NOTICE", ["markit-ai", "@oharato/pdf2md-ts", "MIT License"]],
 			[
 				"packages/utils/src/vendor/mermaid-ascii/NOTICE",
 				[
@@ -67,7 +67,7 @@ describe("license preservation", () => {
 			"crates/veyyon-natives/src/fonts/Silver.LICENSE",
 			"docs/handbook/book/fonts/OPEN-SANS-LICENSE.txt",
 			"docs/handbook/book/fonts/SOURCE-CODE-PRO-LICENSE.txt",
-			"packages/coding-agent/src/markit/NOTICE",
+			"packages/coding-agent/src/export/markit/NOTICE",
 			"packages/utils/src/vendor/mermaid-ascii/NOTICE",
 		] as const;
 		for (const path of requiredPaths) expect(notice).toContain(`\`${path}\``);

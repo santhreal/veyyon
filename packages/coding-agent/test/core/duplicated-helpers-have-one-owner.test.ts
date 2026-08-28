@@ -161,7 +161,7 @@ describe("parseJsonOrYamlByExtension", () => {
 	});
 
 	it("is what both config readers call, and neither defines its own", () => {
-		for (const file of ["lsp/config.ts", "dap/config.ts"]) {
+		for (const file of ["lsp/config.ts", "debug/dap/config.ts"]) {
 			expect(importsOf(file), file).toContain("@veyyon/utils");
 		}
 	});
@@ -222,7 +222,7 @@ describe("the DAP client's error rendering", () => {
 	 * the failure and one that says nothing. So the copies are gone rather than moved.
 	 */
 	it("goes through the shared owner, and no private copy remains", () => {
-		for (const file of ["dap/client.ts", "dap/session.ts"]) {
+		for (const file of ["debug/dap/client.ts", "debug/dap/session.ts"]) {
 			expect(importsOf(file), file).toContain("@veyyon/utils");
 		}
 	});
@@ -335,10 +335,10 @@ describe("branch.currentOrHead", () => {
 
 	it("is what both bundled commands call, and neither defines its own", async () => {
 		for (const file of [
-			"extensibility/custom-commands/bundled/review/index.ts",
-			"extensibility/custom-commands/bundled/ci-green/index.ts",
+			"extensibility/custom-commands/bundled/review.ts",
+			"extensibility/custom-commands/bundled/ci-green.ts",
 		]) {
-			expect(importsOf(file), file).toContain("../../../../utils/git");
+			expect(importsOf(file), file).toContain("../../../utils/git");
 		}
 	});
 });

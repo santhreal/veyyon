@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { buildGoalToolResponse, GoalTool } from "@veyyon/coding-agent/goals/goal-tool";
 import { completionBudgetReport, GoalRuntime } from "@veyyon/coding-agent/goals/runtime";
 import type { Goal, GoalModeState, GoalTokenUsage } from "@veyyon/coding-agent/goals/state";
-import { buildGoalToolResponse, GoalTool } from "@veyyon/coding-agent/goals/tools/goal-tool";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 
 function createUsage(overrides: Partial<GoalTokenUsage> = {}): GoalTokenUsage {

@@ -16,10 +16,11 @@
  * Both the section and the experimental flag come from the directory the rule
  * ships in, so the file tree is what a reviewer reads to know both.
  */
-import { registerProvider } from "../capability";
-import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../capability/rule";
-import type { LoadContext, LoadResult } from "../capability/types";
+
 import { BUILTIN_RULE_SOURCES, isExperimentalSection } from "./builtin-rules";
+import { registerProvider } from "./capability";
+import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "./capability/rule";
+import type { LoadContext, LoadResult } from "./capability/types";
 import { buildRuleFromMarkdown, createSourceMeta } from "./helpers";
 
 const DISPLAY_NAME = "Builtin Defaults";

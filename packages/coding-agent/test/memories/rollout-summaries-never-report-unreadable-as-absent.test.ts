@@ -24,7 +24,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { logger } from "@veyyon/utils";
-import { readRolloutSummaries } from "../../src/memories";
+import { readRolloutSummaries } from "../../src/memory/local";
 
 /** One captured `logger.warn` call: the message and its structured fields. */
 interface Warning {

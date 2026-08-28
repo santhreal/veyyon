@@ -15,20 +15,20 @@ import {
 	parseFrontmatter,
 	tryParseJson,
 } from "@veyyon/utils";
-import type { ExtensionModule } from "../capability/extension-module";
-import { invalidate as invalidateFsCache, readDirEntries, readFile } from "../capability/fs";
-import { parseRuleConditionAndScope, type Rule, type RuleFrontmatter } from "../capability/rule";
-import type { DiscoveredSkill, SkillFrontmatter } from "../capability/skill";
-import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
-import { type ManifestHolder, manifestFromPackageJson } from "../extensibility/manifest-key";
 import {
 	canonicalProjectRoot,
 	describeProjectExecutable,
 	describeRefusal,
 	ProjectTrust,
-} from "../security/project-trust";
+} from "../config/project-trust";
+import { type ManifestHolder, manifestFromPackageJson } from "../extensibility/manifest-key";
 import { type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
 import { normalizeToolNames, TOOL } from "../tools/builtin-names";
+import type { ExtensionModule } from "./capability/extension-module";
+import { invalidate as invalidateFsCache, readDirEntries, readFile } from "./capability/fs";
+import { parseRuleConditionAndScope, type Rule, type RuleFrontmatter } from "./capability/rule";
+import type { DiscoveredSkill, SkillFrontmatter } from "./capability/skill";
+import type { LoadContext, LoadResult, SourceMeta } from "./capability/types";
 
 import { buildPluginDirRoot } from "./plugin-dir-roots";
 

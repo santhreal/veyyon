@@ -118,10 +118,12 @@ import type { SessionContext } from "../session/session-context";
 import { getRecentSessions } from "../session/session-listing";
 import type { SessionManager } from "../session/session-manager";
 import type { ShakeMode } from "../session/shake-types";
+import { VibeSessionRegistry } from "../session/vibe-runtime";
 import { BUILTIN_SLASH_COMMAND_RESERVED_NAMES, buildTuiBuiltinSlashCommands } from "../slash-commands/builtin-registry";
 import { formatDurationCoarse, formatProviderName } from "../slash-commands/helpers/format";
 import type { SubcommandDef } from "../slash-commands/types";
-import { STTController, type SttState } from "../stt";
+import { STTController, type SttState } from "../speech/stt";
+import { vocalizer } from "../speech/tts/vocalizer";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "../system-prompt";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import type { LspStartupServerInfo } from "../tools";
@@ -129,7 +131,6 @@ import { hasForegroundBashWait, onForegroundBashWaitChange } from "../tools/bash
 import { type ResolveToolDetails, runResolveInvocation } from "../tools/resolve";
 import { todoMatchesAnyDescription } from "../tools/todo";
 import { ToolError } from "../tools/tool-errors";
-import { vocalizer } from "../tts/vocalizer";
 import {
 	paintRailMotion,
 	RAIL_IDLE_STEP_MS,
@@ -144,7 +145,6 @@ import { getEditorCommand, openInEditor } from "../utils/external-editor";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../utils/session-color";
 import { messageHasDisplayableThinking } from "../utils/thinking-display";
 import { popTerminalTitle, pushTerminalTitle, setSessionTerminalTitle } from "../utils/title-generator";
-import { VibeSessionRegistry } from "../vibe/runtime";
 import type { AssistantMessageComponent } from "./components/assistant-message";
 import type { BashExecutionComponent } from "./components/bash-execution";
 import { ChatBlock, type ChatBlockHost } from "./components/chat-block";

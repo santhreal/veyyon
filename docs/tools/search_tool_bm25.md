@@ -6,7 +6,7 @@
 - Entry: `packages/coding-agent/src/tools/search-tool-bm25.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/search-tool-bm25.md`
 - Key collaborators:
-  - `packages/coding-agent/src/tool-discovery/tool-index.ts`: discoverable-tool metadata and BM25 index/search.
+  - `packages/coding-agent/src/discovery/tool-index.ts`: discoverable-tool metadata and BM25 index/search.
   - `packages/coding-agent/src/session/agent-session.ts`: session discovery mode, corpus assembly, activation, cache invalidation.
   - `packages/coding-agent/src/sdk.ts`: initial hiding of discoverable built-ins and prompt-time discoverable summary.
   - `packages/coding-agent/src/tools/index.ts`: tool-session discovery hooks, essential/discoverable load modes, registry wiring.
@@ -50,7 +50,7 @@
 4. `query` is trimmed and validated; `limit` is defaulted/validated.
 5. `getDiscoverableToolSearchIndexForExecution()` fetches the cached generic search index from the session when available, otherwise rebuilds an index from the current discoverable-tool list.
 6. `getSelectedToolNames()` reads the current discovered selections so already-selected tools can be excluded from fresh results.
-7. `searchDiscoverableTools()` in `packages/coding-agent/src/tool-discovery/tool-index.ts` tokenizes the query, scores every document with BM25, sorts by descending score then `tool.name`, and returns up to `searchIndex.documents.length` results; `execute()` then filters already-selected names and slices to `limit`.
+7. `searchDiscoverableTools()` in `packages/coding-agent/src/discovery/tool-index.ts` tokenizes the query, scores every document with BM25, sorts by descending score then `tool.name`, and returns up to `searchIndex.documents.length` results; `execute()` then filters already-selected names and slices to `limit`.
 8. If any matches remain, `activateTools()` activates all matched tool names through `session.activateDiscoveredTools()` or legacy `activateDiscoveredMCPTools()`.
 9. `details` is assembled from the activated names, current selected names, corpus size, and formatted matches; `content` is reduced to the compact JSON summary from `buildSearchToolBm25Content()`.
 10. `searchToolBm25Renderer` renders either:
@@ -88,7 +88,7 @@
 - Renderer truncation widths:
   - label: `72` chars (`MATCH_LABEL_LEN`)
   - description: `96` chars (`MATCH_DESCRIPTION_LEN`)
-- BM25+ parameters in `packages/coding-agent/src/tool-discovery/tool-index.ts`:
+- BM25+ parameters in `packages/coding-agent/src/discovery/tool-index.ts`:
   - `BM25_K1 = 1.2`
   - `BM25_B = 0.75`
   - `BM25_DELTA = 1.0`
@@ -99,7 +99,7 @@
   - `serverName`: `2`
   - `summary`: `2`
   - each `schemaKey`: `1`
-- Summary fallback length for discoverable metadata: first `200` chars of `description` when no explicit summary exists (`getDiscoverableTool()` in `packages/coding-agent/src/tool-discovery/tool-index.ts`).
+- Summary fallback length for discoverable metadata: first `200` chars of `description` when no explicit summary exists (`getDiscoverableTool()` in `packages/coding-agent/src/discovery/tool-index.ts`).
 
 ## Errors
 - `execute()` throws `ToolError` for unavailable discovery hooks, disabled discovery mode, empty trimmed query, and non-positive/non-integer `limit`.

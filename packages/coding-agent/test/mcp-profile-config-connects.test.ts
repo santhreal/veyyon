@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
+import { clearCache as clearFsCache } from "@veyyon/coding-agent/discovery/capability/fs";
 import { loadAllMCPConfigs } from "@veyyon/coding-agent/mcp/config";
 import { MCPManager } from "@veyyon/coding-agent/mcp/manager";
 import type { McpConnectionStatusEvent } from "@veyyon/coding-agent/mcp/startup-events";

@@ -23,10 +23,10 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { VibeSessionRegistry } from "@veyyon/coding-agent/session/vibe-runtime";
 import * as executorModule from "@veyyon/coding-agent/task/executor";
 import type { AgentProgress, SingleResult } from "@veyyon/coding-agent/task/types";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { VibeSessionRegistry } from "@veyyon/coding-agent/vibe/runtime";
 import { makeToolSession } from "../helpers/tool-session";
 
 function createSession(options: { manager?: AsyncJobManager } = {}): ToolSession {

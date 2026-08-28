@@ -32,17 +32,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { loadCapability } from "@veyyon/coding-agent/discovery";
+import { PROFILE_AGENTS_GUIDANCE } from "@veyyon/coding-agent/discovery/agents-guidance";
 import {
 	captureRegistryForTests,
 	initializeWithSettings,
 	type RegistrySnapshot,
 	restoreRegistryForTests,
-} from "@veyyon/coding-agent/capability";
-import type { Rule } from "@veyyon/coding-agent/capability/rule";
-import { type SlashCommand, slashCommandCapability } from "@veyyon/coding-agent/capability/slash-command";
-import { Settings } from "@veyyon/coding-agent/config/settings";
-import { loadCapability } from "@veyyon/coding-agent/discovery";
-import { PROFILE_AGENTS_GUIDANCE } from "@veyyon/coding-agent/discovery/agents-guidance";
+} from "@veyyon/coding-agent/discovery/capability";
+import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
+import { type SlashCommand, slashCommandCapability } from "@veyyon/coding-agent/discovery/capability/slash-command";
 import { clearClaudePluginRootsCache } from "@veyyon/coding-agent/discovery/helpers";
 import { discoverCustomToolPaths } from "@veyyon/coding-agent/extensibility/custom-tools";
 import { discoverExtensionPaths } from "@veyyon/coding-agent/extensibility/extensions";

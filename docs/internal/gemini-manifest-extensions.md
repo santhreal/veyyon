@@ -9,8 +9,8 @@ It does **not** cover TypeScript/JavaScript extension module loading (`extension
 - [`packages/coding-agent/src/discovery/gemini.ts`](../../packages/coding-agent/src/discovery/gemini.ts)
 - [`packages/coding-agent/src/discovery/builtin.ts`](../../packages/coding-agent/src/discovery/builtin.ts)
 - [`packages/coding-agent/src/discovery/helpers.ts`](../../packages/coding-agent/src/discovery/helpers.ts)
-- [`packages/coding-agent/src/capability/extension.ts`](../../packages/coding-agent/src/capability/extension.ts)
-- [`packages/coding-agent/src/capability/index.ts`](../../packages/coding-agent/src/capability/index.ts)
+- [`packages/coding-agent/src/discovery/capability/extension.ts`](../../packages/coding-agent/src/discovery/capability/extension.ts)
+- [`packages/coding-agent/src/discovery/capability/index.ts`](../../packages/coding-agent/src/discovery/capability/index.ts)
 - [`packages/coding-agent/src/extensibility/extensions/loader.ts`](../../packages/coding-agent/src/extensibility/extensions/loader.ts)
 
 ---
@@ -178,4 +178,4 @@ Practical implication:
 
 This boundary is intentional in current implementation and explains why manifest discovery and executable module loading can diverge.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `632fd91c3b4e` on 2026-08-28.*

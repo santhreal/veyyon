@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { awaitStartupMarker } from "@veyyon/coding-agent/stt/recorder";
+import { awaitStartupMarker } from "@veyyon/coding-agent/speech/stt/recorder";
 
 /**
  * awaitStartupMarker abandons an in-flight read on timeout WITHOUT leaking an

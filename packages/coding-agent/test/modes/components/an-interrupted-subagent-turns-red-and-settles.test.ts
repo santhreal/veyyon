@@ -20,11 +20,11 @@
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "bun:test";
-import { IrcBus } from "@veyyon/coding-agent/irc/bus";
 import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
 import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/components/agent-transcript-viewer";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import { IrcBus } from "@veyyon/coding-agent/task/irc-bus";
 import type { TUI } from "@veyyon/tui";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 import { useFullColor } from "../../helpers/theme-assertions";

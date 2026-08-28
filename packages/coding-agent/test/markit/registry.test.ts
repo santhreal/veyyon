@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { StreamInfo } from "@veyyon/coding-agent/markit";
-import { CONVERTIBLE_EXTENSIONS, Markit } from "@veyyon/coding-agent/markit";
+import type { StreamInfo } from "@veyyon/coding-agent/export/markit";
+import { CONVERTIBLE_EXTENSIONS, Markit } from "@veyyon/coding-agent/export/markit";
 
 /**
  * The Markit registry routes a document buffer to the first converter whose

@@ -114,9 +114,9 @@ async function runSmokeTest(): Promise<void> {
 
 	const { smokeTestSyncWorker, startServer } = await import("@veyyon/stats");
 	const { smokeTestTinyTitleWorker } = await import("./tiny/title-client");
-	const { smokeTestSttWorker } = await import("./stt/asr-client");
-	const { smokeTestTtsWorker } = await import("./tts/tts-client");
-	const { smokeTestMnemopiEmbedWorker } = await import("./mnemopi/embed-client");
+	const { smokeTestSttWorker } = await import("./speech/stt/asr-client");
+	const { smokeTestTtsWorker } = await import("./speech/tts/tts-client");
+	const { smokeTestMnemopiEmbedWorker } = await import("./memory/mnemopi/embed-client");
 	const { smokeTestJsEvalWorker } = await import("./eval/js/context-manager");
 	// Smoke dependencies stay lazy so normal CLI startup does not load worker clients.
 	const { smokeTestDaemonBroker } = await import("./launch/client");
@@ -174,17 +174,17 @@ async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 		return true;
 	}
 	if (arg === STT_WORKER_ARG) {
-		const { startSttWorker } = await import("./stt/asr-worker");
+		const { startSttWorker } = await import("./speech/stt/asr-worker");
 		await runIpcSubprocessWorker(startSttWorker);
 		return true;
 	}
 	if (arg === TTS_WORKER_ARG) {
-		const { startTtsWorker } = await import("./tts/tts-worker");
+		const { startTtsWorker } = await import("./speech/tts/tts-worker");
 		await runIpcSubprocessWorker(startTtsWorker);
 		return true;
 	}
 	if (arg === MNEMOPI_EMBED_WORKER_ARG) {
-		const { startMnemopiEmbedWorker } = await import("./mnemopi/embed-worker");
+		const { startMnemopiEmbedWorker } = await import("./memory/mnemopi/embed-worker");
 		await runIpcSubprocessWorker(startMnemopiEmbedWorker);
 		return true;
 	}

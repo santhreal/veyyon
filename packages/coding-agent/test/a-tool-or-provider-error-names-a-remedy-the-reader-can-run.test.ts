@@ -33,11 +33,11 @@
 import { describe, expect, it } from "bun:test";
 import { parseGeminiCliCredentials } from "@veyyon/ai/providers/google-gemini-cli";
 import { commands } from "@veyyon/coding-agent/cli-commands";
-import { missingXAICredentialsMessage } from "@veyyon/coding-agent/lib/xai-http";
 import {
 	BUILTIN_SLASH_COMMAND_DECLARATIONS,
 	type BuiltinSlashCommandDeclaration,
 } from "@veyyon/coding-agent/slash-commands/builtin-declarations";
+import { missingXAICredentialsMessage } from "@veyyon/coding-agent/tools/xai-http";
 import { errorMessage } from "@veyyon/utils";
 
 const REGISTERED_COMMANDS: ReadonlySet<string> = new Set(

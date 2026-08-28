@@ -1,6 +1,7 @@
 // Gallery fixtures for the vibe worker tools (spawn, send, wait, list, kill).
+
+import type { VibeScreenSnapshot } from "../../session/vibe-runtime";
 import type { VibeToolDetails } from "../../tools/vibe";
-import type { VibeScreenSnapshot } from "../../vibe/runtime";
 import type { GalleryFixture } from "./types";
 
 /** Session activity timestamps are offsets from load time so gallery ages stay plausible. */

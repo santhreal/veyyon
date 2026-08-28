@@ -30,7 +30,7 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import type { SessionEntry as HostSessionEntry } from "@veyyon/agent-core/compaction/entries";
-import type { ManifestExtension } from "@veyyon/coding-agent/capability/extension";
+import type { ManifestExtension } from "@veyyon/coding-agent/discovery/capability/extension";
 import type { LoadedExtension } from "@veyyon/coding-agent/extensibility/extensions/types";
 import type { ExtensionRow } from "@veyyon/coding-agent/modes/components/extensions/types";
 import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
@@ -173,7 +173,7 @@ const UNIFIED = [
 	},
 	{
 		name: "ManifestExtension",
-		owner: "packages/coding-agent/src/capability/extension.ts",
+		owner: "packages/coding-agent/src/discovery/capability/extension.ts",
 		resolution: "one of three `Extension` declarations; this one is a Gemini-style extension directory on disk",
 	},
 	{
@@ -188,7 +188,7 @@ const UNIFIED = [
 	},
 	{
 		name: "DiscoveredCustomTool",
-		owner: "packages/coding-agent/src/capability/tool.ts",
+		owner: "packages/coding-agent/src/discovery/capability/tool.ts",
 		resolution:
 			"the same shape of bug as Extension: a tool-definition file on disk, renamed off the runtime `CustomTool` an extension registers",
 	},
@@ -256,7 +256,7 @@ const UNIFIED = [
 	},
 	{
 		name: "HindsightRecallResult",
-		owner: "packages/coding-agent/src/hindsight/client.ts",
+		owner: "packages/coding-agent/src/memory/hindsight/client.ts",
 		resolution:
 			"the memory backend is switchable, so both were in play at once and the index signature on this one meant handing it to mnemopi-shaped code typechecked",
 	},

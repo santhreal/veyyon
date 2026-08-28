@@ -7,14 +7,14 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage, getAgentDir, isEnoent, isRecord, logger } from "@veyyon/utils";
-import { registerProvider } from "../capability";
-import { readFile } from "../capability/fs";
-import { type Hook, hookCapability } from "../capability/hook";
-import { type MCPServer, mcpCapability } from "../capability/mcp";
-import { type DiscoveredSkill, skillCapability } from "../capability/skill";
-import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
-import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
-import type { LoadContext, LoadResult } from "../capability/types";
+import { registerProvider } from "./capability";
+import { readFile } from "./capability/fs";
+import { type Hook, hookCapability } from "./capability/hook";
+import { type MCPServer, mcpCapability } from "./capability/mcp";
+import { type DiscoveredSkill, skillCapability } from "./capability/skill";
+import { type SlashCommand, slashCommandCapability } from "./capability/slash-command";
+import { type DiscoveredCustomTool, toolCapability } from "./capability/tool";
+import type { LoadContext, LoadResult } from "./capability/types";
 import { expandEnvVarsDeep, unresolvedRefusedDownstream, warnUnresolved } from "./env-expansion";
 import {
 	type ClaudePluginRoot,

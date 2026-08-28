@@ -97,7 +97,7 @@ const GRANDFATHERED: Readonly<Record<string, number>> = {
 	"packages/coding-agent/src/advisor/__tests__/advisor.test.ts": 10,
 	"packages/coding-agent/src/eval/__tests__/agent-bridge.test.ts": 20,
 	"packages/coding-agent/src/eval/__tests__/completion-bridge.test.ts": 1,
-	"packages/coding-agent/src/hindsight/provider-boundary.test.ts": 2,
+	"packages/coding-agent/src/memory/hindsight/provider-boundary.test.ts": 2,
 	"packages/coding-agent/src/internal-urls/__tests__/ssh-protocol.test.ts": 4,
 	"packages/coding-agent/src/mcp/transports/stdio.test.ts": 1,
 	"packages/coding-agent/src/modes/components/custom-editor.test.ts": 1,
@@ -431,7 +431,6 @@ const GRANDFATHERED: Readonly<Record<string, number>> = {
 	"packages/tui/test/desktop-notify.test.ts": 4,
 	"packages/tui/test/loader.test.ts": 25,
 	"packages/tui/test/loop-watchdog-wiring.test.ts": 2,
-	"packages/tui/test/loop-watchdog.test.ts": 12,
 	"packages/tui/test/notifications-respect-window-focus.test.ts": 4,
 	"packages/tui/test/notifications.test.ts": 4,
 	"packages/utils/test/eval-prompts-override-replaces-registry-text.test.ts": 2,
@@ -439,6 +438,7 @@ const GRANDFATHERED: Readonly<Record<string, number>> = {
 	"packages/utils/test/frontmatter.test.ts": 3,
 	"packages/utils/test/fs-optional-strict-twins.test.ts": 3,
 	"packages/utils/test/issue-935-repro.test.ts": 1,
+	"packages/utils/test/loop-watchdog.test.ts": 12,
 };
 
 /** Path as the ledger spells it: repo-relative, forward slashes, every platform. */

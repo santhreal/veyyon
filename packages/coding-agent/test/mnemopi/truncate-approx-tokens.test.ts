@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { truncateApproxTokens } from "@veyyon/coding-agent/mnemopi/config";
+import { truncateApproxTokens } from "@veyyon/coding-agent/memory/mnemopi/config";
 
 /**
  * truncateApproxTokens caps a string to an approximate token budget using the 4-chars-per-token

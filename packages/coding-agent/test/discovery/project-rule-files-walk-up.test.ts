@@ -33,8 +33,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { loadCapability } from "@veyyon/coding-agent/capability";
-import { type ContextFile, contextFileCapability } from "@veyyon/coding-agent/capability/context-file";
+import { loadCapability } from "@veyyon/coding-agent/discovery/capability";
+import { type ContextFile, contextFileCapability } from "@veyyon/coding-agent/discovery/capability/context-file";
 import { loadProjectContextFiles } from "@veyyon/coding-agent/system-prompt";
 import { removeWithRetries } from "@veyyon/utils";
 

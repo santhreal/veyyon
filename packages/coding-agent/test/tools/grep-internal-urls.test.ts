@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as capability from "@veyyon/coding-agent/capability";
-import type { CapabilityResult } from "@veyyon/coding-agent/capability/types";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import * as capability from "@veyyon/coding-agent/discovery/capability";
+import type { CapabilityResult } from "@veyyon/coding-agent/discovery/capability/types";
 import { resetActiveSkillsForTests, setActiveSkills } from "@veyyon/coding-agent/extensibility/skills";
 import {
 	type InternalResource,

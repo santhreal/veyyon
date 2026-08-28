@@ -10,17 +10,19 @@ import type { InMemorySnapshotStore } from "@veyyon/hashline";
 import { logger } from "@veyyon/utils";
 import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL, type ArgotSession } from "argot";
 import type { AsyncJobManager } from "../async/job-manager";
-import type { ContextFile } from "../capability/context-file";
-import type { Rule } from "../capability/rule";
 import type { PromptTemplate } from "../config/prompt-templates";
 import type { Settings } from "../config/settings";
+import type { ContextFile } from "../discovery/capability/context-file";
+import type { Rule } from "../discovery/capability/rule";
+import { resolveEffectiveToolDiscoveryMode } from "../discovery/mode";
+import type { DiscoverableTool, DiscoverableToolSearchIndex } from "../discovery/tool-index";
 import type { ToolPathWithSource } from "../extensibility/custom-tools";
 import type { Skill } from "../extensibility/skills";
 import type { GoalModeState, GoalRuntime } from "../goals";
-import type { HindsightSessionState } from "../hindsight/state";
 import type { LocalProtocolOptions } from "../internal-urls";
 import type { MCPManager } from "../mcp";
-import type { MnemopiSessionState } from "../mnemopi/state";
+import type { HindsightSessionState } from "../memory/hindsight/state";
+import type { MnemopiSessionState } from "../memory/mnemopi/state";
 import type { PlanModeState } from "../plan-mode/state";
 import type { AgentRegistry } from "../registry/agent-registry";
 import type { ArtifactManager } from "../session/artifacts";
@@ -33,8 +35,6 @@ import type { AgentOutputManager } from "../task/output-manager";
 import { delegationEnabled, resolveSessionMaxNestedSpawnDepth } from "../task/subagent-settings";
 import { canSpawnAtDepth } from "../task/types";
 import type { ConfiguredThinkingLevel } from "../thinking";
-import { resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
-import type { DiscoverableTool, DiscoverableToolSearchIndex } from "../tool-discovery/tool-index";
 import type { EventBus } from "../utils/event-bus";
 import type { WorkspaceTree } from "../workspace-tree";
 import { type BuiltinToolName, type HiddenToolName, normalizeToolNames, TOOL } from "./builtin-names";
@@ -104,7 +104,7 @@ export type {
 	DiscoverableToolSearchIndex,
 	DiscoverableToolSearchResult,
 	DiscoverableToolSource,
-} from "../tool-discovery/tool-index";
+} from "../discovery/tool-index";
 
 /**
  * A late LSP diagnostics result that arrived after the edit/write tool already
@@ -382,7 +382,7 @@ export interface ToolSession {
 	isToolDiscoveryEnabled?: () => boolean;
 	/** Get all hidden-but-discoverable tools for search_tool_bm25 prompts. */
 	getDiscoverableTools?: (filter?: {
-		source?: import("../tool-discovery/tool-index").DiscoverableToolSource;
+		source?: import("../discovery/tool-index").DiscoverableToolSource;
 	}) => DiscoverableTool[];
 	/** Get the cached generic discoverable search index. */
 	getDiscoverableToolSearchIndex?: () => DiscoverableToolSearchIndex;
@@ -533,7 +533,7 @@ export const HIDDEN_TOOLS: Record<HiddenToolName, ToolFactory> = {
 	report_finding: async () => (await import("./review")).reportFindingTool,
 	report_tool_issue: async s => (await import("./report-tool-issue")).createReportToolIssueTool(s),
 	resolve: async s => new (await import("./resolve")).ResolveTool(s),
-	goal: async s => new (await import("../goals/tools/goal-tool")).GoalTool(s),
+	goal: async s => new (await import("../goals/goal-tool")).GoalTool(s),
 };
 
 export type ToolName = BuiltinToolName;

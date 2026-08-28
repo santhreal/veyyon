@@ -22,7 +22,7 @@ import {
 	type VibeSendOutcome,
 	VibeSessionRegistry,
 	type VibeWaitOutcome,
-} from "../vibe/runtime";
+} from "../session/vibe-runtime";
 import type { Tool, ToolSession } from "./index";
 
 export const VIBE_TOOL_NAMES = ["vibe_spawn", "vibe_send", "vibe_wait", "vibe_kill", "vibe_list"] as const;

@@ -6,7 +6,7 @@
 import type { Component } from "@veyyon/tui";
 import { editToolRenderer } from "../edit/renderer";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { goalToolRenderer } from "../goals/tools/goal-tool";
+import { goalToolRenderer } from "../goals/goal-tool";
 import { lspToolRenderer } from "../lsp/render";
 import type { Theme } from "../modes/theme/theme";
 import { taskToolRenderer } from "../task/renderer";

@@ -9,7 +9,7 @@ This document covers the current Time Traveling Stream Rules (TTSR) runtime path
 - [`../src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts)
 - [`../src/session/session-manager.ts`](../../packages/coding-agent/src/session/session-manager.ts)
 - [`../src/prompts/rules/ttsr-interrupt.md`](../../packages/coding-agent/src/prompts/rules/ttsr-interrupt.md)
-- [`../src/capability/index.ts`](../../packages/coding-agent/src/capability/index.ts)
+- [`../src/capability/index.ts`](../../packages/coding-agent/src/discovery/capability/index.ts)
 - [`../src/extensibility/extensions/types.ts`](../../packages/coding-agent/src/extensibility/extensions/types.ts)
 - [`../src/extensibility/hooks/types.ts`](../../packages/coding-agent/src/extensibility/hooks/types.ts)
 - [`../src/extensibility/custom-tools/types.ts`](../../packages/coding-agent/src/extensibility/custom-tools/types.ts)
@@ -266,4 +266,4 @@ During the timer window, state can change (user interruption, mode actions, addi
 - `warmupMatches` (default 1) keeps a rule silent until it has matched in that many distinct streams; a released claim restores the count, a delivered one starts it over.
 - An experimental rule (one shipping in `builtin-rules/experimental/`) is dropped before registration unless named in `ttsr.experimentalRules`, and naming it in `ttsr.disabledRules` as well keeps it off.
 
-*Verified against `dc3efeeef` on 2026-08-21.*
+*Verified against `632fd91c3b4e` on 2026-08-28.*

@@ -26,20 +26,20 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { listCapabilities, loadCapability } from "@veyyon/coding-agent/capability";
-import type { ContextFile } from "@veyyon/coding-agent/capability/context-file";
-import type { MCPServer } from "@veyyon/coding-agent/capability/mcp";
-import type { Rule } from "@veyyon/coding-agent/capability/rule";
-import type { SSHHost } from "@veyyon/coding-agent/capability/ssh";
-import type { SourceMeta } from "@veyyon/coding-agent/capability/types";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { listCapabilities, loadCapability } from "@veyyon/coding-agent/discovery/capability";
+import type { ContextFile } from "@veyyon/coding-agent/discovery/capability/context-file";
+import type { MCPServer } from "@veyyon/coding-agent/discovery/capability/mcp";
+import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
+import type { SSHHost } from "@veyyon/coding-agent/discovery/capability/ssh";
+import type { SourceMeta } from "@veyyon/coding-agent/discovery/capability/types";
 import "@veyyon/coding-agent/discovery";
 import {
 	captureRegistryForTests,
 	initializeWithSettings,
 	type RegistrySnapshot,
 	restoreRegistryForTests,
-} from "@veyyon/coding-agent/capability";
+} from "@veyyon/coding-agent/discovery/capability";
 import { scanForeignConfig } from "@veyyon/coding-agent/discovery/import-scan";
 import { loadSectionOverrideFiles } from "@veyyon/coding-agent/system-prompt-builder/section-overrides";
 import { discoverAgents } from "@veyyon/coding-agent/task/discovery";

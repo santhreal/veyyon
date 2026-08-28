@@ -16,11 +16,16 @@ import { AstMatchStrictness, astMatch, FileType, type GlobMatch, glob } from "@v
 import { collapseWhitespace, errorMessage, escapeRegExp, logger, truncate } from "@veyyon/utils";
 import { getProjectDir } from "@veyyon/utils/dirs";
 import chalk from "chalk";
-import { type Rule, ruleCapability } from "../capability/rule";
-import { type BucketRulesOptions, bucketRules, resolveRuleLevers, ruleIsEnabled } from "../capability/rule-buckets";
 import { Settings } from "../config/settings";
 import type { TtsrSettings } from "../config/settings-schema";
 import { initializeWithSettings, loadCapability } from "../discovery";
+import { type Rule, ruleCapability } from "../discovery/capability/rule";
+import {
+	type BucketRulesOptions,
+	bucketRules,
+	resolveRuleLevers,
+	ruleIsEnabled,
+} from "../discovery/capability/rule-buckets";
 import { buildRuleFromMarkdown, createSourceMeta } from "../discovery/helpers";
 import type { TtsrManager } from "../export/ttsr";
 

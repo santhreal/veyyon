@@ -26,6 +26,7 @@ import {
 } from "../../config/model-resolver";
 import { DEFAULT_MODEL_SLOT, getRoleInfo, isDefaultModelSlot } from "../../config/model-roles";
 import { applySamplingKnob, optionalNumber, toNumberOrUndefined } from "../../config/optional-number";
+import { resolveAvailablePersonalities } from "../../config/personality-resolver";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
 import { disableProvider, enableProvider } from "../../discovery";
@@ -43,7 +44,6 @@ import {
 	theme,
 } from "../../modes/theme/theme";
 import type { InteractiveModeContext } from "../../modes/types";
-import { resolveAvailablePersonalities } from "../../personality/resolver";
 import {
 	accountDisplayLabel,
 	applyCredentialHealth,

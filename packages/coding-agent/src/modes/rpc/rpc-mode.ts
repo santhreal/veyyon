@@ -15,7 +15,7 @@ import type { Model } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { isZodSchema, zodToWireSchema } from "@veyyon/ai/utils/schema";
 import { $env, errorMessage, isRecord, readJsonl, Snowflake } from "@veyyon/utils";
-import { reset as resetCapabilities } from "../../capability";
+import { reset as resetCapabilities } from "../../discovery/capability";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
 import {
 	type ExtensionUIContext,

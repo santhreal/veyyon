@@ -11,10 +11,10 @@
  * Enter now hands the main view to that agent's live session.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { IrcBus } from "@veyyon/coding-agent/irc/bus";
 import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
+import { IrcBus } from "@veyyon/coding-agent/task/irc-bus";
 import { getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 

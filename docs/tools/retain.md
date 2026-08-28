@@ -6,18 +6,18 @@
 - Entry: `packages/coding-agent/src/tools/memory-retain.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/retain.md`
 - Hindsight collaborators:
-  - `packages/coding-agent/src/hindsight/state.ts`: per-session queue, flush, auto-retain.
-  - `packages/coding-agent/src/hindsight/backend.ts`: session bootstrap, prompt injection, subagent aliasing.
-  - `packages/coding-agent/src/hindsight/bank.ts`: bank id derivation, tag scoping, first-use bank/mission setup.
-  - `packages/coding-agent/src/hindsight/client.ts`: HTTP `retain` / `retainBatch` calls.
-  - `packages/coding-agent/src/hindsight/content.ts`: retention transcript shaping, memory-tag stripping.
-  - `packages/coding-agent/src/hindsight/mental-models.ts`: bank-scoped mental-model seeding and cache rendering.
-  - `packages/coding-agent/src/hindsight/seeds.json`: built-in mental-model seed definitions.
-  - `packages/coding-agent/src/hindsight/transcript.ts`: extracts user/assistant turns for auto-retain.
+  - `packages/coding-agent/src/memory/hindsight/state.ts`: per-session queue, flush, auto-retain.
+  - `packages/coding-agent/src/memory/hindsight/backend.ts`: session bootstrap, prompt injection, subagent aliasing.
+  - `packages/coding-agent/src/memory/hindsight/bank.ts`: bank id derivation, tag scoping, first-use bank/mission setup.
+  - `packages/coding-agent/src/memory/hindsight/client.ts`: HTTP `retain` / `retainBatch` calls.
+  - `packages/coding-agent/src/memory/hindsight/content.ts`: retention transcript shaping, memory-tag stripping.
+  - `packages/coding-agent/src/memory/hindsight/mental-models.ts`: bank-scoped mental-model seeding and cache rendering.
+  - `packages/coding-agent/src/memory/hindsight/seeds.json`: built-in mental-model seed definitions.
+  - `packages/coding-agent/src/memory/hindsight/transcript.ts`: extracts user/assistant turns for auto-retain.
 - Mnemopi collaborators:
-  - `packages/coding-agent/src/mnemopi/backend.ts`: local backend bootstrap, prompt injection, subagent aliasing, enqueue/clear.
-  - `packages/coding-agent/src/mnemopi/state.ts`: scoped recall/retain state and local writes.
-  - `packages/coding-agent/src/mnemopi/config.ts`: local SQLite path, bank, scoping, provider settings.
+  - `packages/coding-agent/src/memory/mnemopi/backend.ts`: local backend bootstrap, prompt injection, subagent aliasing, enqueue/clear.
+  - `packages/coding-agent/src/memory/mnemopi/state.ts`: scoped recall/retain state and local writes.
+  - `packages/coding-agent/src/memory/mnemopi/config.ts`: local SQLite path, bank, scoping, provider settings.
   - `packages/mnemopi/src/core/memory.ts`: local memory runtime used by `remember(...)`.
 
 ## Inputs
@@ -47,7 +47,7 @@ Mnemopi:
 3. If the backend is `mnemopi`:
    - it fetches `session.getMnemopiSessionState()` and throws if the backend was not started;
    - for each item, it calls `state.rememberScoped(item.content, ...)` with `source: "coding-agent-retain"`, `importance: 0.75`, `scope: "bank"`, `extract: true`, `extractEntities: true`, `veracity: "tool"`, `memoryType: "fact"`, and metadata `{ session_id, cwd, context, tool: "retain" }`;
-   - writes go to the scoped retain bank selected by `packages/coding-agent/src/mnemopi/config.ts`.
+   - writes go to the scoped retain bank selected by `packages/coding-agent/src/memory/mnemopi/config.ts`.
 4. If the backend is `hindsight`:
    - it fetches `session.getHindsightSessionState()` and throws if the backend was not started;
    - each input item is handed to `HindsightSessionState.enqueueRetain(...)`;
@@ -126,5 +126,5 @@ Mnemopi:
 - Hindsight mental-model bootstrap lives in the shared backend: `HindsightSessionState.runMentalModelLoad(...)` optionally resolves seeds, creates missing models, then caches a rendered `<mental_models>` block for prompt injection.
 - Built-in Hindsight seeds are `user-preferences`, `project-conventions`, and `project-decisions`. `projectTagged: true` seeds inherit the active scope's retain tags; untagged seeds read the whole bank.
 - Hindsight mental-model defaults: `hindsight.mentalModelsEnabled = true`, `hindsight.mentalModelAutoSeed = true`, `hindsight.mentalModelRefreshIntervalMs = 5 * 60 * 1000`, `hindsight.mentalModelMaxRenderChars = 16_000`. First-turn loading waits up to `MENTAL_MODEL_FIRST_TURN_DEADLINE_MS = 1500`.
-- Hindsight seed lifecycle is create-only. Changing `packages/coding-agent/src/hindsight/seeds.json` does not mutate existing server-side models.
+- Hindsight seed lifecycle is create-only. Changing `packages/coding-agent/src/memory/hindsight/seeds.json` does not mutate existing server-side models.
 - `recall.md` and `reflect.md` rely on the same backend selection and scoping behavior.

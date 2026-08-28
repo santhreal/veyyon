@@ -29,13 +29,13 @@ import { USER_INTERRUPT_LABEL } from "../../session/messages";
 import { executeBuiltinSlashCommand } from "../../slash-commands/builtin-registry";
 import { isSensitiveSlashCommand, normalizeSubmittedPrompt } from "../../slash-commands/helpers/parse";
 import type { TuiSlashCommandHostContext } from "../../slash-commands/types";
+import { vocalizer } from "../../speech/tts/vocalizer";
 import { isTinyTitleLocalModelKey } from "../../tiny/models";
 import { isLowSignalTitleInput } from "../../tiny/text";
 import { tinyTitleClient } from "../../tiny/title-client";
 import type { TinyTitleProgressEvent } from "../../tiny/title-protocol";
 import { requestManualBackground } from "../../tools/bash-foreground-registry";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../../tools/render-utils";
-import { vocalizer } from "../../tts/vocalizer";
 import {
 	copyToClipboard,
 	readImageFromClipboard,

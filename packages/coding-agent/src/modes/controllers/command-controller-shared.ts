@@ -7,7 +7,7 @@
  * wording, and add-flow logic stay in the per-controller files because they
  * diverge in workflow.
  */
-import type { SourceMeta } from "../../capability/types";
+import type { SourceMeta } from "../../discovery/capability/types";
 import { shortenPath } from "../../tools/render-utils";
 import { mountTranscriptBlock, transcriptBlockText } from "../components/transcript-block-chrome";
 import { TranscriptBlock } from "../components/transcript-container";

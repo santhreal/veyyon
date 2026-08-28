@@ -21,7 +21,7 @@ export {
 	type AriaSnapshotOptions,
 	buildAriaSnapshotScript,
 	parseAriaRefSelector,
-} from "./browser/aria/aria-snapshot";
+} from "./browser/aria-snapshot";
 export { cmuxSnapshotToObservation, mapWaitUntil, resolveCmuxKind, serializeEval } from "./browser/cmux/rpc";
 export { CmuxSocketClient } from "./browser/cmux/socket-client";
 export { extractReadableFromHtml, type ReadableFormat, type ReadableResult } from "./browser/readable";

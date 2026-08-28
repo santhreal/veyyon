@@ -17,20 +17,20 @@ import {
 	looksLikeFilePath,
 	prompt,
 } from "@veyyon/utils";
-import { contextFileCapability } from "./capability/context-file";
 import { findConfigFile } from "./config";
-import type { SkillsSettings } from "./config/settings";
-import { type ContextFile, loadCapability } from "./discovery";
-import { ensureManagedAgentsFilesOnStartup, getGlobalAgentsPath } from "./discovery/agents-guidance";
-import { expandAtImports } from "./discovery/at-imports";
-import { loadSkills, type Skill } from "./extensibility/skills";
-import { hasObsidian } from "./internal-urls/vault-protocol";
 import {
 	BUILTIN_PERSONALITIES,
 	DEFAULT_PERSONALITY_NAME,
 	type ResolvedPersonality,
 	resolvePersonality,
-} from "./personality/resolver";
+} from "./config/personality-resolver";
+import type { SkillsSettings } from "./config/settings";
+import { type ContextFile, loadCapability } from "./discovery";
+import { ensureManagedAgentsFilesOnStartup, getGlobalAgentsPath } from "./discovery/agents-guidance";
+import { expandAtImports } from "./discovery/at-imports";
+import { contextFileCapability } from "./discovery/capability/context-file";
+import { loadSkills, type Skill } from "./extensibility/skills";
+import { hasObsidian } from "./internal-urls/vault-protocol";
 import { assertEvalPromptOverrideIdsExist } from "./prompts/eval-overrides";
 import { sessionPrompts } from "./prompts/session/rows";
 import {

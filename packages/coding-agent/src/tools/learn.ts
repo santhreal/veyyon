@@ -3,7 +3,7 @@ import { errorMessage } from "@veyyon/utils";
 import { type } from "arktype";
 import { sanitizeSkillName, writeManagedSkill } from "../autolearn/managed-skills";
 import { isNameClaimedByAuthoredSkill } from "../extensibility/skills";
-import { localBackend } from "../memory-backend/local-backend";
+import { localBackend } from "../memory/local-backend";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from ".";
 

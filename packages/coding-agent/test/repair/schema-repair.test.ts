@@ -9,7 +9,7 @@ import {
 	MAX_REPAIR_INPUT_BYTES,
 	planAliasKeyRepairs,
 	repairToolCallArguments,
-} from "@veyyon/coding-agent/repair/schema-repair";
+} from "@veyyon/coding-agent/tools/repair/schema-repair";
 import { type } from "arktype";
 
 const sampleTool: Tool = {

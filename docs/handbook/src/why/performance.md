@@ -4,7 +4,7 @@ Agent execution latency is composed of model generation latency, tool execution 
 
 ## Retry bounds
 
-Tool calls or edits that fail schema validation or patch application require additional model turns. Schema repair on tool arguments and patch validation on edits catch structural issues before execution. Implementation: `packages/coding-agent/src/repair/`, `@veyyon/hashline`.
+Tool calls or edits that fail schema validation or patch application require additional model turns. Schema repair on tool arguments and patch validation on edits catch structural issues before execution. Implementation: `packages/coding-agent/src/tools/repair/`, `@veyyon/hashline`.
 
 ## Edit path
 

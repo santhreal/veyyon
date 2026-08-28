@@ -14,11 +14,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { IrcBus, type IrcLogEntry, type IrcMessage } from "@veyyon/coding-agent/irc/bus";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { IrcBus, type IrcLogEntry, type IrcMessage } from "@veyyon/coding-agent/task/irc-bus";
 import { TempDir } from "@veyyon/utils";
 
 /** A recipient that accepts delivery and reports the outcome the test asks for. */

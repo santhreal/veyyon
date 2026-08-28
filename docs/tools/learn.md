@@ -6,7 +6,7 @@
 - Entry: `packages/coding-agent/src/tools/learn.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/learn.md`
 - Managed-skill helper: `packages/coding-agent/src/autolearn/managed-skills.ts`
-- Local memory backend: `packages/coding-agent/src/memory-backend/local-backend.ts`
+- Local memory backend: `packages/coding-agent/src/memory/local-backend.ts`
 
 ## Inputs
 

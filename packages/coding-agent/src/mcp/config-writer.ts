@@ -6,7 +6,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { atomicWriteFile, isEnoent, withFileLock } from "@veyyon/utils";
-import { invalidate as invalidateFsCache } from "../capability/fs";
+import { invalidate as invalidateFsCache } from "../discovery/capability/fs";
 import { MCP_CONFIG_SCHEMA_URL, type MCPConfigFile, type MCPServerConfig } from "./types";
 import { validateServerConfig } from "./validate";
 

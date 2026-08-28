@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule } from "@veyyon/coding-agent/capability/rule";
-import { bucketRules } from "@veyyon/coding-agent/capability/rule-buckets";
+import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule } from "@veyyon/coding-agent/discovery/capability/rule";
+import { bucketRules } from "@veyyon/coding-agent/discovery/capability/rule-buckets";
 import { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
 
 function source(provider: string): Rule["_source"] {

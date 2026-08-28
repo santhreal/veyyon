@@ -43,7 +43,7 @@ Edge cases:
 - An empty or whitespace-only personality file is treated as absent: the next tier (or the built-in) is used instead, so the block is never emitted empty.
 - Setting `personality` to a name that resolves to nothing (no built-in, user, or project file) falls back to `default` and prints a visible warning; the `<personality>` block is never silently emitted empty for a real (non-`none`) request.
 
-See `packages/coding-agent/src/personality/resolver.ts` for the resolver implementation.
+See `packages/coding-agent/src/config/personality-resolver.ts` for the resolver implementation.
 
 ## Boundaries
 

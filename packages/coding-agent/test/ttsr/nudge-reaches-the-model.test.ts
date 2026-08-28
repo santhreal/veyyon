@@ -35,10 +35,14 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getCapability } from "@veyyon/coding-agent/capability";
-import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "@veyyon/coding-agent/capability/rule";
-import type { LoadContext } from "@veyyon/coding-agent/capability/types";
 import type { TtsrSettings } from "@veyyon/coding-agent/config/settings";
+import { getCapability } from "@veyyon/coding-agent/discovery/capability";
+import {
+	BUILTIN_DEFAULTS_PROVIDER_ID,
+	type Rule,
+	ruleCapability,
+} from "@veyyon/coding-agent/discovery/capability/rule";
+import type { LoadContext } from "@veyyon/coding-agent/discovery/capability/types";
 import { buildRuleFromMarkdown } from "@veyyon/coding-agent/discovery/helpers";
 import { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
 import { prompt } from "@veyyon/utils";

@@ -299,7 +299,7 @@ describe("the naming module has one owner", () => {
 			"packages/coding-agent/src/session",
 			"packages/coding-agent/src/advisor",
 			"packages/coding-agent/src/internal-urls",
-			"packages/coding-agent/src/memories",
+			"packages/coding-agent/src/memory",
 			"packages/stats/src",
 		];
 		const offenders: string[] = [];

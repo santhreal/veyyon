@@ -2,8 +2,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getAgentDir, getProjectDir } from "@veyyon/utils";
-import { findRepoRoot } from "./capability/fs";
 import { getConfigDirPaths } from "./config";
+import { findRepoRoot } from "./discovery/capability/fs";
 
 export type LegacyPromptFileKind = "append" | "system";
 

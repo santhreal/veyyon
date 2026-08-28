@@ -5,16 +5,6 @@
 import * as path from "node:path";
 import { getMCPConfigPath, logger } from "@veyyon/utils";
 import { fuzzyMatch } from "@veyyon/utils/fuzzy";
-import type { ContextFile } from "../../../capability/context-file";
-import type { ExtensionModule } from "../../../capability/extension-module";
-import type { Hook } from "../../../capability/hook";
-import type { MCPServer } from "../../../capability/mcp";
-import type { Prompt } from "../../../capability/prompt";
-import type { Rule } from "../../../capability/rule";
-import type { DiscoveredSkill } from "../../../capability/skill";
-import type { SlashCommand } from "../../../capability/slash-command";
-import type { DiscoveredCustomTool } from "../../../capability/tool";
-import type { SourceMeta } from "../../../capability/types";
 import {
 	disableProvider,
 	enableProvider,
@@ -22,6 +12,16 @@ import {
 	isProviderEnabled,
 	loadCapability,
 } from "../../../discovery";
+import type { ContextFile } from "../../../discovery/capability/context-file";
+import type { ExtensionModule } from "../../../discovery/capability/extension-module";
+import type { Hook } from "../../../discovery/capability/hook";
+import type { MCPServer } from "../../../discovery/capability/mcp";
+import type { Prompt } from "../../../discovery/capability/prompt";
+import type { Rule } from "../../../discovery/capability/rule";
+import type { DiscoveredSkill } from "../../../discovery/capability/skill";
+import type { SlashCommand } from "../../../discovery/capability/slash-command";
+import type { DiscoveredCustomTool } from "../../../discovery/capability/tool";
+import type { SourceMeta } from "../../../discovery/capability/types";
 import { readDisabledServers, readEnabledServers } from "../../../mcp/config-writer";
 import type {
 	DashboardState,

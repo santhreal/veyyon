@@ -6,11 +6,11 @@
 - Entry: `packages/coding-agent/src/tools/memory-reflect.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/reflect.md`
 - Hindsight collaborators:
-  - `packages/coding-agent/src/hindsight/bank.ts`: best-effort first-use bank/mission setup (`ensureBankExists`).
-  - `packages/coding-agent/src/hindsight/state.ts`: session state, shared bank scope, recall/reflect config.
-  - `packages/coding-agent/src/hindsight/client.ts`: HTTP `reflect` call and error mapping.
+  - `packages/coding-agent/src/memory/hindsight/bank.ts`: best-effort first-use bank/mission setup (`ensureBankExists`).
+  - `packages/coding-agent/src/memory/hindsight/state.ts`: session state, shared bank scope, recall/reflect config.
+  - `packages/coding-agent/src/memory/hindsight/client.ts`: HTTP `reflect` call and error mapping.
 - Mnemopi collaborators:
-  - `packages/coding-agent/src/mnemopi/state.ts`: scoped local recall and context formatting.
+  - `packages/coding-agent/src/memory/mnemopi/state.ts`: scoped local recall and context formatting.
   - `docs/tools/retain.md`: shared backend, storage, scoping, and mental-model behavior.
 
 ## Inputs

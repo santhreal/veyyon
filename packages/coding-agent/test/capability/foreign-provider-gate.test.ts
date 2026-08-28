@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { FOREIGN_PROVIDER_IDS, getForeignProviderIds } from "@veyyon/coding-agent/capability";
+import { FOREIGN_PROVIDER_IDS, getForeignProviderIds } from "@veyyon/coding-agent/discovery/capability";
 
 /**
  * FOREIGN_PROVIDER_IDS is the exact set of discovery providers gated behind

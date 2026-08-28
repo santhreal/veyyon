@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { IrcBus } from "@veyyon/coding-agent/irc/bus";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import { IrcBus } from "@veyyon/coding-agent/task/irc-bus";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { IrcTool } from "@veyyon/coding-agent/tools/irc";
 import { makeToolSession } from "../helpers/tool-session";

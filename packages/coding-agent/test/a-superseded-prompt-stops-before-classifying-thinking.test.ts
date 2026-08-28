@@ -24,7 +24,6 @@ import { Agent } from "@veyyon/agent-core";
 import { createMockModel } from "@veyyon/ai/providers/mock";
 import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
-import * as classifier from "@veyyon/coding-agent/auto-thinking/classifier";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions";
@@ -32,6 +31,7 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
+import * as classifier from "@veyyon/coding-agent/thinking/auto-classifier";
 import { TempDir } from "@veyyon/utils";
 
 describe("a prompt superseded inside before_agent_start", () => {

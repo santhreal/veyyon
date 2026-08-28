@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { materializeEmbeddedMupdf } from "@veyyon/coding-agent/markit/converters/pdf/extract";
+import { materializeEmbeddedMupdf } from "@veyyon/coding-agent/export/markit/converters/pdf/extract";
 import { getAgentDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 import { guardDestructivePath } from "../../../utils/test/helpers/destructive-guard";

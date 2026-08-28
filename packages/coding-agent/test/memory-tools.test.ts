@@ -11,17 +11,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { HindsightApi } from "@veyyon/coding-agent/hindsight/client";
-import type { HindsightConfig } from "@veyyon/coding-agent/hindsight/config";
+import { HindsightApi } from "@veyyon/coding-agent/memory/hindsight/client";
+import type { HindsightConfig } from "@veyyon/coding-agent/memory/hindsight/config";
 import {
 	HINDSIGHT_RETAIN_BATCH_SIZE,
 	HindsightSessionState,
 	MEMORY_RETAIN_MAX_BYTES,
 	MEMORY_RETAIN_MAX_ITEM_BYTES,
 	MEMORY_RETAIN_MAX_ITEMS,
-} from "@veyyon/coding-agent/hindsight/state";
-import { mnemopiBackend } from "@veyyon/coding-agent/mnemopi/backend";
-import { loadMnemopiConfig, type MnemopiBackendConfig } from "@veyyon/coding-agent/mnemopi/config";
+} from "@veyyon/coding-agent/memory/hindsight/state";
+import { mnemopiBackend } from "@veyyon/coding-agent/memory/mnemopi/backend";
+import { loadMnemopiConfig, type MnemopiBackendConfig } from "@veyyon/coding-agent/memory/mnemopi/config";
 import {
 	getMnemopiScopedDbPaths,
 	getMnemopiSessionState,
@@ -29,7 +29,7 @@ import {
 	loadMnemopiCore,
 	MnemopiSessionState,
 	setMnemopiSessionState,
-} from "@veyyon/coding-agent/mnemopi/state";
+} from "@veyyon/coding-agent/memory/mnemopi/state";
 import type { ToolSession } from "@veyyon/coding-agent/tools/index";
 import { MemoryEditTool } from "@veyyon/coding-agent/tools/memory-edit";
 import { MemoryRecallTool } from "@veyyon/coding-agent/tools/memory-recall";

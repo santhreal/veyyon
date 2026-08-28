@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, Usage } from "@veyyon/ai";
-import type { Rule } from "@veyyon/coding-agent/capability/rule";
+import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
 import { OmfgController } from "@veyyon/coding-agent/modes/controllers/omfg-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";

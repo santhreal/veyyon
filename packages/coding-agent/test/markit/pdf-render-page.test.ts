@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { renderPageContent } from "@veyyon/coding-agent/markit/converters/pdf/render";
-import type { TableCell, TableGrid, TextBox } from "@veyyon/coding-agent/markit/converters/pdf/types";
+import { renderPageContent } from "@veyyon/coding-agent/export/markit/converters/pdf/render";
+import type { TableCell, TableGrid, TextBox } from "@veyyon/coding-agent/export/markit/converters/pdf/types";
 
 /**
  * renderPageContent assembles one PDF page's markdown by interleaving free-text

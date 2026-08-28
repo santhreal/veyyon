@@ -6,11 +6,6 @@ import * as ai from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
-import {
-	classifyDifficulty,
-	parseDifficultyBucket,
-	parseDifficultyLevel,
-} from "@veyyon/coding-agent/auto-thinking/classifier";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
@@ -24,6 +19,11 @@ import {
 	parseThinkingLevel,
 	resolveProvisionalAutoLevel,
 } from "@veyyon/coding-agent/thinking";
+import {
+	classifyDifficulty,
+	parseDifficultyBucket,
+	parseDifficultyLevel,
+} from "@veyyon/coding-agent/thinking/auto-classifier";
 import type { TinyMemoryLocalModelKey } from "@veyyon/coding-agent/tiny/models";
 import { tinyModelClient } from "@veyyon/coding-agent/tiny/title-client";
 import { TempDir } from "@veyyon/utils";

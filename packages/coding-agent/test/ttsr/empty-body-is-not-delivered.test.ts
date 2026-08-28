@@ -24,10 +24,14 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getCapability } from "@veyyon/coding-agent/capability";
-import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "@veyyon/coding-agent/capability/rule";
-import type { LoadContext } from "@veyyon/coding-agent/capability/types";
 import { BUILTIN_RULE_SOURCES } from "@veyyon/coding-agent/discovery/builtin-rules/index";
+import { getCapability } from "@veyyon/coding-agent/discovery/capability";
+import {
+	BUILTIN_DEFAULTS_PROVIDER_ID,
+	type Rule,
+	ruleCapability,
+} from "@veyyon/coding-agent/discovery/capability/rule";
+import type { LoadContext } from "@veyyon/coding-agent/discovery/capability/types";
 import { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
 import { prompt } from "@veyyon/utils";
 import "@veyyon/coding-agent/discovery";

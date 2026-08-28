@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parsePipeRow } from "@veyyon/coding-agent/markit/converters/pdf/render";
+import { parsePipeRow } from "@veyyon/coding-agent/export/markit/converters/pdf/render";
 
 /**
  * Locks FINDING-PDF-PARSEPIPEROW-SPLITS-ESCAPED-PIPE. parsePipeRow re-parses a

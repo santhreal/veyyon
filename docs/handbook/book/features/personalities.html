@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-89f274d4.js";
+            window.path_to_searchindex_js = "../searchindex-59599711.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -235,7 +235,7 @@
 <li>An empty or whitespace-only personality file is treated as absent: the next tier (or the built-in) is used instead, so the block is never emitted empty.</li>
 <li>Setting <code>personality</code> to a name that resolves to nothing (no built-in, user, or project file) falls back to <code>default</code> and prints a visible warning; the <code>&lt;personality&gt;</code> block is never silently emitted empty for a real (non-<code>none</code>) request.</li>
 </ul>
-<p>See <code>packages/coding-agent/src/personality/resolver.ts</code> for the resolver implementation.</p>
+<p>See <code>packages/coding-agent/src/config/personality-resolver.ts</code> for the resolver implementation.</p>
 <h2 id="boundaries"><a class="header" href="#boundaries">Boundaries</a></h2>
 <ul>
 <li>Personality does not grant tools, change <code>tools.approvalMode</code>, or bypass sandboxing.</li>

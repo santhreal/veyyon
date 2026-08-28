@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { MessageFramer } from "@veyyon/coding-agent/jsonrpc/message-framing";
+import { MessageFramer } from "@veyyon/coding-agent/utils/jsonrpc-framing";
 
 /**
  * MessageFramer is the shared Content-Length decoder for the LSP and DAP stdio

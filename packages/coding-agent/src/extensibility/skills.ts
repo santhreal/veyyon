@@ -5,11 +5,11 @@ import {
 	MANAGED_SKILLS_PROVIDER_ID,
 	sanitizeManagedDescription,
 } from "../autolearn/managed-skills";
-import { skillCapability } from "../capability/skill";
-import type { SourceMeta } from "../capability/types";
 import type { SkillsSettings } from "../config/settings";
 import { type DiscoveredSkill, loadCapability } from "../discovery";
 import { PROVIDER_ID as NATIVE_SKILL_PROVIDER } from "../discovery/builtin";
+import { skillCapability } from "../discovery/capability/skill";
+import type { SourceMeta } from "../discovery/capability/types";
 import { compareSkillOrder, scanSkillsFromDir } from "../discovery/helpers";
 import { PROVIDER_ID as VEYYON_PLUGINS_SKILL_PROVIDER } from "../discovery/veyyon-plugins";
 import { skillsPrompts } from "../prompts/skills/rows";

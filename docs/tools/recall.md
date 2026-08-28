@@ -6,13 +6,13 @@
 - Entry: `packages/coding-agent/src/tools/memory-recall.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/recall.md`
 - Hindsight collaborators:
-  - `packages/coding-agent/src/hindsight/state.ts`: session state, recall query defaults, prompt-side auto-recall.
-  - `packages/coding-agent/src/hindsight/content.ts`: result formatting and UTC timestamp formatting.
-  - `packages/coding-agent/src/hindsight/client.ts`: HTTP `recall` call and error mapping.
-  - `packages/coding-agent/src/hindsight/bank.ts`: bank id and tag-filter scoping.
+  - `packages/coding-agent/src/memory/hindsight/state.ts`: session state, recall query defaults, prompt-side auto-recall.
+  - `packages/coding-agent/src/memory/hindsight/content.ts`: result formatting and UTC timestamp formatting.
+  - `packages/coding-agent/src/memory/hindsight/client.ts`: HTTP `recall` call and error mapping.
+  - `packages/coding-agent/src/memory/hindsight/bank.ts`: bank id and tag-filter scoping.
 - Mnemopi collaborators:
-  - `packages/coding-agent/src/mnemopi/state.ts`: scoped local recall and result formatting with ids.
-  - `packages/coding-agent/src/mnemopi/config.ts`: local bank scoping and recall limits.
+  - `packages/coding-agent/src/memory/mnemopi/state.ts`: scoped local recall and result formatting with ids.
+  - `packages/coding-agent/src/memory/mnemopi/config.ts`: local bank scoping and recall limits.
   - `docs/tools/retain.md`: shared backend, storage, scoping, and retention behavior.
 
 ## Inputs

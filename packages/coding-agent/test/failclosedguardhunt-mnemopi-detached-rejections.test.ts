@@ -24,7 +24,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { MnemopiSessionState } from "@veyyon/coding-agent/mnemopi/state";
+import { MnemopiSessionState } from "@veyyon/coding-agent/memory/mnemopi/state";
 import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 import * as logger from "@veyyon/utils/logger";
 

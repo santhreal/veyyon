@@ -22,7 +22,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { removeSyncWithRetries } from "@veyyon/utils";
-import type { SourceMeta } from "../src/capability/types";
+import type { SourceMeta } from "../src/discovery/capability/types";
 import { readMCPConfigFile, updateMCPServer, validateServerName } from "../src/mcp/config-writer";
 import { MCPManager } from "../src/mcp/manager";
 import type { MCPHttpServerConfig, MCPStdioServerConfig } from "../src/mcp/types";

@@ -117,7 +117,7 @@ Current defaults in native APIs:
 Current callers:
 
 - `@`-mention fuzzy file autocomplete enables cache (`fuzzyFind` with `cache: true`):
-  - `packages/tui/src/autocomplete.ts`
+  - `packages/utils/src/autocomplete.ts`
 - Mutation flows invalidate through `packages/coding-agent/src/tools/fs-cache-invalidation.ts`.
 
 ## Invalidation contract
@@ -188,4 +188,4 @@ When introducing cache use in a new scanner/search path:
 - `glob`/`fuzzyFind`/`astGrep` share scan entries only when the full `WalkOptions` key matches.
 - Every native consumer sets `skip_git=true`, so `.git` is excluded from all cached scans in practice; `should_skip_path` re-enforces it at the discovery-filter layer.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `632fd91c3b4e` on 2026-08-28.*

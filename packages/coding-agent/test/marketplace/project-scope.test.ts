@@ -13,6 +13,11 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+	canonicalProjectRoot,
+	describeProjectExecutable,
+	ProjectTrust,
+} from "@veyyon/coding-agent/config/project-trust";
+import {
 	clearClaudePluginRootsCache,
 	listClaudePluginRoots,
 	resolveActiveProjectRegistryPath,
@@ -24,11 +29,6 @@ import {
 	readInstalledPluginsRegistry,
 	writeInstalledPluginsRegistry,
 } from "@veyyon/coding-agent/extensibility/plugins/marketplace";
-import {
-	canonicalProjectRoot,
-	describeProjectExecutable,
-	ProjectTrust,
-} from "@veyyon/coding-agent/security/project-trust";
 import { removeSyncWithRetries } from "@veyyon/utils";
 import { CONFIG_DIR_NAME, getPluginsDir } from "@veyyon/utils/dirs";
 

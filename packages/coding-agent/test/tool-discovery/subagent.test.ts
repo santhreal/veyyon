@@ -4,7 +4,7 @@ import {
 	type EffectiveToolDiscoveryMode,
 	resolveEffectiveToolDiscoveryMode,
 	TOOL_DISCOVERY_AUTO_THRESHOLD,
-} from "@veyyon/coding-agent/tool-discovery/mode";
+} from "@veyyon/coding-agent/discovery/mode";
 
 // ─── Subagent discovery mode inheritance tests ────────────────────────────────
 // These are unit-level tests that verify the settings resolution logic

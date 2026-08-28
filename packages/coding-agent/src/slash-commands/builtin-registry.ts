@@ -40,7 +40,7 @@ import { settings } from "../config/settings-instance";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../discovery/helpers.js";
 import { shareSession } from "../export/share";
 import { PluginManager } from "../extensibility/plugins";
-import { buildMemoryPayloadForDisplay, resolveMemoryBackend } from "../memory-backend";
+import { buildMemoryPayloadForDisplay, resolveMemoryBackend } from "../memory/backend";
 import { runPauseScreen } from "../modes/components/pause-screen";
 import { describeLoopLimitRuntime } from "../modes/loop-limit";
 import { theme } from "../modes/theme/theme";

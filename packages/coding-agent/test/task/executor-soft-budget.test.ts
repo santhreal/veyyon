@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { IrcBus } from "@veyyon/coding-agent/irc/bus";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { runSubprocess } from "@veyyon/coding-agent/task/executor";
+import { IrcBus } from "@veyyon/coding-agent/task/irc-bus";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
 import { TempDir } from "@veyyon/utils";
 import {

@@ -35,11 +35,11 @@ import type { ModelRegistry } from "../config/model-registry";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
 import type { CustomTool } from "../extensibility/custom-tools/types";
-import { missingXAICredentialsMessage, resolveXAIHttpCredentials, veyyonXAIUserAgent } from "../lib/xai-http";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import { canonicalizeImageContent } from "../utils/image-resize";
 import { resolveReadPath } from "./path-utils";
+import { missingXAICredentialsMessage, resolveXAIHttpCredentials, veyyonXAIUserAgent } from "./xai-http";
 
 const DEFAULT_MODEL = "gemini-3-pro-image-preview";
 const DEFAULT_OPENROUTER_MODEL = "google/gemini-3-pro-image-preview";

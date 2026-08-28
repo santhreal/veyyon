@@ -16,12 +16,12 @@ import { createMockModel, type MockModel, type MockResponse } from "@veyyon/ai/p
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { IrcBus, type IrcMessage } from "@veyyon/coding-agent/irc/bus";
 import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { IrcBus, type IrcMessage } from "@veyyon/coding-agent/task/irc-bus";
 import { Snowflake, TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 

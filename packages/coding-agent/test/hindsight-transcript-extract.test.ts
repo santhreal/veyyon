@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { extractMessages, type ReadonlySessionManagerLike } from "@veyyon/coding-agent/hindsight/transcript";
+import { extractMessages, type ReadonlySessionManagerLike } from "@veyyon/coding-agent/memory/hindsight/transcript";
 import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
 
 /**

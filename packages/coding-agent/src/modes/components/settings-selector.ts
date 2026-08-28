@@ -22,7 +22,6 @@ import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
-import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../../capability/rule";
 import { ANY_MODEL_EFFORT_KEY, withLegacyDefaultEffort } from "../../config/effort-resolver";
 import type { ModelRegistry } from "../../config/model-registry";
 import {
@@ -38,6 +37,7 @@ import {
 	SELECTABLE_MODEL_ROLE_IDS,
 } from "../../config/model-roles";
 import { UNSET_NUMBER, UNSET_NUMBER_OPTION_VALUE } from "../../config/optional-number";
+import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../config/personality-resolver";
 import {
 	getDefault,
 	getType,
@@ -53,9 +53,9 @@ import { getUi, isUnsetNumberPath, SETTING_TABS, TAB_METADATA } from "../../conf
 import { loadCapability } from "../../discovery";
 import { PROVIDER_ID as NATIVE_RULES_PROVIDER_ID } from "../../discovery/builtin";
 import { BUILTIN_RULE_SECTIONS, type BuiltinRuleSection } from "../../discovery/builtin-rules";
+import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../../discovery/capability/rule";
 import { withIcon } from "../../modes/theme/icon-label";
 import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } from "../../modes/theme/theme";
-import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
 import { discoverAgents } from "../../task/discovery";
 import {
 	clearSubagentModelByDepthRow,

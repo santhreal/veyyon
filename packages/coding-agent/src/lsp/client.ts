@@ -1,9 +1,9 @@
 import * as path from "node:path";
 import { errorMessage, isEnoent, logger, postmortem, ptree, untilAborted } from "@veyyon/utils";
-import { MessageFramer } from "../jsonrpc/message-framing";
 import { primarySessionCpuAdoption } from "../session/cpu-limit";
 import { ToolAbortError, throwIfAborted } from "../tools/tool-errors";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
+import { MessageFramer } from "../utils/jsonrpc-framing";
 import { applyWorkspaceEdit } from "./edits";
 import { getLspmuxCommand, isLspmuxSupported } from "./lspmux";
 import type {

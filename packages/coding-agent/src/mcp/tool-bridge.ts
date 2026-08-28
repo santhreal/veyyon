@@ -10,7 +10,7 @@ import { namesDeadSocket } from "@veyyon/ai/error/flags";
 import { normalizeSchemaForMCP } from "@veyyon/ai/utils/schema";
 import { errorMessage, isAbortError, isRecord, untilAborted } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
-import type { SourceMeta } from "../capability/types";
+import type { SourceMeta } from "../discovery/capability/types";
 import type {
 	CustomTool,
 	CustomToolContext,

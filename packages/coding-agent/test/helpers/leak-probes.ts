@@ -23,7 +23,7 @@
  * is an object identity rather than a comparable value, and the read it fed
  * (`disabledExtensions`) now resolves through the canonical settings slot instead.
  */
-import { getDisabledProviders, isForeignConfigImportEnabled } from "@veyyon/coding-agent/capability";
+import { getDisabledProviders, isForeignConfigImportEnabled } from "@veyyon/coding-agent/discovery/capability";
 import { registerLeakProbe } from "../../../utils/test/helpers/global-state-leak-tracer";
 
 /**

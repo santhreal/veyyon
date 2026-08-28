@@ -12,7 +12,7 @@ const LEGAL_ARTIFACTS = [
 	"crates/veyyon-shell/NOTICE",
 	"docs/handbook/book/fonts/OPEN-SANS-LICENSE.txt",
 	"docs/handbook/book/fonts/SOURCE-CODE-PRO-LICENSE.txt",
-	"packages/coding-agent/src/markit/NOTICE",
+	"packages/coding-agent/src/export/markit/NOTICE",
 	"packages/utils/src/vendor/mermaid-ascii/NOTICE",
 	"python/veybot/LICENSE",
 	"python/veyyon-rpc/LICENSE",

@@ -17,7 +17,7 @@
  * business; that the tool's own error is what the tool result says, is.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import type { Rule } from "@veyyon/coding-agent/capability/rule";
+import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
 import { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
 import { type } from "arktype";
 import { createSimulation, type Simulation, scriptTurns, simTool, toolResultTexts } from "./harness";

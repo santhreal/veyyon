@@ -11,12 +11,17 @@ import { type } from "arktype";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
 import type { CustomTool, CustomToolContext } from "../extensibility/custom-tools/types";
-import { missingXAICredentialsMessage, resolveXAIHttpCredentials, veyyonXAIUserAgent } from "../lib/xai-http";
-import { DEFAULT_TTS_LOCAL_MODEL_KEY, DEFAULT_TTS_VOICE, isTtsLocalModelKey, KOKORO_VOICES } from "../tts/models";
-import { ttsClient } from "../tts/tts-client";
-import { encodeWav } from "../tts/wav";
+import {
+	DEFAULT_TTS_LOCAL_MODEL_KEY,
+	DEFAULT_TTS_VOICE,
+	isTtsLocalModelKey,
+	KOKORO_VOICES,
+} from "../speech/tts/models";
+import { ttsClient } from "../speech/tts/tts-client";
+import { encodeWav } from "../speech/tts/wav";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import { formatPathRelativeToCwd, resolveToCwd } from "./path-utils";
+import { missingXAICredentialsMessage, resolveXAIHttpCredentials, veyyonXAIUserAgent } from "./xai-http";
 
 // Hermes tts_tool.py L167-171
 const DEFAULT_XAI_VOICE_ID = "eve" as const;

@@ -21,13 +21,13 @@
 		},
 		{
 			"name": "session, model-control, and instrumentation lifecycle",
-			"paths": ["packages/coding-agent/src/session/", "packages/coding-agent/src/auto-thinking/", "packages/ai/src/instrumentation.ts"],
+			"paths": ["packages/coding-agent/src/session/", "packages/coding-agent/src/thinking/", "packages/ai/src/instrumentation.ts"],
 			"note": "veyyon owns session persistence, resumability, model controls, and fail-closed instrumentation. Adapt fixes without weakening those invariants.",
 			"blocksCleanFeatures": true
 		},
 		{
 			"name": "tool, capability, extension, and discovery architecture",
-			"paths": ["packages/coding-agent/src/tools/", "packages/coding-agent/src/capability/", "packages/coding-agent/src/discovery/", "packages/coding-agent/src/extensibility/"],
+			"paths": ["packages/coding-agent/src/tools/", "packages/coding-agent/src/discovery/capability/", "packages/coding-agent/src/discovery/", "packages/coding-agent/src/extensibility/"],
 			"note": "veyyon uses ToolSession, the built-in registry, capability discovery, native Bun loading, and local manifest compatibility. Port behavior through those owners instead of importing upstream factories.",
 			"blocksCleanFeatures": true
 		},

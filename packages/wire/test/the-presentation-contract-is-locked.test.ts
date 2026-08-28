@@ -18,6 +18,12 @@
  * is wired to a session; that is the driver's own integration test.
  */
 import { describe, expect, test } from "bun:test";
+import { readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import * as composerModule from "../src/presentation/composer";
+import * as contextModule from "../src/presentation/context";
+import * as eventsModule from "../src/presentation/events";
+import * as barrel from "../src/presentation/index";
 import {
 	type ComposerState,
 	DIALOG_KINDS,
@@ -34,6 +40,27 @@ import {
 	UI_EVENT_TYPES,
 	type UIEvent,
 } from "../src/presentation/index";
+import * as overlayModule from "../src/presentation/overlay";
+import * as statusModule from "../src/presentation/status";
+import * as themeModule from "../src/presentation/theme";
+import * as transcriptModule from "../src/presentation/transcript";
+import * as viewModelsModule from "../src/presentation/view-models";
+
+/**
+ * Every module in the layer, by its path under `packages/wire/src`. The package
+ * publishes one entry point (`./presentation`), so a module the barrel does not
+ * re-export is unreachable for a consumer no matter what it declares.
+ */
+const PRESENTATION_MODULES: Record<string, Record<string, unknown>> = {
+	"presentation/composer.ts": composerModule,
+	"presentation/context.ts": contextModule,
+	"presentation/events.ts": eventsModule,
+	"presentation/overlay.ts": overlayModule,
+	"presentation/status.ts": statusModule,
+	"presentation/theme.ts": themeModule,
+	"presentation/transcript.ts": transcriptModule,
+	"presentation/view-models.ts": viewModelsModule,
+};
 
 /**
  * A complete `PresentationContext`. It records nothing and draws nothing: its
@@ -212,5 +239,26 @@ describe("the presentation contract is locked", () => {
 			"tool-execution",
 			"user-message",
 		]);
+	});
+});
+
+describe("the presentation barrel reaches every module in the layer", () => {
+	test("the module table names exactly the files that exist", () => {
+		// Read from the directory rather than a list in someone's head: a module
+		// added without a line in the table above fails here.
+		const directory = fileURLToPath(new URL("../src/presentation", import.meta.url));
+		const present = readdirSync(directory)
+			.filter(name => name.endsWith(".ts") && name !== "index.ts")
+			.map(name => `presentation/${name}`)
+			.sort();
+		expect(present).toEqual(Object.keys(PRESENTATION_MODULES).sort());
+	});
+
+	test.each(Object.entries(PRESENTATION_MODULES))("%s is re-exported by the barrel", (_key, module) => {
+		const exported = Object.entries(module).filter(([name]) => name !== "default");
+		for (const [name, value] of exported) {
+			expect(barrel).toHaveProperty(name);
+			expect((barrel as Record<string, unknown>)[name]).toBe(value);
+		}
 	});
 });

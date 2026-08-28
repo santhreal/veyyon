@@ -6,11 +6,11 @@
  */
 import * as path from "node:path";
 import { getAgentDir, tryParseJson } from "@veyyon/utils";
-import { registerProvider } from "../capability";
-import { readFile } from "../capability/fs";
-import { type SSHHost, sshCapability } from "../capability/ssh";
-import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
 import { expandTilde } from "../tools/path-utils";
+import { registerProvider } from "./capability";
+import { readFile } from "./capability/fs";
+import { type SSHHost, sshCapability } from "./capability/ssh";
+import type { LoadContext, LoadResult, SourceMeta } from "./capability/types";
 import { expandEnvVarsDeep, warnUnresolved } from "./env-expansion";
 import { createSourceMeta } from "./helpers";
 

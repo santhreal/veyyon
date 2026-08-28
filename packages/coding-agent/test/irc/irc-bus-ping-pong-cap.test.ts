@@ -18,10 +18,10 @@
  * in resets the pair's budget.
  */
 import { beforeEach, describe, expect, test } from "bun:test";
-import { IrcBus } from "@veyyon/coding-agent/irc/bus";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { IrcBus } from "@veyyon/coding-agent/task/irc-bus";
 
 /** Accepts every hand-off, so delivery succeeds and only the cap can refuse. */
 function receivingSession(): AgentSession {

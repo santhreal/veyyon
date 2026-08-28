@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import type { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	captureRegistryForTests,
 	defineCapability,
@@ -16,8 +17,7 @@ import {
 	registerProvider,
 	restoreRegistryForTests,
 	setDisabledProviders,
-} from "@veyyon/coding-agent/capability";
-import type { Settings } from "@veyyon/coding-agent/config/settings";
+} from "@veyyon/coding-agent/discovery/capability";
 
 /**
  * Hermetic coverage for the capability registry via the snapshot/restore seam.

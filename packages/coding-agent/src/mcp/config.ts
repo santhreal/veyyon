@@ -5,10 +5,10 @@
  */
 
 import { getMCPConfigPath } from "@veyyon/utils";
-import { mcpCapability } from "../capability/mcp";
-import type { SourceMeta } from "../capability/types";
 import type { MCPServer } from "../discovery";
 import { loadCapability } from "../discovery";
+import { mcpCapability } from "../discovery/capability/mcp";
+import type { SourceMeta } from "../discovery/capability/types";
 import { readDisabledServers, readEnabledServers } from "./config-writer";
 import type { MCPServerConfig } from "./types";
 // Re-exported below: `validateServerConfig` moved to `./validate` so the writer

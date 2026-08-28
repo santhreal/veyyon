@@ -126,7 +126,7 @@ Additional tuning knobs (concurrency, lease durations, token budgets) are availa
 
 ## Key files
 
-- `packages/coding-agent/src/memories/index.ts`: pipeline orchestration, injection, clear/enqueue entry points (the `/memory` command routes here via `packages/coding-agent/src/memory-backend/local-backend.ts`)
-- `packages/coding-agent/src/memories/storage.ts`: SQLite-backed job queue and thread registry
+- `packages/coding-agent/src/memory/local.ts`: pipeline orchestration, injection, clear/enqueue entry points (the `/memory` command routes here via `packages/coding-agent/src/memory/local-backend.ts`)
+- `packages/coding-agent/src/memory/storage.ts`: SQLite-backed job queue and thread registry
 - `packages/coding-agent/src/prompts/memories/`: memory prompt templates
 - `packages/coding-agent/src/internal-urls/memory-protocol.ts`: `memory://` URL handler

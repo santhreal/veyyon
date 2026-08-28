@@ -18,10 +18,10 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getAgentDir, isEnoent, logger, tryParseJson } from "@veyyon/utils";
-import { readDirEntries, readFile } from "../capability/fs";
-import type { LoadContext } from "../capability/types";
 import { getEnabledPlugins } from "../extensibility/plugins/loader";
 import { expandTilde } from "../tools/path-utils";
+import { readDirEntries, readFile } from "./capability/fs";
+import type { LoadContext } from "./capability/types";
 import { listClaudePluginRoots, pluginsRootFor } from "./helpers";
 
 /** A resolved extension package directory wired into the discovery surfaces. */

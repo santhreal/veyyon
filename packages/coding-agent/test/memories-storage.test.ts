@@ -4,7 +4,7 @@ import * as path from "node:path";
 import type { AssistantMessage, Context, Model, SimpleStreamOptions } from "@veyyon/ai";
 import * as ai from "@veyyon/ai";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { startMemoryStartupTask } from "@veyyon/coding-agent/memories";
+import { startMemoryStartupTask } from "@veyyon/coding-agent/memory/local";
 import {
 	claimStage1Jobs,
 	clearMemoryData,
@@ -15,7 +15,7 @@ import {
 	openMemoryDb,
 	tryClaimGlobalPhase2Job,
 	upsertThreads,
-} from "@veyyon/coding-agent/memories/storage";
+} from "@veyyon/coding-agent/memory/storage";
 import { getAgentDbPath, TempDir } from "@veyyon/utils";
 
 const GLOBAL_KIND = "memory_consolidate_global";

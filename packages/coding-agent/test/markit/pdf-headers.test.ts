@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { stripHeadersFooters } from "@veyyon/coding-agent/markit/converters/pdf/headers";
-import type { PageContent, TextBox } from "@veyyon/coding-agent/markit/converters/pdf/types";
+import { stripHeadersFooters } from "@veyyon/coding-agent/export/markit/converters/pdf/headers";
+import type { PageContent, TextBox } from "@veyyon/coding-agent/export/markit/converters/pdf/types";
 
 /**
  * stripHeadersFooters removes repeated top/bottom-zone text (running titles, page

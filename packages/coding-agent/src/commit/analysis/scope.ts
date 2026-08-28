@@ -1,6 +1,6 @@
-import { extractPathFromRename } from "../../commit/git/diff";
 import type { NumstatEntry } from "../../commit/types";
 import { isExcludedFile } from "../../commit/utils/exclusions";
+import { extractPathFromRename } from "../git-diff";
 
 interface ScopeCandidate {
 	path: string;

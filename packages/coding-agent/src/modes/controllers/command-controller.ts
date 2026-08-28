@@ -24,6 +24,7 @@ import { shouldEnableAppendOnlyContext } from "../../config/append-only-context-
 import { type LoadedCustomShare, loadCustomShare } from "../../export/custom-share";
 import { shareSession } from "../../export/share";
 import type { CompactOptions } from "../../extensibility/extensions/types";
+import { buildMemoryPayloadForDisplay, resolveMemoryBackend } from "../../memory/backend";
 import {
 	diffMentalModelContent,
 	type HindsightApi,
@@ -33,8 +34,7 @@ import {
 	resolveSeedsForScope,
 	seedAlreadyExists,
 	summarizeMentalModel,
-} from "../../hindsight";
-import { buildMemoryPayloadForDisplay, resolveMemoryBackend } from "../../memory-backend";
+} from "../../memory/hindsight";
 import { BashExecutionComponent } from "../../modes/components/bash-execution";
 import { compactionActionLabel, willCompactRemotely } from "../../modes/components/compaction-summary-message";
 import { COMPOSER_INSET_COLS } from "../../modes/components/composer-chrome";
