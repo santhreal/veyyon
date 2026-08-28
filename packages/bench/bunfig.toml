@@ -9,11 +9,22 @@
 [test]
 preload = ["../utils/test/helpers/real-data-tripwire.ts"]
 
-# `src/deepswe/repo-cache/` holds the DeepSWE benchmark's cloned upstream
-# repositories: 113 of them, about 1.9G, each a real project with its own test
-# suite. Bun does not honour .gitignore, so without this a `bun test` here walks
-# into all of them and reports THEIR failures as this repository's. That is not
-# hypothetical: a sweep collected nine test files from a cached Effect checkout
-# and failed them all on missing @effect/vitest, which no amount of work in this
-# repo would fix.
-pathIgnorePatterns = ["**/node_modules/**", "src/deepswe/repo-cache/**"]
+# `src/deepswe/` carries the DeepSWE benchmark's ignored working data, and Bun
+# does not honour .gitignore: `repo-cache/` holds 113 cloned upstream
+# repositories (~1.9G), each a real project with its own test suite, and `runs/`
+# (~2.1G) and `deep-swe/` (~38M) grow with every bench run. Without these
+# patterns a `bun test` here walks into all of them and reports THEIR failures
+# as this repository's. That is not hypothetical: a sweep collected nine test
+# files from a cached Effect checkout and failed them all on missing
+# @effect/vitest, which no amount of work in this repo would fix. The cost also
+# degrades as the package is used, so it looks fine on a fresh clone and is
+# unusable on the machine that actually runs benches.
+#
+# Every directory `src/deepswe/.gitignore` ignores has a pattern here, and
+# `src/deepswe/docs-coherence.test.ts` fails when one does not.
+pathIgnorePatterns = [
+	"**/node_modules/**",
+	"src/deepswe/repo-cache/**",
+	"src/deepswe/runs/**",
+	"src/deepswe/deep-swe/**",
+]

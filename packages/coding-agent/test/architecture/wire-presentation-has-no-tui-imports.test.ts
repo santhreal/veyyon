@@ -19,7 +19,7 @@ import { forbiddenEdges, importSpecifiers, isDirectory, repoPath, typeScriptFile
 const PRESENTATION = repoPath("packages/wire/src/presentation");
 
 /** Renderer packages the contract must never reach for. */
-const RENDERERS = ["@veyyon/tui", "@veyyon/natives", "@veyyon/tool-render", "@veyyon/collab-web"];
+const RENDERERS = ["@veyyon/tui", "@veyyon/natives", "@veyyon/collab-web"];
 
 function isRendererImport(specifier: string): boolean {
 	return RENDERERS.some(renderer => specifier === renderer || specifier.startsWith(`${renderer}/`));

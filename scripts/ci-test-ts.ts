@@ -215,7 +215,6 @@ export const fastWorkspacePackages = [
 	// `scripts/workspace-test-coverage.test.ts` instead of maintained by hand alone.
 	"packages/argot",
 	"packages/stats",
-	"packages/tool-render",
 	"packages/swarm-extension",
 	"packages/bench/src/deepswe",
 	// mnemopi ran in NO CI job until this entry existed. It sat in

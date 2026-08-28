@@ -37,7 +37,6 @@
 			"@veyyon/tui": "1.2.0",
 			"@veyyon/utils": "1.2.0",
 			"@veyyon/wire": "1.2.0",
-			"@veyyon/tool-render": "1.2.0",
 			"@opentelemetry/api": "^1.9.1",
 			"@opentelemetry/context-async-hooks": "^2.7.1",
 			"@opentelemetry/exporter-trace-otlp-proto": "^0.220.0",

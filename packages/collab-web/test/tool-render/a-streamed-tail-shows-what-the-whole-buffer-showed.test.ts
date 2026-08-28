@@ -18,14 +18,14 @@
  */
 import { describe, expect, it } from "bun:test";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
-import { PartialTail, VISIBLE_CHARS } from "../src/partial-tail";
-import { replaceTabs } from "../src/util";
+import { PartialTail, VISIBLE_CHARS } from "../../src/tool-render/lib/partial-tail";
+import { replaceTabs } from "../../src/tool-render/lib/util";
 
 interface Corpus {
 	cases: { name: string; input: string }[];
 }
 
-const corpus: Corpus = await Bun.file(`${import.meta.dirname}/../../../fixtures/ansi-strip-corpus.json`).json();
+const corpus: Corpus = await Bun.file(`${import.meta.dirname}/../../../../fixtures/ansi-strip-corpus.json`).json();
 
 /** What the card displayed before this change, for the whole raw buffer. */
 function wholeBuffer(raw: string): string {

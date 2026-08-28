@@ -55,8 +55,7 @@ subcommand (`commit`, `grep`, `models`, `exec`, …).
 | `packages/hashline` | The line-anchored patch language the edit tool applies, with a pluggable filesystem backend. |
 | `packages/mnemopi` | Local SQLite memory engine: triples, embeddings, recall. |
 | `packages/wire` | Dependency-free collab live-session wire types, so a browser or test client need not depend on `coding-agent`. |
-| `packages/tool-render` | Shared React tool-call renderers for the HTML export and `collab-web`. |
-| `packages/collab-web` | Browser guest client and local relay for collab live sessions (private). |
+| `packages/collab-web` | Browser guest client and local relay for collab live sessions, plus the shared React tool-call renderers in `src/tool-render/lib` that the HTML session export bundles (private). |
 | `packages/swarm-extension` | Swarm orchestration extension. |
 | `packages/bench` | Benchmark, eval and simulation harnesses, one per subtree of `src/` (private): `deepswe/` DeepSWE runner for performance-affecting changes, `metaharness/` Harbor run storage plus its REST/SSE API and live dashboard, `simulations/` deterministic offline simulations driving real subsystems end to end against scripted inputs, `typescript-edit/` edit-tool benchmark built from TypeScript source mutations. |
 | `crates/veyyon-natives` (+ siblings) | Rust hot paths: grep, PTY, shell, text/AST. |

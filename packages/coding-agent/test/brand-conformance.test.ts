@@ -360,7 +360,10 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 	// neutrals, a pink(341) accent, a cyan(205) ring. They are now silver-neutral
 	// text with an ember accent/ring, so even an unstyled host renders on-brand.
 	it("keeps the tool-render fallback tokens on the ember/silver system", () => {
-		const css = fs.readFileSync(path.join(import.meta.dir, "../../tool-render/src/tool-render.css"), "utf-8");
+		const css = fs.readFileSync(
+			path.join(import.meta.dir, "../../collab-web/src/tool-render/lib/tool-render.css"),
+			"utf-8",
+		);
 		expect(offBrandOklchStops(css)).toEqual([]);
 		for (const banned of BANNED_HEXES) expect(css.toLowerCase()).not.toContain(banned);
 		// The accent + ring fallbacks are the ember stop (hue ~52).

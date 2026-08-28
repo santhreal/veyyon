@@ -51,11 +51,11 @@ export function fmtPercent(p: number | null | undefined): string {
 }
 
 /** Home-relative, middle-elided path: "~/…/packages/collab-web". */
-// `shortenPath` has one owner in `@veyyon/tool-render` (browser-safe). Re-export
+// `shortenPath` has one owner in `../tool-render/lib/util` (browser-safe). Re-export
 // it here so existing `../../lib/format` imports keep working without a second,
 // drifting copy. Callers that want the header's long-middle elision pass
 // `{ collapseAfter: 4 }` (see HeaderBar).
-export { shortenPath } from "@veyyon/tool-render";
+export { shortenPath } from "../tool-render/lib/util";
 
 /** Tolerant text extraction from string | content-block array | message-like objects. */
 export function messageText(m: unknown): string {

@@ -38,7 +38,6 @@
   },
   "dependencies": {
     "@veyyon/wire": "catalog:",
-    "@veyyon/tool-render": "catalog:",
     "@veyyon/utils": "catalog:",
     "lucide-react": "catalog:",
     "marked": "catalog:",

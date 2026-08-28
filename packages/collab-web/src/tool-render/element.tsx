@@ -1,7 +1,7 @@
 /**
  * `<vey-tool-view>` — web-component wrapper around ToolView for non-React
- * hosts (the exported-session HTML page). Local host shell; shared chrome/tools
- * live in `@veyyon/tool-render`.
+ * hosts (the exported-session HTML page). Local host shell; the shared
+ * chrome and tools are `./lib`.
  *
  * Payload sources, in priority order:
  * 1. `el.data = {...}` property assignment.
@@ -13,9 +13,9 @@
  * The boolean `open` attribute expands the card by default.
  */
 
-import { ToolView, type ToolViewProps } from "@veyyon/tool-render";
 import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
+import { ToolView, type ToolViewProps } from "./lib";
 
 type PayloadStore = { get(key: string): ToolViewProps | undefined };
 

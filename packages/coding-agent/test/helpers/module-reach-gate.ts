@@ -40,7 +40,7 @@ export const PACKAGES = path.join(SRC, "..", "..");
  * listed `@veyyon/agent` -- a name no package in this workspace has. The directory is `packages/agent`
  * and the package is `@veyyon/agent-core`, whose barrel is 406 modules, so all 569 `@veyyon/agent-core`
  * specifiers in the repository resolved to nothing in both gates. `@veyyon/mnemopi` (398 modules),
- * `@veyyon/stats` (365), `@veyyon/natives` and `@veyyon/tool-render` were unknown to every copy. Nothing
+ * `@veyyon/stats` (365) and `@veyyon/natives` were unknown to every copy. Nothing
  * failed. `thinking.ts` was recorded at 6 modules and is 407.
  *
  * `@veyyon/utils/module-reach-workspace` now reads the `exports` map of every package manifest under

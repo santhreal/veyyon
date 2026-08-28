@@ -4,7 +4,7 @@
  *
  * Both renderers of the `github` tool's output carried their own copy of these tables: the
  * terminal one in `coding-agent/src/tools/gh-renderer.ts` and the React one in
- * `tool-render/src/tools/github.tsx`. They had already drifted, the terminal side knowing a
+ * `packages/collab-web/src/tool-render/lib/tools/github.tsx`. They had already drifted, the terminal side knowing a
  * `queued`/`requested`/`waiting`/`pending` group the React side did not, so the same run
  * showed a muted pending row in one view and the unknown-state fallback in the other.
  * Nothing reported the divergence, and adding a conclusion to one table would silently repeat

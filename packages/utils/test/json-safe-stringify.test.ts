@@ -2,7 +2,7 @@
  * The contract of the one JSON renderer used for display across every package.
  *
  * `stringifyJsonSafe` replaced five hand-rolled copies (`packages/agent`
- * telemetry, `packages/tool-render` display, the sqlite reader, the browser
+ * telemetry, `packages/collab-web/src/tool-render/lib` display, the sqlite reader, the browser
  * tool, and the browser run output). Every copy ended the same way:
  *
  *     try { return JSON.stringify(value) } catch { return String(value) }

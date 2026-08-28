@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { shortenPath } from "../src/util";
+import { shortenPath } from "../../src/tool-render/lib/util";
 
 // `shortenPath` is the single browser-safe owner (collab-web re-exports it, the
 // coding-agent TUI has a separate Node owner). These lock the home-prefix

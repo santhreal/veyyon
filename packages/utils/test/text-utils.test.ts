@@ -186,15 +186,7 @@ describe("sanitizeSingleLine", () => {
 	it("is defined in exactly one source file", async () => {
 		const root = `${import.meta.dir}/../..`;
 		const definitions: string[] = [];
-		for (const pkg of [
-			"utils/src",
-			"tui/src",
-			"coding-agent/src",
-			"collab-web/src",
-			"tool-render/src",
-			"agent/src",
-			"ai/src",
-		]) {
+		for (const pkg of ["utils/src", "tui/src", "coding-agent/src", "collab-web/src", "agent/src", "ai/src"]) {
 			const glob = new Glob("**/*.ts");
 			for await (const rel of glob.scan({ cwd: `${root}/${pkg}` })) {
 				const src = await Bun.file(`${root}/${pkg}/${rel}`).text();

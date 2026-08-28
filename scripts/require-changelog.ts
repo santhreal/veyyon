@@ -187,7 +187,7 @@ async function resolveBase(): Promise<string> {
  * Every publishable package under `packages/`, in path order.
  *
  * A package with no `CHANGELOG.md` is an ERROR here, not a package to skip. Skipping was the old
- * behaviour and it made the gate quietly incomplete: `argot` and `@veyyon/tool-render` both shipped
+ * behaviour and it made the gate quietly incomplete: `argot` and the then-separate `@veyyon/tool-render` both shipped
  * for releases with their source ungated, and nothing said so, because the check that would have
  * complained was the same one being skipped. The rule is that a publishable package documents what
  * it ships, so a missing changelog fails the gate and names the file to create.

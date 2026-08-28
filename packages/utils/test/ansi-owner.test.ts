@@ -338,7 +338,7 @@ describe("primitive ownership", () => {
 	 */
 	it("lets no module call the introducer ESC", async () => {
 		const offenders: string[] = [];
-		const trees = [UTILS_SRC, TUI_SRC, CODING_AGENT_SRC, path.resolve(import.meta.dir, "../../metaharness/src")];
+		const trees = [UTILS_SRC, TUI_SRC, CODING_AGENT_SRC, path.resolve(import.meta.dir, "../../bench/src/metaharness")];
 		for (const tree of trees) {
 			for (const file of new Bun.Glob("**/*.ts").scanSync(tree)) {
 				const full = path.join(tree, file);
@@ -349,7 +349,7 @@ describe("primitive ownership", () => {
 		}
 		expect(offenders).toEqual([]);
 		// Non-vacuity: metaharness really does declare the introducer, under the right name.
-		const runner = await Bun.file(path.resolve(import.meta.dir, "../../metaharness/src/runner.ts")).text();
+		const runner = await Bun.file(path.resolve(import.meta.dir, "../../bench/src/metaharness/runner.ts")).text();
 		expect(runner).toContain('const CSI = "\\x1b[";');
 	});
 });

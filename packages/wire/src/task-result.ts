@@ -9,7 +9,7 @@
  *
  * It lives here because two packages read it and neither owns it. The TUI's job tool
  * (`packages/coding-agent/src/tools/job.ts`) and the shared React renderer that draws
- * the same rows for HTML export and collab-web (`packages/tool-render/src/tools/job.tsx`)
+ * the same rows for HTML export and collab-web (`packages/collab-web/src/tool-render/lib/tools/job.tsx`)
  * each carried a byte-identical copy of the parser. Two copies of one wire shape drift
  * in one direction only: the surface nobody was looking at keeps the old pattern, fails
  * to match, and shows the reader raw envelope markup while the other surface stays clean.

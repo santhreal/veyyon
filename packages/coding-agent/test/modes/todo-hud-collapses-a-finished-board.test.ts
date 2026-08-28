@@ -27,7 +27,7 @@
  *
  * WHAT IT DOES NOT CATCH. The card's own collapse (owned by
  * `test/tools/todo-done-collapse.test.ts`) and the HTML export's (owned by
- * `packages/tool-render/test/todo-done-collapse.test.ts`). It also does not
+ * `packages/collab-web/test/tool-render/todo-done-collapse.test.ts`). It also does not
  * defend the open board's glyphs or width budget, which are
  * `todo-hud-states.test.ts`, nor the card's row colours, which are
  * `test/tools/todo.test.ts`.
