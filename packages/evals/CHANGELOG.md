@@ -47,3 +47,4 @@ All notable changes to `@veyyon/evals` will be documented in this file.
 - `--dry-run` refuses an overlay the real run would refuse: the backend's preflight now receives the plan's variants, so a missing overlay file, an unknown setting key or a prompt id no registry holds is reported before any quota is spent instead of hours into the run.
 - `Handlebars.compile` in `suites/typescript-edit/argot-bench.ts` and `generate.ts` receives the prompt text (`.text`) instead of the `PromptEntry` object, fixing an import-time crash.
 - The entry-point flag-refusal sweep scans the package root instead of the removed `src/` directory, and the one-flag-grammar test no longer references the retired deep-swe runner entry point.
+- The Harbor backend skips source-tree mount preparation when `VEYYON_BENCH_BINARY_X64` or `VEYYON_BENCH_BINARY_ARM64` is set, so a pinned-binary run does not fail on a compose overlay the binary mode never uses.

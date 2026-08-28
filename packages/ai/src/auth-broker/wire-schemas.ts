@@ -75,12 +75,12 @@ function buildWireSchemas() {
 		"accountId?": "string",
 		"orgId?": "string",
 		"orgName?": "string",
+		"source?": "'login'",
 	});
 
 	// `source` records that the key came from an interactive `/login` rather than a
-	// pasted value. It is part of ApiKeyCredential, and the arm rejects unknown keys,
-	// so omitting it here made every snapshot containing a logged-in API key fail
-	// validation — the broker served it and no client could read it.
+	// pasted value. `exportSnapshot` spreads the stored credential, so an OAuth row
+	// that carries `source` reaches the wire, and both schemas must accept it.
 	const apiKeyCredentialSchema = type({
 		"+": "reject",
 		type: "'api_key'",
