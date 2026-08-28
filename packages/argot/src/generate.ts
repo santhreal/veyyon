@@ -1,40 +1,4 @@
-/**
- * Automatic `AGENTS.dict` generation.
- *
- * Point this at a corpus of the text a coding agent produces — its past
- * transcripts, a repository file listing, a set of build commands — and it
- * proposes the shorthand that would save the most output tokens, packed into a
- * dictionary that itself fits under a token budget (1000 by default). Use it two
- * ways: offline, to author a dictionary you review and keep, or at runtime, to
- * maintain a local per-project cache that regenerates as the repository moves.
- * The runtime case passes the current cache through {@link GenerateOptions.pinned}
- * so regeneration is monotonic: existing handles are frozen and only new ones are
- * added, which is what keeps already-written handles expandable over time.
- *
- * The economics it optimizes for: output tokens cost several times more than
- * input tokens, so a handle pays off when the model would otherwise retype a
- * long string many times. Each candidate is scored by how many output tokens it
- * removes across the corpus; the dictionary is filled highest-value first until
- * the next entry would breach the budget. The budget is on the *dictionary*
- * because the dictionary is what a harness reads into context (see load-on-read
- * in the README); a huge dictionary would cost more to carry than it saves.
- *
- * The value a handle removes is proxied by DOCUMENT frequency, not raw term
- * frequency. What a model re-emits is a string that is *central* to the project:
- * a path, command, or identifier that shows up across many files. A string that
- * occurs thousands of times inside one file and nowhere else — a lockfile's
- * registry lines, an inlined SVG, a license header — is not something a model
- * types back, so its raw count must not win the budget. Scoring therefore counts
- * how many distinct corpus samples (files) a string appears in and damps
- * repetition *within* one sample, so no single file can dominate the ranking.
- * See {@link scoringFrequency}.
- *
- * Everything is a pure function of the corpus and the options, and the token
- * counter is injectable, so you can drive it with a real tokenizer for your
- * model or accept the built-in heuristic. The emitted TOML always re-parses
- * through `parseDict` to an identical vocabulary — generation never produces a
- * dictionary the loader would reject.
- */
+/** Generate an AGENTS.dict vocabulary from corpus samples. */
 
 import {
 	DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO,
@@ -56,37 +20,22 @@ export type HandleNaming =
 	| "mnemonic"
 	/** Sequential numbers (`§1`, `§2`, …): the densest handles, least self-documenting. */
 	| "numeric"
-	/**
-	 * A readable stem plus a hash of the expansion. The name is a pure function of
-	 * the expansion alone, with no dependence on ordering or a shared counter, so
-	 * two processes generating over the same project independently pick the SAME
-	 * name for the same string and different names for different strings. Use this
-	 * when several agents may regenerate one shared cache concurrently: it removes
-	 * the write-coordination a mnemonic or numeric scheme would need.
-	 */
+	/** A readable stem plus a hash of the expansion. The name is a pure function of */
 	| "content";
 
 /** Options for {@link generateDict}. Every field has a sensible default. */
 export interface GenerateOptions {
-	/** Token budget for the generated dictionary itself. Default {@link DEFAULT_TOKEN_BUDGET}. */
+	/** Token budget for the generated dictionary. */
 	tokenBudget?: number;
 	/** Sigil for the emitted file. Default {@link DEFAULT_SIGIL}. */
 	sigil?: string;
-	/** Least number of corpus occurrences a string needs to be considered. Default `2`. */
+	/** Minimum frequency required for consideration. */
 	minFrequency?: number;
-	/** Least expansion length in characters. Short strings rarely pay for a handle. Default `8`. */
+	/** Minimum expansion length in characters. */
 	minExpansionLength?: number;
-	/** Optional hard cap on how many handles to emit, applied after the budget. */
+	/** Optional maximum number of handles to emit. */
 	maxHandles?: number;
-	/**
-	 * Stop admitting handles once the selected set reaches this fraction of the
-	 * savings the full ranked candidate list could achieve. Default
-	 * {@link DEFAULT_SAVINGS_COVERAGE}. Pass `1` to fill the whole budget.
-	 *
-	 * Applies alongside {@link GenerateOptions.tokenBudget}, and whichever binds
-	 * first wins: coverage keeps a cheap dictionary from growing a worthless
-	 * tail, the budget keeps an expensive one from growing at all.
-	 */
+	/** Stop admitting handles once the selected set reaches this fraction of the */
 	savingsCoverage?: number;
 	/** How to name handles. Default `"mnemonic"`. */
 	naming?: HandleNaming;
@@ -100,30 +49,9 @@ export interface GenerateOptions {
 	 * considering. Defaults to {@link extractCandidates}.
 	 */
 	extract?: (text: string) => Iterable<string>;
-	/**
-	 * The share of line structure this harness's agent emits inside tool-call
-	 * arguments, from 0 to 1. Defaults to
-	 * {@link DEFAULT_TOOL_CALL_STRUCTURE_SHARE}, measured on real transcripts.
-	 *
-	 * It is worth setting only if you have measured your own agent, because it
-	 * decides whether structure handles pay at all: a harness that applies every
-	 * edit through a tool sits near 1 and earns a dictionary full of indentation
-	 * runs, while one that answers in markdown sits near 0 and should earn none.
-	 * See {@link emittedTokenCost}.
-	 */
+	/** The share of line structure this harness's agent emits inside tool-call */
 	toolCallStructureShare?: number;
-	/**
-	 * Existing bindings to preserve, for MONOTONIC regeneration. Pass the current
-	 * cached vocabulary here and generation keeps every pinned name→expansion
-	 * verbatim: no pinned name is ever reassigned to a different expansion, no
-	 * pinned expansion is proposed a second time under a new name, and no new
-	 * handle takes a pinned name. New handles are added under the remaining
-	 * budget, but pinned entries are retained even when they alone exceed it — a
-	 * handle already taught to the model must never disappear, or text that used
-	 * it stops expanding. This is what makes the generated dictionary safe to
-	 * treat as a regenerating local cache. When `pinned` carries handles its
-	 * sigil is authoritative and any `sigil` option is ignored.
-	 */
+	/** Existing bindings to preserve, for MONOTONIC regeneration. Pass the current */
 	pinned?: Vocabulary;
 }
 
@@ -143,29 +71,11 @@ export interface GeneratedHandle {
 	documentFrequency: number;
 	/** Estimated output tokens saved across the corpus by using this handle. */
 	savedTokens: number;
-	/** Estimated tokens this entry costs in the dictionary. */
+	/** Effective frequency used for scoring. */
 	dictTokens: number;
 }
 
-/**
- * The frequency scoring multiplies by: document frequency plus a damped bonus for
- * repetition within a single sample.
- *
- * `documentFrequency` is how many distinct samples (files, transcript turns)
- * contain the string — its breadth, the best proxy for how often a model will
- * re-emit it. The extra term, `floor(log2(1 + within))` where `within` is the
- * occurrences beyond one-per-sample, credits a string that genuinely repeats
- * inside representative files but damps it hard: a lockfile line repeated 4000
- * times in one file contributes `floor(log2(4000)) = 11` on top of its document
- * frequency of 1, so it can never outweigh a path that appears once across a
- * dozen files. This is the one home for the rule; scoring and the bench both call
- * it so there is a single definition of "how valuable is this string".
- *
- * Degenerates cleanly: for a single-sample corpus every string has
- * `documentFrequency` 1 and the result is `1 + floor(log2(rawFrequency))`, a
- * log-damped term frequency; for one-occurrence-per-sample corpora `within` is 0
- * and the result is exactly the document frequency.
- */
+/** The frequency scoring multiplies by: document frequency plus a damped bonus for */
 export function scoringFrequency(rawFrequency: number, documentFrequency: number): number {
 	const within = Math.max(0, rawFrequency - documentFrequency);
 	return documentFrequency + Math.floor(Math.log2(1 + within));
@@ -186,48 +96,11 @@ export interface GeneratedDict {
 	toml: string;
 	/** The chosen handles, highest value first. */
 	handles: GeneratedHandle[];
-	/**
-	 * Total estimated dictionary token cost. Never exceeds
-	 * {@link GenerateOptions.tokenBudget} for the newly added handles; when
-	 * {@link GenerateOptions.pinned} bindings are retained they are always kept
-	 * even if the frozen base alone is already over budget.
-	 */
+	/** Total estimated dictionary token cost. Never exceeds */
 	dictTokens: number;
-	/**
-	 * Total estimated output tokens saved per full pass over the corpus.
-	 *
-	 * READ THIS TOGETHER WITH {@link GeneratedDict.breakEvenTurns}, never alone. It
-	 * is a GROSS figure over a corpus pass, and a corpus pass is not a unit of an
-	 * agent's work. The other side of the trade, what the dictionary costs to
-	 * carry, is not in this number at all.
-	 */
+	/** Total estimated output tokens saved per full pass over the corpus. */
 	estimatedSavings: number;
-	/**
-	 * How many turns of carrying this dictionary its estimated savings would pay
-	 * for, at {@link DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO}. `Infinity` when nothing
-	 * was selected.
-	 *
-	 * WHY THIS IS REPORTED. A dictionary is INPUT carried on every turn, while its
-	 * savings are OUTPUT produced once per emission, and until this field existed
-	 * the SDK reported only the second. Measured on the veyyon repository over 100
-	 * recorded sessions and 7,659 assistant turns, the generated dictionary is 49
-	 * handles and 314 tokens, it saved 3,202 output tokens in total, and it cost
-	 * 2,404,926 input tokens to carry: 751 input tokens per output token saved,
-	 * against a break-even near 5. Eighteen of the 49 handles were never emitted
-	 * once. See `packages/deepswe-bench/measure-retype-likelihood.ts`, which
-	 * produces those figures from real transcripts.
-	 *
-	 * The number is deliberately a HORIZON rather than a verdict, because the
-	 * verdict depends on something generation cannot see: how many turns the
-	 * dictionary will ride along on before it is regenerated. A caller that knows
-	 * its own turn count can compare directly. A caller that does not should still
-	 * read this and notice when it is small.
-	 *
-	 * It shares `estimatedSavings`'s optimism: the saving is estimated from corpus
-	 * frequency, which measurement shows overstates real emissions by a median
-	 * factor of about 675. So a small break-even horizon is bad news and a large
-	 * one is not yet good news.
-	 */
+	/** How many turns of carrying this dictionary its estimated savings would pay */
 	breakEvenTurns: number;
 	/** The token budget the generation ran under. */
 	tokenBudget: number;
@@ -235,14 +108,7 @@ export interface GeneratedDict {
 	candidatesConsidered: number;
 }
 
-/**
- * A tokenizer-agnostic token estimate. Approximates a byte-pair tokenizer well
- * enough to rank candidates: each alphanumeric run counts as roughly one token
- * per four characters, and each standalone symbol (a slash, dot, colon, dash)
- * counts as its own token, which is why a path costs more than its letter count
- * suggests. Inject a real tokenizer through {@link GenerateOptions.countTokens}
- * when you need exact figures.
- */
+/** A tokenizer-agnostic token estimate. Approximates a byte-pair tokenizer well */
 export function estimateTokens(text: string): number {
 	if (text.length === 0) {
 		return 0;
@@ -258,40 +124,12 @@ export function estimateTokens(text: string): number {
 	return Math.max(1, tokens);
 }
 
-/**
- * A candidate is LINE STRUCTURE when it begins with a newline: the line break, the
- * indentation that follows it, and the first word of the line.
- *
- * This is the one shape a whitespace-delimited extractor structurally cannot
- * produce, and it is where the measured saving actually lives. Replaying what a
- * real agent emitted on the ytt bench task, the highest-value strings by net
- * tokens were `\n\t\treturn` (414 uses), `\n\tif` (393), `\n\nfunc` (188) and
- * `\n\t\tif` (180) — together about 13.8% of its output tokens, and none of them
- * were proposable before, because {@link extractCandidates} split every line on
- * whitespace and so could never emit a candidate containing any.
- *
- * The leading newline is load-bearing rather than decoration. Encoding bare
- * `return` would collide with every other use of the word and save nothing (it is
- * one token already); it is the line break plus a specific indentation depth that
- * both makes the string long enough to be worth a handle and pins it to a real
- * structural position an agent retypes.
- */
+/** A candidate is LINE STRUCTURE when it begins with a newline: the line break, the */
 function isLineStructure(expansion: string): boolean {
 	return expansion.startsWith("\n");
 }
 
-/**
- * The line-structure candidates for one line: its indentation prefix, and (when it
- * opens a top-level declaration after a blank line) its blank-line prefix.
- *
- * Deliberately narrow. Only the FIRST word is taken, so this proposes a bounded
- * number of candidates per line instead of every n-gram, and the word must be an
- * identifier so punctuation-led lines (`}`, `//`, `- name:`) never enter. Data
- * files are the failure mode to avoid here: a YAML fixture with a thousand
- * identically-indented rows would otherwise mint a handle nothing types, which is
- * exactly the defect this whole change exists to fix. That is guarded at scoring
- * time by requiring the candidate to appear in at least two distinct files.
- */
+/** The line-structure candidates for one line: its indentation prefix, and (when it */
 function lineStructureCandidates(rawLine: string, trimmed: string, previousLine: string | undefined): string[] {
 	const firstWord = /^[A-Za-z_][A-Za-z0-9_]{0,15}/.exec(trimmed)?.[0];
 	if (firstWord === undefined) {
@@ -301,17 +139,7 @@ function lineStructureCandidates(rawLine: string, trimmed: string, previousLine:
 	const indent = /^[\t ]+/.exec(rawLine)?.[0];
 	if (indent !== undefined) {
 		out.push(`\n${indent}${firstWord}`);
-		// The BARE indentation run, with no word at all. Counter-intuitive but among
-		// the highest-value handles there is: measured against what a real agent
-		// emitted, `\n\t\t` occurred 211 times, `\n\t\t\t` 110 and `\n\t\t\t\t` 95,
-		// together worth about 716 output tokens from three handles. They are
-		// valuable precisely because they are word-agnostic, so they cover every
-		// line at that depth rather than one keyword's share of them. Requiring a
-		// word here (as the first candidate above does) excluded all of them.
-		//
-		// Overlap with the word-bearing candidates is not double counting: the
-		// expander matches longest-first, so `\n\t\treturn` wins wherever it applies
-		// and the bare run only collects what is left.
+		// Indentation runs without keywords.
 		out.push(`\n${indent}`);
 	} else if (previousLine !== undefined && previousLine.trim().length === 0) {
 		// A declaration opening after a blank line: `\n\nfunc`, `\n\ntype`. Only
@@ -322,53 +150,7 @@ function lineStructureCandidates(rawLine: string, trimmed: string, previousLine:
 	return out;
 }
 
-/**
- * What one use of `expansion` actually costs the model in output tokens.
- *
- * A handle only pays if it is cheaper than the text the model would otherwise
- * emit, so the comparison has to be against the form the model REALLY writes. For
- * ordinary tokens (a path, an identifier) that is the string itself. For line
- * structure it is not: an agent writes code inside tool-call arguments, which are
- * JSON, so its newlines and tabs go over the wire ESCAPED, as the two characters
- * `\` and `n` rather than one control character.
- *
- * The gap is large and it runs one way. A tokenizer collapses a run of real tabs
- * into very few tokens but charges for each escaped `\t` separately, so `\n\t\t\t\t`
- * is 2 tokens raw and 5 escaped, and `\n\t\t` is 2 against 3. Pricing the raw form
- * therefore undervalued exactly the candidates that pay best, by up to two and a
- * half times, and scored every bare indentation run as worthless (2 tokens raw
- * against a 2-token handle is no saving at all) when in practice each use saves up
- * to three.
- *
- * WHICH IS ONLY HALF THE STORY, AND THE OTHER HALF IS MEASURED. The escaped form
- * is what goes over the wire only when the model writes INSIDE A TOOL-CALL
- * ARGUMENT. Code in a plain assistant message, or in thinking, carries a real
- * newline and a real tab, and there the raw pricing is the correct one. Those two
- * prices are far apart: on a 39-file TypeScript tree the generated dictionary is
- * 43 handles, every one of them line structure, every one net-positive under the
- * escaped model and every one net-NEGATIVE under the raw model. So the sign of the
- * whole dictionary depends on the channel, and a dictionary rides the system
- * prompt every turn either way.
- *
- * The split is therefore not assumed. `packages/deepswe-bench/measure-channel-split.ts`
- * reads real recorded transcripts and sorts every emitted newline-plus-indentation
- * run into the channel it was written into; over 307 transcripts and 23,467
- * assistant turns, 41.76% landed inside tool-call arguments. That share is
- * {@link DEFAULT_TOOL_CALL_STRUCTURE_SHARE}, and this function prices structure on
- * the mix: `share` of it escaped, the rest raw.
- *
- * The result is deliberately fractional. Rounding to a whole token here would
- * quantize away the very difference the mix expresses, and nothing downstream needs
- * an integer: `perUse` is a ranking key and `estimatedSavings` is a sum.
- *
- * Pass `toolCallStructureShare` to price for a harness whose own measurement
- * differs. `1` restores the escaped-only model and `0` gives the raw one, which is
- * how the two ends are pinned in `test/generate.test.ts`.
- *
- * @throws if `toolCallStructureShare` is not a fraction between 0 and 1. A share
- * outside that range is a caller bug that would silently produce prices no channel
- * charges, and a dictionary generated from them looks entirely normal.
- */
+/** What one use of `expansion` actually costs the model in output tokens. */
 export function emittedTokenCost(
 	expansion: string,
 	countTokens: (text: string) => number,
@@ -398,44 +180,10 @@ function trimWrapping(token: string): string {
 	return token.replace(/^[["'`(<{]+/, "").replace(/[\]"'`)>},;]+$/, "");
 }
 
-/**
- * Code-expression punctuation. A genuinely re-typed token — a path, filename,
- * import specifier, URL, or dotted/scoped identifier — is built only from word
- * characters and path glue (`/ \ . : @ ~ - _ + #`). The moment a candidate
- * contains a paren, bracket, brace, backtick, dollar, quote, comma, semicolon,
- * or a comparison/logic operator, it is a fragment of a live code expression
- * (`${theme.fg('dim`, `parts.push(theme.fg('dim`, `line.trim().match(/^(.*)/`),
- * not a stable string an agent retypes. Those fragments are the dominant source
- * of dictionary noise in a code corpus, so any token bearing one is rejected.
- */
+/** Code-expression punctuation. A genuinely re-typed token — a path, filename, */
 const CODE_PUNCTUATION = /[(){}[\]`'"$;,=<>!?*|&]/;
 
-/**
- * True when a token is worth encoding as a handle. A string a coding agent
- * literally retypes — and that is long enough to be worth a handle — is a path, an
- * import specifier, or a scoped (`::`) module path. Every one of those carries a
- * real separator: a slash/backslash, or a `::`. So the token must both carry such
- * a separator AND be free of {@link CODE_PUNCTUATION}.
- *
- * A scheme-bearing URL (`https://docs.aws.amazon.com/...`, `http://apache.org/
- * licenses/LICENSE-2.0`) is REJECTED. A full hyperlink to a docs / license / issue
- * page is something an agent references in prose but never retypes inside an edit,
- * so a handle for it is pure teach-cost: it rides in the system prompt every turn
- * and is never emitted. Measured on a real budget-16000 dictionary (ytt corpus),
- * scheme URLs were 97 of 524 handles (18.5%) with zero adoption potential. A
- * scheme-LESS module path (`github.com/aws/aws-lambda-go/events`,
- * `carvel.dev/ytt/pkg/yamlmeta`) is a genuine Go/JS import an agent DOES retype, so
- * it is kept — the `://` scheme is exactly what separates the two.
- *
- * Note what this deliberately drops: a bare dotted identifier (`theme.fg`,
- * `state.results.length`). Those satisfy {@link isStructured}'s `\w\.\w` rule but
- * are property access, not stable strings — an agent never types `§h` in place of
- * `theme.fg`. A genuine repository filename (`connection.ts`) is not lost by this:
- * {@link generateDictFromRepo} feeds every real path in the tree as a candidate
- * directly, so bare filenames enter the dictionary through the file listing rather
- * than through content-token extraction. Command lines that legitimately contain
- * `=`/`&&` are captured by the separate whole-line branch, not here.
- */
+/** True when a token is worth encoding as a handle. A string a coding agent */
 function isReusableToken(token: string): boolean {
 	if (CODE_PUNCTUATION.test(token)) {
 		return false;
@@ -446,19 +194,7 @@ function isReusableToken(token: string): boolean {
 	return /[/\\]/.test(token) || /::/.test(token);
 }
 
-/**
- * True when a whole line is REFERENCE NOISE — text whose payload is a hyperlink or
- * a binary dump, which an agent reads but never retypes. Such lines slip past
- * {@link looksLikeCommand} (they carry a structured token) and past
- * {@link looksLikeSourceCode} (they are not code), so without this guard they win
- * the budget as the longest strings in a repo while never being emitted.
- *
- *   - A markdown link/image/badge: `[![Go Reference](https://pkg.go.dev/badge/…)]`,
- *     or any `](https://…` link target. On a real dictionary these were 19 of 524
- *     handles (README badges), all unretyped.
- *   - A hexdump / binary dump line: an 8-hex-digit offset followed by hex byte
- *     columns (`00000010  21 22 23 24 …  |!"#$%&'()|`). Never retyped.
- */
+/** True when a whole line is REFERENCE NOISE — text whose payload is a hyperlink or */
 function isReferenceNoiseLine(line: string): boolean {
 	if (/\[!\[/.test(line) || /\]\(\s*<?https?:\/\//.test(line)) {
 		return true;
@@ -469,28 +205,14 @@ function isReferenceNoiseLine(line: string): boolean {
 	return false;
 }
 
-/** True when a token looks like a path, command, URL, or dotted identifier rather than prose. */
+/** Check if token looks like a path, command, URL, or domain. */
 function isStructured(token: string): boolean {
 	// A slash, backslash, a dot between word characters, a scoped `::`, or a
 	// URL-ish `:` all mark a token as structured. A bare hyphenated word does not.
 	return /[/\\]/.test(token) || /\w\.\w/.test(token) || /::/.test(token) || /:\/\//.test(token);
 }
 
-/**
- * True when a whole line reads like a command rather than a prose sentence: it
- * references something structured (a path, URL, dotted identifier), passes a
- * flag (`-x` / `--x`), or sets an assignment (`KEY=value`).
- *
- * The structured test alone is necessary but NOT sufficient, because prose
- * regularly contains exactly one structured token and would otherwise be captured
- * whole. Real dictionaries generated before {@link looksLikeProse} was applied
- * contained an MIT license clause (captured because `and/or` holds a slash), an
- * AWS documentation sentence (a URL), and a Maven test log line (a dotted class
- * name). Those are the longest strings in many repositories, so they won the
- * budget while never being retyped by any agent. Measured on a real run, of 33
- * handles the model emitted 7, and every one was whitespace-free; no prose handle
- * was ever emitted.
- */
+/** True when a whole line reads like a command rather than a prose sentence: it */
 function looksLikeCommand(tokens: string[]): boolean {
 	if (!tokens.some(t => isStructured(t) || /^-{1,2}\w/.test(t) || /^\w[\w-]*=/.test(t))) {
 		return false;
@@ -498,27 +220,7 @@ function looksLikeCommand(tokens: string[]): boolean {
 	return !looksLikeProse(tokens);
 }
 
-/**
- * True when a line is a natural-language sentence rather than something an agent
- * would retype verbatim.
- *
- * These markers are chosen because they separate the two populations cleanly on
- * real data rather than in principle. Prose enumerates (`use, copy, modify,`),
- * ends sentences (`... triggers at https://example.com/x .`), and runs long
- * stretches of ordinary words (`comment: "This deployment was lifted from`).
- * Genuine agent-typed commands do none of that: `bunx tsgo -p x/tsconfig.json
- * --noEmit`, `npm run build && node dist/index.js`, and
- * `CARGO_TARGET_DIR=/dev/null cargo test` carry no bare word ending in a comma,
- * no sentence terminator, and no long run of plain words.
- *
- * A deliberately narrow test. Ratio-based rules ("mostly structured tokens")
- * reject real commands, because `npm run build && node dist/index.js` is mostly
- * bare words. Rejecting on a quotation mark is likewise too broad: shell commands
- * quote constantly (`echo "a\b" > packages/x/y.ts`). What prose actually does and
- * commands do not is run FIVE or more ordinary words together; the longest such
- * run in a real command is three (`npm run build`), which leaves margin for a
- * four-word invocation like `sudo apt install nginx`.
- */
+/** True when a line is a natural-language sentence rather than something an agent */
 function looksLikeProse(tokens: string[]): boolean {
 	// An enumeration comma attached to a whole word or number: `copy,` `1,`.
 	// A command's commas live INSIDE a token (`--opt=a,b`), never as a suffix on a
@@ -539,29 +241,10 @@ function looksLikeProse(tokens: string[]): boolean {
 		}
 	}
 	// A sentence opening: an initial capitalised ordinary word (`Please`, `This`,
-	// `The`). Commands are invoked by a lowercase program name (`npm`, `git`,
-	// `bunx`) or an uppercase environment assignment (`CARGO_TARGET_DIR=...`), and
-	// neither matches. A hyphenated or internally-capitalised name such as
-	// PowerShell's `Get-ChildItem` does not match either, so it stays capturable.
 	return /^[A-Z][a-z]+$/.test(tokens[0] ?? "");
 }
 
-/**
- * True when a line is a SOURCE-CODE statement, not a re-emittable command. This is
- * the disqualifier for whole-line capture: `looksLikeCommand` fires on almost every
- * line of a code file, because a method call or property access (`gem.homepage_uri`,
- * `theme.fg(...)`) satisfies {@link isStructured}. A model never retypes an arbitrary
- * full statement verbatim, so capturing whole code lines as handles fills the
- * dictionary with noise no model adopts and wastes the budget on the longest lines.
- *
- * A genuine agent-typed command — `bunx tsgo -p x/tsconfig.json --noEmit`,
- * `npm run build && node dist/index.js`, `CARGO_TARGET_DIR=/dev/null cargo test` —
- * carries none of the code punctuation this matches: a statement terminator (`;`),
- * a block/object brace (`{`/`}`), a template literal (`` ` ``), an arrow (`=>`), or
- * call syntax (an identifier immediately followed by `(`, like `Buffer.from(`). Any
- * one of these marks the line as code, so it is ranked on its structured *tokens*
- * (paths, import specifiers, dotted identifiers) instead of captured whole.
- */
+/** True when a line is a SOURCE-CODE statement, not a re-emittable command. This is */
 function looksLikeSourceCode(line: string): boolean {
 	if (/[;`{}]/.test(line) || /=>/.test(line) || /\w\(/.test(line)) {
 		return true;
@@ -638,35 +321,12 @@ const SOURCE_KEYWORDS = new Set([
 	"this",
 ]);
 
-/** True when a line opens with a comment marker (line/block/doc comment, markdown heading or bullet). */
+/** Check if line opens with a comment marker. */
 function isCommentLine(line: string): boolean {
 	return /^(#|\/\/|\/\*|\*|<!--|--)/.test(line);
 }
 
-/**
- * The default candidate extractor. Pulls two kinds of recurring string out of a
- * corpus sample:
- *
- *   - **structured tokens** — whitespace-delimited runs that look like a path,
- *     filename, URL, or dotted/scoped identifier (they contain a separator, not
- *     just letters) AND carry no {@link CODE_PUNCTUATION}. The cleanliness gate
- *     (see {@link isReusableToken}) is essential on a code corpus: without it, an
- *     expression fragment such as `${theme.fg('dim` or `parts.push(theme.fg('dim`
- *     satisfies the `\w\.\w` rule and floods the dictionary with strings no agent
- *     ever retypes. Only clean scheme-less tokens (`packages/app/src/db.ts`,
- *     `@scope/pkg`, `github.com/aws/aws-lambda-go/events`) survive — a scheme URL
- *     (`https://host/path`) is a hyperlink and is dropped by {@link isReusableToken},
- *     and
- *   - **command-like lines** — a whole trimmed line that contains a space and reads
- *     like a build/deploy command, captured intact. Source-code statements are
- *     NOT captured, even though they look "structured": a model never retypes an
- *     arbitrary full line of code, so a whole code line is dictionary noise. See
- *     {@link looksLikeSourceCode}. The structured *tokens* inside a code line (its
- *     paths, import specifiers, dotted identifiers) are still extracted below.
- *
- * Anything containing the sigil is skipped, since it could never be an
- * expansion. Ordering is preserved so generation is deterministic.
- */
+/** The default candidate extractor. Pulls two kinds of recurring string out of a */
 export function extractCandidates(text: string): string[] {
 	const out: string[] = [];
 	const lines = text.split(/\r?\n/);
@@ -707,41 +367,7 @@ export function extractCandidates(text: string): string[] {
 	return out;
 }
 
-/**
- * The longest handle name the generator will mint.
- *
- * SIX IS AN ECONOMIC LIMIT, NOT A STYLE CHOICE, and it is the single most
- * load-bearing number in this file. A handle costs `len(name) + 1` characters
- * every time it is written and `len(name) + len(expansion) + overhead` once in
- * the prompt, so the net saving collapses as names grow. Measured by replaying
- * the 87,492 characters a real agent actually emitted on the ytt task
- * (`deepswe-bench/runs/argot-smoke-0724`) against a dictionary fitted to that
- * output:
- *
- *   name length   handles   net saving
- *        2          437       +39.4%
- *        4          315       +25.1%
- *        6          175       +13.7%
- *        8           89        +6.9%
- *       11           37        +1.8%
- *
- * Run-to-run output-token noise on this workload is about 8%, so a cap above six
- * puts the BEST possible outcome under the noise floor and no number of repeats
- * can measure the feature. A cap of twelve was tried, to make names derivable by
- * eye from their expansion, and it is not affordable: it buys readability at the
- * cost of the entire effect.
- *
- * MEASURE NAMES IN TOKENS, NOT CHARACTERS, and do not optimise them for human
- * readability. A model retrieves `§st1k` from the handle table exactly as easily
- * as `§starlark`: the table is in context and attention is content-addressed, so
- * an opaque name is not harder for it to use. What a name costs is tokens, and
- * there the intuition inverts, because a short random string tokenises WORSE than
- * a longer common word. With the sigil included: `§ret` is 2 tokens, `§r2` is 3,
- * `§stlk` is 3, `§st1k` is 4. So prefer a name that lands on common subwords over
- * a shorter arbitrary one; the character cap above is a cheap proxy for that, not
- * the real objective. A handle's realistic floor is 2 tokens (sigil + one
- * subword), which is why `perUse` in the scorer must be computed on tokens.
- */
+/** The longest handle name the generator will mint. */
 const MAX_NAME_LENGTH = 4;
 
 /**
@@ -766,7 +392,7 @@ function nameStem(expansion: string, maxLength: number = MAX_NAME_LENGTH): strin
 	return base.length === 0 ? "h" : base;
 }
 
-/** A 32-bit FNV-1a hash of a string, seedable so two rounds give an independent value. */
+/** 32-bit FNV-1a hash of a string. */
 function fnv1a(text: string, seed: number): number {
 	let hash = seed >>> 0;
 	for (let i = 0; i < text.length; i++) {
@@ -776,61 +402,13 @@ function fnv1a(text: string, seed: number): number {
 	return hash >>> 0;
 }
 
-/**
- * A content-addressed handle name: a readable stem plus a hash of the whole
- * expansion. Deterministic in the expansion alone, so it needs no shared counter
- * or `taken` set to stay collision-free across independent generators. Two hash
- * rounds widen the space enough that a collision between distinct expansions is
- * negligible for realistic dictionary sizes.
- */
+/** A content-addressed handle name: a readable stem plus a hash of the whole */
 function contentName(expansion: string): string {
 	const hash = fnv1a(expansion, 0x811c9dc5).toString(36) + fnv1a(expansion, 0x9e3779b1).toString(36);
-	// Its own stem length, deliberately not {@link MAX_NAME_LENGTH}. That budget
-	// exists to keep a name inside 2 tokens, which this scheme cannot achieve at any
-	// stem length because it always appends `_` plus eight hash characters. Shrinking
-	// the stem here would only cost readability and buy nothing, so the readable
-	// stem stays as long as it was.
 	return `${nameStem(expansion, CONTENT_NAME_STEM_LENGTH)}_${hash.slice(0, 8)}`;
 }
 
-/**
- * Assign a short, deterministic handle name to every expansion in a set.
- *
- * Two goals the runtime cache needs at once:
- *
- *  - BREVITY. The token win only exists when a handle is shorter than the string
- *    it replaces, and it collapses fast as names grow (see {@link MAX_NAME_LENGTH}
- *    for the measured curve). An expansion whose stem is unique among the set gets
- *    the bare stem (`connec` for `.../connection-pool`) — the shortest possible
- *    name. Only expansions that COLLIDE on a stem pay a disambiguator, and only
- *    the shortest hash prefix that separates them, grown one character at a time.
- *    This is why the cache no longer uses the content scheme's fixed 8-char hash
- *    on every handle, which made handles nearly as long as short expansions.
- *
- *  - DETERMINISM. A name is a pure function of the expansion plus the set of
- *    other expansions that share its stem, never of iteration order: expansions
- *    are grouped by stem, groups and their members are processed in sorted order,
- *    and disambiguators come from a hash of the expansion. So two independent
- *    generators over the same expansion set mint byte-identical names, which is
- *    exactly what lets the immutable content-signature cache adopt short names
- *    with no cross-generator coordination (the property the content scheme had).
- *
- * Opaque names are FINE and are not why adoption was zero. A model reads the
- * handle table out of its context rather than recalling it from memory, so
- * `§starla17` costs it nothing that `§starlark` would not (see
- * {@link MAX_NAME_LENGTH} for what a name does cost, which is tokens). Do not
- * trade tokens for human readability here.
- *
- * The one naming risk worth tracking is SIMILARITY, not opacity: `§starla17` and
- * `§starla18` differ by a single character and expand to different real paths, so
- * a slip produces wrong text rather than an error. That argues for names that are
- * far apart, not for names that are guessable. The dictionary being 551 entries
- * of strings no agent ever types is a separate and much larger defect; see
- * ARGOT-DICT-FITS-THE-WRONG-CORPUS in BACKLOG.md.
- *
- * `reserved` holds names already bound to a frozen (pinned) handle; a new name is
- * never allowed to equal one, so a pin's expansion can never be silently reused.
- */
+/** Assign a short, deterministic handle name to every expansion in a set. */
 function buildMnemonicNames(allExpansions: Iterable<string>, reserved: Iterable<string> = []): Map<string, string> {
 	// Group distinct expansions by stem. Dedupe defensively; the caller passes
 	// distinct candidates, but a duplicate would otherwise inflate a group.
@@ -892,7 +470,7 @@ function buildMnemonicNames(allExpansions: Iterable<string>, reserved: Iterable<
 	return names;
 }
 
-/** Escape a string for a TOML basic (double-quoted) string. */
+/** Escape a string for TOML basic string format. */
 function escapeTomlBasic(value: string): string {
 	let out = "";
 	for (const ch of value) {
@@ -916,7 +494,7 @@ function escapeTomlBasic(value: string): string {
 	return out;
 }
 
-/** Serialize a chosen vocabulary to `AGENTS.dict` TOML text. */
+/** Serialize vocabulary to AGENTS.dict TOML format. */
 function toToml(sigil: string, handles: GeneratedHandle[]): string {
 	const lines: string[] = [];
 	lines.push("# Generated by argot. Review before committing: a handle must stand");
@@ -955,24 +533,11 @@ export interface RepoFile {
 	 * mentions it.
 	 */
 	path: string;
-	/**
-	 * The file's text, if you have it. Scanned for the structured tokens and
-	 * command lines that recur across the repo, so a widely-referenced path or a
-	 * repeated command gains frequency (its centrality). Omit it to rank on the
-	 * listing alone (longest paths first).
-	 */
+	/** The file's text, if you have it. Scanned for the structured tokens and */
 	content?: string;
 }
 
-/**
- * Generate an `AGENTS.dict` from a corpus.
- *
- * `corpus` is the text to learn from: pass one string or many. Returns the
- * chosen handles, the ready-to-write TOML, and the token accounting. When
- * nothing clears the thresholds the result is empty (`toml === ""`,
- * `handles.length === 0`) rather than an error — an empty corpus simply has no
- * shorthand to propose.
- */
+/** Generate an `AGENTS.dict` from a corpus. */
 export function generateDict(corpus: string | string[], options: GenerateOptions = {}): GeneratedDict {
 	const tokenBudget = options.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
 	// When regenerating monotonically, the pinned vocabulary's sigil is
@@ -996,11 +561,6 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 	const samples = typeof corpus === "string" ? [corpus] : corpus;
 
 	// Count distinct candidate expansions, preserving first-seen order so the
-	// result is deterministic when scores tie. Each sample contributes at most one
-	// to a string's document frequency no matter how many times it repeats inside
-	// that sample, so a single high-repetition file cannot dominate the ranking;
-	// raw occurrences are tallied separately for reporting and the damped
-	// within-sample bonus (see scoringFrequency).
 	const seen = new Map<string, Candidate>();
 	let ordinal = 0;
 	for (const sample of samples) {
@@ -1008,10 +568,6 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 		for (const rawExpansion of extract(sample)) {
 			const expansion = rawExpansion;
 			// The character floor is a proxy for "long enough to be worth a handle",
-			// and it is the wrong proxy for line structure: `\n\tif` is four
-			// characters and three tokens, so it clears the only test that matters
-			// (the `perUse` token comparison below) while failing this one. Structure
-			// is therefore admitted here and judged on tokens alone.
 			if (!isLineStructure(expansion) && expansion.length < minExpansionLength) {
 				continue;
 			}
@@ -1065,18 +621,7 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 		if (perUse <= 0) {
 			continue; // the handle is not shorter than what it replaces
 		}
-		// Value is driven by centrality (document frequency), not raw occurrences,
-		// so a string repeated inside one asset file cannot buy budget a model would
-		// never spend on it. See scoringFrequency.
-		//
-		// Line structure is scored on RAW occurrences instead, because for it the
-		// within-file repetition is the entire signal rather than noise. The damping
-		// above exists to stop one asset file dominating, but code structure
-		// legitimately repeats many times inside every source file, and damping it
-		// logarithmically is what kept the highest-value handles out of the
-		// dictionary. The asset-file risk that damping guards against is met here by
-		// requiring the pattern in at least two distinct files, so a single
-		// thousand-row fixture still cannot buy a handle nothing types.
+		// Value is driven by document frequency centrality.
 		let value: number;
 		if (isLineStructure(candidate.expansion)) {
 			if (candidate.documentFrequency < 2) {
@@ -1115,10 +660,6 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 	let dictTokens = headerTokens;
 
 	// Precompute mnemonic names for the whole candidate set up front, so each name
-	// is a pure function of the set (not of which entries the budget happens to fit
-	// this run) and stays byte-identical across independent generators of the same
-	// cache entry. Names avoid every pinned name. Only used when naming is mnemonic;
-	// numeric/content assign per-entry below.
 	const mnemonicNames =
 		naming === "mnemonic"
 			? buildMnemonicNames(
@@ -1161,18 +702,7 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 		}
 	}
 
-	// New handles fill the remaining budget. maxHandles caps the TOTAL, and pinned
-	// entries are never dropped to satisfy it, so new additions get whatever room
-	// is left under the cap.
-	//
-	// Two stages, because the coverage rule needs to know what is ACHIEVABLE
-	// before it can take a fraction of it. Stage one admits every candidate that
-	// fits the budget and yields a valid, unused name; stage two keeps the
-	// shortest prefix of that list reaching `savingsCoverage` of its total
-	// savings. Measuring coverage against every scored candidate instead would
-	// make the target unreachable on a large corpus -- the ranked tail sums to
-	// more than the budget can ever hold -- so the rule would silently do nothing
-	// exactly where the tail is longest, which is the opposite of the intent.
+	// Admit candidates fitting remaining budget and savings coverage.
 	const feasible: GeneratedHandle[] = [];
 	let feasibleTokens = 0;
 	for (const entry of scored) {
@@ -1273,20 +803,7 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 	};
 }
 
-/**
- * Generate an `AGENTS.dict` from a repository — the recommended starting point.
- *
- * Pass the repo's files (a `git ls-files` listing, optionally with contents).
- * Every path becomes a candidate, because a path in the tree is a string the
- * agent will type whether or not another file mentions it; when contents are
- * given, the strings that recur across them gain frequency, so a widely
- * referenced path or a repeated command ranks above a one-off. The result is
- * still packed under the token budget, highest value first.
- *
- * Because the listing guarantees each path is seen at least once, this defaults
- * `minFrequency` to `1` (unlike {@link generateDict}, which defaults to `2` for a
- * free-text corpus). Override any option as usual; your value wins.
- */
+/** Generate an `AGENTS.dict` from a repository — the recommended starting point. */
 export function generateDictFromRepo(files: RepoFile[], options: GenerateOptions = {}): GeneratedDict {
 	const samples: string[] = [];
 	// Each path on its own line so it is enumerated as a candidate token.
