@@ -89,7 +89,6 @@ import type {
 	ImageContent,
 	InstrumentationLevel,
 	Message,
-	MessageAttribution,
 	Model,
 	ProviderResponseMetadata,
 	ProviderSessionState,
@@ -121,7 +120,6 @@ import {
 	assistantTurnMetricsForPersistence,
 	assistantTurnRequestForPersistence,
 	instrumentationRank,
-	type SessionTelemetryDetail,
 	sessionTelemetryDetail,
 	toolCallMetricsForPersistence,
 } from "@veyyon/ai/instrumentation";
@@ -191,24 +189,18 @@ import {
 	expandSessionContext,
 	expandSessionMessageEntries,
 } from "../argot-wire";
-import { type AsyncJob, type AsyncJobDeliveryState, AsyncJobManager } from "../async";
+import { type AsyncJob, AsyncJobManager } from "../async";
 import { classifyDifficulty } from "../auto-thinking/classifier";
 import { reset as resetCapabilities } from "../capability";
 import type { Rule } from "../capability/rule";
 import { shouldEnableAppendOnlyContext } from "../config/append-only-context-mode";
-import type { CompactionEngineAction } from "../config/compaction-strategy";
 import {
 	isCompactionStrategyOff,
 	isThresholdCompactionDisabled,
 	resolveCompactionEngineAction,
 	toAgentCompactionSettings,
 } from "../config/compaction-strategy";
-import {
-	type EffortSource,
-	resolveEffort,
-	withLegacyDefaultEffort,
-	withPersistedEffort,
-} from "../config/effort-resolver";
+import { resolveEffort, withLegacyDefaultEffort, withPersistedEffort } from "../config/effort-resolver";
 import { credentialRemedySentence, missingCredentialsMessage } from "../config/missing-credentials";
 import type { ModelRegistry } from "../config/model-registry";
 import {
@@ -266,7 +258,6 @@ import { CustomToolAdapter } from "../extensibility/custom-tools/wrapper";
 import type {
 	ExtensionCommandContext,
 	ExtensionRunner,
-	ExtensionUIContext,
 	MessageEndEvent,
 	MessageStartEvent,
 	MessageUpdateEvent,
@@ -290,7 +281,7 @@ import type { RecoveredRetryError } from "../extensibility/shared-events";
 import type { Skill } from "../extensibility/skills";
 import { expandSlashCommand, type FileSlashCommand } from "../extensibility/slash-commands";
 import { GoalRuntime } from "../goals/runtime";
-import type { Goal, GoalAbortReason, GoalModeState } from "../goals/state";
+import type { GoalAbortReason, GoalModeState } from "../goals/state";
 import type { HindsightSessionState } from "../hindsight/state";
 import {
 	type LocalProtocolOptions,
@@ -308,8 +299,6 @@ import { resolveMemoryBackend } from "../memory-backend";
 import { shutdownMnemopiEmbedClient } from "../mnemopi/embed-client";
 import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../mnemopi/state";
 import { containsOrchestrate, ORCHESTRATE_NOTICE } from "../modes/orchestrate-keyword";
-import type { RetryRecoveryMode } from "../modes/retry-display";
-import { theme } from "../modes/theme/theme-binding";
 import { containsUltrathink, ULTRATHINK_NOTICE } from "../modes/ultrathink-keyword";
 import { containsWorkflow, renderWorkflowNotice } from "../modes/workflow-keyword";
 import { resolveApprovedPlan } from "../plan-mode/approved-plan";
@@ -388,7 +377,6 @@ import {
 	getLatestTodoPhasesFromEntries,
 	prioritizeTodoItems,
 	TODO_ITEM_PREVIEW_WIDTH,
-	type TodoItem,
 	type TodoPhase,
 	USER_TODO_EDIT_CUSTOM_TYPE,
 } from "../tools/todo";
@@ -443,7 +431,7 @@ import {
 	toolCallOpFromMessage,
 	toRestoredQueuedMessage,
 } from "./agent-session-helpers";
-import type { ClientBridge, ClientBridgePermissionOption, ClientBridgePermissionOutcome } from "./client-bridge";
+import type { ClientBridge, ClientBridgePermissionOutcome } from "./client-bridge";
 import {
 	type CodexAutoRedeemRedeemDecision,
 	defaultCodexAutoRedeemCoordinator,
@@ -507,13 +495,7 @@ import {
 import type { BuildSessionContextOptions, SessionContext } from "./session-context";
 import { getLatestCompactionEntry, getRestorableSessionModels } from "./session-context";
 import { formatSessionDumpText } from "./session-dump-format";
-import type {
-	BranchSummaryEntry,
-	CompactionEntry,
-	NewSessionOptions,
-	SessionEntry,
-	SessionTitleSource,
-} from "./session-entries";
+import type { BranchSummaryEntry, CompactionEntry, NewSessionOptions, SessionEntry } from "./session-entries";
 import { EPHEMERAL_MODEL_CHANGE_ROLE } from "./session-entries";
 import { formatSessionHistoryMarkdown } from "./session-history-format";
 import { cleanupEmptyMoveSession, type SessionManager } from "./session-manager";
@@ -535,604 +517,109 @@ import { YieldQueue } from "./yield-queue";
 export type { RestoredQueuedMessage } from "./agent-session-helpers";
 export { obfuscateProviderPayload, TOOL_SHAPE_SETTING_PATHS } from "./agent-session-helpers";
 
-const SESSION_STOP_CONTINUATION_CAP = 8;
-const PLAN_MODE_REMINDER_MAX = 3;
-const PLAN_DECISION_TOOLS = new Set<string>([TOOL.ask, TOOL.resolve]);
-
-const MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD = 12;
-
-const MID_RUN_TODO_NUDGE_MAX_PER_CYCLE = 2;
-
-const MID_RUN_TODO_NUDGE_MUTATING_TOOLS: Record<string, true> = {
-	bash: true,
-	eval: true,
-	edit: true,
-	write: true,
-	ast_edit: true,
-};
-
-interface PendingContextSnapshot {
-	promptTokens: number;
-	nonMessageTokens: number;
-
-	cutoffCount: number;
-
-	submitted: ReadonlySet<AgentMessage>;
-	detail: SessionTelemetryDetail;
-	storedMessagesTokens?: number;
-	tailTokens?: number;
-	compactionEntryId?: string;
-}
-
-const MID_RUN_TODO_NUDGE_MESSAGE_TYPE = "mid-run-todo-nudge";
-
-const MEMORY_CONTEXT_MESSAGE_TYPE = "memory-context";
-
-const SESSION_STATE_MESSAGE_TYPE = "session-state";
-
-const PREWALK_PLAN_MESSAGE_TYPE = "prewalk-plan";
-
-const PREWALK_CONTINUE_MESSAGE_TYPE = "prewalk-continue";
-
-const PREWALK_CHECKLIST_MESSAGE_TYPE = "prewalk-checklist";
-
-const PREWALK_ACTION_TOOLS: Record<string, true> = {
-	edit: true,
-	write: true,
-};
-
-const PLAN_YOLO_HANDOFF_MESSAGE_TYPE = "plan-yolo-handoff";
-
-const GEMINI_HEADER_INTERRUPT_REASON = "Interrupted: emit a tool call instead of more planning";
-
-const GEMINI_TOOL_REMINDER_TYPE = "gemini-tool-call-reminder";
-
-const THINKING_LOOP_REDIRECT_TYPE = "thinking-loop-redirect";
-const TOOL_CALL_LOOP_REDIRECT_TYPE = "tool-call-loop-redirect";
-
-export type AgentSessionEvent =
-	| AgentEvent
-	| {
-			type: "auto_compaction_start";
-			reason: "threshold" | "overflow" | "idle" | "incomplete";
-			action: CompactionEngineAction;
-	  }
-	| {
-			type: "auto_compaction_end";
-			action: CompactionEngineAction;
-			result: CompactionResult | undefined;
-			aborted: boolean;
-			willRetry: boolean;
-			errorMessage?: string;
-
-			skipped?: boolean;
-	  }
-	| {
-			type: "auto_retry_start";
-			attempt: number;
-			maxAttempts: number;
-			delayMs: number;
-			errorMessage: string;
-			errorId?: number;
-
-			policySource?: string;
-
-			mode?: RetryRecoveryMode;
-	  }
-	| {
-			type: "auto_retry_end";
-			success: boolean;
-			attempt: number;
-			finalError?: string;
-			mode?: RetryRecoveryMode;
-			recoveredErrors?: RecoveredRetryError[];
-	  }
-	| { type: "retry_fallback_applied"; from: string; to: string; role: string }
-	| { type: "retry_fallback_succeeded"; model: string; role: string }
-	| { type: "ttsr_triggered"; rules: Rule[] }
-	| { type: "todo_reminder"; todos: TodoItem[]; attempt: number; maxAttempts: number }
-	| { type: "todo_auto_clear" }
-	| { type: "irc_message"; message: CustomMessage }
-	| { type: "notice"; level: "info" | "warning" | "error"; message: string; source?: string }
-	| {
-			type: "thinking_level_changed";
-			thinkingLevel: ThinkingLevel | undefined;
-
-			configured?: ConfiguredThinkingLevel;
-
-			resolved?: Effort;
-	  }
-	| { type: "goal_updated"; goal: Goal | null; state?: GoalModeState }
-	| { type: "cwd_changed"; previous: string; cwd: string };
-export type AgentSessionEventListener = (event: AgentSessionEvent) => void;
-
-const UNEXPECTED_STOP_MAX_RETRIES = 3;
-const UNEXPECTED_STOP_TIMEOUT_MS = 4000;
-const EMPTY_STOP_MAX_RETRIES = 3;
-export const SHUTDOWN_CONSOLIDATE_BUDGET_MS = 1_500;
-
-export interface AgentSessionDisposeOptions {
-	mnemopiConsolidateTimeoutMs?: number;
-
-	reason?: postmortem.Reason;
-}
-
-type CompactionCheckResult = Readonly<{
-	continuationScheduled: boolean;
-	automaticContinuationBlocked?: boolean;
-	historyRewritten?: boolean;
-}>;
-
-const COMPACTION_CHECK_NONE: CompactionCheckResult = {
-	continuationScheduled: false,
-};
-const COMPACTION_CHECK_CONTINUATION: CompactionCheckResult = {
-	continuationScheduled: true,
-};
-const COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION: CompactionCheckResult = {
-	continuationScheduled: false,
-	automaticContinuationBlocked: true,
-};
-
-const PRUNE_CACHE_WARM_SUFFIX_TOKENS = 8_000;
-
-const PRUNE_IDLE_FLUSH_MS = 90 * 60_000;
-
-const SHUTDOWN_DISPOSE_TIMEOUT_MS = 5_000;
-export type CommandMetadataChangedListener = () => void | Promise<void>;
-export type AsyncJobSnapshotItem = Pick<AsyncJob, "id" | "type" | "status" | "label" | "startTime">;
-
-const COMPACTION_RECOVERY_BAND = 0.8;
-
-const SIBLING_UNBLOCK_BUFFER_MS = 1_000;
-
-export interface AsyncJobSnapshot {
-	running: AsyncJobSnapshotItem[];
-	recent: AsyncJobSnapshotItem[];
-	delivery: AsyncJobDeliveryState;
-}
-
-export interface AsyncResultEntry {
-	jobId: string;
-	result: string;
-	job: AsyncJob | undefined;
-	durationMs: number | undefined;
-}
-
-export type { ShakeMode, ShakeResult };
-export interface Prewalk {
-	target: Model;
-	thinkingLevel?: ConfiguredThinkingLevel;
-}
-
-export interface PlanYolo {
-	target: Model;
-	thinkingLevel?: ConfiguredThinkingLevel;
-}
-
-export interface SecretRuntimeLease {
-	readonly revision: number;
-	readonly cwd: string;
-
-	readonly expansionObfuscator: SecretObfuscator | undefined;
-
-	readonly redactionObfuscator: SecretObfuscator | undefined;
-
-	readonly hasRedactions: boolean;
-	obfuscateText(text: string): string;
-	obfuscateMessages(messages: Message[]): Message[];
-	obfuscateContext(context: Context): Context;
-	obfuscatePayload(payload: unknown): unknown;
-
-	isFreshForExpansion(text?: string): boolean;
-
-	ensureFreshForExpansion(text?: string): Promise<void>;
-
-	assertFreshForExpansion(text?: string): void;
-}
-
-export interface ProjectAdvisorScope {
-	advisorWatchdogPrompt?: string;
-	advisorContextPrompt?: string;
-	advisorSharedInstructions?: string;
-	advisorConfigs?: AdvisorConfig[];
-}
-
-export interface AgentSessionConfig {
-	agent: Agent;
-	sessionManager: SessionManager;
-	settings: Settings;
-
-	autoApprove?: boolean;
-
-	bypassAllApprovals?: boolean;
-
-	parentApprovalBypassed?: () => boolean;
-
-	scopedModels?: Array<{
-		model: Model;
-		thinkingLevel?: ConfiguredThinkingLevel;
-
-		explicitThinkingLevel?: boolean;
-	}>;
-
-	thinkingLevel?: ConfiguredThinkingLevel;
-
-	thinkingSource?: EffortSource;
-
-	prewalk?: Prewalk;
-
-	planYolo?: PlanYolo;
-
-	serviceTierByFamily?: ServiceTierByFamily;
-
-	promptTemplates?: PromptTemplate[];
-
-	slashCommands?: FileSlashCommand[];
-
-	extensionRunner?: ExtensionRunner;
-
-	skills?: Skill[];
-
-	operatorNotices?: OperatorNotices;
-
-	customCommands?: LoadedCustomCommand[];
-	skillsSettings?: SkillsSettings;
-
-	modelRegistry: ModelRegistry;
-
-	toolRegistry?: Map<string, AgentTool>;
-
-	createVibeTools?: () => AgentTool[];
-
-	builtInToolNames?: Iterable<string>;
-
-	setActiveToolNames?: (names: Iterable<string>) => void;
-
-	transformContext?: (messages: AgentMessage[], signal?: AbortSignal) => AgentMessage[] | Promise<AgentMessage[]>;
-
-	transformProviderContext?: (
-		context: Context,
-		model: Model,
-		runtime?: SecretRuntimeLease,
-	) => Context | Promise<Context>;
-
-	sideStreamFn?: StreamFn;
-
-	advisorStreamFn?: StreamFn;
-
-	preferWebsockets?: boolean;
-
-	onPayload?: SimpleStreamOptions["onPayload"];
-
-	onResponse?: SimpleStreamOptions["onResponse"];
-
-	onSseEvent?: SimpleStreamOptions["onSseEvent"];
-
-	rawSseDebugBuffer?: RawSseDebugBuffer;
-
-	convertToLlm?: (messages: AgentMessage[]) => Message[] | Promise<Message[]>;
-
-	rebuildSystemPrompt?: (toolNames: string[], tools: Map<string, AgentTool>) => Promise<{ systemPrompt: string[] }>;
-
-	getLocalCalendarDate?: () => string;
-
-	reloadSshTool?: () => Promise<AgentTool | null>;
-	requestedToolNames?: ReadonlySet<string>;
-
-	getMcpServerInstructions?: () => Map<string, string> | undefined;
-
-	mcpDiscoveryEnabled?: boolean;
-
-	initialSelectedMCPToolNames?: string[];
-
-	persistInitialMCPToolSelection?: boolean;
-
-	defaultSelectedMCPServerNames?: string[];
-
-	defaultSelectedMCPToolNames?: string[];
-
-	ttsrManager?: TtsrManager;
-
-	obfuscator?: SecretObfuscator;
-
-	secretRuntime?: SecretRuntimeLease;
-
-	leaseSecretRuntime?: () => Promise<SecretRuntimeLease>;
-
-	resolveSecretRuntimeLeaseForContext?: (context: Context) => SecretRuntimeLease | undefined;
-
-	refreshSecretRuntime?: (cwd: string) => Promise<SecretRuntimeLease | SecretObfuscator | undefined>;
-
-	argot?: ArgotSession;
-
-	parentEvalSessionId?: string;
-
-	evalKernelOwnerId?: string;
-
-	ownedAsyncJobManager?: AsyncJobManager;
-
-	isSubagent?: boolean;
-
-	asyncJobManager?: AsyncJobManager;
-
-	agentId?: string;
-
-	agentKind?: "main" | "sub";
-
-	providerSessionId?: string;
-
-	providerPromptCacheKeySource?: "explicit" | "fork";
-
-	advisorTools?: AgentTool[];
-
-	advisorWatchdogPrompt?: string;
-
-	advisorSharedInstructions?: string;
-
-	advisorContextPrompt?: string;
-
-	advisorConfigs?: AdvisorConfig[];
-
-	pruneToolDescriptions?: boolean | ((model: Model) => boolean);
-
-	disconnectOwnedMcpManager?: () => Promise<void>;
-
-	titleSystemPrompt?: string;
-}
-
-export interface PromptOptions {
-	expandPromptTemplates?: boolean;
-
-	images?: ImageContent[];
-
-	streamingBehavior?: "steer" | "followUp";
-
-	toolChoice?: ToolChoice;
-
-	synthetic?: boolean;
-
-	userInitiated?: boolean;
-
-	attribution?: MessageAttribution;
-
-	skipCompactionCheck?: boolean;
-}
-
-export interface FollowUpOptions {
-	synthetic?: boolean;
-
-	expandPromptTemplates?: boolean;
-
-	attribution?: MessageAttribution;
-}
-
-export interface HandoffResult {
-	document: string;
-	savedPath?: string;
-}
-
-export interface SessionHandoffOptions {
-	autoTriggered?: boolean;
-	signal?: AbortSignal;
-	onSwitchCancelled?: () => void;
-}
-
-export interface ModelCycleResult {
-	model: Model;
-	thinkingLevel: ThinkingLevel | undefined;
-
-	isScoped: boolean;
-}
-
-export interface RoleModelCycleResult {
-	model: Model;
-	thinkingLevel: ThinkingLevel | undefined;
-	role: string;
-}
-
-export interface ResolvedRoleModel {
-	role: string;
-	model: Model;
-	thinkingLevel?: ConfiguredThinkingLevel;
-	explicitThinkingLevel: boolean;
-}
-
-export interface RoleModelCycle {
-	models: ResolvedRoleModel[];
-	currentIndex: number;
-}
-
-export interface ContextUsageBreakdown {
-	contextWindow: number;
-	anchored: boolean;
-	usedTokens: number;
-	systemPromptTokens: number;
-	systemToolsTokens: number;
-	systemContextTokens: number;
-	skillsTokens: number;
-	messagesTokens: number;
-	pendingMessagesTokens: number;
-}
-
-export interface SessionStats {
-	sessionFile: string | undefined;
-	sessionId: string;
-	userMessages: number;
-	assistantMessages: number;
-	toolCalls: number;
-	toolResults: number;
-	totalMessages: number;
-	tokens: {
-		input: number;
-		output: number;
-		reasoning: number;
-		cacheRead: number;
-		cacheWrite: number;
-		total: number;
-	};
-	premiumRequests: number;
-	cost: number;
-	contextUsage?: ContextUsage;
-}
-
-export interface AdvisorStats {
-	configured: boolean;
-	active: boolean;
-	model?: Model;
-	contextWindow: number;
-	contextTokens: number;
-	tokens: {
-		input: number;
-		output: number;
-		reasoning: number;
-		cacheRead: number;
-		cacheWrite: number;
-		total: number;
-	};
-	cost: number;
-	messages: {
-		user: number;
-		assistant: number;
-		total: number;
-	};
-
-	advisors: PerAdvisorStat[];
-}
-
-export interface PerAdvisorStat {
-	name: string;
-	model: Model;
-	contextWindow: number;
-	contextTokens: number;
-	tokens: AdvisorStats["tokens"];
-	cost: number;
-	messages: AdvisorStats["messages"];
-}
-
-interface ActiveAdvisor {
-	name: string;
-
-	slug: string;
-	agent: Agent;
-	runtime: AdvisorRuntime;
-	adviseTool: AdviseTool;
-	emissionGuard: AdvisorEmissionGuard;
-	recorder: AdvisorTranscriptRecorder;
-
-	recorderClosed: Promise<void>;
-
-	agentUnsubscribe?: () => void;
-	model: Model;
-	thinkingLevel: ThinkingLevel;
-
-	signature: string;
-}
-
-interface AdvisorRuntimeDescriptor {
-	config: AdvisorConfig;
-	name: string;
-	slug: string;
-	model: Model;
-	thinkingLevel: ThinkingLevel;
-	signature: string;
-}
-
-export interface FreshSessionResult {
-	previousSessionId: string;
-	sessionId: string;
-	closedProviderSessions: number;
-}
-
-type RetryFallbackChains = Record<string, string[]>;
-
-type RetryFallbackRevertPolicy = "never" | "cooldown-expiry";
-
-interface ActiveRetryFallbackState {
-	role: string;
-	originalSelector: string;
-	originalThinkingLevel: ConfiguredThinkingLevel | undefined;
-	lastAppliedFallbackThinkingLevel: ConfiguredThinkingLevel | undefined;
-	pinned: boolean;
-}
-
-const noOpUIContext: ExtensionUIContext = {
-	select: async (_title, _options, _dialogOptions) => undefined,
-	confirm: async (_title, _message, _dialogOptions) => false,
-	input: async (_title, _placeholder, _dialogOptions) => undefined,
-	notify: () => {},
-	onTerminalInput: () => () => {},
-	setStatus: () => {},
-	setWorkingMessage: () => {},
-	setWidget: () => {},
-	setTitle: () => {},
-	custom: async () => undefined as never,
-	setEditorText: () => {},
-	pasteToEditor: () => {},
-	getEditorText: () => "",
-	editor: async () => undefined,
-	addAutocompleteProvider: () => {},
-	get theme() {
-		return theme;
-	},
-	getAllThemes: () => Promise.resolve([]),
-	getTheme: () => Promise.resolve(undefined),
-	setTheme: _theme => Promise.resolve({ success: false, error: "UI not available" }),
-	setFooter: () => {},
-	setHeader: () => {},
-	setEditorComponent: () => {},
-	getToolsExpanded: () => false,
-	setToolsExpanded: () => {},
-};
-
-const PERMISSION_REQUIRED_TOOLS = new Set([TOOL.bash, TOOL.edit, "delete", "move"]);
-
-const PERMISSION_OPTIONS: ClientBridgePermissionOption[] = [
-	{ optionId: "allow_once", name: "Allow once", kind: "allow_once" },
-	{ optionId: "allow_always", name: "Always allow", kind: "allow_always" },
-	{ optionId: "reject_once", name: "Reject", kind: "reject_once" },
-	{ optionId: "reject_always", name: "Always reject", kind: "reject_always" },
-];
-
-const PERMISSION_OPTIONS_BY_ID = new Map(PERMISSION_OPTIONS.map(option => [option.optionId, option]));
-
-type MessageEndPersistenceSlot = {
-	readonly promise: Promise<void>;
-	persist: (persistMessage: () => void) => Promise<void>;
-	release: () => void;
-};
-type PendingRecoveredRetryError = {
-	entryId: string;
-	persistenceKey: string;
-	recovery: AssistantRetryRecoveryKind;
-	attempt: number;
-	note: string;
-};
-
-type PostPromptSkipReason = "aborted" | "stale-generation";
-
-type AgentContinueSkipReason =
-	| PostPromptSkipReason
-	| "session-unavailable"
-	| "should-continue-false"
-	| "post-restore-unavailable";
-
-type ScheduledAgentContinueOptions = {
-	delayMs?: number;
-	generation?: number;
-	shouldContinue?: () => boolean;
-	onSkip?: (reason: AgentContinueSkipReason) => void;
-	onError?: () => void;
-};
-
-const REPLAN_TITLE_CONTEXT_TURN_LIMIT = 6;
-
-type SessionNameTrigger = "replan";
-type SetSessionNameWithTrigger = (
-	name: string,
-	source?: SessionTitleSource,
-	trigger?: SessionNameTrigger,
-) => Promise<boolean>;
+import {
+	type ActiveAdvisor,
+	type ActiveRetryFallbackState,
+	type AdvisorRuntimeDescriptor,
+	type AdvisorStats,
+	type AgentContinueSkipReason,
+	type AgentSessionConfig,
+	type AgentSessionDisposeOptions,
+	type AgentSessionEvent,
+	type AgentSessionEventListener,
+	type AsyncJobSnapshot,
+	type AsyncResultEntry,
+	COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION,
+	COMPACTION_CHECK_CONTINUATION,
+	COMPACTION_CHECK_NONE,
+	COMPACTION_RECOVERY_BAND,
+	type CommandMetadataChangedListener,
+	type CompactionCheckResult,
+	type ContextUsageBreakdown,
+	EMPTY_STOP_MAX_RETRIES,
+	type FollowUpOptions,
+	type FreshSessionResult,
+	GEMINI_HEADER_INTERRUPT_REASON,
+	GEMINI_TOOL_REMINDER_TYPE,
+	type HandoffResult,
+	MEMORY_CONTEXT_MESSAGE_TYPE,
+	type MessageEndPersistenceSlot,
+	MID_RUN_TODO_NUDGE_MAX_PER_CYCLE,
+	MID_RUN_TODO_NUDGE_MESSAGE_TYPE,
+	MID_RUN_TODO_NUDGE_MUTATING_TOOLS,
+	MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD,
+	type ModelCycleResult,
+	noOpUIContext,
+	PERMISSION_OPTIONS,
+	PERMISSION_OPTIONS_BY_ID,
+	PERMISSION_REQUIRED_TOOLS,
+	type PendingContextSnapshot,
+	type PendingRecoveredRetryError,
+	type PerAdvisorStat,
+	PLAN_DECISION_TOOLS,
+	PLAN_MODE_REMINDER_MAX,
+	PLAN_YOLO_HANDOFF_MESSAGE_TYPE,
+	type PlanYolo,
+	type PostPromptSkipReason,
+	PREWALK_ACTION_TOOLS,
+	PREWALK_CHECKLIST_MESSAGE_TYPE,
+	PREWALK_CONTINUE_MESSAGE_TYPE,
+	PREWALK_PLAN_MESSAGE_TYPE,
+	PRUNE_CACHE_WARM_SUFFIX_TOKENS,
+	PRUNE_IDLE_FLUSH_MS,
+	type Prewalk,
+	type ProjectAdvisorScope,
+	type PromptOptions,
+	REPLAN_TITLE_CONTEXT_TURN_LIMIT,
+	type ResolvedRoleModel,
+	type RetryFallbackChains,
+	type RetryFallbackRevertPolicy,
+	type RoleModelCycle,
+	type RoleModelCycleResult,
+	type ScheduledAgentContinueOptions,
+	SESSION_STATE_MESSAGE_TYPE,
+	SESSION_STOP_CONTINUATION_CAP,
+	type SecretRuntimeLease,
+	type SessionHandoffOptions,
+	type SessionNameTrigger,
+	type SessionStats,
+	type SetSessionNameWithTrigger,
+	SHUTDOWN_DISPOSE_TIMEOUT_MS,
+	SIBLING_UNBLOCK_BUFFER_MS,
+	THINKING_LOOP_REDIRECT_TYPE,
+	TOOL_CALL_LOOP_REDIRECT_TYPE,
+	UNEXPECTED_STOP_MAX_RETRIES,
+	UNEXPECTED_STOP_TIMEOUT_MS,
+} from "./agent-session-helpers";
+
+export {
+	type AdvisorStats,
+	type AgentSessionConfig,
+	type AgentSessionDisposeOptions,
+	type AgentSessionEvent,
+	type AgentSessionEventListener,
+	type AsyncJobSnapshot,
+	type AsyncJobSnapshotItem,
+	type AsyncResultEntry,
+	type CommandMetadataChangedListener,
+	type ContextUsageBreakdown,
+	type FollowUpOptions,
+	type FreshSessionResult,
+	type HandoffResult,
+	type ModelCycleResult,
+	type PerAdvisorStat,
+	type PlanYolo,
+	type Prewalk,
+	type ProjectAdvisorScope,
+	type PromptOptions,
+	type ResolvedRoleModel,
+	type RoleModelCycle,
+	type RoleModelCycleResult,
+	type SecretRuntimeLease,
+	type SessionHandoffOptions,
+	type SessionStats,
+	SHUTDOWN_CONSOLIDATE_BUDGET_MS,
+} from "./agent-session-helpers";
 
 export class AgentSession {
 	readonly agent: Agent;

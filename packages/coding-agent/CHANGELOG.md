@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- 77 type definitions, constants, and interfaces extracted from `session/agent-session.ts` (15,733→15,220 lines) into `session/agent-session-helpers.ts`.
 - 24 rendering utility functions extracted from `modes/controllers/command-controller.ts` (1,774→1,258 lines) into `modes/controllers/command-controller-helpers.ts`.
 - 16 utility functions and types extracted from `task/executor.ts` (2,671→2,509 lines) into `task/executor-helpers.ts`.
 - 23 type definitions extracted from `git.ts` (1,963→1,863 lines) into `git-helpers.ts`.
