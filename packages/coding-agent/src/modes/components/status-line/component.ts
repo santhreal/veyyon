@@ -2176,7 +2176,9 @@ export class StatusLineComponent implements Component {
 	#locationWithRunClock(location: string[], sep: string, gap: string = SESSION_CLOCK_GAP): string {
 		const left = location.join(sep);
 		if (!left) return left;
-		const { runningMs, lastRunMs } = this.getRunClock();
+		const meter = this.#meter();
+		const runningMs = meter.activeStartedAt === null ? null : Math.max(0, Date.now() - meter.activeStartedAt);
+		const lastRunMs = meter.lastRunMs;
 		const readout = runningMs !== null ? formatClock(runningMs) : lastRunMs > 0 ? `✓ ${formatClock(lastRunMs)}` : "";
 		if (!readout) return left;
 		return `${left}${gap}${theme.fg("dim", readout)}`;
