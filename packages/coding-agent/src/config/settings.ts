@@ -49,7 +49,7 @@ import { isLightTheme } from "../modes/theme/theme-luminance";
 import { AgentStorage } from "../session/agent-storage";
 import { normalizeToolName } from "../tools/builtin-names";
 import { type EditMode, normalizeEditMode } from "../utils/edit-mode";
-import { type CompactionStrategySetting, migrateCompactionStrategyValue } from "./compaction-strategy";
+import { migrateCompactionStrategyValue } from "./compaction-strategy";
 import { UNSET_NUMBER } from "./optional-number";
 import { GLOBAL_SETTING_BINDINGS } from "./settings-domains/global";
 // The slot, not a second copy of it: this module FILLS the slot that `./settings-instance.ts` owns, and
@@ -1751,12 +1751,49 @@ export class Settings {
 		// to be readable. Runs FIRST so every migration below sees one shape.
 		this.#expandDottedSettingKeys(raw);
 
+		this.#migrateQueueMode(raw);
+		this.#migrateLastChangelogVersion(raw);
+		this.#migrateCollapseChangelog(raw);
+		this.#migrateAskTimeout(raw);
+		this.#migrateCompactionThreshold(raw);
+		this.#migrateThemeString(raw);
+		this.#migrateTaskIsolation(raw);
+		this.#migrateTaskSimple(raw);
+		this.#migrateTaskEager(raw);
+		this.#migrateTaskIsolationMode(raw);
+		this.#migrateSubagentSettings(raw);
+		this.#migrateEditMode(raw);
+		this.#migrateCompactionStrategy(raw);
+		this.#migrateCompactionModel(raw);
+		this.#migrateModelOverridesCompactionModel(raw);
+		this.#migrateCycleOrder(raw);
+		this.#migrateSnapcompact(raw);
+		this.#migrateInlineToolDescriptors(raw);
+		this.#migrateStatusLinePlanMode(raw);
+		this.#migrateProvidersParallelFetch(raw);
+		this.#migrateCodexResetsAutoRedeem(raw);
+		this.#migrateMemoryBackend(raw);
+		this.#migrateMnemosyneRename(raw);
+		this.#migrateHindsight(raw);
+		this.#migratePowerSleepPrevention(raw);
+		this.#migrateSearchFindRename(raw);
+		this.#migrateToolNameLists(raw);
+		this.#migrateReadHashLines(raw);
+		this.#migrateServiceTier(raw);
+		this.#migrateArgotEncode(raw);
+
+		return raw;
+	}
+
+	#migrateQueueMode(raw: RawSettings): void {
 		// queueMode -> steeringMode
 		if ("queueMode" in raw && !("steeringMode" in raw)) {
 			raw.steeringMode = raw.queueMode;
 			delete raw.queueMode;
 		}
+	}
 
+	#migrateLastChangelogVersion(raw: RawSettings): void {
 		// lastChangelogVersion moved out of config.yml into the
 		// <agentDir>/last-changelog-version marker file so version bumps no
 		// longer dirty user-tracked configs. Capture for marker seeding (see
@@ -1766,14 +1803,18 @@ export class Settings {
 			this.#legacyLastChangelogVersion ??= raw.lastChangelogVersion;
 		}
 		delete raw.lastChangelogVersion;
+	}
 
+	#migrateCollapseChangelog(raw: RawSettings): void {
 		// collapseChangelog gated how much of the changelog startup dumped into the
 		// terminal. Startup no longer prints release notes at all — it prints one
 		// line and `/changelog` opens them on the web — so the old key has no
 		// behavior left to control. Drop it rather than leave a toggle that does
 		// nothing; `startup.updateNotice` governs the line that replaced it.
 		delete raw.collapseChangelog;
+	}
 
+	#migrateAskTimeout(raw: RawSettings): void {
 		// ask.timeout: ms -> seconds, guessed from the magnitude of the value.
 		//
 		// Every other migration here is a fixed point: re-running it on its own
@@ -1797,7 +1838,9 @@ export class Settings {
 				this.#reportAskTimeoutRewrite(oldValue, converted);
 			}
 		}
+	}
 
+	#migrateCompactionThreshold(raw: RawSettings): void {
 		// compaction.thresholdTokens / compaction.thresholdPercent -> compaction.threshold
 		//
 		// Two keys wrote one axis with an invisible precedence. Fold them into the one
@@ -1825,20 +1868,9 @@ export class Settings {
 			delete compaction.thresholdTokens;
 			delete compaction.thresholdPercent;
 		}
+	}
 
-		// Optional numeric settings once stored `-1` to mean "unset", which made -1
-		// unreachable as a real value: `presencePenalty: -1` is a penalty the
-		// provider accepts, and it could not be configured. Unset is an ABSENT key
-		// now, so the old sentinel is dropped — in every prior version it meant
-		// exactly this, so nothing a user chose is lost.
-		//
-		// ONCE, and only in the config this instance owns. This is the one
-		// migration here that cannot tell its input apart from a legitimate current
-		// value, so re-running it would delete a `-1` the user typed on purpose (it
-		// deleted one within a minute of the change landing, in dogfooding). The
-		// stamp records that it ran; a project file or a `--config` overlay is
-		// hand-written against the current docs, so a `-1` there is a value.
-
+	#migrateThemeString(raw: RawSettings): void {
 		// Migrate old flat "theme" string to nested theme.dark/theme.light
 		if (typeof raw.theme === "string") {
 			const oldTheme = raw.theme;
@@ -1851,7 +1883,9 @@ export class Settings {
 				raw.theme = { [slot]: oldTheme };
 			}
 		}
+	}
 
+	#migrateTaskIsolation(raw: RawSettings): void {
 		// task.isolation.enabled (boolean) -> task.isolation.mode (enum)
 		const taskObj = raw.task as Record<string, unknown> | undefined;
 		const isolationObj = taskObj?.isolation as Record<string, unknown> | undefined;
@@ -1861,16 +1895,22 @@ export class Settings {
 			}
 			delete isolationObj.enabled;
 		}
+	}
 
+	#migrateTaskSimple(raw: RawSettings): void {
 		// task.simple: removed — the task tool no longer accepts a per-call
 		// schema (workflows drive structured output via eval agent()) and the
 		// batch/context shape is gated by task.batch instead.
+		const taskObj = raw.task as Record<string, unknown> | undefined;
 		if (taskObj && "simple" in taskObj) {
 			delete taskObj.simple;
 		}
+	}
 
+	#migrateTaskEager(raw: RawSettings): void {
 		// task.eager / todo.eager: boolean -> enum (default | preferred | always).
 		// `true` reproduced the previous "on" behavior, which is now `always`.
+		const taskObj = raw.task as Record<string, unknown> | undefined;
 		if (taskObj && typeof taskObj.eager === "boolean") {
 			taskObj.eager = taskObj.eager ? "always" : "default";
 		}
@@ -1878,12 +1918,16 @@ export class Settings {
 		if (todoObj && typeof todoObj.eager === "boolean") {
 			todoObj.eager = todoObj.eager ? "always" : "default";
 		}
+	}
 
+	#migrateTaskIsolationMode(raw: RawSettings): void {
 		// task.isolation.mode: legacy values from before the veyyon-iso PAL refactor.
 		// `worktree` was git worktree → now lives under `rcopy`. `fuse-overlay`
 		// and `fuse-projfs` are now the platform-named `overlayfs` / `projfs`
 		// kinds; the PAL falls back internally when the chosen one isn't
 		// available, so we don't need the old TS-side platform guards.
+		const taskObj = raw.task as Record<string, unknown> | undefined;
+		const isolationObj = taskObj?.isolation as Record<string, unknown> | undefined;
 		if (isolationObj && typeof isolationObj.mode === "string") {
 			const legacy: Record<string, string> = {
 				worktree: "rcopy",
@@ -1895,17 +1939,9 @@ export class Settings {
 				isolationObj.mode = mapped;
 			}
 		}
+	}
 
-		// task.* / modelRoles.task -> the subagent.* settings area.
-		//
-		// Everything about spawned agents used to be spread across `task.*`
-		// operational keys, `subagent.model` under Models, `modelRoles.task` in the
-		// role table, and two UI-less maps (`task.agentModelOverrides`,
-		// `task.disabledAgents`). This rewrites the old keys onto the one section so
-		// the file has a single owner per value — no dual-read, which is how the
-		// precedence tangle grew in the first place.
-		this.#migrateSubagentSettings(raw);
-
+	#migrateEditMode(raw: RawSettings): void {
 		// edit.mode: removed "atom" and "vim" variants map back to "hashline"
 		const editObj = raw.edit as Record<string, unknown> | undefined;
 		if (editObj) {
@@ -1921,12 +1957,11 @@ export class Settings {
 				}
 			}
 		}
+	}
+
+	#migrateCompactionStrategy(raw: RawSettings): void {
 		// compaction.strategy: collapse every legacy strategy to summary; off also disables compaction.
 		const compactionObj = raw.compaction as Record<string, unknown> | undefined;
-		const migrateStrategy = (current: unknown): CompactionStrategySetting | undefined => {
-			if (typeof current !== "string") return undefined;
-			return migrateCompactionStrategyValue(current);
-		};
 		if (compactionObj) {
 			if (compactionObj.strategy === "off") {
 				compactionObj.strategy = "summary";
@@ -1934,7 +1969,10 @@ export class Settings {
 					compactionObj.enabled = false;
 				}
 			} else {
-				const migrated = migrateStrategy(compactionObj.strategy);
+				const migrated =
+					typeof compactionObj.strategy === "string"
+						? migrateCompactionStrategyValue(compactionObj.strategy)
+						: undefined;
 				if (migrated) compactionObj.strategy = migrated;
 			}
 			if (compactionObj.compactionModel !== undefined && compactionObj.model === undefined) {
@@ -1942,6 +1980,9 @@ export class Settings {
 				delete compactionObj.compactionModel;
 			}
 		}
+	}
+
+	#migrateCompactionModel(raw: RawSettings): void {
 		// `compaction.compactionModel` is a RETIRED key, so it survives the dotted-key
 		// expansion above (only registered paths are expanded) and both spellings of it
 		// still have to be folded. The destination is always nested: a flat
@@ -1955,7 +1996,9 @@ export class Settings {
 			setByPath(raw, ["compaction", "model"], raw.compactionModel);
 			delete raw.compactionModel;
 		}
+	}
 
+	#migrateModelOverridesCompactionModel(raw: RawSettings): void {
 		const modelOverrides = raw.modelOverrides as Record<string, Record<string, unknown>> | undefined;
 		if (modelOverrides && getByPath(raw, ["compaction", "model"]) === undefined) {
 			for (const entry of Object.values(modelOverrides)) {
@@ -1966,20 +2009,26 @@ export class Settings {
 				}
 			}
 		}
+	}
 
+	#migrateCycleOrder(raw: RawSettings): void {
 		// cycleOrder: drop legacy default pseudo-role from ctrl+p order.
 		const cycleOrder = raw.cycleOrder;
 		if (Array.isArray(cycleOrder)) {
 			raw.cycleOrder = cycleOrder.filter(role => role !== "default");
 		}
+	}
 
+	#migrateSnapcompact(raw: RawSettings): void {
 		// The snapcompact image-archive engine was removed; drop any persisted
 		// snapcompact.* settings so schema validation does not trip on stale keys.
 		delete raw.snapcompact;
 		for (const key of Object.keys(raw)) {
 			if (key.startsWith("snapcompact.")) delete raw[key];
 		}
+	}
 
+	#migrateInlineToolDescriptors(raw: RawSettings): void {
 		// inlineToolDescriptors: boolean -> enum (auto | on | off). The old
 		// `true`/`false` mapped directly onto inline-on/inline-off, so preserve
 		// the user's explicit choice; new installs get the `auto` default that
@@ -1987,7 +2036,9 @@ export class Settings {
 		if (typeof raw.inlineToolDescriptors === "boolean") {
 			raw.inlineToolDescriptors = raw.inlineToolDescriptors ? "on" : "off";
 		}
+	}
 
+	#migrateStatusLinePlanMode(raw: RawSettings): void {
 		// statusLine: rename "plan_mode" segment to "mode"
 		const statusLineObj = raw.statusLine as Record<string, unknown> | undefined;
 		if (statusLineObj) {
@@ -2003,7 +2054,9 @@ export class Settings {
 				delete segmentOptions.plan_mode;
 			}
 		}
+	}
 
+	#migrateProvidersParallelFetch(raw: RawSettings): void {
 		// providers.parallelFetch (boolean) replaced by the providers.fetch reader
 		// priority enum. The new default ("auto") supersedes both old values —
 		// Parallel is now a deep fallback in the auto chain rather than the first
@@ -2014,7 +2067,9 @@ export class Settings {
 			delete providersObj.parallelFetch;
 		}
 		delete raw["providers.parallelFetch"];
+	}
 
+	#migrateCodexResetsAutoRedeem(raw: RawSettings): void {
 		// codexResets.autoRedeem: boolean -> tri-state enum.
 		// Existing explicit false keeps the old "do not run" behavior; missing
 		// config now falls through to the new "unset" default, which asks before
@@ -2023,7 +2078,9 @@ export class Settings {
 		if (codexResetsObj && typeof codexResetsObj.autoRedeem === "boolean") {
 			codexResetsObj.autoRedeem = codexResetsObj.autoRedeem ? "yes" : "no";
 		}
+	}
 
+	#migrateMemoryBackend(raw: RawSettings): void {
 		// Map legacy `memories.enabled` boolean to the explicit `memory.backend`
 		// enum if the latter hasn't been set yet. Idempotent: subsequent
 		// migrations are no-ops once memory.backend is materialised.
@@ -2036,11 +2093,14 @@ export class Settings {
 			memoryRoot.backend = next;
 			raw.memory = memoryRoot;
 		}
+	}
 
+	#migrateMnemosyneRename(raw: RawSettings): void {
 		// Rename the legacy local `mnemosyne` memory backend to `mnemopi`.
 		// - `memory.backend: "mnemosyne"` now selects the renamed backend.
 		// - the top-level `mnemosyne` settings object becomes `mnemopi`.
 		// Idempotent: skips the object move once `mnemopi` is materialised.
+		const memoryBackendObj = raw.memory as Record<string, unknown> | undefined;
 		if (memoryBackendObj && memoryBackendObj.backend === "mnemosyne") {
 			memoryBackendObj.backend = "mnemopi";
 		}
@@ -2048,7 +2108,9 @@ export class Settings {
 			raw.mnemopi = raw.mnemosyne;
 			delete raw.mnemosyne;
 		}
+	}
 
+	#migrateHindsight(raw: RawSettings): void {
 		// hindsight: dynamicBankId/agentName -> scoping enum + bankId
 		// - dynamicBankId=true  → scoping="per-project" (closest semantic match;
 		//   the legacy `agent::project::channel::user` tuple was per-project in
@@ -2078,7 +2140,9 @@ export class Settings {
 				delete hindsightObj.agentName;
 			}
 		}
+	}
 
+	#migratePowerSleepPrevention(raw: RawSettings): void {
 		// power.preventIdleSleep / power.preventSystemSleep / power.declareUserActive
 		// / power.preventDisplaySleep (four booleans) → power.sleepPrevention enum.
 		// The enum is cumulative: each level adds the flags of all lower levels.
@@ -2119,23 +2183,31 @@ export class Settings {
 			delete raw["power.declareUserActive"];
 			delete raw["power.preventDisplaySleep"];
 		}
+	}
 
+	#ensureRawObject(raw: RawSettings, key: "glob" | "grep"): Record<string, unknown> {
+		const current = raw[key];
+		if (isRecord(current)) {
+			return current;
+		}
+		const created: Record<string, unknown> = {};
+		raw[key] = created;
+		return created;
+	}
+
+	#migrateSearchFindRename(raw: RawSettings): void {
+		this.#migrateNestedSearchFind(raw);
+		this.#migrateFlatSearchFind(raw);
+		this.#cleanEmptyGlobGrep(raw);
+	}
+
+	#migrateNestedSearchFind(raw: RawSettings): void {
 		// Migration for renamed settings grep.* and glob.* from search.* and find.*:
 		// 1. Nested settings: find -> glob, search -> grep (per-property merge to avoid clobbering)
-		const ensureRawObject = (key: "glob" | "grep"): Record<string, unknown> => {
-			const current = raw[key];
-			if (isRecord(current)) {
-				return current;
-			}
-			const created: Record<string, unknown> = {};
-			raw[key] = created;
-			return created;
-		};
-
 		if ("find" in raw) {
 			const findObj = raw.find;
 			if (isRecord(findObj)) {
-				const globObj = ensureRawObject("glob");
+				const globObj = this.#ensureRawObject(raw, "glob");
 				const findKeys: Array<"enabled"> = ["enabled"];
 				for (const key of findKeys) {
 					if (key in findObj && !(key in globObj)) {
@@ -2149,7 +2221,7 @@ export class Settings {
 		if ("search" in raw) {
 			const searchObj = raw.search;
 			if (isRecord(searchObj)) {
-				const grepObj = ensureRawObject("grep");
+				const grepObj = this.#ensureRawObject(raw, "grep");
 				const searchKeys: Array<"enabled" | "contextBefore" | "contextAfter"> = [
 					"enabled",
 					"contextBefore",
@@ -2163,86 +2235,103 @@ export class Settings {
 			}
 			delete raw.search;
 		}
+	}
 
+	#migrateFlatSearchFind(raw: RawSettings): void {
 		// 2. Flat settings keys: map them to the proper nested target so get/set resolves them correctly
 		if ("find.enabled" in raw) {
-			const globObj = ensureRawObject("glob");
+			const globObj = this.#ensureRawObject(raw, "glob");
 			if (!("enabled" in globObj)) {
 				globObj.enabled = raw["find.enabled"];
 			}
 			delete raw["find.enabled"];
 		}
 		if ("search.enabled" in raw) {
-			const grepObj = ensureRawObject("grep");
+			const grepObj = this.#ensureRawObject(raw, "grep");
 			if (!("enabled" in grepObj)) {
 				grepObj.enabled = raw["search.enabled"];
 			}
 			delete raw["search.enabled"];
 		}
 		if ("search.contextBefore" in raw) {
-			const grepObj = ensureRawObject("grep");
+			const grepObj = this.#ensureRawObject(raw, "grep");
 			if (!("contextBefore" in grepObj)) {
 				grepObj.contextBefore = raw["search.contextBefore"];
 			}
 			delete raw["search.contextBefore"];
 		}
 		if ("search.contextAfter" in raw) {
-			const grepObj = ensureRawObject("grep");
+			const grepObj = this.#ensureRawObject(raw, "grep");
 			if (!("contextAfter" in grepObj)) {
 				grepObj.contextAfter = raw["search.contextAfter"];
 			}
 			delete raw["search.contextAfter"];
 		}
+	}
 
-		// 3. Tool-name arrays use wire IDs too. Preserve user overrides across
-		// the rename without duplicating entries if they already added grep/glob.
-		const migrateToolNameList = (names: unknown): unknown => {
-			if (!Array.isArray(names)) return names;
-			const out: unknown[] = [];
-			const seen = new Set<string>();
-			for (const name of names) {
-				const migrated = typeof name === "string" ? normalizeToolName(name) : name;
-				if (typeof migrated === "string") {
-					if (seen.has(migrated)) continue;
-					seen.add(migrated);
-				}
-				out.push(migrated);
-			}
-			return out;
-		};
-		const ensureToolsObject = (): Record<string, unknown> => {
-			const current = raw.tools;
-			if (isRecord(current)) {
-				return current as Record<string, unknown>;
-			}
-			const created: Record<string, unknown> = {};
-			raw.tools = created;
-			return created;
-		};
-		const toolsObj = raw.tools as Record<string, unknown> | undefined;
-		if (toolsObj && "essentialOverride" in toolsObj) {
-			toolsObj.essentialOverride = migrateToolNameList(toolsObj.essentialOverride);
-		}
-		if ("tools.essentialOverride" in raw) {
-			const nestedToolsObj = ensureToolsObject();
-			if (!("essentialOverride" in nestedToolsObj)) {
-				nestedToolsObj.essentialOverride = migrateToolNameList(raw["tools.essentialOverride"]);
-			}
-			delete raw["tools.essentialOverride"];
-		}
-
-		// Also clean up any empty nested objects we might have created or left behind
+	#cleanEmptyGlobGrep(raw: RawSettings): void {
+		// Clean up any empty nested objects we might have created or left behind
 		if (raw.glob && typeof raw.glob === "object" && Object.keys(raw.glob).length === 0) {
 			delete raw.glob;
 		}
 		if (raw.grep && typeof raw.grep === "object" && Object.keys(raw.grep).length === 0) {
 			delete raw.grep;
 		}
+	}
+
+	#ensureToolsObject(raw: RawSettings): Record<string, unknown> {
+		const current = raw.tools;
+		if (isRecord(current)) {
+			return current as Record<string, unknown>;
+		}
+		const created: Record<string, unknown> = {};
+		raw.tools = created;
+		return created;
+	}
+
+	#migrateToolNameList(names: unknown): unknown {
+		if (!Array.isArray(names)) return names;
+		const out: unknown[] = [];
+		const seen = new Set<string>();
+		for (const name of names) {
+			const migrated = typeof name === "string" ? normalizeToolName(name) : name;
+			if (typeof migrated === "string") {
+				if (seen.has(migrated)) continue;
+				seen.add(migrated);
+			}
+			out.push(migrated);
+		}
+		return out;
+	}
+
+	#migrateToolNameLists(raw: RawSettings): void {
+		// Tool-name arrays use wire IDs too. Preserve user overrides across
+		// the rename without duplicating entries if they already added grep/glob.
+		const toolsObj = raw.tools as Record<string, unknown> | undefined;
+		if (toolsObj && "essentialOverride" in toolsObj) {
+			toolsObj.essentialOverride = this.#migrateToolNameList(toolsObj.essentialOverride);
+		}
+		if ("tools.essentialOverride" in raw) {
+			const nestedToolsObj = this.#ensureToolsObject(raw);
+			if (!("essentialOverride" in nestedToolsObj)) {
+				nestedToolsObj.essentialOverride = this.#migrateToolNameList(raw["tools.essentialOverride"]);
+			}
+			delete raw["tools.essentialOverride"];
+		}
+	}
+
+	#migrateReadHashLines(raw: RawSettings): void {
 		// readHashLines: removed. Hashline anchors are now driven solely by
 		// edit.mode === "hashline"; the separate read toggle only ever produced
 		// the incoherent "hashline edits without addressable anchors" state.
 		delete raw.readHashLines;
+	}
 
+	#mapInheritTier(value: unknown): unknown {
+		return value === "openai-only" || value === "claude-only" ? "priority" : value;
+	}
+
+	#migrateServiceTier(raw: RawSettings): void {
 		// serviceTier (single enum with scoped openai-only/claude-only sentinels)
 		// → per-family tier.openai/tier.anthropic/tier.google; serviceTierSubagent
 		// → tier.subagent; serviceTierAdvisor → tier.advisor. `fastModeScope` is
@@ -2277,19 +2366,19 @@ export class Settings {
 			}
 			delete raw.serviceTier;
 		}
-		const mapInheritTier = (value: unknown): unknown =>
-			value === "openai-only" || value === "claude-only" ? "priority" : value;
 		if ("serviceTierSubagent" in raw) {
-			setTier("subagent", mapInheritTier(raw.serviceTierSubagent));
+			setTier("subagent", this.#mapInheritTier(raw.serviceTierSubagent));
 			delete raw.serviceTierSubagent;
 		}
 		if ("serviceTierAdvisor" in raw) {
-			setTier("advisor", mapInheritTier(raw.serviceTierAdvisor));
+			setTier("advisor", this.#mapInheritTier(raw.serviceTierAdvisor));
 			delete raw.serviceTierAdvisor;
 		}
 		if (tierTouched) raw.tier = tierObj;
 		delete raw.fastModeScope;
+	}
 
+	#migrateArgotEncode(raw: RawSettings): void {
 		// argot.models / argot.disableAboveTokens -> argot.encode.*
 		//
 		// The two keys that gate ENCODING are grouped under the sub-feature they
@@ -2332,8 +2421,6 @@ export class Settings {
 				delete argotObj[key];
 			}
 		}
-
-		return raw;
 	}
 
 	/**
