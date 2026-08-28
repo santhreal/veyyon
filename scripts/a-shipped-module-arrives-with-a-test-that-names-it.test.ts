@@ -358,6 +358,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/session/session-manager-helpers.ts",
 	"packages/coding-agent/src/session/side-complete.ts",
 	"packages/coding-agent/src/slash-commands/bare-subcommand.ts",
+	"packages/coding-agent/src/slash-commands/builtin-registry-helpers.ts",
 	"packages/coding-agent/src/stt/asr-worker.ts",
 	"packages/coding-agent/src/task/executor-helpers.ts",
 	"packages/coding-agent/src/tools/browser/handle-release.ts",
