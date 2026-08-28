@@ -22,7 +22,7 @@
 
 ### Fixed
 
-- An auth-broker snapshot containing an API key stored by an interactive login validates again; its `source` field made every client reject the whole credential pool.
+- An auth-broker snapshot containing an API key or OAuth credential stored by an interactive login validates again; the `source` field on either credential type made every client reject the whole credential pool.
 - A persisted 400/413 request dump redacts `x-goog-api-key`, so a rejected Google Generative AI or Vertex request no longer writes the operator's plaintext API key into `logs/http-400-requests/`.
 - A failed Amazon Bedrock turn reports its elapsed duration again, instead of carrying time-to-first-token with no total while a successful turn reported both.
 - Normalized cumulative tool-call argument delta snapshots for OpenAI Codex streams while preserving true incremental deltas on standard OpenAI Responses streams via declared per-provider wire shapes.

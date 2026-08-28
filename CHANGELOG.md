@@ -258,7 +258,7 @@
 - Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
 - Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
-- An auth-broker snapshot containing an API key stored by an interactive login validates again; its `source` field made every client reject the whole credential pool.
+- An auth-broker snapshot containing an API key or OAuth credential stored by an interactive login validates again; the `source` field on either credential type made every client reject the whole credential pool.
 - A persisted 400/413 request dump redacts `x-goog-api-key`, so a rejected Google Generative AI or Vertex request no longer writes the operator's plaintext API key into `logs/http-400-requests/`.
 - A failed Amazon Bedrock turn reports its elapsed duration again, instead of carrying time-to-first-token with no total while a successful turn reported both.
 - Normalized cumulative tool-call argument delta snapshots for OpenAI Codex streams while preserving true incremental deltas on standard OpenAI Responses streams via declared per-provider wire shapes.
@@ -277,6 +277,7 @@
 - `--dry-run` refuses an overlay the real run would refuse: the backend's preflight now receives the plan's variants, so a missing overlay file, an unknown setting key or a prompt id no registry holds is reported before any quota is spent instead of hours into the run.
 - `Handlebars.compile` in `suites/typescript-edit/argot-bench.ts` and `generate.ts` receives the prompt text (`.text`) instead of the `PromptEntry` object, fixing an import-time crash.
 - The entry-point flag-refusal sweep scans the package root instead of the removed `src/` directory, and the one-flag-grammar test no longer references the retired deep-swe runner entry point.
+- The Harbor backend skips source-tree mount preparation when `VEYYON_BENCH_BINARY_X64` or `VEYYON_BENCH_BINARY_ARM64` is set, so a pinned-binary run does not fail on a compose overlay the binary mode never uses.
 - A wide line clipped in the unseen-line reveal is cut at a code point rather than a UTF-16 code unit, so an emoji or rare CJK character sitting at the column limit is no longer split into an invalid lone surrogate.
 - Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
 - A load failure carries `code: "VEYYON_NATIVE_ADDON_UNAVAILABLE"`, exported as `NATIVE_ADDON_UNAVAILABLE_CODE` with `isNativeAddonUnavailable` from `@veyyon/natives/loader-state`, so a caller that catches a native call can tell an unavailable addon from a scan that found nothing.

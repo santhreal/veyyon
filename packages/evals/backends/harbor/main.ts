@@ -298,7 +298,12 @@ export class HarborBackend implements ExecutionBackend {
 		const harnessName = agentOption ?? variantHarness ?? "veyyon";
 		const harness = context.harnesses.get(harnessName);
 		const binding = harness?.backends.harbor;
-		const installMode = typeof context.options?.install === "string" ? context.options.install : "source";
+		const binaryPinned = Boolean(process.env.VEYYON_BENCH_BINARY_X64 || process.env.VEYYON_BENCH_BINARY_ARM64);
+		const installMode = binaryPinned
+			? "binary"
+			: typeof context.options?.install === "string"
+				? context.options.install
+				: "source";
 		if (binding?.sourceMount && installMode === "source") {
 			const cfg = this.#harborConfig(context, {
 				agent: binding.agentName ?? harnessName,
