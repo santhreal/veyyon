@@ -324,7 +324,6 @@ const CHECKED_BY_THE_SWEEP: string[] = [
 	"resolve",
 	"retain",
 	"rewind",
-	"runtime",
 	"search",
 	"search_tool_bm25",
 	"set_cwd",

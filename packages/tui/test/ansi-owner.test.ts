@@ -332,7 +332,7 @@ describe("primitive ownership", () => {
 	 */
 	it("lets no module call the introducer ESC", async () => {
 		const offenders: string[] = [];
-		const trees = [TUI_SRC, CODING_AGENT_SRC, path.resolve(import.meta.dir, "../../evals/src/backends/harbor")];
+		const trees = [TUI_SRC, CODING_AGENT_SRC, path.resolve(import.meta.dir, "../../evals/backends/harbor")];
 		for (const tree of trees) {
 			for (const file of new Bun.Glob("**/*.ts").scanSync(tree)) {
 				const full = path.join(tree, file);
@@ -343,9 +343,7 @@ describe("primitive ownership", () => {
 		}
 		expect(offenders).toEqual([]);
 		// Non-vacuity: the harbor backend really does declare the introducer, under the right name.
-		const runner = await Bun.file(
-			path.resolve(import.meta.dir, "../../evals/src/backends/harbor/runner/ui.ts"),
-		).text();
+		const runner = await Bun.file(path.resolve(import.meta.dir, "../../evals/backends/harbor/ui.ts")).text();
 		expect(runner).toContain('const CSI = "\\x1b[";');
 	});
 });
