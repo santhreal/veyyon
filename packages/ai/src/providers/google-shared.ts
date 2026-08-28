@@ -62,17 +62,10 @@ export { normalizeSchemaForGoogle };
 
 type GoogleApiType = "google-generative-ai" | "google-gemini-cli" | "google-vertex";
 
-/**
- * Thinking level for Gemini 3 models. Mirrors Google's `ThinkingLevel` enum values.
- * Defined here (not in any specific provider) so all Google providers can reference it
- * without inducing a circular dependency.
- */
+/** Thinking level for Gemini 3 models. */
 export type GoogleThinkingLevel = "THINKING_LEVEL_UNSPECIFIED" | "MINIMAL" | "LOW" | "MEDIUM" | "HIGH";
 
-/**
- * Sampling/thinking options shared by `streamGoogle` and `streamGoogleVertex`.
- * `google-gemini-cli` uses a different transport and request shape — do not extend this for it.
- */
+/** Sampling and thinking options for Google/Vertex providers. */
 export interface GoogleSharedStreamOptions extends StreamOptions {
 	/**
 	 * Tool selection mode. String forms map directly to Gemini
@@ -91,34 +84,12 @@ export interface GoogleSharedStreamOptions extends StreamOptions {
 	serviceTier?: ServiceTier;
 }
 
-/**
- * Determines whether a streamed Gemini `Part` should be treated as "thinking".
- *
- * Protocol note (Gemini / Vertex AI thought signatures):
- * - `thought: true` is the definitive marker for thinking content (thought summaries).
- * - `thoughtSignature` is an encrypted representation of the model's internal thought process
- *   used to preserve reasoning context across multi-turn interactions.
- * - `thoughtSignature` can appear on ANY part type (text, functionCall, etc.) - it does NOT
- *   indicate the part itself is thinking content.
- * - For non-functionCall responses, the signature appears on the last part for context replay.
- * - When persisting/replaying model outputs, signature-bearing parts must be preserved as-is;
- *   do not merge/move signatures across parts.
- *
- * See: https://ai.google.dev/gemini-api/docs/thought-signatures
- */
+/** Whether a Gemini Part represents thinking content. */
 export function isThinkingPart(part: Pick<Part, "thought" | "thoughtSignature">): boolean {
 	return part.thought === true;
 }
 
-/**
- * Retain thought signatures during streaming.
- *
- * Some backends only send `thoughtSignature` on the first delta for a given part/block; later deltas may omit it.
- * This helper preserves the last non-empty signature for the current block.
- *
- * Note: this does NOT merge or move signatures across distinct response parts. It only prevents
- * a signature from being overwritten with `undefined` within the same streamed block.
- */
+/** Retain thought signatures during streaming across deltas. */
 export function retainThoughtSignature(existing: string | undefined, incoming: string | undefined): string | undefined {
 	if (typeof incoming === "string" && incoming.length > 0) return incoming;
 	return existing;
@@ -142,26 +113,7 @@ function resolveThoughtSignature(isSameProviderAndModel: boolean, signature: str
 	return isSameProviderAndModel && isValidThoughtSignature(signature) ? signature : undefined;
 }
 
-/**
- * Index of the first message whose tool-call thought signatures are sent verbatim.
- *
- * WHY THIS EXISTS. A `thoughtSignature` is an opaque blob Gemini attaches to
- * every function call, and until this was added every historical one was
- * re-uploaded on every request forever. Measured over nine live sessions they
- * were the single largest thing in the context: 40.2% of the conversation body,
- * 1,295 signatures averaging 2,239 characters, the largest one 71,636 (about
- * 18k tokens on its own). They cost more than the tool results, the tool
- * arguments, the thinking, and the model's own text combined.
- *
- * The signature exists to replay reasoning context, so the recent ones are the
- * ones worth paying for. `retention` is how many trailing assistant messages
- * keep theirs; everything older sends {@link SKIP_THOUGHT_SIGNATURE} instead,
- * which is Google's sentinel for "this part has no signature, do not fail
- * validation" and costs 33 characters.
- *
- * `undefined` means retain everything, which is the behaviour before this
- * existed. Any caller that does not opt in is unaffected.
- */
+/** First message index that retains historical tool-call thought signatures. */
 export function firstRetainedAssistantIndex(messages: readonly Message[], retention: number | undefined): number {
 	if (retention === undefined || !Number.isFinite(retention) || retention < 0) return 0;
 	let remaining = Math.floor(retention);
@@ -174,25 +126,7 @@ export function firstRetainedAssistantIndex(messages: readonly Message[], retent
 	return 0;
 }
 
-/**
- * Characters this request does not send because of the retention window.
- *
- * The saving has to be observable or nobody can tell the setting is doing
- * anything: the request just silently gets smaller, and "silently" is how a
- * mechanism ends up disabled for a year without anyone noticing. The session
- * accumulates this across requests and exposes it the same way it exposes the
- * bytes elided by wire path relativization.
- *
- * It counts the same thing {@link convertMessages} elides, and only that: a
- * tool-call signature that is currently sent and would not be under this
- * window, minus the {@link SKIP_THOUGHT_SIGNATURE} that replaces it. Signatures
- * already dropped for another reason, such as a foreign model's, are not
- * counted, because this window did not save them.
- *
- * The figure is per request and cumulative over a session, so it grows faster
- * than linearly: the same historical signature is elided again on every
- * subsequent turn, which is precisely the cost the window exists to avoid.
- */
+/** Bytes saved by thought signature retention policy. */
 export function elidedSignatureBytes(
 	messages: readonly Message[],
 	policy: SignaturePolicy,
@@ -212,16 +146,7 @@ export function elidedSignatureBytes(
 	return elided;
 }
 
-/**
- * The two independent rules that decide whether a historical thought signature is
- * re-uploaded, resolved once so nothing can apply one without the other.
- *
- * They exist as one type because they are trivially easy to drift apart: the
- * request builder and the byte accounting both have to answer the same question,
- * and if the accounting knows about recency but not length, the context panel
- * reports a saving that does not match the request that was sent. That is the
- * quiet kind of wrong, so both callers take this and neither reimplements it.
- */
+/** Policy for historical thought signature retention and length limits. */
 export interface SignaturePolicy {
 	/**
 	 * The first message index that keeps its signatures. 0 keeps everything, which
@@ -235,15 +160,7 @@ export interface SignaturePolicy {
 	readonly maxLength: number | undefined;
 }
 
-/**
- * Resolve both signature rules from a request's context.
- *
- * A non-positive `thoughtSignatureMaxLength` means "no limit" rather than "elide
- * everything". Settings default numeric knobs to -1 to mean unset, and a literal
- * reading of that would silently strip every signature in the conversation the
- * moment the setting existed, which is the most damaging possible interpretation
- * of a default.
- */
+/** Resolve signature retention policy from request context. */
 export function signaturePolicy(
 	messages: readonly Message[],
 	context: { thoughtSignatureRetention?: number; thoughtSignatureMaxLength?: number },
@@ -255,23 +172,7 @@ export function signaturePolicy(
 	};
 }
 
-/**
- * Whether one historical signature is sent, under both rules at once.
- *
- * THE SIZE RULE IS THE INTERESTING ONE, and it is not a variation on recency.
- * Signature bytes are extremely concentrated: measured over twenty DeepSWE
- * sessions, 2,297 signatures averaged 2,606 characters with a median of 660 and a
- * maximum of 91,960, and the largest tenth of them held 62.1% of all signature
- * bytes. So a length cap removes most of the mass while leaving the great
- * majority of the reasoning chain intact, whereas the recency window removes
- * nearly all of the mass and nearly all of the chain.
- *
- * That difference is the point. If replaying older reasoning turns out to matter,
- * a length cap degrades gently where a recency window does not, and the two can be
- * compared as separate arms because they are independent settings. They compose
- * when both are set: a signature is sent only if it is recent enough AND small
- * enough.
- */
+/** Whether a historical signature is sent under retention and length rules. */
 export function sendsSignature(policy: SignaturePolicy, messageIndex: number, signature: string): boolean {
 	if (messageIndex < policy.retainFrom) return false;
 	if (policy.maxLength !== undefined && signature.length > policy.maxLength) return false;
@@ -608,23 +509,11 @@ export function mapStopReasonString(reason: string): StopReason {
 	}
 }
 
-/**
- * Bounded retries for the well-known Gemini "empty response" failure: a benign
- * `finishReason: STOP` carrying only an empty/whitespace text part and no tool call.
- * Shared by the public/Vertex `streamGoogleGenAI` path and the Cloud Code Assist
- * (`google-gemini-cli`/`google-antigravity`) provider so both apply the same policy.
- */
+/** Empty-response retry configuration for Google providers. */
 export const MAX_EMPTY_STREAM_RETRIES = 2;
 export const EMPTY_STREAM_BASE_DELAY_MS = 500;
 
-/**
- * Whether a completed Google assistant message carries content worth delivering.
- *
- * A tool call or any non-whitespace text counts as meaningful. An empty/whitespace-only
- * text part — or thinking that never produced an answer — is the "empty response" failure:
- * delivered as-is the agent loop has nothing to act on and silently halts, so the request
- * must be retried instead of surfaced.
- */
+/** Whether assistant message carries meaningful text or tool calls. */
 export function hasMeaningfulGoogleContent(output: AssistantMessage): boolean {
 	for (const block of output.content) {
 		if (block.type === "toolCall") return true;
@@ -633,12 +522,7 @@ export function hasMeaningfulGoogleContent(output: AssistantMessage): boolean {
 	return false;
 }
 
-/**
- * Wipe a streamed message between empty-response retries so the next attempt
- * starts clean. An empty Gemini response is the most expensive shape of this
- * failure (the prompt and every thinking token were billed for an answer that
- * never arrived), so the spend is carried forward even though the text is not.
- */
+/** Reset streamed message between empty-response retries while carrying usage. */
 export function resetGoogleStreamOutputForRetry(model: Model<Api>, output: AssistantMessage): void {
 	output.content = [];
 	output.usage = discardAttemptUsage(model, output.usage, emptyUsage());
@@ -647,22 +531,14 @@ export function resetGoogleStreamOutputForRetry(model: Model<Api>, output: Assis
 	output.timestamp = Date.now();
 }
 
-/**
- * Module-local counter for generating unique tool call IDs across Google providers.
- * Shared so that a single monotonically-increasing sequence is used regardless of which
- * Google API surface produced the stream — purely for uniqueness, not ordering semantics.
- */
+/** Module-local counter for unique tool call IDs across Google providers. */
 let toolCallCounter = 0;
 
 export function nextToolCallId(name: string): string {
 	return `${name}_${Date.now()}_${++toolCallCounter}`;
 }
 
-/**
- * Push the appropriate `text_end` / `thinking_end` event for the given block.
- * Shared between the SDK-backed stream consumer and the gemini-cli SSE consumer so
- * the end-of-block event shape stays in lockstep.
- */
+/** Push block completion event for text or thinking blocks. */
 export function pushBlockEndEvent(
 	block: TextContent | ThinkingContent,
 	contentIndex: number,
@@ -676,11 +552,7 @@ export function pushBlockEndEvent(
 	}
 }
 
-/**
- * Push the three lifecycle events (`toolcall_start` / `toolcall_delta` / `toolcall_end`) for a
- * fully-assembled `ToolCall`. Caller is responsible for appending the toolCall to `output.content`
- * before invoking — this helper does not mutate `output.content`.
- */
+/** Push toolcall lifecycle events for assembled ToolCall. */
 export function pushToolCallEvents(
 	toolCall: ToolCall,
 	contentIndex: number,
@@ -697,11 +569,7 @@ export function pushToolCallEvents(
 	stream.push({ type: "toolcall_end", contentIndex, toolCall, partial: output });
 }
 
-/**
- * Append a new text- or thinking-block to `output.content` and push the matching
- * `text_start` / `thinking_start` event. `onBeforeStartEvent` lets the SSE consumer
- * inject its `ensureStarted()` first-token side effect into the canonical event order.
- */
+/** Append text or thinking block to message and push start event. */
 export function startTextOrThinkingBlock(
 	isThinking: true,
 	output: AssistantMessage,
@@ -740,21 +608,7 @@ export function startTextOrThinkingBlock(
 	return block;
 }
 
-/**
- * Drives the chunked `generateContentStream` iterator into an `AssistantMessage` and
- * the corresponding `AssistantMessageEventStream`. Shared between `streamGoogle` and
- * `streamGoogleVertex` — every observable event order and stop-reason rule is preserved.
- *
- * The caller still owns: `output` construction, timing fields (`duration`/`ttft`),
- * `rawRequestDump`, the `client.models.generateContentStream(params)` call itself,
- * pushing `start`/`done`/`error` events, and the surrounding try/catch that translates
- * thrown errors into `output.stopReason`/`errorMessage`.
- *
- * This helper handles: the chunk loop, currentBlock flush transitions, usage metadata
- * decoding (`calculateCost` included), tool-call id collision avoidance, finish-reason
- * mapping, and the abort/stop-reason post-checks that re-throw to bubble into the
- * caller's catch.
- */
+/** Consume chunked generateContentStream into AssistantMessage and event stream. */
 export async function consumeGoogleStream<T extends GoogleApiType>(args: {
 	googleStream: AsyncIterable<GenerateContentResponse>;
 	output: AssistantMessage;

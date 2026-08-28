@@ -1,10 +1,3 @@
-/**
- * Broker-aware auth-storage discovery used by both the coding-agent runtime and
- * the catalog model generator. Keeps the precedence logic (env → config.yml/config.yaml →
- * token file → local SQLite) in one place so build-time tooling sees the same
- * credentials as the TUI.
- */
-
 import { existsSync } from "node:fs";
 import * as path from "node:path";
 import {
@@ -21,8 +14,6 @@ import * as logger from "@veyyon/utils/logger";
 import { isRecord } from "@veyyon/utils/type-guards";
 import { YAML } from "bun";
 import type { AuthCredential } from "../auth-storage";
-// This module constructs an `AuthStorage` from the subpath rather than through the barrel, so it
-// carries the registry wiring itself; see the note on the same import in `../index.ts`.
 import "../usage/defaults";
 import { AuthStorage, SqliteAuthCredentialStore } from "../auth-storage";
 import * as AIError from "../error";
@@ -43,34 +34,14 @@ export interface ResolveAuthBrokerConfigOptions {
 
 export interface DiscoverAuthStorageOptions {
 	agentDir?: string;
-	/**
-	 * Directory whose `agent.db` backs the LOCAL SQLite credential store, when no
-	 * broker is configured. Defaults to `agentDir`. Split out so a caller can keep
-	 * broker resolution keyed on the per-profile `agentDir` (a profile may define
-	 * its own broker) while pointing the local credential store at a shared,
-	 * cross-profile location — the mechanism behind machine-wide "shared by
-	 * default" credentials. When a broker IS configured it wins regardless, so
-	 * this only affects the local-store fallback.
-	 */
+	/** Directory whose agent.db backs the local SQLite credential store. */
 	storeAgentDir?: string;
-	/**
-	 * Candidate legacy credential-store `agent.db` paths to promote from on the
-	 * first run of a shared store, tried in order until one seeds the (empty)
-	 * shared store. Defaults to `[getAgentDbPath(agentDir)]` — the per-profile
-	 * store. A caller that knows about older store locations (e.g. a per-profile
-	 * `shared-auth` dir that predates the move to a global shared store) passes
-	 * them here so credentials orphaned by that move are recovered, not lost.
-	 * Only consulted when `storeAgentDir` differs from `agentDir` (sharing on).
-	 */
+	/** Candidate legacy credential-store paths to seed from if shared store is empty. */
 	seedSourceDbPaths?: string[];
 	configValueResolver?: (config: string) => Promise<string | undefined>;
 	cachePath?: string;
 	sourceLabel?: string;
-	/**
-	 * Forwarded verbatim to {@link AuthStorage}: whether quota exhaustion may move a provider to
-	 * another of its accounts. Threaded through here because the discovery entry point is the only
-	 * place the app constructs its storage, and the option would otherwise be unreachable from it.
-	 */
+	/** Whether quota exhaustion may fail over to another account. */
 	loadBalancing?: boolean | (() => boolean);
 }
 
@@ -79,11 +50,7 @@ export function getAuthBrokerTokenFilePath(): string {
 	return path.join(getConfigRootDir(), "auth-broker.token");
 }
 
-/**
- * Default resolver for config values: checks `process.env` first, then treats
- * the value as a literal. Does NOT execute `!command` syntax; such values are
- * left unresolved so the caller can fall back to the token file.
- */
+/** Default resolver for config values checking process.env first. */
 async function defaultResolveConfigValue(config: string): Promise<string | undefined> {
 	if (config.startsWith("!")) return undefined;
 	const envValue = process.env[config];
@@ -107,12 +74,7 @@ interface ConfigSnapshot {
 	token?: string;
 }
 
-/**
- * Resolve a dotted config key (e.g. `auth.broker.url`) against a parsed YAML
- * record, accepting both nested form (`auth: { broker: { url } }`) and the
- * legacy flat literal-dot key (`"auth.broker.url": ...`). Nested wins when both
- * are present. Returns the value only when it is a string.
- */
+/** Resolve dotted config key (nested or flat) against parsed YAML. */
 function readDottedString(record: Record<string, unknown>, dottedKey: string): string | undefined {
 	let current: unknown = record;
 	for (const segment of dottedKey.split(".")) {
@@ -160,21 +122,7 @@ function resolveSnapshotTtlMs(): number {
 	return DEFAULT_SNAPSHOT_CACHE_TTL_MS;
 }
 
-/**
- * Resolve broker connection configuration using the same precedence as the TUI:
- *
- * 1. `VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN` env vars.
- * 2. `auth.broker.url` / `auth.broker.token` in `<agentDir>/config.yml` or `<agentDir>/config.yaml`.
- * 3. The same keys in the machine-wide global config (`~/.veyyon/config.yml`),
- *    which is where the Settings UI's Global tab writes them — the broker is a
- *    cross-profile concern, so one machine-wide entry serves every profile
- *    while a profile's own config can still override it.
- * 4. `<config-root>/auth-broker.token` file (paired with a URL from env/config).
- *
- * Returns `null` when no broker URL is configured — callers should fall back to
- * the local SQLite store. Throws when a URL is configured but no token is
- * available, matching the TUI behavior.
- */
+/** Resolve broker connection configuration from environment, config, or token file. */
 export async function resolveAuthBrokerConfig(
 	options: ResolveAuthBrokerConfigOptions = {},
 ): Promise<AuthBrokerClientConfig | null> {
@@ -187,8 +135,7 @@ export async function resolveAuthBrokerConfig(
 	let url = envUrl && envUrl.length > 0 ? envUrl : undefined;
 	let configToken: string | undefined;
 	if (!url || !envToken) {
-		// Per-key precedence: the profile's own config wins, the machine-wide
-		// global config fills whichever keys the profile leaves unset.
+		// Profile config overrides global machine-wide config.
 		const fromProfile = await readConfigYaml(agentDir);
 		const fromGlobal = await readConfigYaml(getGlobalConfigRootDir());
 		const fromConfig = { url: fromProfile.url ?? fromGlobal.url, token: fromProfile.token ?? fromGlobal.token };
@@ -215,11 +162,7 @@ export async function resolveAuthBrokerConfig(
 	return { url, token };
 }
 
-/**
- * Create an AuthStorage instance, using the broker when configured and falling
- * back to the local SQLite store otherwise. This is the single source of truth
- * for the TUI and the catalog generator.
- */
+/** Create an AuthStorage instance with broker support and local fallback. */
 export async function discoverAuthStorage(options: DiscoverAuthStorageOptions = {}): Promise<AuthStorage> {
 	const agentDir = options.agentDir ?? getAgentDir();
 	const brokerConfig = await resolveAuthBrokerConfig({
@@ -283,13 +226,7 @@ export async function discoverAuthStorage(options: DiscoverAuthStorageOptions = 
 
 	const storeAgentDir = options.storeAgentDir ?? agentDir;
 	const dbPath = getAgentDbPath(storeAgentDir);
-	// Shared-store first run: the machine-wide store is empty, but an older
-	// per-profile store may already hold a valid login. Promote the first
-	// candidate that has one so enabling "shared by default" never silently logs
-	// the user out. Candidates default to the current per-profile store; a caller
-	// can prepend legacy locations (e.g. a per-profile `shared-auth` dir that
-	// predates the global-store move). No-op when the store dir is the per-profile
-	// dir (sharing off) or the shared store already has credentials.
+	// Seed shared store from older per-profile store if empty.
 	if (options.storeAgentDir && options.storeAgentDir !== agentDir) {
 		const seedSources = options.seedSourceDbPaths ?? [getAgentDbPath(agentDir)];
 		await seedSharedCredentialStore(seedSources, dbPath);
@@ -303,19 +240,7 @@ export async function discoverAuthStorage(options: DiscoverAuthStorageOptions = 
 	return storage;
 }
 
-/**
- * One-time promotion of an older per-profile credential store into the shared,
- * machine-wide store. Copies only when the shared store has no credentials yet,
- * so it seeds on first activation of "shared by default" and never clobbers a
- * shared store the user has already populated. `sourceDbPaths` are tried in
- * order and the FIRST one holding an active login wins (later candidates are
- * ignored), so a caller can list newest-to-oldest legacy locations. Copies the
- * full credential (including refresh tokens) at the store level — never the
- * redacted snapshot — so no re-login is forced. Disabled credentials are
- * skipped: a known-bad login is not worth promoting. Idempotent under
- * concurrency because `replaceAuthCredentialsForProvider` is a per-provider
- * replace with identical data, so a racing second process writes the same rows.
- */
+/** One-time promotion of older per-profile credentials to empty shared store. */
 async function seedSharedCredentialStore(sourceDbPaths: readonly string[], sharedDbPath: string): Promise<void> {
 	const shared = await SqliteAuthCredentialStore.open(sharedDbPath);
 	try {

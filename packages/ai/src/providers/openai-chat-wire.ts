@@ -1,18 +1,4 @@
-/**
- * OpenAI Chat Completions API wire types.
- *
- * Vendored from openai-node v6.42.0 (Apache-2.0), trimmed to the streaming
- * wire surface pi-ai speaks. Field names, optionality, and union membership
- * mirror the SDK exactly; names are identical to the SDK exports so call
- * sites only swap import paths. Nested SDK namespaces (e.g.
- * `ChatCompletionChunk.Choice.Delta`) are flattened into prefixed interface
- * names (`ChatCompletionChunkChoiceDelta`).
- *
- * Fields marked "deprecated by OpenAI" reflect the upstream API contract;
- * they are kept because compatible providers still emit them on the wire.
- */
-
-// ─── Shared types (openai/resources/shared) ─────────────────────────────────
+/** OpenAI Chat Completions API wire types. */
 
 export type ChatModel =
 	| "gpt-5.4"
@@ -152,8 +138,6 @@ export interface ResponseFormatText {
 	type: "text";
 }
 
-// ─── Usage (openai/resources/completions) ───────────────────────────────────
-
 /** Usage statistics for the completion request. */
 export interface CompletionUsage {
 	/** Number of tokens in the generated completion. */
@@ -187,8 +171,6 @@ export interface CompletionUsagePromptTokensDetails {
 	/** Cached tokens present in the prompt. */
 	cached_tokens?: number;
 }
-
-// ─── Content parts ───────────────────────────────────────────────────────────
 
 /** Text content part. */
 export interface ChatCompletionContentPartText {
@@ -260,8 +242,6 @@ export type ChatCompletionContentPart =
 	| ChatCompletionContentPartInputAudio
 	| ChatCompletionContentPartFile;
 
-// ─── Tool calls ──────────────────────────────────────────────────────────────
-
 /** A call to a function tool created by the model. */
 export interface ChatCompletionMessageFunctionToolCall {
 	/** The ID of the tool call. */
@@ -300,8 +280,6 @@ export interface ChatCompletionMessageCustomToolCallCustom {
 
 /** Tool call union. */
 export type ChatCompletionMessageToolCall = ChatCompletionMessageFunctionToolCall | ChatCompletionMessageCustomToolCall;
-
-// ─── Message params ──────────────────────────────────────────────────────────
 
 /** Developer-provided instructions (o1 and newer replace `system`). */
 export interface ChatCompletionDeveloperMessageParam {
@@ -394,8 +372,6 @@ export type ChatCompletionMessageParam =
 	| ChatCompletionToolMessageParam
 	| ChatCompletionFunctionMessageParam;
 
-// ─── Tools ───────────────────────────────────────────────────────────────────
-
 /** A function tool that can be used to generate a response. */
 export interface ChatCompletionFunctionTool {
 	function: FunctionDefinition;
@@ -445,8 +421,6 @@ export interface ChatCompletionCustomToolCustomGrammarGrammar {
 
 /** Tool union. */
 export type ChatCompletionTool = ChatCompletionFunctionTool | ChatCompletionCustomTool;
-
-// ─── Tool choice ─────────────────────────────────────────────────────────────
 
 /** Constrains the tools available to the model to a pre-defined set. */
 export interface ChatCompletionAllowedTools {
@@ -501,8 +475,6 @@ export type ChatCompletionToolChoiceOption =
 	| ChatCompletionNamedToolChoice
 	| ChatCompletionNamedToolChoiceCustom;
 
-// ─── Token logprobs ──────────────────────────────────────────────────────────
-
 export interface ChatCompletionTokenLogprob {
 	/** The token. */
 	token: string;
@@ -523,8 +495,6 @@ export interface ChatCompletionTokenLogprobTopLogprob {
 	/** Log probability of this token; `-9999.0` when outside the top 20. */
 	logprob: number;
 }
-
-// ─── Streaming chunk ─────────────────────────────────────────────────────────
 
 /** A streamed chunk of a chat completion response. */
 export interface ChatCompletionChunk {
@@ -662,8 +632,6 @@ export interface ChatCompletionChunkModerationError {
 	/** Always `error`. */
 	type: "error";
 }
-
-// ─── Create params ───────────────────────────────────────────────────────────
 
 /** Audio output parameters; required with `modalities: ["audio"]`. */
 export interface ChatCompletionAudioParam {

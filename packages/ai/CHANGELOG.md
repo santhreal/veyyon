@@ -13,7 +13,7 @@
 - `streamAnthropicOnce` SSE event handling extracted into modular helper functions.
 - `streamOpenAICompletionsOnce` SSE chunk parsing, tool call assembly, and error recovery extracted into helper functions.
 - `convertMessages` per-message-type conversion extracted into separate functions.
-- Verbose inline comments stripped from `auth-storage.ts`, `openai-codex-responses.ts`, `cursor.ts`, `gitlab-duo-workflow.ts`, `openai-responses-wire.ts`, `anthropic.ts`, and `openai-completions.ts`.
+- Verbose comments stripped from AI provider, utility, cache, error, and authentication modules.
 
 - Formatted tool-call loop guard whitespace; behavior is unchanged.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.

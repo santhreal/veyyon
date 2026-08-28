@@ -1,22 +1,4 @@
-/**
- * veyyon auth-gateway HTTP server.
- *
- * Accepts any provider-format request (OpenAI chat-completions, Anthropic
- * messages, OpenAI Responses) and dispatches through pi-ai's `streamSimple()`
- * — which handles credential injection, anthropic-beta headers, codex
- * websocket transport, and all the per-provider intricacies. The gateway is
- * pure protocol translation: foreign wire → veyyon Context → pi-ai stream() →
- * veyyon events → foreign wire.
- *
- * Endpoints:
- *   GET  /healthz                          → unauth; ok + version
- *   GET  /v1/usage                         → aggregated provider usage (5-min per-credential cache via AuthStorage)
- *   GET  /v1/credentials/check             → per-credential auth probe (diagnose 401s in a multi-account pool)
- *   GET  /v1/models                        → list known models from the registry
- *   POST /v1/chat/completions              → OpenAI chat-completions in/out
- *   POST /v1/messages                      → Anthropic messages in/out
- *   POST /v1/responses                     → OpenAI Responses in/out
- */
+/** veyyon auth-gateway HTTP server. */
 
 import { Effort } from "@veyyon/catalog/effort";
 import { extractRetryHint } from "@veyyon/utils/fetch-retry";
@@ -77,29 +59,7 @@ const FORMAT_ROUTES: Record<string, { module: FormatModule; label: string }> = {
 	"/v1/responses": { module: openaiResponses, label: "openai-responses" },
 };
 
-// (passthrough fast-path removed — it bypassed pi-ai provider logic, in
-// particular the Anthropic Claude-Code OAuth system-prompt prefix injection.
-// Every request now takes the translate path so credential-specific request
-// shaping always applies.)
-
-// Unsupported options for the resolved provider are stripped with a single warning per option set.
-
-/**
- * Derive a stable cache identity from the parts of the request that don't
- * change turn-to-turn within a logical conversation: model id, system prompt,
- * tool definitions, and the first message (the conversation seed). Codex-class
- * backends only cache prefixes when an explicit `prompt_cache_key` is set;
- * without one, two requests with the same prefix but different trailing
- * messages don't coalesce. This bridges Anthropic-style clients (which signal
- * caching via `cache_control` markers rather than an opaque key) to Codex's
- * keyed model so cross-protocol caching "just works".
- *
- * Including the first message scopes the key to one logical conversation:
- * two different chats with the same system prompt no longer share a cache
- * bucket and can't trample each other's prefix-tree entries.
- *
- * Anthropic-backed requests ignore `sessionId`; the key is harmless there.
- */
+/** Derive a stable prompt cache key from model, system prompt, tools, and first message. */
 function deriveSessionId(modelId: string, context: Context): string {
 	const parts: string[] = [modelId];
 	if (context.systemPrompt && context.systemPrompt.length > 0) {
@@ -124,14 +84,7 @@ function deriveSessionId(modelId: string, context: Context): string {
 /** `api:options` combinations already reported, so each is announced once. */
 const reportedDroppedTypedOptions = new Set<string>();
 
-/**
- * Announce request options the gateway is unable to forward.
- *
- * Warned once per API and option set rather than per request: a client that
- * sends `seed` sends it on every request, and a per-request warning would bury
- * the one line that matters. The names are logged, never the values, since
- * `user` and `logitBias` carry caller data.
- */
+/** Announce request options the gateway is unable to forward. */
 function reportDroppedTypedOptions(api: Api, names: string[]): void {
 	const signature = `${api}:${Array.from(names).sort().join(",")}`;
 	const detail = { api, dropped: names };
@@ -148,13 +101,7 @@ export function __resetDroppedTypedOptionReportsForTests(): void {
 	reportedDroppedTypedOptions.clear();
 }
 
-/**
- * Translate a parsed gateway request into the stream options pi-ai understands.
- *
- * Exported because this is where request options are silently lost when they
- * have no pi-ai equivalent, and that behaviour needs asserting directly rather
- * than through a whole gateway round trip.
- */
+/** Translate a parsed gateway request into stream options. */
 export function buildStreamOptions(parsed: ParsedFormatRequest, api: Api, signal: AbortSignal): SimpleStreamOptions {
 	const opts: SimpleStreamOptions = { signal };
 	const { options } = parsed;
@@ -205,16 +152,6 @@ export function buildStreamOptions(parsed: ParsedFormatRequest, api: Api, signal
 		};
 		opts.reasoning ??= effort;
 	}
-	// Fields that don't yet have a matching pi-ai `SimpleStreamOptions` slot, so
-	// the gateway cannot forward them. They are NEVER widened into
-	// `options.extra` — every consumer would have to re-implement the typed parse
-	// to read them back out. Landing first-class fields for these upstream is
-	// what removes this block.
-	//
-	// Dropping them has to be loud. A caller that set `responseFormat` and got
-	// prose back, or set `seed` and got different answers to identical requests,
-	// sees a request that succeeded and an option that did nothing, with no error
-	// anywhere to connect the two.
 	const droppedTypedOptions = Object.entries({
 		parallelToolCalls: options.parallelToolCalls,
 		previousResponseId: options.previousResponseId,
@@ -231,28 +168,7 @@ export function buildStreamOptions(parsed: ParsedFormatRequest, api: Api, signal
 	return opts;
 }
 
-/**
- * Hook fired by {@link streamSimple} when the upstream request fails in a
- * way that's rotatable — today that's HTTP 401 (credential is bad) and
- * usage-limit phrasing matched by {@link isUsageLimitError} (Codex's
- * `usage_limit_reached`, Anthropic's `usage_limit_reached`, Google's
- * `resource_exhausted`, …). The two cases need different storage actions:
- *
- * - **usage-limit** → {@link AuthStorage.markUsageLimitReached}. Marks just
- *   the current session's credential as temporarily blocked (honouring
- *   `retry-after` / `resets_at` hints when present) and returns `true` only
- *   when a sibling credential is still available. Burning the credential
- *   with `invalidateCredentialMatching` here would orphan accounts whose
- *   reset window is several hours away — exactly the bug this helper exists
- *   to avoid.
- * - **auth-failure** → {@link AuthStorage.invalidateCredentialMatching}.
- *   Suspect/delete the row so it doesn't get re-picked next request.
- *
- * In both branches we return the next `getApiKey` result (sticky on the
- * same `sessionId`) so streamSimple can transparently retry the pre-emit
- * failure with a fresh credential. Returning `undefined` aborts the retry
- * and surfaces the original error to the caller.
- */
+/** Handle credential rotation on auth and rate limit errors. */
 async function refreshGatewayApiKeyAfterAuthError(
 	storage: AuthStorage,
 	model: Model<Api>,

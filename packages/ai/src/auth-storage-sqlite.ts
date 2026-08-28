@@ -1,22 +1,4 @@
-/**
- * The default sqlite-backed credential store.
- *
- * WHY IT IS NOT IN `auth-storage.ts` ANY MORE. That module owns the OAuth machinery -- refreshing
- * tokens, consulting provider registries, classifying provider errors -- and reaching it costs 213
- * modules, most of them the provider registry and its 75 provider definitions. This class does none of
- * that. It opens a database, prepares statements, and reads and writes rows. The caller that forced the
- * split is `packages/coding-agent`'s storage layer: it wants exactly this class, and importing it
- * through `auth-storage.ts` put the OAuth flows on the path of `config/settings.ts`, which is the most
- * imported module in that package.
- *
- * The pure row logic it calls lives in `auth-credential-rows.ts`, which imports nothing but
- * `@veyyon/utils`, and the credential TYPES stay in `auth-storage.ts` and arrive as `import type`, which
- * is erased. So there is no runtime edge back to the OAuth side at all: this module and the row helpers
- * are a closed pair.
- *
- * `auth-storage.ts` re-exports this class, so every existing importer of `@veyyon/ai/auth-storage` or of
- * the package barrel is unaffected.
- */
+/** Default SQLite-backed credential store. */
 import { Database, type Statement } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -57,14 +39,7 @@ import type { OAuthCredentials } from "./registry/oauth/types";
 import type { Provider } from "./types";
 import type { UsageCostHistoryEntry, UsageCostHistoryQuery, UsageHistoryEntry, UsageHistoryQuery } from "./usage";
 
-/**
- * Default SQLite-backed implementation of {@link AuthCredentialStore}.
- *
- * Used by the pi-ai CLI and as the default store for `AuthStorage.create()`.
- * Also exposes convenience methods (`saveOAuth`, `getOAuth`, `saveApiKey`,
- * `getApiKey`, `listProviders`, `deleteProvider`) that callers can use directly
- * without going through `AuthStorage`.
- */
+/** Default SQLite-backed implementation of AuthCredentialStore. */
 export class SqliteAuthCredentialStore implements AuthCredentialStore {
 	#db: Database;
 	#listActiveStmt: Statement;
@@ -189,23 +164,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		this.#deleteExpiredCredentialBlocksStmt = this.#db.prepare(
 			"DELETE FROM auth_credential_blocks WHERE blocked_until_ms <= ?",
 		);
-		// `updated_at` is BOUND from the application clock here, not stamped with
-		// ${SQLITE_NOW_EPOCH} like every other table above, and the difference is
-		// load-bearing rather than stylistic.
-		//
-		// This column is not just a record of when the row was touched: the lease
-		// logic reads it back and compares it against `Date.now()` to decide whether
-		// the row was written by a clock ahead of ours, which makes the lease
-		// stealable. Stamping it with SQLite's own C clock while comparing it to
-		// JavaScript's means one value is governed by two clocks, and any divergence
-		// between them reads as a peer with a skewed clock. `expires_at_ms` on this
-		// same row already comes from `Date.now()`, so the row was internally
-		// inconsistent.
-		//
-		// Binding it makes the check mean what it says. A peer with a genuinely
-		// skewed clock still writes its own skewed time, so the detection this
-		// guards is unchanged, while two readings of the SAME clock can no longer
-		// disagree with each other.
+		// Bind updated_at from application clock so lease timing checks are consistent.
 		this.#acquireCredentialRefreshLeaseStmt = this.#db.prepare(
 			`INSERT INTO auth_credential_refresh_leases (credential_id, owner, expires_at_ms, updated_at)
 			VALUES (?, ?, ?, ?)
@@ -637,8 +596,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		}
 	}
 
-	// ─── AuthCredentialStore interface ──────────────────────────────────────
-
 	listAuthCredentials(provider?: string): StoredAuthCredential[] {
 		const rows =
 			(provider
@@ -760,11 +717,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		return result;
 	}
 
-	/**
-	 * Hard-deletes disabled rows for a provider when an active replacement exists.
-	 * OAuth credentials match by identity key; API keys match by provider and type.
-	 * Disabled rows without an active same-type replacement remain recoverable.
-	 */
+	/** Hard-deletes disabled rows for a provider when an active replacement exists. */
 	#purgeSupersededDisabledRows(provider: string, activeRows: StoredAuthCredential[]): void {
 		try {
 			let hasActiveApiKey = false;
@@ -795,11 +748,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		}
 	}
 
-	/**
-	 * The re-enabling variant of {@link updateAuthCredential}: writes the credential
-	 * and clears `disabled_cause` in one statement, so a row a peer disabled on a
-	 * superseded token comes back the moment a refresh proves the grant is alive.
-	 */
+	/** Update credential and clear disabled_cause. */
 	updateAuthCredentialEnabling(id: number, credential: AuthCredential): void {
 		this.#writeCredential(id, credential, true);
 	}
@@ -808,11 +757,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		this.#writeCredential(id, credential, false);
 	}
 
-	/**
-	 * Read one row by id, INCLUDING disabled rows, which `listAuthCredentials`
-	 * filters out. Used during a refresh race to see whether a peer already rotated
-	 * the token, since the peer's row may itself have been disabled.
-	 */
+	/** Read one row by ID, including disabled rows. */
 	readAuthCredentialById(id: number): StoredAuthCredential | undefined {
 		const stmt = this.#db.prepare("SELECT * FROM auth_credentials WHERE id = ?");
 		try {
@@ -826,15 +771,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		}
 	}
 
-	/**
-	 * List disabled rows, newest first. See
-	 * {@link AuthCredentialStore.listDisabledAuthCredentials}.
-	 *
-	 * Ordered by id descending because the row that matters is the one disabled
-	 * most recently: an account that was replaced and then re-added leaves older
-	 * disabled rows behind, and reporting one of those would name a cause the user
-	 * already resolved.
-	 */
+	/** List disabled rows, ordered by ID descending (newest first). */
 	listDisabledAuthCredentials(provider?: string): StoredAuthCredential[] {
 		const sql = provider
 			? "SELECT * FROM auth_credentials WHERE disabled_cause IS NOT NULL AND provider = ? ORDER BY id DESC"
@@ -939,12 +876,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		}
 	}
 
-	/**
-	 * CAS-style disable: only soft-deletes the row when its `data` column still
-	 * matches `expectedData` and the row has not already been disabled. Used by
-	 * the OAuth refresh-failure path to avoid clobbering a peer that rotated the
-	 * row between our pre-check and the disable.
-	 */
+	/** CAS-style disable matching expected data to avoid race conditions. */
 	tryDisableAuthCredentialIfMatches(
 		id: number,
 		expectedData: string,
@@ -979,17 +911,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		}
 	}
 
-	/**
-	 * Report a failed cache statement once per operation, then stay quiet about it.
-	 *
-	 * Every method below answers a database failure by behaving as though the cache were simply empty:
-	 * a failed read is a miss, a failed write is a value not kept. That is the right BEHAVIOUR -- a cache
-	 * is an optimization and nothing here should fail a request over it -- but doing it silently hides a
-	 * real operational fault. A read-only or corrupt `auth.db`, a full disk, or a locked file makes every
-	 * lookup miss and every write vanish, so the process re-fetches model catalogs and OAuth metadata on
-	 * every launch and looks merely slow. The first failure of each kind says what happened; later ones
-	 * are debug, because a broken database fails on every call and a warning per call would bury it.
-	 */
+	/** Report failed cache statement once per operation. */
 	#reportedCacheFailures = new Set<string>();
 
 	#reportCacheFailure(operation: string, error: unknown): void {

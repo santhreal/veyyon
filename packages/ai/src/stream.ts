@@ -47,14 +47,6 @@ import { isKimiModel, streamKimi } from "./providers/kimi";
 import type { OllamaChatOptions } from "./providers/ollama";
 import type { OpenAICompletionsOptions } from "./providers/openai-completions";
 import { streamPiNative } from "./providers/pi-native-client";
-// Heavy provider stream functions are imported lazily via register-builtins,
-// which wraps each provider module in a dynamic import. This keeps the
-// AWS SDK, google-auth-library, @google/genai, @bufbuild/protobuf, and
-// other provider SDKs out of the CLI startup parse graph. The
-// gitlab-duo / kimi / synthetic providers stay eager because their modules
-// export routing predicates (isGitLabDuoModel, isKimiModel, isSyntheticModel)
-// that must be callable synchronously before streaming begins, and their
-// modules are thin wrappers with no heavy SDK dependencies.
 import {
 	streamAnthropic,
 	streamAzureOpenAIResponses,
@@ -104,31 +96,14 @@ function isGoogleVertexAuthenticatedModel(model: Model<Api>): boolean {
 	);
 }
 
-/**
- * Whether {@link model} is an official first-party endpoint whose stream needs
- * no leaked-thinking healing — the official Anthropic API and the official
- * OpenAI / OpenAI-Codex endpoints return structured thinking blocks and never
- * leak reasoning idioms into the visible text channel.
- *
- * The gate is provider id **and** official endpoint URL: pointing
- * `provider: "anthropic"` (or `openai`) at a custom proxy via `models.yml`
- * still routes through {@link wrapLeakedThinkingStream}, since a third-party
- * gateway may well leak. URL checks are strict (exact origin / path boundary
- * or parsed hostname) — a substring match would accept lookalikes like
- * `https://api.openai.com.evil/`. Anthropic Foundry (`CLAUDE_CODE_USE_FOUNDRY`)
- * redirects an empty `baseUrl` to `FOUNDRY_BASE_URL`, so the check runs against
- * that effective endpoint — exempt only when it resolves to the official host.
- */
+/** Whether model is an official first-party endpoint exempt from leaked-thinking healing. */
 function isLeakedThinkingHealExempt(model: Model<Api>): boolean {
 	switch (model.provider) {
 		case "anthropic":
-			// Mirror resolveAnthropicBaseUrl: Foundry redirects an empty baseUrl to
-			// FOUNDRY_BASE_URL, so exempt only when the effective endpoint is official.
+			// Foundry redirects empty baseUrl to FOUNDRY_BASE_URL.
 			return isOfficialAnthropicApiUrl((isFoundryEnabled() && $env.FOUNDRY_BASE_URL?.trim()) || model.baseUrl);
 		case "openai":
-			// The catalog's check, not a third copy of it: the same hostname question decides whether this
-			// endpoint gets the obfuscation opt-out and server compaction, and a local copy drifted into
-			// answering it here.
+			// Official OpenAI endpoint check from catalog.
 			return isOfficialOpenAIEndpoint("openai", model.baseUrl ?? "");
 		case "openai-codex":
 			return isOfficialCodexApiUrl(model.baseUrl);
@@ -173,29 +148,14 @@ const PROVIDER_INFLIGHT_LOCK_STALE_MS = 10_000;
 const PROVIDER_INFLIGHT_LEASE_STALE_MS = 30_000;
 const PROVIDER_INFLIGHT_HEARTBEAT_MS = 5_000;
 const PROVIDER_INFLIGHT_SIGNAL_FALLBACK_MS = 250;
-/**
- * Consecutive heartbeat write failures that mean this lease WILL be treated as dead.
- *
- * A single failure is normal and uninteresting: the next beat rewrites the file. What matters is a run of
- * them long enough for the lease's timestamp to age past {@link PROVIDER_INFLIGHT_LEASE_STALE_MS}, because at
- * that point another process reclaims the lease while this request is still in flight and the concurrency
- * guard has failed OPEN. Derived from the two intervals rather than written as a number so it cannot drift
- * out of step with them.
- */
+/** Consecutive heartbeat write failures before lease is treated as dead. */
 const PROVIDER_INFLIGHT_HEARTBEAT_FAILURES_BEFORE_STALE = Math.ceil(
 	PROVIDER_INFLIGHT_LEASE_STALE_MS / PROVIDER_INFLIGHT_HEARTBEAT_MS,
 );
 
 let providerInFlightRootOverride: string | undefined;
 
-/**
- * The caps and their resolver live in `./provider-inflight-limits`, which imports nothing.
- *
- * The WRITER of this state is the harness's settings layer, and reaching a setter that lived here meant
- * importing this module's 285: every provider transport, the model registry, the error taxonomy. The
- * re-export keeps `@veyyon/ai/stream` a working import path for it, so nothing that already calls it
- * changes, while a caller that only configures caps can name the owner instead.
- */
+/** In-flight concurrency limits configuration. */
 export { configureProviderMaxInFlightRequests } from "./provider-inflight-limits";
 
 function providerInFlightRoot(): string {
@@ -291,18 +251,7 @@ function isSameProviderInFlightLock(
 	return current.birthtimeMs === expected.birthtimeMs;
 }
 
-/**
- * Report a lock directory that could not be released.
- *
- * All three release paths are best effort by design: a failed release must never turn into a thrown
- * error on a request that already succeeded. What it must not be is silent. This directory IS the
- * provider's concurrency gate, so one left behind makes the NEXT request for that provider wait for
- * the stale timeout ({@link PROVIDER_INFLIGHT_LOCK_STALE_MS}) before it can proceed — a latency cliff
- * with no error, no log line, and nothing pointing at a leftover directory (Law 10).
- *
- * A missing directory is not a leak: another process released the same lock first, which is the
- * ordinary outcome of the race these functions are written for.
- */
+/** Report a lock directory that could not be released. */
 function reportProviderInFlightLockLeak(lockDir: string, what: string, error: unknown): void {
 	if (isEnoent(error)) return;
 	logger.warn("Provider in-flight lock could not be released; the next request for this provider will wait", {
@@ -313,22 +262,7 @@ function reportProviderInFlightLockLeak(lockDir: string, what: string, error: un
 	});
 }
 
-/**
- * Report a lease directory that could not be removed.
- *
- * The lock releases have carried this contract since they were written: a failed release must never
- * turn into a thrown error on a request, and must never be silent either. The LEASE removal was the
- * half that had neither. `releaseProviderInFlightLease` had no `catch` at all, so an `fs.rm` that
- * failed (a config root whose permissions changed under a restrictive umask, a container running as
- * another uid, a synced home) threw out of the `finally` in `withProviderInFlightLimit` and REPLACED
- * the provider's own error with an `EACCES` about a temp directory. On the success path it was worse
- * than useless: the stream had already ended, so the throw was swallowed whole and the leaked slot
- * left no trace at all.
- *
- * A leaked lease is not merely slow. Until it ages past {@link PROVIDER_INFLIGHT_LEASE_STALE_MS} it
- * counts against the provider's limit, and if the same permissions stop the staleness sweep from
- * removing it, the slot is gone for the life of the directory.
- */
+/** Report a lease directory that could not be removed. */
 function reportProviderInFlightLeaseLeak(leasePath: string, what: string, error: unknown): void {
 	if (isEnoent(error)) return;
 	logger.warn("Provider in-flight lease could not be removed; it will hold a slot for this provider", {
@@ -469,19 +403,12 @@ async function tryAcquireProviderInFlightLease(
 			await fs.mkdir(leaseDir);
 			await writeProviderInFlightInfo(leaseDir, token);
 		} catch (error) {
-			// The lease-creation error is what the caller needs and it is rethrown. A cleanup that also fails
-			// could only be surfaced by replacing that error with a less useful one; the cost of dropping it is
-			// one lease directory that the staleness sweep will reclaim.
+			// Best-effort cleanup on lease-creation failure.
 			await removeProviderInFlightLeaseDir(leaseDir).catch(() => {});
 			throw error;
 		}
 		let heartbeatFlush = Promise.resolve();
-		// A heartbeat that keeps failing lets the lease age past PROVIDER_INFLIGHT_LEASE_STALE_MS, after which
-		// another process treats this in-flight request as dead and proceeds: the concurrency guard fails OPEN
-		// while the operator still believes duplicate in-flight requests are prevented. The write itself cannot
-		// be made to throw here (nothing awaits the interval callback), so the failure is COUNTED, and the run
-		// is reported once it is long enough to have that effect. The first failures stay quiet on purpose: a
-		// single transient write failure is normal and the next beat repairs it.
+		// Count consecutive heartbeat failures before reporting stale risk.
 		let consecutiveFailures = 0;
 		let reportedStaleRisk = false;
 		const touchHeartbeat = (): Promise<void> => {
@@ -614,25 +541,17 @@ async function removeProviderInFlightLeaseDir(leasePath: string): Promise<void> 
 	}
 }
 
-// Signal into the lease's OWN provider directory (derived from `lease.path`)
-// rather than recomputing it from the current root. A release that lands after
-// the in-flight root has been repointed (only the test seam does that) must not
-// write `.wakeup` into an unrelated provider directory.
+/** Release lease and signal waiting requests. */
 async function releaseProviderInFlightLease(lease: ProviderInFlightLease): Promise<void> {
 	clearInterval(lease.heartbeat);
 	await lease.flushHeartbeat();
 	try {
 		await removeProviderInFlightLeaseDir(lease.path);
 	} catch (error) {
-		// Never rethrow. This runs from the `finally` in `withProviderInFlightLimit`, where a throw
-		// REPLACES whatever the request was already reporting: a provider's real failure became an
-		// `EACCES` about a temp directory, and a successful stream had the throw swallowed silently
-		// because `outer` was already ended. Both outcomes destroyed the information that mattered.
+		// Best effort cleanup in finally handler; never rethrow.
 		reportProviderInFlightLeaseLeak(lease.path, "own lease", error);
 	}
-	// Signalled even when the removal failed. Waiters are woken by the `.wakeup` write, not by the
-	// directory disappearing, and a waiter that is never woken pays the fallback timer on top of a
-	// slot it may not get anyway.
+	// Signal waiters even if lease removal failed.
 	await signalProviderInFlightWaitersInDir(path.dirname(lease.path));
 }
 
@@ -694,9 +613,7 @@ export const __providerInFlightForTesting = {
 			const identity = await readProviderInFlightLockIdentity(lockDir);
 			return () => releaseProviderInFlightLockDirIfSame(lockDir, identity);
 		} catch {
-			// No identity read means we cannot prove the lock is ours, so no release closure is handed back and
-			// nothing is unlocked. Fail closed: releasing a lock that might belong to another process is the
-			// failure that matters here, and null is the caller's "nothing to release" answer.
+			// Return null if identity cannot be verified.
 			return null;
 		}
 	},
@@ -707,10 +624,7 @@ function withProviderInFlightLimit<TOptions extends Pick<StreamOptions, "signal"
 	options: TOptions | undefined,
 	dispatch: () => AssistantMessageEventStream,
 ): AssistantMessageEventStream {
-	// Leaked-thinking healing folds in here — the one shared provider-dispatch
-	// chokepoint — so the loop guard (which wraps this) sees healed events and all
-	// provider exits are covered by one wrap. Official first-party providers are
-	// exempt (see `healLeakedThinking`); healing is otherwise idempotent.
+	// Leaked-thinking healing wraps provider dispatch for non-exempt endpoints.
 	const limit = resolveProviderInFlightLimit(model.provider, options?.maxInFlightRequests);
 	if (limit === undefined) return healLeakedThinking(model, dispatch());
 
@@ -991,16 +905,7 @@ const THINKING_LOOP_MAX_ABORTS = 3;
 const THINKING_LOOP_RETRY_BASE_DELAY_MS = 500;
 const THINKING_LOOP_RETRY_MAX_DELAY_MS = 8_000;
 
-/**
- * Resolve a completion, re-sampling a thinking-loop stall up to
- * {@link THINKING_LOOP_MAX_ABORTS} times before letting it cook. The loop guard
- * raises an empty `stopReason: "error"` stall on each guarded attempt; this
- * result-path consumer re-dispatches a fresh request per stall and, once the abort
- * budget is spent, runs one final pass with the guard disabled so a stubborn loop
- * returns the model's raw output instead of a fatal stall. Non-stall results —
- * including genuine errors — return immediately; a caller abort during backoff
- * propagates so cancellation surfaces as an abort, never a stale stall result.
- */
+/** Resolve completion with automatic retry for thinking loops up to retry budget. */
 async function resolveWithThinkingLoopCook<TApi extends Api>(
 	model: Model<TApi>,
 	signal: AbortSignal | undefined,
@@ -1059,15 +964,7 @@ function extractStatusFromAssistantError(message: AssistantMessage): number | un
 	return AIError.status({ message: message.errorMessage });
 }
 
-/**
- * The failure an assistant message reports, in the shape the classifier reads.
- *
- * A terminal `error` event carries its status and wording on the MESSAGE rather than on a thrown
- * error, so the rotation question could not be asked about it directly and was re-derived here from
- * the two fields. `errorId` is carried as well: the provider already classified this failure, and
- * dropping the id would make the same failure answer differently depending on which side of the
- * event boundary it was asked on.
- */
+/** Extract failure details from assistant message for classifier. */
 function assistantFailure(message: AssistantMessage): { status?: number; message?: string; errorId?: number } {
 	return {
 		status: extractStatusFromAssistantError(message),
@@ -1107,11 +1004,7 @@ export function streamSimple<TApi extends Api>(
 	if (apiKeyResolver) {
 		const outer = new AssistantMessageEventStream();
 		const signal = requestOptions?.signal;
-		// One inner attempt against a resolved string key. A retryable auth error
-		// that arrives before any replay-unsafe event is buffered and returned
-		// (so the caller can retry with a fresh key) instead of surfaced. Once any
-		// non-start event escapes, retry is no longer safe and the failure is
-		// emitted directly.
+		// Inner attempt buffering replay-unsafe events for auth retry.
 		const runAttempt = async (apiKey: string): Promise<AuthRetryFailure | undefined> => {
 			const bufferedEvents: AssistantMessageEvent[] = [];
 			let emittedReplayUnsafeEvent = false;
@@ -1164,8 +1057,7 @@ export function streamSimple<TApi extends Api>(
 			try {
 				lastKey = (await apiKeyResolver({ lastChance: false, error: undefined, signal })) || undefined;
 			} catch (error) {
-				// A thrown resolver is a broker/OAuth/network failure, not a missing
-				// key — surface the cause instead of masking it as "No API key".
+				// Surface resolver error as ConfigurationError.
 				outer.fail(
 					new AIError.ConfigurationError(
 						`Failed to resolve API key for provider ${model.provider}: ${errorMessage(error)}`,
@@ -1182,8 +1074,7 @@ export function streamSimple<TApi extends Api>(
 			let failure = await runAttempt(lastKey);
 			if (!failure) return;
 			while (true) {
-				// Caller aborted between attempts: don't mint a fresh token or fire
-				// another doomed request — emit the captured failure instead.
+				// Stop retrying if request was aborted.
 				if (signal?.aborted) break;
 				const nextKey = await resolveNextAuthRetryKey(retryState, apiKeyResolver, failure.error, signal);
 				if (nextKey === undefined) break;
@@ -1196,12 +1087,7 @@ export function streamSimple<TApi extends Api>(
 		return outer;
 	}
 
-	// Pi-native transport short-circuits the per-provider dispatch entirely:
-	// the gateway resolves provider + credential server-side, so we don't
-	// need an `apiKey` from `getEnvApiKey` here — `options.apiKey` carries
-	// the gateway bearer instead. Comes BEFORE the custom-API check so
-	// extension-registered APIs can't accidentally override a configured
-	// pi-native transport.
+	// Pi-native transport dispatches directly without local API key resolution.
 	if (model.transport === "pi-native") {
 		return withGeminiThinkingLoopGuard(model, requestOptions, opts =>
 			withProviderInFlightLimit(model, opts, () => streamPiNative(model, context, opts)),

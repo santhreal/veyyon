@@ -9,23 +9,11 @@ const enum ToolCallStatus {
 	Aborted = 2,
 }
 
-/**
- * Maximum tool-call id length the strictest replay provider accepts.
- *
- * Anthropic requires `^[a-zA-Z0-9_-]+$` with a 64-char cap; Google and Codex
- * `normalizeToolCallId` implementations cap individual id segments to the same
- * 64-char ceiling. Replacement ids minted here flow back through
- * `convertAnthropicMessages` (and friends) unchanged, so the `_dupN` suffix
- * MUST not push a normalized id past this bound.
- */
+/** Maximum tool-call ID length for cross-provider compatibility. */
 const MAX_TOOL_CALL_ID_LENGTH = 64;
 
 function appendDuplicateSuffix(originalId: string, suffix: string, maxLength: number): string {
-	// Responses-family ids are composites (`callId|itemId`): the wire call_id is
-	// the FIRST segment (normalizeResponsesToolCallId splits on `|`), so the
-	// suffix must land on every segment or the duplicate collapses back onto the
-	// original call_id at encode time. The length budget applies per segment,
-	// matching the per-segment caps of the provider normalizers.
+	// Composite IDs (callId|itemId) suffix each segment to preserve structure.
 	if (originalId.includes("|")) {
 		return originalId
 			.split("|")
@@ -126,26 +114,7 @@ function deduplicateToolCallIds(
 	});
 }
 
-/**
- * Drop assistant `toolCall` blocks whose `id` or `name` is empty / whitespace-only,
- * the `toolResult` messages they point at, and any assistant turn that has no
- * replayable content left.
- *
- * Models occasionally emit malformed calls such as `{ "name": "", "arguments": "{}" }`
- * (observed: GLM-5.2 + thinking on long turns, #3458) or a structurally valid
- * `toolCall` whose provider/native passthrough id never materialized (`id: ""`).
- * The agent loop rejects or skips these at execution time, but the malformed block
- * and its error tool-result can stay in `currentContext.messages`, so every
- * subsequent request replays them. Every provider validates the call shape —
- * Anthropic 400s on `tool_use.name` / `tool_use.id` (alongside an orphan
- * `tool_result`), OpenAI Chat Completions 400s on malformed
- * `tool_calls[i].function.*` — wedging the session in a 400 loop until manual
- * `/clear`.
- *
- * Run before any other transform so the rest of the pipeline never sees a
- * malformed call. Idempotent: a re-run on an already-sanitized list returns
- * the input untouched. Provider-agnostic — any wire model could surface this.
- */
+/** Drop malformed tool calls and their associated tool results. */
 function isMalformedToolCallName(name: string | undefined): boolean {
 	return !name || name.trim().length === 0;
 }
@@ -172,16 +141,7 @@ function sanitizeMalformedToolCalls(messages: Message[]): Message[] {
 	}
 	if (!hasMalformed) return messages;
 
-	// Positional FIFO pairing within one assistant→tool-result window: a tool-call
-	// id can repeat across history when an OpenAI-Responses composite id
-	// (`callId|itemId`) collapses on the wire to the same `callId` (see
-	// `deduplicateToolCallIds` + `transform-messages-dedup`). A set-based "drop
-	// every result for this id" loses the real output for the surviving valid
-	// occurrence whenever one duplicate is malformed. Track each `toolCall`
-	// occurrence's malformed-ness on a per-id queue and pop on matching
-	// `toolResult`, but clear the queues at every non-result boundary so a
-	// malformed call whose rejection result never arrived cannot consume a later
-	// valid call's real result when the id is reused.
+	// Positional FIFO pairing to track malformed calls per ID queue.
 	const dropQueues = new Map<string, boolean[]>();
 	const result: Message[] = [];
 	for (const msg of messages) {
@@ -277,15 +237,7 @@ function normalizeAnthropicTargetToolCallId<TApi extends Api>(
 	return fallbackAnthropicToolCallId(id);
 }
 
-/**
- * Normalize tool call ID for cross-provider compatibility.
- * OpenAI Responses API generates IDs that are 450+ chars with special characters like `|`.
- * Anthropic APIs require IDs matching ^[a-zA-Z0-9_-]+$ (max 64 chars).
- *
- * For aborted/errored turns, this function:
- * - Preserves tool call structure (unlike converting to text summaries)
- * - Injects synthetic "aborted" tool results
- */
+/** Normalize message history, thinking blocks, and tool call IDs for target model. */
 export function transformMessages<TApi extends Api>(
 	messages: Message[],
 	model: Model<TApi>,
@@ -329,40 +281,10 @@ export function transformMessages<TApi extends Api>(
 				assistantMsg.model === model.id;
 
 			const isAnthropicTarget = isAnthropicMessagesModel(model);
-			// Anthropic's all-or-none contract on prior-turn thinking blocks
-			// applies to every `anthropic-messages → anthropic-messages` replay,
-			// not just the latest assistant turn. The legacy
-			// `mustPreserveLatestAnthropicThinking` flag only honored it for the
-			// latest turn; every prior turn fell through to the cross-API
-			// text-demotion path whenever the conversation crossed a model id,
-			// silently dropping the reasoning chain on continuation for custom
-			// anthropic-messages providers configured via `models.yaml` and
-			// session-level model swaps (#2257).
+			// Preserve Anthropic thinking blocks across turns.
 			const isAnthropicReplay = isAnthropicTarget && assistantMsg.api === "anthropic-messages";
 			const isLatestSurvivingAssistant = index === latestSurvivingAssistantIndex;
-			// Signature policy is a second axis. Anthropic cryptographically
-			// binds reasoning signatures to its key+session+model, so cross-model
-			// signatures must be stripped whenever a signing Anthropic endpoint
-			// is on either end of the replay:
-			//   * official Anthropic (source): the 3p target can't reverify a
-			//     foreign signature and keeping it leaks continuation metadata
-			//     for no benefit.
-			//   * signing Anthropic (target): official Anthropic, GitHub Copilot,
-			//     ZenMux, Cloudflare AI Gateway `/anthropic`, and Google Vertex
-			//     `publishers/anthropic/…` all forward to signature-enforcing
-			//     Anthropic. Any stale/cross-model signature on the wire triggers
-			//     `400 Invalid signature in thinking block` — same failure class
-			//     whether `officialEndpoint` is true or the endpoint is one of
-			//     the known signing proxies (#4297).
-			// 3p ↔ 3p replays preserve signatures because compatible providers
-			// (Z.AI, DeepSeek, custom `models.yaml` providers) treat them as
-			// opaque continuation hints rather than verified material; stripping
-			// degrades the reasoning chain into unsigned/text on the next turn
-			// (#2265). Source-side official detection uses the canonical catalog
-			// provider id `"anthropic"` because assistant messages carry no
-			// `baseUrl` — a user who manually points `provider: "anthropic"` at
-			// a custom proxy via `models.yaml` will see signatures stripped, the
-			// conservative direction (degraded reasoning, not broken requests).
+			// Strip cross-model signatures when signing Anthropic endpoint is involved.
 			const isOfficialAnthropicSource = isAnthropicReplay && assistantMsg.provider === "anthropic";
 			const isSigningAnthropicTarget = isAnthropicTarget && model.compat.signingEndpoint;
 			const signingAnthropicInvolved = isOfficialAnthropicSource || isSigningAnthropicTarget;

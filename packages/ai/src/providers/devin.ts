@@ -68,33 +68,14 @@ export { DEVIN_CASCADE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 export interface DevinOptions extends StreamOptions {
 	/** Wire model uid selected after thinking-effort routing. */
 	chatModelUid?: string;
-	/**
-	 * Which provider-level retry this is, counted from 0. Internal.
-	 *
-	 * Set only by {@link streamDevin} when it re-runs itself after a transient failure. It does two
-	 * things: it bounds the retries, and it suppresses the second `start` event, because the first
-	 * attempt already emitted one to the consumer and a stream that starts twice is a protocol error
-	 * rather than a retry.
-	 */
+	/** Internal provider-level retry attempt counter. */
 	devinRetryAttempt?: number;
 }
 
-/**
- * How many times a Devin turn may be re-run before the failure reaches the operator.
- *
- * Three, matching the other providers' provider-level budget. The retries are only ever attempted
- * before the first token, so this costs latency on a failing turn and nothing on a working one.
- */
+/** Maximum provider-level retry attempts before erroring. */
 const DEVIN_MAX_PROVIDER_RETRIES = 3;
 const DEVIN_RETRY_BASE_DELAY_MS = 1_000;
-/**
- * The longest this will sit waiting before giving the failure to the operator.
- *
- * Cascade's rate-limit windows are stated in its message and range from one minute to forty. A
- * minute is worth waiting through, since the alternative is losing the turn. Forty is not: nothing
- * useful happens for the operator in that time and the correct answer is to fail now and let them
- * decide, which is what a window over this cap does.
- */
+/** Maximum wait duration for server-requested rate limit resets (90s). */
 const DEVIN_RETRY_MAX_DELAY_MS = 90_000;
 
 const CHAT_MESSAGE_PATH = "/exa.api_server_pb.ApiServerService/GetChatMessage";
@@ -104,14 +85,7 @@ const DEVIN_DEFAULT_STOP_PATTERNS = ["<|user|>", "<|bot|>", "<|context_request|>
 /** Connect streaming framing: flag byte bit 0x01 = gzip payload, 0x02 = end-of-stream JSON trailers. */
 const CONNECT_COMPRESSED_FLAG = 0x01;
 const CONNECT_END_STREAM_FLAG = 0x02;
-/**
- * Hard upper bound on a single Connect frame payload. The 4-byte length prefix
- * is otherwise attacker-controlled (up to `2**32 - 1`), so a malicious or buggy
- * peer could force {@link streamDevin}'s reader to buffer gigabytes via
- * `Buffer.concat` before the idle-timeout wrapper aborts. Well above any
- * legitimate Cascade response but tight enough that a corrupt length prefix
- * fails fast instead of consuming memory.
- */
+/** Maximum Connect frame payload size (16 MiB). */
 const MAX_CONNECT_FRAME_PAYLOAD = 16 * 1024 * 1024;
 
 export const streamDevin: StreamFunction<"devin-agent"> = (
@@ -140,14 +114,8 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 
 		let currentTextBlock: TextContent | null = null;
 		let currentThinkingBlock: ThinkingContent | null = null;
-		// Tool-call content blocks keyed by streamed tool-call id, plus the JSON-args text
-		// accumulated per id (kept out of the content object so finalized tool calls stay clean).
 		const toolBlocks = new Map<string, ToolCall>();
 		const toolPartialJson = new Map<string, string>();
-		// Last-parsed argument-buffer length per tool-call id — bounds the
-		// mid-stream parse work to O(N) via `parseStreamingJsonThrottled`; the
-		// authoritative final parse still runs unconditionally in the toolcall_end
-		// loop below.
 		const toolLastParseLen = new Map<string, number>();
 		let activeToolCallId: string | undefined;
 		let latestStopReason = StopReason.UNSPECIFIED;
@@ -191,16 +159,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 			const resolvedApiKey = request.metadata?.apiKey ?? apiKey;
 			const resolvedUserJwt = request.metadata?.userJwt ?? auth.userJwt;
 
-			// `onPayload` is a JSON seam: the secret-redaction walker behind it
-			// (`transformProviderPayload`) rewrites every string and refuses any
-			// value JSON cannot express. A protobuf message is not that shape --
-			// `metadata.requestId` is a uint64 and therefore a bigint, and bytes
-			// fields are Uint8Array -- so handing the message straight over made
-			// EVERY Devin request fail with "the provider request contains a
-			// non-JSON value/object; confidentiality transform failed." for any
-			// operator with secrets configured. Canonical proto3 JSON carries the
-			// 64-bit fields as strings, so the hook sees, and can redact, the
-			// whole payload. Only paid when a hook is installed.
+			// Redact proto3 JSON via onPayload hook when configured.
 			const payloadHook = options?.onPayload;
 			if (payloadHook) {
 				const replacementPayload = await payloadHook(toJson(GetChatMessageRequestSchema, request), model);
@@ -249,10 +208,6 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 			}
 			const body = response.body;
 
-			// Only the first attempt announces the stream. A retry is a continuation of the same turn
-			// from the consumer's point of view, and it is only ever reached when nothing but `start`
-			// has escaped, so re-announcing would be the one observable difference between a retried
-			// turn and a clean one.
 			if (retryAttempt === 0) stream.push({ type: "start", partial: output });
 
 			const reader = body.getReader();
@@ -356,13 +311,6 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 								: previousJson + tc.argumentsJson;
 							const delta = accumulated.slice(previousJson.length);
 							toolPartialJson.set(toolCallId, accumulated);
-							// Publish the raw accumulation on the block itself. `arguments` only
-							// re-parses every STREAMING_JSON_PARSE_MIN_GROWTH bytes, so a preview
-							// reading it alone shows nothing until the call closes; the renderer
-							// path (event-controller → ToolArgsRevealController) decodes this
-							// buffer every frame instead. Cleared at `toolcall_end` below,
-							// because a marker left holding text is how `agent-loop.ts` detects
-							// a call whose arguments never finished.
 							setStreamingPartialJson(block, accumulated);
 							const throttled = parseStreamingJsonThrottled(accumulated, toolLastParseLen.get(toolCallId) ?? 0);
 							if (throttled) {
@@ -433,14 +381,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 				if (options?.providerRetryWait) await options.providerRetryWait(retryDelayMs, options.signal);
 				else await scheduler.wait(retryDelayMs, { signal: options?.signal });
 
-				// Re-run the whole turn and forward it into the stream the caller is already reading.
-				// Delegating rather than looping in place is what keeps the partial `output` of this
-				// attempt from reaching anyone: the retry builds its own, and the only event the caller
-				// has seen so far is the `start` this attempt emitted, which the retry does not repeat.
 				const retried = streamDevin(model, context, { ...options, devinRetryAttempt: retryAttempt + 1 });
-				// The abandoned attempt's text reaches nobody, but Devin billed whatever
-				// it reported before dying: carry that spend onto the message the retry
-				// delivers, once, whichever terminal shape arrives first.
 				let carried = false;
 				const carrySpend = (message: AssistantMessage): AssistantMessage => {
 					if (!carried) {
@@ -458,11 +399,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 				if (!stream.done) stream.end(carrySpend(await retried.result()));
 				return;
 			}
-			// Finalized BEFORE the record is written, because the outcome is what decides how loud
-			// it should be: a caller abort is the operator pressing stop, not a provider failure.
 			const result = await AIError.finalize(error, { api: model.api, signal: options?.signal });
-			// Chosen at call time from a static access, not from a table built at module load: a
-			// captured function detaches any spy a test installs on the logger namespace.
 			const record = result.logLevel === "debug" ? logger.debug : logger.error;
 			record("devin: stream failed", {
 				model: model.id,
@@ -536,17 +473,7 @@ async function fetchDevinAuthMetadata(
 	};
 }
 
-/**
- * Decode a `GetUserJwt` response, which arrives as bare protobuf or gzipped
- * protobuf depending on what the server negotiated.
- *
- * The third case is neither, and it has to name itself: a proxy's error page, a
- * truncated body, or an SSE keepalive from something that is not Devin all fail
- * the protobuf parse and then fail `gunzipSync`, whose own message is
- * "incorrect header check" — a zlib internal that names no provider, no step
- * and no remedy, and that was reaching the operator as the whole explanation of
- * a failed turn.
- */
+/** Decode GetUserJwt protobuf response (bare or gzipped). */
 function decodeDevinUserJwtResponse(payload: Uint8Array) {
 	try {
 		return fromBinary(GetUserJwtResponseSchema, payload);
@@ -556,22 +483,13 @@ function decodeDevinUserJwtResponse(payload: Uint8Array) {
 		} catch {
 			throw new AIError.ProviderResponseError(
 				`Devin auth error: GetUserJwt answered with ${payload.byteLength} byte(s) that are neither a protobuf response nor gzip: ${AIError.boundProviderErrorDetail(new TextDecoder().decode(payload))}`,
-				// `envelope`, not `incomplete-stream`: a body that is neither
-				// protobuf nor gzip is structurally wrong rather than cut short, so
-				// the three-rung auth ladder cannot improve on it — and retrying
-				// spent the caller's whole first-event budget, which turned an
-				// actionable message into a deadline.
 				{ provider: "devin", kind: "envelope" },
 			);
 		}
 	}
 }
 
-/**
- * Build a {@link GetChatMessageRequest} for one Cascade turn. Auth rides inside
- * `Metadata.apiKey`; the system prompt is the flattened `prompt` string and the
- * conversation history maps to `chatMessagePrompts`.
- */
+/** Build GetChatMessageRequest for one Cascade turn. */
 function buildDevinChatRequest(
 	model: Model<"devin-agent">,
 	context: Context,
@@ -629,8 +547,6 @@ function buildDevinChatRequest(
 /** Map veyyon `Message` history onto Cascade `ChatMessagePrompt`s (USER / SYSTEM / TOOL channels). */
 function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMessagePrompt[] {
 	const prompts: ChatMessagePrompt[] = [];
-	// messageId seeds are `cascadeId\0index\0role[...]` — prompt text is excluded
-	// so ids stay stable across content edits / history rebuilds.
 	for (const [index, msg] of messages.entries()) {
 		if (msg.role === "user" || msg.role === "developer") {
 			let promptText = "";
@@ -711,14 +627,7 @@ function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMe
 	return prompts;
 }
 
-/**
- * Parse a Connect end-of-stream JSON trailer and return a human-readable error
- * string when it carries `{ error: { code, message } }`, else `null`. The trailer
- * is untrusted server output, so the shape is checked with guards rather than asserted.
- */
-/**
- * Parses stream-level failures reported in Cascade's Connect end-stream trailer.
- */
+/** Stream-level failure reported in Cascade Connect trailer. */
 interface DevinTrailerError {
 	/** Connect error code, e.g. `resource_exhausted`, `unavailable`, `invalid_argument`. */
 	readonly code: string;
@@ -740,17 +649,7 @@ function readConnectTrailerError(text: string): DevinTrailerError | null {
 	return { code, message, text: `Devin stream error${code ? ` ${code}` : ""}: ${message}` };
 }
 
-/**
- * How long Cascade says to wait, read out of the sentence it says it in.
- *
- * There is no `retry-after` header on a Connect trailer, so the only machine-usable signal is the
- * server's own English: "Your limit will reset in 1 minute", "in 40 minutes". Honoring it matters
- * in both directions. Retrying sooner than the server asked is a guaranteed failure that burns the
- * retry budget, and a window far longer than any backoff (the 40-minute case is real) means the
- * turn must fail now rather than sit in a doomed sleep.
- *
- * Exported for tests: the parse is the part that decides whether a retry is even attempted.
- */
+/** Parse rate-limit reset delay in milliseconds from trailer error text. */
 export function parseDevinRateLimitResetMs(message: string): number | undefined {
 	const match =
 		/\breset(?:s)?\s+(?:in|after)\s+(?:about\s+|approximately\s+|~)?(\d+)\s*(second|minute|hour)s?\b/i.exec(message);
@@ -762,25 +661,7 @@ export function parseDevinRateLimitResetMs(message: string): number | undefined 
 	return amount * scale;
 }
 
-/**
- * How long to wait before re-running a failed turn, or `undefined` when it must not be re-run.
- *
- * WHY EVERY CONDITION IS HERE. Each one is a way a retry does harm rather than good:
- *
- *   - `emittedToken`: the replay-safety rule, and the same one Anthropic's provider loop uses. Once
- *     a delta has escaped to the consumer there is no way to un-say it, so a second attempt would
- *     duplicate or contradict text already on screen. This is why the fix cannot help the socket
- *     drops that happen mid-answer, only the failures that arrive before any output, which is what
- *     nearly all of them are: 563 of 564 recorded Devin errors had emitted no token.
- *   - `aborted`: the caller asked to stop. Retrying would fire a fresh request on the way out.
- *   - `attempt`: bounded budget, so a persistently failing endpoint fails in seconds not forever.
- *   - `isProviderRetryableError`: the shared classification, so Devin agrees with every other
- *     provider about what transient means instead of keeping a second opinion here.
- *   - the delay cap: a rate-limit window longer than the cap is a signal to stop, not to sleep.
- *
- * The delay prefers the server's own stated reset window over backoff, because retrying before the
- * window closes is a guaranteed second failure that spends the budget for nothing.
- */
+/** Determine retry delay in milliseconds, or undefined if not retryable. */
 function devinRetryDelayMs(
 	error: unknown,
 	state: { attempt: number; emittedToken: boolean; aborted: boolean },
@@ -801,19 +682,7 @@ function devinRetryDelayMs(
 	return Math.min(DEVIN_RETRY_BASE_DELAY_MS * 2 ** state.attempt, DEVIN_RETRY_MAX_DELAY_MS);
 }
 
-/**
- * Turn a trailer error into the throwable that classifies correctly.
- *
- * The status codes are how the shared machinery reads these: `isProviderRetryableError` keys off
- * `status(error)` plus the message, so a rate limit has to arrive as 429 and a server fault as 503
- * to be treated the way every other provider's equivalent already is. Anything the shared table
- * cannot place stays a `ValidationError`, so genuine `invalid_argument` failures are reported
- * exactly as before. The table itself lives in {@link AIError.connectFailureStatus} because Cursor
- * speaks the same protocol and has to agree about every code.
- *
- * Exported for tests: this and Cursor's equivalent have to be assertable side by side,
- * because one table with two readers is what keeps them from drifting apart again.
- */
+/** Map trailer error to structured API error instance. */
 export function devinTrailerFailure(trailer: DevinTrailerError): Error {
 	const status = AIError.connectFailureStatus(trailer);
 	if (status === undefined) return new AIError.ValidationError(trailer.text);

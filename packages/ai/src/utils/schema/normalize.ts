@@ -1,11 +1,4 @@
-/**
- * Provider-specific JSON Schema normalization used in the request path.
- *
- * Google's Schema proto, Cloud Code Assist's Claude bridge, and MCP/AJV
- * validation all reject different subsets of standard JSON Schema. This module
- * exposes one option-driven core plus thin dispatchers that pin the option set
- * for each target.
- */
+/** Provider-specific JSON Schema normalization for request pipelines. */
 import * as logger from "@veyyon/utils/logger";
 import { isRecord } from "@veyyon/utils/type-guards";
 import * as AIError from "../../error";
@@ -100,12 +93,7 @@ function isDefaultLiftableToDescriptionField(key: string): boolean {
 	return Object.hasOwn(LIFTABLE_TO_DESCRIPTION_FIELDS, key);
 }
 
-/**
- * Returns `obj` unchanged when no renamable key is present; otherwise returns
- * a fresh shallow-copy with snake_case keys rewritten. The collision rule
- * matches upstream (`pop(from)` → `set(to)`): snake_case wins over an
- * existing camelCase entry, matching python-genai/_transformers.py:751.
- */
+/** Shallow-copy object with snake_case keys rewritten to camelCase. */
 function applySnakeCaseRenames(obj: JsonObject): JsonObject {
 	let needsRename = false;
 	for (const k in obj) {
@@ -129,12 +117,7 @@ function applySnakeCaseRenames(obj: JsonObject): JsonObject {
 	return out;
 }
 
-/**
- * `handle_null_fields` (python-genai/_transformers.py:584-640) applied at the
- * parent level BEFORE child recursion — matches upstream's call order at
- * `process_schema` line 768. Returns a new object when changes apply, the
- * original reference otherwise (zero-allocation fast path).
- */
+/** Normalize null field shapes at parent level before recursion. */
 function preHandleNullFields(obj: JsonObject): JsonObject {
 	if (obj.type === "null") {
 		const out: JsonObject = {};
@@ -978,33 +961,7 @@ export function normalizeSchemaForMCP(value: unknown): unknown {
 	});
 }
 
-/**
- * Moonshot Flavored JSON Schema (MFJS) — the stricter subset Moonshot/Kimi
- * native hosts (api.moonshot.ai, api.kimi.com) validate
- * `tools.function.parameters` against. It rejects standard JSON Schema
- * constructs that OpenAI-compatible hosts accept, returning HTTP 400
- * `tools.function.parameters is not a valid moonshot flavored json schema`.
- * Differences this normalizer reconciles:
- *
- *  - `const` (incl. `anyOf`/`oneOf` whose every branch is a bare `const`) is
- *    rejected; collapse to `enum` with an inferred scalar `type`.
- *  - `oneOf` is not an MFJS combinator (only `anyOf` is); residual `oneOf` is
- *    folded into `anyOf`.
- *  - `type` must be a scalar string; `type: [...]` arrays are reduced to a
- *    single scalar (the `null` branch is dropped — `nullable` is unsupported).
- *  - Enum-bearing nodes get an inferred `type` (the idiomatic MFJS form; a bare
- *    `enum` is valid too) so `anyOf` branches always carry a `type`.
- *  - Validation/decorative keywords (`minItems`, `maxItems`, `maxLength`,
- *    `pattern`, `format`, `title`, …) and tuple `prefixItems` are rejected and
- *    stripped, spilling human-meaningful ones into the sibling `description`.
- *    `default` and `description` are MFJS Meta Data fields and are preserved.
- *  - `additionalProperties` (boolean or schema) and `type: "null"` (incl.
- *    inside `anyOf`) are kept.
- *
- * Out of scope (absent from the built-in tool surface, spec-ambiguous to
- * rewrite blindly): `allOf` intersection merging, external/recursive `$ref`,
- * and the depth-10 limit.
- */
+/** Moonshot Flavored JSON Schema (MFJS) normalization. */
 export function normalizeSchemaForMoonshot(value: unknown): unknown {
 	return normalizeSchema(value, {
 		unsupportedFields: isMoonshotUnsupportedSchemaField,
@@ -1052,18 +1009,7 @@ const OLLAMA_SCHEMA_VALUE_KEYS = new Set([
 	"unevaluatedProperties",
 ]);
 
-/**
- * Widened stand-in for a `true` / `{}` subschema in an Ollama-bound tool.
- *
- * `toolWireSchema()` normalizes empty schemas to boolean `true` upstream so
- * grammar-constrained samplers (llama.cpp, etc.) don't treat `{}` as
- * "generate an empty object" (issue #1179). Ollama's Go tool parser can't
- * unmarshal a boolean into its object-shaped `Schema` struct, so this
- * sanitizer replaces every open subschema with an explicit union of every
- * primitive JSON type. Both invariants survive: the wire has no boolean
- * subschema (Go accepts it), and llama.cpp's grammar sees a real value
- * union rather than a closed empty object.
- */
+/** Widened stand-in for open subschemas in Ollama-bound tools. */
 const OLLAMA_OPEN_SUBSCHEMA_WIDENING = Object.freeze({
 	anyOf: [
 		{ type: "string" },
@@ -1075,10 +1021,7 @@ const OLLAMA_OPEN_SUBSCHEMA_WIDENING = Object.freeze({
 	],
 });
 
-/**
- * Rewrites standard JSON Schema forms that Ollama's Go `/api/chat` tool parser
- * cannot unmarshal into its object-shaped `Schema` struct.
- */
+/** Rewrite JSON Schema forms that Ollama Go tool parser cannot unmarshal. */
 export function sanitizeSchemaForOllama(schema: JsonObject): JsonObject {
 	const normalizeNode = (value: unknown): unknown => {
 		if (value === true) return OLLAMA_OPEN_SUBSCHEMA_WIDENING;
@@ -1185,26 +1128,11 @@ const OPENAI_RESPONSES_SCHEMA_VALUE_KEYS = new Set([
 	"unevaluatedProperties",
 ]);
 
-/**
- * OpenAI Responses rejects `oneOf` in tool schemas even when strict mode is
- * disabled, and rejects every schema node with `type: "object"` unless it has
- * a `properties` member. Normalize only schema-valued positions so literal
- * payloads under `enum`, `const`, `default`, and `examples` remain unchanged.
- *
- * Identity-preserving: returns the input reference unchanged when no rewrite
- * occurred so callers can dedupe via reference equality (and the strict-mode
- * cache stays warm). If a node has both `oneOf` and `anyOf`, the two are
- * concatenated (the wire payload accepts a single union; preserving both
- * would not survive).
- */
+/** Normalize schema positions for OpenAI Responses API. */
 export function sanitizeSchemaForOpenAIResponses(schema: JsonObject): JsonObject {
 	return normalizeOpenAIResponsesSchemaNode(schema, new WeakMap()) as JsonObject;
 }
 
-/**
- * Alias for {@link sanitizeSchemaForOpenAIResponses} matching the
- * `normalizeSchemaFor*` dispatcher naming used elsewhere in this module.
- */
 export const normalizeSchemaForOpenAIResponses: (schema: JsonObject) => JsonObject = sanitizeSchemaForOpenAIResponses;
 const OPENAI_UNSUPPORTED_REGEX_LOOKAROUNDS = new Set(["=", "!", "<=", "<!"]);
 const OPENAI_RESPONSES_PATTERN_PROPERTIES_FALLBACK = ".*";
@@ -1417,19 +1345,7 @@ function narrowEnumToType(schema: Record<string, unknown>, type: string): boolea
 	return true;
 }
 
-/**
- * Returns the primitive `type` keyword that fully describes the constraint
- * expressed by this node's `enum` (or `const`), or `undefined` when the
- * constraint cannot be reduced to a single primitive type.
- *
- * Strict mode requires every schema node to declare a concrete `type`. When
- * the author wrote `{enum:[...]}` or `{const:X}` without a `type`, we can
- * infer one — but only when every value reduces to the same primitive type.
- * Mixed-primitive enums (`[1, "two", null]`), enums containing non-primitives
- * (`[{a:1}]`), and non-primitive consts (`{a:1}`, `[1,2,3]`) all return
- * undefined: those shapes cannot be described by a single `type` keyword, so
- * strict mode cannot represent them and the caller must fall back.
- */
+/** Infer primitive type keyword from node enum or const values. */
 function inferStrictPrimitiveTypeFromEnumOrConst(node: Record<string, unknown>): StrictPrimitiveType | undefined {
 	const values: unknown[] = Array.isArray(node.enum) ? node.enum : Object.hasOwn(node, "const") ? [node.const] : [];
 	if (values.length === 0) return undefined;
@@ -1451,36 +1367,12 @@ function inferStrictPrimitiveTypeFromEnumOrConst(node: Record<string, unknown>):
  */
 const kStrictSchema = Symbol("pi.schema.strict");
 
-/**
- * A boolean schema (`true`/`false`) or the empty object schema `{}`: an
- * unconstrained branch with no declared type. Strict providers (OpenAI/Codex)
- * reject these, and `enforceStrictSchema` would otherwise wave a non-object
- * branch through as `strict: true`, so they disqualify a schema from strict mode
- * wherever they sit in a combinator or `items`/`prefixItems` position.
- */
+/** Whether branch is boolean or empty object unrepresentable in strict mode. */
 function isUnrepresentableStrictBranch(value: unknown): boolean {
 	return typeof value === "boolean" || (isRecord(value) && isJsonObjectEmpty(value));
 }
 
-/**
- * Detect schemas that strict mode *cannot* represent.
- *
- * Strict mode requires closed object shapes — every property is declared in
- * `properties` and listed in `required`. That is incompatible with:
- *  - `patternProperties` (open keyset matched by regex),
- *  - `additionalProperties: true` or `additionalProperties: <schema>` (open
- *    keyset with optional further constraint).
- *  - boolean schemas (`true`/`false`) inside `anyOf`/`oneOf`/`allOf`/`items`/
- *    `prefixItems` — strict providers (OpenAI/Codex) reject the unconstrained
- *    branch, and `enforceStrictSchema` would otherwise wave the non-object
- *    branch through as `strict: true` (the `T | undefined` → `anyOf: [<T>, {}]`
- *    → `[<T>, true]` encoding is the canonical offender).
- *
- * This check recurses into every place a child schema may live (properties,
- * items/prefixItems, combinator branches, $defs) so a single offender deep
- * in the tree disqualifies the whole schema. Used to fail-open early in
- * `tryEnforceStrictSchema` rather than throwing during enforcement.
- */
+/** Detect schemas that OpenAI strict mode cannot represent. */
 function hasUnrepresentableStrictObjectMap(schema: Record<string, unknown>, epoch: number = epochNext()): boolean {
 	if (!once(schema, epoch)) return false;
 
@@ -1558,24 +1450,7 @@ function hasUnrepresentableStrictObjectMap(schema: Record<string, unknown>, epoc
 	return false;
 }
 
-/**
- * First pass of strict-mode preparation.
- *
- * Rewrites everything strict mode forbids into something it accepts:
- *  - Drops non-structural keywords (`format`, `pattern`, `examples`, …),
- *    `const`, `nullable`, and `additionalProperties` (re-added by
- *    `enforceStrictSchema` as `false`).
- *  - `type: [a, b]` → `anyOf: [{type: a, …}, {type: b, …}]`, copying only the
- *    keywords each variant can use (e.g. `properties` stays only on the
- *    object variant).
- *  - `const` → single-entry `enum`.
- *  - Description carries a `(default: X)` suffix so the model still sees the
- *    documented default after the keyword is stripped.
- *  - `nullable: true` wraps the whole node in `anyOf:[T,{type:"null"}]`.
- *
- * Recurses into properties, items, prefixItems, combinators, and $defs. The
- * `cache` WeakMap dedupes shared subgraphs; the `epoch` is the cycle guard.
- */
+/** Prepare JSON Schema for OpenAI strict mode by rewriting unsupported forms. */
 export function sanitizeSchemaForStrictMode(
 	schema: Record<string, unknown>,
 	epoch: number = epochNext(),
@@ -1815,13 +1690,7 @@ export function sanitizeSchemaForStrictMode(
 	return sanitized;
 }
 
-/**
- * A node whose only constraining keyword is `anyOf` (annotations like
- * `description` aside). Only such nodes can be merged into an enclosing
- * union without changing semantics: sibling keywords (`type`, `enum`,
- * `properties`, …) apply conjunctively with `anyOf`, so spreading the
- * branches of a non-pure node would drop those constraints.
- */
+/** Whether node only contains anyOf combinator and annotations. */
 function isPureAnyOfNode(value: unknown): value is Record<string, unknown> & { anyOf: unknown[] } {
 	if (!isRecord(value) || !Array.isArray(value.anyOf)) return false;
 	for (const key in value) {
@@ -1830,20 +1699,7 @@ function isPureAnyOfNode(value: unknown): value is Record<string, unknown> & { a
 	return true;
 }
 
-/**
- * Recursively enforces JSON Schema constraints required by OpenAI/Codex strict mode:
- *   - `additionalProperties: false` on every object node
- *   - every key in `properties` present in `required`
- *
- * Properties absent from the original `required` array were TypeBox-optional.
- * They are made nullable (`anyOf: [T, { type: "null" }]`) so the model can
- * signal omission by outputting null rather than omitting the key entirely.
- *
- * @throws {Error} When a schema node has no `type`, array-based combinator
- *   (`anyOf`/`allOf`/`oneOf`), object-based combinator (`not`), or `$ref` —
- *   i.e. the node is not representable in strict mode. Prefer
- *   {@link tryEnforceStrictSchema} which catches this and degrades gracefully.
- */
+/** Enforce JSON Schema constraints required by OpenAI/Codex strict mode. */
 export function enforceStrictSchema(
 	schema: Record<string, unknown>,
 	cache: WeakMap<Record<string, unknown>, Record<string, unknown>> = new WeakMap(),
@@ -2018,12 +1874,7 @@ export function tryEnforceStrictSchema(schema: Record<string, unknown>): {
 	});
 }
 
-/**
- * Resolve a JSON-pointer-style `$ref` against the root schema. Mirrors the
- * OpenAI SDK's `resolve_ref` helper: only local refs starting with `#/` are
- * supported, and each segment must dereference to a dictionary.
- * Cite: openai-python/src/openai/lib/_pydantic.py:118-129
- */
+/** Resolve local JSON-pointer $ref against root schema. */
 function resolveStrictRef(root: Record<string, unknown>, ref: string): Record<string, unknown> | undefined {
 	if (!ref.startsWith("#/")) return undefined;
 	const segments = ref.slice(2).split("/");

@@ -175,29 +175,7 @@ export function collectCustomCallIds(messages: ResponseInput): Set<string> {
 	return customCallIds;
 }
 
-/**
- * Convert orphan `function_call_output` / `custom_tool_call_output` items —
- * those whose `call_id` has no matching preceding `function_call` /
- * `custom_tool_call` in the same input — into assistant text notes.
- *
- * The Responses API rejects unpaired outputs with
- * `400 No tool call found for function call output with call_id …`. Orphans
- * sneak in through two paths today:
- *
- * - A previous turn's `providerPayload` snapshot replaces the input array via
- *   the `dt: false` splice (see {@link convertConversationMessages}), wiping
- *   the matching `function_call` while leaving the matching
- *   `function_call_output` queued in a later `toolResult`.
- * - A locally-rejected tool call (argument-validation failure, hook reject,
- *   aborted turn before the call streamed) produces a tool result without a
- *   `function_call` ever landing in any persisted provider payload.
- *
- * Dropping the result loses information the model needs to recover; sending
- * it as-is 400s the request. Folding it into an assistant `message` preserves
- * the payload (call_id + truncated output) while staying within the Responses
- * input grammar. Matches the behavior of {@link transformRequestBody} in the
- * codex provider — issue #1351 / regression of #472.
- */
+/** Convert orphan tool output items with no preceding call into assistant text notes. */
 export function repairOrphanResponsesToolOutputs(input: ResponseInput): ResponseInput {
 	const knownCallIds = new Set<string>();
 	for (const item of input) {
@@ -256,20 +234,7 @@ export function repairOrphanResponsesToolOutputs(input: ResponseInput): Response
 export const ORPHAN_TOOL_CALL_PLACEHOLDER =
 	"[No tool output recorded: the tool call was interrupted before it produced a result.]";
 
-/**
- * Synthesize a placeholder `function_call_output` / `custom_tool_call_output`
- * for every `function_call` / `custom_tool_call` whose `call_id` has no matching
- * output later in the same input. The Responses API rejects an unpaired call
- * with `400 No tool output found for function call …`.
- *
- * Orphan calls surface when the user branches/navigates the session tree to a
- * node that ends on a tool call (the tool-result child is excluded from the
- * reconstructed history) or when a turn is aborted/crashes after the call
- * streamed but before its result persisted. Dropping the call would erase the
- * assistant's action; a placeholder output keeps the call visible so the model
- * can recover (e.g. re-issue the call). Symmetric to
- * {@link repairOrphanResponsesToolOutputs}.
- */
+/** Synthesize placeholder outputs for orphan tool calls with no matching output. */
 export function repairOrphanResponsesToolCalls(input: ResponseInput): ResponseInput {
 	const outputCallIds = new Set<string>();
 	for (const item of input) {
@@ -308,12 +273,7 @@ export function repairOrphanResponsesToolCalls(input: ResponseInput): ResponseIn
 	return repaired;
 }
 
-/**
- * Some Responses backends (notably GitHub Copilot) reject the OpenAI image
- * `detail: "original"` value with a 400. When the model does not advertise
- * support for it, degrade `"original"` to `"auto"` so the request still goes
- * through with the closest valid fidelity instead of failing outright. See #2822.
- */
+/** Clamp image detail from "original" to "auto" if not supported by model. */
 function clampResponsesImageDetail(
 	detail: ImageContent["detail"],
 	supportsImageDetailOriginal: boolean,
@@ -358,11 +318,7 @@ export function convertResponsesInputContent(
 	return normalizedContent.length > 0 ? normalizedContent : undefined;
 }
 
-/**
- * Map freeform custom-tool wire names back to the internal tool name for
- * providers that only accept function_call / function_call_output.
- * Built once per request; `apply_patch` → `edit` is the veyyon default.
- */
+/** Map freeform custom-tool wire names back to internal tool names. */
 function buildCustomToolWireNameMap(tools: readonly Tool[] | undefined): ReadonlyMap<string, string> | undefined {
 	if (!tools?.length) return undefined;
 	const map = new Map<string, string>();
@@ -376,11 +332,7 @@ function resolveReplayCustomToolName(wireName: string, wireNameMap: ReadonlyMap<
 	return wireNameMap?.get(wireName) ?? (wireName === "apply_patch" ? "edit" : wireName);
 }
 
-/**
- * Downgrade OpenAI-only custom tool items when the target model does not
- * advertise freeform custom tools (`applyPatchToolType === "freeform"`).
- * No-op (returns the same array reference) when freeform is supported.
- */
+/** Downgrade custom tool items when model does not support freeform custom tools. */
 function adaptResponsesReplayItemsForModel(
 	input: ResponseInput,
 	supportsCustomToolCalls: boolean,
@@ -805,17 +757,7 @@ export function appendResponsesToolResultMessages<TApi extends Api>(
 	messages.push({ role: "user", content: contentParts });
 }
 
-/**
- * Per-block accumulation helpers shared by the two Responses decode loops —
- * {@link processResponsesStream} (generic Responses) and the Codex stream
- * handler in `openai-codex-responses.ts`. Each endpoint keeps its own
- * item-routing, terminal handling, and transport bookkeeping; these own only
- * the leaf mutations on an already-resolved open block, so the
- * append/parse/finalize logic lives in exactly one place. The caller passes the
- * `contentIndex` its router resolved (generic uses `output.content.indexOf`;
- * Codex uses the open item's recorded index) so the emitted stream events match
- * each decoder's existing behavior byte-for-byte.
- */
+/** Per-block accumulation helpers shared by Responses decode loops. */
 type ResponsesToolCallBlock = ToolCall & { [kStreamingPartialJson]: string; [kStreamingLastParseLen]?: number };
 
 export function appendReasoningSummaryPart(
@@ -826,15 +768,7 @@ export function appendReasoningSummaryPart(
 	item.summary.push(part);
 }
 
-/**
- * Response-global accumulator for the sequential-cutoff summary contract.
- *
- * Summary indices are cumulative across ALL reasoning items in a response:
- * each new reasoning item replays the previous item's last completed section
- * (`.done` at index N-1) before streaming its own, and replay-only items may
- * add nothing new. Folding per item would re-emit every replayed section, so
- * the canonical summary and the emitted text span items and live here.
- */
+/** Response-global accumulator for sequential-cutoff summary contract. */
 export interface SequentialCutoffSummaryState {
 	/** Latest full text per response-global summary index. */
 	summary: ResponseReasoningItem["summary"];
@@ -929,16 +863,7 @@ export function appendReasoningSummaryPartDone(
 	stream.push({ type: "thinking_delta", contentIndex, delta: "\n\n", partial: output });
 }
 
-/**
- * Applies an atomic `response.reasoning_summary_text.done` snapshot.
- *
- * Sequential-cutoff summary indices are response-global: later reasoning items
- * replay earlier sections, resend the accumulated summary as one part, or
- * complete without new sections. The canonical summary is rebuilt in `state`
- * (spanning items) and only its append-only suffix is emitted into the current
- * block. Divergent corrections stay buffered until finalization so delta
- * consumers never receive suffixes based on unseen replacement text.
- */
+/** Applies an atomic response.reasoning_summary_text.done snapshot. */
 export function applyReasoningSummaryDone(
 	state: SequentialCutoffSummaryState,
 	block: ThinkingContent,
@@ -1012,13 +937,7 @@ export function finalizeMessageText(item: ResponseOutputMessage, streamedText: s
 
 export type ToolCallArgumentsDeltaShape = "incremental" | "cumulative";
 
-/**
- * Declared wire shape for tool-call argument deltas across Responses-family providers.
- *
- * Every provider or API that routes into `processResponsesStream` or `accumulateToolCallArgumentsDelta`
- * must explicitly declare its stream shape here. A provider added without a declared shape
- * throws rather than silently inheriting an arbitrary default.
- */
+/** Declared wire shape for tool-call argument deltas across Responses-family providers. */
 export const RESPONSES_PROVIDER_TOOL_CALL_DELTA_SHAPES: Readonly<Record<string, ToolCallArgumentsDeltaShape>> = {
 	azure: "incremental",
 	"github-copilot": "incremental",
@@ -1062,24 +981,7 @@ export function resolveResponsesToolCallDeltaShape(
 	);
 }
 
-/**
- * Accumulate one streamed function-argument delta into the live buffer.
- *
- * Wire streams differ in the shape of `response.function_call_arguments.delta`:
- * - Incremental providers (e.g. OpenAI Responses, Azure OpenAI Responses) deliver
- *   true incremental string fragments.
- * - Cumulative providers (e.g. OpenAI Codex Responses) deliver cumulative snapshots
- *   representing the full arguments string accumulated so far.
- *
- * The accumulator behavior is driven by the explicitly declared {@link ToolCallArgumentsDeltaShape}
- * rather than guessing or inferring from payload bytes: inferring cumulative resends
- * via prefix heuristics on an incremental stream risks corrupting valid arguments
- * (such as repeated keys or indentation that coincidental prefix matches truncate),
- * while unconditional appending on a cumulative stream doubles argument text.
- *
- * Authoritative final arguments are applied on `response.function_call_arguments.done` via
- * {@link finalizeToolCallArgumentsDone}.
- */
+/** Accumulate one streamed function-argument delta into the live buffer. */
 export function accumulateToolCallArgumentsDelta(
 	block: ResponsesToolCallBlock,
 	delta: string,
@@ -1712,17 +1614,10 @@ export async function processResponsesStream<TApi extends Api>(
 			const responseWithEndTurn = response as { end_turn?: boolean } | undefined;
 			promoteResponsesToolUseStopReason(output, responseWithEndTurn?.end_turn);
 			options?.onCompleted?.();
-			// `response.completed`/`response.incomplete`/`response.done` is the last event of a
-			// Responses stream. Stop pulling instead of waiting for the server to
-			// close the connection: misbehaving providers keep the socket open
-			// after the terminal event, which would park this loop until the idle
-			// watchdog converts an already-successful turn into a timeout error.
-			// Breaking unwinds the iterator chain (the consumer's `.return()`
-			// reaches the SDK stream), actively releasing the connection.
+			// Terminal event received; stop pulling rather than waiting on socket close.
 			break;
 		} else if (event.type === "error") {
-			// Error events carry either a nested `error` object or the code/message
-			// fields inline, depending on the backend.
+			// Error events carry nested error object or inline code/message.
 			const errorEvent = event as {
 				error?: { code?: unknown; message?: unknown };
 				code?: unknown;
@@ -1774,14 +1669,7 @@ export function mapOpenAIResponsesStopReason(status: ResponseStatus | undefined)
 	}
 }
 
-/**
- * Finalize any streamed toolCall block whose `output_item.done` never arrived
- * (lossy proxy, or a terminal event that raced the per-item done): parse the
- * accumulated `partialJson` into authoritative arguments and strip the transient
- * streaming fields so they never persist. Shared by the chat-Responses decoder
- * and the Codex decoder. Closed blocks already cleared these fields, so walking
- * the full content list leaves them untouched.
- */
+/** Finalize streamed toolCall blocks whose output_item.done never arrived. */
 export function finalizePendingResponsesToolCalls(output: AssistantMessage): void {
 	for (const block of output.content) {
 		if (block.type !== "toolCall") continue;
@@ -1800,13 +1688,7 @@ export function finalizePendingResponsesToolCalls(output: AssistantMessage): voi
 	}
 }
 
-/**
- * Apply the Responses terminal stop-reason invariants shared by the chat-Responses
- * and Codex decoders: a turn that produced tool calls becomes `toolUse`, and a
- * Codex-lineage `end_turn: false` marker pauses the turn so the agent loop
- * re-samples instead of ending. Callers set `output.stopReason` from the wire
- * status first via {@link mapOpenAIResponsesStopReason}.
- */
+/** Apply Responses terminal stop-reason invariants. */
 export function promoteResponsesToolUseStopReason(output: AssistantMessage, endTurn: boolean | undefined): void {
 	if (output.content.some(block => block.type === "toolCall") && output.stopReason === "stop") {
 		output.stopReason = "toolUse";
@@ -1846,15 +1728,7 @@ type CommonSamplingOptions = Pick<
 	"temperature" | "topP" | "topK" | "minP" | "presencePenalty" | "repetitionPenalty" | "maxTokens"
 > & { serviceTier?: ServiceTier };
 
-/**
- * Apply the common `StreamOptions` → Responses sampling-parameter mapping (max output tokens,
- * temperature, top-p/k, min-p, presence/repetition penalties, service tier). Mutates `params`.
- *
- * `max_output_tokens` is suppressed when {@link Model.omitMaxOutputTokens} is `true`, so
- * proxies (notably Ollama) that forward to upstream APIs with an unknown output-token cap
- * can let the upstream apply its own default instead of 400-ing on `maxTokens` values that
- * reflect the model's context window rather than the upstream output limit.
- */
+/** Apply common StreamOptions sampling parameters to Responses params. */
 export function applyCommonResponsesSamplingParams<P extends CommonResponsesParams>(
 	params: P,
 	options: CommonSamplingOptions | undefined,
@@ -2042,27 +1916,7 @@ export function populateResponsesUsageFromResponse(
 	});
 }
 
-/**
- * Structural equality for the chain prefix/option check, equivalent to the
- * default {@link Bun.deepEquals} (own enumerable keys, `absent ≡ own-undefined`)
- * except for two deliberate exclusions:
- *  - **symbol-keyed properties are ignored** — `for…in` walks enumerable
- *    *string* keys only (never symbols); these are plain wire items whose
- *    prototype contributes no enumerable keys, so iteration is effectively
- *    own-string-keyed. That is how the transient streaming symbols
- *    (`block-symbols.ts`) stamped onto live request items are excluded (the
- *    deep-cloned baseline never carries them). Do NOT add an
- *    `Object.getOwnPropertySymbols` pass, or those symbols resurface and break
- *    chaining.
- *  - keys listed in `omitKeys` are skipped (the option compare omits `input`
- *    and the per-turn `client_metadata`). The omit lookup is an own-property
- *    check, not `omitKeys[key]`: a bare index would read `Object.prototype`
- *    members, so a key literally named `toString`/`valueOf`/`constructor` would
- *    resolve to the inherited method (truthy) and be silently omitted from the
- *    comparison even though it is not in the omit list.
- * A defined value differing across sides IS a difference; a key undefined or
- * absent on both stays equal. Nested values use full {@link Bun.deepEquals}.
- */
+/** Structural equality for Responses chaining check ignoring symbols and omitted keys. */
 function deepEqualsWithout(a: unknown, b: unknown, omitKeys?: Record<string, boolean>): boolean {
 	if (!a || !b || typeof a !== "object" || typeof b !== "object") return Bun.deepEquals(a, b);
 	const ao = a as Record<string, unknown>;
@@ -2075,11 +1929,7 @@ function deepEqualsWithout(a: unknown, b: unknown, omitKeys?: Record<string, boo
 	}
 	for (const key in bo) {
 		if (omitKeys && Object.hasOwn(omitKeys, key) && omitKeys[key]) continue;
-		// Own-property test, not `key in ao`: the model here is own enumerable keys
-		// (see the doc above). `key in ao` also matches inherited Object.prototype
-		// members, so a `b` that owns a defined key named after one (`toString`,
-		// `constructor`, …) that `a` does not own would be treated as present on `a`
-		// and the extra key would not break equality — a false chain match.
+		// Own-property test for own enumerable keys.
 		if (bo[key] !== undefined && !Object.hasOwn(ao, key)) return false;
 	}
 	return true;
@@ -2090,15 +1940,7 @@ const TOP_LEVEL_EXCLUDE_MAP = {
 	client_metadata: true,
 };
 
-/**
- * Strict-prefix delta for stateful `previous_response_id` chaining (used by the
- * platform Responses provider and the Codex provider on both transports):
- * returns the input items the current request appends beyond the previous
- * request's input plus the previous response's output items, or null when the
- * request options differ or history mutated (the chain must break). Per-turn
- * `client_metadata` (e.g. rotating turn ids) is excluded from the option
- * comparison; codex-rs excludes it from the same check.
- */
+/** Strict-prefix delta calculation for stateful previous_response_id chaining. */
 export function buildResponsesDeltaInput<TItem extends ResponseInputItem | InputItem>(
 	previous: { input?: TItem[] } | undefined,
 	previousResponseItems: readonly TItem[] | undefined,

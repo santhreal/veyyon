@@ -393,7 +393,6 @@ function copyResponseMetadata(target: Response, source: Response): void {
 	}
 }
 
-const DEBUG_FILE_MODE = 0o600;
 /** Open private debug dump file exclusively with 0o600 permissions. */
 async function openPrivateDebugFile(filePath: string): Promise<fs.FileHandle> {
 	const DEBUG_FILE_MODE = 0o600;

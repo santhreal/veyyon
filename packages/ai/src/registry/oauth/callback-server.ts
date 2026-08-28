@@ -1,15 +1,4 @@
-/**
- * Abstract base class for OAuth flows with local callback servers.
- *
- * Handles:
- * - Port allocation (tries expected port, falls back to random)
- * - Callback server setup and request handling
- * - Common OAuth flow logic
- *
- * Providers extend this and implement:
- * - generateAuthUrl(): Build provider-specific authorization URL
- * - exchangeToken(): Exchange authorization code for tokens
- */
+/** Abstract base class for OAuth flows with local callback servers. */
 import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import * as AIError from "../../error";
 import { renderOAuthResultHtml } from "./success-page";
@@ -17,23 +6,9 @@ import type { OAuthController, OAuthCredentials } from "./types";
 
 const DEFAULT_TIMEOUT = 300_000;
 const DEFAULT_HOSTNAME = "localhost";
-/**
- * The loopback path a provider redirects back to when nothing else is configured.
- *
- * Exported because this class is the one that serves it, and four callers each kept their own
- * `const CALLBACK_PATH = "/callback"` to hand back the same value: three OAuth providers passing it in
- * explicitly and the MCP flow using it as its own fallback. A change here would have moved the served path
- * and left all four still advertising the old one to the provider, which fails as a redirect mismatch at
- * the authorization server rather than anywhere in this codebase.
- */
+/** Default loopback path for OAuth callback redirect (/callback). */
 export const DEFAULT_CALLBACK_PATH = "/callback";
-/**
- * Path served by {@link OAuthCallbackFlow} that 302-redirects to the pending
- * authorization URL. Kept out of {@link OAuthCallbackFlowOptions} because it
- * lives on the loopback callback server alongside {@link DEFAULT_CALLBACK_PATH}
- * and must never clash with a provider-registered redirect URI (all known
- * providers register `/callback`-shaped paths).
- */
+/** Path served by OAuthCallbackFlow that 302-redirects to the pending authorization URL. */
 const LAUNCH_PATH = "/launch";
 
 export type CallbackResult = { code: string; state: string };
@@ -44,27 +19,12 @@ export interface OAuthCallbackFlowOptions {
 	callbackHostname?: string;
 	/** Exact redirect URI advertised to the provider; disables port fallback. */
 	redirectUri?: string;
-	/**
-	 * Whether the flow may bind to a random port when {@link preferredPort} is
-	 * unavailable. Defaults to `true` so historical AI-provider flows (which
-	 * pick uncommon ports and tolerate any loopback callback) keep working.
-	 *
-	 * Set to `false` for providers that validate the redirect URI against a
-	 * registered callback — silently advertising a random-port URI would be
-	 * rejected by the authorization server, leaving the browser on an opaque
-	 * 500 page and the local callback waiting until the 5-minute timeout fires.
-	 * With fallback disabled, {@link OAuthCallbackFlow.login} throws a
-	 * {@link AIError.ConfigurationError} immediately so the caller can surface
-	 * an actionable message before opening the browser.
-	 */
+	/** Whether flow may bind to random port if preferredPort is in use (default true). */
 	allowPortFallback?: boolean;
 	/** Skip the local callback server entirely; the user pastes the code or redirect URL back. */
 	manualInputOnly?: boolean;
 }
 
-/**
- * Abstract base class for OAuth flows with local callback servers.
- */
 export abstract class OAuthCallbackFlow {
 	ctrl: OAuthController;
 	preferredPort: number;
@@ -75,13 +35,7 @@ export abstract class OAuthCallbackFlow {
 	#manualInputOnly: boolean;
 	#callbackResolve?: (result: CallbackResult) => void;
 	#callbackReject?: (error: string) => void;
-	/**
-	 * Authorization URL the `/launch` route currently redirects to. Set by
-	 * {@link login} after {@link generateAuthUrl} and before {@link OAuthController.onAuth}
-	 * fires, cleared when the server stops. `undefined` before the flow reaches
-	 * that point and after it finishes, so `/launch` returns 503 rather than
-	 * a stale URL.
-	 */
+	/** Authorization URL the /launch route currently redirects to. */
 	#pendingAuthUrl?: string;
 
 	constructor(
@@ -107,26 +61,13 @@ export abstract class OAuthCallbackFlow {
 		this.#manualInputOnly = preferredPortOrOptions.manualInputOnly ?? false;
 	}
 
-	/**
-	 * Generate provider-specific authorization URL.
-	 * @param state - CSRF state token
-	 * @param redirectUri - The actual redirect URI to use (may differ from expected if port fallback occurred)
-	 * @returns Authorization URL and optional instructions
-	 */
+	/** Generate provider-specific authorization URL. */
 	abstract generateAuthUrl(state: string, redirectUri: string): Promise<{ url: string; instructions?: string }>;
 
-	/**
-	 * Exchange authorization code for OAuth tokens.
-	 * @param code - Authorization code from callback
-	 * @param state - CSRF state token
-	 * @param redirectUri - The actual redirect URI used (must match authorization request)
-	 * @returns OAuth credentials
-	 */
+	/** Exchange authorization code for OAuth tokens. */
 	abstract exchangeToken(code: string, state: string, redirectUri: string): Promise<OAuthCredentials>;
 
-	/**
-	 * Generate CSRF state token. Override if provider needs custom state generation.
-	 */
+	/** Generate CSRF state token. */
 	generateState(): string {
 		const bytes = new Uint8Array(16);
 		crypto.getRandomValues(bytes);
@@ -143,33 +84,22 @@ export abstract class OAuthCallbackFlow {
 		if (this.ctrl.signal?.aborted) throw this.#loginCancelledError();
 	}
 
-	/**
-	 * Execute the OAuth login flow.
-	 */
+	/** Execute the OAuth login flow. */
 	async login(): Promise<OAuthCredentials> {
 		const state = this.generateState();
 		this.#throwIfCancelled();
 
-		// Start callback server first to get actual redirect URI. Manual-only
-		// flows never bind a server — the advertised redirect URI is fixed and
-		// the user pastes the code/redirect URL back instead.
 		const { server, redirectUri, launchUrl } = this.#manualInputOnly
 			? { server: undefined, redirectUri: this.#buildRedirectUri(), launchUrl: undefined }
 			: await this.#startCallbackServer(state);
 
 		try {
 			this.#throwIfCancelled();
-			// Generate auth URL with the ACTUAL redirect URI (may differ from expected if port was busy)
 			const { url: authUrl, instructions } = await this.generateAuthUrl(state, redirectUri);
 			this.#throwIfCancelled();
 
-			// Publish the auth URL to the `/launch` route BEFORE handing it to
-			// callers. `onAuth` immediately renders a UI that advertises the
-			// launch URL as a copy target, so `/launch` must already resolve if
-			// the user clicks/pastes it during the same render pass.
 			this.#pendingAuthUrl = authUrl;
 
-			// Notify controller that auth is ready
 			this.ctrl.onAuth?.({ url: authUrl, launchUrl, instructions });
 			this.ctrl.onProgress?.(
 				this.#manualInputOnly
@@ -193,21 +123,12 @@ export abstract class OAuthCallbackFlow {
 		return this.redirectUri ?? `http://${this.callbackHostname}:${this.preferredPort}${this.callbackPath}`;
 	}
 
-	/**
-	 * Start callback server, trying preferred port first, falling back to random.
-	 * `launchUrl` is `undefined` when the caller configured `callbackPath` to
-	 * collide with {@link LAUNCH_PATH} — the callback handler resolves the real
-	 * callback in that case, so advertising a self-redirecting URL would be
-	 * incorrect.
-	 */
+	/** Start callback server on preferred port, falling back to random port if allowed. */
 	async #startCallbackServer(
 		expectedState: string,
 	): Promise<{ server: Bun.Server<unknown>; redirectUri: string; launchUrl: string | undefined }> {
 		try {
 			const server = this.#createServer(this.preferredPort, expectedState);
-			// `preferredPort: 0` opts into a random port — read the actual bound
-			// port from the server so both the redirect URI and launch URL point at
-			// a reachable socket, not the sentinel.
 			const actualPort = this.#resolveServerPort(server);
 			const launchUrl = this.#launchUrlIfSafe(actualPort);
 			if (this.redirectUri) {
@@ -237,12 +158,7 @@ export abstract class OAuthCallbackFlow {
 		}
 	}
 
-	/**
-	 * Read the numeric port a callback server bound to. `Bun.Server.port` is
-	 * declared `number | undefined` because Unix-socket servers have no port,
-	 * but every callback flow uses TCP; a missing port here indicates a
-	 * configuration error rather than a fallback case.
-	 */
+	/** Read numeric port from bound server. */
 	#resolveServerPort(server: Bun.Server<unknown>): number {
 		const port = server.port;
 		if (typeof port !== "number") {
@@ -253,20 +169,7 @@ export abstract class OAuthCallbackFlow {
 		return port;
 	}
 
-	/**
-	 * Build the `/launch` URL served by the callback server bound to `port`, or
-	 * `undefined` when it must not be advertised:
-	 * - the configured `callbackPath` (or a `redirectUri` whose pathname
-	 *   resolves to {@link LAUNCH_PATH}) would collide with the launch route;
-	 * - the flow's `redirectUri` never returns to this loopback server: fixed
-	 *   non-loopback hosts, or custom schemes like GitLab Duo's `vscode://`
-	 *   URI — which `new URL` parses without complaint, so a scheme/host check
-	 *   is required, not just the parse failure path. Advertising a localhost
-	 *   `/launch` target for such flows misrepresents the callback endpoint
-	 *   and hands remote users a URL that resolves nowhere.
-	 * Kept short (~30 chars) so UIs can advertise it as a
-	 * viewport-truncation-safe copy target for the full authorization URL.
-	 */
+	/** Build viewport-safe /launch redirect URL. */
 	#launchUrlIfSafe(port: number): string | undefined {
 		if (this.callbackPath === LAUNCH_PATH) return undefined;
 		if (this.redirectUri) {
@@ -278,17 +181,12 @@ export abstract class OAuthCallbackFlow {
 				}
 				if (parsed.pathname === LAUNCH_PATH) return undefined;
 			} catch {
-				// A redirectUri even WHATWG URL cannot parse certainly does not
-				// return to this server — never advertise a launch URL for it.
 				return undefined;
 			}
 		}
 		return `http://${this.callbackHostname}:${port}${LAUNCH_PATH}`;
 	}
 
-	/**
-	 * Create HTTP server for OAuth callback.
-	 */
 	#createServer(port: number, expectedState: string): Bun.Server<unknown> {
 		const hostname = this.callbackHostname === DEFAULT_HOSTNAME ? undefined : this.callbackHostname;
 		return Bun.serve({
@@ -299,18 +197,7 @@ export abstract class OAuthCallbackFlow {
 		});
 	}
 
-	/**
-	 * Handle OAuth callback HTTP request. Two routes on the same loopback server:
-	 * - `callbackPath` (default `/callback`) — the provider redirect target.
-	 * - {@link LAUNCH_PATH} (`/launch`) — 302 to the pending authorization URL so
-	 *   viewport-safe copy targets can survive TUI truncation.
-	 *
-	 * `callbackPath` wins any collision: a Veyyon config that pins the provider
-	 * redirect at `/launch` (via `oauth.callbackPath` or a loopback
-	 * `oauth.redirectUri`) must resolve the callback normally rather than
-	 * self-redirect. `#startCallbackServer` also suppresses `launchUrl` in that
-	 * case, so the launch route is never advertised when it would collide.
-	 */
+	/** Handle OAuth callback HTTP request. */
 	#handleCallback(req: Request, expectedState: string): Response {
 		const url = new URL(req.url);
 
@@ -361,12 +248,8 @@ export abstract class OAuthCallbackFlow {
 		});
 	}
 
-	/**
-	 * Wait for OAuth callback or manual input (whichever comes first).
-	 */
+	/** Wait for OAuth callback or manual code input. */
 	#waitForCallback(expectedState: string): Promise<CallbackResult> {
-		// Scoped so the login-deadline timer is cleared the moment the wait
-		// settles (a bare AbortSignal.timeout stays armed for the full timeout).
 		const waitTimeout = scopedTimeoutSignal(DEFAULT_TIMEOUT, this.ctrl.signal);
 		const signal = waitTimeout.signal;
 		if (signal.aborted) {
@@ -386,7 +269,6 @@ export abstract class OAuthCallbackFlow {
 		});
 		const callbackPromise = callback.promise;
 
-		// Manual input race (if supported)
 		if (this.ctrl.onManualCodeInput) {
 			const requestManualInput = this.ctrl.onManualCodeInput;
 			const manualPromise = (async (): Promise<CallbackResult> => {
@@ -397,12 +279,6 @@ export abstract class OAuthCallbackFlow {
 							.then((input): CallbackResult | null => {
 								const parsed = parseCallbackInput(input);
 								if (!parsed.code) return null;
-								// Same rule as the served handler at #handleCallback: every provider
-								// flow here puts `state` in the authorization URL, so the redirect
-								// echoes it back and a paste that carries none is not bound to this
-								// login attempt. Skipping the check when it is absent let an
-								// attacker-supplied code through and linked the operator's account
-								// to the attacker's.
 								if (expectedState && parsed.state !== expectedState) return null;
 								return { code: parsed.code, state: parsed.state ?? "" };
 							})
@@ -419,9 +295,7 @@ export abstract class OAuthCallbackFlow {
 	}
 }
 
-/**
- * Parse a redirect URL or code string to extract code and state.
- */
+/** Parse redirect URL or query string to extract authorization code and state. */
 export function parseCallbackInput(input: string): { code?: string; state?: string } {
 	const value = input.trim();
 	if (!value) return {};
@@ -432,9 +306,7 @@ export function parseCallbackInput(input: string): { code?: string; state?: stri
 			code: url.searchParams.get("code") ?? undefined,
 			state: url.searchParams.get("state") ?? undefined,
 		};
-	} catch {
-		// Not a URL - check for query string format
-	}
+	} catch {}
 
 	if (value.includes("code=")) {
 		const params = new URLSearchParams(value.replace(/^[?#]/, ""));
@@ -444,7 +316,6 @@ export function parseCallbackInput(input: string): { code?: string; state?: stri
 		};
 	}
 
-	// Assume raw code, possibly with state after #
 	const [code, state] = value.split("#", 2);
 	return { code, state };
 }

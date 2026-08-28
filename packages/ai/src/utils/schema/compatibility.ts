@@ -8,17 +8,6 @@ import {
 import { isValidJsonSchema } from "./meta-validator";
 import type { JsonObject } from "./types";
 
-/**
- * Schema compatibility audits.
- *
- * Each provider has a different idea of what JSON Schema features it accepts
- * for tool definitions. The normalizers in `normalize.ts`, `strict-mode`,
- * and `adapt.ts` rewrite incoming schemas to fit. This module is the
- * *audit* counterpart: it walks a (presumably already-sanitized) schema and
- * reports any feature the target provider would reject. Tests use it to lock
- * down the contract; the runtime uses it to fail-open with diagnostic logs
- * rather than silently shipping a broken tool definition.
- */
 export type SchemaCompatibilityProvider = "openai-strict" | "google" | "cloud-code-assist-claude";
 
 export interface SchemaCompatibilityViolation {
@@ -40,17 +29,10 @@ export interface StrictSchemaEnforcementResult {
 	strict: boolean;
 }
 
-// Per-provider forbidden-key sets. Subsets of the shared `fields.ts` constants
-// plus a few provider-specific extras (`const`, `nullable`) folded in here so
-// each rule is defined in exactly one place.
 const STRICT_FORBIDDEN_KEYS: Record<string, true> = { ...NON_STRUCTURAL_SCHEMA_KEYS, const: true, nullable: true };
 const GOOGLE_FORBIDDEN_KEYS: Record<string, true> = { ...UNSUPPORTED_SCHEMA_FIELDS, const: true };
 const CCA_FORBIDDEN_KEYS: Record<string, true> = { ...CCA_UNSUPPORTED_SCHEMA_FIELDS, const: true };
 
-// Keys whose values are JSON-Schema *containers* (arrays of values, scalars,
-// etc.) rather than nested schemas. The traversal must skip these — recursing
-// would walk into `enum` strings or `default` objects and emit spurious
-// violations against keys that happen to share JSON-Schema keyword names.
 const NON_SCHEMA_CONTAINER_ARRAY_KEYS: Record<string, true> = {
 	enum: true,
 	required: true,
@@ -79,14 +61,7 @@ function createViolation(
 	};
 }
 
-/**
- * Recursively visit every schema node in a JSON Schema tree.
- *
- * The walker is *structural*, not type-aware: it knows which keywords contain
- * nested schemas vs. plain values, so it descends into `properties.*`,
- * `$defs.*`, `items`, combinator arrays, etc. but never into `enum`, `const`,
- * `default`, or `type` arrays.
- */
+/** Recursively visit every schema node in a JSON Schema tree. */
 function walkSchema(
 	value: unknown,
 	state: TraversalState,
@@ -138,17 +113,7 @@ function walkSchema(
 	}
 }
 
-/**
- * Strict-mode audit (OpenAI Responses / Codex `strict: true`):
- *  1. Forbid keywords that strict mode disallows (`format`, `pattern`, `const`,
- *     `nullable`, etc. — see `STRICT_FORBIDDEN_KEYS`).
- *  2. Every node must declare *something* concrete: a `type`, a combinator,
- *     a `$ref`, or a `not` branch. Empty `{}` is rejected.
- *  3. Object nodes must set `additionalProperties: false`, declare a real
- *     `properties` map, and require every property in that map. Required
- *     properties not in `properties` are also rejected — strict mode demands
- *     a closed object shape.
- */
+/** Validate JSON Schema node against OpenAI strict-mode requirements. */
 function validateStrictNode(node: JsonObject, state: TraversalState): SchemaCompatibilityViolation[] {
 	const violations: SchemaCompatibilityViolation[] = [];
 

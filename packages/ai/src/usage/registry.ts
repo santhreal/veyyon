@@ -1,7 +1,3 @@
-/**
- * Where the usage-provider table lives.
- */
-
 import * as logger from "@veyyon/utils/logger";
 import type { Provider } from "../types";
 import type { CredentialRankingStrategy, UsageProvider } from "../usage";
@@ -10,12 +6,7 @@ const usageProviders = new Map<Provider, UsageProvider>();
 const rankingStrategies = new Map<Provider, CredentialRankingStrategy>();
 let populated = false;
 
-/**
- * Fill the registry. Called once, at module scope, by `usage/defaults.ts`.
- *
- * Idempotent by overwrite rather than by refusal: a second call with the same table is harmless, and
- * a host that deliberately replaces a backend should be able to.
- */
+/** Fill the registry with providers and ranking strategies. */
 export function registerUsageProviders(options: {
 	providers: readonly UsageProvider[];
 	rankingStrategies: readonly (readonly [Provider, CredentialRankingStrategy])[];
@@ -30,22 +21,7 @@ export function usageProvidersRegistered(): boolean {
 	return populated;
 }
 
-/**
- * Say so, once, when the registry is consulted before anything filled it.
- *
- * An empty table answers `undefined` for every provider, which reads exactly like "this provider
- * does not report usage" — so every quota would vanish from the UI and credential ranking would fall
- * back to the default rules, with nothing anywhere saying why. That is the silent-fallback shape,
- * and the whole point of moving the table out of the credential store was to make the wiring
- * explicit rather than accidental.
- *
- * It warns rather than throws, and the distinction is deliberate. `AuthStorage` reads the ranking
- * strategy on `getApiKey`, which is its primary job and has nothing to do with usage reporting;
- * refusing there would take a process that never wanted quota numbers and stop it selecting a
- * credential. So the fault is reported loudly, once, with the import that fixes it, and the caller
- * gets the honest `undefined`. Once, because an unfilled registry is consulted on every credential
- * lookup and a warning per call would bury itself.
- */
+/** Warn once when the registry is consulted before being populated. */
 let warnedUnpopulated = false;
 function warnIfUnpopulated(): void {
 	if (populated || warnedUnpopulated) return;

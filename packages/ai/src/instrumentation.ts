@@ -1,30 +1,9 @@
-/**
- * Session instrumentation — one owner for how densely a run records what its
- * tool calls AND model turns did, so a stored session can be studied after the
- * fact (latency hot spots, tool cost, token weight, turn cadence, throughput).
- *
- * The richness is graded, not a bare on/off. `off` changes nothing (no metrics
- * are attached, existing behavior). Each higher level adds strictly more fields
- * and strictly more cost: `basic` is wall-clock only (a subtraction, free);
- * `rich` adds the result's byte/token weight (one tokenizer pass) and per-turn
- * throughput; `ultra` captures everything we could want for study, including an
- * args fingerprint and cache/provider detail.
- *
- * This file is the single place that decides which fields each level fills.
- * The agent loop measures the raw timings and hands them here; nothing else
- * branches on the level. Keeping the level→fields mapping in one pure function
- * is what makes "add a field to the ultra tier" a one-line change with one
- * test, instead of a scattered set of `if (level === ...)` checks.
- */
+/** Session instrumentation for recording tool call and model turn metrics. */
 
 import type { Usage } from "@veyyon/catalog/types";
 import type { ImageContent, ServiceTier, TextContent, ToolChoice } from "./types";
 
-/**
- * Ordered richness levels. The order is meaningful: a level includes every
- * field of the levels before it, so {@link instrumentationRank} / {@link atLeast}
- * can gate work by "is the level at least X".
- */
+/** Ordered richness levels. */
 export const INSTRUMENTATION_LEVELS = ["off", "basic", "rich", "ultra"] as const;
 
 export type InstrumentationLevel = (typeof INSTRUMENTATION_LEVELS)[number];
@@ -40,12 +19,7 @@ export function atLeast(level: InstrumentationLevel | undefined, minimum: Instru
 	return instrumentationRank(level) >= instrumentationRank(minimum);
 }
 
-/**
- * Persisted telemetry families governed by {@link InstrumentationLevel}.
- *
- * This is deliberately a closed vocabulary: a new persisted family must be
- * added here and assigned a minimum level below before any recorder can emit it.
- */
+/** Persisted telemetry families governed by InstrumentationLevel. */
 export type SessionTelemetryCategory =
 	| "lifecycle"
 	| "context-breakdown"
@@ -57,23 +31,7 @@ export type SessionTelemetryCategory =
 
 export type SessionTelemetryDetail = "none" | Exclude<InstrumentationLevel, "off">;
 
-/**
- * Canonical minimum level for every persisted telemetry family.
- *
- * | Category | off | basic | rich | ultra |
- * | --- | --- | --- | --- | --- |
- * | lifecycle | none | basic | rich | ultra |
- * | context-breakdown | none | none | rich | ultra |
- * | tool-span | none | basic | rich | ultra |
- * | model-turn | none | basic | rich | ultra |
- * | model-request | none | basic | rich | ultra |
- * | agent-communication | none | none | rich | ultra |
- * | goal-verification | none | basic | rich | ultra |
- *
- * Permission is only the first boundary. Persistors must still store structured,
- * redacted data: raw secrets and unredacted tool arguments are never permitted
- * at any level.
- */
+/** Canonical minimum level for every persisted telemetry family. */
 export const SESSION_TELEMETRY_POLICY = {
 	lifecycle: "basic",
 	"context-breakdown": "rich",
@@ -84,12 +42,7 @@ export const SESSION_TELEMETRY_POLICY = {
 	"goal-verification": "basic",
 } as const satisfies Record<SessionTelemetryCategory, Exclude<InstrumentationLevel, "off">>;
 
-/**
- * Payload detail permitted for a category at `level`.
- *
- * Unknown runtime values follow {@link instrumentationRank} and are treated as
- * `off`, preserving the existing fail-closed behavior for malformed configs.
- */
+/** Payload detail permitted for a category at level. */
 export function sessionTelemetryDetail(
 	level: InstrumentationLevel | undefined,
 	category: SessionTelemetryCategory,
@@ -111,21 +64,13 @@ export function allowsSessionTelemetry(
 /** Terminal state of a single tool call, mirrored from the loop's own status. */
 export type ToolCallStatus = "ok" | "error" | "aborted" | "blocked" | "skipped";
 
-/**
- * Dense per-tool-call study record, attached to a {@link ToolResultMessage} as
- * `metrics` when instrumentation is on. Every field beyond the `basic` tier is
- * optional, so a message recorded at a lower level (or by an older build) still
- * satisfies the type and loads unchanged.
- *
- * Times are Unix epoch milliseconds; durations are milliseconds.
- */
+/** Per-tool-call study record attached to ToolResultMessage as metrics. */
 export interface ToolCallMetrics {
 	/** The level this record was captured at (so a reader knows which fields to expect). */
 	level: InstrumentationLevel;
 	/** Declared unit for all timestamps and durations in this record. */
 	timeUnit?: "ms";
 
-	// ── basic: wall-clock, free ────────────────────────────────────────────
 	/** When `tool.execute()` began. */
 	startedAt: number;
 	/** When the result message was emitted (equals the message timestamp). */
@@ -137,7 +82,6 @@ export interface ToolCallMetrics {
 	/** Why an otherwise successful result was classified as contextually useless. */
 	uselessReason?: "tool-declared";
 
-	// ── rich: scheduling + output weight (one tokenizer pass) ───────────────
 	/** Time the call waited between batch dispatch and execution start. */
 	queuedMs?: number;
 	/** How the scheduler ran it. */
@@ -157,7 +101,6 @@ export interface ToolCallMetrics {
 	/** Tokens the result adds to context (the weight the model actually pays). */
 	resultTokens?: number;
 
-	// ── ultra: everything else worth studying ───────────────────────────────
 	/** UTF-8 byte size of the serialized arguments. */
 	argsBytes?: number;
 	/** Stable fingerprint of the arguments, for spotting repeated identical calls. */
@@ -172,12 +115,7 @@ export interface ToolCallMetrics {
 	signalAborted?: boolean;
 }
 
-/**
- * Raw materials the loop hands to {@link captureToolCallMetrics}. The loop
- * always fills the cheap timing fields; the capture function decides which of
- * them survive into the record and whether to compute the expensive ones
- * (token count, args hash) based on the level.
- */
+/** Input parameters for captureToolCallMetrics. */
 export interface ToolCallMetricsInput {
 	level: InstrumentationLevel;
 	startedAt: number;
@@ -194,11 +132,7 @@ export interface ToolCallMetricsInput {
 	useless?: boolean;
 	resultContent?: readonly (TextContent | ImageContent)[];
 	args?: Record<string, unknown>;
-	/**
-	 * Token counter used at `rich`+ to weigh the result. Injected so this module
-	 * stays free of the native tokenizer dependency; when absent, `resultTokens`
-	 * is left unset rather than guessed.
-	 */
+	/** Token counter used at rich+ to weigh the result. */
 	countTokens?: (text: string) => number;
 }
 
@@ -208,10 +142,7 @@ function utf8Bytes(text: string): number {
 	return textEncoder.encode(text).length;
 }
 
-/**
- * Stable 128-bit SHA-256 prefix. The previous 32-bit FNV fingerprint collided
- * at study-scale cardinalities and could label distinct calls as identical.
- */
+/** Stable 128-bit SHA-256 prefix for argument fingerprinting. */
 function stableArgsDigest(text: string): string {
 	return new Bun.CryptoHasher("sha256").update(text).digest("hex").slice(0, 32);
 }
@@ -226,13 +157,7 @@ function legacyArgsHash(text: string): string {
 	return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-/**
- * Build the level-gated metrics record for one tool call, or `undefined` at
- * `off`. This is the single mapping from level to captured fields: the `basic`
- * block is always filled, `rich` adds scheduling and output weight, `ultra`
- * adds the args fingerprint and signal state. Expensive work (tokenizing the
- * result, serializing+hashing args) runs only at the tier that keeps it.
- */
+/** Build the level-gated metrics record for one tool call, or undefined at off. */
 export function captureToolCallMetrics(input: ToolCallMetricsInput): ToolCallMetrics | undefined {
 	const { level } = input;
 	if (level === "off") return undefined;
@@ -301,12 +226,7 @@ export function captureToolCallMetrics(input: ToolCallMetricsInput): ToolCallMet
 	return metrics;
 }
 
-/**
- * Re-project an already captured tool record at the detail permitted by the
- * canonical session policy. Persistence adapters call this fail-closed even
- * when the producer was configured correctly, so an over-detailed or stale
- * in-memory message cannot leak richer fields into JSONL.
- */
+/** Re-project tool record at detail permitted by session policy. */
 export function toolCallMetricsForPersistence(
 	metrics: ToolCallMetrics | undefined,
 	level: InstrumentationLevel | undefined,
@@ -354,22 +274,11 @@ export function toolCallMetricsForPersistence(
 /** Terminal state of a single model turn, mirrored from the assistant message's stop reason. */
 export type AssistantTurnStatus = "ok" | "error" | "aborted";
 
-/**
- * Dense per-model-turn study record, attached to an {@link AssistantMessage} as
- * `turnMetrics` when instrumentation is on. It is the assistant-turn analogue of
- * {@link ToolCallMetrics}: it turns the loose, scattered `duration`/`ttft` scalars
- * into one graded owner and adds the request-start wall-clock and throughput that
- * a latency/streaming study needs.
- *
- * Every field beyond the `basic` tier is optional, so a message recorded at a
- * lower level (or by an older build) still satisfies the type and loads unchanged.
- * Times are Unix epoch milliseconds; durations are milliseconds.
- */
+/** Per-model-turn study record attached to AssistantMessage as turnMetrics. */
 export interface AssistantTurnMetrics {
 	/** The level this record was captured at (so a reader knows which fields to expect). */
 	level: InstrumentationLevel;
 
-	// ── basic: wall-clock, free ────────────────────────────────────────────
 	/** When the request was dispatched to the provider (loop-measured request start). */
 	startedAt: number;
 	/** When the turn was finalized (equals the assistant message timestamp). */
@@ -378,14 +287,9 @@ export interface AssistantTurnMetrics {
 	durationMs: number;
 	/** Terminal state of the turn. */
 	status: AssistantTurnStatus;
-	/**
-	 * Time to first token in milliseconds, as reported by the provider. Kept only
-	 * when it is a sane fraction of the turn (`0 <= ttftMs <= durationMs`); a bogus
-	 * value (provider clock skew, ttft >= duration) is dropped rather than stored.
-	 */
+	/** Time to first token in milliseconds. */
 	ttftMs?: number;
 
-	// ── rich: throughput (from usage the turn already carries) ──────────────
 	/** Total conversation output tokens for the turn. */
 	outputTokens?: number;
 	/** Non-cached conversation input tokens. */
@@ -397,7 +301,6 @@ export interface AssistantTurnMetrics {
 	/** Output tokens per second over the generation window — the streaming throughput. */
 	outputTokensPerSec?: number;
 
-	// ── ultra: cache efficiency + provenance ────────────────────────────────
 	/** Conversation tokens read from the prompt cache. */
 	cacheReadTokens?: number;
 	/** Conversation tokens written to the prompt cache. */
@@ -414,13 +317,7 @@ export interface AssistantTurnMetrics {
 	upstreamProvider?: string;
 }
 
-/**
- * Raw materials the loop hands to {@link captureAssistantTurnMetrics}. The loop
- * stamps the request-start and finalize wall-clock at its own boundary (the same
- * way it stamps tool `startedAt`/`endedAt`), reads `ttftMs` off the provider's
- * finalized message, and passes the turn `usage` through; the capture function
- * decides which fields survive into the record based on the level.
- */
+/** Input parameters for captureAssistantTurnMetrics. */
 export interface AssistantTurnMetricsInput {
 	level: InstrumentationLevel;
 	startedAt: number;
@@ -431,14 +328,7 @@ export interface AssistantTurnMetricsInput {
 	previousCacheReadTokens?: number;
 	upstreamProvider?: string;
 }
-/**
- * Build the level-gated per-turn metrics record, or `undefined` at `off`. This
- * is the single mapping from level to captured fields for a model turn: the
- * `basic` block (request-start/end wall-clock + ttft) is always filled, `rich`
- * adds token counts and throughput derived from the turn's own usage, `ultra`
- * adds cache/reasoning/provenance detail. Purely arithmetic — no allocation
- * beyond the record itself, so even `ultra` is a rounding error on the turn.
- */
+/** Build the level-gated per-turn metrics record, or undefined at off. */
 export function captureAssistantTurnMetrics(input: AssistantTurnMetricsInput): AssistantTurnMetrics | undefined {
 	const { level } = input;
 	if (level === "off") return undefined;
@@ -496,10 +386,7 @@ export function captureAssistantTurnMetrics(input: AssistantTurnMetricsInput): A
 	return metrics;
 }
 
-/**
- * Re-project already captured assistant-turn metrics at the current persistence
- * level. This is the fail-closed boundary for live instrumentation downgrades.
- */
+/** Re-project assistant-turn metrics at current persistence level. */
 export function assistantTurnMetricsForPersistence(
 	metrics: AssistantTurnMetrics | undefined,
 	level: InstrumentationLevel | undefined,
@@ -538,22 +425,7 @@ export function assistantTurnMetricsForPersistence(
 	return persisted;
 }
 
-/**
- * Exact per-turn request parameters AS SENT, attached to an {@link AssistantMessage}
- * as `request` when instrumentation is on. Where `turnMetrics` records what a turn
- * DID (timing, throughput), this records what it was ASKED for — the sampling knobs
- * and reasoning/tool directives the loop actually dispatched, so a backtest can
- * reproduce the request rather than guess it from current config.
- *
- * These are the effective, per-turn values (e.g. a harmony-retry temperature bump,
- * a dynamically-resolved reasoning effort, or a one-turn forced tool choice), not
- * the static session defaults — which is why they live on the turn and not only in
- * the start-of-run settings snapshot. The numeric thinking budget is not duplicated
- * here: it derives deterministically from `reasoningEffort` plus the `thinkingBudgets.*`
- * values captured in the settings snapshot.
- *
- * Every field is optional; an unset field means the provider default was used.
- */
+/** Exact per-turn request parameters as sent, attached to AssistantMessage as request. */
 export interface AssistantTurnRequest {
 	/** Sampling temperature as sent (undefined = provider default). */
 	temperature?: number;
@@ -580,13 +452,7 @@ export interface AssistantTurnRequestInput extends AssistantTurnRequest {
 	level: InstrumentationLevel;
 }
 
-/**
- * Build the per-turn request record, or `undefined` at `off` (or when nothing was
- * overridden, so an all-defaults turn adds no empty object). Unlike the metrics
- * capture there is no per-tier field selection: request params are cheap scalars
- * captured whole at any on level. This keeps the "what to record for a turn"
- * decision in one place alongside {@link captureAssistantTurnMetrics}.
- */
+/** Build the per-turn request record, or undefined at off. */
 export function captureAssistantTurnRequest(input: AssistantTurnRequestInput): AssistantTurnRequest | undefined {
 	if (input.level === "off") return undefined;
 	const request: AssistantTurnRequest = {};
@@ -610,10 +476,7 @@ export function assistantTurnRequestForPersistence(
 	return allowsSessionTelemetry(level, "model-request") ? request : undefined;
 }
 
-/**
- * Deterministic JSON serialization with sorted object keys, so two calls with
- * the same arguments in a different key order fingerprint identically.
- */
+/** Deterministic JSON serialization with sorted object keys. */
 function stableSerialize(value: unknown): string {
 	return JSON.stringify(sortKeys(value));
 }

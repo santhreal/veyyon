@@ -1,12 +1,4 @@
-/**
- * Client-side {@link AuthCredentialStore} that mirrors a remote broker's
- * snapshot. Refresh tokens never leave the broker; mutating methods (`replace*`,
- * `upsert*`, `delete*ForProvider`) throw because login flows are server-side.
- *
- * Cache (`getCache`/`setCache`/`cleanExpiredCache`) is in-memory and ephemeral —
- * usage reports cache TTL is 5 minutes per credential, so durability across
- * runs isn't required.
- */
+/** Client-side AuthCredentialStore mirroring a remote broker snapshot. */
 import { scheduler } from "node:timers/promises";
 import * as logger from "@veyyon/utils/logger";
 import {
@@ -32,13 +24,7 @@ import type {
 	SnapshotStreamEvent,
 } from "./types";
 
-/**
- * Client-side TTL for the aggregate `/v1/usage` response. The broker dedups
- * upstream `/usage` hits via AuthStorage's 5-minute per-credential cache plus
- * single-flight, so this short client TTL mainly folds the parallel fan-out
- * from `#rankOAuthSelections` into a single round-trip — a ranking pass issues
- * one broker call instead of N.
- */
+/** Client-side TTL for aggregate /v1/usage response (15s). */
 const USAGE_CACHE_TTL_MS = 15_000;
 const CREDENTIAL_BLOCK_RECONCILE_DELAY_MS = 5 * 60_000;
 const WAIT_THRESHOLD_MS = 1_000;
@@ -195,20 +181,11 @@ function mergeUsageReports(base: UsageReport, overlay: UsageReport): UsageReport
 
 export interface RemoteAuthCredentialStoreOptions {
 	client: AuthBrokerClient;
-	/**
-	 * Initial snapshot. When omitted, callers must call
-	 * {@link RemoteAuthCredentialStore.refreshSnapshot} before the first read.
-	 */
+	/** Initial snapshot before first read. */
 	initialSnapshot?: SnapshotResponse;
-	/**
-	 * Subscribe to the broker's SSE snapshot stream when available. Falls back
-	 * to long-poll permanently when the broker returns 404. Default `true`.
-	 */
+	/** Subscribe to broker SSE snapshot stream when available. */
 	streamSnapshots?: boolean;
-	/**
-	 * Called after broker-sourced full snapshots are applied. The constructor's
-	 * initial snapshot intentionally does not trigger this hook.
-	 */
+	/** Called after broker-sourced full snapshots are applied. */
 	onSnapshot?: (snapshot: SnapshotResponse, generation: number) => void;
 }
 
@@ -227,12 +204,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 	#credentialBlockReconcileAfter: Map<string, number> = new Map();
 	#usageCacheEpoch = 0;
 	#closed = false;
-	/**
-	 * `true` once the SSE consumer received its first frame and hasn't dropped
-	 * since. Writes consult this to suppress the otherwise-mandatory
-	 * `refreshSnapshot()` follow-up — the stream will deliver the new
-	 * generation without an extra GET.
-	 */
+	/** True once SSE consumer received first frame without drops. */
 	#streamingActive = false;
 	/** Latched once the broker has answered 404 — never try the stream again. */
 	#streamingUnsupported = false;
@@ -445,10 +417,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 			candidate => candidate.providerKey === providerKey && candidate.blockScope === blockScope,
 		);
 		if (!block || block.blockedUntilMs <= nowMs) return undefined;
-		// The snapshot was produced by the broker host, which may be a different
-		// machine or a process that started before the clock synced. A block
-		// stamped ahead of this reader cannot be measured against this clock, so
-		// it is dropped rather than held; see credential-clock.
 		if (isRecordFromFutureClock(block.updatedAtMs, nowMs)) return undefined;
 		return block.blockedUntilMs;
 	}
@@ -530,11 +498,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		}
 	}
 
-	/**
-	 * In-memory update from a successful refresh through the broker. AuthStorage
-	 * calls this after `#replaceCredentialAt`; the broker already persisted the
-	 * authoritative row, so we just mirror it.
-	 */
+	/** In-memory update from a successful refresh through the broker. */
 	updateAuthCredential(id: number, credential: AuthCredential): void {
 		for (const entry of this.#snapshot.credentials) {
 			if (entry.id !== id) continue;
@@ -545,7 +509,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 
 	deleteAuthCredential(id: number, disabledCause: string): void {
 		this.#removeCredentialById(id);
-		// Fire-and-forget: tell the broker to persist the disable.
 		this.#client.disableCredential(id, disabledCause).catch(error => {
 			logger.warn("auth-broker disable propagation failed", { id, error: String(error) });
 		});
@@ -613,13 +576,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		);
 	}
 
-	/**
-	 * Upsert a single credential through the broker. The broker server is the
-	 * canonical writer — see `POST /v1/credential`. The redacted snapshot
-	 * entries returned by the server replace the provider's rows in our local
-	 * snapshot, and the global snapshot is then refreshed in the background so
-	 * any concurrent peer (refresh, generation bump) stays in sync.
-	 */
+	/** Upsert a single credential through the broker. */
 	async upsertAuthCredentialRemote(provider: string, credential: AuthCredential): Promise<StoredAuthCredential[]> {
 		const { entries } = await this.#client.uploadCredential(provider, credential);
 		this.#applyProviderEntries(provider, entries);
@@ -627,11 +584,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		return this.listAuthCredentials(provider);
 	}
 
-	/**
-	 * Replace-all semantics: disable every active credential for the provider,
-	 * then upload each of the new credentials. Used by API-key login so a new
-	 * key clobbers any previously stored key for the same provider.
-	 */
+	/** Disable active credentials and upload replacement set. */
 	async replaceAuthCredentialsRemote(
 		provider: string,
 		credentials: AuthCredential[],
@@ -648,8 +601,6 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 				});
 			}
 		}
-		// Snapshot reflects the disables before we add the new rows so a concurrent
-		// reader cannot momentarily see old + new together for the same provider.
 		this.#removeProviderEntries(provider);
 		for (const credential of credentials) {
 			const { entries } = await this.#client.uploadCredential(provider, credential);
@@ -659,11 +610,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		return this.listAuthCredentials(provider);
 	}
 
-	/**
-	 * Logout: disable every active credential for the provider on the broker,
-	 * then drop them from the local snapshot. Refresh fetches the authoritative
-	 * post-state in the background.
-	 */
+	/** Disable all credentials for provider on broker and drop locally. */
 	async deleteAuthCredentialsRemote(provider: string, disabledCause: string): Promise<void> {
 		const existing = this.listAuthCredentials(provider);
 		for (const entry of existing) {
@@ -785,22 +732,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		if (changed) this.#snapshot = { ...this.#snapshot, credentials };
 	}
 
-	/**
-	 * Fire-and-forget `refreshSnapshot()` after a write. When the SSE stream is
-	 * active the broker will deliver the new generation push, so the extra GET
-	 * is wasted bandwidth and we skip it.
-	 */
-	/**
-	 * Report that this process's view of the broker's credentials has gone stale.
-	 *
-	 * Every caller here is a path that already succeeded at the thing the user
-	 * asked for and then failed to bring the local snapshot back in line. That
-	 * combination is what makes silence dangerous: nothing looks wrong, yet the
-	 * next decision taken from the snapshot (which credential is blocked, which
-	 * token is current) is made against data known to be out of date. Warned once
-	 * per cause, because the cause is normally a broker that is down for the whole
-	 * process and a per-request warning would bury itself.
-	 */
+	/** Report that local view of broker credentials has gone stale. */
 	#reportStaleSnapshot(cause: string, error: unknown, fields: Record<string, unknown> = {}): void {
 		const detail = { cause, error: String(error), ...fields };
 		if (this.#reportedStaleSnapshotCauses.has(cause)) {
@@ -862,12 +794,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		this.#usageCacheEpoch += 1;
 	}
 
-	/**
-	 * Store-level hook consumed by `AuthStorage` — routes refresh through the
-	 * broker so the actual refresh token never leaves the broker host. Returns
-	 * the broker-redacted credential with {@link REMOTE_REFRESH_SENTINEL} in
-	 * the `refresh` slot.
-	 */
+	/** Route OAuth refresh through broker so refresh token stays on broker host. */
 	async refreshOAuthCredential(
 		_provider: Provider,
 		credentialId: number,
@@ -895,26 +822,13 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		};
 	}
 
-	/**
-	 * Store-level hook consumed by `AuthStorage.fetchUsageReports()` — proxies
-	 * to the broker's `/v1/usage` endpoint. The broker's egress IP isn't
-	 * rate-limited by Anthropic's per-IP `/usage` cap the way a heavy
-	 * residential laptop is, so all credentials surface every cycle.
-	 */
+	/** Proxy usage report fetch to broker's /v1/usage endpoint. */
 	async fetchUsageReports(signal?: AbortSignal): Promise<UsageReport[] | null> {
 		const reports = await this.#raceWithSignal(this.#loadUsageReports(), signal);
 		return reports ? this.#applyUsageOverlays(reports) : null;
 	}
 
-	/**
-	 * Per-credential usage hook consumed by `AuthStorage.#getUsageReport`. Pulls
-	 * the aggregate broker `/v1/usage` once and serves all callers from the
-	 * same response (coalesced + cached), then overlays any client-observed
-	 * header hints for the matching credential.
-	 *
-	 * The broker already aggregates with its own 30s TTL on the server side; our
-	 * 15s client TTL is below that so we usually re-use the broker's cache too.
-	 */
+	/** Fetch per-credential usage report from broker with client overlays. */
 	async getUsageReport(
 		provider: Provider,
 		credential: OAuthCredential,
@@ -964,12 +878,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		return merged;
 	}
 
-	/**
-	 * Reject the awaited promise when the caller's signal aborts, without
-	 * affecting the shared upstream fetch. Used to give each caller their
-	 * own cancel without one caller's abort cascading into a peer's in-flight
-	 * request through the single-flight `#usageInflight`.
-	 */
+	/** Race promise against signal without cancelling shared inflight request. */
 	#raceWithSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
 		if (!signal) return promise;
 		if (signal.aborted) return Promise.reject(new AIError.RequestAbortError("auth-broker request aborted"));
@@ -1031,16 +940,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 	}
 }
 
-/**
- * Match a broker-supplied usage report to a specific OAuth credential. The
- * broker returns aggregate reports across all credentials it manages, so we
- * pick the one whose identity (accountId / email / projectId) lines up with
- * the credential the caller is asking about.
- *
- * Falls back to the lone candidate when only one matches the provider; falls
- * through to `null` when nothing matches, which `AuthStorage` treats as "no
- * usage data" (ranking proceeds without a usage signal for this credential).
- */
+/** Match broker usage report to specific OAuth credential identity. */
 function matchUsageReport(reports: UsageReport[], provider: Provider, credential: OAuthCredential): UsageReport | null {
 	const all = reports.filter(report => report.provider === provider);
 	if (all.length === 0) return null;

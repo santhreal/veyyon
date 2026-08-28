@@ -14,16 +14,7 @@ function normalizeIdleTimeoutMs(value: string | undefined, fallback: number): nu
 	return Math.trunc(parsed);
 }
 
-/**
- * Returns the idle timeout used for provider streaming transports.
- *
- * `VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS` is accepted as a backward-compatible alias.
- * Set `VEYYON_STREAM_IDLE_TIMEOUT_MS=0` to disable the watchdog.
- *
- * Providers that legitimately stream much slower than the global default can pass
- * `fallbackMs` to widen the floor used when neither env var nor caller option is set.
- * Caller options still take precedence; env overrides still trump the fallback.
- */
+/** Returns the idle timeout used for provider streaming transports. */
 export function getStreamIdleTimeoutMs(fallbackMs: number = DEFAULT_STREAM_IDLE_TIMEOUT_MS): number | undefined {
 	return normalizeIdleTimeoutMs(
 		$env.VEYYON_STREAM_IDLE_TIMEOUT_MS ?? $env.VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS,
@@ -31,15 +22,7 @@ export function getStreamIdleTimeoutMs(fallbackMs: number = DEFAULT_STREAM_IDLE_
 	);
 }
 
-/**
- * Returns the idle timeout used for OpenAI-family streaming transports.
- *
- * `VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS` takes precedence over the generic
- * `VEYYON_STREAM_IDLE_TIMEOUT_MS` because some deployments tune OpenAI-compatible
- * backends separately from Anthropic/Gemini-style transports.
- *
- * Set `VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS=0` to disable the watchdog.
- */
+/** Returns the idle timeout used for OpenAI-family streaming transports. */
 export function getOpenAIStreamIdleTimeoutMs(fallbackMs: number = DEFAULT_STREAM_IDLE_TIMEOUT_MS): number | undefined {
 	return normalizeIdleTimeoutMs(
 		$env.VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS ?? $env.VEYYON_STREAM_IDLE_TIMEOUT_MS,
@@ -47,18 +30,7 @@ export function getOpenAIStreamIdleTimeoutMs(fallbackMs: number = DEFAULT_STREAM
 	);
 }
 
-/**
- * Returns the timeout used while waiting for the first stream event.
- * The first token can legitimately take longer than later inter-event gaps,
- * so the default never undershoots the steady-state idle timeout.
- *
- * Set `VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS=0` to disable the watchdog.
- *
- * Providers whose first response can legitimately take longer (heavy reasoning,
- * slow cold-start proxies) can pass `fallbackMs` to widen the floor used when
- * neither env var nor caller option is set. Caller options still take precedence;
- * env overrides still trump the fallback.
- */
+/** Returns the timeout used while waiting for the first stream event. */
 export function getStreamFirstEventTimeoutMs(
 	idleTimeoutMs?: number,
 	fallbackMs: number = DEFAULT_STREAM_FIRST_EVENT_TIMEOUT_MS,
@@ -67,19 +39,7 @@ export function getStreamFirstEventTimeoutMs(
 	return normalizeIdleTimeoutMs($env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS, fallback);
 }
 
-/**
- * Returns the first-event timeout used for OpenAI-family streaming transports.
- *
- * Precedence: explicit `VEYYON_OPENAI_STREAM_FIRST_EVENT_TIMEOUT_MS` (including a
- * `"0"` disable) wins outright. Otherwise the resolved idle (caller-supplied
- * `idleTimeoutMs` — which itself already encompasses per-call
- * `streamIdleTimeoutMs` or `VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS` resolved
- * upstream) floors the first-event budget so slow local OpenAI-compatible
- * servers are not undercut by a shorter `VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS`
- * or the global default during prompt processing.
- *
- * Returns `undefined` when an explicit env knob disables the watchdog.
- */
+/** Returns the first-event timeout used for OpenAI-family streaming transports. */
 export function getOpenAIStreamFirstEventTimeoutMs(
 	idleTimeoutMs?: number,
 	fallbackMs: number = DEFAULT_STREAM_FIRST_EVENT_TIMEOUT_MS,
@@ -94,26 +54,7 @@ export function getOpenAIStreamFirstEventTimeoutMs(
 	return Math.max(base, idleTimeoutMs);
 }
 
-/**
- * Arms a clearable pre-response (time-to-first-byte) abort guard for a streaming
- * fetch, combined with the caller's signal.
- *
- * `AbortSignal.timeout(ms)` is an *absolute* wall-clock deadline: once handed to
- * `fetch` it keeps governing the request after the response headers arrive, so
- * it aborts an actively-streaming body the moment it fires — not just a stalled
- * pre-response request (issue #2422 regression: large `write` tool-call streams
- * died at the budget with `TimeoutError: The operation timed out.` despite
- * deltas actively flowing). This arms a `clearTimeout`-able timer instead;
- * callers MUST `clear()` as soon as the guarded transport attempt settles so
- * the body stream is left to the iterator-level idle watchdog.
- *
- * Retrying callers MUST arm a fresh guard for each transport attempt and keep
- * the retry loop's base signal reserved for caller cancellation. Reusing the
- * guard as the loop signal makes its timeout indistinguishable from cancellation.
- *
- * Returns the caller signal unchanged (and a no-op `clear`) when no positive
- * timeout is configured.
- */
+/** Arms a clearable pre-response (time-to-first-byte) abort guard for streaming fetch. */
 export function armPreResponseTimeout(
 	callerSignal: AbortSignal | undefined,
 	timeoutMs: number | undefined,
@@ -130,13 +71,7 @@ export function armPreResponseTimeout(
 	return { signal, clear: () => clearTimeout(timer) };
 }
 
-/**
- * Longest continuous stretch local work may hold the idle watchdog off.
- *
- * Sized above the largest run a local tool can legitimately take (the bash tool
- * caps its own timeout at 3600s) so this never truncates real work; it exists
- * only so a wedged bridge ends in a diagnosable error instead of silence.
- */
+/** Maximum continuous duration local work may hold off the idle watchdog. */
 export const DEFAULT_MAX_LOCAL_WORK_HOLD_MS = 90 * 60_000;
 
 export interface IdleTimeoutIteratorOptions {
@@ -146,55 +81,17 @@ export interface IdleTimeoutIteratorOptions {
 	firstItemErrorMessage?: string;
 	onIdle?: () => void;
 	onFirstItemTimeout?: () => void;
-	/**
-	 * Optional semantic-progress predicate. Non-progress items are still yielded,
-	 * but they do not reset the idle deadline. This prevents provider
-	 * keepalive/no-op events from keeping a stalled tool call alive forever.
-	 */
+	/** Optional semantic-progress predicate. Non-progress items do not reset the idle deadline. */
 	isProgressItem?: (item: unknown) => boolean;
-	/**
-	 * Reports consumer-side local work in flight for the stream: the provider
-	 * transport is waiting on a server-requested local tool bridge (e.g. the
-	 * Cursor exec channel) before anything can flow upstream again. While it
-	 * returns true, an expired idle / first-item deadline slides forward
-	 * instead of aborting — the silence is ours, not a provider stall. The
-	 * watchdog re-arms with a full budget once the local work completes, so a
-	 * provider that stalls afterwards is still caught.
-	 */
+	/** Reports consumer-side local work in flight pausing the watchdog. */
 	hasPendingLocalWork?: () => boolean;
-	/**
-	 * Upper bound (ms) on how long {@link hasPendingLocalWork} may hold the
-	 * watchdog off in one continuous stretch. Defaults to
-	 * {@link DEFAULT_MAX_LOCAL_WORK_HOLD_MS}.
-	 *
-	 * WHY THIS EXISTS. The local-work stand-down slides the deadline forward
-	 * every time it is consulted, so a local tool that never settles disables
-	 * the watchdog for the life of the process: the stream goes silent and the
-	 * only exit is the user cancelling the turn. That is the opposite failure
-	 * from the one the stand-down was added for (#4593, healthy tool runs being
-	 * aborted), and it is worse, because a spurious abort recovers itself and a
-	 * wedge does not. The clock runs only while work is CONTINUOUSLY pending and
-	 * resets the moment it drains, so a session of many ordinary tool calls
-	 * never accumulates toward it.
-	 */
+	/** Upper bound (ms) on how long local work may hold off the watchdog. */
 	maxLocalWorkHoldMs?: number;
-	/**
-	 * Cancel iteration as soon as this signal aborts. Required for caller-driven
-	 * cancellation (ESC) when the underlying transport does not surface signal
-	 * aborts to the iterator (HTTP/2 proxies, native sockets, mocked fetch).
-	 * Without this, the consumer sleeps on iterator.next() until the idle/first
-	 * -event watchdog fires — observable as the issue #912 "Working… forever"
-	 * symptom on the github-copilot provider.
-	 */
+	/** Signal to cancel iteration immediately upon abort. */
 	abortSignal?: AbortSignal;
 }
 
-/**
- * Yields items from an async iterable while enforcing a maximum idle gap between items.
- *
- * The first item may use a shorter timeout so stuck requests can be aborted and retried
- * before any user-visible content has streamed.
- */
+/** Yields items from an async iterable while enforcing maximum idle gaps. */
 export async function* iterateWithIdleTimeout<T>(
 	iterable: AsyncIterable<T>,
 	options: IdleTimeoutIteratorOptions,
