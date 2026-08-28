@@ -54,8 +54,6 @@ const TRUST_TIERS: Record<string, true> = {
 	EXTERNAL_WRITE: true,
 	IMPORTED: true,
 };
-// Read through `../../config`, the one owner of MNEMOPI_SP_MAX. It falls back to 1000
-// rather than seeding a NaN cap that corrupts the pruning bound and its SQLite LIMIT bind.
 const SCRATCHPAD_MAX_ITEMS = scratchpadMaxItems();
 
 function metadataJson(metadata: Metadata | null | undefined): string | null {
@@ -220,12 +218,7 @@ function proactiveLinkIfEnabled(
 	}
 }
 
-/**
- * Run the LLM fact extractor over freshly stored content and persist the
- * resulting facts. Best-effort: failures (no LLM, closed DB, malformed output)
- * are swallowed so they can never disrupt the synchronous `remember` that
- * scheduled them.
- */
+/** Run LLM fact extractor over freshly stored content and persist facts. */
 async function runFactExtraction(beam: BeamMemoryState, memoryId: string, content: string): Promise<void> {
 	try {
 		const extracted = await extractFactCategoriesSafe(content);
@@ -242,15 +235,7 @@ async function runFactExtraction(beam: BeamMemoryState, memoryId: string, conten
 	}
 }
 
-/**
- * Schedule background fact extraction for a stored memory. `remember` is
- * synchronous, so the async extractor is fired-and-forgotten; the promise is
- * tracked on `beam.pendingExtractions` so callers can drain it via
- * `flushExtractions()` (tests, graceful shutdown). The active runtime options
- * (host LLM `complete`, model, prompt overrides) are captured here and
- * re-entered inside the task because the AsyncLocalStorage scope set by
- * `Mnemopi.#withRuntimeOptions` has already exited by the time the task runs.
- */
+/** Schedule background fact extraction for a stored memory. */
 function scheduleFactExtraction(beam: BeamMemoryState, memoryId: string, content: string): void {
 	if (content.trim() === "") return;
 	const runtimeOptions = getMnemopiRuntimeOptions();
@@ -266,29 +251,10 @@ function rowToDict(row: Row): Row {
 	return { ...row };
 }
 
-/** Re-embedding batch size for a model-change rebuild — bounds each background
- *  embedding request instead of embedding the whole corpus in one call. */
+/** Re-embedding batch size for model-change rebuilds. */
 const EMBED_REBUILD_BATCH = 128;
 
-/**
- * Reconcile stored embeddings against the active embedding model at store open.
- *
- * Every `memory_embeddings` row is stamped with the model that produced it (see
- * `runEmbedding` in `helpers.ts`). When the configured embedding model changes,
- * its vector dimension changes too, so the previously-stored vectors are no
- * longer comparable. On a mismatch we wipe every stored vector — the
- * `memory_embeddings` table, the `episodic_memory.binary_vector` column, and the
- * sqlite-vec `vec_episodes` index — then enqueue all live memories for
- * background re-embedding under the new model via `scheduleEmbedding`.
- *
- * Runs once per store open; a fresh store (no embeddings) or an already-current
- * store is a no-op. The destructive wipe is skipped whenever it could not be
- * rebuilt — embeddings disabled via the runtime option OR the
- * `MNEMOPI_NO_EMBEDDINGS` env, or an unresolved (empty) active model — so a
- * stale-but-valid corpus is never destroyed without a replacement. MUST run
- * inside the active runtime-options scope so `currentEmbeddingModel()` /
- * `embeddingsDisabled()` reflect the per-instance configuration.
- */
+/** Reconcile stored embeddings against the active embedding model at store open. */
 export function reconcileEmbeddingModel(beam: BeamMemoryState): void {
 	if (embeddingsDisabled()) return;
 	const active = currentEmbeddingModel().trim();
@@ -338,10 +304,7 @@ export function reconcileEmbeddingModel(beam: BeamMemoryState): void {
 		return;
 	}
 
-	// No stale embeddings, but a previously-interrupted rebuild (a failed embed or a process
-	// exit after the wipe) can leave live memories with no active-model embedding. Treating an
-	// empty/partial table as "reconciled" would strand them FTS-only, so re-enqueue any live
-	// row still missing an active-model embedding.
+	// Re-enqueue live rows missing active-model embeddings.
 	const missing = beam.db
 		.query(`
 			SELECT id AS memoryId, COALESCE(embed_text, content) AS content FROM working_memory
@@ -671,18 +634,7 @@ export function get(beam: BeamMemoryState, memoryId: string): Row | null {
 	return getFact(beam, memoryId);
 }
 
-/**
- * Read-only resolution for ids minted from the `facts` table. `recall`
- * surfaces `facts.fact_id` as a result id (`factRecall`), so `get` must
- * resolve those ids too — otherwise every surfaced fact id is a dead end
- * for the read path (issue #4725). Visibility mirrors `factRecall`:
- * same-session facts plus explicitly global ones (`scope` is an optional
- * column on `facts`; `SELECT *` tolerates banks without it, in which case
- * only same-session facts resolve). The row is shaped like the
- * working/episodic hits with the full triple as content;
- * `memory_store: "fact"` marks it read-only — no update/forget/invalidate
- * path mutates `facts`.
- */
+/** Read-only resolution for fact ids. */
 function getFact(beam: BeamMemoryState, memoryId: string): Row | null {
 	const fact = beam.db.prepare("SELECT * FROM facts WHERE fact_id = ?").get(memoryId) as Row | null | undefined;
 	if (fact == null) return null;

@@ -2,8 +2,6 @@ import { batched, clamp, clamp01 } from "@veyyon/utils";
 import { normalizedRecallWeights, temporalHalflifeHours } from "../../config";
 import { parseQueryTime, recencyDecay, temporalBoost, toUtcIso } from "../../util/datetime";
 
-// Temporal scoring has one owner (util/datetime.ts). Re-export the two helpers
-// the recall surface has always exposed so callers keep importing them here.
 export { parseQueryTime, temporalBoost } from "../../util/datetime";
 
 import { unicodeWordTokens } from "../../util/regex";
@@ -68,22 +66,10 @@ type RecallMmrItem = {
 	readonly [key: string]: unknown;
 };
 
-/**
- * Default per-result content preview cap enforced by {@link recall}. Content
- * longer than this is clipped and the last character replaced with `…` so
- * callers see the truncation; the full row remains reachable via
- * `Mnemopi.get()` (and, in the coding-agent, `memory://<id>`). Overridable per
- * call via {@link RecallOptions.contentPreviewChars}.
- */
+/** Default per-result content preview cap. */
 export const RECALL_CONTENT_PREVIEW_CHARS = 500;
 
-/**
- * Clip `content` to at most `limit` characters, replacing the tail with `…`
- * when truncated so agents can distinguish a preview from a full row. Returns
- * the original string (and `truncated: false`) when the limit is 0/negative or
- * the content already fits. The single `…` occupies one character of the cap,
- * so a 500-char cap yields at most 499 real characters plus the marker.
- */
+/** Clip content to at most limit characters, appending ellipsis if truncated. */
 export function clipRecallContent(
 	content: string,
 	limit: number = RECALL_CONTENT_PREVIEW_CHARS,
@@ -97,10 +83,7 @@ export function clipRecallContent(
 }
 
 const DEFAULT_LIMIT = 500;
-// Symmetric query↔content token-overlap filtering uses the minimal core
-// function-word list owned by synonyms.ts (CORE_QUERY_STOP_WORDS). Keeping the
-// tighter core here (not the full query STOP_WORDS) preserves recall: only the
-// most common function words are dropped so topical tokens survive matching.
+// Use core query stop words for symmetric token-overlap filtering.
 const STOP_WORDS = CORE_QUERY_STOP_WORDS;
 
 const FACT_QUERY_FILLER_WORDS = new Set([
@@ -236,13 +219,7 @@ function lexicalGroupRelevance(
 	const contentLower = content.toLowerCase();
 	if (queryGroups.length > 1 && normalizedQuery.length > 0 && contentLower.includes(normalizedQuery)) return 1;
 	const contentTokens = new Set(tokenize(contentLower));
-	// One predicate owns "does any token in this group match the content":
-	// contentMatchesToken already covers exact-token, substring, AND the >=4-char
-	// bidirectional partial-substring case. A group counts once if any of its
-	// tokens matches. There is deliberately no second, weaker "partial" tier: the
-	// earlier revision had one, but it re-ran the identical >=4 predicate that
-	// contentMatchesToken had just rejected, so it could never fire (dead code and
-	// a duplicated predicate). Keep the single owner.
+	// Group matches if any of its tokens matches content.
 	let exact = 0;
 	for (const group of queryGroups) {
 		for (const token of group) {
@@ -363,13 +340,7 @@ function buildWhere(
 		clauses.push(`${prefix}source = ?`);
 		params.push(options.source);
 	}
-	// `topic` FAILS CLOSED rather than filtering something else. Neither `working_memory` nor
-	// `episodic_memory` has a topic column (only the `memoria_*` tables do), and this clause used
-	// to push `source = ?` bound to the topic value. That is a silent alias with two consequences,
-	// both invisible to the caller: `{ topic: "x" }` alone returned memories whose SOURCE is "x",
-	// which is a plausible-looking result set that answers a different question, and
-	// `{ source: "a", topic: "b" }` emitted `source = 'a' AND source = 'b'`, a self-contradicting
-	// filter that is always empty and reads as "no memories match" rather than as a bug.
+	// Topic filter fails closed on tables without topic column.
 	if (options.topic) {
 		throw new Error(
 			`recall() was given topic ${JSON.stringify(options.topic)}, but working and episodic memory have no ` +
@@ -609,10 +580,6 @@ function scoreCandidate(
 		temporalScore = Math.max(temporalScore, eventBoost);
 		score *= 1 + temporalWeight * temporalScore;
 	}
-	// Was a private eight-value table plus `?? VERACITY_WEIGHTS.unknown ?? 0.8`. The chain
-	// scored any value outside that table exactly like an unlabelled memory, without a word,
-	// which is what `contested` got for the whole time it was a member of the union in
-	// `./types`. `weightForVeracity` reads the one vocabulary and names what it does not know.
 	const veracityWeight = weightForVeracity(candidate.row.veracity);
 	const degradationTier = candidate.tierLabel === "episodic" ? numberOrDefault(candidate.row.tier, 1) : undefined;
 	if (candidate.tierLabel === "episodic") {

@@ -7,7 +7,6 @@ import { BeamMemory, type RecallOptions } from "./core/beam";
 import { addTriple, queryTriples } from "./core/triples";
 import { clampVeracity, VERACITY_DESCRIPTION, VERACITY_VALUES } from "./core/veracity";
 
-// The third copy of JSON in this package, now the same declaration as the other two.
 export type { JsonPrimitive, JsonValue } from "./types";
 
 import type { JsonValue } from "./types";
@@ -51,10 +50,6 @@ export const REMEMBER_SCHEMA = {
 		metadata: { type: "object", description: "Optional key-value metadata.", default: {} },
 		veracity: {
 			type: "string",
-			// The list comes from the vocabulary rather than being written out here, and it is
-			// given to the model at all because the schema used to say only "Confidence label",
-			// leaving a caller to guess a word. A guess outside the eight is clamped to
-			// `unknown`, so an invented label quietly cost the memory its weight.
 			enum: VERACITY_VALUES,
 			description: VERACITY_DESCRIPTION,
 			default: "unknown",
@@ -528,8 +523,6 @@ async function handleRemember(args: ToolArguments): Promise<ToolResult> {
 			metadata: metadataArg(args),
 			extractEntities: booleanArg(args, "extract_entities"),
 			extract: booleanArg(args, "extract"),
-			// Clamped here as well as declared in the schema: an MCP client is free to send a
-			// value the schema forbids, and this is the boundary that decides what to do with it.
 			veracity: clampVeracity(stringArg(args, "veracity", "unknown"), "mcp remember"),
 			scope: stringArg(args, "scope", "session"),
 		});
@@ -774,8 +767,6 @@ async function handleSharedRemember(args: ToolArguments): Promise<ToolResult> {
 			source: "surface_manual",
 			importance: clampLow(numberArg(args, "importance", 0.8), 0, 1),
 			metadata: { ...(metadataArg(args) ?? {}), shared_memory: true, surface_kind: kind },
-			// Clamped here as well as declared in the schema: an MCP client is free to send a
-			// value the schema forbids, and this is the boundary that decides what to do with it.
 			veracity: clampVeracity(stringArg(args, "veracity", "unknown"), "mcp remember"),
 			scope: "global",
 		});

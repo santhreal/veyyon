@@ -52,11 +52,6 @@ const EPISODIC_VERACITY_WEIGHT = {
 
 type EpisodicVeracity = keyof typeof EPISODIC_VERACITY_WEIGHT;
 
-// Read through `../../config`, the one owner of every MNEMOPI_* knob, rather than by
-// calling `envInt` on the same variable names a second time. Both copies existed with
-// byte-identical defaults, which is the duplication that costs nothing until someone
-// tunes one of them: nothing compares the two, so the tier boundary the consolidator
-// applies and the one `config.tier2Days()` reports would simply stop agreeing.
 const SLEEP_BATCH_SIZE = sleepBatchSize();
 const TIER2_DAYS = tier2Days();
 const TIER3_DAYS = tier3Days();
@@ -358,17 +353,7 @@ function timelineDate(description: string): string | null {
 	return /\b\d{4}-\d{2}-\d{2}\b/.exec(description)?.[0] ?? null;
 }
 
-/**
- * Populate the episodic graph (gists, facts, edges) for a freshly consolidated
- * memory. The graph backs Polyphonic Recall's `graph` voice, which relies on
- * `findGistsByParticipant`, `findFactsBySubject`, and `findRelatedMemories`.
- *
- * Best-effort: failures (closed DB, missing optional tables) MUST NOT roll back
- * the consolidation that already wrote the episodic row, so any throw here is
- * swallowed. Unlike the proactive-link path in `store.ts` this is unconditional
- * — consolidation is the explicit "settle and compress" step where the graph
- * is supposed to gain edges.
- */
+/** Populate episodic graph for freshly consolidated memory. */
 function ingestIntoEpisodicGraph(beam: BeamMemoryState, memoryId: string, summary: string): void {
 	try {
 		const graph =
