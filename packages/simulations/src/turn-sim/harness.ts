@@ -1,36 +1,3 @@
-/**
- * Deterministic, offline turn simulations.
- *
- * Every other AgentSession suite in this tree hands `Agent` a bespoke
- * `streamFn`, which skips the whole provider transport: the lazy-stream
- * wrapper, its idle/first-event watchdog, the loop guard, the retry
- * classifier. Those are exactly the layers that decide whether a wedged turn
- * ends or hangs, so a suite that bypasses them can only ever simulate a
- * provider that behaves.
- *
- * This harness drives the real path instead:
- *
- *   AgentSession -> Agent -> createSettingsAwareStreamFn(settings)
- *     -> streamSimple -> stream() -> loop guard -> stream<Provider>
- *     -> createLazyStream/forwardStream (idle watchdog, abort tracker, limits)
- *     -> the scripted module installed here
- *
- * Builtin lazy provider modules expose module overrides for tests (e.g.
- * `setBedrockProviderModule`, `setAnthropicProviderModule`,
- * `setOpenAICompletionsProviderModule`, `setGoogleProviderModule`, etc.),
- * which route through the real production streaming pipeline and lazy
- * watchdogs without making external network calls.
- * Determinism rules this file exists to enforce:
- *  - No wall-clock sleeps anywhere. Scripts advance on promises the test
- *    resolves, and the only real timers are the product's own watchdogs.
- *  - Those watchdogs run on budgets the simulation configures through the
- *    shipped settings (`providers.streamIdleTimeoutSeconds`,
- *    `providers.streamFirstEventTimeoutSeconds`), not on their 100s/120s
- *    production defaults.
- *  - A scenario whose failure mode is "never terminates" is asserted by
- *    awaiting the turn. A hang fails the test by timing out; there is no
- *    assertion that can be satisfied by a stuck session.
- */
 import * as fs from "node:fs/promises";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
 import type {
@@ -79,139 +46,37 @@ import { type } from "arktype";
 
 const SIM_API = "bedrock-converse-stream" as const;
 
-/**
- * Watchdog budgets every simulation runs under, in seconds (the unit the
- * shipped setting takes). 0.3s is long enough that a healthy scripted stream
- * on a loaded container never trips it (its events are microtask-adjacent) and
- * short enough that a genuinely silent provider is caught inside a test
- * timeout.
- */
 export const SIM_IDLE_BUDGET_SECONDS = 0.3;
 export const SIM_FIRST_EVENT_BUDGET_SECONDS = 0.3;
-
-/**
- * Price every simulated token at the same rate. A scenario asserting cost then
- * states `tokens * SIM_COST_PER_TOKEN` rather than reproducing a price table,
- * and a rate this large keeps the products exact in floating point.
- */
 export const SIM_COST_PER_TOKEN = 0.001;
 
 /** Handle a script uses to emit provider events for one turn. */
 export interface ScriptedTurn {
-	/** The live provider stream. Push raw events for shapes the helpers omit. */
 	readonly stream: AssistantMessageEventStream;
-	/** 1-based index of this provider call within the simulation. */
 	readonly call: number;
-	/**
-	 * The model this call was routed to. A session can switch models between
-	 * turns, or in the middle of one, and this is the only place a scenario can
-	 * see which model actually served a request rather than which one the session
-	 * says it holds now.
-	 */
 	readonly model: Model<Api>;
-	/** The context the agent sent, so a script can react to conversation state. */
 	readonly context: Context;
-	/** The provider-side abort signal, i.e. what a user cancel reaches. */
 	readonly signal: AbortSignal | undefined;
-	/**
-	 * What the loop demanded of this call, when it demanded anything: `required`
-	 * forces some tool, a name forces that one. A forced choice is queued by one
-	 * turn and spent by the next, so this is the only way a scenario can see that
-	 * a reminder's demand reached the provider, or that it leaked onto a later
-	 * turn it was never meant for.
-	 */
 	readonly toolChoice: ToolChoice | undefined;
-	/**
-	 * The pair providers route prompt caching on: they use
-	 * `promptCacheKey ?? sessionId`. Every side request the session makes for the
-	 * same conversation (compaction, a summary, an advisor) is supposed to send
-	 * what the live turns sent, so this is the only place a scenario can see a
-	 * request that would cold-miss the cache the live turns paid to populate.
-	 */
 	readonly cacheRouting: { readonly sessionId: string | undefined; readonly promptCacheKey: string | undefined };
-	/**
-	 * The options the request was actually made with, after
-	 * `createSettingsAwareStreamFn` layered the operator's settings onto whatever
-	 * the session passed. This is the only place a scenario can see that a knob
-	 * reached the wire: watchdog budgets, the in-flight cap, the loop guard, the
-	 * thinking-summary switch and the api-gated ones are all resolved there and
-	 * are invisible in the context.
-	 */
 	readonly options: SimpleStreamOptions | undefined;
-	/** Emit a complete text block. */
 	text(value: string): void;
-	/**
-	 * Emit a complete reasoning block. A `signature` is what a provider hands
-	 * back to prove the block is replayable verbatim; a block without one is
-	 * reasoning the session may not send back unchanged.
-	 */
 	thinking(value: string, signature?: string): void;
-	/** Emit `thinking_start` + a delta and never close it: reasoning cut short. */
 	openThinking(partialValue: string): void;
-	/** Emit a complete tool call block. */
 	toolCall(name: string, args: Record<string, unknown>, id?: string, intent?: string): void;
-	/** Emit `toolcall_start` + a partial argument delta and never close it. */
 	openToolCall(name: string, partialArgs: string, id?: string, intent?: string): void;
-	/**
-	 * Emit a tool call block a provider's own exec channel already dispatched.
-	 *
-	 * Cursor's exec channel runs the tool through a caller-supplied handler
-	 * INSIDE the provider stream and synthesizes the `toolCall` block before
-	 * awaiting it, so the call may have finished, may still be running, and may
-	 * have applied half its work. `kCursorExecResolved` is the marker that says
-	 * so, and it is the only shape in the product that makes a failed batch
-	 * genuinely unsafe to replay. Stamping it here is what lets a scenario reach
-	 * that decision without a Cursor transport.
-	 */
 	execResolvedToolCall(name: string, args: Record<string, unknown>, id?: string, intent?: string): void;
-	/**
-	 * Report what this request cost. Providers stream usage and the turn's stored
-	 * assistant message carries it; a simulation that never sets it leaves every
-	 * token count at zero, which is what makes a spend or budget assertion
-	 * meaningless. Cost is derived from the token counts at a flat rate so a
-	 * scenario states one number per field.
-	 */
 	usage(counts: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }): void;
-	/**
-	 * Terminate the turn normally. The reasons a provider can END a stream with
-	 * are these three; `aborted` and `error` arrive on other events, so they are
-	 * not spellable here.
-	 */
 	finish(reason?: "stop" | "toolUse" | "length"): void;
-	/**
-	 * Terminate the turn with a provider error the retry classifier will see.
-	 *
-	 * `errorId` is how a real provider says what KIND of fault this was, and it is
-	 * not decoration: several genuinely transient faults do not say so in their
-	 * prose. OpenAI's "stream closed before a terminal finish reason was
-	 * received" classifies to 0 from text alone and is only retryable because the
-	 * throw site attaches `Flag.Transient` for `kind: "incomplete-stream"`. A
-	 * scenario that omits the id therefore measures the text classifier rather
-	 * than the decision under test.
-	 */
 	fail(message: string, errorId?: number): void;
-	/** Report local work in flight, the way a server-driven tool bridge does. */
 	trackLocalWork(work: Promise<unknown>): Promise<void>;
-	/**
-	 * Called every time the watchdog consults this stream's local-work state at
-	 * an expired deadline. The only causal hook a simulation has for "the idle
-	 * budget has genuinely been exceeded", so scenarios never guess durations.
-	 */
 	onLocalWorkProbe(callback: (probeCount: number) => void): void;
 }
 
 /** One provider call, scripted. Return when the turn's events are all queued. */
 export type ProviderScript = (turn: ScriptedTurn) => void | Promise<void>;
 
-/**
- * The stream the scripted module returns.
- *
- * `forwardStream` only consults `hasPendingLocalWork` when a deadline has
- * ALREADY expired, so overriding the getter gives a simulation a causal signal
- * that the watchdog budget was genuinely exceeded. Without it a local-work
- * scenario would have to guess a duration, which is the flake this lane exists
- * to eliminate.
- */
+/** Simulated provider stream with local-work probe hook. */
 class SimulatedProviderStream extends AssistantMessageEventStream {
 	probeCount = 0;
 	onProbe: ((probeCount: number) => void) | undefined;
@@ -243,9 +108,6 @@ function createSimulatedStream<TApi extends Api>(
 	return stream;
 }
 
-// Installed once at module load. The overrides are stable dispatchers across
-// all builtin lazy providers: tests swap the script, never the module, so nothing
-// races the lazy loader's cache.
 setBedrockProviderModule({ streamBedrock: (m, c, o) => createSimulatedStream(m, c, o) });
 setAnthropicProviderModule({ streamAnthropic: (m, c, o) => createSimulatedStream(m, c, o) });
 setOpenAICompletionsProviderModule({ streamOpenAICompletions: (m, c, o) => createSimulatedStream(m, c, o) });
@@ -259,21 +121,7 @@ setDevinProviderModule({ streamDevin: (m, c, o) => createSimulatedStream(m, c, o
 setAzureOpenAIResponsesProviderModule({ streamAzureOpenAIResponses: (m, c, o) => createSimulatedStream(m, c, o) });
 setOpenAICodexResponsesProviderModule({ streamOpenAICodexResponses: (m, c, o) => createSimulatedStream(m, c, o) });
 
-/**
- * The shipped output-loop guard sits between this harness and `AgentSession`
- * (see the route in the header) and it watches EVERY model's stream, thinking
- * and visible text alike. So a script that emits `"reply chunk. ".repeat(300)`
- * is not scripting a long answer: it is scripting the exact degenerate loop the
- * product is built to abort, and the turn comes back as a retryable stall with
- * its usage discarded. Three compaction suites were written that way, and when
- * the guard stopped being Gemini-only they measured a re-sample storm instead of
- * a session that grows: no tokens accumulated, so no threshold was ever crossed
- * and `compactions: 1` became `0`.
- *
- * Every scripted payload therefore goes through the real detector before it is
- * streamed, and a payload the product would abort fails the simulation here,
- * loudly, at the line that wrote it. Bulk goes through {@link bulkProse}.
- */
+/** Verify scripted text/thinking does not trip the output-loop detector. */
 function assertScriptedPayloadIsNotALoop(kind: "text" | "thinking", value: string): void {
 	const detector = new ThinkingLoopDetector();
 	const detail = detector.push(value) ?? detector.flush();
@@ -284,11 +132,7 @@ function assertScriptedPayloadIsNotALoop(kind: "text" | "thinking", value: strin
 	);
 }
 
-/**
- * Vocabulary for {@link bulkProse}. Ordinary words, deliberately unremarkable:
- * the point is volume that reads like prose to every detector in the guard, not
- * plausible content.
- */
+/** Deterministic filler vocabulary for bulkProse. */
 const FILLER_WORDS = [
 	"parser",
 	"buffer",
@@ -324,15 +168,7 @@ const FILLER_WORDS = [
 	"reader",
 ] as const;
 
-/**
- * `words` words of deterministic filler that is BULKY without being a loop.
- *
- * The three shapes the guard recognizes are all avoided on purpose, and the
- * harness's own lock is what proves it: no phrase repeats back-to-back (the
- * index strides the lexicon), consecutive paragraphs share almost no word
- * trigrams, and every 24th word is a fresh `snake_case` anchor, which is what
- * keeps a lexical-stall run from building over a long answer.
- */
+/** Deterministic filler text that avoids loop detector patterns. */
 export function bulkProse(words: number, tag = "sim"): string {
 	const out: string[] = [];
 	for (let i = 0; i < words; i += 1) {
@@ -383,9 +219,6 @@ async function runScript(
 			arguments: args,
 			...(intent !== undefined ? { intent } : {}),
 		};
-		// The one marker that makes a batch replay-unsafe. Set on the block the
-		// stream carries, so it travels the same route a Cursor exec-channel call
-		// takes: every layer between here and the agent loop spreads blocks.
 		if (execResolved) (block as CursorExecResolvedCarrier)[kCursorExecResolved] = true;
 		const index = content.length;
 		content.push(block);
@@ -458,8 +291,6 @@ async function runScript(
 			const output = counts.output ?? 0;
 			const cacheRead = counts.cacheRead ?? 0;
 			const cacheWrite = counts.cacheWrite ?? 0;
-			// One flat rate per token so a scenario can state an expected cost as a
-			// count times the rate instead of carrying a price table.
 			const rate = SIM_COST_PER_TOKEN;
 			partial.usage = {
 				input,
@@ -519,11 +350,7 @@ export function resetScript(): void {
 	callCount = 0;
 }
 
-/**
- * A script built from a fixed list of per-call behaviours. Calls past the end
- * of the list reuse the last entry, which keeps a runaway loop scripted rather
- * than crashing on an exhausted iterator.
- */
+/** Fixed list of per-call behaviours. */
 export function scriptTurns(...turns: ProviderScript[]): ProviderScript {
 	return async turn => {
 		const step = turns[Math.min(turn.call, turns.length) - 1];
@@ -550,37 +377,11 @@ export function simulatedModel(id = "sim-model", options?: SimulatedModelOptions
 }
 
 export interface SimulatedModelOptions {
-	/** API family for real adapter path routing (e.g. "openai-completions", "anthropic-messages", etc.) */
 	api?: Api;
-	/**
-	 * Provider id. Keep the bedrock default unless a scenario needs another
-	 * provider's settings surface (e.g. `ollama-cloud` is the one provider with
-	 * a `maxConcurrency` semaphore). The scripted transport keys off the API,
-	 * so any provider id still routes to the script.
-	 */
 	provider?: string;
-	/** Shrink the window when a scenario needs compaction to engage. */
 	contextWindow?: number;
-	/**
-	 * Declare the model as a reasoning model. The capability is what the session
-	 * consults before it offers a thinking level, so a scenario that scripts
-	 * reasoning blocks sets it rather than relying on the provider accepting
-	 * blocks from a model that claims it cannot produce them.
-	 */
 	reasoning?: boolean;
-	/**
-	 * Effort ladder the model declares. A declared ladder is what the session
-	 * consults before it offers `auto` anything to pick, and a synthetic id
-	 * derives none, so a scenario that drives the difficulty classifier states
-	 * the ladder rather than hoping identity invents one.
-	 */
 	efforts?: readonly Effort[];
-	/**
-	 * Declare image input. The image policy at the session's provider-context
-	 * seam reads the serving model's capability, so a scenario that puts an
-	 * image in history needs both arms: text-only (the image must not reach the
-	 * provider) and vision (it must).
-	 */
 	vision?: boolean;
 }
 
@@ -603,20 +404,7 @@ export function simTool(
 	} as AgentTool;
 }
 
-/**
- * A tool whose result is large and never byte-identical to its own earlier
- * results.
- *
- * A scenario that wants "a history worth compacting" reaches for a constant
- * body, and a constant body makes the history redundant by construction: the
- * session's tier-0 pass elides a tool result that duplicates a newer one before
- * it considers summarizing at all, so a fixture built that way stops testing
- * compaction and starts testing the dedup (a threshold crossing it brings back
- * under the bar is not compacted, and a recovery has nothing left worth
- * summarizing). The body is the same size every call, with the call's own
- * ordinal appended, so the results are distinct and every pass downstream still
- * sees the size the scenario intended.
- */
+/** Tool whose result is large and distinct across calls. */
 export function bulkTool(name = "work", lines = 900): AgentTool {
 	let call = 0;
 	return simTool(name, async () => {
@@ -630,47 +418,14 @@ export interface SimulationOptions {
 	tools?: AgentTool[];
 	settings?: Record<string, unknown>;
 	modelId?: string;
-	/** Model options (provider id, context window) for the simulated model. */
 	model?: SimulatedModelOptions;
-	/**
-	 * Mirror the production wiring in sdk.ts: the settings-aware stream fn
-	 * wrapped in the per-provider concurrency limiter. Off by default because
-	 * only providers with a `maxConcurrency` setting (ollama-cloud) get a
-	 * semaphore; pair with `model: { provider: "ollama-cloud" }`.
-	 */
 	providerConcurrency?: boolean;
-	/** Stream-matched rule engine, when a scenario needs rules to fire. */
 	ttsrManager?: TtsrManager;
-	/**
-	 * Write the transcript through the real session writer into an in-memory
-	 * store, so {@link Simulation.reopen} can read it back the way a new process
-	 * does. Off by default: a simulation that never reopens should not pay for the
-	 * writer, and `inMemory` (persist off) is what every other scenario runs on.
-	 */
 	persist?: boolean;
-	/**
-	 * A `models.yml` written into the simulation's config directory before the
-	 * registry loads it, in the shape the shipped loader takes
-	 * (`{ providers: { <name>: { modelOverrides: { <id>: { ... } } } } }`). YAML is
-	 * a superset of JSON, so the object is serialized as JSON.
-	 *
-	 * This is the only way to reach code that resolves one catalog model against
-	 * another: context promotion and per-model compaction both read a field
-	 * (`contextPromotionTarget`, `compactionModel`) off the ACTIVE model and look
-	 * the named model up in the registry's available set. A synthetic
-	 * {@link simulatedModel} is in neither the catalog nor the registry, so a
-	 * scenario that needs those paths overrides a real bundled model here and
-	 * sets the session to it (`session.setModel(registry.find(provider, id)!)`).
-	 */
 	modelsConfig?: Record<string, unknown>;
 }
 
-/**
- * One provider request as the SESSION made it: the model it names and the
- * options it carries before any api-specific projection. `tools` is 0 for a side
- * request (a compaction summary, a handoff, a branch summary), because those are
- * asked without the conversation's tools.
- */
+/** One provider request as the session made it. */
 export interface SimulationRequest {
 	call: number;
 	provider: string;
@@ -684,37 +439,15 @@ export interface Simulation {
 	readonly sessionManager: SessionManager;
 	readonly modelRegistry: ModelRegistry;
 	readonly events: AgentSessionEvent[];
-	/** Events of one type, in order. */
 	eventsOfType<T extends AgentSessionEvent["type"]>(type: T): Array<Extract<AgentSessionEvent, { type: T }>>;
-	/** Number of provider calls the simulation has served. */
 	providerCalls(): number;
-	/**
-	 * Every request the session and the loop handed the transport, in call order.
-	 * The scripted-turn `options` see one api's projection of these; this sees
-	 * what the session actually asked for.
-	 */
 	sessionRequests(): SimulationRequest[];
-	/** The file the transcript is written to, when `persist` is on. */
 	sessionFile(): string | undefined;
-	/**
-	 * Reopen a stored transcript the way a new process does: a second agent and
-	 * session, over a second manager, reading the same store. Requires `persist`.
-	 * The returned simulation owns its own session and must be disposed too.
-	 *
-	 * `sessionFile` defaults to this simulation's own file. Naming another one is
-	 * how a scenario reads a session it is no longer on, which is the only way to
-	 * see what a fork left behind in its parent.
-	 */
 	reopen(sessionFile?: string): Promise<Simulation>;
 	dispose(): Promise<void>;
 }
 
-/**
- * Settings shared by every simulation. Compaction is off (it would fire a
- * second, unscripted provider call), retries are fast and capped (the product
- * default is 10 attempts at 500ms base backoff, which is a wall-clock sleep by
- * another name), and the watchdog budgets are the ones above.
- */
+/** Settings shared by every simulation. */
 function simulationSettings(overrides: Record<string, unknown> | undefined): Settings {
 	return Settings.isolated({
 		"compaction.enabled": false,
@@ -727,12 +460,6 @@ function simulationSettings(overrides: Record<string, unknown> | undefined): Set
 	});
 }
 
-/**
- * Everything a session in one simulation shares with the session that reopens it:
- * the same credentials, the same settings, the same tool list, and above all the
- * same store, which is what makes a reopen read the bytes the first session wrote
- * rather than a copy of its memory.
- */
 interface SimulationScope {
 	tempDir: TempDir;
 	authStorage: AuthStorage;
@@ -751,24 +478,9 @@ function buildSimulation(scope: SimulationScope, ownsScope: boolean): Simulation
 		: SessionManager.inMemory(scope.tempDir.path(), scope.storage);
 
 	const baseStreamFn = createSettingsAwareStreamFn(settings);
-	// The stream fn the agent and every SIDE request share, exactly as sdk.ts
-	// builds it. A side request is one the session makes for itself rather than for
-	// the conversation: the compaction summary, a handoff, a branch summary.
-	// `AgentSession` falls back to bare `streamSimple` when no `sideStreamFn` is
-	// given, and a bare transport reads no settings at all, so without this a
-	// simulated compaction ran with the PRODUCTION 100s idle watchdog while the
-	// turn beside it ran on the simulation's 0.3s budget: a summarizer that went
-	// silent would hang the test out instead of being cut off, which is the one
-	// failure mode this harness exists to catch.
 	const sharedStreamFn = options.providerConcurrency
 		? wrapStreamFnWithProviderConcurrency(settings, baseStreamFn)
 		: baseStreamFn;
-	// Everything the session and the loop hand the transport, in call order,
-	// BEFORE `mapOptionsForApi` projects it onto one provider's option shape.
-	// That projection is api-keyed and drops what the api has no field for, so
-	// `serviceTier` never reaches the scripted bedrock module and `turn.options`
-	// cannot see it. A scenario asking whether an operator knob reached the
-	// request the session made therefore reads it here.
 	const requests: SimulationRequest[] = [];
 	const recordingStreamFn: typeof sharedStreamFn = (model, context, streamOptions) => {
 		requests.push({
@@ -780,12 +492,6 @@ function buildSimulation(scope: SimulationScope, ownsScope: boolean): Simulation
 		});
 		return sharedStreamFn(model, context, streamOptions);
 	};
-	// The loop asks the HOST for the turn's tool-choice directive; the session is
-	// what answers, and it is built after the agent, so the callback reads a
-	// binding assigned below. This is the same shape production uses (sdk.ts), and
-	// without it a forced choice a settle reminder queues is queued into nothing:
-	// the demand is spent by the loop, never reaches the provider, and a
-	// simulation would report a reminder working when it does not.
 	let host: AgentSession | undefined;
 	const agent = new Agent({
 		getApiKey: () => "simulation-key",
@@ -807,11 +513,6 @@ function buildSimulation(scope: SimulationScope, ownsScope: boolean): Simulation
 		modelRegistry: scope.modelRegistry,
 		toolRegistry: scope.toolRegistry,
 		sideStreamFn: recordingStreamFn,
-		// `tier.openai` / `tier.anthropic` / `tier.google` reach a session only
-		// through this map (sdk.ts builds it the same way). Without it every
-		// simulated request carries no service tier at all, so a scenario asserting
-		// the operator's tier on the wire would pass for the wrong reason: absent
-		// everywhere looks like agreement.
 		serviceTierByFamily: buildServiceTierByFamily(
 			settings.get("tier.openai"),
 			settings.get("tier.anthropic"),
@@ -842,8 +543,6 @@ function buildSimulation(scope: SimulationScope, ownsScope: boolean): Simulation
 			if (!options.persist) throw new Error("reopen needs `persist: true`: nothing was written to read back");
 			const target = sessionFile ?? sessionManager.getSessionFile();
 			if (!target) throw new Error("the simulation stored no session file");
-			// The writer is asynchronous, so a reopen that skipped this would read a
-			// prefix of the transcript and report a loss the product did not have.
 			await sessionManager.flush();
 			const reopened = buildSimulation(scope, false);
 			if (!(await reopened.session.switchSession(target))) {
@@ -854,9 +553,6 @@ function buildSimulation(scope: SimulationScope, ownsScope: boolean): Simulation
 		},
 		async dispose() {
 			await session.dispose();
-			// The scope belongs to the simulation that created it: a reopened session
-			// disposing the shared credentials or the temp dir would pull them out from
-			// under the original, whose `dispose` runs in the same `afterEach`.
 			if (!ownsScope) return;
 			scope.authStorage.close();
 			scope.tempDir.removeSync();
@@ -870,25 +566,14 @@ export async function createSimulation(options: SimulationOptions): Promise<Simu
 	installScript(options.script);
 	const tempDir = TempDir.createSync("@pi-simulation-");
 	const authStorage = await AuthStorage.create(`${tempDir.path()}/auth.db`);
-	// The session refuses to prompt a provider it holds no credential for, so
-	// the simulation registers a runtime key. Nothing reads it: the scripted
-	// module replaces the transport before any request is shaped.
 	authStorage.setRuntimeApiKey("amazon-bedrock", "simulation-key");
 	if (options.model?.provider) {
 		authStorage.setRuntimeApiKey(options.model.provider, "simulation-key");
 	}
 	const modelsConfigFile = `${tempDir.path()}/models.yml`;
-	// Written before the registry exists: the loader reads the file on
-	// construction and caches it by mtime, so a later write would not be seen.
 	if (options.modelsConfig) {
 		await fs.writeFile(modelsConfigFile, JSON.stringify(options.modelsConfig, null, 2), "utf8");
 	}
-	// The session keeps its own registry of every tool it can run, and several
-	// production paths ask it rather than the agent state: plan-mode convergence
-	// refuses to force a decision unless `ask` and `resolve` are both registered,
-	// and a renamed tool is resolved through it. A simulation whose registry was
-	// empty could not reach those paths at all, so the same list the agent gets is
-	// registered here, keyed by name exactly as production does.
 	const tools = options.tools ?? [];
 	return buildSimulation(
 		{
@@ -905,14 +590,7 @@ export async function createSimulation(options: SimulationOptions): Promise<Simu
 	);
 }
 
-/**
- * Await a condition the session drives, without a sleep.
- *
- * Every hook a simulation needs is an emitted `AgentSessionEvent`, so this
- * subscribes and re-checks on each event instead of polling a clock. If the
- * condition never holds the returned promise never settles, and the test times
- * out. That is deliberate: a stuck session must fail, not pass late.
- */
+/** Await a condition the session drives without a sleep. */
 export function whenSessionEvent(
 	session: AgentSession,
 	predicate: (event: AgentSessionEvent) => boolean,
