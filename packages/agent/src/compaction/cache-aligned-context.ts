@@ -13,8 +13,6 @@ const PREFIX_CACHE_WIRE_APIS: Record<string, true> = {
 /** Whether this model's host serves prompt-prefix cache hits for a replayed */
 export function modelServesPrefixCacheHits(model: Model<Api>): boolean {
 	if (!PREFIX_CACHE_WIRE_APIS[model.api]) return false;
-	// Narrowed by the api gate above: every anthropic-messages model carries the
-	// resolved anthropic compat record.
 	const compat = model.compat as ResolvedAnthropicCompat;
 	return compat.supportsLongCacheRetention === true;
 }
@@ -47,16 +45,10 @@ export interface CacheAlignedEligibility {
 /** Whether a cache-aligned summarization request is safe for this compaction. */
 export function canUseCacheAlignedCompaction(input: CacheAlignedEligibility): boolean {
 	const { model, sessionSystemPrompt, sessionMessages } = input;
-	// A host that does not serve prefix cache hits bills the whole replayed window
-	// as fresh input, strictly worse than the truncated request.
 	if (!modelServesPrefixCacheHits(model)) return false;
-	// Without the session's own system prompt the request diverges at the very first
-	// cached block, so nothing after it can hit either.
 	if (!sessionSystemPrompt || sessionSystemPrompt.length === 0) return false;
 	if (sessionSystemPrompt.every(block => block.length === 0)) return false;
-	// Nothing to replay, and no trailing breakpoint to hit.
 	if (!sessionMessages || sessionMessages.length === 0) return false;
-	// Appending a user turn after an unanswered tool call is an invalid request.
 	if (hasUnansweredToolCall(sessionMessages)) return false;
 	return true;
 }

@@ -9,7 +9,6 @@ import {
 	trace,
 } from "@opentelemetry/api";
 import type { AssistantMessage, Message, Model, ServiceTier, StopReason, ToolChoice, Usage } from "@veyyon/ai";
-// Import from types submodule to avoid loading the full ai package entrypoint.
 import { shouldSendServiceTier } from "@veyyon/ai/types";
 import { stringifyJsonSafe } from "@veyyon/utils/json";
 import { AgentRunCollector, type AgentRunCoverage, type AgentRunSummary, type ToolStatus } from "./run-collector";

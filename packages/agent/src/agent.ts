@@ -22,8 +22,6 @@ import type {
 	ToolChoice,
 	ToolResultMessage,
 } from "@veyyon/ai";
-// One runtime name, from the module that declares it: eighteen types alongside it are erased and
-// free, and taking the nineteenth from the entry point was buying the whole package for it.
 import { streamSimple } from "@veyyon/ai/stream";
 import type { HarmonyAuditEvent } from "@veyyon/ai/utils/harmony-leak";
 import { preferredDialect } from "@veyyon/catalog/identity";
@@ -642,7 +640,6 @@ export class Agent {
 		this.#emit(event);
 	}
 
-	// State mutators
 	setSystemPrompt(v: string[] | string) {
 		this.#state.systemPrompt = typeof v === "string" ? [v] : v;
 	}

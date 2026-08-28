@@ -60,8 +60,6 @@ export class StablePrefix {
 	}
 }
 
-// AppendOnlyLog
-
 /** Append-only message log at the `Message[]` (provider-level) layer. */
 export class AppendOnlyLog {
 	#entries: Message[] = [];
@@ -105,8 +103,6 @@ export class AppendOnlyLog {
 		this.#entries = [];
 	}
 }
-
-// AppendOnlyContextManager
 
 /** Manages a stable prefix + append-only log for the agent loop. */
 export class AppendOnlyContextManager {

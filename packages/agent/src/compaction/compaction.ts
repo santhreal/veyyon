@@ -49,15 +49,12 @@ import {
 	stripRemoteCompactionPreserveData,
 } from "./remote-compaction-entry";
 import { requestRemoteCompaction } from "./remote-summarizer";
-// The trigger decision moved to the module whose header owns it, and is re-exported below so no caller
-// changed. What is left here is the ENGINE: the summarizer, the cut point, the provider round trip.
 import {
 	AUTO_COMPACTION_THRESHOLD,
 	type CompactionSettings,
 	DEFAULT_RESERVE_TOKENS,
 	resolveThresholdTokens,
 } from "./threshold";
-// The estimator moved to the module whose header owns it, and is re-exported below so no caller changed.
 import { estimateTokens } from "./token-estimate";
 import { collectToolCallsById, isSkillReadToolResult } from "./tool-protection";
 
@@ -87,8 +84,6 @@ import {
 	transformMessagesForSummary,
 	upsertFileOperations,
 } from "./utils";
-
-// File Operation Tracking
 
 /** Details stored in CompactionEntry.details for file tracking */
 export interface CompactionDetails {
@@ -123,8 +118,6 @@ function extractFileOperations(
 
 	return fileOps;
 }
-
-// Message Extraction
 
 /** Extract AgentMessage from an entry if it produces one. */
 function getMessageFromEntry(
@@ -163,10 +156,6 @@ export interface CompactionResult<T = unknown> {
 	/** Hook-provided data to persist alongside compaction entry. */
 	preserveData?: Record<string, unknown>;
 }
-
-// Types
-
-// Token calculation
 
 /** Calculate total context tokens from usage. */
 export function calculateContextTokens(usage: Usage): number {
@@ -214,7 +203,6 @@ export function compactionContextTokens(providerContextTokens: number, storedCon
 	return Math.max(Math.max(0, providerContextTokens), Math.max(0, storedConversationEstimate));
 }
 
-// Cut point detection
 function estimateEntriesTokens(entries: SessionEntry[], startIndex: number, endIndex: number): number {
 	let total = 0;
 	for (let i = startIndex; i < endIndex; i++) {
@@ -300,11 +288,6 @@ export function findCutPoint(
 ): CutPointResult {
 	const cutPoints = findValidCutPoints(entries, startIndex, endIndex);
 
-	// No valid cut point anywhere in the range means nothing can be kept on a
-	// boundary. Fall through with `startIndex` rather than returning: the
-	// dead-end guard below turns that into "keep nothing" when the range is over
-	// budget, and leaves it alone when the session is genuinely small.
-
 	// Walk backwards from newest, accumulating estimated message sizes
 	let accumulatedTokens = 0;
 	let cutIndex = cutPoints.length > 0 ? cutPoints[0] : startIndex; // Default: keep from first message (not header)
@@ -333,24 +316,6 @@ export function findCutPoint(
 					break;
 				}
 			}
-			// No valid cut point at or after the crossing entry. The budget was blown
-			// inside the newest turn, which one enormous tool result is enough to do:
-			// a result is never a valid cut point, because cutting there would
-			// separate it from the call it answers, so nothing behind it is usable.
-			//
-			// The turn's own start IS a valid cut point, and keeping the newest turn
-			// is now safe: prepareCompaction elides the oversized result inside the
-			// kept tail, so the bulk leaves the context without taking the user's
-			// latest message and the assistant's reasoning with it. Both older
-			// answers were wrong. Keeping from the newest valid point, the assistant
-			// message CARRYING the call, retained the whole result and freed nothing
-			// however often compaction ran: a warning every turn against a full
-			// gauge. Keeping nothing sent the entire newest turn, the most
-			// informative part of the session, to the summarizer, bulk and all.
-			//
-			// No turn start inside the range means the turn's opening was summarized
-			// by an earlier pass, so no cut here keeps call and result together:
-			// keep nothing and let the summary stand in for the whole range.
 			if (!found) {
 				const turnStart = findTurnStartIndex(entries, i, startIndex);
 				cutIndex = turnStart === -1 ? endIndex : turnStart;
@@ -374,16 +339,6 @@ export function findCutPoint(
 		cutIndex--;
 	}
 
-	// Dead-end guard: a cut at `startIndex` keeps the ENTIRE range, so there is
-	// nothing to summarize and `prepareCompaction` refuses — at exactly the
-	// moment the session is most over budget, and silently, which surfaces to the
-	// user as "Nothing to compact (session too small)" against a full gauge.
-	//
-	// Cut at the next valid point instead. When there is no next point the whole
-	// range is one unbreakable turn, and the only way to free anything is to
-	// summarize all of it and keep nothing: `endIndex` says exactly that.
-	// `crossedIndex === -1` means the range fits the budget, which is a genuinely
-	// small session and must still be refused.
 	if (cutIndex === startIndex && crossedIndex !== -1) {
 		let nextCutPoint = -1;
 		for (let c = 0; c < cutPoints.length; c++) {
@@ -412,8 +367,6 @@ export function findCutPoint(
 		isSplitTurn: !isUserMessage && turnStartIndex !== -1,
 	};
 }
-
-// Summarization
 
 const SUMMARIZATION_PROMPT = prompt.render(AGENT_PROMPTS["compaction/compaction-summary"].text);
 

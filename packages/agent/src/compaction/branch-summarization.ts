@@ -29,8 +29,6 @@ import {
 	upsertFileOperations,
 } from "./utils";
 
-// Types
-
 export interface BranchSummaryResult {
 	summary?: string;
 	readFiles?: string[];

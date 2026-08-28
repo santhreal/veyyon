@@ -579,6 +579,7 @@ export async function openBytes(key: CryptoKey, data: Uint8Array): Promise<Uint8
 	if (data.byteLength <= SEAL_IV_BYTES) {
 		throw new Error("Sealed frame too short");
 	}
+	const iv = new Uint8Array(data.subarray(0, SEAL_IV_BYTES));
 	const ciphertext = new Uint8Array(data.subarray(SEAL_IV_BYTES));
 	return new Uint8Array(await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv }, key, ciphertext));
 }

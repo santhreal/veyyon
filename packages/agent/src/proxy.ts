@@ -123,9 +123,7 @@ export function streamProxy(model: Model, context: Context, options: ProxyStream
 					if (errorData.error) {
 						errorMessage = `Proxy error: ${errorData.error}`;
 					}
-				} catch {
-					// Couldn't parse error response
-				}
+				} catch {}
 				throw new Error(errorMessage);
 			}
 
@@ -279,7 +277,7 @@ function processProxyEvent(
 				partialJsonByIndex.set(proxyEvent.contentIndex, acc);
 				content.arguments = parseStreamingJson(acc) || {};
 				setStreamingPartialJson(content, acc);
-				partial.content[proxyEvent.contentIndex] = { ...content }; // Trigger reactivity
+				partial.content[proxyEvent.contentIndex] = { ...content };
 				return {
 					type: "toolcall_delta",
 					contentIndex: proxyEvent.contentIndex,

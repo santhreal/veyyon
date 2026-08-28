@@ -151,7 +151,6 @@ export class AgentRunCollector {
 		const start = (span as SpanWithChatStart)[kChatStart];
 		(span as SpanWithChatStart)[kChatStart] = undefined;
 		const usage = message.usage;
-		// inputTokens includes base + cache read + cache write for total charged input.
 		const inputBase = usage?.input ?? 0;
 		const cachedInputTokens = usage?.cacheRead ?? 0;
 		const cacheWriteTokens = usage?.cacheWrite ?? 0;
