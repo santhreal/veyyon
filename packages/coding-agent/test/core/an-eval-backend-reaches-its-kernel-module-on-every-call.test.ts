@@ -130,13 +130,17 @@ describe.each(Object.keys(SEAMS))("the %s backend", id => {
 
 	it("asks its kernel module whether the runtime is available", async () => {
 		using tempDir = TempDir.createSync(`@veyyon-${id}-availability-seam-`);
-		const check = vi
-			.spyOn(seams.availabilityModule, seams.availabilityExport)
-			.mockResolvedValue({ ok: true } as never);
+		let checks = 0;
+		vi.spyOn(seams.availabilityModule, seams.availabilityExport).mockImplementation((async () => {
+			checks += 1;
+			return { ok: true };
+		}) as never);
 
 		const available = await backend().isAvailable(makeToolSession({ cwd: tempDir.path() }));
 
-		expect(check).toHaveBeenCalledTimes(1);
+		// Once, counted here rather than read off the spy: a backend that probed twice per
+		// availability check would double every interpreter launch.
+		expect(checks).toBe(1);
 		expect(available).toBe(true);
 	});
 
@@ -152,23 +156,27 @@ describe.each(Object.keys(SEAMS))("the %s backend", id => {
 
 	it("runs the cell through its executor module", async () => {
 		using tempDir = TempDir.createSync(`@veyyon-${id}-executor-seam-`);
-		const execute = vi.spyOn(seams.executorModule, seams.executorExport).mockResolvedValue({
-			output: "from the executor module",
-			exitCode: 0,
-			cancelled: false,
-			truncated: false,
-			totalLines: 1,
-			totalBytes: 24,
-			outputLines: 1,
-			outputBytes: 24,
-			displayOutputs: [],
-			stdinRequested: false,
-		} as never);
+		let runs = 0;
+		vi.spyOn(seams.executorModule, seams.executorExport).mockImplementation((async () => {
+			runs += 1;
+			return {
+				output: "from the executor module",
+				exitCode: 0,
+				cancelled: false,
+				truncated: false,
+				totalLines: 1,
+				totalBytes: 24,
+				outputLines: 1,
+				outputBytes: 24,
+				displayOutputs: [],
+				stdinRequested: false,
+			};
+		}) as never);
 		const session = makeToolSession({ cwd: tempDir.path() });
 
 		const result = await backend().execute("1 + 1", execOptions(tempDir.path(), session));
 
-		expect(execute).toHaveBeenCalledTimes(1);
+		expect(runs).toBe(1);
 		expect(result.output).toBe("from the executor module");
 	});
 });
