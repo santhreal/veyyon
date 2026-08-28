@@ -51,16 +51,16 @@ describe("subagent idle lifetime settings", () => {
  * rather than assumed from the schema.
  */
 describe("subagent prune budget settings", () => {
-	/** A fresh install prunes quiet agents after 5 minutes and waiting ones after 30. */
-	it("defaults to a five-minute quiet prune and a thirty-minute waiting prune", () => {
+	/** A fresh install prunes quiet agents after an hour and waiting ones after two. */
+	it("defaults to a one-hour quiet prune and a two-hour waiting prune", () => {
 		const settings = Settings.isolated();
 
 		expect(resolveSubagentPruneBudget(settings)).toEqual({
 			afterMs: DEFAULT_SUBAGENT_PRUNE_MS,
 			waitingAfterMs: DEFAULT_SUBAGENT_WAITING_PRUNE_MS,
 		});
-		expect(DEFAULT_SUBAGENT_PRUNE_MS).toBe(5 * 60_000);
-		expect(DEFAULT_SUBAGENT_WAITING_PRUNE_MS).toBe(30 * 60_000);
+		expect(DEFAULT_SUBAGENT_PRUNE_MS).toBe(60 * 60_000);
+		expect(DEFAULT_SUBAGENT_WAITING_PRUNE_MS).toBe(120 * 60_000);
 	});
 
 	/**
