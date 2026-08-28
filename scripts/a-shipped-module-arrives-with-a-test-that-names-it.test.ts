@@ -314,6 +314,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/mnemopi/embed-worker.ts",
 	"packages/coding-agent/src/modes/acp/acp-helpers.ts",
 	"packages/coding-agent/src/modes/components/advisor-message.ts",
+	"packages/coding-agent/src/modes/components/agent-dashboard-helpers.ts",
 	"packages/coding-agent/src/modes/components/agent-model-badge.ts",
 	"packages/coding-agent/src/modes/components/collab-prompt-message.ts",
 	"packages/coding-agent/src/modes/components/keybinding-hints.ts",
