@@ -5481,7 +5481,7 @@ export class AgentSession {
 				};
 				if (toolName === TOOL.todo) {
 					this.#mutationsSinceLastTodoTouch = 0;
-				} else if (!isError && MID_RUN_TODO_NUDGE_MUTATING_TOOLS[toolName]) {
+				} else if (!isError && toolName !== undefined && MID_RUN_TODO_NUDGE_MUTATING_TOOLS[toolName]) {
 					this.#mutationsSinceLastTodoTouch++;
 				}
 				this.#todoReminderAwaitingProgress = false;

@@ -108,6 +108,7 @@ import {
 	wrapRegisteredTools,
 } from "./extensibility/extensions";
 import type { RegisteredTool } from "./extensibility/extensions/types";
+import { LEGACY_TOOL_DEFINITION_MARKER } from "./extensibility/legacy-tool-marker";
 import {
 	loadSkills as loadSkillsInternal,
 	type Skill,
@@ -2311,11 +2312,7 @@ async function setupSessionToolsAndExtensions(params: {
 						logMCPLoadErrors(mcpResult.errors);
 						let discoveryEnabled = activation.mcpDiscoveryEnabled;
 						let activateAll = activation.activateAllMCPTools;
-						if (
-							__veyyon_shell("discoveryEnabled &&")(
-								await enableDeferredMCPDiscoveryForTools(liveSession, mcpResult.tools),
-							)
-						) {
+						if (!discoveryEnabled && (await enableDeferredMCPDiscoveryForTools(liveSession, mcpResult.tools))) {
 							discoveryEnabled = true;
 							activateAll = false;
 						}
@@ -3429,7 +3426,7 @@ async function initializeAgentAndSession(params: {
 		promptCacheKey: infra.providerPromptCacheKey,
 		deadline: options.deadline,
 		transformContext: messages => secrets.transformContext(messages, toolsExt.extensionRunner),
-		transformProviderContext: (context, _transformModel, requestRuntime) =>
+		transformProviderContext: (context: Context, _transformModel: Model, requestRuntime?: SecretRuntimeLease) =>
 			secrets.transformProviderContext(context, requestRuntime),
 		steeringMode: settings.get("steeringMode") ?? "one-at-a-time",
 		followUpMode: settings.get("followUpMode") ?? "one-at-a-time",
@@ -3476,8 +3473,12 @@ async function initializeAgentAndSession(params: {
 		cursorExecHandlers: toolsExt.cursorExecHandlers,
 		cursorRulesResolver: () => cursorContextFileRules(env.contextFiles),
 		transformToolCallArguments: (args, toolName) =>
-			secrets.transformToolCallArguments(args, toolName, modelState.argot, agent.sessionId, (level, msg, src) =>
-				sessionRef.session?.emitNotice(level, msg, src),
+			secrets.transformToolCallArguments(
+				args,
+				toolName,
+				modelState.argot,
+				agent.sessionId ?? "",
+				(level, msg, src) => sessionRef.session?.emitNotice(level, msg, src),
 			),
 		repairToolCallArguments: createRepairToolCallArgumentsHook(settings, () => agent.state.model),
 		intentTracing: () => resolveIntentField(settings) !== undefined,
@@ -3801,6 +3802,9 @@ async function initializeAgentAndSession(params: {
 			})();
 		}
 	}
+
+	const enableLsp = options.enableLsp ?? true;
+	const startupQuiet = settings.get("startup.quiet");
 
 	let lspServers: CreateAgentSessionResult["lspServers"];
 	if (enableLsp && options.hasUI && settings.get("lsp.lazy")) {

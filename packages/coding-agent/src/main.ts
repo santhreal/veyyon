@@ -1542,7 +1542,7 @@ async function dispatchInteractive(params: {
 
 async function dispatchPrint(
 	session: AgentSession,
-	mode: string,
+	mode: "text" | "json",
 	initialArgs: Args,
 	initialMessage?: string,
 	initialImages?: ImageContent[],

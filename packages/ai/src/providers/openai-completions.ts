@@ -579,7 +579,7 @@ interface OpenAICompletionsStreamContext {
 	model: Model<"openai-completions">;
 	output: AssistantMessage;
 	stream: AssistantMessageEventStream;
-	policy: ResolvedOpenAICompat;
+	policy: OpenAICompatPolicy;
 	firstTokenTime?: number;
 	currentBlock?: OpenAIStreamBlock;
 	pendingToolCallBlocks: ToolCallStreamBlock[];
@@ -948,7 +948,7 @@ function processOpenAICompletionsChunk(chunk: ChatCompletionChunk, ctx: OpenAICo
 function processOpenAICompletionsDelta(
 	delta: ChatCompletionChunk.Choice["delta"],
 	ctx: OpenAICompletionsStreamContext,
-): void {
+): boolean {
 	const reasoningFields = ["reasoning_content", "reasoning", "reasoning_text"];
 	const deltaRecord = delta as Record<string, unknown>;
 	let foundReasoningField: string | undefined;
