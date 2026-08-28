@@ -342,6 +342,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/modes/utils/interactive-context-helpers.ts",
 	"packages/coding-agent/src/plan-mode/plan-path.ts",
 	"packages/coding-agent/src/sdk-helpers.ts",
+	"packages/coding-agent/src/sdk-post-helpers.ts",
 	"packages/coding-agent/src/secrets/standalone-runtime.ts",
 	"packages/coding-agent/src/session/agent-session-helpers.ts",
 	"packages/coding-agent/src/session/classifier-tokens.ts",

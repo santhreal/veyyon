@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- 10 setup functions and types extracted from `sdk.ts` (3,134→567 lines) into `sdk-post-helpers.ts`.
 - 49 type definitions, constants, and signal instances extracted from `config/settings.ts` (2,004→1,706 lines) into `config/settings-helpers.ts`.
 - 15 type definitions and constants extracted from `modes/components/model-hub.ts` (1,904→1,846 lines) into `modes/components/model-hub-helpers.ts`.
 - 6 type definitions and constants extracted from `session/session-manager.ts` (2,129→2,062 lines) into `session/session-manager-helpers.ts`.
