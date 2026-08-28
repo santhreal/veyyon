@@ -10,6 +10,7 @@
 - Added `nous-research-api-key`, a second way into Nous Research that takes a key pasted from the Portal instead of running the device flow, validated against the inference API and stored as the same `nous-research` credential.
 
 ### Changed
+- 29 type definitions and functions extracted from `providers/openai-responses-codec.ts` (1,813→1,107 lines) into `providers/openai-responses-codec-helpers.ts`.
 - 87 type definitions, constants, and utility functions extracted from `providers/openai-codex-responses.ts` (3,979→2,988 lines) into `providers/openai-codex-responses-helpers.ts`.
 - 23 header and beta utility functions extracted from `providers/anthropic.ts` (3,522→3,424 lines) into `providers/anthropic-helpers.ts`.
 - 24 utility functions, constants, and the BoundedLruMap class extracted from `providers/cursor.ts` (3,064→2,846 lines) into `providers/cursor-helpers.ts`.
