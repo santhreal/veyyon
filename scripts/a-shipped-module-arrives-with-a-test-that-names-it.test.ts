@@ -317,6 +317,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/mcp/loader.ts",
 	"packages/coding-agent/src/mcp/smithery-auth.ts",
 	"packages/coding-agent/src/mcp/smithery-connect.ts",
+	"packages/coding-agent/src/memories/index-helpers.ts",
 	"packages/coding-agent/src/mnemopi/embed-worker.ts",
 	"packages/coding-agent/src/modes/acp/acp-helpers.ts",
 	"packages/coding-agent/src/modes/components/advisor-message.ts",
