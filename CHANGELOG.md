@@ -47,6 +47,7 @@
 - New package: the terminal renderer defect oracle, holding the virtual terminal, frame capture, state-relative invariant detectors, the fuzz driver and the replayable defect corpus.
 - `defaultImageTheme` test fixture, so no suite hand-rolls an image theme.
 - `findViewportHoles` and `findStrandedChrome` decide the two blank-space defect classes from the frame's own state, taking no size threshold: a hole is a blank run with paint on both sides, and chrome is stranded when a painted row sits below it.
+- `cursor-tracking` suite: a frame that paints nothing must leave the terminal cursor where it was, swept across viewport heights and slide distances, with the scrollback consequence of a drifted cursor as its second arm.
 - Added `ThemeToggle` component to shared React renderers for cycling system, light, and dark theme preferences.
 - `@veyyon/tui/test-support` exports the shared test themes and destructive-paint counter, so a suite in another package no longer reaches into this package's test directory by relative path.
 - `TUI.onBeforeCompose` runs at the top of every frame, before any root child renders, so a layout whose height is a function of its siblings' heights is sized against the children about to render rather than the previous frame's.
@@ -98,6 +99,7 @@
 - The package exposes a single entry point. Deep subpath imports are no longer resolvable, so consumers import `@veyyon/render-oracle` and nothing beneath it.
 - Every renderer regression test moved into this package, replacing copies previously spread across `tui` and `coding-agent`.
 - The prompt-visibility and virtual-scroll footer checks read the footer placement the renderer produced instead of re-deriving it, so a footer taller than the viewport is judged against the rows the renderer painted.
+- The anti-yank scroll check exempts an op the engine redrew: a committed-prefix divergence erases native scrollback and replays the frame by design, moving the reader's offset and the rows above it, so the rebuilt history is now compared against the committed record instead of being read as a stray write.
 - Migrated dashboard theme toggle to shared `ThemeToggle` from `@veyyon/tool-render`.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
@@ -111,6 +113,10 @@
 
 ### Fixed
 
+- A streaming answer lands in the empty space below the conversation instead of pushing every row already on screen up one row per token, so the screen no longer shakes while a model talks into a viewport that is not yet full.
+- The collab host, guest client and relay socket load when `/collab` or `/join` runs instead of during every interactive startup, and a settings domain reads the relay default from `@veyyon/wire` rather than through the collab protocol module.
+- Argot's dictionary generator, corpus walker and project vocabulary load when a project dictionary is first read instead of during every startup, so a session with `argot.enabled` off no longer evaluates them.
+- The stats dashboard's aggregator, SQLite layer and embedded client load when `/stats` first runs instead of during every interactive startup, so a session that never opens the dashboard stops parsing them.
 - The Python, Ruby and Julia eval backends call their kernel and executor modules on every cell instead of holding a copy of each taken when the backend module loaded, so an availability check or executor replaced after startup is the one that runs.
 - A `cursor-agent` model receives the operator's global, profile and project instruction files again: the assembled prompt was blanked for that api in favour of a channel the server ignores, so every layer reached the model on no channel at all; one prompt is now built for every api and carried to Cursor on the active user turn.
 - A personality named after a property JavaScript objects inherit, such as `toString` or `constructor`, is reported as unknown and falls back to the default like any other unrecognized name; the built-in catalog was indexed without an own-property check, so those names resolved to a function, the system prompt build failed silently, and the default was substituted with no warning and any `personality/default.md` override ignored.
@@ -252,6 +258,7 @@
 - `grep` reports why an archive could not be opened or read when the failure is not an `Error`, instead of the word `undefined`.
 - A detached daemon that exited while no broker was supervising it is recorded as its own exit, not as a non-detached daemon terminated by the replacement broker.
 - Background conversations abandoned at shutdown before their transcript finished flushing are named in the log, instead of leaving a short file as the only trace.
+- A streaming answer no longer slides the whole conversation up one row per streamed row: the anchor slack now sits below the content and above the composer, so a streamed row lands in the empty space and the composer keeps the viewport bottom.
 - Converted message wrappers preserve reference identity across turns when inputs are unchanged, avoiding unnecessary allocations and memo invalidations.
 - Fixed tool-result supersede pruning to parse multi-target `read` calls into target sets with per-target URL scheme exemption, retiring an earlier read result when all of its targets are covered by newer reads while preserving results with partial coverage.
 - Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
@@ -324,6 +331,7 @@
 - An inline image drawn inside a tmux pane reaches the outer terminal. `encodeITerm2` emitted a bare OSC 1337, which tmux swallows, while every Kitty emitter already wrapped its payload in tmux's DCS passthrough envelope; Sixel stays raw, because it is selected only when the DA1 answer reported it and inside tmux that answer is tmux's own.
 - A frame identical to the one on screen writes nothing. An overlay, a frozen scroll view or a slid window widened the repaint span to the whole viewport before the diff ran, so every such frame erased and reprinted rows it had just painted; what changed now decides whether anything is written, and the frame kind only decides how wide the walk is, with rows already matching the screen skipped inside it.
 - A keystroke typed during a heavy stream paints on the next frame instead of waiting out adaptive backpressure. The 50% duty-cycle floor, up to 200ms, was charged to every frame including one input asked for, and a frame already armed at that delay was never pulled earlier; an input-caused frame now skips the adaptive floor, keeps the cadence and input-grace floors, and re-arms a pending frame whenever it can start sooner.
+- A frame that slides the window without painting no longer emits a one-row cursor move, so the physical cursor stops drifting away from the tracked row and a later commit cannot scroll uncommitted rows, overlay content among them, into native scrollback.
 - `extractHttpStatusFromError` reads the status line a message opens with whatever wording follows it, so `401 Your session has expired`, `403 You have run out of credits` and `503 {"type":"error",...}` report their codes again; pinning a reason phrase to its own code had also stopped a status line naming its own reason from reporting anything, and 401 is what credential rotation reads.
 - `extractHttpStatusFromError` reads a status field anywhere in an error's cause chain before falling back to prose anywhere in it, and matches the `status_code: 503` and `429 Too Many Requests` spellings it previously missed.
 - `extractHttpStatusFromError` reads a reason phrase only when it is the phrase that belongs to the code beside it, so `Processed 200 Total Records` and `gave up after 401 Failed Attempts` no longer report a status, the second of which reached credential rotation.
