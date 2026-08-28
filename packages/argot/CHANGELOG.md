@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Verbose inline comments stripped from `generate.ts`.
 
 - `codec.ts`, `corpus.ts`, `generate.ts`, and `session.ts` replace array spreads with `.concat()`, `Array.from()`, and `.slice()` to avoid iterator allocation on hot paths.
 

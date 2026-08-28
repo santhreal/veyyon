@@ -29,6 +29,7 @@
 ## [15.12.4] - 2026-06-13
 
 ### Changed
+- Verbose inline comments stripped from `index.ts`.
 
 - Changed `WireModel.contextWindow` and `ContextUsage.contextWindow` to `number | null` to allow representing unavailable context-window values
 

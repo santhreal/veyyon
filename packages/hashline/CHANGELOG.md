@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Changed
+- Verbose inline comments stripped from `apply.ts`.
 
 - `apply.ts`, `input.ts`, `messages.ts`, `parser.ts`, and `patcher.ts` replace array spreads with `.concat()`, `Array.from()`, and `.slice()` to avoid iterator allocation on hot paths.
 
