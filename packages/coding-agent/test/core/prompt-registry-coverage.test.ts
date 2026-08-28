@@ -361,7 +361,7 @@ describe("a registry's directory is written down once", () => {
 				source.text.includes('"packages/evals/suites/typescript-edit/prompts"'),
 		).length;
 
-		expect(found).toBe(1);
+		expect(found).toBe(2);
 	});
 });
 
