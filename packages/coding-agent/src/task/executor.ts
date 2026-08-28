@@ -509,7 +509,6 @@ export function finalizeSubprocessOutput(args: FinalizeSubprocessOutputArgs): Fi
 			if (!assembled || assembled.missingData) {
 				const hasRawOutput = rawOutput.trim().length > 0;
 				rawOutput = rawOutput ? `${SUBAGENT_WARNING_NULL_YIELD}\n\n${rawOutput}` : SUBAGENT_WARNING_NULL_YIELD;
-				// never yielding, so it must not exit 0 and hand the warning back as the result.
 				if (hasOutputSchema || !hasRawOutput) {
 					exitCode = 1;
 					if (!stderr.trim()) stderr = SUBAGENT_WARNING_NULL_YIELD;
@@ -1316,7 +1315,6 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 					if (softRequestBudget > 0 && !abortSent && !yieldCallPending) {
 						const stopThreshold = softRequestBudget * 1.5;
 						if (budgetStopRequested) {
-							// Grace window after the stop: the forced yield needs a
 							if (progress.requests >= stopThreshold + BUDGET_STOP_GRACE_REQUESTS) {
 								requestAbort("budget");
 							}
@@ -1326,7 +1324,6 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 							budgetSteerSent = true;
 							const steerSession = activeSession;
 							if (steerSession) {
-								// behind an async boundary: a synchronously-throwing send must
 								const notice = buildBudgetNotice(progress.requests, softRequestBudget);
 								void Promise.resolve()
 									.then(() => steerSession.sendUserMessage(notice, { deliverAs: "steer" }))
@@ -1457,7 +1454,6 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 					.filter(Boolean)
 					.join("\n");
 				if (text.trim()) {
-					// last-turn text is handle-form and must expand through the child's
 					lastAssistantSalvageText = expandSubagentReturn(session.getArgotSession?.(), text);
 				}
 			}
@@ -1705,7 +1701,6 @@ export interface RunVerdict {
 
 export function resolveRunVerdict(inputs: RunVerdictInputs): RunVerdict {
 	let exitCode = inputs.exitCodeAfterFinalize;
-	// The wall clock first, and independent of everything else: a late yield must not buy back a
 	if (inputs.runtimeLimitExceeded && exitCode === 0) exitCode = 1;
 
 	const aborted =
@@ -1785,7 +1780,6 @@ async function finalizeRunResult(args: FinalizeRunArgs): Promise<SingleResult> {
 		} catch {}
 	}
 
-	// The one place the run's outcome is decided. The yield payload is settled by now, which is why
 	const verdict = resolveRunVerdict({
 		exitCodeAfterFinalize: exitCode,
 		hasYield,
@@ -2114,7 +2108,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 	if (atMaxDepth && toolNames?.includes("task")) {
 		toolNames = toolNames.filter(name => name !== "task");
 	}
-	// whitelist must still carry `irc` for the subagent to actually use it.
 	if (toolNames && !toolNames.includes("irc")) {
 		toolNames = toolNames.concat(["irc"]);
 	}
@@ -2212,7 +2205,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 
 		try {
 			checkAbort();
-			// Pin authStorage to modelRegistry.authStorage — mirrors the createAgentSession invariant.
 			const registryFromParent = options.modelRegistry !== undefined;
 			const modelRegistry =
 				options.modelRegistry ??
@@ -2411,7 +2403,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			try {
 				({ session } = await awaitAbortable(sessionPromise));
 			} catch (err) {
-				// Abort raced session startup. The session may still resolve later
 				void sessionPromise.then(created => created.session.dispose()).catch(() => {});
 				throw err;
 			}
@@ -2485,7 +2476,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				},
 				{ once: true, signal: sessionAbortController.signal },
 			);
-			// the awaited setup above, the listener registration races the dispatch
 			if (abortSignal.aborted) {
 				void monitor.abortActiveSession();
 			}

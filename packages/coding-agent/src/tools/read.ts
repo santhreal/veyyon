@@ -1645,7 +1645,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		let displayContent: { text: string; startLine: number; lineNumbers?: Array<number | null> } | undefined;
 
 		for (const range of ranges) {
-			const rangeStart = range.startLine - 1; // 0-indexed
+			const rangeStart = range.startLine - 1;
 			const requestedLength = range.endLine !== undefined ? range.endLine - range.startLine + 1 : this.#defaultLimit;
 			const maxLines = Math.min(requestedLength, DEFAULT_MAX_LINES);
 
@@ -1663,7 +1663,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					maxBytesForRead,
 					maxLines,
 					signal,
-					fileSize > SNAPSHOT_MAX_BYTES, // giant file: collected ranges don't need an exact EOF line count
+					fileSize > SNAPSHOT_MAX_BYTES,
 				);
 				totalFileLines = streamResult.totalFileLines;
 				collectedLines = streamResult.lines;
@@ -2055,7 +2055,6 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		const shouldAddHashLines = displayMode.hashLines;
 		const shouldAddLineNumbers = shouldAddHashLines ? false : displayMode.lineNumbers;
 
-		// elided / kept-tail sandwich into a single brace-pair line when the
 		type Unit =
 			| { kind: "line"; line: number; text: string }
 			| { kind: "elided"; startLine: number; endLine: number }
@@ -2128,9 +2127,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				);
 				modelParts.push(formatted.model);
 				displayParts.push(formatted.display);
-				// Suggest the full brace range so re-reading shows both braces
 				elidedRanges.push({ start: unit.startLine, end: unit.endLine });
-				// Merged brace pair encloses (start+1)..(end-1) as elided.
 				elidedLines += Math.max(0, unit.endLine - unit.startLine - 1);
 				continue;
 			}
@@ -3460,7 +3457,6 @@ function firstReadSelectorLine(sel: string | undefined): number | undefined {
 		if (parsed.kind !== "lines") return undefined;
 		return parsed.ranges[0].startLine;
 	} catch {
-		// parses the same selector and reports it; the renderer must not raise a second time.
 		return undefined;
 	}
 }

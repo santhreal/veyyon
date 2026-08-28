@@ -147,7 +147,6 @@ type ManagedSessionRecord = {
 	liveMessageProgress: { textEmitted: boolean; thoughtEmitted: boolean } | undefined;
 	toolArgsById: Map<string, unknown>;
 	extensionsConfigured: boolean;
-	// Installed inside `#scheduleBootstrapUpdates` (post-race-guard); released
 	lifetimeUnsubscribe: (() => void) | undefined;
 	closedError: PromptLifecycleError | undefined;
 	promptEventHandlers: Set<Promise<void>>;
@@ -272,7 +271,6 @@ async function elicitFromAcpClient(
 			try {
 				dialogOptions.onTimeout?.();
 			} catch (error) {
-				// A throwing `onTimeout` must not leave the elicitation promise
 				logger.warn("ACP elicitation onTimeout threw", { sessionId, method, error });
 			}
 			finish(undefined);
@@ -1005,7 +1003,6 @@ export class AcpAgent implements Agent {
 	async #registerPreparedSession(session: AgentSession, mcpServers: McpServer[]): Promise<ManagedSessionRecord> {
 		const record = this.#createManagedSessionRecord(session);
 		session.setClientBridge(createAcpClientBridge(this.#connection, session.sessionId, this.#clientCapabilities));
-		// so it shares the bootstrap race guard — see that comment for why.
 		try {
 			await this.#configureExtensions(record);
 			await this.#configureMcpServers(record, mcpServers);

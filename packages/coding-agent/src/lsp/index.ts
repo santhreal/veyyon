@@ -854,9 +854,7 @@ async function formatContent(
 
 			return applyTextEditsToString(content, edits);
 		} catch (error) {
-			// Cancellation and timeouts must propagate, never be swallowed as a
 			if (signal?.aborted || error instanceof ToolAbortError || isTimeoutError(error)) throw error;
-			// Formatting is best-effort: a server crash or protocol error must not fail the edit (the content already saved), but it must be visible —
 			logger.warn("LSP formatting failed; wrote unformatted content", {
 				server: serverName,
 				path: formatPathRelativeToCwd(absolutePath, cwd),
@@ -1144,7 +1142,6 @@ async function runLspWritethrough(
 	const { lspServers, customLinterServers } = splitServers(servers);
 	const useCustomFormatter = enableFormat && customLinterServers.length > 0;
 
-	// must not add its full init wait (30s default) to every edit.
 	const minVersions = enableDiagnostics ? await captureDiagnosticVersions(cwd, servers, 5_000, signal) : undefined;
 	let expectedDocumentVersions: ServerVersionMap | undefined;
 
@@ -1328,7 +1325,6 @@ export function createLspWritethrough(cwd: string, options?: WritethroughOptions
 	};
 }
 
-/** LSP tool for language server protocol operations. */
 export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Theme> {
 	readonly name = "lsp";
 	readonly approval = (args: unknown): ToolApprovalDecision => {
@@ -1675,9 +1671,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 		try {
 			await fs.promises.stat(dest);
 			destExists = true;
-		} catch {
-			// expected: destination must not exist
-		}
+		} catch {}
 		if (destExists) {
 			return {
 				content: [

@@ -1511,7 +1511,6 @@ async function fetchRunJobs(
 		const pageJobs = rawPage.map(job => normalizeRunJob(job)).filter((job): job is GhRunJobSnapshot => job !== null);
 		for (let ji = 0; ji < pageJobs.length; ji++) jobs.push(pageJobs[ji]!);
 
-		// and a post-filter short page must not end pagination early.
 		if (rawPage.length < RUN_JOBS_PAGE_SIZE) {
 			break;
 		}
@@ -2567,7 +2566,6 @@ async function executeRunWatch(
 				try {
 					const refetched = await fetchRunsForCommit(session.cwd, repo, headSha, signal, completedRunJobsCache);
 					const refetchedPairs = refetched.flatMap(run => run.jobs.filter(isFailedJob).map(job => ({ run, job })));
-					// auto-retry reset the conclusions during the grace window
 					if (refetchedPairs.length > 0) {
 						runs = refetched;
 						failedPairs = refetchedPairs;

@@ -1455,7 +1455,6 @@ export class SessionManager {
 				this.#fileIsCurrent = true;
 		});
 		await this.#dropIfEmptyAndNoDraft();
-		// tail) to become durable so a graceful shutdown does not exit while
 		await this.#storage.drain();
 		if (this.#diskFailure) throw this.#diskFailure;
 	}

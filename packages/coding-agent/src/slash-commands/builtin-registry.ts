@@ -1311,7 +1311,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				);
 				return;
 			}
-			// Scheme-less relay args default to wss (ws:// must be spelled out for localhost).
 			const relayUrl = relayInput.includes("://") ? relayInput : `wss://${relayInput}`;
 			const webUrl = ctx.settings.get("collab.webUrl") || "";
 			const host = new CollabHost(ctx);
@@ -1841,7 +1840,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 		handle: async (command, runtime) => {
 			const parsed = parseCompactArgs(command.args);
 			if ("error" in parsed) return usage(parsed.error, runtime);
-			// Retired non-handoff names still compact, and must never do so quietly.
 			if (parsed.notice) await runtime.output(parsed.notice);
 			const before = runtime.session.getContextUsage?.();
 			const beforeTokens = before?.tokens;
@@ -1867,7 +1865,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				runtime.ctx.showWarning(parsed.error);
 				return;
 			}
-			// Retired non-handoff names still compact, and must never do so quietly.
 			if (parsed.notice) runtime.ctx.showWarning(parsed.notice);
 			await runtime.ctx.handleCompactCommand(parsed.instructions, parsed.mode);
 		},
@@ -2087,7 +2084,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			}
 			if (runtime.session.isStreaming) return usage("Cannot change cwd while streaming.", runtime);
 			const resolvedPath = resolveToCwd(command.args, current);
-			// from a session rooted elsewhere reads as "tmp doesn't exist" with no clue why.
 			const relativeHint = path.isAbsolute(command.args.trim())
 				? ""
 				: ` (relative paths resolve against the current session cwd ${current}; pass an absolute path to avoid this)`;
@@ -2303,7 +2299,7 @@ export { BUILTIN_SLASH_COMMAND_RESERVED_NAMES } from "./builtin-declarations";
 
 function buildArgumentCompletions(subcommands: SubcommandDef[]): (prefix: string) => AutocompleteItem[] | null {
 	return (argumentPrefix: string) => {
-		if (argumentPrefix.includes(" ")) return null; // past the subcommand
+		if (argumentPrefix.includes(" ")) return null;
 		const lower = argumentPrefix.toLowerCase();
 		const matches = subcommands
 			.filter(s => s.name.startsWith(lower))
@@ -2379,7 +2375,7 @@ function buildProfileArgumentCompletions(): (prefix: string) => Promise<Autocomp
 }
 
 const secretArgumentCompletions = (argumentPrefix: string): AutocompleteItem[] | null => {
-	if (argumentPrefix.includes(" ")) return null; // past the subcommand
+	if (argumentPrefix.includes(" ")) return null;
 	const prefix = argumentPrefix.toLowerCase();
 	const matches = SECRET_TUI_SUBCOMMANDS.filter(sub => sub.name.startsWith(prefix)).map(sub => ({
 		value: sub.usage === "" ? sub.name : `${sub.name} `,

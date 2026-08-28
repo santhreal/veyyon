@@ -905,9 +905,7 @@ function preconnectModelHost(baseUrl: string | undefined): void {
 	if (typeof preconnect !== "function") return;
 	try {
 		preconnect(baseUrl);
-	} catch {
-		// Best effort.
-	}
+	} catch {}
 }
 
 interface SessionInfrastructure {
@@ -3516,7 +3514,6 @@ async function initializeAgentAndSession(params: {
 			if (event.type !== "turn_end") return;
 			const usage = (event.message as { usage?: { input?: number; cacheRead?: number; cacheWrite?: number } }).usage;
 			if (usage) {
-				// Usage context tokens update
 			}
 		});
 	}
@@ -3982,9 +3979,6 @@ async function cleanupFailedSessionStartup(params: {
 	}
 }
 
-/**
- * Create an AgentSession with the specified options.
- */
 export async function createAgentSession(options: CreateAgentSessionOptions = {}): Promise<CreateAgentSessionResult> {
 	const infra = await setupSessionInfrastructure(options);
 	const sessionRef: { session?: AgentSession; agent?: Agent } = {};
