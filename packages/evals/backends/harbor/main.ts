@@ -279,7 +279,8 @@ export class HarborBackend implements ExecutionBackend {
 		cfg.jobsDir = params.jobsDir;
 		cfg.jobName = params.jobName;
 		if (typeof options?.gatewayUrl === "string") cfg.gatewayUrl = options.gatewayUrl;
-		if (typeof options?.gatewayToken === "string") cfg.gatewayToken = options.gatewayToken;
+	if (typeof options?.gatewayToken === "string") cfg.gatewayToken = options.gatewayToken;
+	else if (process.env.DOCKER_GATEWAY_TOKEN) cfg.gatewayToken = process.env.DOCKER_GATEWAY_TOKEN;
 		if (Array.isArray(options?.providers)) cfg.providers = options.providers as string[];
 		cfg.gateway = params.authGateway && options?.gateway !== false;
 		cfg.webSearch = Boolean(options?.webSearch);
