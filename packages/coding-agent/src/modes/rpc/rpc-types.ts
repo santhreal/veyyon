@@ -89,12 +89,6 @@ export interface RpcAvailableCommandsUpdateFrame {
 	commands: RpcAvailableSlashCommand[];
 }
 
-export interface RpcPromptResultFrame {
-	type: "prompt_result";
-	id?: string;
-	agentInvoked: boolean;
-}
-
 export interface RpcHandoffResult {
 	savedPath?: string;
 }

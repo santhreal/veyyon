@@ -29,16 +29,6 @@ export interface DapEventMessage extends DapProtocolMessage {
 	body?: unknown;
 }
 
-export interface DapErrorBody {
-	id?: number;
-	format: string;
-	variables?: Record<string, string>;
-	showUser?: boolean;
-	sendTelemetry?: boolean;
-	url?: string;
-	urlLabel?: string;
-}
-
 export interface DapSource {
 	name?: string;
 	path?: string;
@@ -137,28 +127,6 @@ export interface DapAttachArguments {
 	[key: string]: unknown;
 }
 
-export interface DapConfigurationDoneArguments {
-	threadId?: number;
-}
-
-export interface DapSetBreakpointsArguments {
-	source: DapSource;
-	breakpoints: DapSourceBreakpoint[];
-	sourceModified?: boolean;
-}
-
-export interface DapSetBreakpointsResponse {
-	breakpoints: DapBreakpoint[];
-}
-
-export interface DapSetFunctionBreakpointsArguments {
-	breakpoints: DapFunctionBreakpoint[];
-}
-
-export interface DapSetFunctionBreakpointsResponse {
-	breakpoints: DapBreakpoint[];
-}
-
 export interface DapInstructionBreakpoint {
 	instructionReference: string;
 	offset?: number;
@@ -211,16 +179,6 @@ export interface DapStepArguments {
 	threadId: number;
 	singleThread?: boolean;
 	granularity?: "statement" | "line" | "instruction";
-}
-
-export interface DapTerminateArguments {
-	restart?: boolean;
-}
-
-export interface DapDisconnectArguments {
-	restart?: boolean;
-	terminateDebuggee?: boolean;
-	suspendDebuggee?: boolean;
 }
 
 export interface DapStackTraceArguments {
@@ -424,20 +382,9 @@ export interface DapStoppedEventBody {
 	hitBreakpointIds?: number[];
 }
 
-export interface DapContinuedEventBody {
-	threadId: number;
-	allThreadsContinued?: boolean;
-}
-
 export interface DapExitedEventBody {
 	exitCode?: number;
 }
-
-export interface DapTerminatedEventBody {
-	restart?: boolean | Record<string, unknown>;
-}
-
-export interface DapInitializedEventBody {}
 
 export interface DapRunInTerminalArguments {
 	kind?: "integrated" | "external";

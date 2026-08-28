@@ -12,13 +12,6 @@ export type ConsolidationState = "failed" | "pending" | "done";
 
 export type HindsightProviderTextTransform = (text: string) => string;
 
-export interface HindsightTimeouts {
-	request?: number;
-	reflect?: number;
-	recall?: number;
-	retain?: number;
-}
-
 export interface HindsightApiOptions {
 	baseUrl: string;
 	apiKey?: string;

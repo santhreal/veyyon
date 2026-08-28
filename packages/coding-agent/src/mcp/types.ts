@@ -128,11 +128,6 @@ export interface MCPToolDefinition {
 	};
 }
 
-export interface MCPToolsListResult {
-	tools: MCPToolDefinition[];
-	nextCursor?: string;
-}
-
 export interface MCPToolCallParams {
 	name: string;
 	arguments?: Record<string, unknown>;
@@ -199,11 +194,6 @@ export interface MCPServerConnection {
 	resourceTemplates?: MCPResourceTemplate[];
 	instructions?: string;
 	prompts?: MCPPrompt[];
-}
-
-export interface MCPToolWithServer {
-	server: MCPServerConnection;
-	tool: MCPToolDefinition;
 }
 
 export interface MCPAnnotations {

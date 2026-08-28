@@ -8,14 +8,6 @@ export interface CmuxKind {
 	surface?: string;
 }
 
-export interface CmuxOpenSplitResult {
-	surface_id?: unknown;
-	url?: unknown;
-	workspace_id?: unknown;
-	created_split?: unknown;
-	placement_strategy?: unknown;
-}
-
 export interface CmuxSnapshotRef {
 	role?: unknown;
 	name?: unknown;

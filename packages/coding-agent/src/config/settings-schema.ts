@@ -507,11 +507,6 @@ export interface MemoriesSettings {
 	summaryInjectionTokenLimit: number;
 }
 
-export interface TodoCompletionSettings {
-	enabled: boolean;
-	maxReminders: number;
-}
-
 export interface BranchSummarySettings {
 	enabled: boolean;
 	reserveTokens: number;

@@ -30,11 +30,6 @@ import type {
 } from "./types";
 import { makeExtensionId, sourceFromMeta } from "./types";
 
-export interface ExtensionSettingsManager {
-	getDisabledExtensions(): string[];
-	setDisabledExtensions(ids: string[]): void;
-}
-
 export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): Promise<ExtensionRow[]> {
 	const extensions: ExtensionRow[] = [];
 	const disabledExtensions = new Set<string>(disabledIds ?? []);

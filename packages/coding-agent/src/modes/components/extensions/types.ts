@@ -77,12 +77,6 @@ export interface DashboardState {
 	selected: ExtensionRow | null;
 }
 
-export interface DashboardCallbacks {
-	onProviderToggle: (providerId: string, enabled: boolean) => void;
-	onExtensionToggle: (extensionId: string, enabled: boolean) => void;
-	onClose: () => void;
-}
-
 export function makeExtensionId(kind: ExtensionKind, name: string): string {
 	return `${kind}:${name}`;
 }

@@ -477,11 +477,6 @@ export async function sendUserAgentOverride(client: PuppeteerCdpClient, override
 	});
 }
 
-export interface UserAgentSession {
-	override: UserAgentOverride;
-	browserSession: CDPSession | null;
-}
-
 async function configureUserAgentTargets(
 	browser: Browser,
 	state: { browserSession: CDPSession | null; override: UserAgentOverride },

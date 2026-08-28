@@ -173,9 +173,3 @@ export interface ToolLoadError {
 	error: string;
 	source?: { provider: string; providerName: string; level: "user" | "project" };
 }
-
-export interface CustomToolsLoadResult {
-	tools: LoadedCustomTool[];
-	errors: ToolLoadError[];
-	setUIContext(uiContext: CustomToolUIContext, hasUI: boolean): void;
-}

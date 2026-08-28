@@ -100,16 +100,6 @@ function shouldRetryWithNextDefaultModel(error: unknown): boolean {
 	);
 }
 
-export interface CodexSearchParams {
-	signal?: AbortSignal;
-	fetch?: FetchImpl;
-	query: string;
-	system_prompt?: string;
-	num_results?: number;
-	search_context_size?: "low" | "medium" | "high";
-	resolveProviderTextTransform?: ProviderTextTransformResolver;
-}
-
 interface CodexResponseItem {
 	type: string;
 	id?: string;

@@ -241,11 +241,6 @@ export interface ReviewSummary {
 	confidence: number;
 }
 
-export interface ReviewData {
-	findings: ReviewFinding[];
-	summary?: ReviewSummary;
-}
-
 export interface AgentDefinition {
 	name: string;
 	description: string;
